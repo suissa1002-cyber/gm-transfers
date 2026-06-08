@@ -92,7 +92,8 @@
               display:flex;align-items:center;justify-content:center;font-size:16px;flex:0 0 auto}
   .item.received .tick{background:var(--green);border-color:var(--green);color:#fff}
   .item .name{font-weight:600}
-  .item .sub{color:var(--muted);font-size:12px;direction:ltr;text-align:right;font-family:monospace;margin-top:2px}
+  .item .sub{color:var(--muted);font-size:12px;direction:ltr;text-align:right;font-family:monospace;margin-top:2px;
+             user-select:text;cursor:text}
   .item .who{color:var(--green);font-size:11px;margin-top:2px}
   .done-banner{background:var(--green);color:#fff;border-radius:14px;padding:16px;
                text-align:center;font-size:19px;font-weight:800;margin-bottom:16px}
@@ -454,7 +455,13 @@ async function handleDeepLink(){
 }
 
 // ── init ──
-document.addEventListener('click', focusScan);   // שומר שהפוקוס תמיד על שדה הסריקה
+// שומר פוקוס על שדה הסריקה — אבל לא גונב בחירת טקסט (העתקת ברקוד/סריאל) או קליק על פריט
+document.addEventListener('click', (e)=>{
+  if(window.getSelection && String(window.getSelection()).trim()) return;   // המשתמש מסמן טקסט
+  const t=e.target;
+  if(t.closest && t.closest('.item, .serial, .sub, a, button, input, select, textarea, .arow, table')) return;
+  focusScan();
+});
 (async()=>{
   loadState(); applyTheme();
   try{ S.cfg=await (await fetch('/api/config')).json(); }catch(e){}
