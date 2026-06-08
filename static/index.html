@@ -93,6 +93,8 @@
             text-align:center;padding:0 24px;text-shadow:0 1px 5px #000}
   .cam-close{position:absolute;top:18px;left:18px;z-index:3;background:rgba(0,0,0,.55);
              color:#fff;border-color:rgba(255,255,255,.45)}
+  .cam-status{position:absolute;bottom:54px;z-index:3;color:#cfe;font-size:13px;
+              text-align:center;padding:6px 14px;background:rgba(0,0,0,.5);border-radius:999px;text-shadow:0 1px 3px #000}
   .empty{text-align:center;color:var(--muted);padding:64px 0;font-size:17px}
   /* מסך קליטה — דו-טורי בדסקטופ */
   .scan-layout{display:grid;grid-template-columns:380px 1fr;gap:22px;align-items:start}
@@ -295,43 +297,48 @@ function openCameraNow(){
   if(S.view==='scan') openCamera(c=>doScan(c,'camera'));
   else openCamera(c=>doScanBoard(c,'camera'));
 }
-function loadZxing(){ return new Promise(res=>{
-  if(window.ZXing) return res();
-  const s=document.createElement('script');
-  s.src='https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js';
-  s.onload=res; s.onerror=res; document.head.appendChild(s);
-}); }
+function camStatus(msg){ const e=document.getElementById('camStatus'); if(e) e.textContent=msg; }
+function loadScript(src){ return new Promise(res=>{ const s=document.createElement('script');
+  s.src=src; s.onload=()=>res(true); s.onerror=()=>res(false); document.head.appendChild(s); }); }
+async function loadZxing(){
+  if(window.ZXing) return true;
+  if(await loadScript('https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js') && window.ZXing) return true;
+  await loadScript('https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js');
+  return !!window.ZXing;
+}
 async function openCamera(onResult){
   const root=document.getElementById('modalRoot');
   root.innerHTML=`<div class="cam-overlay">
     <video id="camVideo" playsinline muted autoplay></video>
     <div class="cam-frame"><div class="cam-line"></div></div>
     <div class="cam-hint">מרכז את הברקוד הרצוי במסגרת · החזק יציב במרחק 10–20 ס״מ</div>
+    <div class="cam-status" id="camStatus">מאתחל מצלמה…</div>
     <button class="cam-close btn-ghost" onclick="closeCamera()">✕ סגור</button>
   </div>`;
   const video=document.getElementById('camVideo');
-  let useNative = ('BarcodeDetector' in window);
-  if(useNative){ try{ _camDetector=new window.BarcodeDetector(); }catch(e){ useNative=false; } }
-  if(useNative){
+  // בחירת מנוע: native רק אם באמת יש פורמטים נתמכים (יש מכשירים שבהם הוא קיים אך ריק)
+  let engine='zxing';
+  if('BarcodeDetector' in window){
+    try{ const fmts=await window.BarcodeDetector.getSupportedFormats();
+      if(fmts && fmts.length){ engine='native'; _camDetector=new window.BarcodeDetector(); } }catch(e){}
+  }
+  if(engine==='native'){
     try{
-      _camStream=await navigator.mediaDevices.getUserMedia({video:{
-        facingMode:'environment', width:{ideal:1280}, height:{ideal:720}}});
+      _camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment',width:{ideal:1280},height:{ideal:720}}});
       video.srcObject=_camStream; await video.play();
-      const track=_camStream.getVideoTracks()[0];
-      try{ await track.applyConstraints({advanced:[{focusMode:'continuous'}]}); }catch(e){}
-    } catch(e){ toast('אין גישה למצלמה',false); closeCamera(); return; }
+      const tr=_camStream.getVideoTracks()[0]; try{ await tr.applyConstraints({advanced:[{focusMode:'continuous'}]}); }catch(e){}
+    } catch(e){ camStatus('אין גישה למצלמה — אשר הרשאה ונסה שוב'); return; }
+    camStatus('מנוע: זיהוי מובנה · מחפש ברקוד…');
     const tick=async()=>{
       if(!_camStream||!_camDetector) return;
       if(video.videoWidth){
         try{
-          const codes=await _camDetector.detect(video);   // פריים מלא — תופס גם ברקוד גדול
+          const codes=await _camDetector.detect(video);
           if(codes&&codes.length){
             let pick=codes[0];
-            if(codes.length>1){   // כמה ברקודים — בוחרים את הקרוב למרכז האנכי (שמכוונים אליו)
-              const midY=video.videoHeight/2;
+            if(codes.length>1){ const midY=video.videoHeight/2;
               pick=codes.reduce((b,c)=>{ const cy=(c.boundingBox?c.boundingBox.y+c.boundingBox.height/2:midY);
-                const d=Math.abs(cy-midY); return (!b||d<b.d)?{c,d}:b; },null).c;
-            }
+                const d=Math.abs(cy-midY); return (!b||d<b.d)?{c,d}:b; },null).c; }
             onCamHit(pick.rawValue,onResult); return;
           }
         }catch(e){}
@@ -340,14 +347,15 @@ async function openCamera(onResult){
     };
     _camRAF=requestAnimationFrame(tick);
   } else {
-    await loadZxing();
-    if(!window.ZXing){ toast('סריקת מצלמה לא נתמכת במכשיר',false); closeCamera(); return; }
+    camStatus('טוען מנוע סריקה…');
+    const ok=await loadZxing();
+    if(!ok){ camStatus('טעינת מנוע הסריקה נכשלה — בדוק חיבור אינטרנט'); return; }
     try{
       _zxingReader=new ZXing.BrowserMultiFormatReader();
-      _zxingReader.decodeFromConstraints({video:{facingMode:'environment',width:{ideal:1280},height:{ideal:720}}}, video, (result)=>{
-        if(result) onCamHit(result.getText(), onResult);
-      });
-    }catch(e){ toast('שגיאת מצלמה',false); closeCamera(); }
+      camStatus('מנוע: ZXing · מחפש ברקוד…');
+      _zxingReader.decodeFromConstraints({video:{facingMode:'environment',width:{ideal:1280},height:{ideal:720}}}, video,
+        (result,err)=>{ if(result) onCamHit(result.getText(), onResult); });
+    }catch(e){ camStatus('שגיאת מצלמה: '+((e&&e.message)||e)); }
   }
 }
 function onCamHit(code,onResult){ beep(true); vibrate(true); closeCamera(); if(code) onResult(String(code).trim()); }
