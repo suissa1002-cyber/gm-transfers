@@ -115,6 +115,9 @@
   .filters input,.filters select{font-family:inherit;font-size:14px;padding:9px 12px;border-radius:10px;
     border:1px solid var(--line);background:var(--card);color:var(--txt);outline:none}
   .filters input{min-width:210px} .filters input:focus,.filters select:focus{border-color:var(--blue)}
+  .filters .dlabel{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:13px}
+  .filters input[type=date]{min-width:auto;padding:8px 10px;color-scheme:dark}
+  body.light .filters input[type=date]{color-scheme:light}
   table.admin{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);
               border-radius:14px;overflow:hidden}
   table.admin th,table.admin td{padding:12px 14px;text-align:right;border-bottom:1px solid var(--line);font-size:14px}
@@ -167,7 +170,7 @@
 <script>
 const S = { branchId:null, branchName:null, employee:null, adminKey:null,
             cfg:{admin_required:false, admin_branch_id:5}, theme:'dark', lastScan:null,
-            branchList:[], adminFilters:{q:'',from:'',to:'',status:'',days:'7'}, _refocusFilter:false,
+            branchList:[], adminFilters:{q:'',from:'',to:'',status:'',fromDate:'',toDate:''}, _refocusFilter:false,
             view:'board', op:null, _fromAdmin:false, pollTimer:null };
 
 // ── ערכת נושא (כהה/בהיר) ──
@@ -449,12 +452,16 @@ function branchOpts(sel,allLabel){
 }
 function setFilter(k,v){ S.adminFilters[k]=v; if(k==='q')S._refocusFilter=true; renderAdmin(document.getElementById('app')); }
 function setStatusChip(k){ S.adminFilters.status=(S.adminFilters.status===k)?'':k; renderAdmin(document.getElementById('app')); }
-function clearFilters(){ S.adminFilters={q:'',from:'',to:'',status:'',days:S.adminFilters.days||'7'}; renderAdmin(document.getElementById('app')); }
+function clearFilters(){ S.adminFilters={q:'',from:'',to:'',status:'',fromDate:'',toDate:''}; renderAdmin(document.getElementById('app')); }
 
 async function renderAdmin(app){
   const f=S.adminFilters;
   let data={summary:{},transfers:[]};
-  try{ data=await api('/api/admin/overview?days='+(f.days||'7')); }
+  // חלון השליפה: 30 יום כברירת מחדל; אם נבחר תאריך התחלה ישן יותר — מרחיבים בהתאם
+  let fetchDays=30;
+  if(f.fromDate){ const diff=Math.ceil((Date.now()-new Date(f.fromDate).getTime())/86400000)+1;
+    fetchDays=Math.min(Math.max(diff,1),365); }
+  try{ data=await api('/api/admin/overview?days='+fetchDays); }
   catch(e){ if(e.status===401){ S.adminKey=null; localStorage.removeItem('tr_admin_key');
       app.innerHTML='<div class="empty">נדרשת סיסמת ניהול. בחר מחדש את סניף אתר.</div>'; return; } }
   const s=data.summary||{}, order={in_transit:0,partial:1,received:2};
@@ -463,13 +470,15 @@ async function renderAdmin(app){
     rows=rows.filter(t=>(String(t.op_id)+' '+t.from_branch_name+' '+t.to_branch_name+' '+(t.employee||'')+' '+((t.receivers||[]).join(' '))).toLowerCase().includes(q)); }
   if(f.from) rows=rows.filter(t=>String(t.from_branch_id)===String(f.from));
   if(f.to)   rows=rows.filter(t=>String(t.to_branch_id)===String(f.to));
+  if(f.fromDate) rows=rows.filter(t=>(t.created_at||'').slice(0,10) >= f.fromDate);
+  if(f.toDate)   rows=rows.filter(t=>(t.created_at||'').slice(0,10) <= f.toDate);
   if(f.status==='overdue') rows=rows.filter(t=>t.overdue);
   else if(f.status) rows=rows.filter(t=>t.status===f.status);
   rows.sort((a,b)=>{ if(a.overdue!==b.overdue) return a.overdue?-1:1;
     if(order[a.status]!==order[b.status]) return order[a.status]-order[b.status];
     return (b.age_hours||0)-(a.age_hours||0); });
   const chip=(key,count,label,danger)=>`<div class="chip ${danger?'danger':''} ${f.status===key?'active':''}" onclick="setStatusChip('${key}')"><b>${count||0}</b><span>${label}</span></div>`;
-  const active = f.q||f.from||f.to||f.status;
+  const active = f.q||f.from||f.to||f.status||f.fromDate||f.toDate;
   app.innerHTML=`
     <h1 class="title">🛠️ ניהול אופרציה — כל הסניפים</h1>
     <div class="chips">
@@ -483,16 +492,13 @@ async function renderAdmin(app){
       <select onchange="setFilter('from',this.value)" title="סניף מקור">${branchOpts(f.from,'מקור — הכל')}</select>
       <span class="muted">→</span>
       <select onchange="setFilter('to',this.value)" title="סניף יעד">${branchOpts(f.to,'יעד — הכל')}</select>
-      <select onchange="setFilter('days',this.value)" title="טווח (היסטוריית נקלטו)">
-        <option value="1" ${f.days==='1'?'selected':''}>היום</option>
-        <option value="7" ${f.days==='7'?'selected':''}>7 ימים</option>
-        <option value="30" ${f.days==='30'?'selected':''}>30 ימים</option>
-      </select>
+      <label class="dlabel">מתאריך <input type="date" value="${f.fromDate}" onchange="setFilter('fromDate',this.value)"></label>
+      <label class="dlabel">עד <input type="date" value="${f.toDate}" onchange="setFilter('toDate',this.value)"></label>
       ${active?`<button class="btn-ghost" onclick="clearFilters()">נקה ✕</button>`:''}
       <span class="muted" style="margin-inline-start:auto">מציג <b>${rows.length}</b> מתוך ${total}</span>
     </div>
     ${rows.length?`<table class="admin"><thead><tr>
-      <th>סטטוס</th><th>פעולה</th><th>מסלול</th><th>גיל</th><th>יצר</th><th>נקלט</th><th>קלט ע״י</th>
+      <th>סטטוס</th><th>פעולה</th><th>מסלול</th><th>הועבר</th><th>יצר</th><th>נקלט</th><th>קלט ע״י</th><th>התקבל</th>
     </tr></thead><tbody>${rows.map(adminRow).join('')}</tbody></table>`
     :'<div class="empty">אין העברות שתואמות לסינון</div>'}`;
   if(S._refocusFilter){ const fq=document.getElementById('fq'); if(fq){ fq.focus(); const v=fq.value; fq.value=''; fq.value=v; } S._refocusFilter=false; }
@@ -503,10 +509,11 @@ function adminRow(t){
     <td><span class="pill ${t.status}">${STATUS[t.status]||t.status}</span></td>
     <td><b>${t.op_id}</b> ${t.overdue?'<span class="badge-late">באיחור 24ש׳+</span>':''}</td>
     <td>${t.from_branch_name} → ${t.to_branch_name}</td>
-    <td>${fmtAge(t.age_hours)}</td>
+    <td>${fmtTime(t.created_at)}</td>
     <td>${t.employee||'—'}</td>
     <td class="prog-cell">${t.received_units}/${t.total_units}</td>
     <td>${(t.receivers&&t.receivers.length)?t.receivers.join(', '):'—'}${t.manual_count?` <span class="badge-manual">⌨️ ${t.manual_count} לא בסורק</span>`:''}</td>
+    <td>${t.status==='received'&&t.received_at?fmtTime(t.received_at):'—'}</td>
   </tr>`;
 }
 async function adminOpen(opId){ S.op=await api('/api/transfers/'+opId); S._fromAdmin=true; S.view='scan'; render(); }
