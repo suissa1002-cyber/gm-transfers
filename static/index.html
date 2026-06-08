@@ -77,6 +77,22 @@
   .badge-manual{background:rgba(245,165,36,.2);color:var(--amber);border-radius:6px;padding:2px 7px;font-size:11px;font-weight:700;margin-inline-start:6px;white-space:nowrap}
   .lastscan .sub{font-size:14px;opacity:.85;font-weight:600}
   .card.flash{border-color:var(--green)!important;box-shadow:0 0 0 2px var(--green) inset;transition:.15s}
+  /* סורק מצלמה (מובייל) */
+  .btn-cam{margin-top:12px;width:100%;background:var(--blue);color:#fff;border-radius:12px;
+           padding:13px 18px;font-size:16px;font-weight:700}
+  .cam-overlay{position:fixed;inset:0;background:#000;z-index:80;display:flex;
+               flex-direction:column;align-items:center;justify-content:center}
+  .cam-overlay video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+  .cam-frame{position:relative;z-index:2;width:84%;max-width:520px;height:130px;
+             border:2px solid rgba(255,255,255,.9);border-radius:14px;
+             box-shadow:0 0 0 9999px rgba(0,0,0,.5);overflow:hidden}
+  .cam-line{position:absolute;left:0;right:0;height:3px;background:linear-gradient(90deg,transparent,var(--red),transparent);
+            box-shadow:0 0 10px 2px var(--red);animation:scanline 1.5s ease-in-out infinite}
+  @keyframes scanline{0%{top:8%}50%{top:88%}100%{top:8%}}
+  .cam-hint{position:absolute;bottom:96px;z-index:3;color:#fff;font-weight:700;font-size:17px;
+            text-align:center;padding:0 24px;text-shadow:0 1px 5px #000}
+  .cam-close{position:absolute;top:18px;left:18px;z-index:3;background:rgba(0,0,0,.55);
+             color:#fff;border-color:rgba(255,255,255,.45)}
   .empty{text-align:center;color:var(--muted);padding:64px 0;font-size:17px}
   /* מסך קליטה — דו-טורי בדסקטופ */
   .scan-layout{display:grid;grid-template-columns:380px 1fr;gap:22px;align-items:start}
@@ -263,12 +279,76 @@ function detectMethod(times, pasted, code){
   if((code||'').length>2 && n<=1) return 'paste';   // ערך שהופיע בלי הקשות
   return 'manual';
 }
-const METHOD_LABEL={scanner:'📷 סורק', manual:'⌨️ ידני', paste:'📋 הדבקה'};
+const METHOD_LABEL={scanner:'📷 סורק', camera:'📸 מצלמה', manual:'⌨️ ידני', paste:'📋 הדבקה'};
 function methodTag(m){
   if(m==='scanner') return `<span class="mtag ok">${METHOD_LABEL.scanner}</span>`;
+  if(m==='camera')  return `<span class="mtag ok">${METHOD_LABEL.camera}</span>`;
   if(m==='manual')  return `<span class="mtag warn">${METHOD_LABEL.manual}</span>`;
   if(m==='paste')   return `<span class="mtag warn">${METHOD_LABEL.paste}</span>`;
   return '';
+}
+
+// ── סורק מצלמה (מובייל בלבד) ──
+const IS_MOBILE = (matchMedia('(pointer:coarse)').matches) || /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+let _camStream=null,_camRAF=null,_camDetector=null,_zxingReader=null;
+function openCameraNow(){
+  if(S.view==='scan') openCamera(c=>doScan(c,'camera'));
+  else openCamera(c=>doScanBoard(c,'camera'));
+}
+function loadZxing(){ return new Promise(res=>{
+  if(window.ZXing) return res();
+  const s=document.createElement('script');
+  s.src='https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js';
+  s.onload=res; s.onerror=res; document.head.appendChild(s);
+}); }
+async function openCamera(onResult){
+  const root=document.getElementById('modalRoot');
+  root.innerHTML=`<div class="cam-overlay">
+    <video id="camVideo" playsinline muted autoplay></video>
+    <div class="cam-frame"><div class="cam-line"></div></div>
+    <div class="cam-hint">כוון את הברקוד הנכון אל תוך המסגרת</div>
+    <button class="cam-close btn-ghost" onclick="closeCamera()">✕ סגור</button>
+  </div>`;
+  const video=document.getElementById('camVideo');
+  let useNative = ('BarcodeDetector' in window);
+  if(useNative){ try{ _camDetector=new window.BarcodeDetector(); }catch(e){ useNative=false; } }
+  if(useNative){
+    try{ _camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+         video.srcObject=_camStream; await video.play(); }
+    catch(e){ toast('אין גישה למצלמה',false); closeCamera(); return; }
+    const canvas=document.createElement('canvas'), ctx=canvas.getContext('2d');
+    const tick=async()=>{
+      if(!_camStream||!_camDetector) return;
+      const vw=video.videoWidth, vh=video.videoHeight;
+      if(vw&&vh){
+        const cw=Math.floor(vw*0.82), ch=Math.floor(vh*0.26);
+        const cx=Math.floor((vw-cw)/2), cy=Math.floor((vh-ch)/2);
+        canvas.width=cw; canvas.height=ch;
+        ctx.drawImage(video,cx,cy,cw,ch,0,0,cw,ch);
+        try{ const codes=await _camDetector.detect(canvas);
+          if(codes&&codes.length){ onCamHit(codes[0].rawValue,onResult); return; } }catch(e){}
+      }
+      _camRAF=requestAnimationFrame(tick);
+    };
+    _camRAF=requestAnimationFrame(tick);
+  } else {
+    await loadZxing();
+    if(!window.ZXing){ toast('סריקת מצלמה לא נתמכת במכשיר',false); closeCamera(); return; }
+    try{
+      _zxingReader=new ZXing.BrowserMultiFormatReader();
+      _zxingReader.decodeFromConstraints({video:{facingMode:'environment'}}, video, (result)=>{
+        if(result) onCamHit(result.getText(), onResult);
+      });
+    }catch(e){ toast('שגיאת מצלמה',false); closeCamera(); }
+  }
+}
+function onCamHit(code,onResult){ beep(true); vibrate(true); closeCamera(); if(code) onResult(String(code).trim()); }
+function closeCamera(){
+  if(_camRAF){ cancelAnimationFrame(_camRAF); _camRAF=null; }
+  if(_camStream){ _camStream.getTracks().forEach(t=>t.stop()); _camStream=null; }
+  if(_zxingReader){ try{_zxingReader.reset();}catch(e){} _zxingReader=null; }
+  _camDetector=null;
+  const root=document.getElementById('modalRoot'); if(root) root.innerHTML='';
 }
 
 // ── רינדור ראשי ──
@@ -334,6 +414,7 @@ async function renderBoard(app){
            <div class="count" style="color:var(--amber)">הזן את שמך ולחץ Enter כדי להתחיל לסרוק</div>`
         : `<div class="scan-icon">📷</div>
            <input id="boardScan" class="scan-input" autocomplete="off" placeholder="סרוק מכשיר…">
+           ${IS_MOBILE?`<button class="btn-cam" onclick="openCameraNow()">📸 סרוק מהמצלמה</button>`:''}
            <div class="count">${list.length} העברות פתוחות · <b>${pending}</b> מכשירים ממתינים</div>
            <div class="emp">קולט: <b>${S.employee}</b> · <a onclick="changeEmployee()">החלף</a></div>`}
     </div>
@@ -400,6 +481,7 @@ function renderScan(app){
             ? `<input id="empInput" class="scan-input" autocomplete="off" placeholder="מי קולט? שם הנציג">
                <div class="count" style="color:var(--amber)">הזן את שמך ולחץ Enter כדי להתחיל לסרוק</div>`
             : `<input id="scanInput" class="scan-input" autocomplete="off" placeholder="סרוק מכשיר…">
+               ${IS_MOBILE?`<button class="btn-cam" onclick="openCameraNow()">📸 סרוק מהמצלמה</button>`:''}
                <div class="count">נקלטו <b>${t.received_units}</b> / <b>${t.total_units}</b></div>
                <div class="emp">קולט: <b>${S.employee}</b> · <a onclick="changeEmployee()">החלף</a></div>`}
         </div>
