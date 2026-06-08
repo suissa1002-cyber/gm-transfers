@@ -55,6 +55,8 @@
   .progress > i{display:block;height:100%;background:var(--green);border-radius:999px;transition:width .2s}
   .banner{background:rgba(245,165,36,.1);border:1px solid var(--amber);color:var(--amber);
           border-radius:12px;padding:12px 16px;margin-bottom:18px;font-weight:700}
+  .board-scan{margin-bottom:20px}
+  .card.flash{border-color:var(--green)!important;box-shadow:0 0 0 2px var(--green) inset;transition:.15s}
   .empty{text-align:center;color:var(--muted);padding:64px 0;font-size:17px}
   /* מסך קליטה — דו-טורי בדסקטופ */
   .scan-layout{display:grid;grid-template-columns:380px 1fr;gap:22px;align-items:start}
@@ -191,6 +193,12 @@ function modal({title,sub,placeholder,value,type,onok}){
 }
 function closeModal(){ document.getElementById('modalRoot').innerHTML=''; }
 
+// ── ניהול פוקוס לשדה הסריקה (סורק = מקלדת) ──
+function focusScan(){
+  const el=document.getElementById('boardScan')||document.getElementById('scanInput')||document.getElementById('empInput');
+  if(el){ try{ el.focus(); }catch(e){} }
+}
+
 // ── רינדור ראשי ──
 function render(){
   const app=document.getElementById('app'), hdr=document.getElementById('hdr');
@@ -235,21 +243,56 @@ function finishPick(id,name){
 // ── לוח בהעברה ──
 async function renderBoard(app){
   let list=[]; try{ list=await api('/api/transfers?branch_id='+S.branchId); }catch(e){}
+  S.transfers=list;
+  const needEmp=!S.employee;
+  const pending=list.reduce((a,t)=>a+(t.total_units-t.received_units),0);
   app.innerHTML=`
-    <h1 class="title">📥 העברות בדרך אליך</h1>
-    ${list.length?`<div class="banner">🚚 ${list.length} העברות ממתינות לקליטה</div>`:''}
+    <h1 class="title">📥 קליטת מכשירים נכנסים</h1>
+    <div class="panel board-scan">
+      ${needEmp
+        ? `<input id="empInput" class="scan-input" autocomplete="off" placeholder="מי קולט? שם הנציג">
+           <div class="count" style="color:var(--amber)">הזן את שמך ולחץ Enter כדי להתחיל לסרוק</div>`
+        : `<input id="boardScan" class="scan-input" autocomplete="off" placeholder="סרוק מכשיר — יסומן אוטומטית בהעברה הנכונה">
+           <div class="count">${list.length} העברות פתוחות · <b>${pending}</b> מכשירים ממתינים</div>
+           <div class="emp">קולט: <b>${S.employee}</b> · <a onclick="changeEmployee()">החלף</a></div>`}
+    </div>
     ${list.length?`<div class="board-grid">${list.map(cardHtml).join('')}</div>`
                  :'<div class="empty">אין כרגע העברות בדרך אליך 🎉</div>'}`;
+  if(needEmp){
+    const e=document.getElementById('empInput'); try{e.focus();}catch(x){}
+    e.addEventListener('keydown',ev=>{ if(ev.key!=='Enter')return; const v=e.value.trim(); if(!v)return; setEmployee(v); render(); });
+    return;
+  }
+  const inp=document.getElementById('boardScan');
+  inp.addEventListener('keydown',async ev=>{ if(ev.key!=='Enter')return; const code=inp.value.trim(); inp.value=''; if(code) await doScanBoard(code); });
+  focusScan();
+  if(S._flashOp){ const el=document.querySelector(`[data-op="${S._flashOp}"]`);
+    if(el){ el.classList.add('flash'); setTimeout(()=>{el&&el.classList.remove('flash');},900); } S._flashOp=null; }
+}
+// סריקה ברמת הלוח — משייכת אוטומטית להעברה הנכונה (בלי op_id)
+async function doScanBoard(code){
+  if(!S.employee) return;
+  let res;
+  try{ res=await api('/api/scan',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({branch_id:Number(S.branchId),code,employee:S.employee})}); }
+  catch(e){ toast('שגיאת רשת',false); beep(false); return; }
+  if(res.matched){
+    beep(true);vibrate(true);
+    const it=res.item||{}, t=res.transfer||{};
+    toast(`✓ ${it.name||'נקלט'} · פעולה ${t.op_id||''}`,true);
+    S._flashOp=t.op_id;
+    await renderBoard(document.getElementById('app'));
+  } else { beep(false);vibrate(false); toast(res.message||'לא שייך לאף העברה נכנסת',false); }
 }
 function fmtTime(iso){ if(!iso)return''; const d=new Date(iso); if(isNaN(d))return iso;
   return d.toLocaleString('he-IL',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); }
 const STATUS={in_transit:'ממתין לסריקה',partial:'חלקי',received:'נקלט'};
 function cardHtml(t){
   const pct=t.total_units?Math.round(100*t.received_units/t.total_units):0;
-  return `<div class="card" onclick="openScan('${t.op_id}')">
+  return `<div class="card" data-op="${t.op_id}" onclick="openScan('${t.op_id}')">
     <div class="top"><div class="op">פעולה ${t.op_id}</div><div class="pill ${t.status}">${STATUS[t.status]||t.status}</div></div>
     <div class="meta">מ<b>${t.from_branch_name}</b> · ${fmtTime(t.created_at)} · ${t.employee||''}</div>
-    <div class="meta">${t.received_units}/${t.total_units} נקלטו</div>
+    <div class="meta"><b>${t.received_units}/${t.total_units}</b> נקלטו</div>
     <div class="progress"><i style="width:${pct}%"></i></div>
   </div>`;
 }
@@ -287,10 +330,10 @@ function renderScan(app){
       const v=e.value.trim(); if(!v)return; setEmployee(v); render(); });
     return;   // עדיין לא קושרים סריקה — קודם שם
   }
-  const inp=document.getElementById('scanInput'); const refocus=()=>{try{inp.focus();}catch(e){}};
-  refocus(); document.addEventListener('click',refocus);
+  const inp=document.getElementById('scanInput');
   inp.addEventListener('keydown',async e=>{ if(e.key!=='Enter')return;
     const code=inp.value.trim(); inp.value=''; if(code) await doScan(code); });
+  focusScan();
 }
 function itemHtml(it){
   const rec=it.received==1;
@@ -358,7 +401,13 @@ async function adminOpen(opId){ S.op=await api('/api/transfers/'+opId); S._fromA
 // ── polling רקע ──
 function startPoll(){ clearInterval(S.pollTimer);
   S.pollTimer=setInterval(()=>{ const a=document.getElementById('app');
-    if(S.view==='board')renderBoard(a); else if(S.view==='admin')renderAdmin(a); },15000); }
+    if(S.view==='board'){
+      // לא מרעננים תוך כדי הקלדה/סריקה פעילה כדי לא לשבש
+      const bs=document.getElementById('boardScan');
+      if(bs && document.activeElement===bs && bs.value) return;
+      renderBoard(a);
+    } else if(S.view==='admin') renderAdmin(a);
+  },15000); }
 
 // ── deep-link ?op= ──
 async function handleDeepLink(){
@@ -367,6 +416,7 @@ async function handleDeepLink(){
 }
 
 // ── init ──
+document.addEventListener('click', focusScan);   // שומר שהפוקוס תמיד על שדה הסריקה
 (async()=>{
   loadState();
   try{ S.cfg=await (await fetch('/api/config')).json(); }catch(e){}
