@@ -256,17 +256,11 @@ function cardHtml(t){
 
 // ── מסך קליטה ──
 async function openScan(opId){ S.op=await api('/api/transfers/'+opId); S.view='scan'; render(); }
-function ensureEmployee(cb){
-  if(S.employee) return cb();
-  modal({title:'מי קולט?',sub:'השם יירשם על הקליטה',placeholder:'שם הנציג',
-    onok:async(name)=>{ S.employee=name; localStorage.setItem('tr_employee',name); closeModal(); cb(); }});
-}
-function changeEmployee(){
-  modal({title:'מי קולט?',sub:'',placeholder:'שם הנציג',value:S.employee||'',
-    onok:async(name)=>{ S.employee=name; localStorage.setItem('tr_employee',name); closeModal(); render(); }});
-}
+function setEmployee(name){ S.employee=name; localStorage.setItem('tr_employee',name); }
+function changeEmployee(){ S.employee=null; localStorage.removeItem('tr_employee'); render(); }
 function renderScan(app){
   const t=S.op, done=t.total_units>0 && t.received_units>=t.total_units;
+  const needEmp=!S.employee;   // קודם כל מזהים מי קולט — לפני סריקה
   app.innerHTML=`
     <div class="row-back"><a class="link" onclick="backToBoard()">← חזרה ${S._fromAdmin?'לניהול':'ללוח'}</a></div>
     <div class="scan-layout">
@@ -274,9 +268,12 @@ function renderScan(app){
         <div class="panel">
           <h2>פעולה ${t.op_id}</h2>
           <div class="muted">מ<b style="color:var(--txt)">${t.from_branch_name}</b> → ${t.to_branch_name}<br>${fmtTime(t.created_at)} · ${t.employee||''}</div>
-          <input id="scanInput" class="scan-input" autocomplete="off" placeholder="סרוק מכשיר…">
-          <div class="count">נקלטו <b>${t.received_units}</b> / <b>${t.total_units}</b></div>
-          <div class="emp">קולט: <b>${S.employee||'—'}</b> · <a onclick="changeEmployee()">החלף</a></div>
+          ${needEmp
+            ? `<input id="empInput" class="scan-input" autocomplete="off" placeholder="מי קולט? שם הנציג">
+               <div class="count" style="color:var(--amber)">הזן את שמך ולחץ Enter כדי להתחיל לסרוק</div>`
+            : `<input id="scanInput" class="scan-input" autocomplete="off" placeholder="סרוק מכשיר…">
+               <div class="count">נקלטו <b>${t.received_units}</b> / <b>${t.total_units}</b></div>
+               <div class="emp">קולט: <b>${S.employee}</b> · <a onclick="changeEmployee()">החלף</a></div>`}
         </div>
       </div>
       <div>
@@ -284,6 +281,12 @@ function renderScan(app){
         <div class="items-grid">${t.items.map(itemHtml).join('')}</div>
       </div>
     </div>`;
+  if(needEmp){
+    const e=document.getElementById('empInput'); try{e.focus();}catch(x){}
+    e.addEventListener('keydown',ev=>{ if(ev.key!=='Enter')return;
+      const v=e.value.trim(); if(!v)return; setEmployee(v); render(); });
+    return;   // עדיין לא קושרים סריקה — קודם שם
+  }
   const inp=document.getElementById('scanInput'); const refocus=()=>{try{inp.focus();}catch(e){}};
   refocus(); document.addEventListener('click',refocus);
   inp.addEventListener('keydown',async e=>{ if(e.key!=='Enter')return;
@@ -302,14 +305,13 @@ function itemHtml(it){
   </div>`;
 }
 async function doScan(code){
-  ensureEmployee(async()=>{
-    let res;
-    try{ res=await api('/api/scan',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({branch_id:Number(S.branchId),code,op_id:S.op.op_id,employee:S.employee})});
-    }catch(e){ toast('שגיאת רשת',false); beep(false); return; }
-    if(res.matched){ beep(true);vibrate(true);toast('✓ נקלט',true); S.op=res.transfer; render(); }
-    else{ beep(false);vibrate(false);toast(res.message||'לא שייך',false); }
-  });
+  if(!S.employee) return;   // לא אמור לקרות — שדה הסריקה מופיע רק אחרי שם
+  let res;
+  try{ res=await api('/api/scan',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({branch_id:Number(S.branchId),code,op_id:S.op.op_id,employee:S.employee})});
+  }catch(e){ toast('שגיאת רשת',false); beep(false); return; }
+  if(res.matched){ beep(true);vibrate(true);toast('✓ נקלט',true); S.op=res.transfer; render(); }
+  else{ beep(false);vibrate(false);toast(res.message||'לא שייך',false); }
 }
 function backToBoard(){ S.view=S._fromAdmin?'admin':'board'; S._fromAdmin=false; S.op=null; render(); }
 

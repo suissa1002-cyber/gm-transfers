@@ -5,3 +5,4 @@ __pycache__/
 .env
 .DS_Store
 _*.db
+DEPLOYMENT_INFO.md
