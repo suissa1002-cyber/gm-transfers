@@ -104,6 +104,12 @@
   .chip{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;text-align:center}
   .chip b{display:block;font-size:30px} .chip span{font-size:13px;color:var(--muted)}
   .chip.danger{border-color:var(--red)} .chip.danger b{color:var(--red)}
+  .chip{cursor:pointer;transition:.12s} .chip:hover{border-color:var(--blue)}
+  .chip.active{border-color:var(--blue);box-shadow:0 0 0 2px var(--blue) inset}
+  .filters{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:16px}
+  .filters input,.filters select{font-family:inherit;font-size:14px;padding:9px 12px;border-radius:10px;
+    border:1px solid var(--line);background:var(--card);color:var(--txt);outline:none}
+  .filters input{min-width:210px} .filters input:focus,.filters select:focus{border-color:var(--blue)}
   table.admin{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);
               border-radius:14px;overflow:hidden}
   table.admin th,table.admin td{padding:12px 14px;text-align:right;border-bottom:1px solid var(--line);font-size:14px}
@@ -156,6 +162,7 @@
 <script>
 const S = { branchId:null, branchName:null, employee:null, adminKey:null,
             cfg:{admin_required:false, admin_branch_id:5}, theme:'dark', lastScan:null,
+            branchList:[], adminFilters:{q:'',from:'',to:'',status:'',days:'7'}, _refocusFilter:false,
             view:'board', op:null, _fromAdmin:false, pollTimer:null };
 
 // ── ערכת נושא (כהה/בהיר) ──
@@ -399,35 +406,66 @@ function backToBoard(){ S.view=S._fromAdmin?'admin':'board'; S._fromAdmin=false;
 
 // ── ניהול אופרציה ──
 function toggleAdmin(){ S.view=(S.view==='admin')?'board':'admin'; render(); }
+function branchOpts(sel,allLabel){
+  let o=`<option value="">${allLabel}</option>`;
+  (S.branchList||[]).forEach(b=>{ o+=`<option value="${b.id}" ${String(b.id)===String(sel)?'selected':''}>${b.name}</option>`; });
+  return o;
+}
+function setFilter(k,v){ S.adminFilters[k]=v; if(k==='q')S._refocusFilter=true; renderAdmin(document.getElementById('app')); }
+function setStatusChip(k){ S.adminFilters.status=(S.adminFilters.status===k)?'':k; renderAdmin(document.getElementById('app')); }
+function clearFilters(){ S.adminFilters={q:'',from:'',to:'',status:'',days:S.adminFilters.days||'7'}; renderAdmin(document.getElementById('app')); }
+
 async function renderAdmin(app){
+  const f=S.adminFilters;
   let data={summary:{},transfers:[]};
-  try{ data=await api('/api/admin/overview'); }
+  try{ data=await api('/api/admin/overview?days='+(f.days||'7')); }
   catch(e){ if(e.status===401){ S.adminKey=null; localStorage.removeItem('tr_admin_key');
       app.innerHTML='<div class="empty">נדרשת סיסמת ניהול. בחר מחדש את סניף אתר.</div>'; return; } }
   const s=data.summary||{}, order={in_transit:0,partial:1,received:2};
-  const rows=(data.transfers||[]).slice().sort((a,b)=>{
-    if(a.overdue!==b.overdue) return a.overdue?-1:1;
+  let rows=(data.transfers||[]).slice(); const total=rows.length;
+  if(f.q){ const q=f.q.trim().toLowerCase();
+    rows=rows.filter(t=>(String(t.op_id)+' '+t.from_branch_name+' '+t.to_branch_name+' '+(t.employee||'')+' '+((t.receivers||[]).join(' '))).toLowerCase().includes(q)); }
+  if(f.from) rows=rows.filter(t=>String(t.from_branch_id)===String(f.from));
+  if(f.to)   rows=rows.filter(t=>String(t.to_branch_id)===String(f.to));
+  if(f.status==='overdue') rows=rows.filter(t=>t.overdue);
+  else if(f.status) rows=rows.filter(t=>t.status===f.status);
+  rows.sort((a,b)=>{ if(a.overdue!==b.overdue) return a.overdue?-1:1;
     if(order[a.status]!==order[b.status]) return order[a.status]-order[b.status];
-    return (b.age_hours||0)-(a.age_hours||0);
-  });
+    return (b.age_hours||0)-(a.age_hours||0); });
+  const chip=(key,count,label,danger)=>`<div class="chip ${danger?'danger':''} ${f.status===key?'active':''}" onclick="setStatusChip('${key}')"><b>${count||0}</b><span>${label}</span></div>`;
+  const active = f.q||f.from||f.to||f.status;
   app.innerHTML=`
     <h1 class="title">🛠️ ניהול אופרציה — כל הסניפים</h1>
     <div class="chips">
-      <div class="chip ${s.overdue?'danger':''}"><b>${s.overdue||0}</b><span>לא נסרקו 24ש׳+</span></div>
-      <div class="chip"><b>${s.in_transit||0}</b><span>ממתינים לסריקה</span></div>
-      <div class="chip"><b>${s.partial||0}</b><span>בסריקה חלקית</span></div>
-      <div class="chip"><b>${s.received||0}</b><span>נקלטו</span></div>
+      ${chip('overdue',s.overdue,'באיחור (24ש׳+)',true)}
+      ${chip('in_transit',s.in_transit,'ממתינים לסריקה')}
+      ${chip('partial',s.partial,'בסריקה חלקית')}
+      ${chip('received',s.received,'נקלטו')}
+    </div>
+    <div class="filters">
+      <input id="fq" placeholder="🔎 חיפוש — מס׳ פעולה / עובד" value="${f.q||''}" oninput="setFilter('q',this.value)">
+      <select onchange="setFilter('from',this.value)" title="סניף מקור">${branchOpts(f.from,'מקור — הכל')}</select>
+      <span class="muted">→</span>
+      <select onchange="setFilter('to',this.value)" title="סניף יעד">${branchOpts(f.to,'יעד — הכל')}</select>
+      <select onchange="setFilter('days',this.value)" title="טווח (היסטוריית נקלטו)">
+        <option value="1" ${f.days==='1'?'selected':''}>היום</option>
+        <option value="7" ${f.days==='7'?'selected':''}>7 ימים</option>
+        <option value="30" ${f.days==='30'?'selected':''}>30 ימים</option>
+      </select>
+      ${active?`<button class="btn-ghost" onclick="clearFilters()">נקה ✕</button>`:''}
+      <span class="muted" style="margin-inline-start:auto">מציג <b>${rows.length}</b> מתוך ${total}</span>
     </div>
     ${rows.length?`<table class="admin"><thead><tr>
       <th>סטטוס</th><th>פעולה</th><th>מסלול</th><th>גיל</th><th>יצר</th><th>נקלט</th><th>קלט ע״י</th>
     </tr></thead><tbody>${rows.map(adminRow).join('')}</tbody></table>`
-    :'<div class="empty">אין העברות</div>'}`;
+    :'<div class="empty">אין העברות שתואמות לסינון</div>'}`;
+  if(S._refocusFilter){ const fq=document.getElementById('fq'); if(fq){ fq.focus(); const v=fq.value; fq.value=''; fq.value=v; } S._refocusFilter=false; }
 }
 function fmtAge(h){ h=h||0; if(h<1)return Math.round(h*60)+' דק׳'; if(h<48)return Math.round(h)+'ש׳'; return Math.round(h/24)+' ימים'; }
 function adminRow(t){
   return `<tr class="${t.overdue?'overdue':''}" onclick="adminOpen('${t.op_id}')">
     <td><span class="pill ${t.status}">${STATUS[t.status]||t.status}</span></td>
-    <td><b>${t.op_id}</b> ${t.overdue?'<span class="badge-late">לא נסרק</span>':''}</td>
+    <td><b>${t.op_id}</b> ${t.overdue?'<span class="badge-late">באיחור 24ש׳+</span>':''}</td>
     <td>${t.from_branch_name} → ${t.to_branch_name}</td>
     <td>${fmtAge(t.age_hours)}</td>
     <td>${t.employee||'—'}</td>
@@ -445,7 +483,11 @@ function startPoll(){ clearInterval(S.pollTimer);
       const bs=document.getElementById('boardScan');
       if(bs && document.activeElement===bs && bs.value) return;
       renderBoard(a);
-    } else if(S.view==='admin') renderAdmin(a);
+    } else if(S.view==='admin'){
+      const ae=document.activeElement;   // אל תרענן תוך כדי שימוש בסינון
+      if(ae && ae.closest && ae.closest('.filters')) return;
+      renderAdmin(a);
+    }
   },15000); }
 
 // ── deep-link ?op= ──
@@ -465,6 +507,7 @@ document.addEventListener('click', (e)=>{
 (async()=>{
   loadState(); applyTheme();
   try{ S.cfg=await (await fetch('/api/config')).json(); }catch(e){}
+  try{ S.branchList=await (await fetch('/api/branches')).json(); }catch(e){}
   render(); applyTheme(); if(S.branchId){ startPoll(); handleDeepLink(); }
 })();
 </script>
