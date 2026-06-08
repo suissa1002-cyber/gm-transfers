@@ -18,6 +18,8 @@ import config as cfg
 
 _USE_PG = bool(cfg.DATABASE_URL)
 _lock = threading.RLock()
+# סכמה ייעודית ב-Postgres כדי לבודד את הטבלאות שלנו (חולקים instance עם stock_watcher)
+_PG_SCHEMA = os.getenv("PG_SCHEMA", "transfers_app")
 
 if _USE_PG:
     import psycopg
@@ -41,6 +43,8 @@ def _conn():
     with _lock:
         if _USE_PG:
             conn = psycopg.connect(cfg.DATABASE_URL, row_factory=dict_row, autocommit=False)
+            # בידוד בסכמה ייעודית (לא נוגעים בטבלאות של stock_watcher באותו instance)
+            conn.execute(f"SET search_path TO {_PG_SCHEMA}")
         else:
             conn = sqlite3.connect(cfg.SQLITE_PATH)
             conn.row_factory = sqlite3.Row
@@ -112,6 +116,9 @@ _SCHEMA = [
 def init_db():
     with _conn() as c:
         cur = c.cursor()
+        if _USE_PG:
+            # יוצרים את הסכמה לפני הטבלאות (search_path כבר מצביע אליה)
+            cur.execute(f"CREATE SCHEMA IF NOT EXISTS {_PG_SCHEMA}")
         for stmt in _SCHEMA:
             cur.execute(stmt)
 
