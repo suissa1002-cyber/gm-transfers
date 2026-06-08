@@ -11,6 +11,11 @@
     --amber:#f5a524; --blue:#3b82f6;
     --maxw:1500px;
   }
+  body.light{
+    --bg:#eef1f6; --card:#ffffff; --card2:#f1f4f9; --line:#d7dee8;
+    --txt:#18222f; --muted:#5e6b7d; --green:#12a356; --red:#d23b40;
+    --amber:#b8860b; --blue:#2563eb;
+  }
   *{box-sizing:border-box}
   html,body{margin:0;height:100%}
   body{font-family:-apple-system,Segoe UI,Roboto,Arial,"Heebo",sans-serif;
@@ -55,7 +60,17 @@
   .progress > i{display:block;height:100%;background:var(--green);border-radius:999px;transition:width .2s}
   .banner{background:rgba(245,165,36,.1);border:1px solid var(--amber);color:var(--amber);
           border-radius:12px;padding:12px 16px;margin-bottom:18px;font-weight:700}
-  .board-scan{margin-bottom:20px}
+  /* קוביית סריקה מהירה — ממורכזת ואסתטית */
+  .board-scan{max-width:640px;margin:0 auto 14px;text-align:center}
+  .board-scan .scan-icon{font-size:30px;line-height:1;margin-bottom:6px}
+  .board-scan .scan-input{margin-top:6px}
+  .lastscan{max-width:640px;margin:0 auto 26px;min-height:60px;display:flex;align-items:center;
+            justify-content:center;gap:10px;border-radius:14px;padding:14px 20px;
+            font-size:21px;font-weight:800;text-align:center;transition:.15s}
+  .lastscan.ok{background:rgba(31,191,107,.12);border:1px solid var(--green);color:var(--green)}
+  .lastscan.err{background:rgba(229,72,77,.1);border:1px solid var(--red);color:var(--red)}
+  .lastscan.idle{color:var(--muted);border:1px dashed var(--line);font-weight:600;font-size:16px}
+  .lastscan .sub{font-size:14px;opacity:.85;font-weight:600}
   .card.flash{border-color:var(--green)!important;box-shadow:0 0 0 2px var(--green) inset;transition:.15s}
   .empty{text-align:center;color:var(--muted);padding:64px 0;font-size:17px}
   /* מסך קליטה — דו-טורי בדסקטופ */
@@ -129,6 +144,7 @@
     <button class="btn-ghost" id="adminBtn" style="display:none" onclick="toggleAdmin()">🛠️ ניהול</button>
     סניף: <b id="branchName"></b>
     <button class="btn-ghost" onclick="changeBranch()">החלף סניף</button>
+    <button class="btn-ghost" id="themeBtn" onclick="toggleTheme()"></button>
   </div>
 </header>
 
@@ -138,8 +154,17 @@
 
 <script>
 const S = { branchId:null, branchName:null, employee:null, adminKey:null,
-            cfg:{admin_required:false, admin_branch_id:5},
+            cfg:{admin_required:false, admin_branch_id:5}, theme:'dark', lastScan:null,
             view:'board', op:null, _fromAdmin:false, pollTimer:null };
+
+// ── ערכת נושא (כהה/בהיר) ──
+function applyTheme(){
+  const light = S.theme==='light';
+  document.body.classList.toggle('light', light);
+  const b=document.getElementById('themeBtn'); if(b) b.textContent = light?'☀️ בהיר':'🌙 כהה';
+}
+function toggleTheme(){ S.theme = (S.theme==='light')?'dark':'light';
+  localStorage.setItem('tr_theme',S.theme); applyTheme(); }
 
 // ── סאונד ──
 let actx=null;
@@ -158,6 +183,7 @@ function loadState(){
   S.branchName=localStorage.getItem('tr_branch_name');
   S.employee=localStorage.getItem('tr_employee');
   S.adminKey=localStorage.getItem('tr_admin_key');
+  S.theme=localStorage.getItem('tr_theme')||'dark';
 }
 function changeBranch(){
   ['tr_branch_id','tr_branch_name'].forEach(k=>localStorage.removeItem(k));
@@ -246,16 +272,25 @@ async function renderBoard(app){
   S.transfers=list;
   const needEmp=!S.employee;
   const pending=list.reduce((a,t)=>a+(t.total_units-t.received_units),0);
+  const ls=S.lastScan;
+  const lastHtml = needEmp ? '' : (ls
+    ? (ls.ok
+       ? `<div class="lastscan ok">✓ ${ls.name||'נקלט'} <span class="sub">· פעולה ${ls.op} (${ls.prog})</span></div>`
+       : `<div class="lastscan err">✗ ${ls.message}${ls.code?` <span class="sub">· ${ls.code}</span>`:''}</div>`)
+    : `<div class="lastscan idle">המכשיר האחרון שתסרוק יוצג כאן</div>`);
   app.innerHTML=`
     <h1 class="title">📥 קליטת מכשירים נכנסים</h1>
     <div class="panel board-scan">
       ${needEmp
-        ? `<input id="empInput" class="scan-input" autocomplete="off" placeholder="מי קולט? שם הנציג">
+        ? `<div class="scan-icon">👤</div>
+           <input id="empInput" class="scan-input" autocomplete="off" placeholder="מי קולט? שם הנציג">
            <div class="count" style="color:var(--amber)">הזן את שמך ולחץ Enter כדי להתחיל לסרוק</div>`
-        : `<input id="boardScan" class="scan-input" autocomplete="off" placeholder="סרוק מכשיר — יסומן אוטומטית בהעברה הנכונה">
+        : `<div class="scan-icon">📷</div>
+           <input id="boardScan" class="scan-input" autocomplete="off" placeholder="סרוק מכשיר…">
            <div class="count">${list.length} העברות פתוחות · <b>${pending}</b> מכשירים ממתינים</div>
            <div class="emp">קולט: <b>${S.employee}</b> · <a onclick="changeEmployee()">החלף</a></div>`}
     </div>
+    ${lastHtml}
     ${list.length?`<div class="board-grid">${list.map(cardHtml).join('')}</div>`
                  :'<div class="empty">אין כרגע העברות בדרך אליך 🎉</div>'}`;
   if(needEmp){
@@ -275,14 +310,17 @@ async function doScanBoard(code){
   let res;
   try{ res=await api('/api/scan',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({branch_id:Number(S.branchId),code,employee:S.employee})}); }
-  catch(e){ toast('שגיאת רשת',false); beep(false); return; }
+  catch(e){ S.lastScan={ok:false,message:'שגיאת רשת',code}; beep(false); await renderBoard(document.getElementById('app')); return; }
   if(res.matched){
     beep(true);vibrate(true);
     const it=res.item||{}, t=res.transfer||{};
-    toast(`✓ ${it.name||'נקלט'} · פעולה ${t.op_id||''}`,true);
+    S.lastScan={ok:true, name:it.name||'נקלט', op:t.op_id, prog:`${t.received_units}/${t.total_units}`};
     S._flashOp=t.op_id;
-    await renderBoard(document.getElementById('app'));
-  } else { beep(false);vibrate(false); toast(res.message||'לא שייך לאף העברה נכנסת',false); }
+  } else {
+    beep(false);vibrate(false);
+    S.lastScan={ok:false, message:res.message||'לא שייך לאף העברה נכנסת', code};
+  }
+  await renderBoard(document.getElementById('app'));
 }
 function fmtTime(iso){ if(!iso)return''; const d=new Date(iso); if(isNaN(d))return iso;
   return d.toLocaleString('he-IL',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); }
@@ -418,9 +456,9 @@ async function handleDeepLink(){
 // ── init ──
 document.addEventListener('click', focusScan);   // שומר שהפוקוס תמיד על שדה הסריקה
 (async()=>{
-  loadState();
+  loadState(); applyTheme();
   try{ S.cfg=await (await fetch('/api/config')).json(); }catch(e){}
-  render(); if(S.branchId){ startPoll(); handleDeepLink(); }
+  render(); applyTheme(); if(S.branchId){ startPoll(); handleDeepLink(); }
 })();
 </script>
 </body>
