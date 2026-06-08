@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Green Mobile — קליטת העברות</title>
+<style>
+  :root{
+    --bg:#0e1116; --card:#171c24; --card2:#212834; --line:#2c3442;
+    --txt:#e8edf4; --muted:#94a3b8; --green:#1fbf6b; --red:#e5484d;
+    --amber:#f5a524; --blue:#3b82f6;
+    --maxw:1500px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{font-family:-apple-system,Segoe UI,Roboto,Arial,"Heebo",sans-serif;
+       background:var(--bg);color:var(--txt);font-size:15px}
+  header{display:flex;align-items:center;justify-content:space-between;gap:16px;
+         padding:14px 24px;background:var(--card);border-bottom:1px solid var(--line);
+         position:sticky;top:0;z-index:20}
+  header .brand{font-weight:800;font-size:20px;white-space:nowrap}
+  header .right{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--muted);flex-wrap:wrap}
+  header .right b{color:var(--txt)}
+  button{font-family:inherit;cursor:pointer;border:none;border-radius:10px;
+         padding:9px 15px;font-size:14px;font-weight:600}
+  .btn-ghost{background:transparent;color:var(--muted);border:1px solid var(--line)}
+  .btn-ghost:hover{color:var(--txt);border-color:var(--blue)}
+  .btn-primary{background:var(--blue);color:#fff}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:24px}
+  .muted{color:var(--muted)}
+  h1.title{font-size:22px;margin:0 0 18px}
+  /* בחירת סניף */
+  .picker{display:flex;flex-direction:column;gap:14px;align-items:center;
+          justify-content:center;min-height:72vh;text-align:center}
+  .picker h1{font-size:26px;margin:0}
+  .branch-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
+               gap:14px;width:100%;max-width:680px}
+  .branch-grid button{padding:30px 18px;font-size:19px;background:var(--card2);color:var(--txt);
+                      border:1px solid var(--line)}
+  .branch-grid button:hover{border-color:var(--blue);transform:translateY(-2px);transition:.12s}
+  .branch-grid button.admin{border-color:var(--amber);color:var(--amber)}
+  /* לוח כרטיסים (גריד דסקטופ) */
+  .board-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;
+        padding:18px;cursor:pointer;transition:.12s}
+  .card:hover{border-color:var(--blue);transform:translateY(-2px)}
+  .card .top{display:flex;justify-content:space-between;align-items:center;gap:10px}
+  .card .op{font-weight:800;font-size:17px}
+  .card .meta{color:var(--muted);font-size:13px;margin-top:6px}
+  .pill{padding:4px 11px;border-radius:999px;font-size:13px;font-weight:700;white-space:nowrap}
+  .pill.in_transit{background:rgba(245,165,36,.15);color:var(--amber)}
+  .pill.partial{background:rgba(59,130,246,.15);color:var(--blue)}
+  .pill.received{background:rgba(31,191,107,.15);color:var(--green)}
+  .progress{height:9px;background:var(--card2);border-radius:999px;margin-top:14px;overflow:hidden}
+  .progress > i{display:block;height:100%;background:var(--green);border-radius:999px;transition:width .2s}
+  .banner{background:rgba(245,165,36,.1);border:1px solid var(--amber);color:var(--amber);
+          border-radius:12px;padding:12px 16px;margin-bottom:18px;font-weight:700}
+  .empty{text-align:center;color:var(--muted);padding:64px 0;font-size:17px}
+  /* מסך קליטה — דו-טורי בדסקטופ */
+  .scan-layout{display:grid;grid-template-columns:380px 1fr;gap:22px;align-items:start}
+  .scan-side{position:sticky;top:88px}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px}
+  .panel h2{margin:0 0 4px;font-size:19px}
+  .scan-input{width:100%;padding:20px;font-size:22px;text-align:center;border-radius:14px;
+              border:2px solid var(--blue);background:var(--card2);color:var(--txt);outline:none;margin-top:14px}
+  .count{font-size:16px;color:var(--muted);text-align:center;margin-top:12px}
+  .count b{color:var(--txt);font-size:20px}
+  .emp{margin-top:14px;font-size:13px;color:var(--muted);text-align:center}
+  .emp a{color:var(--blue);cursor:pointer}
+  .items-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px}
+  .item{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);
+        border-radius:12px;padding:13px 15px}
+  .item.received{border-color:var(--green);background:rgba(31,191,107,.07)}
+  .item .tick{width:28px;height:28px;border-radius:50%;border:2px solid var(--line);
+              display:flex;align-items:center;justify-content:center;font-size:16px;flex:0 0 auto}
+  .item.received .tick{background:var(--green);border-color:var(--green);color:#fff}
+  .item .name{font-weight:600}
+  .item .sub{color:var(--muted);font-size:12px;direction:ltr;text-align:right;font-family:monospace;margin-top:2px}
+  .item .who{color:var(--green);font-size:11px;margin-top:2px}
+  .done-banner{background:var(--green);color:#fff;border-radius:14px;padding:16px;
+               text-align:center;font-size:19px;font-weight:800;margin-bottom:16px}
+  .row-back{margin-bottom:14px}
+  a.link{color:var(--blue);text-decoration:none;cursor:pointer;font-weight:600}
+  /* טבלת ניהול */
+  .chips{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px}
+  .chip{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;text-align:center}
+  .chip b{display:block;font-size:30px} .chip span{font-size:13px;color:var(--muted)}
+  .chip.danger{border-color:var(--red)} .chip.danger b{color:var(--red)}
+  table.admin{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);
+              border-radius:14px;overflow:hidden}
+  table.admin th,table.admin td{padding:12px 14px;text-align:right;border-bottom:1px solid var(--line);font-size:14px}
+  table.admin th{background:var(--card2);color:var(--muted);font-weight:700;font-size:13px}
+  table.admin tr:last-child td{border-bottom:none}
+  table.admin tbody tr{cursor:pointer}
+  table.admin tbody tr:hover{background:var(--card2)}
+  table.admin tr.overdue{background:rgba(229,72,77,.06)}
+  table.admin tr.overdue:hover{background:rgba(229,72,77,.12)}
+  .badge-late{background:var(--red);color:#fff;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700}
+  .prog-cell{font-weight:700;white-space:nowrap}
+  /* toast + modal */
+  .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:32px;
+         padding:18px 34px;border-radius:14px;font-size:22px;font-weight:800;
+         color:#fff;z-index:60;box-shadow:0 8px 30px rgba(0,0,0,.45);opacity:0;transition:.15s;pointer-events:none}
+  .toast.show{opacity:1}
+  .toast.ok{background:var(--green)} .toast.err{background:var(--red)}
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:50;
+           display:flex;align-items:center;justify-content:center}
+  .modal{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:26px;
+         width:90%;max-width:380px;text-align:center}
+  .modal h3{margin:0 0 6px;font-size:20px}
+  .modal input{width:100%;padding:14px;font-size:17px;border-radius:12px;border:2px solid var(--line);
+               background:var(--card2);color:var(--txt);outline:none;margin:14px 0;text-align:center}
+  .modal input:focus{border-color:var(--blue)}
+  .modal .err{color:var(--red);font-size:13px;min-height:18px}
+  @media (max-width:760px){
+    .scan-layout{grid-template-columns:1fr}
+    .scan-side{position:static}
+    header{padding:12px 14px} .wrap{padding:14px}
+    table.admin{display:block;overflow-x:auto;white-space:nowrap}
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">📦 קליטת העברות</div>
+  <div class="right" id="hdr" style="display:none">
+    <button class="btn-ghost" id="adminBtn" style="display:none" onclick="toggleAdmin()">🛠️ ניהול</button>
+    סניף: <b id="branchName"></b>
+    <button class="btn-ghost" onclick="changeBranch()">החלף סניף</button>
+  </div>
+</header>
+
+<div class="wrap" id="app"></div>
+<div class="toast" id="toast"></div>
+<div id="modalRoot"></div>
+
+<script>
+const S = { branchId:null, branchName:null, employee:null, adminKey:null,
+            cfg:{admin_required:false, admin_branch_id:5},
+            view:'board', op:null, _fromAdmin:false, pollTimer:null };
+
+// ── סאונד ──
+let actx=null;
+function beep(ok){ try{
+  actx=actx||new (window.AudioContext||window.webkitAudioContext)();
+  const o=actx.createOscillator(),g=actx.createGain();o.connect(g);g.connect(actx.destination);
+  o.frequency.value=ok?880:220;g.gain.value=0.08;o.start();o.stop(actx.currentTime+(ok?0.12:0.32));
+}catch(e){} }
+function vibrate(ok){ if(navigator.vibrate) navigator.vibrate(ok?40:[60,40,60]); }
+function toast(msg,ok){ const t=document.getElementById('toast');
+  t.textContent=msg;t.className='toast show '+(ok?'ok':'err');setTimeout(()=>t.className='toast',1100); }
+
+// ── state ──
+function loadState(){
+  S.branchId=localStorage.getItem('tr_branch_id');
+  S.branchName=localStorage.getItem('tr_branch_name');
+  S.employee=localStorage.getItem('tr_employee');
+  S.adminKey=localStorage.getItem('tr_admin_key');
+}
+function changeBranch(){
+  ['tr_branch_id','tr_branch_name'].forEach(k=>localStorage.removeItem(k));
+  S.branchId=null;S.view='board';render();
+}
+
+async function api(path,opts){
+  opts=opts||{}; opts.headers=opts.headers||{};
+  if(S.adminKey) opts.headers['X-Admin-Key']=S.adminKey;
+  const r=await fetch(path,opts);
+  if(!r.ok){ const e=new Error('http '+r.status); e.status=r.status; throw e; }
+  return r.json();
+}
+
+// ── מודאלים ──
+function modal({title,sub,placeholder,value,type,onok}){
+  const root=document.getElementById('modalRoot');
+  root.innerHTML=`<div class="overlay"><div class="modal">
+    <h3>${title}</h3><div class="muted">${sub||''}</div>
+    <input id="mInput" type="${type||'text'}" placeholder="${placeholder||''}" value="${value||''}">
+    <div class="err" id="mErr"></div>
+    <button class="btn-primary" style="width:100%" id="mOk">אישור</button>
+  </div></div>`;
+  const inp=document.getElementById('mInput'); inp.focus(); inp.select();
+  const submit=async()=>{
+    const v=inp.value.trim(); if(!v) return;
+    const err=await onok(v);
+    if(err){ document.getElementById('mErr').textContent=err; inp.select(); }
+    else root.innerHTML='';
+  };
+  document.getElementById('mOk').onclick=submit;
+  inp.addEventListener('keydown',e=>{ if(e.key==='Enter') submit(); });
+}
+function closeModal(){ document.getElementById('modalRoot').innerHTML=''; }
+
+// ── רינדור ראשי ──
+function render(){
+  const app=document.getElementById('app'), hdr=document.getElementById('hdr');
+  if(!S.branchId){ hdr.style.display='none'; return renderPicker(app); }
+  hdr.style.display='flex';
+  document.getElementById('branchName').textContent=S.branchName;
+  document.getElementById('adminBtn').style.display =
+    (Number(S.branchId)===S.cfg.admin_branch_id)?'inline-block':'none';
+  if(S.view==='admin') return renderAdmin(app);
+  if(S.view==='scan')  return renderScan(app);
+  return renderBoard(app);
+}
+
+async function renderPicker(app){
+  let branches=[]; try{ branches=await api('/api/branches'); }catch(e){}
+  app.innerHTML=`<div class="picker">
+    <h1>איזה סניף אתה?</h1>
+    <div class="muted">הבחירה תישמר במחשב הזה</div>
+    <div class="branch-grid">
+      ${branches.map(b=>`<button class="${b.id===S.cfg.admin_branch_id?'admin':''}"
+        onclick="pickBranch(${b.id},'${b.name}')">${b.name}${b.id===S.cfg.admin_branch_id?' 🛠️':''}</button>`).join('')}
+    </div></div>`;
+}
+function pickBranch(id,name){
+  // סניף הניהול (אתר) דורש סיסמה
+  if(id===S.cfg.admin_branch_id && S.cfg.admin_required && !S.adminKey){
+    return modal({title:'כניסת ניהול',sub:'סניף אתר דורש סיסמה',placeholder:'סיסמה',type:'password',
+      onok:async(pw)=>{
+        try{ await fetch('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({password:pw})}).then(r=>{if(!r.ok)throw 0;});
+        }catch(e){ return 'סיסמה שגויה'; }
+        S.adminKey=pw; localStorage.setItem('tr_admin_key',pw);
+        finishPick(id,name); }});
+  }
+  finishPick(id,name);
+}
+function finishPick(id,name){
+  localStorage.setItem('tr_branch_id',id); localStorage.setItem('tr_branch_name',name);
+  S.branchId=id; S.branchName=name; S.view='board'; render(); startPoll();
+}
+
+// ── לוח בהעברה ──
+async function renderBoard(app){
+  let list=[]; try{ list=await api('/api/transfers?branch_id='+S.branchId); }catch(e){}
+  app.innerHTML=`
+    <h1 class="title">📥 העברות בדרך אליך</h1>
+    ${list.length?`<div class="banner">🚚 ${list.length} העברות ממתינות לקליטה</div>`:''}
+    ${list.length?`<div class="board-grid">${list.map(cardHtml).join('')}</div>`
+                 :'<div class="empty">אין כרגע העברות בדרך אליך 🎉</div>'}`;
+}
+function fmtTime(iso){ if(!iso)return''; const d=new Date(iso); if(isNaN(d))return iso;
+  return d.toLocaleString('he-IL',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); }
+const STATUS={in_transit:'ממתין לסריקה',partial:'חלקי',received:'נקלט'};
+function cardHtml(t){
+  const pct=t.total_units?Math.round(100*t.received_units/t.total_units):0;
+  return `<div class="card" onclick="openScan('${t.op_id}')">
+    <div class="top"><div class="op">פעולה ${t.op_id}</div><div class="pill ${t.status}">${STATUS[t.status]||t.status}</div></div>
+    <div class="meta">מ<b>${t.from_branch_name}</b> · ${fmtTime(t.created_at)} · ${t.employee||''}</div>
+    <div class="meta">${t.received_units}/${t.total_units} נקלטו</div>
+    <div class="progress"><i style="width:${pct}%"></i></div>
+  </div>`;
+}
+
+// ── מסך קליטה ──
+async function openScan(opId){ S.op=await api('/api/transfers/'+opId); S.view='scan'; render(); }
+function ensureEmployee(cb){
+  if(S.employee) return cb();
+  modal({title:'מי קולט?',sub:'השם יירשם על הקליטה',placeholder:'שם הנציג',
+    onok:async(name)=>{ S.employee=name; localStorage.setItem('tr_employee',name); closeModal(); cb(); }});
+}
+function changeEmployee(){
+  modal({title:'מי קולט?',sub:'',placeholder:'שם הנציג',value:S.employee||'',
+    onok:async(name)=>{ S.employee=name; localStorage.setItem('tr_employee',name); closeModal(); render(); }});
+}
+function renderScan(app){
+  const t=S.op, done=t.total_units>0 && t.received_units>=t.total_units;
+  app.innerHTML=`
+    <div class="row-back"><a class="link" onclick="backToBoard()">← חזרה ${S._fromAdmin?'לניהול':'ללוח'}</a></div>
+    <div class="scan-layout">
+      <div class="scan-side">
+        <div class="panel">
+          <h2>פעולה ${t.op_id}</h2>
+          <div class="muted">מ<b style="color:var(--txt)">${t.from_branch_name}</b> → ${t.to_branch_name}<br>${fmtTime(t.created_at)} · ${t.employee||''}</div>
+          <input id="scanInput" class="scan-input" autocomplete="off" placeholder="סרוק מכשיר…">
+          <div class="count">נקלטו <b>${t.received_units}</b> / <b>${t.total_units}</b></div>
+          <div class="emp">קולט: <b>${S.employee||'—'}</b> · <a onclick="changeEmployee()">החלף</a></div>
+        </div>
+      </div>
+      <div>
+        ${done?`<div class="done-banner">✓ הכל נקלט — ${t.received_units}/${t.total_units}</div>`:''}
+        <div class="items-grid">${t.items.map(itemHtml).join('')}</div>
+      </div>
+    </div>`;
+  const inp=document.getElementById('scanInput'); const refocus=()=>{try{inp.focus();}catch(e){}};
+  refocus(); document.addEventListener('click',refocus);
+  inp.addEventListener('keydown',async e=>{ if(e.key!=='Enter')return;
+    const code=inp.value.trim(); inp.value=''; if(code) await doScan(code); });
+}
+function itemHtml(it){
+  const rec=it.received==1;
+  const sub = it.serial ? it.serial : (it.barcode?('ברקוד: '+it.barcode):'— ללא סריאל —');
+  return `<div class="item ${rec?'received':''}">
+    <div class="tick">${rec?'✓':''}</div>
+    <div style="flex:1;min-width:0">
+      <div class="name">${it.name||it.product_id}</div>
+      <div class="sub">${sub}</div>
+      ${rec&&it.received_by&&!String(it.received_by).startsWith('branch:')?`<div class="who">נקלט ע״י ${it.received_by}</div>`:''}
+    </div>
+  </div>`;
+}
+async function doScan(code){
+  ensureEmployee(async()=>{
+    let res;
+    try{ res=await api('/api/scan',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({branch_id:Number(S.branchId),code,op_id:S.op.op_id,employee:S.employee})});
+    }catch(e){ toast('שגיאת רשת',false); beep(false); return; }
+    if(res.matched){ beep(true);vibrate(true);toast('✓ נקלט',true); S.op=res.transfer; render(); }
+    else{ beep(false);vibrate(false);toast(res.message||'לא שייך',false); }
+  });
+}
+function backToBoard(){ S.view=S._fromAdmin?'admin':'board'; S._fromAdmin=false; S.op=null; render(); }
+
+// ── ניהול אופרציה ──
+function toggleAdmin(){ S.view=(S.view==='admin')?'board':'admin'; render(); }
+async function renderAdmin(app){
+  let data={summary:{},transfers:[]};
+  try{ data=await api('/api/admin/overview'); }
+  catch(e){ if(e.status===401){ S.adminKey=null; localStorage.removeItem('tr_admin_key');
+      app.innerHTML='<div class="empty">נדרשת סיסמת ניהול. בחר מחדש את סניף אתר.</div>'; return; } }
+  const s=data.summary||{}, order={in_transit:0,partial:1,received:2};
+  const rows=(data.transfers||[]).slice().sort((a,b)=>{
+    if(a.overdue!==b.overdue) return a.overdue?-1:1;
+    if(order[a.status]!==order[b.status]) return order[a.status]-order[b.status];
+    return (b.age_hours||0)-(a.age_hours||0);
+  });
+  app.innerHTML=`
+    <h1 class="title">🛠️ ניהול אופרציה — כל הסניפים</h1>
+    <div class="chips">
+      <div class="chip ${s.overdue?'danger':''}"><b>${s.overdue||0}</b><span>לא נסרקו 24ש׳+</span></div>
+      <div class="chip"><b>${s.in_transit||0}</b><span>ממתינים לסריקה</span></div>
+      <div class="chip"><b>${s.partial||0}</b><span>בסריקה חלקית</span></div>
+      <div class="chip"><b>${s.received||0}</b><span>נקלטו</span></div>
+    </div>
+    ${rows.length?`<table class="admin"><thead><tr>
+      <th>סטטוס</th><th>פעולה</th><th>מסלול</th><th>גיל</th><th>יצר</th><th>נקלט</th><th>קלט ע״י</th>
+    </tr></thead><tbody>${rows.map(adminRow).join('')}</tbody></table>`
+    :'<div class="empty">אין העברות</div>'}`;
+}
+function fmtAge(h){ h=h||0; if(h<1)return Math.round(h*60)+' דק׳'; if(h<48)return Math.round(h)+'ש׳'; return Math.round(h/24)+' ימים'; }
+function adminRow(t){
+  return `<tr class="${t.overdue?'overdue':''}" onclick="adminOpen('${t.op_id}')">
+    <td><span class="pill ${t.status}">${STATUS[t.status]||t.status}</span></td>
+    <td><b>${t.op_id}</b> ${t.overdue?'<span class="badge-late">לא נסרק</span>':''}</td>
+    <td>${t.from_branch_name} → ${t.to_branch_name}</td>
+    <td>${fmtAge(t.age_hours)}</td>
+    <td>${t.employee||'—'}</td>
+    <td class="prog-cell">${t.received_units}/${t.total_units}</td>
+    <td>${(t.receivers&&t.receivers.length)?t.receivers.join(', '):'—'}</td>
+  </tr>`;
+}
+async function adminOpen(opId){ S.op=await api('/api/transfers/'+opId); S._fromAdmin=true; S.view='scan'; render(); }
+
+// ── polling רקע ──
+function startPoll(){ clearInterval(S.pollTimer);
+  S.pollTimer=setInterval(()=>{ const a=document.getElementById('app');
+    if(S.view==='board')renderBoard(a); else if(S.view==='admin')renderAdmin(a); },15000); }
+
+// ── deep-link ?op= ──
+async function handleDeepLink(){
+  const op=new URLSearchParams(location.search).get('op');
+  if(op && S.branchId){ try{ await openScan(op); }catch(e){} }
+}
+
+// ── init ──
+(async()=>{
+  loadState();
+  try{ S.cfg=await (await fetch('/api/config')).json(); }catch(e){}
+  render(); if(S.branchId){ startPoll(); handleDeepLink(); }
+})();
+</script>
+</body>
+</html>

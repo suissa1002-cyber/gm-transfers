@@ -1,0 +1,22 @@
+# Keep-alive — פינג ל-/health כל 5 דקות כדי ש-Render Free לא יירדם (spin-down אחרי 15 דק').
+name: keep-alive
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping /health
+        run: |
+          SERVICE_URL="${{ secrets.SERVICE_URL }}"
+          if [ -z "$SERVICE_URL" ]; then
+            echo "SERVICE_URL secret not set — skipping"
+            exit 0
+          fi
+          status=$(curl -s -o /dev/null -w "%{http_code}" "$SERVICE_URL/health" --max-time 30)
+          echo "GET $SERVICE_URL/health → $status"
+          [ "$status" = "200" ] || exit 1

@@ -1,0 +1,214 @@
+"""
+Transfers app — FastAPI backend.
+מגיש את ה-SPA, חושף API לקליטה/לוח-בהעברה, ומריץ poller + התראות ברקע (APScheduler).
+"""
+
+import os
+import logging
+from typing import Optional
+
+from fastapi import FastAPI, HTTPException, Header
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+from apscheduler.schedulers.background import BackgroundScheduler
+
+import config as cfg
+import db
+import poller
+
+logging.basicConfig(level=logging.INFO,
+                    format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+logger = logging.getLogger("transfers.main")
+
+app = FastAPI(title=cfg.APP_TITLE)
+_here = os.path.dirname(__file__)
+_static_dir = os.path.join(_here, "static")
+
+scheduler = BackgroundScheduler(timezone=cfg.TZ)
+
+
+# ──────────────────────────────────────────────────────────────
+# רקע: poller + התראות
+# ──────────────────────────────────────────────────────────────
+def _poll_job():
+    result = poller.poll_once()
+    if result.get("new"):
+        try:
+            import alerts
+            alerts.on_new_transfers(result["new"])
+        except Exception as e:  # noqa: BLE001
+            logger.warning("alerts.on_new_transfers failed: %s", e)
+
+
+def _alerts_job():
+    try:
+        import alerts
+        alerts.check_aging()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("alerts.check_aging failed: %s", e)
+
+
+def _digest_job():
+    try:
+        import alerts
+        alerts.daily_digest()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("alerts.daily_digest failed: %s", e)
+
+
+@app.on_event("startup")
+def _startup():
+    db.init_db()
+    logger.info("DB ready (%s)", "Postgres" if cfg.DATABASE_URL else "SQLite")
+    # סבב ראשון מיד, ואז לפי האינטרוול
+    scheduler.add_job(_poll_job, "interval", seconds=cfg.POLL_INTERVAL_SEC,
+                      id="poll", next_run_time=None, max_instances=1)
+    scheduler.add_job(_alerts_job, "interval", minutes=15, id="alerts", max_instances=1)
+    # דוח יומי 09:00 (Sun-Thu) למנהלים
+    scheduler.add_job(_digest_job, "cron", id="digest",
+                      hour=cfg.DIGEST_HOUR, minute=0, day_of_week=cfg.DIGEST_DAYS,
+                      max_instances=1)
+    scheduler.start()
+    # סבב ראשוני סינכרוני קצר כדי שהלוח לא יהיה ריק בהפעלה
+    try:
+        poller.poll_once()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("initial poll failed: %s", e)
+
+
+@app.on_event("shutdown")
+def _shutdown():
+    if scheduler.running:
+        scheduler.shutdown(wait=False)
+
+
+# ──────────────────────────────────────────────────────────────
+# API
+# ──────────────────────────────────────────────────────────────
+def _require_admin(x_admin_key: Optional[str] = Header(None)):
+    """הגנת קונסולת הניהול. אם ADMIN_PASSWORD ריק — פתוח (פיתוח)."""
+    if not cfg.ADMIN_PASSWORD:
+        return
+    if (x_admin_key or "") != cfg.ADMIN_PASSWORD:
+        raise HTTPException(401, "admin auth required")
+
+
+@app.get("/health")
+def health():
+    return {"ok": True, "stats": db.stats()}
+
+
+@app.get("/api/config")
+def app_config():
+    """דגלים ל-frontend: האם הניהול דורש סיסמה."""
+    return {"admin_required": bool(cfg.ADMIN_PASSWORD),
+            "admin_branch_id": cfg.ADMIN_BRANCH_ID}
+
+
+class AdminLogin(BaseModel):
+    password: str
+
+
+@app.post("/api/admin/login")
+def admin_login(body: AdminLogin):
+    if not cfg.ADMIN_PASSWORD or body.password == cfg.ADMIN_PASSWORD:
+        return {"ok": True}
+    raise HTTPException(401, "wrong password")
+
+
+@app.get("/api/branches")
+def branches():
+    return [{"id": bid, "name": name} for bid, name in cfg.BRANCHES.items()]
+
+
+def _enrich(t: dict) -> dict:
+    """מוסיף שמות סניף קריאים להעברה (לשימוש כל ה-endpoints)."""
+    if t:
+        t["from_branch_name"] = cfg.branch_name(t.get("from_branch_id"))
+        t["to_branch_name"] = cfg.branch_name(t.get("to_branch_id"))
+    return t
+
+
+@app.get("/api/transfers")
+def transfers(branch_id: int):
+    rows = db.list_in_transit(branch_id)
+    return [_enrich(db.get_transfer(t["op_id"])) for t in rows]
+
+
+@app.get("/api/transfers/{op_id}")
+def transfer_detail(op_id: str):
+    t = db.get_transfer(op_id)
+    if not t:
+        raise HTTPException(404, "transfer not found")
+    return _enrich(t)
+
+
+class ScanIn(BaseModel):
+    branch_id: int
+    code: str
+    op_id: Optional[str] = None
+    employee: Optional[str] = None
+
+
+@app.post("/api/scan")
+def scan(body: ScanIn):
+    res = db.receive_scan(body.branch_id, body.code, body.op_id, body.employee)
+    res["transfer"] = _enrich(res.get("transfer"))
+    return res
+
+
+@app.get("/api/stats")
+def stats():
+    return db.stats()
+
+
+@app.get("/api/admin/overview")
+def admin_overview(days: int = 7, x_admin_key: Optional[str] = Header(None)):
+    """לוח ניהול אופרציה — כל ההעברות בכל הסניפים: מי לא סרק, מי ממתין, מה נקלט."""
+    _require_admin(x_admin_key)
+    import alerts  # שימוש חוזר ב-_age_hours
+    rows = db.list_all_transfers(include_received_days=days)
+    out = []
+    for t in rows:
+        age = alerts._age_hours(t)
+        t = _enrich(t)
+        t["age_hours"] = round(age, 1)
+        t["overdue"] = (t["status"] != "received"
+                        and age >= cfg.RECEIVE_ESCALATE_HOURS)
+        t["missing"] = (t.get("total_units", 0) or 0) - (t.get("received_units", 0) or 0)
+        t["receivers"] = db.transfer_receivers(t["op_id"])
+        out.append(t)
+    summary = {
+        "in_transit": sum(1 for t in out if t["status"] == "in_transit"),
+        "partial":    sum(1 for t in out if t["status"] == "partial"),
+        "received":   sum(1 for t in out if t["status"] == "received"),
+        "overdue":    sum(1 for t in out if t["overdue"]),
+    }
+    return {"summary": summary, "transfers": out}
+
+
+@app.post("/api/poll")
+def manual_poll():
+    return poller.poll_once()
+
+
+# ──────────────────────────────────────────────────────────────
+# Frontend (SPA)
+# ──────────────────────────────────────────────────────────────
+if os.path.isdir(_static_dir):
+    app.mount("/static", StaticFiles(directory=_static_dir), name="static")
+
+
+@app.get("/")
+def index():
+    idx = os.path.join(_static_dir, "index.html")
+    if os.path.exists(idx):
+        return FileResponse(idx)
+    return JSONResponse({"app": cfg.APP_TITLE, "note": "frontend not built yet"})
+
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.getenv("PORT", "8000"))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
