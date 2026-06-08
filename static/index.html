@@ -83,9 +83,9 @@
   .cam-overlay{position:fixed;inset:0;background:#000;z-index:80;display:flex;
                flex-direction:column;align-items:center;justify-content:center}
   .cam-overlay video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
-  .cam-frame{position:relative;z-index:2;width:84%;max-width:520px;height:130px;
+  .cam-frame{position:relative;z-index:2;width:88%;max-width:600px;height:210px;
              border:2px solid rgba(255,255,255,.9);border-radius:14px;
-             box-shadow:0 0 0 9999px rgba(0,0,0,.5);overflow:hidden}
+             box-shadow:0 0 0 9999px rgba(0,0,0,.4);overflow:hidden}
   .cam-line{position:absolute;left:0;right:0;height:3px;background:linear-gradient(90deg,transparent,var(--red),transparent);
             box-shadow:0 0 10px 2px var(--red);animation:scanline 1.5s ease-in-out infinite}
   @keyframes scanline{0%{top:8%}50%{top:88%}100%{top:8%}}
@@ -306,27 +306,35 @@ async function openCamera(onResult){
   root.innerHTML=`<div class="cam-overlay">
     <video id="camVideo" playsinline muted autoplay></video>
     <div class="cam-frame"><div class="cam-line"></div></div>
-    <div class="cam-hint">כוון את הברקוד הנכון אל תוך המסגרת</div>
+    <div class="cam-hint">מרכז את הברקוד הרצוי במסגרת · החזק יציב במרחק 10–20 ס״מ</div>
     <button class="cam-close btn-ghost" onclick="closeCamera()">✕ סגור</button>
   </div>`;
   const video=document.getElementById('camVideo');
   let useNative = ('BarcodeDetector' in window);
   if(useNative){ try{ _camDetector=new window.BarcodeDetector(); }catch(e){ useNative=false; } }
   if(useNative){
-    try{ _camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
-         video.srcObject=_camStream; await video.play(); }
-    catch(e){ toast('אין גישה למצלמה',false); closeCamera(); return; }
-    const canvas=document.createElement('canvas'), ctx=canvas.getContext('2d');
+    try{
+      _camStream=await navigator.mediaDevices.getUserMedia({video:{
+        facingMode:'environment', width:{ideal:1280}, height:{ideal:720}}});
+      video.srcObject=_camStream; await video.play();
+      const track=_camStream.getVideoTracks()[0];
+      try{ await track.applyConstraints({advanced:[{focusMode:'continuous'}]}); }catch(e){}
+    } catch(e){ toast('אין גישה למצלמה',false); closeCamera(); return; }
     const tick=async()=>{
       if(!_camStream||!_camDetector) return;
-      const vw=video.videoWidth, vh=video.videoHeight;
-      if(vw&&vh){
-        const cw=Math.floor(vw*0.82), ch=Math.floor(vh*0.26);
-        const cx=Math.floor((vw-cw)/2), cy=Math.floor((vh-ch)/2);
-        canvas.width=cw; canvas.height=ch;
-        ctx.drawImage(video,cx,cy,cw,ch,0,0,cw,ch);
-        try{ const codes=await _camDetector.detect(canvas);
-          if(codes&&codes.length){ onCamHit(codes[0].rawValue,onResult); return; } }catch(e){}
+      if(video.videoWidth){
+        try{
+          const codes=await _camDetector.detect(video);   // פריים מלא — תופס גם ברקוד גדול
+          if(codes&&codes.length){
+            let pick=codes[0];
+            if(codes.length>1){   // כמה ברקודים — בוחרים את הקרוב למרכז האנכי (שמכוונים אליו)
+              const midY=video.videoHeight/2;
+              pick=codes.reduce((b,c)=>{ const cy=(c.boundingBox?c.boundingBox.y+c.boundingBox.height/2:midY);
+                const d=Math.abs(cy-midY); return (!b||d<b.d)?{c,d}:b; },null).c;
+            }
+            onCamHit(pick.rawValue,onResult); return;
+          }
+        }catch(e){}
       }
       _camRAF=requestAnimationFrame(tick);
     };
@@ -336,7 +344,7 @@ async function openCamera(onResult){
     if(!window.ZXing){ toast('סריקת מצלמה לא נתמכת במכשיר',false); closeCamera(); return; }
     try{
       _zxingReader=new ZXing.BrowserMultiFormatReader();
-      _zxingReader.decodeFromConstraints({video:{facingMode:'environment'}}, video, (result)=>{
+      _zxingReader.decodeFromConstraints({video:{facingMode:'environment',width:{ideal:1280},height:{ideal:720}}}, video, (result)=>{
         if(result) onCamHit(result.getText(), onResult);
       });
     }catch(e){ toast('שגיאת מצלמה',false); closeCamera(); }
