@@ -69,7 +69,12 @@
             font-size:21px;font-weight:800;text-align:center;transition:.15s}
   .lastscan.ok{background:rgba(31,191,107,.12);border:1px solid var(--green);color:var(--green)}
   .lastscan.err{background:rgba(229,72,77,.1);border:1px solid var(--red);color:var(--red)}
+  .lastscan.warn{background:rgba(245,165,36,.12);border:1px solid var(--amber);color:var(--amber)}
   .lastscan.idle{color:var(--muted);border:1px dashed var(--line);font-weight:600;font-size:16px}
+  .mtag{font-size:11px;font-weight:700;border-radius:6px;padding:1px 7px;margin-inline-start:6px;white-space:nowrap}
+  .mtag.ok{background:rgba(31,191,107,.15);color:var(--green)}
+  .mtag.warn{background:rgba(245,165,36,.2);color:var(--amber)}
+  .badge-manual{background:rgba(245,165,36,.2);color:var(--amber);border-radius:6px;padding:2px 7px;font-size:11px;font-weight:700;margin-inline-start:6px;white-space:nowrap}
   .lastscan .sub{font-size:14px;opacity:.85;font-weight:600}
   .card.flash{border-color:var(--green)!important;box-shadow:0 0 0 2px var(--green) inset;transition:.15s}
   .empty{text-align:center;color:var(--muted);padding:64px 0;font-size:17px}
@@ -233,6 +238,36 @@ function focusScan(){
   if(el){ try{ el.focus(); }catch(e){} }
 }
 
+// ── זיהוי אופן הקלט: סורק (מהיר) / ידני / הדבקה ──
+function attachScan(inp, onSubmit){
+  let times=[], pasted=false;
+  inp.addEventListener('paste', ()=>{ pasted=true; });
+  inp.addEventListener('keydown', async (e)=>{
+    if(e.key==='Enter'){
+      const code=inp.value.trim();
+      const method=detectMethod(times, pasted, code);
+      times=[]; pasted=false; inp.value='';
+      if(code) await onSubmit(code, method);
+      return;
+    }
+    if(e.key && e.key.length===1) times.push(performance.now());
+  });
+}
+function detectMethod(times, pasted, code){
+  if(pasted) return 'paste';
+  const n=times.length;
+  if(n>=2){ const per=(times[n-1]-times[0])/(n-1); return per<35 ? 'scanner' : 'manual'; }
+  if((code||'').length>2 && n<=1) return 'paste';   // ערך שהופיע בלי הקשות
+  return 'manual';
+}
+const METHOD_LABEL={scanner:'📷 סורק', manual:'⌨️ ידני', paste:'📋 הדבקה'};
+function methodTag(m){
+  if(m==='scanner') return `<span class="mtag ok">${METHOD_LABEL.scanner}</span>`;
+  if(m==='manual')  return `<span class="mtag warn">${METHOD_LABEL.manual}</span>`;
+  if(m==='paste')   return `<span class="mtag warn">${METHOD_LABEL.paste}</span>`;
+  return '';
+}
+
 // ── רינדור ראשי ──
 function render(){
   const app=document.getElementById('app'), hdr=document.getElementById('hdr');
@@ -281,9 +316,10 @@ async function renderBoard(app){
   const needEmp=!S.employee;
   const pending=list.reduce((a,t)=>a+(t.total_units-t.received_units),0);
   const ls=S.lastScan;
+  const okCls = (ls&&(ls.method==='manual'||ls.method==='paste'))?'warn':'ok';
   const lastHtml = needEmp ? '' : (ls
     ? (ls.ok
-       ? `<div class="lastscan ok">✓ ${ls.name||'נקלט'} <span class="sub">· פעולה ${ls.op} (${ls.prog})</span></div>`
+       ? `<div class="lastscan ${okCls}">✓ ${ls.name||'נקלט'} <span class="sub">· פעולה ${ls.op} (${ls.prog})</span> ${methodTag(ls.method)}</div>`
        : `<div class="lastscan err">✗ ${ls.message}${ls.code?` <span class="sub">· ${ls.code}</span>`:''}</div>`)
     : `<div class="lastscan idle">המכשיר האחרון שתסרוק יוצג כאן</div>`);
   app.innerHTML=`
@@ -307,22 +343,22 @@ async function renderBoard(app){
     return;
   }
   const inp=document.getElementById('boardScan');
-  inp.addEventListener('keydown',async ev=>{ if(ev.key!=='Enter')return; const code=inp.value.trim(); inp.value=''; if(code) await doScanBoard(code); });
+  attachScan(inp, (code,method)=>doScanBoard(code,method));
   focusScan();
   if(S._flashOp){ const el=document.querySelector(`[data-op="${S._flashOp}"]`);
     if(el){ el.classList.add('flash'); setTimeout(()=>{el&&el.classList.remove('flash');},900); } S._flashOp=null; }
 }
 // סריקה ברמת הלוח — משייכת אוטומטית להעברה הנכונה (בלי op_id)
-async function doScanBoard(code){
+async function doScanBoard(code, method){
   if(!S.employee) return;
   let res;
   try{ res=await api('/api/scan',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({branch_id:Number(S.branchId),code,employee:S.employee})}); }
+    body:JSON.stringify({branch_id:Number(S.branchId),code,employee:S.employee,method})}); }
   catch(e){ S.lastScan={ok:false,message:'שגיאת רשת',code}; beep(false); await renderBoard(document.getElementById('app')); return; }
   if(res.matched){
     beep(true);vibrate(true);
     const it=res.item||{}, t=res.transfer||{};
-    S.lastScan={ok:true, name:it.name||'נקלט', op:t.op_id, prog:`${t.received_units}/${t.total_units}`};
+    S.lastScan={ok:true, name:it.name||'נקלט', op:t.op_id, prog:`${t.received_units}/${t.total_units}`, method};
     S._flashOp=t.op_id;
   } else {
     beep(false);vibrate(false);
@@ -377,8 +413,7 @@ function renderScan(app){
     return;   // עדיין לא קושרים סריקה — קודם שם
   }
   const inp=document.getElementById('scanInput');
-  inp.addEventListener('keydown',async e=>{ if(e.key!=='Enter')return;
-    const code=inp.value.trim(); inp.value=''; if(code) await doScan(code); });
+  attachScan(inp, (code,method)=>doScan(code,method));
   focusScan();
 }
 function itemHtml(it){
@@ -389,17 +424,18 @@ function itemHtml(it){
     <div style="flex:1;min-width:0">
       <div class="name">${it.name||it.product_id}</div>
       <div class="sub">${sub}</div>
-      ${rec&&it.received_by&&!String(it.received_by).startsWith('branch:')?`<div class="who">נקלט ע״י ${it.received_by}</div>`:''}
+      ${rec&&it.received_by&&!String(it.received_by).startsWith('branch:')?`<div class="who">נקלט ע״י ${it.received_by} ${methodTag(it.received_method)}</div>`:''}
     </div>
   </div>`;
 }
-async function doScan(code){
+async function doScan(code, method){
   if(!S.employee) return;   // לא אמור לקרות — שדה הסריקה מופיע רק אחרי שם
   let res;
   try{ res=await api('/api/scan',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({branch_id:Number(S.branchId),code,op_id:S.op.op_id,employee:S.employee})});
+    body:JSON.stringify({branch_id:Number(S.branchId),code,op_id:S.op.op_id,employee:S.employee,method})});
   }catch(e){ toast('שגיאת רשת',false); beep(false); return; }
-  if(res.matched){ beep(true);vibrate(true);toast('✓ נקלט',true); S.op=res.transfer; render(); }
+  if(res.matched){ beep(true);vibrate(true);
+    toast(`✓ נקלט ${METHOD_LABEL[method]||''}`,true); S.op=res.transfer; render(); }
   else{ beep(false);vibrate(false);toast(res.message||'לא שייך',false); }
 }
 function backToBoard(){ S.view=S._fromAdmin?'admin':'board'; S._fromAdmin=false; S.op=null; render(); }
@@ -470,7 +506,7 @@ function adminRow(t){
     <td>${fmtAge(t.age_hours)}</td>
     <td>${t.employee||'—'}</td>
     <td class="prog-cell">${t.received_units}/${t.total_units}</td>
-    <td>${(t.receivers&&t.receivers.length)?t.receivers.join(', '):'—'}</td>
+    <td>${(t.receivers&&t.receivers.length)?t.receivers.join(', '):'—'}${t.manual_count?` <span class="badge-manual">⌨️ ${t.manual_count} לא בסורק</span>`:''}</td>
   </tr>`;
 }
 async function adminOpen(opId){ S.op=await api('/api/transfers/'+opId); S._fromAdmin=true; S.view='scan'; render(); }

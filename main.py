@@ -149,11 +149,12 @@ class ScanIn(BaseModel):
     code: str
     op_id: Optional[str] = None
     employee: Optional[str] = None
+    method: Optional[str] = None
 
 
 @app.post("/api/scan")
 def scan(body: ScanIn):
-    res = db.receive_scan(body.branch_id, body.code, body.op_id, body.employee)
+    res = db.receive_scan(body.branch_id, body.code, body.op_id, body.employee, body.method)
     res["transfer"] = _enrich(res.get("transfer"))
     return res
 
@@ -178,6 +179,7 @@ def admin_overview(days: int = 7, x_admin_key: Optional[str] = Header(None)):
                         and age >= cfg.RECEIVE_ESCALATE_HOURS)
         t["missing"] = (t.get("total_units", 0) or 0) - (t.get("received_units", 0) or 0)
         t["receivers"] = db.transfer_receivers(t["op_id"])
+        t["manual_count"] = db.transfer_manual_count(t["op_id"])
         out.append(t)
     summary = {
         "in_transit": sum(1 for t in out if t["status"] == "in_transit"),

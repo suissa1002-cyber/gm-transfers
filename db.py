@@ -91,7 +91,8 @@ _SCHEMA = [
         line_idx     INTEGER DEFAULT 0,
         received     INTEGER DEFAULT 0,
         received_at  TEXT,
-        received_by  TEXT
+        received_by  TEXT,
+        received_method TEXT
     )
     """,
     """
@@ -103,7 +104,8 @@ _SCHEMA = [
         matched      INTEGER DEFAULT 0,   -- 1 אם הותאם לפריט צפוי
         item_id      BIGINT,
         scanned_at   TEXT,
-        note         TEXT
+        note         TEXT,
+        method       TEXT                 -- scanner | manual | paste
     )
     """.format(pk=_PK),
     "CREATE INDEX IF NOT EXISTS idx_items_op ON transfer_items(op_id)",
@@ -121,6 +123,30 @@ def init_db():
             cur.execute(f"CREATE SCHEMA IF NOT EXISTS {_PG_SCHEMA}")
         for stmt in _SCHEMA:
             cur.execute(stmt)
+    _migrate()
+
+
+def _migrate():
+    """מוסיף עמודות חדשות לטבלאות קיימות (idempotent)."""
+    cols = [
+        ("transfer_items", "received_method", "TEXT"),
+        ("transfer_items", "barcode", "TEXT"),
+        ("receive_scans",  "method", "TEXT"),
+    ]
+    for table, col, typ in cols:
+        try:
+            with _conn() as c:
+                cur = c.cursor()
+                if _USE_PG:
+                    cur.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col} {typ}")
+                else:
+                    cur.execute(f"PRAGMA table_info({table})")
+                    have = {r["name"] for r in cur.fetchall()}
+                    if col not in have:
+                        cur.execute(f"ALTER TABLE {table} ADD COLUMN {col} {typ}")
+        except Exception as e:  # noqa: BLE001
+            import logging
+            logging.getLogger("transfers.db").warning("migrate %s.%s: %s", table, col, e)
 
 
 # ──────────────────────────────────────────────────────────────
@@ -243,15 +269,17 @@ def _recount(cur, op_id: str):
     return rec, total, status
 
 
-def receive_scan(branch_id: int, code: str, op_id: str = None, employee: str = None) -> dict:
+def receive_scan(branch_id: int, code: str, op_id: str = None, employee: str = None,
+                 method: str = None) -> dict:
     """
     מטפל בסריקה בודדת. מתאים לפי **סריאל או ברקוד** (מוצרים לא-סידוריים).
     אם op_id סופק — מחפש בתוך אותה העברה; אחרת בכל ההעברות הפתוחות של הסניף.
-    `employee` (אופציונלי) — שם הנציג שסורק, נרשם ב-received_by.
+    `employee` — שם הנציג (received_by). `method` — אופן הקלט (scanner|manual|paste).
     מחזיר {matched, item, transfer, message}.
     """
     code = (code or "").strip()
     received_by = (employee or "").strip() or f"branch:{branch_id}"
+    method = (method or "").strip() or "unknown"
     with _conn() as c:
         cur = c.cursor()
         # פריט צפוי שלא נקלט: סריאל מדויק, או ברקוד תואם (לא-סידורי)
@@ -275,9 +303,10 @@ def receive_scan(branch_id: int, code: str, op_id: str = None, employee: str = N
 
         if matched:
             cur.execute(_q("""
-                UPDATE transfer_items SET received = 1, received_at = ?, received_by = ?
+                UPDATE transfer_items SET received = 1, received_at = ?, received_by = ?,
+                       received_method = ?
                 WHERE id = ?
-            """), (now_iso(), received_by, item["id"]))
+            """), (now_iso(), received_by, method, item["id"]))
             _recount(cur, item["op_id"])
             msg = "✓ נקלט"
         else:
@@ -293,10 +322,10 @@ def receive_scan(branch_id: int, code: str, op_id: str = None, employee: str = N
                 msg = "לא שייך להעברה נכנסת"
 
         cur.execute(_q("""
-            INSERT INTO receive_scans (op_id, branch_id, scanned_code, matched, item_id, scanned_at, note)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO receive_scans (op_id, branch_id, scanned_code, matched, item_id, scanned_at, note, method)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """), (target_op, branch_id, code, 1 if matched else 0,
-               item["id"] if matched else None, now_iso(), received_by))
+               item["id"] if matched else None, now_iso(), received_by, method))
 
     # קוראים את ההעברה אחרי commit (חיבור נפרד לא רואה שינוי לא-מחויב)
     transfer = get_transfer(target_op) if target_op else None
@@ -335,6 +364,18 @@ def list_all_transfers(include_received_days: int = 7) -> list[dict]:
             ORDER BY created_at DESC
         """), (cutoff,))
         return [dict(r) for r in cur.fetchall()]
+
+
+def transfer_manual_count(op_id: str) -> int:
+    """כמה פריטים בהעברה נקלטו ידנית/בהדבקה (לא בסורק) — דגל אנטי-הונאה לניהול."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""
+            SELECT COUNT(*) AS n FROM transfer_items
+            WHERE op_id = ? AND received = 1
+              AND received_method IS NOT NULL AND received_method IN ('manual','paste')
+        """), (str(op_id),))
+        return cur.fetchone()["n"]
 
 
 def transfer_receivers(op_id: str) -> list:
