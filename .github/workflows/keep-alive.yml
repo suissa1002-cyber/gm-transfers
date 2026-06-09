@@ -17,6 +17,15 @@ jobs:
             echo "SERVICE_URL secret not set — skipping"
             exit 0
           fi
+          # שעות פעילות (זמן ישראל, DST-correct). %u: 1=Mon..7=Sun
+          D=$(TZ=Asia/Jerusalem date +%u); H=$((10#$(TZ=Asia/Jerusalem date +%H)))
+          active=0
+          case "$D" in
+            7|1|2|3|4) [ "$H" -ge 8 ] && [ "$H" -lt 22 ] && active=1 ;;   # א-ה 08-22
+            5)         [ "$H" -ge 8 ] && [ "$H" -lt 16 ] && active=1 ;;   # ו 08-16
+            6)         [ "$H" -ge 17 ] && [ "$H" -lt 23 ] && active=1 ;;  # שבת 17-23
+          esac
+          if [ "$active" != 1 ]; then echo "outside active hours (IL day=$D hour=$H) — skip"; exit 0; fi
           # POST /api/poll מעיר את השירות (אם נרדם) וגם קולט העברות חדשות.
           # timeout ארוך כי cold-start יכול לקחת ~60ש'. לא נכשלים על timeout (רק מדווחים).
           code=$(curl -s -o /tmp/resp -w "%{http_code}" -X POST "$SERVICE_URL/api/poll" --max-time 90 || echo 000)
