@@ -333,13 +333,24 @@ function focusScan(){
   if(el){ try{ el.focus(); }catch(e){} }
 }
 
+// ── תיקון פריסת מקלדת: סריקה במקלדת עברית הופכת אותיות לטיניות לעבריות. נמיר חזרה. ──
+const _HE2EN = {
+  '/':'Q',"'":'W','ק':'E','ר':'R','א':'T','ט':'Y','ו':'U','ן':'I','ם':'O','פ':'P',
+  'ש':'A','ד':'S','ג':'D','כ':'F','ע':'G','י':'H','ח':'J','ל':'K','ך':'L',
+  'ז':'Z','ס':'X','ב':'C','ה':'V','נ':'B','מ':'N','צ':'M'
+};
+function fixHebrewLayout(s){
+  if(!s || !/[֐-׿]/.test(s)) return s;   // אין אותיות עבריות — להשאיר
+  return s.split('').map(ch => _HE2EN[ch] !== undefined ? _HE2EN[ch] : ch).join('');
+}
+
 // ── זיהוי אופן הקלט: סורק (מהיר) / ידני / הדבקה ──
 function attachScan(inp, onSubmit){
   let times=[], pasted=false;
   inp.addEventListener('paste', ()=>{ pasted=true; });
   inp.addEventListener('keydown', async (e)=>{
     if(e.key==='Enter'){
-      const code=inp.value.trim();
+      const code=fixHebrewLayout(inp.value.trim());   // תיקון מקלדת עברית
       const method=detectMethod(times, pasted, code);
       times=[]; pasted=false; inp.value='';
       if(code) await onSubmit(code, method);
