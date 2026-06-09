@@ -135,6 +135,18 @@ _SCHEMA = [
     "CREATE INDEX IF NOT EXISTS idx_items_op ON transfer_items(op_id)",
     "CREATE INDEX IF NOT EXISTS idx_items_serial ON transfer_items(serial)",
     "CREATE INDEX IF NOT EXISTS idx_items_barcode ON transfer_items(barcode)",
+    """
+    CREATE TABLE IF NOT EXISTS rebalance (
+        id           {pk},
+        product_id   TEXT,
+        name         TEXT,
+        kind         TEXT,          -- serial | barcode
+        stock_json   TEXT,          -- JSON branch to qty
+        needs_json   TEXT,          -- JSON list of branchIds with 0
+        surplus_json TEXT,          -- JSON list of branchIds with 2 or more
+        scanned_at   TEXT
+    )
+    """.format(pk=_PK),
     "CREATE INDEX IF NOT EXISTS idx_misroutes_serial ON misroutes(serial)",
     "CREATE INDEX IF NOT EXISTS idx_misroutes_status ON misroutes(status)",
     "CREATE INDEX IF NOT EXISTS idx_transfers_to ON transfers(to_branch_id, status)",
@@ -600,6 +612,44 @@ def transfer_receivers(op_id: str) -> list:
         """), (str(op_id),))
         names = [r["received_by"] for r in cur.fetchall()]
         return [n for n in names if n and not str(n).startswith("branch:")]
+
+
+def rebalance_replace(rows: list, scanned_at: str):
+    """מחליף את כל רשימת האיזון בתוצאות סריקה חדשות."""
+    import json as _json
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute("DELETE FROM rebalance")
+        for r in rows:
+            cur.execute(_q("""
+                INSERT INTO rebalance (product_id, name, kind, stock_json, needs_json, surplus_json, scanned_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """), (str(r["product_id"]), r.get("name") or "", r.get("kind"),
+                   _json.dumps(r.get("stock") or {}), _json.dumps(r.get("needs") or []),
+                   _json.dumps(r.get("surplus") or []), scanned_at))
+
+
+def rebalance_list() -> list:
+    import json as _json
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute("SELECT * FROM rebalance ORDER BY name")
+        out = []
+        for r in cur.fetchall():
+            d = dict(r)
+            for k in ("stock_json", "needs_json", "surplus_json"):
+                try: d[k.replace("_json", "")] = _json.loads(d.pop(k) or ("[]" if k != "stock_json" else "{}"))
+                except Exception: d[k.replace("_json", "")] = {} if k == "stock_json" else []
+            out.append(d)
+        return out
+
+
+def rebalance_last_scan() -> str:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute("SELECT MAX(scanned_at) AS m FROM rebalance")
+        row = cur.fetchone()
+        return (row["m"] if row else None) or None
 
 
 def stats() -> dict:

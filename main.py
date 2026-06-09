@@ -67,6 +67,14 @@ def _serial_sync_job():
         logger.warning("serial_sync failed: %s", e)
 
 
+def _rebalance_job():
+    try:
+        import rebalance_scan
+        rebalance_scan.scan()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("rebalance_scan failed: %s", e)
+
+
 @app.on_event("startup")
 def _startup():
     db.init_db()
@@ -83,6 +91,9 @@ def _startup():
     scheduler.add_job(_serial_sync_job, "interval", hours=3, id="serial_sync", max_instances=1)
     scheduler.add_job(_serial_sync_job, "date", id="serial_sync_initial",
                       run_date=datetime.now() + timedelta(seconds=60))
+    # איזון מלאי: פעמיים ביום (כך שתמיד נופל בתוך שעות הפעילות של איזה יום) — תחילת/סוף יום
+    scheduler.add_job(_rebalance_job, "cron", id="rebalance_am", hour=8, minute=30, max_instances=1)
+    scheduler.add_job(_rebalance_job, "cron", id="rebalance_pm", hour=21, minute=0, max_instances=1)
     scheduler.start()
     # סבב ראשוני סינכרוני קצר כדי שהלוח לא יהיה ריק בהפעלה
     try:
@@ -256,6 +267,27 @@ def admin_serial_sync(x_admin_key: Optional[str] = Header(None)):
 def admin_serial_index(x_admin_key: Optional[str] = Header(None)):
     _require_admin(x_admin_key)
     return {"index_size": db.serial_index_count()}
+
+
+@app.get("/api/admin/rebalance")
+def admin_rebalance(x_admin_key: Optional[str] = Header(None)):
+    """רשימת המלצות איזון מלאי + זמן הסריקה האחרונה."""
+    _require_admin(x_admin_key)
+    items = db.rebalance_list()
+    for it in items:
+        it["needs_names"] = [cfg.branch_name(b) for b in (it.get("needs") or [])]
+        it["surplus_names"] = [cfg.branch_name(b) for b in (it.get("surplus") or [])]
+    return {"last_scan": db.rebalance_last_scan(), "items": items,
+            "branches": [{"id": b, "name": cfg.branch_name(b)} for b in (1, 2, 3, 4)]}
+
+
+@app.post("/api/admin/rebalance-scan")
+def admin_rebalance_scan(x_admin_key: Optional[str] = Header(None)):
+    """הפעלת סריקת איזון מלאי ידנית (רצה ברקע, ~1-2 דק')."""
+    _require_admin(x_admin_key)
+    scheduler.add_job(_rebalance_job, "date", id="rebalance_manual",
+                      run_date=datetime.now() + timedelta(seconds=1), replace_existing=True)
+    return {"started": True, "last_scan": db.rebalance_last_scan()}
 
 
 class RelabelIn(BaseModel):

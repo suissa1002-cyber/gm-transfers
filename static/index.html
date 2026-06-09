@@ -79,6 +79,12 @@
   .badge-manual{background:rgba(245,165,36,.2);color:var(--amber);border-radius:6px;padding:2px 7px;font-size:11px;font-weight:700;margin-inline-start:6px;white-space:nowrap}
   .mis-alert{border:1px solid var(--red);background:rgba(229,72,77,.06);border-radius:14px;padding:16px;margin-bottom:20px}
   .mis-title{color:var(--red);font-weight:800;font-size:18px}
+  .tabs{display:flex;gap:8px;margin-bottom:16px}
+  .tabs button{background:var(--card);border:1px solid var(--line);color:var(--muted);border-radius:10px;padding:10px 18px;font-weight:700}
+  .tabs button.active{background:var(--blue);color:#fff;border-color:var(--blue)}
+  .rebal-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:16px}
+  .rebal-bar select{font-family:inherit;font-size:14px;padding:9px 12px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--txt)}
+  td.r-zero{color:var(--red);font-weight:800} td.r-surplus{color:var(--green);font-weight:800}
   .lastscan .sub{font-size:14px;opacity:.85;font-weight:600}
   .card.flash{border-color:var(--green)!important;box-shadow:0 0 0 2px var(--green) inset;transition:.15s}
   /* סורק מצלמה (מובייל) */
@@ -208,7 +214,8 @@
 const S = { branchId:null, branchName:null, employee:null, adminKey:null,
             cfg:{admin_required:false, admin_branch_id:5}, theme:'light', lastScan:null,
             branchList:[], adminFilters:{q:'',from:'',to:'',status:'',fromDate:'',toDate:''}, _refocusFilter:false,
-            view:'board', op:null, _fromAdmin:false, pollTimer:null, knownOps:null, notifTimer:null };
+            view:'board', op:null, _fromAdmin:false, pollTimer:null, knownOps:null, notifTimer:null,
+            adminTab:'transfers', rebalanceData:null, rebalFilter:'all' };
 
 // ── ערכת נושא (כהה/בהיר) ──
 function applyTheme(){
@@ -720,7 +727,92 @@ async function loadAdmin(spinner){
   if(S.view==='admin') renderAdmin();   // אל תדרוס מסך אחר אם המשתמש ניווט בינתיים (למשל נכנס להעברה)
 }
 
+function adminTabsHTML(){
+  return `<div class="tabs">
+    <button class="${S.adminTab!=='rebalance'?'active':''}" onclick="setAdminTab('transfers')">📋 העברות</button>
+    <button class="${S.adminTab==='rebalance'?'active':''}" onclick="setAdminTab('rebalance')">⚖️ איזון מלאי</button>
+  </div>`;
+}
+function setAdminTab(tab){
+  S.adminTab=tab;
+  if(tab==='rebalance'){ if(!S.rebalanceData) loadRebalance(true); else renderRebalance(); }
+  else renderAdmin();
+}
+async function loadRebalance(spinner){
+  if(spinner) showLoading('טוען איזון מלאי…');
+  try{ S.rebalanceData=await api('/api/admin/rebalance'); }catch(e){}
+  if(spinner) hideLoading();
+  if(S.view==='admin' && S.adminTab==='rebalance') renderRebalance();
+}
+function setRebalFilter(v){ S.rebalFilter=v; renderRebalance(); }
+async function runRebalanceScan(){
+  showLoading('סורק מלאי בכל הסניפים… (~1-2 דק׳)');
+  try{ await api('/api/admin/rebalance-scan',{method:'POST'}); }catch(e){ hideLoading(); return; }
+  const before=(S.rebalanceData&&S.rebalanceData.last_scan)||'';
+  let tries=0;
+  const iv=setInterval(async()=>{
+    tries++;
+    let d; try{ d=await api('/api/admin/rebalance'); }catch(e){ return; }
+    if((d.last_scan||'')!==before || tries>45){
+      clearInterval(iv); S.rebalanceData=d; hideLoading();
+      if(S.view==='admin' && S.adminTab==='rebalance') renderRebalance();
+    }
+  }, 4000);
+}
+function rebalRow(it, branches){
+  const cells=branches.map(b=>{ const q=(it.stock||{})[String(b.id)]||0;
+    const cls=q===0?'r-zero':(q>=2?'r-surplus':''); return `<td class="${cls}">${q}</td>`; }).join('');
+  return `<tr>
+    <td>${it.name}</td>
+    <td>${it.kind==='serial'?'📱 סריאלי':'🏷️ ברקוד'}</td>
+    ${cells}
+    <td style="color:var(--red);font-weight:700">${(it.needs_names||[]).join(', ')}</td>
+    <td style="color:var(--green);font-weight:700">${(it.surplus_names||[]).join(', ')}</td>
+  </tr>`;
+}
+function renderRebalance(){
+  const app=document.getElementById('app');
+  const d=S.rebalanceData||{items:[],branches:[],last_scan:null};
+  const branches=d.branches||[];
+  const f=S.rebalFilter||'all';
+  let items=(d.items||[]); if(f!=='all') items=items.filter(i=>i.kind===f);
+  const last=d.last_scan?('סריקה אחרונה: '+fmtTime(d.last_scan)):'טרם נסרק';
+  app.innerHTML=`
+    <h1 class="title">🛠️ ניהול אופרציה</h1>
+    ${adminTabsHTML()}
+    <div class="muted" style="margin-bottom:10px;font-size:13px">פריטים שבסניף אחד יש 0 ובאחר ≥2 — מומלץ לאזן (אתר לא נכלל).</div>
+    <div class="rebal-bar">
+      <button class="btn-primary" onclick="runRebalanceScan()">🔄 סרוק עכשיו</button>
+      <span class="muted">${last}</span>
+      <select onchange="setRebalFilter(this.value)">
+        <option value="all" ${f==='all'?'selected':''}>הכל</option>
+        <option value="serial" ${f==='serial'?'selected':''}>📱 סריאליים</option>
+        <option value="barcode" ${f==='barcode'?'selected':''}>🏷️ ברקוד</option>
+      </select>
+      <button class="btn-ghost" onclick="exportRebalCSV()">📄 ייצא דוח</button>
+      <span class="muted" style="margin-inline-start:auto">מציג ${items.length}</span>
+    </div>
+    ${items.length?`<table class="admin"><thead><tr>
+      <th>מוצר</th><th>סוג</th>${branches.map(b=>`<th>${b.name}</th>`).join('')}<th>חסר ב</th><th>עודף ב</th>
+    </tr></thead><tbody>${items.map(it=>rebalRow(it,branches)).join('')}</tbody></table>`
+    :`<div class="empty">${d.last_scan?'אין פריטים לאיזון 🎉':'לחץ "סרוק עכשיו" כדי לבנות את הרשימה'}</div>`}`;
+}
+function _csv(s){ s=String(s==null?'':s); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; }
+function exportRebalCSV(){
+  const d=S.rebalanceData||{items:[],branches:[]}; const branches=d.branches||[];
+  const f=S.rebalFilter||'all'; let items=(d.items||[]); if(f!=='all') items=items.filter(i=>i.kind===f);
+  const head=['מוצר','מק"ט','סוג',...branches.map(b=>b.name),'חסר ב','עודף ב'];
+  const lines=[head.join(',')];
+  items.forEach(it=>{ lines.push([_csv(it.name),it.product_id,it.kind==='serial'?'סריאלי':'ברקוד',
+    ...branches.map(b=>(it.stock||{})[String(b.id)]||0),
+    _csv((it.needs_names||[]).join(' | ')),_csv((it.surplus_names||[]).join(' | '))].join(',')); });
+  const blob=new Blob(['﻿'+lines.join('\n')],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download='rebalance-'+new Date().toISOString().slice(0,10)+'.csv'; a.click();
+}
+
 function renderAdmin(){
+  if(S.adminTab==='rebalance') return S.rebalanceData?renderRebalance():loadRebalance(true);
   const app=document.getElementById('app');
   const f=S.adminFilters;
   const data=S.adminData||{summary:{},transfers:[],misroutes:[]};
@@ -748,6 +840,7 @@ function renderAdmin(){
   const misroutes=data.misroutes||[];
   app.innerHTML=`
     <h1 class="title">🛠️ ניהול אופרציה — כל הסניפים</h1>
+    ${adminTabsHTML()}
     ${misroutes.length?`<div class="mis-alert">
       <div class="mis-title">🚩 מכשירים לא במקום (${misroutes.length})</div>
       <div class="muted" style="margin-bottom:10px;font-size:13px">מכשירים שנסרקו בסניף שאינו הסניף שאליו הם משויכים בקופה. ייסגר אוטומטית כשייקלטו בסניף הנכון.</div>
