@@ -6,6 +6,7 @@ Transfers app — FastAPI backend.
 import os
 import logging
 from typing import Optional
+from datetime import datetime, timedelta
 
 from fastapi import FastAPI, HTTPException, Header
 from fastapi.responses import FileResponse, JSONResponse
@@ -16,6 +17,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 import config as cfg
 import db
 import poller
+import misroute
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -57,6 +59,14 @@ def _digest_job():
         logger.warning("alerts.daily_digest failed: %s", e)
 
 
+def _serial_sync_job():
+    try:
+        import serial_sync
+        serial_sync.full_sync()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("serial_sync failed: %s", e)
+
+
 @app.on_event("startup")
 def _startup():
     db.init_db()
@@ -69,6 +79,10 @@ def _startup():
     scheduler.add_job(_digest_job, "cron", id="digest",
                       hour=cfg.DIGEST_HOUR, minute=0, day_of_week=cfg.DIGEST_DAYS,
                       max_instances=1)
+    # אינדקס סריאל→מוצר: סבב baseline כל 3 שעות + ריצה ראשונית ~60ש' אחרי עליה
+    scheduler.add_job(_serial_sync_job, "interval", hours=3, id="serial_sync", max_instances=1)
+    scheduler.add_job(_serial_sync_job, "date", id="serial_sync_initial",
+                      run_date=datetime.now() + timedelta(seconds=60))
     scheduler.start()
     # סבב ראשוני סינכרוני קצר כדי שהלוח לא יהיה ריק בהפעלה
     try:
@@ -155,6 +169,17 @@ class ScanIn(BaseModel):
 @app.post("/api/scan")
 def scan(body: ScanIn):
     res = db.receive_scan(body.branch_id, body.code, body.op_id, body.employee, body.method)
+    if res.get("matched"):
+        # נקלט בסניף הנכון → סוגר חריגת "לא במקום" אם הייתה פתוחה על הסריאל
+        try: db.resolve_misroutes(body.code)
+        except Exception as e: logger.warning("resolve_misroutes failed: %s", e)  # noqa: BLE001
+    else:
+        # לא תאם להעברה נכנסת → בדיקה חיה אם המכשיר שייך לסניף אחר
+        try:
+            mr = misroute.check(body.code, body.branch_id, body.employee or "")
+            if mr: res["misroute"] = mr
+        except Exception as e:  # noqa: BLE001
+            logger.warning("misroute check failed: %s", e)
     res["transfer"] = _enrich(res.get("transfer"))
     return res
 
@@ -181,18 +206,38 @@ def admin_overview(days: int = 7, x_admin_key: Optional[str] = Header(None)):
         t["receivers"] = db.transfer_receivers(t["op_id"])
         t["manual_count"] = db.transfer_manual_count(t["op_id"])
         out.append(t)
+    mis = db.list_open_misroutes()
+    for m in mis:
+        m["expected_branch_name"] = cfg.branch_name(m.get("expected_branch_id"))
+        m["scanned_branch_name"] = cfg.branch_name(m.get("scanned_branch_id"))
     summary = {
         "in_transit": sum(1 for t in out if t["status"] == "in_transit"),
         "partial":    sum(1 for t in out if t["status"] == "partial"),
         "received":   sum(1 for t in out if t["status"] == "received"),
         "overdue":    sum(1 for t in out if t["overdue"]),
+        "misroutes":  len(mis),
     }
-    return {"summary": summary, "transfers": out}
+    return {"summary": summary, "transfers": out, "misroutes": mis}
 
 
 @app.post("/api/poll")
 def manual_poll():
     return poller.poll_once()
+
+
+@app.post("/api/admin/serial-sync")
+def admin_serial_sync(x_admin_key: Optional[str] = Header(None)):
+    """הפעלת סבב אינדוקס סריאלים ידנית (רץ ברקע)."""
+    _require_admin(x_admin_key)
+    scheduler.add_job(_serial_sync_job, "date", id="serial_sync_manual",
+                      run_date=datetime.now() + timedelta(seconds=1), replace_existing=True)
+    return {"started": True, "index_size": db.serial_index_count()}
+
+
+@app.get("/api/admin/serial-index")
+def admin_serial_index(x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    return {"index_size": db.serial_index_count()}
 
 
 # ──────────────────────────────────────────────────────────────

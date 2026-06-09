@@ -75,6 +75,8 @@
   .mtag.ok{background:rgba(31,191,107,.15);color:var(--green)}
   .mtag.warn{background:rgba(245,165,36,.2);color:var(--amber)}
   .badge-manual{background:rgba(245,165,36,.2);color:var(--amber);border-radius:6px;padding:2px 7px;font-size:11px;font-weight:700;margin-inline-start:6px;white-space:nowrap}
+  .mis-alert{border:1px solid var(--red);background:rgba(229,72,77,.06);border-radius:14px;padding:16px;margin-bottom:20px}
+  .mis-title{color:var(--red);font-weight:800;font-size:18px}
   .lastscan .sub{font-size:14px;opacity:.85;font-weight:600}
   .card.flash{border-color:var(--green)!important;box-shadow:0 0 0 2px var(--green) inset;transition:.15s}
   /* סורק מצלמה (מובייל) */
@@ -422,7 +424,7 @@ async function renderBoard(app){
   const lastHtml = needEmp ? '' : (ls
     ? (ls.ok
        ? `<div class="lastscan ${okCls}">✓ ${ls.name||'נקלט'} <span class="sub">· פעולה ${ls.op} (${ls.prog})</span> ${methodTag(ls.method)}</div>`
-       : `<div class="lastscan err">✗ ${ls.message}${ls.code?` <span class="sub">· ${ls.code}</span>`:''}</div>`)
+       : `<div class="lastscan err">✗ ${ls.message}${ls.name?` <span class="sub">· ${ls.name}</span>`:''}${ls.code?` <span class="sub">· ${ls.code}</span>`:''}</div>`)
     : `<div class="lastscan idle">המכשיר האחרון שתסרוק יוצג כאן</div>`);
   app.innerHTML=`
     <h1 class="title">📥 קליטת מכשירים נכנסים</h1>
@@ -465,7 +467,9 @@ async function doScanBoard(code, method){
     S._flashOp=t.op_id;
   } else {
     beep(false);vibrate(false);
-    S.lastScan={ok:false, message:res.message||'לא שייך לאף העברה נכנסת', code};
+    const mr=res.misroute;
+    if(mr) S.lastScan={ok:false, misroute:mr.type, message:mr.message, name:mr.product_name||'', code};
+    else   S.lastScan={ok:false, message:res.message||'לא שייך לאף העברה נכנסת', code};
   }
   await renderBoard(document.getElementById('app'));
 }
@@ -540,7 +544,8 @@ async function doScan(code, method){
   }catch(e){ toast('שגיאת רשת',false); beep(false); return; }
   if(res.matched){ beep(true);vibrate(true);
     toast(`✓ נקלט ${METHOD_LABEL[method]||''}`,true); S.op=res.transfer; render(); }
-  else{ beep(false);vibrate(false);toast(res.message||'לא שייך',false); }
+  else{ beep(false);vibrate(false);
+    toast((res.misroute&&res.misroute.message)||res.message||'לא שייך',false); }
 }
 function backToBoard(){ S.view=S._fromAdmin?'admin':'board'; S._fromAdmin=false; S.op=null; render(); }
 
@@ -580,8 +585,16 @@ async function renderAdmin(app){
     return (b.age_hours||0)-(a.age_hours||0); });
   const chip=(key,count,label,danger)=>`<div class="chip ${danger?'danger':''} ${f.status===key?'active':''}" onclick="setStatusChip('${key}')"><b>${count||0}</b><span>${label}</span></div>`;
   const active = f.q||f.from||f.to||f.status||f.fromDate||f.toDate;
+  const misroutes=data.misroutes||[];
   app.innerHTML=`
     <h1 class="title">🛠️ ניהול אופרציה — כל הסניפים</h1>
+    ${misroutes.length?`<div class="mis-alert">
+      <div class="mis-title">🚩 מכשירים לא במקום (${misroutes.length})</div>
+      <div class="muted" style="margin-bottom:10px;font-size:13px">מכשירים שנסרקו בסניף שאינו הסניף שאליו הם משויכים בקופה. ייסגר אוטומטית כשייקלטו בסניף הנכון.</div>
+      <table class="admin"><thead><tr>
+        <th>סריאל</th><th>מוצר</th><th>הגיע לסניף</th><th>שייך לסניף</th><th>נסרק ע״י</th><th>מתי</th>
+      </tr></thead><tbody>${misroutes.map(misRow).join('')}</tbody></table>
+    </div>`:''}
     <div class="chips">
       ${chip('overdue',s.overdue,'באיחור (24ש׳+)',true)}
       ${chip('in_transit',s.in_transit,'ממתינים לסריקה')}
@@ -615,6 +628,16 @@ function adminRow(t){
     <td class="prog-cell">${t.received_units}/${t.total_units}</td>
     <td>${(t.receivers&&t.receivers.length)?t.receivers.join(', '):'—'}${t.manual_count?` <span class="badge-manual">⌨️ ${t.manual_count} לא בסורק</span>`:''}</td>
     <td>${t.status==='received'&&t.received_at?fmtTime(t.received_at):'—'}</td>
+  </tr>`;
+}
+function misRow(m){
+  return `<tr>
+    <td style="font-family:monospace;direction:ltr;text-align:right">${m.serial}</td>
+    <td>${m.product_name||''}</td>
+    <td>${m.scanned_branch_name||''}</td>
+    <td><b style="color:var(--red)">${m.expected_branch_name||''}</b></td>
+    <td>${m.scanned_by||'—'}</td>
+    <td>${fmtTime(m.created_at)}</td>
   </tr>`;
 }
 async function adminOpen(opId){ S.op=await api('/api/transfers/'+opId); S._fromAdmin=true; S.view='scan'; render(); }

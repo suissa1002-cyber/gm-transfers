@@ -83,6 +83,12 @@ def poll_once() -> dict:
                     _enrich_barcodes(o)
                 if db.upsert_transfer(o):
                     new_ids.append(str(o.get("id")))
+                    # עדכון חי של אינדקס סריאל→מוצר מפריטי ההעברה
+                    idx = [(s, it.get("id"), it.get("name"))
+                           for it in (o.get("stockItems") or [])
+                           for s in (it.get("serials") or []) if s]
+                    if idx:
+                        db.serial_index_upsert_many(idx)
             if len(ops) < 200:
                 break
     except NewOrderError as e:

@@ -108,9 +108,33 @@ _SCHEMA = [
         method       TEXT                 -- scanner | manual | paste
     )
     """.format(pk=_PK),
+    """
+    CREATE TABLE IF NOT EXISTS serial_index (
+        serial       TEXT PRIMARY KEY,
+        product_id   TEXT,
+        product_name TEXT,
+        synced_at    TEXT
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS misroutes (
+        id                 {pk},
+        serial             TEXT,
+        product_name       TEXT,
+        expected_branch_id INTEGER,
+        scanned_branch_id  INTEGER,
+        scanned_by         TEXT,
+        created_at         TEXT,
+        status             TEXT DEFAULT 'open',   -- open | resolved
+        resolved_at        TEXT,
+        resolved_reason    TEXT
+    )
+    """.format(pk=_PK),
     "CREATE INDEX IF NOT EXISTS idx_items_op ON transfer_items(op_id)",
     "CREATE INDEX IF NOT EXISTS idx_items_serial ON transfer_items(serial)",
     "CREATE INDEX IF NOT EXISTS idx_items_barcode ON transfer_items(barcode)",
+    "CREATE INDEX IF NOT EXISTS idx_misroutes_serial ON misroutes(serial)",
+    "CREATE INDEX IF NOT EXISTS idx_misroutes_status ON misroutes(status)",
     "CREATE INDEX IF NOT EXISTS idx_transfers_to ON transfers(to_branch_id, status)",
 ]
 
@@ -363,6 +387,83 @@ def list_all_transfers(include_received_days: int = 7) -> list[dict]:
                OR (received_at IS NOT NULL AND received_at >= ?)
             ORDER BY created_at DESC
         """), (cutoff,))
+        return [dict(r) for r in cur.fetchall()]
+
+
+# ──────────────────────────────────────────────────────────────
+# אינדקס סריאל→מוצר (מיפוי קבוע; הסניף נבדק חי בזמן הסריקה)
+# ──────────────────────────────────────────────────────────────
+def serial_index_upsert_many(rows: list):
+    """rows = [(serial, product_id, product_name), ...]."""
+    if not rows:
+        return 0
+    ts = now_iso()
+    with _conn() as c:
+        cur = c.cursor()
+        for serial, pid, name in rows:
+            if not serial:
+                continue
+            cur.execute(_q("""
+                INSERT INTO serial_index (serial, product_id, product_name, synced_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(serial) DO UPDATE SET
+                    product_id=excluded.product_id,
+                    product_name=excluded.product_name,
+                    synced_at=excluded.synced_at
+            """), (str(serial), str(pid) if pid is not None else None, name, ts))
+    return len(rows)
+
+
+def serial_product(serial: str) -> dict:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM serial_index WHERE serial = ?"), (str(serial).strip(),))
+        return _row_to_dict(cur.fetchone())
+
+
+def serial_index_count() -> int:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT COUNT(*) AS n FROM serial_index"))
+        return cur.fetchone()["n"]
+
+
+# ──────────────────────────────────────────────────────────────
+# חריגות "מכשיר לא במקום"
+# ──────────────────────────────────────────────────────────────
+def open_misroute(serial: str, product_name: str, expected_branch_id,
+                  scanned_branch_id, scanned_by: str) -> bool:
+    """פותח חריגה אם אין כבר אחת פתוחה לאותו סריאל. מחזיר True אם נפתחה חדשה."""
+    serial = str(serial).strip()
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT id FROM misroutes WHERE serial = ? AND status = 'open'"), (serial,))
+        if cur.fetchone():
+            return False
+        cur.execute(_q("""
+            INSERT INTO misroutes (serial, product_name, expected_branch_id, scanned_branch_id,
+                                   scanned_by, created_at, status)
+            VALUES (?, ?, ?, ?, ?, ?, 'open')
+        """), (serial, product_name, expected_branch_id, scanned_branch_id,
+               scanned_by, now_iso()))
+        return True
+
+
+def resolve_misroutes(serial: str, reason: str = "נקלט בסניף הנכון") -> int:
+    serial = str(serial).strip()
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""
+            UPDATE misroutes SET status='resolved', resolved_at=?, resolved_reason=?
+            WHERE serial = ? AND status='open'
+        """), (now_iso(), reason, serial))
+        return cur.rowcount if hasattr(cur, "rowcount") else 0
+
+
+def list_open_misroutes() -> list:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM misroutes WHERE status='open' ORDER BY created_at DESC"))
         return [dict(r) for r in cur.fetchall()]
 
 
