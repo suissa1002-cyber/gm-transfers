@@ -726,8 +726,15 @@ function renderAdmin(){
   const data=S.adminData||{summary:{},transfers:[],misroutes:[]};
   const s=data.summary||{}, order={in_transit:0,partial:1,received:2,closed:3};
   let rows=(data.transfers||[]).slice(); const total=rows.length;
-  if(f.q){ const q=f.q.trim().toLowerCase();
-    rows=rows.filter(t=>(String(t.op_id)+' '+t.from_branch_name+' '+t.to_branch_name+' '+(t.employee||'')+' '+((t.receivers||[]).join(' '))).toLowerCase().includes(q)); }
+  if(f.q){
+    const raw=f.q.trim().toLowerCase();
+    const fixed=fixHebrewLayout(f.q.trim()).toLowerCase();   // גם אם הוקלד סריאל במקלדת עברית
+    rows=rows.filter(t=>{
+      const blob=(String(t.op_id)+' '+t.from_branch_name+' '+t.to_branch_name+' '+(t.employee||'')+' '+
+                  ((t.receivers||[]).join(' '))+' '+(t.items_search||'')).toLowerCase();
+      return blob.includes(raw) || (fixed && blob.includes(fixed));
+    });
+  }
   if(f.from) rows=rows.filter(t=>String(t.from_branch_id)===String(f.from));
   if(f.to)   rows=rows.filter(t=>String(t.to_branch_id)===String(f.to));
   if(f.fromDate) rows=rows.filter(t=>(t.created_at||'').slice(0,10) >= f.fromDate);
@@ -755,7 +762,7 @@ function renderAdmin(){
       ${chip('received',s.received,'נקלטו')}
     </div>
     <div class="filters">
-      <input id="fq" placeholder="🔎 חיפוש — מס׳ פעולה / עובד" value="${f.q||''}" oninput="setFilter('q',this.value)">
+      <input id="fq" placeholder="🔎 חיפוש — פעולה / עובד / סריאל / ברקוד" value="${f.q||''}" oninput="setFilter('q',this.value)">
       <select onchange="setFilter('from',this.value)" title="סניף מקור">${branchOpts(f.from,'מקור — הכל')}</select>
       <span class="muted">→</span>
       <select onchange="setFilter('to',this.value)" title="סניף יעד">${branchOpts(f.to,'יעד — הכל')}</select>

@@ -222,6 +222,7 @@ def admin_overview(days: int = 7, x_admin_key: Optional[str] = Header(None)):
         sc = db.transfer_state_counts(t["op_id"])
         t["redirected_count"] = sc["redirected"]
         t["missing_count"] = sc["missing"]
+        t["items_search"] = db.transfer_search_text(t["op_id"])
         out.append(t)
     mis = db.list_open_misroutes()
     for m in mis:

@@ -563,6 +563,21 @@ def transfer_manual_count(op_id: str) -> int:
         return cur.fetchone()["n"]
 
 
+def transfer_search_text(op_id: str) -> str:
+    """טקסט חיפוש להעברה — כל הסריאלים/ברקודים/שמות הפריטים (לחיפוש בלוח הניהול)."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT serial, barcode, name FROM transfer_items WHERE op_id = ?"),
+                    (str(op_id),))
+        parts = []
+        for r in cur.fetchall():
+            for k in ("serial", "barcode", "name"):
+                v = r[k]
+                if v:
+                    parts.append(str(v))
+        return " ".join(parts)
+
+
 def transfer_state_counts(op_id: str) -> dict:
     """{redirected, missing} — פריטים שהופנו לסניף אחר / סומנו כחוסר."""
     with _conn() as c:
