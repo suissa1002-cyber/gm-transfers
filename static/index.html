@@ -196,7 +196,7 @@
 
 <script>
 const S = { branchId:null, branchName:null, employee:null, adminKey:null,
-            cfg:{admin_required:false, admin_branch_id:5}, theme:'dark', lastScan:null,
+            cfg:{admin_required:false, admin_branch_id:5}, theme:'light', lastScan:null,
             branchList:[], adminFilters:{q:'',from:'',to:'',status:'',fromDate:'',toDate:''}, _refocusFilter:false,
             view:'board', op:null, _fromAdmin:false, pollTimer:null };
 
@@ -226,7 +226,7 @@ function loadState(){
   S.branchName=localStorage.getItem('tr_branch_name');
   S.employee=localStorage.getItem('tr_employee');
   S.adminKey=localStorage.getItem('tr_admin_key');
-  S.theme=localStorage.getItem('tr_theme')||'dark';
+  S.theme=localStorage.getItem('tr_theme')||'light';
 }
 function changeBranch(){
   ['tr_branch_id','tr_branch_name'].forEach(k=>localStorage.removeItem(k));
