@@ -721,9 +721,8 @@ function renderAdmin(){
   if(f.toDate)   rows=rows.filter(t=>(t.created_at||'').slice(0,10) <= f.toDate);
   if(f.status==='overdue') rows=rows.filter(t=>t.overdue);
   else if(f.status) rows=rows.filter(t=>t.status===f.status);
-  rows.sort((a,b)=>{ if(a.overdue!==b.overdue) return a.overdue?-1:1;
-    if(order[a.status]!==order[b.status]) return order[a.status]-order[b.status];
-    return (b.age_hours||0)-(a.age_hours||0); });
+  // החדשים למעלה (לפי תאריך ההעברה, יורד)
+  rows.sort((a,b)=> String(b.created_at||'').localeCompare(String(a.created_at||'')));
   const chip=(key,count,label,danger)=>`<div class="chip ${danger?'danger':''} ${f.status===key?'active':''}" onclick="setStatusChip('${key}')"><b>${count||0}</b><span>${label}</span></div>`;
   const active = f.q||f.from||f.to||f.status||f.fromDate||f.toDate;
   const misroutes=data.misroutes||[];
