@@ -92,6 +92,9 @@
   .plan-group{margin-bottom:22px}
   .plan-head{display:flex;align-items:center;gap:12px;font-size:16px;margin-bottom:8px}
   .plan-head button{margin-inline-start:auto}
+  .btn-req-in{background:var(--green);color:#fff;font-weight:700}
+  table.admin tr.has-req{background:rgba(31,191,107,.08)}
+  table.admin tr.has-req:hover{background:rgba(31,191,107,.14)}
   .lastscan .sub{font-size:14px;opacity:.85;font-weight:600}
   .card.flash{border-color:var(--green)!important;box-shadow:0 0 0 2px var(--green) inset;transition:.15s}
   /* סורק מצלמה (מובייל) */
@@ -759,8 +762,13 @@ async function loadPlan(spinner){
 async function loadRebalance(spinner){
   if(spinner) showLoading('טוען איזון מלאי…');
   try{ S.rebalanceData=await api('/api/admin/rebalance'); }catch(e){}
+  try{ S.planData=await api('/api/admin/plan'); S.planCount=(S.planData.lines||[]).length; }catch(e){}
   if(spinner) hideLoading();
   if(S.view==='admin' && S.adminTab==='rebalance') renderRebalance();
+}
+function planCountFor(pid){
+  const lines=((S.planData||{}).lines)||[];
+  return lines.filter(l=>String(l.product_id)===String(pid)).length;
 }
 function setRebalFilter(v){ S.rebalFilter=v; renderRebalance(); }
 function setRebalSearch(v){ S.rebalSearch=v; S._refocusRebal=true; renderRebalance(); }
@@ -793,14 +801,18 @@ async function runRebalanceScan(){
 function rebalRow(it, branches){
   const cells=branches.map(b=>{ const q=(it.stock||{})[String(b.id)]||0;
     const cls=q===0?'r-zero':(q>=2?'r-surplus':''); return `<td class="${cls}">${q}</td>`; }).join('');
-  return `<tr>
+  const pc=planCountFor(it.product_id);
+  const btn=pc>0
+    ? `<button class="btn-req-in" onclick='openPlanEditor(${JSON.stringify(it.product_id)})'>✓ בבקשה (${pc})</button>`
+    : `<button class="btn-ghost" onclick='openPlanEditor(${JSON.stringify(it.product_id)})'>➕ לבקשה</button>`;
+  return `<tr class="${pc>0?'has-req':''}">
     <td style="direction:ltr;text-align:right;font-family:monospace">${it.product_id||''}</td>
     <td>${it.name}</td>
     <td>${it.kind==='serial'?'📱 סריאלי':'🏷️ ברקוד'}</td>
     ${cells}
     <td style="color:var(--red);font-weight:700">${(it.needs_names||[]).join(', ')}</td>
     <td style="color:var(--green);font-weight:700">${(it.surplus_names||[]).join(', ')}</td>
-    <td><button class="btn-ghost" onclick='openPlanEditor(${JSON.stringify(it.product_id)})'>➕ לבקשה</button></td>
+    <td>${btn}</td>
   </tr>`;
 }
 function setRebalBranch(v){ S.rebalBranch=v; renderRebalance(); }
@@ -898,7 +910,10 @@ async function savePlan(){
   if(!payload.lines.length){ toast('בחר מקור ויעד שונים',false); return; }
   closeModal(); showLoading('שומר…');
   try{ await api('/api/admin/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}); }catch(e){}
-  await loadPlan(false); hideLoading(); toast('נוסף לבקשת ההעברה ✓',true);
+  try{ S.planData=await api('/api/admin/plan'); S.planCount=(S.planData.lines||[]).length; }catch(e){}
+  hideLoading();
+  if(S.adminTab==='plan') renderPlan(); else renderRebalance();   // עדכון חיווי "בבקשה"
+  toast('נוסף לבקשת ההעברה ✓',true);
 }
 function renderPlan(){
   const app=document.getElementById('app');
