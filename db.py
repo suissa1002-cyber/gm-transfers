@@ -460,6 +460,16 @@ def resolve_misroutes(serial: str, reason: str = "נקלט בסניף הנכון
         return cur.rowcount if hasattr(cur, "rowcount") else 0
 
 
+def resolve_misroute_by_id(mid, reason: str = "טופל ידנית") -> int:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""
+            UPDATE misroutes SET status='resolved', resolved_at=?, resolved_reason=?
+            WHERE id = ? AND status='open'
+        """), (now_iso(), reason, mid))
+        return cur.rowcount if hasattr(cur, "rowcount") else 0
+
+
 def list_open_misroutes() -> list:
     with _conn() as c:
         cur = c.cursor()

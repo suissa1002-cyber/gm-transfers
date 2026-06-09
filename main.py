@@ -240,6 +240,13 @@ def admin_serial_index(x_admin_key: Optional[str] = Header(None)):
     return {"index_size": db.serial_index_count()}
 
 
+@app.post("/api/admin/misroute/{mid}/resolve")
+def admin_resolve_misroute(mid: int, x_admin_key: Optional[str] = Header(None)):
+    """סגירת חריגת 'מכשיר לא במקום' ידנית ע"י מנהל."""
+    _require_admin(x_admin_key)
+    return {"resolved": db.resolve_misroute_by_id(mid)}
+
+
 # ──────────────────────────────────────────────────────────────
 # Frontend (SPA)
 # ──────────────────────────────────────────────────────────────
