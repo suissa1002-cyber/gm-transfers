@@ -158,6 +158,12 @@ _SCHEMA = [
         created_at  TEXT
     )
     """.format(pk=_PK),
+    """
+    CREATE TABLE IF NOT EXISTS broadcasts (
+        branch_id    INTEGER PRIMARY KEY,
+        broadcast_at TEXT
+    )
+    """,
     "CREATE INDEX IF NOT EXISTS idx_misroutes_serial ON misroutes(serial)",
     "CREATE INDEX IF NOT EXISTS idx_misroutes_status ON misroutes(status)",
     "CREATE INDEX IF NOT EXISTS idx_transfers_to ON transfers(to_branch_id, status)",
@@ -714,6 +720,41 @@ def plan_count() -> int:
         cur = c.cursor()
         cur.execute("SELECT COUNT(*) AS n FROM transfer_plan")
         return cur.fetchone()["n"]
+
+
+def broadcast_set(branch_id):
+    with _conn() as c:
+        c.cursor().execute(_q("""
+            INSERT INTO broadcasts (branch_id, broadcast_at) VALUES (?, ?)
+            ON CONFLICT(branch_id) DO UPDATE SET broadcast_at=excluded.broadcast_at
+        """), (int(branch_id), now_iso()))
+
+
+def broadcast_get(branch_id):
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT broadcast_at FROM broadcasts WHERE branch_id = ?"), (int(branch_id),))
+        r = cur.fetchone()
+        return r["broadcast_at"] if r else None
+
+
+def broadcast_clear(branch_id):
+    with _conn() as c:
+        c.cursor().execute(_q("DELETE FROM broadcasts WHERE branch_id = ?"), (int(branch_id),))
+
+
+def broadcast_branches() -> list:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute("SELECT branch_id FROM broadcasts")
+        return [r["branch_id"] for r in cur.fetchall()]
+
+
+def plan_for_branch(branch_id) -> list:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM transfer_plan WHERE from_branch = ? ORDER BY name"), (int(branch_id),))
+        return [dict(r) for r in cur.fetchall()]
 
 
 def rebalance_last_scan() -> str:

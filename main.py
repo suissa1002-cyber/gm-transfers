@@ -214,6 +214,45 @@ def stats():
     return db.stats()
 
 
+# ── שידור בקשת העברה למסך הסניף ──
+class BroadcastIn(BaseModel):
+    branch_id: int
+
+
+@app.post("/api/admin/broadcast")
+def admin_broadcast(body: BroadcastIn, x_admin_key: Optional[str] = Header(None)):
+    """משדר את בקשת ההעברה של סניף המקור למסך הקליטה שלו (תצוגה בלבד)."""
+    _require_admin(x_admin_key)
+    db.broadcast_set(body.branch_id)
+    return {"ok": True, "lines": len(db.plan_for_branch(body.branch_id))}
+
+
+@app.get("/api/admin/broadcasts")
+def admin_broadcasts(x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    return {"branches": db.broadcast_branches()}
+
+
+@app.get("/api/broadcast")
+def get_broadcast(branch_id: int):
+    """ציבורי — מסך הסניף בודק אם יש בקשת העברה משודרת אליו (תצוגה בלבד)."""
+    at = db.broadcast_get(branch_id)
+    lines = db.plan_for_branch(branch_id)
+    for ln in lines:
+        ln["from_name"] = cfg.branch_name(ln.get("from_branch"))
+        ln["to_name"] = cfg.branch_name(ln.get("to_branch"))
+    active = bool(at) and len(lines) > 0
+    return {"active": active, "broadcast_at": at,
+            "from_name": cfg.branch_name(branch_id), "lines": lines}
+
+
+@app.post("/api/broadcast/dismiss")
+def dismiss_broadcast(body: BroadcastIn):
+    """ציבורי — הסניף מאשר שראה את הבקשה."""
+    db.broadcast_clear(body.branch_id)
+    return {"ok": True}
+
+
 @app.get("/api/admin/overview")
 def admin_overview(days: int = 7, x_admin_key: Optional[str] = Header(None)):
     """לוח ניהול אופרציה — כל ההעברות בכל הסניפים: מי לא סרק, מי ממתין, מה נקלט."""

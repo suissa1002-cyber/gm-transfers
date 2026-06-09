@@ -97,6 +97,17 @@
   table.admin tr.has-req:hover{background:rgba(31,191,107,.14)}
   .lastscan .sub{font-size:14px;opacity:.85;font-weight:600}
   .card.flash{border-color:var(--green)!important;box-shadow:0 0 0 2px var(--green) inset;transition:.15s}
+  /* שידור בקשת העברה */
+  .bcast{max-width:640px;margin:0 auto 16px;display:flex;align-items:center;gap:14px;cursor:pointer;
+         background:linear-gradient(135deg,#2563eb,#1e40af);color:#fff;border-radius:16px;padding:14px 18px;
+         box-shadow:0 4px 20px rgba(37,99,235,.35);animation:bcpulse 2s ease-in-out infinite}
+  @keyframes bcpulse{0%,100%{box-shadow:0 4px 20px rgba(37,99,235,.35)}50%{box-shadow:0 4px 28px rgba(37,99,235,.6)}}
+  .bcast .bc-ic{font-size:28px;line-height:1}
+  .bcast .bc-txt{display:flex;flex-direction:column;line-height:1.35;flex:1}
+  .bcast .bc-txt b{font-size:17px} .bcast .bc-txt span{font-size:13px;opacity:.9}
+  .bcast .bc-x{background:rgba(255,255,255,.2);color:#fff;border:none;border-radius:10px;
+               width:34px;height:34px;font-size:16px;cursor:pointer}
+  .bcast .bc-x:hover{background:rgba(255,255,255,.35)}
   /* סורק מצלמה (מובייל) */
   .btn-cam{margin-top:12px;width:100%;background:var(--blue);color:#fff;border-radius:12px;
            padding:13px 18px;font-size:16px;font-weight:700}
@@ -290,6 +301,33 @@ function detectNewTransfers(list){
 function requestNotif(){
   if(!window.Notification){ toast('הדפדפן לא תומך בהתראות',false); return; }
   Notification.requestPermission().then(()=>{ render(); });
+}
+// התראה על שידור בקשת העברה למסך
+function detectBroadcast(bc){
+  const at=(bc&&bc.active)?bc.broadcast_at:null;
+  if(S._knownBcast===undefined){ S._knownBcast=at; return; }   // טעינה ראשונה — בסיס
+  if(at && at!==S._knownBcast){
+    S._knownBcast=at;
+    const n=(bc.lines||[]).length, title='📡 בקשת העברה חדשה מהאתר';
+    const body=`${n} פריטים להעברה`;
+    if(window.Notification && Notification.permission==='granted'){
+      try{ const ntf=new Notification(title,{body, tag:'gm-bcast', renotify:true});
+        ntf.onclick=()=>{ window.focus(); S.view='board'; render(); ntf.close(); };
+        setTimeout(()=>{ try{ntf.close();}catch(e){} }, 12000); }catch(e){}
+    }
+    alarm(); flashTitle(title);
+  } else { S._knownBcast=at; }
+}
+function openBroadcast(){
+  const bc=S.broadcast; if(!bc||!bc.lines||!bc.lines.length) return;
+  openHTMLWindow(transferRequestHTML(bc.from_name||'האתר', bc.lines));
+}
+async function dismissBroadcast(){
+  if(!confirm('לסגור את בקשת ההעברה מהמסך? (בצע אותה דרך הקופה תחילה)')) return;
+  try{ await api('/api/broadcast/dismiss',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({branch_id:Number(S.branchId)})}); }catch(e){}
+  S.broadcast=null; S._knownBcast=null;
+  renderBoard(document.getElementById('app'), true);
 }
 function toast(msg,ok){ const t=document.getElementById('toast');
   t.textContent=msg;t.className='toast show '+(ok?'ok':'err');setTimeout(()=>t.className='toast',1100); }
@@ -518,10 +556,19 @@ function finishPick(id,name){
 async function renderBoard(app, silent){
   if(!silent) showLoading();
   let list=[]; try{ list=await api('/api/transfers?branch_id='+S.branchId); }catch(e){}
+  let bc=null; try{ bc=await api('/api/broadcast?branch_id='+S.branchId); }catch(e){}
   if(!silent) hideLoading();
   detectNewTransfers(list);   // התראה על העברות חדשות
+  detectBroadcast(bc);        // התראה על שידור בקשת העברה
   if(S.view!=='board') return;   // המשתמש ניווט בינתיים — אל תדרוס
   S.transfers=list;
+  S.broadcast=(bc&&bc.active)?bc:null;
+  const bcHtml = S.broadcast
+    ? `<div class="bcast" onclick="openBroadcast()">
+         <div class="bc-ic">📡</div>
+         <div class="bc-txt"><b>בקשת העברה מהאתר</b><span>${(S.broadcast.lines||[]).length} פריטים · לחץ לצפייה</span></div>
+         <button class="bc-x" onclick="event.stopPropagation();dismissBroadcast()">✕</button>
+       </div>` : '';
   const needEmp=!S.employee;
   const notifBtn = (window.Notification && Notification.permission!=='granted')
     ? `<button class="btn-ghost" style="margin-bottom:12px" onclick="requestNotif()">🔔 הפעל התראות להעברה נכנסת</button>` : '';
@@ -536,6 +583,7 @@ async function renderBoard(app, silent){
   app.innerHTML=`
     <h1 class="title">📥 קליטת מכשירים נכנסים</h1>
     <div style="text-align:center">${notifBtn}</div>
+    ${bcHtml}
     <div class="panel board-scan">
       ${needEmp
         ? `<div class="scan-icon">👤</div>
@@ -933,6 +981,7 @@ function renderPlan(){
     html+=`<div class="plan-group">
       <div class="plan-head"><b>📦 מסניף ${fn}</b> · ${g.length} פריטים
         <button class="btn-primary" onclick="openTransferRequestPage(${fb})">🖼️ פתח לצילום</button>
+        <button class="btn-primary" onclick="broadcastBranch(${fb})">📡 שדר לסניף</button>
         <button class="btn-ghost" onclick="exportPlanCSV(${fb})">📄 CSV</button>
         <button class="btn-ghost" onclick="clearPlan(${fb})">🗑️ נקה</button></div>
       <table class="admin"><thead><tr><th>מק״ט</th><th>מוצר</th><th>כמות</th><th>לסניף</th><th></th></tr></thead><tbody>
@@ -958,17 +1007,13 @@ async function clearPlan(fromBranch){
   await loadPlan(false); hideLoading();
 }
 function _esc(s){ return String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
-// דף מעוצב לצילום מסך ושליחה לסניף
-function openTransferRequestPage(fromBranch){
-  const d=S.planData||{lines:[]};
-  const lines=(d.lines||[]).filter(l=>String(l.from_branch)===String(fromBranch))
-                           .sort((a,b)=>(a.to_branch-b.to_branch)||String(a.name).localeCompare(b.name));
-  if(!lines.length) return;
-  const fname=lines[0].from_name;
+// דף מעוצב לצילום/שידור
+function transferRequestHTML(fname, lines){
+  lines=lines.slice().sort((a,b)=>(a.to_branch-b.to_branch)||String(a.name).localeCompare(b.name));
   const date=new Date().toLocaleDateString('he-IL',{day:'2-digit',month:'2-digit',year:'numeric'});
   const totalQty=lines.reduce((a,l)=>a+(Number(l.qty)||0),0);
   const rows=lines.map(l=>`<tr><td class="nm">${_esc(l.name)}</td><td class="sku">${_esc(l.product_id)}</td><td class="q">${l.qty}</td><td class="to">${_esc(l.to_name)}</td></tr>`).join('');
-  const html=`<!doctype html><html dir="rtl" lang="he"><head><meta charset="utf-8">
+  return `<!doctype html><html dir="rtl" lang="he"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>בקשת העברה — ${_esc(fname)}</title>
 <style>
@@ -995,9 +1040,31 @@ function openTransferRequestPage(fromBranch){
   <div class="total">סה״כ ${lines.length} שורות · ${totalQty} יחידות</div>
   <div class="foot">קליטת העברות — Green Mobile</div>
 </div></body></html>`;
+}
+function openHTMLWindow(html){
   const w=window.open('','_blank');
   if(w){ w.document.open(); w.document.write(html); w.document.close(); }
   else toast('חסום ע״י חוסם החלונות — אשר חלונות קופצים',false);
+}
+function openTransferRequestPage(fromBranch){
+  const d=S.planData||{lines:[]};
+  const lines=(d.lines||[]).filter(l=>String(l.from_branch)===String(fromBranch));
+  if(!lines.length){ toast('אין שורות לסניף זה',false); return; }
+  openHTMLWindow(transferRequestHTML(lines[0].from_name, lines));
+}
+async function broadcastBranch(fromBranch){
+  const d=S.planData||{lines:[]};
+  const lines=(d.lines||[]).filter(l=>String(l.from_branch)===String(fromBranch));
+  if(!lines.length){ toast('אין שורות לסניף זה',false); return; }
+  const fn=lines[0].from_name;
+  if(!confirm('לשדר את הבקשה למסך הקליטה של סניף '+fn+'?\nהיא תופיע שם כפקודה לתצוגה (ללא סריקה).')) return;
+  showLoading();
+  try{
+    const r=await api('/api/admin/broadcast',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({branch_id:Number(fromBranch)})});
+    toast('שודר לסניף '+fn+' ('+(r.lines||lines.length)+' שורות) 📡',true);
+  }catch(e){ toast('שגיאה בשידור',false); }
+  hideLoading();
 }
 function exportPlanCSV(fromBranch){
   const d=S.planData||{lines:[]}; let lines=d.lines||[];
@@ -1112,6 +1179,8 @@ function startNotifPoll(){ clearInterval(S.notifTimer);
     if(!S.branchId) return;
     let list; try{ list=await api('/api/transfers?branch_id='+S.branchId); }catch(e){ return; }
     detectNewTransfers(list);
+    let bc; try{ bc=await api('/api/broadcast?branch_id='+S.branchId); }catch(e){ return; }
+    detectBroadcast(bc);
   }, 20000); }
 
 // ── polling רקע ──
