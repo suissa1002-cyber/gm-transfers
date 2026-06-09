@@ -79,9 +79,17 @@
   .badge-manual{background:rgba(245,165,36,.2);color:var(--amber);border-radius:6px;padding:2px 7px;font-size:11px;font-weight:700;margin-inline-start:6px;white-space:nowrap}
   .mis-alert{border:1px solid var(--red);background:rgba(229,72,77,.06);border-radius:14px;padding:16px;margin-bottom:20px}
   .mis-title{color:var(--red);font-weight:800;font-size:18px}
-  .tabs{display:flex;gap:8px;margin-bottom:16px}
-  .tabs button{background:var(--card);border:1px solid var(--line);color:var(--muted);border-radius:10px;padding:10px 18px;font-weight:700}
-  .tabs button.active{background:var(--blue);color:#fff;border-color:var(--blue)}
+  .tabs{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+  .tabs>button{background:var(--card);border:1px solid var(--line);color:var(--muted);border-radius:10px;padding:10px 18px;font-weight:700}
+  .tabs>button.active{background:var(--blue);color:#fff;border-color:var(--blue)}
+  .tabgroup{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--card)}
+  .tabgroup button{background:transparent;border:none;color:var(--muted);padding:10px 18px;font-weight:700;border-radius:0;white-space:nowrap}
+  .tabgroup button+button{border-inline-start:1px solid var(--line)}
+  .tabgroup button:hover{color:var(--txt)}
+  .tabgroup button.active{background:var(--blue);color:#fff}
+  .admin th.sortable{cursor:pointer;user-select:none;white-space:nowrap}
+  .admin th.sortable:hover{color:var(--blue)}
+  .admin th .arr{opacity:.5;font-size:11px}
   .rebal-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:16px}
   .rebal-bar select,.rebal-bar input{font-family:inherit;font-size:14px;padding:9px 12px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--txt)}
   .rebal-bar input{min-width:240px;outline:none} .rebal-bar input:focus{border-color:var(--blue)}
@@ -249,6 +257,7 @@ const S = { branchId:null, branchName:null, employee:null, adminKey:null,
             rebalBranch:'', planData:null, planCount:0,
             recoData:null, recoDays:30, recoBranch:'', recoTarget:21, recoKind:'all',
             recoSearch:'', recoSupplier:'', recoCategory:'', _refocusReco:false,
+            recoSort:{col:'recommended',dir:'desc'},
             orderData:null, orderCount:0, orderSearch:'', orderSupplier:'', orderCategory:'', _refocusOrder:false };
 
 // ── ערכת נושא (כהה/בהיר) ──
@@ -805,10 +814,14 @@ function adminTabsHTML(){
   const base=S.adminTab!=='rebalance'&&S.adminTab!=='plan'&&S.adminTab!=='reco'&&S.adminTab!=='order'?'active':'';
   return `<div class="tabs">
     <button class="${base}" onclick="setAdminTab('transfers')">📋 העברות</button>
-    <button class="${a('rebalance')}" onclick="setAdminTab('rebalance')">⚖️ איזון מלאי</button>
-    <button class="${a('plan')}" onclick="setAdminTab('plan')">📝 בקשות העברה${pc}</button>
-    <button class="${a('reco')}" onclick="setAdminTab('reco')">🛒 המלצות הזמנה</button>
-    <button class="${a('order')}" onclick="setAdminTab('order')">📋 טיוטת הזמנה${oc}</button>
+    <div class="tabgroup">
+      <button class="${a('rebalance')}" onclick="setAdminTab('rebalance')">⚖️ איזון מלאי</button>
+      <button class="${a('plan')}" onclick="setAdminTab('plan')">📝 בקשות העברה${pc}</button>
+    </div>
+    <div class="tabgroup">
+      <button class="${a('reco')}" onclick="setAdminTab('reco')">🛒 המלצות הזמנה</button>
+      <button class="${a('order')}" onclick="setAdminTab('order')">📋 טיוטת הזמנה${oc}</button>
+    </div>
   </div>`;
 }
 function setAdminTab(tab){
@@ -1126,8 +1139,18 @@ function recoFiltered(){
   if(q){ const q2=fixHebrewLayout(S.recoSearch.trim()).toLowerCase();
     items=items.filter(i=>{ const blob=((i.name||'')+' '+(i.product_id||'')+' '+(i.barcode||'')).toLowerCase();
       return blob.includes(q)||(q2&&blob.includes(q2)); }); }
+  const sc=S.recoSort;
+  if(sc&&sc.col){ const dir=sc.dir==='asc'?1:-1;
+    items=items.slice().sort((a,b)=>((Number(a[sc.col])||0)-(Number(b[sc.col])||0))*dir
+      || String(a.name).localeCompare(String(b.name))); }
   return items;
 }
+function setRecoSort(col){
+  const s=S.recoSort||{};
+  if(s.col===col) s.dir=(s.dir==='desc'?'asc':'desc'); else { s.col=col; s.dir='desc'; }
+  S.recoSort={col:s.col,dir:s.dir}; renderReco();
+}
+function recoArr(col){ const s=S.recoSort||{}; if(s.col!==col) return '<span class="arr">↕</span>'; return `<span class="arr">${s.dir==='desc'?'▼':'▲'}</span>`; }
 function recoRow(it){
   const q=orderQtyFor(it.product_id);
   const btn=q>0
@@ -1190,7 +1213,12 @@ function renderReco(){
       <span class="muted" style="margin-inline-start:auto">מציג ${items.length} מתוך ${total}</span>
     </div>
     ${items.length?`<table class="admin"><thead><tr>
-      <th>מק״ט</th><th>מוצר</th><th>סוג</th><th>ספק</th><th>קטגוריה</th><th>נמכר</th><th>מלאי</th><th>ימי כיסוי</th><th>מומלץ</th><th></th>
+      <th>מק״ט</th><th>מוצר</th><th>סוג</th><th>ספק</th><th>קטגוריה</th>
+      <th class="sortable" onclick="setRecoSort('sold')">נמכר ${recoArr('sold')}</th>
+      <th class="sortable" onclick="setRecoSort('stock')">מלאי ${recoArr('stock')}</th>
+      <th class="sortable" onclick="setRecoSort('cover_days')">ימי כיסוי ${recoArr('cover_days')}</th>
+      <th class="sortable" onclick="setRecoSort('recommended')">מומלץ ${recoArr('recommended')}</th>
+      <th></th>
     </tr></thead><tbody>${items.map(recoRow).join('')}</tbody></table>`
     :`<div class="empty">${sum.docs?'אין מוצרים מתאימים לסינון':'אין נתוני מכירות עדיין — לחץ "🔄 אסוף מכירות" (או המתן לאיסוף היומי)'}</div>`}`;
   if(S._refocusReco){ const el=document.getElementById('recoSearch'); if(el){ el.focus(); const v=el.value; el.value=''; el.value=v; } S._refocusReco=false; }
