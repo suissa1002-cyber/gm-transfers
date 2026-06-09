@@ -316,9 +316,9 @@ def admin_plan_delete(pid: int, x_admin_key: Optional[str] = Header(None)):
 
 
 @app.post("/api/admin/plan/clear")
-def admin_plan_clear(x_admin_key: Optional[str] = Header(None)):
+def admin_plan_clear(from_branch: Optional[int] = None, x_admin_key: Optional[str] = Header(None)):
     _require_admin(x_admin_key)
-    db.plan_clear()
+    db.plan_clear(from_branch)
     return {"ok": True}
 
 

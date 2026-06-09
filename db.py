@@ -685,9 +685,13 @@ def plan_delete(pid) -> int:
         return cur.rowcount if hasattr(cur, "rowcount") else 0
 
 
-def plan_clear():
+def plan_clear(from_branch=None):
     with _conn() as c:
-        c.cursor().execute("DELETE FROM transfer_plan")
+        cur = c.cursor()
+        if from_branch is None:
+            cur.execute("DELETE FROM transfer_plan")
+        else:
+            cur.execute(_q("DELETE FROM transfer_plan WHERE from_branch = ?"), (int(from_branch),))
 
 
 def plan_count() -> int:

@@ -924,7 +924,8 @@ function renderPlan(){
     html+=`<div class="plan-group">
       <div class="plan-head"><b>📦 מסניף ${fn}</b> · ${g.length} פריטים
         <button class="btn-primary" onclick="openTransferRequestPage(${fb})">🖼️ פתח לצילום</button>
-        <button class="btn-ghost" onclick="exportPlanCSV(${fb})">📄 CSV</button></div>
+        <button class="btn-ghost" onclick="exportPlanCSV(${fb})">📄 CSV</button>
+        <button class="btn-ghost" onclick="clearPlan(${fb})">🗑️ נקה</button></div>
       <table class="admin"><thead><tr><th>מק״ט</th><th>מוצר</th><th>כמות</th><th>לסניף</th><th></th></tr></thead><tbody>
       ${g.map(l=>`<tr><td style="font-family:monospace;direction:ltr;text-align:right">${l.product_id}</td><td>${l.name}</td>
         <td><b>${l.qty}</b></td><td>${l.to_name}</td><td><button class="btn-ghost" onclick="deletePlanLine(${l.id})">✕</button></td></tr>`).join('')}
@@ -939,7 +940,14 @@ function renderPlan(){
     ${lines.length?html:'<div class="empty">אין בקשות העברה. הוסף מטאב "⚖️ איזון מלאי" עם הכפתור ➕ לבקשה.</div>'}`;
 }
 async function deletePlanLine(id){ showLoading(); try{ await api('/api/admin/plan/'+id,{method:'DELETE'}); }catch(e){} await loadPlan(false); hideLoading(); }
-async function clearPlan(){ if(!confirm('לנקות את כל בקשות ההעברה?')) return; showLoading(); try{ await api('/api/admin/plan/clear',{method:'POST'}); }catch(e){} await loadPlan(false); hideLoading(); }
+async function clearPlan(fromBranch){
+  const msg = (fromBranch!==undefined&&fromBranch!==null) ? 'לנקות את הבקשות מהסניף הזה?' : 'לנקות את כל בקשות ההעברה?';
+  if(!confirm(msg)) return;
+  showLoading();
+  const url='/api/admin/plan/clear'+((fromBranch!==undefined&&fromBranch!==null)?('?from_branch='+fromBranch):'');
+  try{ await api(url,{method:'POST'}); }catch(e){}
+  await loadPlan(false); hideLoading();
+}
 function _esc(s){ return String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
 // דף מעוצב לצילום מסך ושליחה לסניף
 function openTransferRequestPage(fromBranch){
