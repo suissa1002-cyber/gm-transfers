@@ -923,7 +923,8 @@ function renderPlan(){
   Object.keys(groups).forEach(fb=>{ const g=groups[fb]; const fn=g[0].from_name;
     html+=`<div class="plan-group">
       <div class="plan-head"><b>📦 מסניף ${fn}</b> · ${g.length} פריטים
-        <button class="btn-ghost" onclick="exportPlanCSV(${fb})">📄 ייצא בקשה ל${fn}</button></div>
+        <button class="btn-primary" onclick="openTransferRequestPage(${fb})">🖼️ פתח לצילום</button>
+        <button class="btn-ghost" onclick="exportPlanCSV(${fb})">📄 CSV</button></div>
       <table class="admin"><thead><tr><th>מק״ט</th><th>מוצר</th><th>כמות</th><th>לסניף</th><th></th></tr></thead><tbody>
       ${g.map(l=>`<tr><td style="font-family:monospace;direction:ltr;text-align:right">${l.product_id}</td><td>${l.name}</td>
         <td><b>${l.qty}</b></td><td>${l.to_name}</td><td><button class="btn-ghost" onclick="deletePlanLine(${l.id})">✕</button></td></tr>`).join('')}
@@ -939,6 +940,48 @@ function renderPlan(){
 }
 async function deletePlanLine(id){ showLoading(); try{ await api('/api/admin/plan/'+id,{method:'DELETE'}); }catch(e){} await loadPlan(false); hideLoading(); }
 async function clearPlan(){ if(!confirm('לנקות את כל בקשות ההעברה?')) return; showLoading(); try{ await api('/api/admin/plan/clear',{method:'POST'}); }catch(e){} await loadPlan(false); hideLoading(); }
+function _esc(s){ return String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+// דף מעוצב לצילום מסך ושליחה לסניף
+function openTransferRequestPage(fromBranch){
+  const d=S.planData||{lines:[]};
+  const lines=(d.lines||[]).filter(l=>String(l.from_branch)===String(fromBranch))
+                           .sort((a,b)=>(a.to_branch-b.to_branch)||String(a.name).localeCompare(b.name));
+  if(!lines.length) return;
+  const fname=lines[0].from_name;
+  const date=new Date().toLocaleDateString('he-IL',{day:'2-digit',month:'2-digit',year:'numeric'});
+  const totalQty=lines.reduce((a,l)=>a+(Number(l.qty)||0),0);
+  const rows=lines.map(l=>`<tr><td class="nm">${_esc(l.name)}</td><td class="sku">${_esc(l.product_id)}</td><td class="q">${l.qty}</td><td class="to">${_esc(l.to_name)}</td></tr>`).join('');
+  const html=`<!doctype html><html dir="rtl" lang="he"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>בקשת העברה — ${_esc(fname)}</title>
+<style>
+ *{box-sizing:border-box} body{margin:0;background:#eef1f6;font-family:-apple-system,Segoe UI,Roboto,Arial,"Heebo",sans-serif;padding:18px;color:#18222f}
+ .card{max-width:680px;margin:0 auto;background:#fff;border-radius:18px;overflow:hidden;box-shadow:0 6px 30px rgba(0,0,0,.12)}
+ .top{background:#2563eb;color:#fff;padding:18px 22px;display:flex;align-items:center;justify-content:space-between}
+ .top .logo{font-size:20px;font-weight:800}
+ .top .ttl{font-size:15px;opacity:.95}
+ .meta{display:flex;justify-content:space-between;align-items:center;padding:16px 22px;font-size:17px;border-bottom:2px solid #eef1f6}
+ .meta b{font-size:20px} .meta .date{color:#5e6b7d;font-size:15px}
+ table{width:100%;border-collapse:collapse}
+ th,td{padding:13px 16px;text-align:right;border-bottom:1px solid #eef1f6;font-size:15px}
+ th{background:#f5f7fb;color:#5e6b7d;font-size:13px;font-weight:700}
+ td.nm{font-weight:600} td.sku{font-family:monospace;direction:ltr;text-align:right;color:#5e6b7d;font-size:13px}
+ td.q{font-weight:800;font-size:18px;text-align:center} td.to{font-weight:700;color:#2563eb}
+ tbody tr:nth-child(even){background:#fafbfd}
+ .total{padding:14px 22px;font-weight:700;background:#f5f7fb;text-align:center}
+ .foot{padding:10px;text-align:center;color:#9aa6b6;font-size:12px}
+</style></head><body>
+<div class="card">
+  <div class="top"><div class="logo">📦 Green Mobile</div><div class="ttl">בקשת העברת מלאי</div></div>
+  <div class="meta"><div>מסניף <b>${_esc(fname)}</b></div><div class="date">${date}</div></div>
+  <table><thead><tr><th>מוצר</th><th>מק״ט</th><th>כמות</th><th>לסניף</th></tr></thead><tbody>${rows}</tbody></table>
+  <div class="total">סה״כ ${lines.length} שורות · ${totalQty} יחידות</div>
+  <div class="foot">קליטת העברות — Green Mobile</div>
+</div></body></html>`;
+  const w=window.open('','_blank');
+  if(w){ w.document.open(); w.document.write(html); w.document.close(); }
+  else toast('חסום ע״י חוסם החלונות — אשר חלונות קופצים',false);
+}
 function exportPlanCSV(fromBranch){
   const d=S.planData||{lines:[]}; let lines=d.lines||[];
   if(fromBranch!==undefined && fromBranch!==null && fromBranch!=='') lines=lines.filter(l=>String(l.from_branch)===String(fromBranch));
