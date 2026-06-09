@@ -246,7 +246,10 @@ const S = { branchId:null, branchName:null, employee:null, adminKey:null,
             branchList:[], adminFilters:{q:'',from:'',to:'',status:'',fromDate:'',toDate:''}, _refocusFilter:false,
             view:'board', op:null, _fromAdmin:false, pollTimer:null, knownOps:null, notifTimer:null,
             adminTab:'transfers', rebalanceData:null, rebalFilter:'serial', rebalSearch:'', _refocusRebal:false,
-            rebalBranch:'', planData:null, planCount:0 };
+            rebalBranch:'', planData:null, planCount:0,
+            recoData:null, recoDays:30, recoBranch:'', recoTarget:21, recoKind:'all',
+            recoSearch:'', recoSupplier:'', recoCategory:'', _refocusReco:false,
+            orderData:null, orderCount:0, orderSearch:'', orderSupplier:'', orderCategory:'', _refocusOrder:false };
 
 // ── ערכת נושא (כהה/בהיר) ──
 function applyTheme(){
@@ -797,17 +800,23 @@ async function loadAdmin(spinner){
 
 function adminTabsHTML(){
   const pc=S.planCount?` (${S.planCount})`:'';
+  const oc=S.orderCount?` (${S.orderCount})`:'';
   const a=t=>S.adminTab===t?'active':'';
+  const base=S.adminTab!=='rebalance'&&S.adminTab!=='plan'&&S.adminTab!=='reco'&&S.adminTab!=='order'?'active':'';
   return `<div class="tabs">
-    <button class="${S.adminTab!=='rebalance'&&S.adminTab!=='plan'?'active':''}" onclick="setAdminTab('transfers')">📋 העברות</button>
+    <button class="${base}" onclick="setAdminTab('transfers')">📋 העברות</button>
     <button class="${a('rebalance')}" onclick="setAdminTab('rebalance')">⚖️ איזון מלאי</button>
     <button class="${a('plan')}" onclick="setAdminTab('plan')">📝 בקשות העברה${pc}</button>
+    <button class="${a('reco')}" onclick="setAdminTab('reco')">🛒 המלצות הזמנה</button>
+    <button class="${a('order')}" onclick="setAdminTab('order')">📋 טיוטת הזמנה${oc}</button>
   </div>`;
 }
 function setAdminTab(tab){
   S.adminTab=tab;
   if(tab==='rebalance'){ if(!S.rebalanceData) loadRebalance(true); else renderRebalance(); }
   else if(tab==='plan'){ loadPlan(true); }
+  else if(tab==='reco'){ if(!S.recoData) loadReco(true); else renderReco(); }
+  else if(tab==='order'){ loadOrder(true); }
   else renderAdmin();
 }
 async function loadPlan(spinner){
@@ -1090,9 +1099,246 @@ function exportPlanCSV(fromBranch){
   a.download='בקשת-העברה'+tag+'-'+new Date().toISOString().slice(0,10)+'.csv'; a.click();
 }
 
+// ── 🛒 המלצות הזמנה ──
+async function loadReco(spinner){
+  if(spinner) showLoading('מחשב המלצות הזמנה…');
+  let qs=`?days=${S.recoDays}&target_days=${S.recoTarget}`;
+  if(S.recoBranch) qs+=`&branch=${S.recoBranch}`;
+  try{ S.recoData=await api('/api/admin/recommendations'+qs); }catch(e){}
+  try{ const o=await api('/api/admin/order-plan'); S.orderData=o; S.orderCount=(o.lines||[]).length; }catch(e){}
+  if(spinner) hideLoading();
+  if(S.view==='admin' && S.adminTab==='reco') renderReco();
+}
+function setRecoDays(v){ S.recoDays=Number(v)||30; loadReco(true); }
+function setRecoBranch(v){ S.recoBranch=v; loadReco(true); }
+function setRecoTarget(v){ S.recoTarget=Math.max(1,parseInt(v)||21); loadReco(true); }
+function setRecoKind(v){ S.recoKind=v; renderReco(); }
+function setRecoSupplier(v){ S.recoSupplier=v; renderReco(); }
+function setRecoCategory(v){ S.recoCategory=v; renderReco(); }
+function setRecoSearch(v){ S.recoSearch=v; S._refocusReco=true; renderReco(); }
+function orderQtyFor(pid){ const l=((S.orderData||{}).lines||[]).find(x=>String(x.product_id)===String(pid)); return l?l.qty:0; }
+function recoFiltered(){
+  let items=((S.recoData||{}).items||[]).slice();
+  if(S.recoKind!=='all') items=items.filter(i=>i.kind===S.recoKind);
+  if(S.recoSupplier) items=items.filter(i=>(i.supplier||'')===S.recoSupplier);
+  if(S.recoCategory) items=items.filter(i=>(i.category||'')===S.recoCategory);
+  const q=(S.recoSearch||'').trim().toLowerCase();
+  if(q){ const q2=fixHebrewLayout(S.recoSearch.trim()).toLowerCase();
+    items=items.filter(i=>{ const blob=((i.name||'')+' '+(i.product_id||'')+' '+(i.barcode||'')).toLowerCase();
+      return blob.includes(q)||(q2&&blob.includes(q2)); }); }
+  return items;
+}
+function recoRow(it){
+  const q=orderQtyFor(it.product_id);
+  const btn=q>0
+    ? `<button class="btn-req-in" onclick='openOrderEditor(${JSON.stringify(it.product_id)})'>✓ בהזמנה (${q})</button>`
+    : `<button class="btn-ghost" onclick='openOrderEditor(${JSON.stringify(it.product_id)})'>➕ להזמנה</button>`;
+  const cover = it.cover_days==null?'—':(it.cover_days+'ימ׳');
+  const coverCls = it.cover_days!=null && it.cover_days<=7 ? 'style="color:var(--red);font-weight:700;text-align:center"' : 'style="text-align:center"';
+  const recCls = it.recommended>0 ? 'style="color:var(--blue);font-weight:800;text-align:center"' : 'style="color:var(--muted);text-align:center"';
+  return `<tr class="${q>0?'has-req':''}">
+    <td style="direction:ltr;text-align:right;font-family:monospace">${it.product_id}</td>
+    <td>${it.name}</td>
+    <td>${it.kind==='serial'?'📱':'🏷️'}</td>
+    <td>${it.supplier||'—'}</td>
+    <td class="muted">${it.category||'—'}</td>
+    <td style="font-weight:700;text-align:center">${it.sold}</td>
+    <td style="text-align:center">${it.stock}</td>
+    <td ${coverCls}>${cover}</td>
+    <td ${recCls};text-align:center>${it.recommended}</td>
+    <td>${btn}</td>
+  </tr>`;
+}
+async function runSalesIngest(){
+  showLoading('אוסף מכירות עדכניות…');
+  try{ await api('/api/admin/sales-ingest',{method:'POST'}); }catch(e){}
+  // המתנה קצרה ואז רענון
+  setTimeout(()=>{ loadReco(false); hideLoading(); toast('איסוף מכירות רץ ברקע — יתעדכן בקרוב',true); }, 2500);
+}
+function renderReco(){
+  const app=document.getElementById('app');
+  const d=S.recoData||{items:[],branches:[],meta:{}};
+  const items=recoFiltered();
+  const total=(d.items||[]).length;
+  const sum=(d.meta||{}).sales_summary||{};
+  const suppliers=[...new Set((d.items||[]).map(i=>i.supplier).filter(Boolean))].sort();
+  const cats=[...new Set((d.items||[]).map(i=>i.category).filter(Boolean))].sort();
+  const dataNote = sum.docs ? `מאגר מכירות: ${sum.docs} חשבוניות · ${(sum.min_date||'').slice(0,10)}…${(sum.max_date||'').slice(0,10)}` : 'מאגר מכירות ריק — לחץ "אסוף מכירות"';
+  const opt=(v,sel,lbl)=>`<option value="${v}" ${String(sel)===String(v)?'selected':''}>${lbl}</option>`;
+  app.innerHTML=`<h1 class="title">🛠️ ניהול אופרציה</h1>${adminTabsHTML()}
+    <div class="muted" style="margin-bottom:10px;font-size:13px">מוצרים שנמכרו בתקופה ואוזלים במלאי — עם כמות הזמנה מומלצת. ${dataNote}.</div>
+    <div class="rebal-bar">
+      <input id="recoSearch" placeholder="🔎 חיפוש מוצר / מק״ט / ברקוד" value="${(S.recoSearch||'').replace(/"/g,'&quot;')}" oninput="setRecoSearch(this.value)">
+      <select onchange="setRecoDays(this.value)">
+        ${[7,30,45,60,90].map(n=>opt(n,S.recoDays,n+' ימים')).join('')}
+      </select>
+      <select onchange="setRecoBranch(this.value)">
+        <option value="">סניף מכירה — הכל</option>
+        ${(d.branches||[]).map(b=>opt(b.id,S.recoBranch,b.name)).join('')}
+      </select>
+      <select onchange="setRecoKind(this.value)">
+        ${opt('all',S.recoKind,'סוג — הכל')}${opt('serial',S.recoKind,'📱 סריאליים')}${opt('barcode',S.recoKind,'🏷️ ברקוד')}
+      </select>
+      <select onchange="setRecoSupplier(this.value)">
+        <option value="">ספק — הכל</option>${suppliers.map(s=>opt(s,S.recoSupplier,s)).join('')}
+      </select>
+      <select onchange="setRecoCategory(this.value)">
+        <option value="">קטגוריה — הכל</option>${cats.map(s=>opt(s,S.recoCategory,s)).join('')}
+      </select>
+      <label class="muted" style="font-size:13px">ימי יעד <input type="number" min="1" value="${S.recoTarget}" onchange="setRecoTarget(this.value)" style="width:58px"></label>
+      <button class="btn-primary" onclick="runSalesIngest()">🔄 אסוף מכירות</button>
+      <span class="muted" style="margin-inline-start:auto">מציג ${items.length} מתוך ${total}</span>
+    </div>
+    ${items.length?`<table class="admin"><thead><tr>
+      <th>מק״ט</th><th>מוצר</th><th>סוג</th><th>ספק</th><th>קטגוריה</th><th>נמכר</th><th>מלאי</th><th>ימי כיסוי</th><th>מומלץ</th><th></th>
+    </tr></thead><tbody>${items.map(recoRow).join('')}</tbody></table>`
+    :`<div class="empty">${sum.docs?'אין מוצרים מתאימים לסינון':'אין נתוני מכירות עדיין — לחץ "🔄 אסוף מכירות" (או המתן לאיסוף היומי)'}</div>`}`;
+  if(S._refocusReco){ const el=document.getElementById('recoSearch'); if(el){ el.focus(); const v=el.value; el.value=''; el.value=v; } S._refocusReco=false; }
+}
+function openOrderEditor(pid){
+  const it=((S.recoData||{}).items||[]).find(x=>String(x.product_id)===String(pid));
+  if(!it) return;
+  const existing=orderQtyFor(pid);
+  S._orderEdit={it, qty: existing>0?existing:(it.recommended||1)};
+  renderOrderEditor();
+}
+function renderOrderEditor(){
+  const {it,qty}=S._orderEdit;
+  document.getElementById('modalRoot').innerHTML=`<div class="overlay"><div class="modal" style="max-width:460px;text-align:right">
+    <h3 style="text-align:center">הוספה לטיוטת הזמנה</h3>
+    <div class="muted" style="text-align:center">${it.name}</div>
+    <div class="muted" style="text-align:center;margin-bottom:6px;font-family:monospace">${it.product_id} · ${it.supplier||'—'}</div>
+    <div class="muted" style="text-align:center;font-size:13px;margin-bottom:12px">נמכר ${it.sold} · מלאי ${it.stock} · מומלץ <b style="color:var(--blue)">${it.recommended}</b></div>
+    <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:14px">
+      <span>כמות להזמנה:</span>
+      <input id="ordQty" type="number" min="0" value="${qty}" style="width:90px;font-size:18px;text-align:center">
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn-primary" style="flex:1" onclick="saveOrder()">שמור להזמנה</button>
+      <button class="btn-ghost" onclick="closeModal()">ביטול</button>
+    </div>
+    <div class="muted" style="text-align:center;font-size:12px;margin-top:8px">כמות 0 = הסרה מהטיוטה</div>
+  </div></div>`;
+  setTimeout(()=>{ const e=document.getElementById('ordQty'); if(e){e.focus();e.select();} },50);
+}
+async function saveOrder(){
+  const it=S._orderEdit.it;
+  const qty=Math.max(0,parseInt(document.getElementById('ordQty').value)||0);
+  const lines = qty>0 ? [{product_id:it.product_id,name:it.name,qty,supplier:it.supplier,category:it.category,kind:it.kind}] : [];
+  closeModal(); showLoading('שומר…');
+  try{ await api('/api/admin/order-plan/replace',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({product_id:it.product_id, lines})}); }catch(e){}
+  try{ const o=await api('/api/admin/order-plan'); S.orderData=o; S.orderCount=(o.lines||[]).length; }catch(e){}
+  hideLoading();
+  if(S.adminTab==='order') renderOrder(); else renderReco();
+  toast(qty>0?'נשמר לטיוטת ההזמנה ✓':'הוסר מהטיוטה', qty>0);
+}
+
+// ── 📋 טיוטת הזמנה ──
+async function loadOrder(spinner){
+  if(spinner) showLoading('טוען טיוטת הזמנה…');
+  try{ const o=await api('/api/admin/order-plan'); S.orderData=o; S.orderCount=(o.lines||[]).length; }catch(e){}
+  if(spinner) hideLoading();
+  if(S.view==='admin' && S.adminTab==='order') renderOrder();
+}
+function setOrderSearch(v){ S.orderSearch=v; S._refocusOrder=true; renderOrder(); }
+function setOrderSupplier(v){ S.orderSupplier=v; renderOrder(); }
+function setOrderCategory(v){ S.orderCategory=v; renderOrder(); }
+function orderFiltered(){
+  let lines=((S.orderData||{}).lines||[]).slice();
+  if(S.orderSupplier) lines=lines.filter(l=>(l.supplier||'')===S.orderSupplier);
+  if(S.orderCategory) lines=lines.filter(l=>(l.category||'')===S.orderCategory);
+  const q=(S.orderSearch||'').trim().toLowerCase();
+  if(q){ const q2=fixHebrewLayout(S.orderSearch.trim()).toLowerCase();
+    lines=lines.filter(l=>{ const blob=((l.name||'')+' '+(l.product_id||'')).toLowerCase();
+      return blob.includes(q)||(q2&&blob.includes(q2)); }); }
+  return lines;
+}
+function renderOrder(){
+  const app=document.getElementById('app');
+  const all=((S.orderData||{}).lines||[]);
+  const lines=orderFiltered();
+  const suppliers=[...new Set(all.map(l=>l.supplier).filter(Boolean))].sort();
+  const cats=[...new Set(all.map(l=>l.category).filter(Boolean))].sort();
+  const totalQty=lines.reduce((a,l)=>a+(Number(l.qty)||0),0);
+  const opt=(v,sel,lbl)=>`<option value="${v}" ${String(sel)===String(v)?'selected':''}>${lbl}</option>`;
+  const rows=lines.map(l=>`<tr>
+    <td style="direction:ltr;text-align:right;font-family:monospace">${l.product_id}</td>
+    <td>${l.name}</td><td>${l.kind==='serial'?'📱':(l.kind==='barcode'?'🏷️':'')}</td>
+    <td>${l.supplier||'—'}</td><td class="muted">${l.category||'—'}</td>
+    <td style="font-weight:800;text-align:center">${l.qty}</td>
+    <td><button class="btn-ghost" onclick="deleteOrderLine(${l.id})">✕</button></td></tr>`).join('');
+  app.innerHTML=`<h1 class="title">🛠️ ניהול אופרציה</h1>${adminTabsHTML()}
+    <div class="plan-head" style="margin-bottom:14px">
+      <span class="ttl"><b>🛒 טיוטת הזמנה</b> · ${lines.length} פריטים · ${totalQty} יח׳</span>
+      <div class="plan-actions">
+        <button class="pa-accent" onclick="openOrderRequestPage()">🖼️ פתח לצילום</button>
+        <button onclick="exportOrderCSV()">📄 CSV</button>
+        <button class="pa-danger" onclick="clearOrder()">🗑️ נקה הכל</button>
+      </div>
+    </div>
+    <div class="rebal-bar">
+      <input id="orderSearch" placeholder="🔎 חיפוש מוצר / מק״ט" value="${(S.orderSearch||'').replace(/"/g,'&quot;')}" oninput="setOrderSearch(this.value)">
+      <select onchange="setOrderSupplier(this.value)"><option value="">ספק — הכל</option>${suppliers.map(s=>opt(s,S.orderSupplier,s)).join('')}</select>
+      <select onchange="setOrderCategory(this.value)"><option value="">קטגוריה — הכל</option>${cats.map(s=>opt(s,S.orderCategory,s)).join('')}</select>
+      <span class="muted" style="margin-inline-start:auto">מציג ${lines.length} מתוך ${all.length}</span>
+    </div>
+    ${lines.length?`<table class="admin"><thead><tr>
+      <th>מק״ט</th><th>מוצר</th><th>סוג</th><th>ספק</th><th>קטגוריה</th><th>כמות</th><th></th>
+    </tr></thead><tbody>${rows}</tbody></table>`
+    :`<div class="empty">${all.length?'אין תוצאות לסינון':'הטיוטה ריקה. הוסף פריטים מטאב "🛒 המלצות הזמנה".'}</div>`}`;
+  if(S._refocusOrder){ const el=document.getElementById('orderSearch'); if(el){ el.focus(); const v=el.value; el.value=''; el.value=v; } S._refocusOrder=false; }
+}
+async function deleteOrderLine(id){ showLoading(); try{ await api('/api/admin/order-plan/'+id,{method:'DELETE'}); }catch(e){} await loadOrder(false); hideLoading(); }
+async function clearOrder(){
+  if(!confirm('לנקות את כל טיוטת ההזמנה?')) return;
+  showLoading(); try{ await api('/api/admin/order-plan/clear',{method:'POST'}); }catch(e){} await loadOrder(false); hideLoading();
+}
+function exportOrderCSV(){
+  const lines=orderFiltered();
+  const head=['מק"ט','מוצר','סוג','ספק','קטגוריה','כמות'];
+  const rows=[head.join(',')];
+  lines.forEach(l=>rows.push([l.product_id,_csv(l.name),(l.kind==='serial'?'סריאלי':l.kind),_csv(l.supplier||''),_csv(l.category||''),l.qty].join(',')));
+  const blob=new Blob(['﻿'+rows.join('\n')],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download='טיוטת-הזמנה-'+new Date().toISOString().slice(0,10)+'.csv'; a.click();
+}
+function orderRequestHTML(lines){
+  lines=lines.slice().sort((a,b)=>String(a.supplier||'').localeCompare(String(b.supplier||''))||String(a.name).localeCompare(String(b.name)));
+  const date=new Date().toLocaleDateString('he-IL',{day:'2-digit',month:'2-digit',year:'numeric'});
+  const totalQty=lines.reduce((a,l)=>a+(Number(l.qty)||0),0);
+  const rows=lines.map(l=>`<tr><td class="nm">${_esc(l.name)}</td><td class="sku">${_esc(l.product_id)}</td><td class="sup">${_esc(l.supplier||'—')}</td><td class="q">${l.qty}</td></tr>`).join('');
+  return `<!doctype html><html dir="rtl" lang="he"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>טיוטת הזמנה</title>
+<style>*{box-sizing:border-box}body{margin:0;background:#eef1f6;font-family:-apple-system,Segoe UI,Roboto,Arial,"Heebo",sans-serif;padding:18px;color:#18222f}
+ .card{max-width:720px;margin:0 auto;background:#fff;border-radius:18px;overflow:hidden;box-shadow:0 6px 30px rgba(0,0,0,.12)}
+ .top{background:#0f9d58;color:#fff;padding:18px 22px;display:flex;align-items:center;justify-content:space-between}
+ .top .logo{font-size:20px;font-weight:800}.top .ttl{font-size:15px;opacity:.95}
+ .meta{display:flex;justify-content:space-between;align-items:center;padding:14px 22px;font-size:16px;border-bottom:2px solid #eef1f6}
+ .meta .date{color:#5e6b7d;font-size:14px}
+ table{width:100%;border-collapse:collapse}th,td{padding:12px 16px;text-align:right;border-bottom:1px solid #eef1f6;font-size:15px}
+ th{background:#f5f7fb;color:#5e6b7d;font-size:13px;font-weight:700}
+ td.nm{font-weight:600}td.sku{font-family:monospace;direction:ltr;text-align:right;color:#5e6b7d;font-size:13px}
+ td.sup{color:#0f9d58;font-weight:600}td.q{font-weight:800;font-size:18px;text-align:center}
+ tbody tr:nth-child(even){background:#fafbfd}.total{padding:14px 22px;font-weight:700;background:#f5f7fb;text-align:center}
+ .foot{padding:10px;text-align:center;color:#9aa6b6;font-size:12px}</style></head><body>
+<div class="card"><div class="top"><div class="logo">🛒 Green Mobile</div><div class="ttl">טיוטת הזמנת רכש</div></div>
+ <div class="meta"><div>הזמנה — ${lines.length} פריטים</div><div class="date">${date}</div></div>
+ <table><thead><tr><th>מוצר</th><th>מק״ט</th><th>ספק</th><th>כמות</th></tr></thead><tbody>${rows}</tbody></table>
+ <div class="total">סה״כ ${lines.length} פריטים · ${totalQty} יחידות</div>
+ <div class="foot">טיוטת הזמנה — Green Mobile</div></div></body></html>`;
+}
+function openOrderRequestPage(){
+  const lines=orderFiltered();
+  if(!lines.length){ toast('הטיוטה ריקה',false); return; }
+  openHTMLWindow(orderRequestHTML(lines));
+}
+
 function renderAdmin(){
   if(S.adminTab==='rebalance') return S.rebalanceData?renderRebalance():loadRebalance(true);
   if(S.adminTab==='plan') return S.planData?renderPlan():loadPlan(true);
+  if(S.adminTab==='reco') return S.recoData?renderReco():loadReco(true);
+  if(S.adminTab==='order') return S.orderData?renderOrder():loadOrder(true);
   const app=document.getElementById('app');
   const f=S.adminFilters;
   const data=S.adminData||{summary:{},transfers:[],misroutes:[]};
@@ -1204,7 +1450,7 @@ function startPoll(){ clearInterval(S.pollTimer);
       if(bs && document.activeElement===bs && bs.value) return;
       renderBoard(a, true);
     } else if(S.view==='admin'){
-      if(S.adminTab==='rebalance') return;   // איזון מלאי = נתון יומי, לא מרעננים אוטומטית
+      if(S.adminTab==='rebalance'||S.adminTab==='reco'||S.adminTab==='order') return;   // נתונים מחושבים/עריכה — לא מרעננים אוטומטית
       const ae=document.activeElement;   // אל תרענן תוך כדי שימוש בסינון
       if(ae && ae.closest && ae.closest('.filters')) return;
       loadAdmin(false);   // רענון שקט ברקע

@@ -164,9 +164,49 @@ _SCHEMA = [
         broadcast_at TEXT
     )
     """,
+    # ── מאגר מכירות (Sales Cache) — נבנה מ-/api/Documents/line-items ──
+    # qty חתום: מכירה (docType 0) חיובי, החזרה/זיכוי (docType 5) שלילי → SUM(qty)=מכירה נטו
+    """
+    CREATE TABLE IF NOT EXISTS sales (
+        id          {pk},
+        doc_id      TEXT,
+        line_no     INTEGER,
+        product_id  TEXT,
+        name        TEXT,
+        qty         REAL,
+        price       REAL,
+        serial      TEXT,
+        branch_id   INTEGER,
+        doc_type    INTEGER,
+        sale_date   TEXT,
+        UNIQUE(doc_id, line_no)
+    )
+    """.format(pk=_PK),
+    # מצב איסוף מצטבר (cursor): מפתח→ערך
+    """
+    CREATE TABLE IF NOT EXISTS sales_ingest_state (
+        k  TEXT PRIMARY KEY,
+        v  TEXT
+    )
+    """,
+    # טיוטת הזמנה (רשימה שטוחה; מקביל ל-transfer_plan)
+    """
+    CREATE TABLE IF NOT EXISTS order_plan (
+        id          {pk},
+        product_id  TEXT,
+        name        TEXT,
+        qty         INTEGER DEFAULT 1,
+        supplier    TEXT,
+        category    TEXT,
+        kind        TEXT,
+        created_at  TEXT
+    )
+    """.format(pk=_PK),
     "CREATE INDEX IF NOT EXISTS idx_misroutes_serial ON misroutes(serial)",
     "CREATE INDEX IF NOT EXISTS idx_misroutes_status ON misroutes(status)",
     "CREATE INDEX IF NOT EXISTS idx_transfers_to ON transfers(to_branch_id, status)",
+    "CREATE INDEX IF NOT EXISTS idx_sales_product ON sales(product_id, sale_date)",
+    "CREATE INDEX IF NOT EXISTS idx_sales_date ON sales(sale_date)",
 ]
 
 
@@ -755,6 +795,148 @@ def plan_for_branch(branch_id) -> list:
         cur = c.cursor()
         cur.execute(_q("SELECT * FROM transfer_plan WHERE from_branch = ? ORDER BY name"), (int(branch_id),))
         return [dict(r) for r in cur.fetchall()]
+
+
+# ── מאגר מכירות (Sales Cache) ─────────────────────────────────────
+def sales_insert(rows: list) -> int:
+    """הוספת שורות מכירה (idempotent לפי doc_id+line_no). row: {doc_id,line_no,product_id,name,qty,price,serial,branch_id,doc_type,sale_date}."""
+    if not rows:
+        return 0
+    n = 0
+    with _conn() as c:
+        cur = c.cursor()
+        for r in rows:
+            cur.execute(_q("""
+                INSERT INTO sales (doc_id, line_no, product_id, name, qty, price, serial, branch_id, doc_type, sale_date)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(doc_id, line_no) DO NOTHING
+            """), (str(r.get("doc_id")), int(r.get("line_no") or 0), str(r.get("product_id") or ""),
+                   r.get("name") or "", float(r.get("qty") or 0), float(r.get("price") or 0),
+                   (r.get("serial") or "").strip(),
+                   int(r["branch_id"]) if r.get("branch_id") not in (None, "") else None,
+                   int(r.get("doc_type") or 0), r.get("sale_date") or ""))
+            n += 1
+    return n
+
+
+def sales_state_get(k: str, default=None):
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT v FROM sales_ingest_state WHERE k = ?"), (k,))
+        r = cur.fetchone()
+        return r["v"] if r else default
+
+
+def sales_state_set(k: str, v: str):
+    with _conn() as c:
+        c.cursor().execute(_q("""
+            INSERT INTO sales_ingest_state (k, v) VALUES (?, ?)
+            ON CONFLICT(k) DO UPDATE SET v=excluded.v
+        """), (k, str(v)))
+
+
+def sales_docids_since(since_prefix: str) -> set:
+    """doc_ids שכבר נקלטו עם sale_date >= since_prefix (לדילוג באיסוף)."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT DISTINCT doc_id FROM sales WHERE sale_date >= ?"), (since_prefix,))
+        return {str(r["doc_id"]) for r in cur.fetchall()}
+
+
+def sales_summary() -> dict:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute("SELECT COUNT(*) AS lines, COUNT(DISTINCT doc_id) AS docs, MIN(sale_date) AS min_d, MAX(sale_date) AS max_d FROM sales")
+        r = dict(cur.fetchone())
+        return {"lines": r.get("lines") or 0, "docs": r.get("docs") or 0,
+                "min_date": r.get("min_d"), "max_date": r.get("max_d")}
+
+
+def sales_aggregate(since_date: str, branch_id=None) -> dict:
+    """סך מכירה נטו לכל מוצר מאז תאריך (כולל). מחזיר {product_id: {qty, last_date, branches:{b:qty}}}.
+    qty חתום (החזרות שליליות) → נטו. since_date בפורמט ISO (משווים על prefix sale_date)."""
+    out = {}
+    with _conn() as c:
+        cur = c.cursor()
+        sql = "SELECT product_id, branch_id, qty, sale_date FROM sales WHERE sale_date >= ?"
+        params = [since_date]
+        if branch_id not in (None, "", "all"):
+            sql += " AND branch_id = ?"
+            params.append(int(branch_id))
+        cur.execute(_q(sql), tuple(params))
+        for r in cur.fetchall():
+            pid = str(r["product_id"])
+            d = out.setdefault(pid, {"qty": 0.0, "last_date": "", "branches": {}})
+            q = float(r["qty"] or 0)
+            d["qty"] += q
+            b = r["branch_id"]
+            if b is not None:
+                d["branches"][int(b)] = d["branches"].get(int(b), 0.0) + q
+            sd = r["sale_date"] or ""
+            if sd > d["last_date"]:
+                d["last_date"] = sd
+    return out
+
+
+# ── טיוטת הזמנה (order_plan) — רשימה שטוחה ─────────────────────────
+def order_add(lines: list) -> int:
+    with _conn() as c:
+        cur = c.cursor()
+        for ln in lines:
+            cur.execute(_q("""
+                INSERT INTO order_plan (product_id, name, qty, supplier, category, kind, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """), (str(ln.get("product_id") or ""), ln.get("name") or "", int(ln.get("qty") or 1),
+                   ln.get("supplier") or "", ln.get("category") or "", ln.get("kind") or "", now_iso()))
+        return len(lines)
+
+
+def order_replace_product(product_id, lines: list) -> int:
+    """מחליף את שורת ההזמנה למוצר (מחיקה+הוספה). lines ריק = הסרה."""
+    pid = str(product_id)
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("DELETE FROM order_plan WHERE product_id = ?"), (pid,))
+        for ln in lines:
+            cur.execute(_q("""
+                INSERT INTO order_plan (product_id, name, qty, supplier, category, kind, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """), (pid, ln.get("name") or "", int(ln.get("qty") or 1),
+                   ln.get("supplier") or "", ln.get("category") or "", ln.get("kind") or "", now_iso()))
+        return len(lines)
+
+
+def order_list() -> list:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute("SELECT * FROM order_plan ORDER BY supplier, name")
+        return [dict(r) for r in cur.fetchall()]
+
+
+def order_delete(pid_row) -> int:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("DELETE FROM order_plan WHERE id = ?"), (pid_row,))
+        return cur.rowcount if hasattr(cur, "rowcount") else 0
+
+
+def order_clear():
+    with _conn() as c:
+        c.cursor().execute("DELETE FROM order_plan")
+
+
+def order_count() -> int:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute("SELECT COUNT(*) AS n FROM order_plan")
+        return cur.fetchone()["n"]
+
+
+def order_product_ids() -> set:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute("SELECT DISTINCT product_id FROM order_plan")
+        return {str(r["product_id"]) for r in cur.fetchall()}
 
 
 def rebalance_last_scan() -> str:

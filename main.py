@@ -75,6 +75,22 @@ def _rebalance_job():
         logger.warning("rebalance_scan failed: %s", e)
 
 
+def _sales_ingest_job():
+    try:
+        import sales_ingest
+        sales_ingest.ingest_incremental()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("sales_ingest failed: %s", e)
+
+
+def _sales_backfill_job(days: int = 90, max_new_docs: int = 1500):
+    try:
+        import sales_ingest
+        sales_ingest.backfill(days=days, max_new_docs=max_new_docs)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("sales_backfill failed: %s", e)
+
+
 @app.on_event("startup")
 def _startup():
     db.init_db()
@@ -94,6 +110,10 @@ def _startup():
     # איזון מלאי: פעמיים ביום (כך שתמיד נופל בתוך שעות הפעילות של איזה יום) — תחילת/סוף יום
     scheduler.add_job(_rebalance_job, "cron", id="rebalance_am", hour=8, minute=30, max_instances=1)
     scheduler.add_job(_rebalance_job, "cron", id="rebalance_pm", hour=21, minute=0, max_instances=1)
+    # איסוף מכירות מצטבר: כל 3 שעות (מושך רק מסמכים חדשים מאז ה-cursor) + ריצה ראשונית
+    scheduler.add_job(_sales_ingest_job, "interval", hours=3, id="sales_ingest", max_instances=1)
+    scheduler.add_job(_sales_ingest_job, "date", id="sales_ingest_initial",
+                      run_date=datetime.now() + timedelta(seconds=120))
     scheduler.start()
     # סבב ראשוני סינכרוני קצר כדי שהלוח לא יהיה ריק בהפעלה
     try:
@@ -405,6 +425,101 @@ def admin_resolve_misroute(mid: int, x_admin_key: Optional[str] = Header(None)):
     """סגירת חריגת 'מכשיר לא במקום' ידנית ע"י מנהל."""
     _require_admin(x_admin_key)
     return {"resolved": db.resolve_misroute_by_id(mid)}
+
+
+# ──────────────────────────────────────────────────────────────
+# המלצות הזמנה (Order recommendations) + מאגר מכירות
+# ──────────────────────────────────────────────────────────────
+@app.get("/api/admin/recommendations")
+def admin_recommendations(days: int = 30, branch: Optional[int] = None,
+                          target_days: int = 21, x_admin_key: Optional[str] = Header(None)):
+    """המלצות הזמנה לתקופה. סינון סוג/ספק/קטגוריה/חיפוש מתבצע בצד הלקוח."""
+    _require_admin(x_admin_key)
+    import order_recommend
+    res = order_recommend.compute(days=days, branch_id=branch, target_days=target_days)
+    res["in_order"] = sorted(db.order_product_ids())
+    res["branches"] = [{"id": b, "name": cfg.branch_name(b)} for b in (1, 2, 3, 4, 5)]
+    return res
+
+
+@app.get("/api/admin/sales-status")
+def admin_sales_status(x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    return {"summary": db.sales_summary(),
+            "last_run": db.sales_state_get("last_run"),
+            "last_date": db.sales_state_get("last_date"),
+            "backfill_last_run": db.sales_state_get("backfill_last_run")}
+
+
+@app.post("/api/admin/sales-ingest")
+def admin_sales_ingest(x_admin_key: Optional[str] = Header(None)):
+    """הפעלת איסוף מכירות מצטבר ידנית (רץ ברקע)."""
+    _require_admin(x_admin_key)
+    scheduler.add_job(_sales_ingest_job, "date", id="sales_ingest_manual",
+                      run_date=datetime.now() + timedelta(seconds=1), replace_existing=True)
+    return {"started": True}
+
+
+@app.post("/api/admin/sales-backfill")
+def admin_sales_backfill(days: int = 90, max_new_docs: int = 1500,
+                         x_admin_key: Optional[str] = Header(None)):
+    """איסוף היסטורי לאחור (חלק אחד, resumable). רץ ברקע, מווסת."""
+    _require_admin(x_admin_key)
+    scheduler.add_job(lambda: _sales_backfill_job(days, max_new_docs), "date",
+                      id="sales_backfill_manual",
+                      run_date=datetime.now() + timedelta(seconds=1), replace_existing=True)
+    return {"started": True, "days": days, "max_new_docs": max_new_docs}
+
+
+# טיוטת הזמנה (order_plan) — רשימה שטוחה
+class OrderLine(BaseModel):
+    product_id: str
+    name: Optional[str] = ""
+    qty: int = 1
+    supplier: Optional[str] = ""
+    category: Optional[str] = ""
+    kind: Optional[str] = ""
+
+
+class OrderAdd(BaseModel):
+    lines: list[OrderLine]
+
+
+class OrderReplace(BaseModel):
+    product_id: str
+    lines: list[OrderLine]
+
+
+@app.get("/api/admin/order-plan")
+def admin_order_plan(x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    return {"lines": db.order_list(), "count": db.order_count()}
+
+
+@app.post("/api/admin/order-plan")
+def admin_order_add(body: OrderAdd, x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    return {"added": db.order_add([l.model_dump() for l in body.lines])}
+
+
+@app.post("/api/admin/order-plan/replace")
+def admin_order_replace(body: OrderReplace, x_admin_key: Optional[str] = Header(None)):
+    """מחליף את שורת ההזמנה למוצר (עריכה/הסרה). lines ריק = הסרה."""
+    _require_admin(x_admin_key)
+    return {"count": db.order_replace_product(body.product_id, [l.model_dump() for l in body.lines])}
+
+
+@app.delete("/api/admin/order-plan/{rid}")
+def admin_order_delete(rid: int, x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    return {"deleted": db.order_delete(rid)}
+
+
+@app.post("/api/admin/order-plan/clear")
+def admin_order_clear(x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    db.order_clear()
+    return {"ok": True}
 
 
 # ──────────────────────────────────────────────────────────────
