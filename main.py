@@ -281,6 +281,47 @@ def admin_rebalance(x_admin_key: Optional[str] = Header(None)):
             "branches": [{"id": b, "name": cfg.branch_name(b)} for b in (1, 2, 3, 4)]}
 
 
+class PlanLine(BaseModel):
+    product_id: str
+    name: Optional[str] = ""
+    from_branch: int
+    to_branch: int
+    qty: int = 1
+
+
+class PlanAdd(BaseModel):
+    lines: list[PlanLine]
+
+
+@app.get("/api/admin/plan")
+def admin_plan(x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    lines = db.plan_list()
+    for ln in lines:
+        ln["from_name"] = cfg.branch_name(ln.get("from_branch"))
+        ln["to_name"] = cfg.branch_name(ln.get("to_branch"))
+    return {"lines": lines, "branches": [{"id": b, "name": cfg.branch_name(b)} for b in (1, 2, 3, 4)]}
+
+
+@app.post("/api/admin/plan")
+def admin_plan_add(body: PlanAdd, x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    return {"added": db.plan_add([l.model_dump() for l in body.lines])}
+
+
+@app.delete("/api/admin/plan/{pid}")
+def admin_plan_delete(pid: int, x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    return {"deleted": db.plan_delete(pid)}
+
+
+@app.post("/api/admin/plan/clear")
+def admin_plan_clear(x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    db.plan_clear()
+    return {"ok": True}
+
+
 @app.post("/api/admin/rebalance-scan")
 def admin_rebalance_scan(x_admin_key: Optional[str] = Header(None)):
     """הפעלת סריקת איזון מלאי ידנית (רצה ברקע, ~1-2 דק')."""

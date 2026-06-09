@@ -147,6 +147,17 @@ _SCHEMA = [
         scanned_at   TEXT
     )
     """.format(pk=_PK),
+    """
+    CREATE TABLE IF NOT EXISTS transfer_plan (
+        id          {pk},
+        product_id  TEXT,
+        name        TEXT,
+        from_branch INTEGER,
+        to_branch   INTEGER,
+        qty         INTEGER DEFAULT 1,
+        created_at  TEXT
+    )
+    """.format(pk=_PK),
     "CREATE INDEX IF NOT EXISTS idx_misroutes_serial ON misroutes(serial)",
     "CREATE INDEX IF NOT EXISTS idx_misroutes_status ON misroutes(status)",
     "CREATE INDEX IF NOT EXISTS idx_transfers_to ON transfers(to_branch_id, status)",
@@ -642,6 +653,48 @@ def rebalance_list() -> list:
                 except Exception: d[k.replace("_json", "")] = {} if k == "stock_json" else []
             out.append(d)
         return out
+
+
+def plan_add(lines: list) -> int:
+    """מוסיף שורות לתוכנית ההעברות. line: {product_id,name,from_branch,to_branch,qty}."""
+    n = 0
+    with _conn() as c:
+        cur = c.cursor()
+        for ln in lines:
+            cur.execute(_q("""
+                INSERT INTO transfer_plan (product_id, name, from_branch, to_branch, qty, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """), (str(ln.get("product_id") or ""), ln.get("name") or "",
+                   int(ln.get("from_branch")), int(ln.get("to_branch")),
+                   int(ln.get("qty") or 1), now_iso()))
+            n += 1
+    return n
+
+
+def plan_list() -> list:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute("SELECT * FROM transfer_plan ORDER BY from_branch, name")
+        return [dict(r) for r in cur.fetchall()]
+
+
+def plan_delete(pid) -> int:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("DELETE FROM transfer_plan WHERE id = ?"), (pid,))
+        return cur.rowcount if hasattr(cur, "rowcount") else 0
+
+
+def plan_clear():
+    with _conn() as c:
+        c.cursor().execute("DELETE FROM transfer_plan")
+
+
+def plan_count() -> int:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute("SELECT COUNT(*) AS n FROM transfer_plan")
+        return cur.fetchone()["n"]
 
 
 def rebalance_last_scan() -> str:

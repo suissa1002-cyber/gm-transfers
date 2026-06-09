@@ -86,6 +86,12 @@
   .rebal-bar select,.rebal-bar input{font-family:inherit;font-size:14px;padding:9px 12px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--txt)}
   .rebal-bar input{min-width:240px;outline:none} .rebal-bar input:focus{border-color:var(--blue)}
   td.r-zero{color:var(--red);font-weight:800} td.r-surplus{color:var(--green);font-weight:800}
+  .pl-row{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+  .pl-row select{flex:1;font-family:inherit;font-size:14px;padding:9px;border-radius:10px;border:1px solid var(--line);background:var(--card2);color:var(--txt)}
+  .pl-row input{font-family:inherit;font-size:14px;padding:9px;border-radius:10px;border:1px solid var(--line);background:var(--card2);color:var(--txt)}
+  .plan-group{margin-bottom:22px}
+  .plan-head{display:flex;align-items:center;gap:12px;font-size:16px;margin-bottom:8px}
+  .plan-head button{margin-inline-start:auto}
   .lastscan .sub{font-size:14px;opacity:.85;font-weight:600}
   .card.flash{border-color:var(--green)!important;box-shadow:0 0 0 2px var(--green) inset;transition:.15s}
   /* סורק מצלמה (מובייל) */
@@ -216,7 +222,8 @@ const S = { branchId:null, branchName:null, employee:null, adminKey:null,
             cfg:{admin_required:false, admin_branch_id:5}, theme:'light', lastScan:null,
             branchList:[], adminFilters:{q:'',from:'',to:'',status:'',fromDate:'',toDate:''}, _refocusFilter:false,
             view:'board', op:null, _fromAdmin:false, pollTimer:null, knownOps:null, notifTimer:null,
-            adminTab:'transfers', rebalanceData:null, rebalFilter:'all', rebalSearch:'', _refocusRebal:false };
+            adminTab:'transfers', rebalanceData:null, rebalFilter:'all', rebalSearch:'', _refocusRebal:false,
+            rebalBranch:'', planData:null, planCount:0 };
 
 // ── ערכת נושא (כהה/בהיר) ──
 function applyTheme(){
@@ -729,15 +736,25 @@ async function loadAdmin(spinner){
 }
 
 function adminTabsHTML(){
+  const pc=S.planCount?` (${S.planCount})`:'';
+  const a=t=>S.adminTab===t?'active':'';
   return `<div class="tabs">
-    <button class="${S.adminTab!=='rebalance'?'active':''}" onclick="setAdminTab('transfers')">📋 העברות</button>
-    <button class="${S.adminTab==='rebalance'?'active':''}" onclick="setAdminTab('rebalance')">⚖️ איזון מלאי</button>
+    <button class="${S.adminTab!=='rebalance'&&S.adminTab!=='plan'?'active':''}" onclick="setAdminTab('transfers')">📋 העברות</button>
+    <button class="${a('rebalance')}" onclick="setAdminTab('rebalance')">⚖️ איזון מלאי</button>
+    <button class="${a('plan')}" onclick="setAdminTab('plan')">📝 בקשות העברה${pc}</button>
   </div>`;
 }
 function setAdminTab(tab){
   S.adminTab=tab;
   if(tab==='rebalance'){ if(!S.rebalanceData) loadRebalance(true); else renderRebalance(); }
+  else if(tab==='plan'){ loadPlan(true); }
   else renderAdmin();
+}
+async function loadPlan(spinner){
+  if(spinner) showLoading('טוען בקשות העברה…');
+  try{ S.planData=await api('/api/admin/plan'); S.planCount=(S.planData.lines||[]).length; }catch(e){}
+  if(spinner) hideLoading();
+  if(S.view==='admin' && S.adminTab==='plan') renderPlan();
 }
 async function loadRebalance(spinner){
   if(spinner) showLoading('טוען איזון מלאי…');
@@ -751,6 +768,8 @@ function rebalFiltered(){
   const d=S.rebalanceData||{items:[]};
   let items=(d.items||[]);
   if(S.rebalFilter && S.rebalFilter!=='all') items=items.filter(i=>i.kind===S.rebalFilter);
+  if(S.rebalBranch){ const b=Number(S.rebalBranch);
+    items=items.filter(i=>(i.needs||[]).includes(b)||(i.surplus||[]).includes(b)); }
   const q=(S.rebalSearch||'').trim().toLowerCase();
   if(q){ const q2=fixHebrewLayout(S.rebalSearch.trim()).toLowerCase();
     items=items.filter(i=>{ const blob=((i.name||'')+' '+(i.product_id||'')).toLowerCase();
@@ -775,13 +794,16 @@ function rebalRow(it, branches){
   const cells=branches.map(b=>{ const q=(it.stock||{})[String(b.id)]||0;
     const cls=q===0?'r-zero':(q>=2?'r-surplus':''); return `<td class="${cls}">${q}</td>`; }).join('');
   return `<tr>
+    <td style="direction:ltr;text-align:right;font-family:monospace">${it.product_id||''}</td>
     <td>${it.name}</td>
     <td>${it.kind==='serial'?'📱 סריאלי':'🏷️ ברקוד'}</td>
     ${cells}
     <td style="color:var(--red);font-weight:700">${(it.needs_names||[]).join(', ')}</td>
     <td style="color:var(--green);font-weight:700">${(it.surplus_names||[]).join(', ')}</td>
+    <td><button class="btn-ghost" onclick='openPlanEditor(${JSON.stringify(it.product_id)})'>➕ לבקשה</button></td>
   </tr>`;
 }
+function setRebalBranch(v){ S.rebalBranch=v; renderRebalance(); }
 function renderRebalance(){
   const app=document.getElementById('app');
   const d=S.rebalanceData||{items:[],branches:[],last_scan:null};
@@ -797,9 +819,13 @@ function renderRebalance(){
     <div class="rebal-bar">
       <input id="rebalSearch" placeholder="🔎 חיפוש מוצר / מק״ט" value="${(S.rebalSearch||'').replace(/"/g,'&quot;')}" oninput="setRebalSearch(this.value)">
       <select onchange="setRebalFilter(this.value)">
-        <option value="all" ${f==='all'?'selected':''}>הכל</option>
+        <option value="all" ${f==='all'?'selected':''}>סוג — הכל</option>
         <option value="serial" ${f==='serial'?'selected':''}>📱 סריאליים</option>
         <option value="barcode" ${f==='barcode'?'selected':''}>🏷️ ברקוד</option>
+      </select>
+      <select onchange="setRebalBranch(this.value)">
+        <option value="">סניף — הכל</option>
+        ${branches.map(b=>`<option value="${b.id}" ${String(b.id)===String(S.rebalBranch)?'selected':''}>${b.name}</option>`).join('')}
       </select>
       <button class="btn-primary" onclick="runRebalanceScan()">🔄 סרוק עכשיו</button>
       <button class="btn-ghost" onclick="exportRebalCSV()">📄 ייצא דוח</button>
@@ -807,7 +833,7 @@ function renderRebalance(){
       <span class="muted" style="margin-inline-start:auto">מציג ${items.length} מתוך ${totalCount}</span>
     </div>
     ${items.length?`<table class="admin"><thead><tr>
-      <th>מוצר</th><th>סוג</th>${branches.map(b=>`<th>${b.name}</th>`).join('')}<th>חסר ב</th><th>עודף ב</th>
+      <th>מק״ט</th><th>מוצר</th><th>סוג</th>${branches.map(b=>`<th>${b.name}</th>`).join('')}<th>חסר ב</th><th>עודף ב</th><th></th>
     </tr></thead><tbody>${items.map(it=>rebalRow(it,branches)).join('')}</tbody></table>`
     :`<div class="empty">${d.last_scan?(S.rebalSearch?'אין תוצאות לחיפוש':'אין פריטים לאיזון 🎉'):'לחץ "סרוק עכשיו" כדי לבנות את הרשימה'}</div>`}`;
   if(S._refocusRebal){ const el=document.getElementById('rebalSearch'); if(el){ el.focus(); const v=el.value; el.value=''; el.value=v; } S._refocusRebal=false; }
@@ -826,8 +852,93 @@ function exportRebalCSV(){
   a.download='rebalance-'+new Date().toISOString().slice(0,10)+'.csv'; a.click();
 }
 
+// ── עורך בקשת העברה (תומך כמה שורות לפריט) ──
+function openPlanEditor(pid){
+  const it=((S.rebalanceData||{}).items||[]).find(x=>String(x.product_id)===String(pid));
+  if(!it) return;
+  const branches=(S.rebalanceData||{}).branches||[];
+  const sur=it.surplus||[], need=it.needs||[];
+  const lines=[];
+  for(let i=0;i<Math.min(sur.length,need.length);i++) lines.push({from:sur[i],to:need[i],qty:1});
+  if(!lines.length) lines.push({from:sur[0]||(branches[0]||{}).id, to:need[0]||(branches[0]||{}).id, qty:1});
+  S._planEdit={it,branches,lines};
+  renderPlanEditor();
+}
+function renderPlanEditor(){
+  const {it,branches,lines}=S._planEdit;
+  const opt=(sel)=>branches.map(b=>{ const q=(it.stock||{})[String(b.id)]||0;
+    return `<option value="${b.id}" ${b.id===sel?'selected':''}>${b.name} (${q})</option>`; }).join('');
+  const rowsHtml=lines.map((ln,i)=>`<div class="pl-row">
+    <select onchange="planLineChange(${i},'from',this.value)">${opt(ln.from)}</select><span>←</span>
+    <select onchange="planLineChange(${i},'to',this.value)">${opt(ln.to)}</select>
+    <input type="number" min="1" value="${ln.qty}" onchange="planLineChange(${i},'qty',this.value)" style="width:62px">
+    <button class="btn-ghost" onclick="planRemoveLine(${i})">✕</button>
+  </div>`).join('');
+  document.getElementById('modalRoot').innerHTML=`<div class="overlay"><div class="modal" style="max-width:540px;text-align:right">
+    <h3 style="text-align:center">הוספה לבקשת העברה</h3>
+    <div class="muted" style="text-align:center">${it.name}</div>
+    <div class="muted" style="text-align:center;margin-bottom:12px;font-family:monospace">${it.product_id}</div>
+    <div class="muted" style="font-size:12px;margin-bottom:8px">מסניף ← לסניף · כמות (במספר: מלאי נוכחי)</div>
+    <div id="planLines">${rowsHtml}</div>
+    <button class="btn-ghost" onclick="planAddLine()" style="margin:8px 0">➕ הוסף שורה</button>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="btn-primary" style="flex:1" onclick="savePlan()">שמור לבקשה</button>
+      <button class="btn-ghost" onclick="closeModal()">ביטול</button>
+    </div>
+  </div></div>`;
+}
+function planLineChange(i,f,v){ S._planEdit.lines[i][f]= f==='qty'?Math.max(1,parseInt(v)||1):Number(v); }
+function planAddLine(){ const {it,branches,lines}=S._planEdit; const sur=it.surplus||[], need=it.needs||[];
+  lines.push({from:sur[0]||(branches[0]||{}).id, to:need[0]||(branches[0]||{}).id, qty:1}); renderPlanEditor(); }
+function planRemoveLine(i){ S._planEdit.lines.splice(i,1); if(!S._planEdit.lines.length) closeModal(); else renderPlanEditor(); }
+async function savePlan(){
+  const {it,lines}=S._planEdit;
+  const payload={lines: lines.filter(l=>Number(l.from)!==Number(l.to))
+    .map(l=>({product_id:it.product_id,name:it.name,from_branch:Number(l.from),to_branch:Number(l.to),qty:Number(l.qty)||1}))};
+  if(!payload.lines.length){ toast('בחר מקור ויעד שונים',false); return; }
+  closeModal(); showLoading('שומר…');
+  try{ await api('/api/admin/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}); }catch(e){}
+  await loadPlan(false); hideLoading(); toast('נוסף לבקשת ההעברה ✓',true);
+}
+function renderPlan(){
+  const app=document.getElementById('app');
+  const d=S.planData||{lines:[],branches:[]}; const lines=d.lines||[];
+  const groups={}; lines.forEach(l=>{ (groups[l.from_branch]=groups[l.from_branch]||[]).push(l); });
+  let html='';
+  Object.keys(groups).forEach(fb=>{ const g=groups[fb]; const fn=g[0].from_name;
+    html+=`<div class="plan-group">
+      <div class="plan-head"><b>📦 מסניף ${fn}</b> · ${g.length} פריטים
+        <button class="btn-ghost" onclick="exportPlanCSV(${fb})">📄 ייצא בקשה ל${fn}</button></div>
+      <table class="admin"><thead><tr><th>מק״ט</th><th>מוצר</th><th>כמות</th><th>לסניף</th><th></th></tr></thead><tbody>
+      ${g.map(l=>`<tr><td style="font-family:monospace;direction:ltr;text-align:right">${l.product_id}</td><td>${l.name}</td>
+        <td><b>${l.qty}</b></td><td>${l.to_name}</td><td><button class="btn-ghost" onclick="deletePlanLine(${l.id})">✕</button></td></tr>`).join('')}
+      </tbody></table></div>`;
+  });
+  app.innerHTML=`<h1 class="title">🛠️ ניהול אופרציה</h1>${adminTabsHTML()}
+    <div class="rebal-bar"><span class="muted">${lines.length} שורות בבקשה</span>
+      <span style="margin-inline-start:auto"></span>
+      ${lines.length?`<button class="btn-ghost" onclick="exportPlanCSV()">📄 ייצא הכל</button>
+      <button class="btn-ghost" onclick="clearPlan()">🗑️ נקה הכל</button>`:''}
+    </div>
+    ${lines.length?html:'<div class="empty">אין בקשות העברה. הוסף מטאב "⚖️ איזון מלאי" עם הכפתור ➕ לבקשה.</div>'}`;
+}
+async function deletePlanLine(id){ showLoading(); try{ await api('/api/admin/plan/'+id,{method:'DELETE'}); }catch(e){} await loadPlan(false); hideLoading(); }
+async function clearPlan(){ if(!confirm('לנקות את כל בקשות ההעברה?')) return; showLoading(); try{ await api('/api/admin/plan/clear',{method:'POST'}); }catch(e){} await loadPlan(false); hideLoading(); }
+function exportPlanCSV(fromBranch){
+  const d=S.planData||{lines:[]}; let lines=d.lines||[];
+  if(fromBranch!==undefined && fromBranch!==null && fromBranch!=='') lines=lines.filter(l=>String(l.from_branch)===String(fromBranch));
+  const head=['מסניף','מק"ט','מוצר','כמות','לסניף'];
+  const rows=[head.join(',')];
+  lines.forEach(l=>rows.push([_csv(l.from_name),l.product_id,_csv(l.name),l.qty,_csv(l.to_name)].join(',')));
+  const blob=new Blob(['﻿'+rows.join('\n')],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  const tag=(fromBranch&&lines[0])?('-'+lines[0].from_name):'';
+  a.download='בקשת-העברה'+tag+'-'+new Date().toISOString().slice(0,10)+'.csv'; a.click();
+}
+
 function renderAdmin(){
   if(S.adminTab==='rebalance') return S.rebalanceData?renderRebalance():loadRebalance(true);
+  if(S.adminTab==='plan') return S.planData?renderPlan():loadPlan(true);
   const app=document.getElementById('app');
   const f=S.adminFilters;
   const data=S.adminData||{summary:{},transfers:[],misroutes:[]};
