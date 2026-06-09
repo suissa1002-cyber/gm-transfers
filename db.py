@@ -73,8 +73,10 @@ _SCHEMA = [
         first_seen     TEXT,
         total_units    INTEGER DEFAULT 0,
         received_units INTEGER DEFAULT 0,
-        status         TEXT DEFAULT 'in_transit',   -- in_transit | partial | received
+        status         TEXT DEFAULT 'in_transit',   -- in_transit | partial | received | closed
         received_at    TEXT,
+        close_reason   TEXT,
+        closed_by      TEXT,
         notified_new   INTEGER DEFAULT 0,
         reminded       INTEGER DEFAULT 0,
         escalated      INTEGER DEFAULT 0
@@ -156,6 +158,8 @@ def _migrate():
         ("transfer_items", "received_method", "TEXT"),
         ("transfer_items", "barcode", "TEXT"),
         ("receive_scans",  "method", "TEXT"),
+        ("transfers",      "close_reason", "TEXT"),
+        ("transfers",      "closed_by", "TEXT"),
     ]
     for table, col, typ in cols:
         try:
@@ -251,10 +255,29 @@ def list_in_transit(to_branch_id: int) -> list[dict]:
         cur = c.cursor()
         cur.execute(_q("""
             SELECT * FROM transfers
-            WHERE to_branch_id = ? AND status != 'received'
+            WHERE to_branch_id = ? AND status IN ('in_transit','partial')
             ORDER BY created_at DESC
         """), (to_branch_id,))
         return [dict(r) for r in cur.fetchall()]
+
+
+def close_transfer(op_id: str, reason: str = "", by: str = "") -> dict:
+    """סגירה ידנית: פריטים שלא נסרקו → חוסר (3); ההעברה יוצאת מהלוח עם סיבה."""
+    op_id = str(op_id)
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""
+            UPDATE transfer_items SET received = 3, received_at = ?
+            WHERE op_id = ? AND received = 0
+        """), (now_iso(), op_id))
+        cur.execute(_q("SELECT COUNT(*) AS n FROM transfer_items WHERE op_id = ? AND received IN (1,2)"), (op_id,))
+        rec = cur.fetchone()["n"]
+        cur.execute(_q("""
+            UPDATE transfers SET status='closed', received_units=?,
+                   received_at=COALESCE(received_at, ?), close_reason=?, closed_by=?
+            WHERE op_id = ?
+        """), (rec, now_iso(), reason, by, op_id))
+    return get_transfer(op_id)
 
 
 def get_transfer(op_id: str) -> dict:
@@ -273,11 +296,20 @@ def get_transfer(op_id: str) -> dict:
 
 
 def _recount(cur, op_id: str):
-    """מעדכן received_units/status של ההעברה לפי הפריטים."""
+    """
+    מעדכן received_units/status. "נקלט" לצורך השלמה = received בערך 1 (כאן) או 2 (הופנה).
+    received=3 = חוסר (נסגר ידנית). העברה שנסגרה ('closed') לא משנה סטטוס.
+    """
+    cur.execute(_q("SELECT status FROM transfers WHERE op_id = ?"), (op_id,))
+    row = cur.fetchone()
+    cur_status = row["status"] if row else None
     cur.execute(_q("SELECT COUNT(*) AS n FROM transfer_items WHERE op_id = ?"), (op_id,))
     total = cur.fetchone()["n"]
-    cur.execute(_q("SELECT COUNT(*) AS n FROM transfer_items WHERE op_id = ? AND received = 1"), (op_id,))
+    cur.execute(_q("SELECT COUNT(*) AS n FROM transfer_items WHERE op_id = ? AND received IN (1,2)"), (op_id,))
     rec = cur.fetchone()["n"]
+    if cur_status == "closed":
+        cur.execute(_q("UPDATE transfers SET received_units = ? WHERE op_id = ?"), (rec, op_id))
+        return rec, total, "closed"
     if rec == 0:
         status = "in_transit"
     elif rec < total:
@@ -333,6 +365,22 @@ def receive_scan(branch_id: int, code: str, op_id: str = None, employee: str = N
             """), (now_iso(), received_by, method, item["id"]))
             _recount(cur, item["op_id"])
             msg = "✓ נקלט"
+            # התאמה חוצת-העברות: אותו סריאל ממתין בהעברות פתוחות אחרות → "הופנה"
+            sn = item.get("serial")
+            if sn:
+                cur.execute(_q("""
+                    SELECT id, op_id FROM transfer_items
+                    WHERE serial = ? AND id != ? AND received = 0
+                """), (sn, item["id"]))
+                others = [dict(r) for r in cur.fetchall()]
+                note = f"↪ {cfg.branch_name(branch_id)}"
+                for o in others:
+                    cur.execute(_q("""
+                        UPDATE transfer_items SET received = 2, received_at = ?, received_by = ?,
+                               received_method = 'redirected'
+                        WHERE id = ?
+                    """), (now_iso(), note, o["id"]))
+                    _recount(cur, o["op_id"])
         else:
             # אולי כבר נקלט קודם? בדיקה לשיפור ההודעה
             cur.execute(_q("""
@@ -383,8 +431,8 @@ def list_all_transfers(include_received_days: int = 7) -> list[dict]:
                   - timedelta(days=include_received_days)).isoformat(timespec="seconds")
         cur.execute(_q("""
             SELECT * FROM transfers
-            WHERE status != 'received'
-               OR (received_at IS NOT NULL AND received_at >= ?)
+            WHERE status IN ('in_transit','partial')
+               OR (status IN ('received','closed') AND received_at IS NOT NULL AND received_at >= ?)
             ORDER BY created_at DESC
         """), (cutoff,))
         return [dict(r) for r in cur.fetchall()]
@@ -487,6 +535,18 @@ def transfer_manual_count(op_id: str) -> int:
               AND received_method IS NOT NULL AND received_method IN ('manual','paste')
         """), (str(op_id),))
         return cur.fetchone()["n"]
+
+
+def transfer_state_counts(op_id: str) -> dict:
+    """{redirected, missing} — פריטים שהופנו לסניף אחר / סומנו כחוסר."""
+    with _conn() as c:
+        cur = c.cursor()
+        out = {}
+        for key, val in (("redirected", 2), ("missing", 3)):
+            cur.execute(_q("SELECT COUNT(*) AS n FROM transfer_items WHERE op_id = ? AND received = ?"),
+                        (str(op_id), val))
+            out[key] = cur.fetchone()["n"]
+        return out
 
 
 def transfer_receivers(op_id: str) -> list:

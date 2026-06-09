@@ -158,6 +158,20 @@ def transfer_detail(op_id: str):
     return _enrich(t)
 
 
+class CloseIn(BaseModel):
+    reason: Optional[str] = None
+    by: Optional[str] = None
+
+
+@app.post("/api/transfers/{op_id}/close")
+def close_transfer(op_id: str, body: CloseIn):
+    """סגירת קליטה ידנית — פריטים שלא נסרקו נרשמים כחוסר, ההעברה יוצאת מהלוח."""
+    t = db.get_transfer(op_id)
+    if not t:
+        raise HTTPException(404, "transfer not found")
+    return _enrich(db.close_transfer(op_id, body.reason or "", body.by or ""))
+
+
 class ScanIn(BaseModel):
     branch_id: int
     code: str
@@ -205,6 +219,9 @@ def admin_overview(days: int = 7, x_admin_key: Optional[str] = Header(None)):
         t["missing"] = (t.get("total_units", 0) or 0) - (t.get("received_units", 0) or 0)
         t["receivers"] = db.transfer_receivers(t["op_id"])
         t["manual_count"] = db.transfer_manual_count(t["op_id"])
+        sc = db.transfer_state_counts(t["op_id"])
+        t["redirected_count"] = sc["redirected"]
+        t["missing_count"] = sc["missing"]
         out.append(t)
     mis = db.list_open_misroutes()
     for m in mis:
