@@ -254,8 +254,9 @@ function notifyNew(fresh){
   const title = n>1 ? `📦 ${n} העברות חדשות נכנסות!` : '📦 העברה חדשה נכנסת!';
   const body = fresh.map(t=>`מ${t.from_branch_name} · ${t.total_units} פריטים`).join('\n');
   if(window.Notification && Notification.permission==='granted'){
-    try{ const ntf=new Notification(title,{body, tag:'gm-transfer', renotify:true, requireInteraction:true});
-      ntf.onclick=()=>{ window.focus(); S.view='board'; render(); ntf.close(); }; }catch(e){}
+    try{ const ntf=new Notification(title,{body, tag:'gm-transfer', renotify:true});
+      ntf.onclick=()=>{ window.focus(); S.view='board'; render(); ntf.close(); };
+      setTimeout(()=>{ try{ntf.close();}catch(e){} }, 12000); }catch(e){}
   }
   alarm(); flashTitle(title);
 }
