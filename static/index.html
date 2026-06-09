@@ -534,7 +534,7 @@ async function renderBoard(app, silent){
                  :'<div class="empty">אין כרגע העברות בדרך אליך 🎉</div>'}`;
   if(needEmp){
     const e=document.getElementById('empInput'); try{e.focus();}catch(x){}
-    e.addEventListener('keydown',ev=>{ if(ev.key!=='Enter')return; const v=e.value.trim(); if(!v)return; setEmployee(v); render(); });
+    e.addEventListener('keydown',ev=>{ if(ev.key!=='Enter')return; const v=e.value.trim(); if(!v)return; if(submitEmployee(v)) render(); });
     return;
   }
   const inp=document.getElementById('boardScan');
@@ -577,6 +577,19 @@ function cardHtml(t){
 }
 
 // ── מסך קליטה ──
+// שם נציג תקין: לפחות 2 תווים, מכיל אות, ובלי ספרות (שלא יזינו סריאל/ברקוד בטעות)
+function validEmployee(v){
+  v=(v||'').trim();
+  if(v.length<2) return false;
+  if(/\d/.test(v)) return false;                 // יש ספרה → כנראה סריאל/ברקוד
+  if(!/[A-Za-z֐-׿]/.test(v)) return false;  // חייב אות
+  return true;
+}
+function submitEmployee(v){
+  if(!validEmployee(v)){ toast('הזן שם נציג (אותיות בלבד, לא מספר/סריאל)', false); return false; }
+  setEmployee(v.trim()); return true;
+}
+
 async function openScan(opId){ showLoading();
   try{ S.op=await api('/api/transfers/'+opId); }catch(e){ hideLoading(); return; }
   hideLoading(); S.view='scan'; render(); }
@@ -612,7 +625,7 @@ function renderScan(app){
   if(needEmp){
     const e=document.getElementById('empInput'); try{e.focus();}catch(x){}
     e.addEventListener('keydown',ev=>{ if(ev.key!=='Enter')return;
-      const v=e.value.trim(); if(!v)return; setEmployee(v); render(); });
+      const v=e.value.trim(); if(!v)return; if(submitEmployee(v)) render(); });
     return;   // עדיין לא קושרים סריקה — קודם שם
   }
   const inp=document.getElementById('scanInput');
