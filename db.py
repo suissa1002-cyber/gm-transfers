@@ -508,6 +508,32 @@ def resolve_misroutes(serial: str, reason: str = "נקלט בסניף הנכון
         return cur.rowcount if hasattr(cur, "rowcount") else 0
 
 
+def relabel_receiver(op_id: str, name: str) -> int:
+    """תיקון ידני של שם הקולט בהעברה (למשל אם נסרק סריאל לשדה השם)."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""
+            UPDATE transfer_items SET received_by = ?
+            WHERE op_id = ? AND received IN (1,2)
+        """), (name, str(op_id)))
+        return cur.rowcount if hasattr(cur, "rowcount") else 0
+
+
+def numeric_receivers() -> list:
+    """רשומות שבהן הקולט נראה כמו מספר/סריאל (באג ישן) — להצגה/תיקון."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""
+            SELECT op_id, received_by, COUNT(*) AS n FROM transfer_items
+            WHERE received = 1 AND received_by ~ '^[0-9]+$'
+            GROUP BY op_id, received_by ORDER BY op_id
+        """) if _USE_PG else
+        "SELECT op_id, received_by, COUNT(*) AS n FROM transfer_items "
+        "WHERE received=1 AND received_by GLOB '[0-9]*' AND received_by NOT GLOB '*[^0-9]*' "
+        "GROUP BY op_id, received_by ORDER BY op_id")
+        return [dict(r) for r in cur.fetchall()]
+
+
 def resolve_misroute_by_id(mid, reason: str = "טופל ידנית") -> int:
     with _conn() as c:
         cur = c.cursor()

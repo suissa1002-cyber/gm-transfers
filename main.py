@@ -257,6 +257,24 @@ def admin_serial_index(x_admin_key: Optional[str] = Header(None)):
     return {"index_size": db.serial_index_count()}
 
 
+class RelabelIn(BaseModel):
+    op_id: str
+    name: str
+
+
+@app.get("/api/admin/numeric-receivers")
+def admin_numeric_receivers(x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    return db.numeric_receivers()
+
+
+@app.post("/api/admin/relabel-receiver")
+def admin_relabel_receiver(body: RelabelIn, x_admin_key: Optional[str] = Header(None)):
+    """תיקון שם הקולט בהעברה (למשל אם נסרק סריאל לשדה)."""
+    _require_admin(x_admin_key)
+    return {"updated": db.relabel_receiver(body.op_id, body.name)}
+
+
 @app.post("/api/admin/misroute/{mid}/resolve")
 def admin_resolve_misroute(mid: int, x_admin_key: Optional[str] = Header(None)):
     """סגירת חריגת 'מכשיר לא במקום' ידנית ע"י מנהל."""
