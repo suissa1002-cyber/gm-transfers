@@ -90,8 +90,17 @@
   .pl-row select{flex:1;font-family:inherit;font-size:14px;padding:9px;border-radius:10px;border:1px solid var(--line);background:var(--card2);color:var(--txt)}
   .pl-row input{font-family:inherit;font-size:14px;padding:9px;border-radius:10px;border:1px solid var(--line);background:var(--card2);color:var(--txt)}
   .plan-group{margin-bottom:22px}
-  .plan-head{display:flex;align-items:center;gap:12px;font-size:16px;margin-bottom:8px}
-  .plan-head button{margin-inline-start:auto}
+  .plan-head{display:flex;align-items:center;gap:10px;font-size:16px;margin-bottom:10px;flex-wrap:wrap}
+  .plan-head .ttl{white-space:nowrap}
+  .plan-actions{display:flex;gap:6px;margin-inline-start:auto;background:var(--card);
+                border:1px solid var(--line);border-radius:12px;padding:4px}
+  .plan-actions button{padding:7px 11px;font-size:13px;border-radius:9px;border:none;background:transparent;
+                       color:var(--muted);display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+  .plan-actions button:hover{background:var(--bg);color:var(--txt)}
+  .plan-actions .pa-accent{color:var(--blue);font-weight:700}
+  .plan-actions .pa-accent:hover{background:rgba(37,99,235,.12)}
+  .plan-actions .pa-danger:hover{background:rgba(229,72,77,.12);color:var(--red)}
+  .plan-actions .pa-sep{width:1px;background:var(--line);margin:3px 2px}
   .btn-req-in{background:var(--green);color:#fff;font-weight:700}
   table.admin tr.has-req{background:rgba(31,191,107,.08)}
   table.admin tr.has-req:hover{background:rgba(31,191,107,.14)}
@@ -979,11 +988,14 @@ function renderPlan(){
   let html='';
   Object.keys(groups).forEach(fb=>{ const g=groups[fb]; const fn=g[0].from_name;
     html+=`<div class="plan-group">
-      <div class="plan-head"><b>📦 מסניף ${fn}</b> · ${g.length} פריטים
-        <button class="btn-primary" onclick="openTransferRequestPage(${fb})">🖼️ פתח לצילום</button>
-        <button class="btn-primary" onclick="broadcastBranch(${fb})">📡 שדר לסניף</button>
-        <button class="btn-ghost" onclick="exportPlanCSV(${fb})">📄 CSV</button>
-        <button class="btn-ghost" onclick="clearPlan(${fb})">🗑️ נקה</button></div>
+      <div class="plan-head"><span class="ttl"><b>📦 מסניף ${fn}</b> · ${g.length} פריטים</span>
+        <div class="plan-actions">
+          <button class="pa-accent" onclick="openTransferRequestPage(${fb})">🖼️ פתח לצילום</button>
+          <button class="pa-accent" onclick="broadcastBranch(${fb})">📡 שדר לסניף</button>
+          <span class="pa-sep"></span>
+          <button onclick="exportPlanCSV(${fb})">📄 CSV</button>
+          <button class="pa-danger" onclick="clearPlan(${fb})">🗑️ נקה</button>
+        </div></div>
       <table class="admin"><thead><tr><th>מק״ט</th><th>מוצר</th><th>כמות</th><th>לסניף</th><th></th></tr></thead><tbody>
       ${g.map(l=>`<tr><td style="font-family:monospace;direction:ltr;text-align:right">${l.product_id}</td><td>${l.name}</td>
         <td><b>${l.qty}</b></td><td>${l.to_name}</td><td><button class="btn-ghost" onclick="deletePlanLine(${l.id})">✕</button></td></tr>`).join('')}
