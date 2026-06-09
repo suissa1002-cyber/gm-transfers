@@ -83,7 +83,8 @@
   .tabs button{background:var(--card);border:1px solid var(--line);color:var(--muted);border-radius:10px;padding:10px 18px;font-weight:700}
   .tabs button.active{background:var(--blue);color:#fff;border-color:var(--blue)}
   .rebal-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:16px}
-  .rebal-bar select{font-family:inherit;font-size:14px;padding:9px 12px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--txt)}
+  .rebal-bar select,.rebal-bar input{font-family:inherit;font-size:14px;padding:9px 12px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--txt)}
+  .rebal-bar input{min-width:240px;outline:none} .rebal-bar input:focus{border-color:var(--blue)}
   td.r-zero{color:var(--red);font-weight:800} td.r-surplus{color:var(--green);font-weight:800}
   .lastscan .sub{font-size:14px;opacity:.85;font-weight:600}
   .card.flash{border-color:var(--green)!important;box-shadow:0 0 0 2px var(--green) inset;transition:.15s}
@@ -215,7 +216,7 @@ const S = { branchId:null, branchName:null, employee:null, adminKey:null,
             cfg:{admin_required:false, admin_branch_id:5}, theme:'light', lastScan:null,
             branchList:[], adminFilters:{q:'',from:'',to:'',status:'',fromDate:'',toDate:''}, _refocusFilter:false,
             view:'board', op:null, _fromAdmin:false, pollTimer:null, knownOps:null, notifTimer:null,
-            adminTab:'transfers', rebalanceData:null, rebalFilter:'all' };
+            adminTab:'transfers', rebalanceData:null, rebalFilter:'all', rebalSearch:'', _refocusRebal:false };
 
 // ── ערכת נושא (כהה/בהיר) ──
 function applyTheme(){
@@ -745,6 +746,17 @@ async function loadRebalance(spinner){
   if(S.view==='admin' && S.adminTab==='rebalance') renderRebalance();
 }
 function setRebalFilter(v){ S.rebalFilter=v; renderRebalance(); }
+function setRebalSearch(v){ S.rebalSearch=v; S._refocusRebal=true; renderRebalance(); }
+function rebalFiltered(){
+  const d=S.rebalanceData||{items:[]};
+  let items=(d.items||[]);
+  if(S.rebalFilter && S.rebalFilter!=='all') items=items.filter(i=>i.kind===S.rebalFilter);
+  const q=(S.rebalSearch||'').trim().toLowerCase();
+  if(q){ const q2=fixHebrewLayout(S.rebalSearch.trim()).toLowerCase();
+    items=items.filter(i=>{ const blob=((i.name||'')+' '+(i.product_id||'')).toLowerCase();
+      return blob.includes(q) || (q2 && blob.includes(q2)); }); }
+  return items;
+}
 async function runRebalanceScan(){
   showLoading('סורק מלאי בכל הסניפים… (~1-2 דק׳)');
   try{ await api('/api/admin/rebalance-scan',{method:'POST'}); }catch(e){ hideLoading(); return; }
@@ -775,32 +787,35 @@ function renderRebalance(){
   const d=S.rebalanceData||{items:[],branches:[],last_scan:null};
   const branches=d.branches||[];
   const f=S.rebalFilter||'all';
-  let items=(d.items||[]); if(f!=='all') items=items.filter(i=>i.kind===f);
+  const items=rebalFiltered();
+  const totalCount=(d.items||[]).length;
   const last=d.last_scan?('סריקה אחרונה: '+fmtTime(d.last_scan)):'טרם נסרק';
   app.innerHTML=`
     <h1 class="title">🛠️ ניהול אופרציה</h1>
     ${adminTabsHTML()}
     <div class="muted" style="margin-bottom:10px;font-size:13px">פריטים שבסניף אחד יש 0 ובאחר ≥2 — מומלץ לאזן (אתר לא נכלל).</div>
     <div class="rebal-bar">
-      <button class="btn-primary" onclick="runRebalanceScan()">🔄 סרוק עכשיו</button>
-      <span class="muted">${last}</span>
+      <input id="rebalSearch" placeholder="🔎 חיפוש מוצר / מק״ט" value="${(S.rebalSearch||'').replace(/"/g,'&quot;')}" oninput="setRebalSearch(this.value)">
       <select onchange="setRebalFilter(this.value)">
         <option value="all" ${f==='all'?'selected':''}>הכל</option>
         <option value="serial" ${f==='serial'?'selected':''}>📱 סריאליים</option>
         <option value="barcode" ${f==='barcode'?'selected':''}>🏷️ ברקוד</option>
       </select>
+      <button class="btn-primary" onclick="runRebalanceScan()">🔄 סרוק עכשיו</button>
       <button class="btn-ghost" onclick="exportRebalCSV()">📄 ייצא דוח</button>
-      <span class="muted" style="margin-inline-start:auto">מציג ${items.length}</span>
+      <span class="muted">${last}</span>
+      <span class="muted" style="margin-inline-start:auto">מציג ${items.length} מתוך ${totalCount}</span>
     </div>
     ${items.length?`<table class="admin"><thead><tr>
       <th>מוצר</th><th>סוג</th>${branches.map(b=>`<th>${b.name}</th>`).join('')}<th>חסר ב</th><th>עודף ב</th>
     </tr></thead><tbody>${items.map(it=>rebalRow(it,branches)).join('')}</tbody></table>`
-    :`<div class="empty">${d.last_scan?'אין פריטים לאיזון 🎉':'לחץ "סרוק עכשיו" כדי לבנות את הרשימה'}</div>`}`;
+    :`<div class="empty">${d.last_scan?(S.rebalSearch?'אין תוצאות לחיפוש':'אין פריטים לאיזון 🎉'):'לחץ "סרוק עכשיו" כדי לבנות את הרשימה'}</div>`}`;
+  if(S._refocusRebal){ const el=document.getElementById('rebalSearch'); if(el){ el.focus(); const v=el.value; el.value=''; el.value=v; } S._refocusRebal=false; }
 }
 function _csv(s){ s=String(s==null?'':s); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; }
 function exportRebalCSV(){
   const d=S.rebalanceData||{items:[],branches:[]}; const branches=d.branches||[];
-  const f=S.rebalFilter||'all'; let items=(d.items||[]); if(f!=='all') items=items.filter(i=>i.kind===f);
+  const items=rebalFiltered();
   const head=['מוצר','מק"ט','סוג',...branches.map(b=>b.name),'חסר ב','עודף ב'];
   const lines=[head.join(',')];
   items.forEach(it=>{ lines.push([_csv(it.name),it.product_id,it.kind==='serial'?'סריאלי':'ברקוד',
@@ -922,6 +937,7 @@ function startPoll(){ clearInterval(S.pollTimer);
       if(bs && document.activeElement===bs && bs.value) return;
       renderBoard(a, true);
     } else if(S.view==='admin'){
+      if(S.adminTab==='rebalance') return;   // איזון מלאי = נתון יומי, לא מרעננים אוטומטית
       const ae=document.activeElement;   // אל תרענן תוך כדי שימוש בסינון
       if(ae && ae.closest && ae.closest('.filters')) return;
       loadAdmin(false);   // רענון שקט ברקע
