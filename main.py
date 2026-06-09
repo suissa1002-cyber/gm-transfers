@@ -309,6 +309,18 @@ def admin_plan_add(body: PlanAdd, x_admin_key: Optional[str] = Header(None)):
     return {"added": db.plan_add([l.model_dump() for l in body.lines])}
 
 
+class PlanReplace(BaseModel):
+    product_id: str
+    lines: list[PlanLine]
+
+
+@app.post("/api/admin/plan/replace")
+def admin_plan_replace(body: PlanReplace, x_admin_key: Optional[str] = Header(None)):
+    """מחליף את שורות התוכנית למוצר (עריכה/הסרה). lines ריק = הסרת הבקשה."""
+    _require_admin(x_admin_key)
+    return {"count": db.plan_replace_product(body.product_id, [l.model_dump() for l in body.lines])}
+
+
 @app.delete("/api/admin/plan/{pid}")
 def admin_plan_delete(pid: int, x_admin_key: Optional[str] = Header(None)):
     _require_admin(x_admin_key)

@@ -671,6 +671,21 @@ def plan_add(lines: list) -> int:
     return n
 
 
+def plan_replace_product(product_id, lines: list) -> int:
+    """מחליף את כל שורות התוכנית למוצר אחד (מחיקה + הוספה). lines ריק = הסרת הבקשה."""
+    pid = str(product_id)
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("DELETE FROM transfer_plan WHERE product_id = ?"), (pid,))
+        for ln in lines:
+            cur.execute(_q("""
+                INSERT INTO transfer_plan (product_id, name, from_branch, to_branch, qty, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """), (pid, ln.get("name") or "", int(ln.get("from_branch")),
+                   int(ln.get("to_branch")), int(ln.get("qty") or 1), now_iso()))
+        return len(lines)
+
+
 def plan_list() -> list:
     with _conn() as c:
         cur = c.cursor()

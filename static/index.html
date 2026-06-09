@@ -869,10 +869,16 @@ function openPlanEditor(pid){
   const it=((S.rebalanceData||{}).items||[]).find(x=>String(x.product_id)===String(pid));
   if(!it) return;
   const branches=(S.rebalanceData||{}).branches||[];
-  const sur=it.surplus||[], need=it.needs||[];
-  const lines=[];
-  for(let i=0;i<Math.min(sur.length,need.length);i++) lines.push({from:sur[i],to:need[i],qty:1});
-  if(!lines.length) lines.push({from:sur[0]||(branches[0]||{}).id, to:need[0]||(branches[0]||{}).id, qty:1});
+  // טען קודם את השורות השמורות לבקשה למוצר זה (עריכה אמיתית)
+  const existing=(((S.planData||{}).lines)||[]).filter(l=>String(l.product_id)===String(pid));
+  let lines;
+  if(existing.length){
+    lines=existing.map(l=>({from:l.from_branch,to:l.to_branch,qty:l.qty}));
+  } else {
+    const sur=it.surplus||[], need=it.needs||[]; lines=[];
+    for(let i=0;i<Math.min(sur.length,need.length);i++) lines.push({from:sur[i],to:need[i],qty:1});
+    if(!lines.length) lines.push({from:sur[0]||(branches[0]||{}).id, to:need[0]||(branches[0]||{}).id, qty:1});
+  }
   S._planEdit={it,branches,lines};
   renderPlanEditor();
 }
@@ -891,10 +897,10 @@ function renderPlanEditor(){
     <div class="muted" style="text-align:center">${it.name}</div>
     <div class="muted" style="text-align:center;margin-bottom:12px;font-family:monospace">${it.product_id}</div>
     <div class="muted" style="font-size:12px;margin-bottom:8px">מסניף ← לסניף · כמות (במספר: מלאי נוכחי)</div>
-    <div id="planLines">${rowsHtml}</div>
+    <div id="planLines">${lines.length?rowsHtml:'<div class="muted" style="text-align:center;padding:14px;color:var(--red)">אין שורות — שמירה תסיר את הבקשה למוצר זה</div>'}</div>
     <button class="btn-ghost" onclick="planAddLine()" style="margin:8px 0">➕ הוסף שורה</button>
     <div style="display:flex;gap:8px;margin-top:10px">
-      <button class="btn-primary" style="flex:1" onclick="savePlan()">שמור לבקשה</button>
+      <button class="btn-primary" style="flex:1" onclick="savePlan()">${lines.length?'שמור לבקשה':'הסר בקשה'}</button>
       <button class="btn-ghost" onclick="closeModal()">ביטול</button>
     </div>
   </div></div>`;
@@ -902,18 +908,21 @@ function renderPlanEditor(){
 function planLineChange(i,f,v){ S._planEdit.lines[i][f]= f==='qty'?Math.max(1,parseInt(v)||1):Number(v); }
 function planAddLine(){ const {it,branches,lines}=S._planEdit; const sur=it.surplus||[], need=it.needs||[];
   lines.push({from:sur[0]||(branches[0]||{}).id, to:need[0]||(branches[0]||{}).id, qty:1}); renderPlanEditor(); }
-function planRemoveLine(i){ S._planEdit.lines.splice(i,1); if(!S._planEdit.lines.length) closeModal(); else renderPlanEditor(); }
+function planRemoveLine(i){ S._planEdit.lines.splice(i,1); renderPlanEditor(); }   // לא סוגר — מאפשר שמירה ריקה = הסרה
 async function savePlan(){
   const {it,lines}=S._planEdit;
-  const payload={lines: lines.filter(l=>Number(l.from)!==Number(l.to))
-    .map(l=>({product_id:it.product_id,name:it.name,from_branch:Number(l.from),to_branch:Number(l.to),qty:Number(l.qty)||1}))};
-  if(!payload.lines.length){ toast('בחר מקור ויעד שונים',false); return; }
+  const valid=lines.filter(l=>Number(l.from)!==Number(l.to))
+    .map(l=>({product_id:it.product_id,name:it.name,from_branch:Number(l.from),to_branch:Number(l.to),qty:Number(l.qty)||1}));
+  const removing = lines.length===0;
+  if(!removing && !valid.length){ toast('בחר מקור ויעד שונים',false); return; }
   closeModal(); showLoading('שומר…');
-  try{ await api('/api/admin/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}); }catch(e){}
+  // החלפה: מוחק את שורות המוצר הקיימות ומכניס את החדשות (ריק = הסרת הבקשה)
+  try{ await api('/api/admin/plan/replace',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({product_id:it.product_id, lines:valid})}); }catch(e){}
   try{ S.planData=await api('/api/admin/plan'); S.planCount=(S.planData.lines||[]).length; }catch(e){}
   hideLoading();
   if(S.adminTab==='plan') renderPlan(); else renderRebalance();   // עדכון חיווי "בבקשה"
-  toast('נוסף לבקשת ההעברה ✓',true);
+  toast(removing?'הבקשה הוסרה':'נשמר לבקשת ההעברה ✓', !removing);
 }
 function renderPlan(){
   const app=document.getElementById('app');
