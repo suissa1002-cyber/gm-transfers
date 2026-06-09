@@ -162,6 +162,14 @@
          color:#fff;z-index:60;box-shadow:0 8px 30px rgba(0,0,0,.45);opacity:0;transition:.15s;pointer-events:none}
   .toast.show{opacity:1}
   .toast.ok{background:var(--green)} .toast.err{background:var(--red)}
+  .loading{position:fixed;inset:0;z-index:90;display:none;flex-direction:column;align-items:center;
+           justify-content:center;gap:14px;background:rgba(0,0,0,.28)}
+  body.light .loading{background:rgba(255,255,255,.55)}
+  .loading .spinner{width:46px;height:46px;border:4px solid var(--line);border-top-color:var(--blue);
+                    border-radius:50%;animation:spin .8s linear infinite}
+  .loading span{color:var(--txt);font-weight:700;background:var(--card);padding:7px 16px;border-radius:10px;
+                border:1px solid var(--line)}
+  @keyframes spin{to{transform:rotate(360deg)}}
   .overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:50;
            display:flex;align-items:center;justify-content:center}
   .modal{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:26px;
@@ -219,6 +227,15 @@ function beep(ok){ try{
 function vibrate(ok){ if(navigator.vibrate) navigator.vibrate(ok?40:[60,40,60]); }
 function toast(msg,ok){ const t=document.getElementById('toast');
   t.textContent=msg;t.className='toast show '+(ok?'ok':'err');setTimeout(()=>t.className='toast',1100); }
+
+// ── חיווי טעינה ──
+function showLoading(msg){
+  let el=document.getElementById('loading');
+  if(!el){ el=document.createElement('div'); el.id='loading'; el.className='loading'; document.body.appendChild(el); }
+  el.innerHTML=`<div class="spinner"></div>${msg?`<span>${msg}</span>`:''}`;
+  el.style.display='flex';
+}
+function hideLoading(){ const el=document.getElementById('loading'); if(el) el.style.display='none'; }
 
 // ── state ──
 function loadState(){
@@ -387,7 +404,7 @@ function render(){
   document.getElementById('branchName').textContent=S.branchName;
   document.getElementById('adminBtn').style.display =
     (Number(S.branchId)===S.cfg.admin_branch_id)?'inline-block':'none';
-  if(S.view==='admin') return renderAdmin(app);
+  if(S.view==='admin') return S.adminData?renderAdmin():loadAdmin(true);
   if(S.view==='scan')  return renderScan(app);
   return renderBoard(app);
 }
@@ -421,8 +438,10 @@ function finishPick(id,name){
 }
 
 // ── לוח בהעברה ──
-async function renderBoard(app){
+async function renderBoard(app, silent){
+  if(!silent) showLoading();
   let list=[]; try{ list=await api('/api/transfers?branch_id='+S.branchId); }catch(e){}
+  if(!silent) hideLoading();
   S.transfers=list;
   const needEmp=!S.employee;
   const pending=list.reduce((a,t)=>a+(t.total_units-t.received_units),0);
@@ -466,7 +485,7 @@ async function doScanBoard(code, method){
   let res;
   try{ res=await api('/api/scan',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({branch_id:Number(S.branchId),code,employee:S.employee,method})}); }
-  catch(e){ S.lastScan={ok:false,message:'שגיאת רשת',code}; beep(false); await renderBoard(document.getElementById('app')); return; }
+  catch(e){ S.lastScan={ok:false,message:'שגיאת רשת',code}; beep(false); await renderBoard(document.getElementById('app'), true); return; }
   if(res.matched){
     beep(true);vibrate(true);
     const it=res.item||{}, t=res.transfer||{};
@@ -478,7 +497,7 @@ async function doScanBoard(code, method){
     if(mr) S.lastScan={ok:false, misroute:mr.type, message:mr.message, name:mr.product_name||'', code};
     else   S.lastScan={ok:false, message:res.message||'לא שייך לאף העברה נכנסת', code};
   }
-  await renderBoard(document.getElementById('app'));
+  await renderBoard(document.getElementById('app'), true);
 }
 function fmtTime(iso){ if(!iso)return''; const d=new Date(iso); if(isNaN(d))return iso;
   return d.toLocaleString('he-IL',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); }
@@ -494,7 +513,9 @@ function cardHtml(t){
 }
 
 // ── מסך קליטה ──
-async function openScan(opId){ S.op=await api('/api/transfers/'+opId); S.view='scan'; render(); }
+async function openScan(opId){ showLoading();
+  try{ S.op=await api('/api/transfers/'+opId); }catch(e){ hideLoading(); return; }
+  hideLoading(); S.view='scan'; render(); }
 function setEmployee(name){ S.employee=name; localStorage.setItem('tr_employee',name); }
 function changeEmployee(){ S.employee=null; localStorage.removeItem('tr_employee'); render(); }
 function renderScan(app){
@@ -588,34 +609,45 @@ function finishReceiving(){
   </div></div>`;
   document.getElementById('closeConfirm').onclick=async()=>{
     const reason=document.getElementById('closeReason').value;
+    closeModal(); showLoading('סוגר קליטה…');
     try{ await api('/api/transfers/'+t.op_id+'/close',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({reason,by:S.employee})}); }catch(e){}
-    closeModal(); backToBoard();
+    hideLoading(); backToBoard();
   };
 }
 
 // ── ניהול אופרציה ──
-function toggleAdmin(){ S.view=(S.view==='admin')?'board':'admin'; render(); }
+function toggleAdmin(){ if(S.view==='admin'){ S.view='board'; render(); } else { S.view='admin'; loadAdmin(true); } }
 function branchOpts(sel,allLabel){
   let o=`<option value="">${allLabel}</option>`;
   (S.branchList||[]).forEach(b=>{ o+=`<option value="${b.id}" ${String(b.id)===String(sel)?'selected':''}>${b.name}</option>`; });
   return o;
 }
-function setFilter(k,v){ S.adminFilters[k]=v; if(k==='q')S._refocusFilter=true; renderAdmin(document.getElementById('app')); }
-function setStatusChip(k){ S.adminFilters.status=(S.adminFilters.status===k)?'':k; renderAdmin(document.getElementById('app')); }
-function clearFilters(){ S.adminFilters={q:'',from:'',to:'',status:'',fromDate:'',toDate:''}; renderAdmin(document.getElementById('app')); }
-
-async function renderAdmin(app){
-  const f=S.adminFilters;
-  let data={summary:{},transfers:[]};
-  // חלון השליפה: 30 יום כברירת מחדל; אם נבחר תאריך התחלה ישן יותר — מרחיבים בהתאם
-  let fetchDays=30;
+function adminFetchDays(){ const f=S.adminFilters;
   if(f.fromDate){ const diff=Math.ceil((Date.now()-new Date(f.fromDate).getTime())/86400000)+1;
-    fetchDays=Math.min(Math.max(diff,1),365); }
-  try{ data=await api('/api/admin/overview?days='+fetchDays); }
-  catch(e){ if(e.status===401){ S.adminKey=null; localStorage.removeItem('tr_admin_key');
-      app.innerHTML='<div class="empty">נדרשת סיסמת ניהול. בחר מחדש את סניף אתר.</div>'; return; } }
-  const s=data.summary||{}, order={in_transit:0,partial:1,received:2};
+    return Math.min(Math.max(diff,1),365); }
+  return 30; }
+// סינון לפי סניף/סטטוס/חיפוש = מיידי (על נתונים מקומיים); שינוי טווח תאריכים = שליפה מחדש
+function setFilter(k,v){ S.adminFilters[k]=v; if(k==='q')S._refocusFilter=true;
+  if(k==='fromDate') loadAdmin(true); else renderAdmin(); }
+function setStatusChip(k){ S.adminFilters.status=(S.adminFilters.status===k)?'':k; renderAdmin(); }
+function clearFilters(){ S.adminFilters={q:'',from:'',to:'',status:'',fromDate:'',toDate:''}; renderAdmin(); }
+
+async function loadAdmin(spinner){
+  if(spinner) showLoading('טוען נתוני ניהול…');
+  try{ S.adminData=await api('/api/admin/overview?days='+adminFetchDays()); }
+  catch(e){ if(e&&e.status===401){ S.adminKey=null; localStorage.removeItem('tr_admin_key');
+      document.getElementById('app').innerHTML='<div class="empty">נדרשת סיסמת ניהול. בחר מחדש את סניף אתר.</div>';
+      if(spinner) hideLoading(); return; } }
+  if(spinner) hideLoading();
+  renderAdmin();
+}
+
+function renderAdmin(){
+  const app=document.getElementById('app');
+  const f=S.adminFilters;
+  const data=S.adminData||{summary:{},transfers:[],misroutes:[]};
+  const s=data.summary||{}, order={in_transit:0,partial:1,received:2,closed:3};
   let rows=(data.transfers||[]).slice(); const total=rows.length;
   if(f.q){ const q=f.q.trim().toLowerCase();
     rows=rows.filter(t=>(String(t.op_id)+' '+t.from_branch_name+' '+t.to_branch_name+' '+(t.employee||'')+' '+((t.receivers||[]).join(' '))).toLowerCase().includes(q)); }
@@ -687,10 +719,15 @@ function misRow(m){
   </tr>`;
 }
 async function resolveMisroute(id){
+  showLoading('סוגר חריגה…');
   try{ await api('/api/admin/misroute/'+id+'/resolve',{method:'POST'}); }catch(e){}
-  renderAdmin(document.getElementById('app'));
+  await loadAdmin(false); hideLoading();
 }
-async function adminOpen(opId){ S.op=await api('/api/transfers/'+opId); S._fromAdmin=true; S.view='scan'; render(); }
+async function adminOpen(opId){
+  showLoading();
+  try{ S.op=await api('/api/transfers/'+opId); }catch(e){ hideLoading(); return; }
+  hideLoading(); S._fromAdmin=true; S.view='scan'; render();
+}
 
 // ── polling רקע ──
 function startPoll(){ clearInterval(S.pollTimer);
@@ -699,11 +736,11 @@ function startPoll(){ clearInterval(S.pollTimer);
       // לא מרעננים תוך כדי הקלדה/סריקה פעילה כדי לא לשבש
       const bs=document.getElementById('boardScan');
       if(bs && document.activeElement===bs && bs.value) return;
-      renderBoard(a);
+      renderBoard(a, true);
     } else if(S.view==='admin'){
       const ae=document.activeElement;   // אל תרענן תוך כדי שימוש בסינון
       if(ae && ae.closest && ae.closest('.filters')) return;
-      renderAdmin(a);
+      loadAdmin(false);   // רענון שקט ברקע
     }
   },15000); }
 
