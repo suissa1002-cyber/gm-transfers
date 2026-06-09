@@ -206,7 +206,7 @@
 const S = { branchId:null, branchName:null, employee:null, adminKey:null,
             cfg:{admin_required:false, admin_branch_id:5}, theme:'light', lastScan:null,
             branchList:[], adminFilters:{q:'',from:'',to:'',status:'',fromDate:'',toDate:''}, _refocusFilter:false,
-            view:'board', op:null, _fromAdmin:false, pollTimer:null };
+            view:'board', op:null, _fromAdmin:false, pollTimer:null, knownOps:null, notifTimer:null };
 
 // ── ערכת נושא (כהה/בהיר) ──
 function applyTheme(){
@@ -225,6 +225,51 @@ function beep(ok){ try{
   o.frequency.value=ok?880:220;g.gain.value=0.08;o.start();o.stop(actx.currentTime+(ok?0.12:0.32));
 }catch(e){} }
 function vibrate(ok){ if(navigator.vibrate) navigator.vibrate(ok?40:[60,40,60]); }
+// אזעקה — צליל בולט שחוזר כמה פעמים (להעברה נכנסת)
+function alarm(){
+  try{
+    actx=actx||new (window.AudioContext||window.webkitAudioContext)();
+    if(actx.state==='suspended') actx.resume();
+    const seq=[880,1175,880,1175,880];
+    seq.forEach((f,i)=>{ const o=actx.createOscillator(),g=actx.createGain();
+      o.connect(g);g.connect(actx.destination); o.frequency.value=f; o.type='square';
+      const t=actx.currentTime+i*0.22; g.gain.setValueAtTime(0.0001,t);
+      g.gain.exponentialRampToValueAtTime(0.12,t+0.02); g.gain.exponentialRampToValueAtTime(0.0001,t+0.2);
+      o.start(t); o.stop(t+0.21); });
+  }catch(e){}
+}
+// כותרת לשונית מהבהבת עד שחוזרים לדף
+let _titleTimer=null; const _origTitle=document.title;
+function flashTitle(msg){
+  if(_titleTimer || document.hasFocus()) return;
+  let on=false;
+  _titleTimer=setInterval(()=>{ document.title=(on=!on)?('🔴 '+msg):_origTitle; },800);
+  const stop=()=>{ if(_titleTimer){clearInterval(_titleTimer);_titleTimer=null;} document.title=_origTitle;
+    window.removeEventListener('focus',stop); };
+  window.addEventListener('focus',stop);
+}
+// התראת מערכת + צליל + הבהוב על העברות חדשות
+function notifyNew(fresh){
+  const n=fresh.length;
+  const title = n>1 ? `📦 ${n} העברות חדשות נכנסות!` : '📦 העברה חדשה נכנסת!';
+  const body = fresh.map(t=>`מ${t.from_branch_name} · ${t.total_units} פריטים`).join('\n');
+  if(window.Notification && Notification.permission==='granted'){
+    try{ const ntf=new Notification(title,{body, tag:'gm-transfer', renotify:true, requireInteraction:true});
+      ntf.onclick=()=>{ window.focus(); S.view='board'; render(); ntf.close(); }; }catch(e){}
+  }
+  alarm(); flashTitle(title);
+}
+function detectNewTransfers(list){
+  const ids=list.map(t=>t.op_id);
+  if(!S.knownOps){ S.knownOps=new Set(ids); return; }   // טעינה ראשונה — בסיס, בלי התראה
+  const fresh=list.filter(t=>!S.knownOps.has(t.op_id));
+  S.knownOps=new Set(ids);
+  if(fresh.length) notifyNew(fresh);
+}
+function requestNotif(){
+  if(!window.Notification){ toast('הדפדפן לא תומך בהתראות',false); return; }
+  Notification.requestPermission().then(()=>{ render(); });
+}
 function toast(msg,ok){ const t=document.getElementById('toast');
   t.textContent=msg;t.className='toast show '+(ok?'ok':'err');setTimeout(()=>t.className='toast',1100); }
 
@@ -434,7 +479,7 @@ function pickBranch(id,name){
 }
 function finishPick(id,name){
   localStorage.setItem('tr_branch_id',id); localStorage.setItem('tr_branch_name',name);
-  S.branchId=id; S.branchName=name; S.view='board'; render(); startPoll();
+  S.branchId=id; S.branchName=name; S.view='board'; render(); startPoll(); startNotifPoll();
 }
 
 // ── לוח בהעברה ──
@@ -442,9 +487,12 @@ async function renderBoard(app, silent){
   if(!silent) showLoading();
   let list=[]; try{ list=await api('/api/transfers?branch_id='+S.branchId); }catch(e){}
   if(!silent) hideLoading();
+  detectNewTransfers(list);   // התראה על העברות חדשות
   if(S.view!=='board') return;   // המשתמש ניווט בינתיים — אל תדרוס
   S.transfers=list;
   const needEmp=!S.employee;
+  const notifBtn = (window.Notification && Notification.permission!=='granted')
+    ? `<button class="btn-ghost" style="margin-bottom:12px" onclick="requestNotif()">🔔 הפעל התראות להעברה נכנסת</button>` : '';
   const pending=list.reduce((a,t)=>a+(t.total_units-t.received_units),0);
   const ls=S.lastScan;
   const okCls = (ls&&(ls.method==='manual'||ls.method==='paste'))?'warn':'ok';
@@ -455,6 +503,7 @@ async function renderBoard(app, silent){
     : `<div class="lastscan idle">המכשיר האחרון שתסרוק יוצג כאן</div>`);
   app.innerHTML=`
     <h1 class="title">📥 קליטת מכשירים נכנסים</h1>
+    <div style="text-align:center">${notifBtn}</div>
     <div class="panel board-scan">
       ${needEmp
         ? `<div class="scan-icon">👤</div>
@@ -730,6 +779,14 @@ async function adminOpen(opId){
   hideLoading(); S._fromAdmin=true; S.view='scan'; render();
 }
 
+// ── התראות רקע: בודק העברות נכנסות חדשות בכל מצב (גם אם לא על מסך הלוח) ──
+function startNotifPoll(){ clearInterval(S.notifTimer);
+  S.notifTimer=setInterval(async()=>{
+    if(!S.branchId) return;
+    let list; try{ list=await api('/api/transfers?branch_id='+S.branchId); }catch(e){ return; }
+    detectNewTransfers(list);
+  }, 20000); }
+
 // ── polling רקע ──
 function startPoll(){ clearInterval(S.pollTimer);
   S.pollTimer=setInterval(()=>{ const a=document.getElementById('app');
@@ -763,7 +820,7 @@ document.addEventListener('click', (e)=>{
   loadState(); applyTheme();
   try{ S.cfg=await (await fetch('/api/config')).json(); }catch(e){}
   try{ S.branchList=await (await fetch('/api/branches')).json(); }catch(e){}
-  render(); applyTheme(); if(S.branchId){ startPoll(); handleDeepLink(); }
+  render(); applyTheme(); if(S.branchId){ startPoll(); startNotifPoll(); handleDeepLink(); }
 })();
 </script>
 </body>
