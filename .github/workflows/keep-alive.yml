@@ -10,13 +10,16 @@ jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping /health
+      - name: Poll + keep-alive
         run: |
           SERVICE_URL="${{ secrets.SERVICE_URL }}"
           if [ -z "$SERVICE_URL" ]; then
             echo "SERVICE_URL secret not set — skipping"
             exit 0
           fi
-          status=$(curl -s -o /dev/null -w "%{http_code}" "$SERVICE_URL/health" --max-time 30)
-          echo "GET $SERVICE_URL/health → $status"
-          [ "$status" = "200" ] || exit 1
+          # POST /api/poll מעיר את השירות (אם נרדם) וגם קולט העברות חדשות.
+          # timeout ארוך כי cold-start יכול לקחת ~60ש'. לא נכשלים על timeout (רק מדווחים).
+          code=$(curl -s -o /tmp/resp -w "%{http_code}" -X POST "$SERVICE_URL/api/poll" --max-time 90 || echo 000)
+          echo "POST $SERVICE_URL/api/poll → $code"
+          head -c 400 /tmp/resp 2>/dev/null || true
+          exit 0
