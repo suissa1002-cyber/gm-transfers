@@ -442,6 +442,7 @@ async function renderBoard(app, silent){
   if(!silent) showLoading();
   let list=[]; try{ list=await api('/api/transfers?branch_id='+S.branchId); }catch(e){}
   if(!silent) hideLoading();
+  if(S.view!=='board') return;   // המשתמש ניווט בינתיים — אל תדרוס
   S.transfers=list;
   const needEmp=!S.employee;
   const pending=list.reduce((a,t)=>a+(t.total_units-t.received_units),0);
@@ -637,10 +638,10 @@ async function loadAdmin(spinner){
   if(spinner) showLoading('טוען נתוני ניהול…');
   try{ S.adminData=await api('/api/admin/overview?days='+adminFetchDays()); }
   catch(e){ if(e&&e.status===401){ S.adminKey=null; localStorage.removeItem('tr_admin_key');
-      document.getElementById('app').innerHTML='<div class="empty">נדרשת סיסמת ניהול. בחר מחדש את סניף אתר.</div>';
+      if(S.view==='admin') document.getElementById('app').innerHTML='<div class="empty">נדרשת סיסמת ניהול. בחר מחדש את סניף אתר.</div>';
       if(spinner) hideLoading(); return; } }
   if(spinner) hideLoading();
-  renderAdmin();
+  if(S.view==='admin') renderAdmin();   // אל תדרוס מסך אחר אם המשתמש ניווט בינתיים (למשל נכנס להעברה)
 }
 
 function renderAdmin(){
