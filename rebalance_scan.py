@@ -14,6 +14,7 @@ import poller
 logger = logging.getLogger("transfers.rebalance")
 
 _BRANCHES = [1, 2, 3, 4]   # ללא 5 (אתר — לא מחזיק מלאי)
+_WAREHOUSE_BRANCH = 3      # מחסן\מרלוג — לא נכלל באיזון של פריטי ברקוד (אביזרים)
 _running = False
 
 
@@ -47,8 +48,10 @@ def scan() -> dict:
             if not m["isSerial"] and not m["barcode"]:
                 continue   # רק פריטים עם סריאל/ברקוד
             stock = {b: (m["stock"].get(b, 0) or 0) for b in _BRANCHES}
-            needs = [b for b in _BRANCHES if stock[b] == 0]
-            surplus = [b for b in _BRANCHES if stock[b] >= 2]
+            # פריטי ברקוד (אביזרים): לא כוללים את מחסן\מרלוג באיזון — סניף זה לא נסחר בברקוד
+            eval_branches = _BRANCHES if m["isSerial"] else [b for b in _BRANCHES if b != _WAREHOUSE_BRANCH]
+            needs = [b for b in eval_branches if stock[b] == 0]
+            surplus = [b for b in eval_branches if stock[b] >= 2]
             if needs and surplus:
                 candidates.append({
                     "product_id": pid, "name": m["name"],
