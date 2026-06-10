@@ -19,41 +19,41 @@ import poller
 
 logger = logging.getLogger("transfers.recommend")
 
-_CATALOG = {"at": 0.0, "data": {}}     # pid -> {name, stock, supplier, category, kind, barcode, active}
-_CATALOG_TTL = 1800                     # שנייה (30 דק')
 _DEFAULT_TARGET_DAYS = 21
+_refreshing = False
 
 
-def _build_catalog(force: bool = False) -> dict:
-    """{pid: {...}} מלאי כולל + ספק/קטגוריה/סוג. cache עם TTL."""
-    now = time.time()
-    if not force and _CATALOG["data"] and (now - _CATALOG["at"] < _CATALOG_TTL):
-        return _CATALOG["data"]
-    no = poller.client()
-    prods = no.get_all_products() or []      # ללא branch_id → currentStock = סך כל הסניפים
-    cat = {}
-    for p in prods:
-        pid = str(p.get("id"))
-        sup = p.get("supplier") or {}
-        isser = bool(p.get("isSerial"))
-        bc = (p.get("barcode") or "").strip()
-        cat[pid] = {
-            "name": p.get("name") or "",
-            "stock": p.get("currentStock") or 0,
-            "supplier": (sup.get("name") or "").strip() if isinstance(sup, dict) else "",
-            "category": ((p.get("category") or {}).get("name") or "").strip(),
-            "kind": "serial" if isser else ("barcode" if bc else "other"),
-            "barcode": bc,
-            "active": bool(p.get("isActive")),
-        }
-    _CATALOG["data"] = cat
-    _CATALOG["at"] = now
-    logger.info("catalog cache built: %d products", len(cat))
-    return cat
-
-
-def refresh_catalog():
-    _build_catalog(force=True)
+def refresh_catalog_to_db() -> dict:
+    """בונה את הקטלוג מ-NewOrder (get_all_products, ~28 קריאות) ושומר ב-DB.
+    מורץ ע"י job מתוזמן — לא בכל בקשת המלצות. כך אין הצפת טוקן/429."""
+    global _refreshing
+    if _refreshing:
+        return {"skipped": "already refreshing"}
+    _refreshing = True
+    try:
+        no = poller.client()
+        prods = no.get_all_products() or []   # ללא branch_id → currentStock = סך כל הסניפים
+        rows = []
+        for p in prods:
+            sup = p.get("supplier") or {}
+            isser = bool(p.get("isSerial"))
+            bc = (p.get("barcode") or "").strip()
+            rows.append({
+                "product_id": str(p.get("id")),
+                "name": p.get("name") or "",
+                "stock": p.get("currentStock") or 0,
+                "supplier": (sup.get("name") or "").strip() if isinstance(sup, dict) else "",
+                "category": ((p.get("category") or {}).get("name") or "").strip(),
+                "kind": "serial" if isser else ("barcode" if bc else "other"),
+                "barcode": bc,
+                "active": bool(p.get("isActive")),
+            })
+        if rows:
+            db.catalog_replace(rows)
+            logger.info("catalog refreshed to DB: %d products", len(rows))
+        return {"products": len(rows)}
+    finally:
+        _refreshing = False
 
 
 def compute(days: int = 30, branch_id=None, target_days: int = None) -> dict:
@@ -63,8 +63,9 @@ def compute(days: int = 30, branch_id=None, target_days: int = None) -> dict:
     today = date.today()
     since = (today - timedelta(days=days)).isoformat()
     agg = db.sales_aggregate(since, branch_id=branch_id)   # {pid: {qty,last_date,branches}}
-    catalog = _build_catalog()
+    catalog = db.catalog_load()                            # מ-DB — 0 קריאות NewOrder
     summary = db.sales_summary()
+    cat_meta = db.catalog_meta()
 
     # מכנה אפקטיבי: אם יש לנו פחות היסטוריה מהחלון המבוקש, מחלקים במספר הימים שבאמת נאספו
     # (אחרת קצב המכירה מוערך בחסר בזמן רולאאוט). מקסימום = days.
@@ -103,5 +104,7 @@ def compute(days: int = 30, branch_id=None, target_days: int = None) -> dict:
         "items": items,
         "meta": {"days": days, "data_days": data_days, "target_days": target_days,
                  "branch_id": branch_id, "count": len(items),
+                 "catalog_count": cat_meta["count"], "catalog_updated": cat_meta["updated_at"],
+                 "catalog_ready": cat_meta["count"] > 0,
                  "sales_summary": summary},
     }

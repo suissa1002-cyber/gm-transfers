@@ -189,6 +189,21 @@ _SCHEMA = [
         v  TEXT
     )
     """,
+    # קטלוג מוצרים (cache ב-DB) — שורד restart; נבנה ע"י job מתוזמן, לא בכל בקשה.
+    # כך המלצות ההזמנה קוראות מ-DB (מיידי, 0 קריאות NewOrder) ולא מפוצצות את הטוקן המשותף.
+    """
+    CREATE TABLE IF NOT EXISTS catalog (
+        product_id  TEXT PRIMARY KEY,
+        name        TEXT,
+        stock       REAL,
+        supplier    TEXT,
+        category    TEXT,
+        kind        TEXT,
+        barcode     TEXT,
+        active      INTEGER,
+        updated_at  TEXT
+    )
+    """,
     # טיוטת הזמנה (רשימה שטוחה; מקביל ל-transfer_plan)
     """
     CREATE TABLE IF NOT EXISTS order_plan (
@@ -979,6 +994,46 @@ def order_product_ids() -> set:
         cur = c.cursor()
         cur.execute("SELECT DISTINCT product_id FROM order_plan")
         return {str(r["product_id"]) for r in cur.fetchall()}
+
+
+# ── קטלוג מוצרים (cache ב-DB) ──────────────────────────────────────
+def catalog_replace(rows: list):
+    """מחליף את כל הקטלוג. row: {product_id,name,stock,supplier,category,kind,barcode,active}."""
+    ts = now_iso()
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute("DELETE FROM catalog")
+        for r in rows:
+            cur.execute(_q("""
+                INSERT INTO catalog (product_id, name, stock, supplier, category, kind, barcode, active, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """), (str(r.get("product_id")), r.get("name") or "", float(r.get("stock") or 0),
+                   r.get("supplier") or "", r.get("category") or "", r.get("kind") or "",
+                   r.get("barcode") or "", 1 if r.get("active") else 0, ts))
+
+
+def catalog_load() -> dict:
+    """{pid: {name,stock,supplier,category,kind,barcode,active}}."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute("SELECT * FROM catalog")
+        out = {}
+        for r in cur.fetchall():
+            d = dict(r)
+            out[str(d["product_id"])] = {
+                "name": d["name"], "stock": d["stock"], "supplier": d["supplier"],
+                "category": d["category"], "kind": d["kind"], "barcode": d["barcode"],
+                "active": bool(d["active"]),
+            }
+        return out
+
+
+def catalog_meta() -> dict:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute("SELECT COUNT(*) AS n, MAX(updated_at) AS u FROM catalog")
+        r = dict(cur.fetchone())
+        return {"count": r.get("n") or 0, "updated_at": r.get("u")}
 
 
 def rebalance_last_scan() -> str:

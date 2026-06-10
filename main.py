@@ -91,6 +91,14 @@ def _sales_backfill_job(days: int = 90, max_new_docs: int = 1500):
         logger.warning("sales_backfill failed: %s", e)
 
 
+def _catalog_refresh_job():
+    try:
+        import order_recommend
+        order_recommend.refresh_catalog_to_db()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("catalog_refresh failed: %s", e)
+
+
 @app.on_event("startup")
 def _startup():
     db.init_db()
@@ -114,6 +122,10 @@ def _startup():
     scheduler.add_job(_sales_ingest_job, "interval", hours=3, id="sales_ingest", max_instances=1)
     scheduler.add_job(_sales_ingest_job, "date", id="sales_ingest_initial",
                       run_date=datetime.now() + timedelta(seconds=120))
+    # קטלוג מוצרים ל-DB: רענון כל 6 שעות + ריצה ראשונית (~150ש' אחרי עליה, מרווח מ-sales)
+    scheduler.add_job(_catalog_refresh_job, "interval", hours=6, id="catalog_refresh", max_instances=1)
+    scheduler.add_job(_catalog_refresh_job, "date", id="catalog_initial",
+                      run_date=datetime.now() + timedelta(seconds=150))
     scheduler.start()
     # סבב ראשוני סינכרוני קצר כדי שהלוח לא יהיה ריק בהפעלה
     try:
@@ -439,9 +451,22 @@ def admin_recommendations(days: int = 30, branch: Optional[int] = None,
     _require_admin(x_admin_key)
     import order_recommend
     res = order_recommend.compute(days=days, branch_id=branch, target_days=target_days)
+    # אם הקטלוג עוד לא נבנה (עלייה ראשונה/restart) — מפעילים בנייה ברקע, לא חוסמים את הבקשה
+    if not res["meta"].get("catalog_ready"):
+        scheduler.add_job(_catalog_refresh_job, "date", id="catalog_ondemand",
+                          run_date=datetime.now() + timedelta(seconds=1), replace_existing=True)
     res["in_order"] = sorted(db.order_product_ids())
     res["branches"] = [{"id": b, "name": cfg.branch_name(b)} for b in (1, 2, 3, 4, 5)]
     return res
+
+
+@app.post("/api/admin/catalog-refresh")
+def admin_catalog_refresh(x_admin_key: Optional[str] = Header(None)):
+    """רענון קטלוג המוצרים ל-DB ידנית (רץ ברקע)."""
+    _require_admin(x_admin_key)
+    scheduler.add_job(_catalog_refresh_job, "date", id="catalog_manual",
+                      run_date=datetime.now() + timedelta(seconds=1), replace_existing=True)
+    return {"started": True, "meta": db.catalog_meta()}
 
 
 @app.get("/api/admin/sales-status")

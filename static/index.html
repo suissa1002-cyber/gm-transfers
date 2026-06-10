@@ -1238,7 +1238,7 @@ function renderReco(){
       <th class="sortable" onclick="setRecoSort('recommended')">מומלץ ${recoArr('recommended')}</th>
       <th></th>
     </tr></thead><tbody>${items.map(recoRow).join('')}</tbody></table>`
-    :`<div class="empty">${sum.docs?'אין מוצרים מתאימים לסינון':'אין נתוני מכירות עדיין — לחץ "🔄 אסוף מכירות" (או המתן לאיסוף היומי)'}</div>`}`;
+    :`<div class="empty">${(d.meta&&d.meta.catalog_ready===false)?'⏳ בונה קטלוג מוצרים… רענן בעוד ~דקה':(sum.docs?'אין מוצרים מתאימים לסינון':'אין נתוני מכירות עדיין — לחץ "🔄 אסוף מכירות" (או המתן לאיסוף היומי)')}</div>`}`;
   if(S._refocusReco){ const el=document.getElementById('recoSearch'); if(el){ el.focus(); const v=el.value; el.value=''; el.value=v; } S._refocusReco=false; }
 }
 function openOrderEditor(pid){
