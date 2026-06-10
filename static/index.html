@@ -133,6 +133,13 @@
            padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer}
   .wcq-btn.on{border-color:var(--green);color:var(--green);font-weight:800;background:rgba(31,191,107,.08)}
   .wcq-btn.off{opacity:.4}
+  /* מלאי חי — שדה חיפוש עם כפתור ניקוי */
+  .ls-searchwrap{position:relative;display:inline-flex;min-width:240px;flex:1 1 auto;max-width:430px}
+  .ls-searchwrap input{width:100%;min-width:0;padding-inline-end:38px}
+  .ls-clear{position:absolute;inset-inline-end:8px;top:50%;transform:translateY(-50%);
+            border:none;background:var(--card2);color:var(--muted);border-radius:50%;
+            width:24px;height:24px;font-size:12px;cursor:pointer;line-height:1}
+  .ls-clear:hover{color:var(--txt);background:var(--bg)}
   /* מלאי חי — תצוגת כרטיסים למובייל */
   .ls-has{color:var(--green);font-weight:800} .ls-zero{color:var(--muted)}
   .ls-neg{color:var(--red);font-weight:800} .ls-wait{color:var(--muted);opacity:.6}
@@ -316,6 +323,9 @@
     .embed-frame{height:calc(100vh - 215px)}
     /* סרגל סינון נוח לאצבע: חיפוש ברוחב מלא, פילטרים בזוגות */
     .rebal-bar input{flex:1 1 100%;min-width:0;font-size:16px;padding:12px 14px}
+    .ls-searchwrap{flex:1 1 100%;max-width:none}
+    .ls-searchwrap input{padding-inline-end:42px}
+    .ls-clear{width:28px;height:28px;font-size:14px}
     .rebal-bar select{flex:1 1 45%;min-width:0}
     .ls-check{flex:1 1 45%;justify-content:center}
     table.serials{display:block;overflow-x:auto;white-space:nowrap}
@@ -2019,7 +2029,11 @@ function renderLive(){
       <span class="muted ls-hint" style="font-size:12px">החיפוש מקומי ומיידי; כמויות המלאי נקראות חי מ-NewOrder ברגע הצמצום · לחיצה על מוצר = פירוט סניפים + סריאלים</span>
     </div>
     <div class="rebal-bar">
-      <input id="lsSearch" placeholder="🔎 שם מוצר / מק״ט / ברקוד / סריאל" value="${(S.lsQuery||'').replace(/"/g,'&quot;')}" oninput="setLsQuery(this.value)" autocomplete="off">
+      <span class="ls-searchwrap">
+        <input id="lsSearch" placeholder="🔎 שם מוצר / מק״ט / ברקוד / סריאל" value="${(S.lsQuery||'').replace(/"/g,'&quot;')}"
+          oninput="setLsQuery(this.value)" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search">
+        ${S.lsQuery?`<button class="ls-clear" onclick="setLsQuery('')" title="נקה חיפוש">✕</button>`:''}
+      </span>
       <select onchange="setLsKind(this.value)">
         ${opt('all',S.lsKind,'סוג — הכל')}${opt('serial',S.lsKind,'📱 סריאליים')}${opt('barcode',S.lsKind,'🏷️ ברקוד')}
       </select>
