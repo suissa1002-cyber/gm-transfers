@@ -159,14 +159,21 @@ def _startup():
     # איזון מלאי: פעמיים ביום (כך שתמיד נופל בתוך שעות הפעילות של איזה יום) — תחילת/סוף יום
     scheduler.add_job(_rebalance_job, "cron", id="rebalance_am", hour=8, minute=30, max_instances=1)
     scheduler.add_job(_rebalance_job, "cron", id="rebalance_pm", hour=21, minute=0, max_instances=1)
-    # איסוף מכירות מצטבר: כל 3 שעות (מושך רק מסמכים חדשים מאז ה-cursor) + ריצה ראשונית
+    # איסוף מכירות מצטבר: כל 3 שעות. ריצה ראשונית רק אם האיסוף האחרון ישן —
+    # deploys תכופים לא צריכים להפעיל אותו שוב ושוב (מעמיס על הקצב המשותף).
     scheduler.add_job(_sales_ingest_job, "interval", hours=3, id="sales_ingest", max_instances=1)
-    scheduler.add_job(_sales_ingest_job, "date", id="sales_ingest_initial",
-                      run_date=datetime.now() + timedelta(seconds=120))
-    # הורדות מלאי מרלוג: כל 3 שעות + ריצה ראשונית (~180ש', מרווח מהשאר)
+    if _is_stale(db.sales_state_get("last_run"), hours=2):
+        scheduler.add_job(_sales_ingest_job, "date", id="sales_ingest_initial",
+                          run_date=datetime.now() + timedelta(seconds=120))
+    else:
+        logger.info("sales ingest fresh — skipping initial run")
+    # הורדות מלאי מרלוג: כל 3 שעות. ריצה ראשונית רק אם ישן (אותו היגיון).
     scheduler.add_job(_removals_ingest_job, "interval", hours=3, id="removals_ingest", max_instances=1)
-    scheduler.add_job(_removals_ingest_job, "date", id="removals_initial",
-                      run_date=datetime.now() + timedelta(seconds=180))
+    if _is_stale(db.sales_state_get("removals_last_run"), hours=2):
+        scheduler.add_job(_removals_ingest_job, "date", id="removals_initial",
+                          run_date=datetime.now() + timedelta(seconds=180))
+    else:
+        logger.info("removals ingest fresh — skipping initial run")
     # קטלוג מוצרים ל-DB: רענון כל 6 שעות. ריצה ראשונית רק אם הקטלוג ישן (נשמר ב-DB).
     scheduler.add_job(_catalog_refresh_job, "interval", hours=6, id="catalog_refresh", max_instances=1)
     if _is_stale(db.catalog_meta().get("updated_at"), hours=6):

@@ -1745,7 +1745,24 @@ function lsRow(it,live){
   </tr>`;
 }
 let _lsLiveT=null;
-function lsScheduleLive(list){ clearTimeout(_lsLiveT); _lsLiveT=setTimeout(()=>lsFetchLive(list,0),350); }
+function lsScheduleLive(list){ clearTimeout(_lsLiveT); _lsLiveT=setTimeout(()=>{ lsFetchLive(list,0); lsFetchWc(list); },350); }
+// אייקוני אתר — תור נפרד לגמרי מהמלאי החי: WordPress איטי לא מעכב את מספרי המלאי
+async function lsFetchWc(list){
+  if(S.lsWcOff) return;
+  const seq=S.lsSeq, now=Date.now();
+  const todo=list.filter(i=>{const w=S.lsWc[String(i.product_id)];return !(w&&now-w.at<900000);});
+  for(let k=0;k<todo.length;k+=6){
+    if(seq!==S.lsSeq) return;
+    await Promise.all(todo.slice(k,k+6).map(async i=>{
+      const pid=String(i.product_id);
+      try{ const d=await api('/api/admin/wc-link/'+encodeURIComponent(pid),null,30000);
+        if(d&&d.available===false){ S.lsWcOff=true; return; }
+        S.lsWc[pid]={at:Date.now(),data:d};
+      }catch(e){ S.lsWc[pid]={at:Date.now(),data:null}; }
+      if(seq===S.lsSeq) lsPaintWc(pid);
+    }));
+  }
+}
 async function lsFetchLive(list,attempt){
   const seq=++S.lsSeq, now=Date.now();
   const todo=list.filter(i=>{const c=S.lsLive[String(i.product_id)];return !(c&&!c.err&&now-c.at<LS_TTL_MS);});
@@ -1758,17 +1775,6 @@ async function lsFetchLive(list,attempt){
         S.lsLive[pid]={at:Date.now(),data:d}; }
       catch(e){ S.lsLive[pid]={at:Date.now(),err:true}; }
       if(seq===S.lsSeq) lsPaint(pid);
-      // אייקון אתר: בדיקת חיבור SKU↔אתר (cache 15 דק' בשרת ובדפדפן)
-      if(!S.lsWcOff){
-        const w=S.lsWc[pid];
-        if(!(w&&Date.now()-w.at<900000)){
-          try{ const d=await api('/api/admin/wc-link/'+encodeURIComponent(pid));
-            if(d&&d.available===false) S.lsWcOff=true;
-            else S.lsWc[pid]={at:Date.now(),data:d};
-          }catch(e){ S.lsWc[pid]={at:Date.now(),data:null}; }
-        }
-        if(seq===S.lsSeq) lsPaintWc(pid);
-      }
     }));
   }
   // ניסיון חוזר אוטומטי לשורות שנכשלו (הקופה עמוסה/הקצב המשותף תפוס) — עד 3 פעמים
