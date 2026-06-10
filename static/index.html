@@ -366,7 +366,8 @@ const S = { branchId:null, branchName:null, employee:null, adminKey:null,
             orderData:null, orderCount:0, orderSearch:'', orderSupplier:'', orderCategory:'', _refocusOrder:false,
             removalsData:null, removalsDays:30, removalsFrom:'', removalsTo:'', removalsMfr:'', removalsSearch:'', _refocusRemovals:false,
             lsCat:null, lsCatAt:null, lsQuery:'', lsKind:'serial', lsCategory:'', lsMfr:'', lsStock:true,
-            lsLive:{}, lsSeq:0, lsSerialHits:null, _refocusLs:false, _lsDetail:null, lsWc:{}, lsWcOff:false };
+            lsLive:{}, lsSeq:0, lsSerialHits:null, _refocusLs:false, _lsDetail:null, lsWc:{}, lsWcOff:false,
+            tasksData:null, tkGroup:'', tkStatus:'open', tkSearch:'', _refocusTk:false };
 
 // ── ערכת נושא (כהה/בהיר) ──
 function applyTheme(){
@@ -689,6 +690,8 @@ function renderDrawer(){
     <div class="dr-sec">קליטת העברות</div>
     <div class="dr-item ${S.view==='board'||S.view==='scan'?'active':''}" onclick="hubGo('board')"><span>📦</span><span>לוח קליטה</span></div>
     <div class="dr-item ${act('admin')}" onclick="hubGo('admin')"><span>🛠️</span><span>קונסולת ניהול${lock}</span></div>
+    <div class="dr-sec">Hub</div>
+    <div class="dr-item ${S.view==='tasks'?'active':''}" onclick="hubGo('tasks')"><span>🗂️</span><span>משימות סוכנים${lock}</span></div>
     <div class="dr-sec">אפליקציות</div>
     ${HUB_APPS.map(a=>`
       <div class="dr-item ${S.view==='embed'&&S.embedApp&&S.embedApp.key===a.key?'active':''}" onclick="hubOpen('${a.key}')">
@@ -725,6 +728,10 @@ function hubGo(view){
     if(!ensureAdmin(()=>hubGo('admin'))) return;
     S.view='admin'; S.embedApp=null; loadAdmin(true); return;
   }
+  if(view==='tasks'){
+    if(!ensureAdmin(()=>hubGo('tasks'))) return;
+    S.view='tasks'; S.embedApp=null; loadTasks(true); return;
+  }
   S.view='board'; S.embedApp=null; render();
 }
 function hubOpen(key){
@@ -733,6 +740,107 @@ function hubOpen(key){
   toggleDrawer(false);
   S.view='embed'; S.embedApp=a; render();
 }
+// ── Ops Hub: משימות סוכנים (native, מול Monday דרך proxy) ──
+async function loadTasks(spinner,force){
+  if(spinner) showLoading('טוען משימות סוכנים…');
+  try{ S.tasksData=await api('/api/admin/tasks'+(force?'?force=1':''),null,45000); }
+  catch(e){ S.tasksData={error:true}; }
+  if(spinner) hideLoading();
+  if(S.view==='tasks') renderTasks();
+}
+function setTkGroup(v){ S.tkGroup=(S.tkGroup===v)?'':v; renderTasks(); }
+function setTkStatus(v){ S.tkStatus=v; renderTasks(); }
+function setTkSearch(v){ S.tkSearch=v; S._refocusTk=true; renderTasks(); }
+const TK_OPEN=['לא התחיל','בעבודה','תקוע'];
+function tkFiltered(){
+  const d=S.tasksData||{}; let items=(d.items||[]).slice();
+  if(S.tkGroup) items=items.filter(t=>t.group_id===S.tkGroup);
+  if(S.tkStatus==='open') items=items.filter(t=>TK_OPEN.includes(t.status));
+  else if(S.tkStatus) items=items.filter(t=>t.status===S.tkStatus);
+  const q=(S.tkSearch||'').trim().toLowerCase();
+  if(q){ const q2=fixHebrewLayout(S.tkSearch.trim()).toLowerCase();
+    items=items.filter(t=>{const blob=(t.name+' '+(t.notes||'')+' '+(t.tasknum||'')).toLowerCase();
+      return blob.includes(q)||(q2&&q2!==q&&blob.includes(q2));}); }
+  const pOrd={'קריטי':0,'גבוהה':1,'בינונית':2,'נמוכה':3}, sOrd={'תקוע':0,'בעבודה':1,'לא התחיל':2,'הושלם':3};
+  items.sort((a,b)=>(sOrd[a.status]??9)-(sOrd[b.status]??9)||(pOrd[a.priority]??9)-(pOrd[b.priority]??9)
+    ||String(b.created_at||'').localeCompare(String(a.created_at||'')));
+  return items;
+}
+async function setTaskStatus(id,label){
+  showLoading('מעדכן סטטוס…');
+  try{
+    await api('/api/admin/tasks/'+id+'/status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label})});
+    const it=((S.tasksData||{}).items||[]).find(x=>String(x.id)===String(id));
+    if(it) it.status=label;
+    toast('עודכן ✓',true);
+  }catch(e){ toast('שגיאה בעדכון',false); }
+  hideLoading(); renderTasks();
+}
+function tkStatusBadge(s){
+  const c={'תקוע':'var(--red)','בעבודה':'var(--blue)','לא התחיל':'var(--amber)','הושלם':'var(--green)'}[s]||'var(--muted)';
+  return `<span style="color:${c};font-weight:800">${s||'—'}</span>`;
+}
+function tkRow(t,isMobile,boardUrl){
+  const pC={'קריטי':'var(--red)','גבוהה':'var(--amber)'}[t.priority]||'var(--muted)';
+  const sel=`<select onchange="setTaskStatus('${t.id}',this.value)" onclick="event.stopPropagation()"
+      style="font-family:inherit;font-size:12px;padding:5px 8px;border-radius:8px;border:1px solid var(--line);background:var(--card2);color:var(--txt)">
+      ${((S.tasksData||{}).statuses||[]).map(s=>`<option ${s===t.status?'selected':''}>${s}</option>`).join('')}</select>`;
+  const link=boardUrl?`<a class="btn-ghost" style="text-decoration:none;padding:5px 9px;font-size:12px" href="${boardUrl}/pulses/${t.id}" target="_blank" rel="noopener" onclick="event.stopPropagation()">↗</a>`:'';
+  if(isMobile) return `<div class="ls-card">
+      <div style="display:flex;gap:8px;align-items:flex-start">
+        <span style="flex:1;font-weight:700;line-height:1.35">${t.tasknum?('#'+t.tasknum+' · '):''}${t.name}</span>${link}
+      </div>
+      <div class="muted" style="font-size:12px;margin:4px 0 8px">${t.group||''} · <span style="color:${pC};font-weight:700">${t.priority||'—'}</span> · ${t.type||'—'}</div>
+      ${t.notes?`<div class="muted" style="font-size:12px;margin-bottom:8px">${t.notes.slice(0,140)}</div>`:''}
+      <div style="display:flex;gap:8px;align-items:center">${tkStatusBadge(t.status)} ${sel}</div>
+    </div>`;
+  return `<tr>
+    <td style="text-align:center;font-family:monospace">${t.tasknum||''}</td>
+    <td><b>${t.name}</b>${t.notes?`<div class="muted" style="font-size:11px;max-width:420px">${t.notes.slice(0,110)}</div>`:''}</td>
+    <td>${t.group||''}</td>
+    <td style="color:${pC};font-weight:700">${t.priority||'—'}</td>
+    <td class="muted">${t.type||'—'}</td>
+    <td>${tkStatusBadge(t.status)}</td>
+    <td>${sel}</td>
+    <td class="muted" style="font-size:11px;white-space:nowrap">${(t.created_at||'').slice(0,10)}</td>
+    <td>${link}</td>
+  </tr>`;
+}
+function renderTasks(){
+  const app=document.getElementById('app');
+  const d=S.tasksData||{};
+  if(d.error){ app.innerHTML='<div class="empty">שגיאה בטעינת משימות — <button class="btn-ghost" onclick="loadTasks(true,1)">נסה שוב</button></div>'; return; }
+  if(d.available===false){ app.innerHTML='<div class="empty">🔑 MONDAY_API_TOKEN לא מוגדר בשרת — יש להוסיף אותו ב-Render Environment</div>'; return; }
+  const items=tkFiltered();
+  const all=(d.items||[]);
+  const openCount=g=>all.filter(t=>t.group_id===g&&TK_OPEN.includes(t.status)).length;
+  const chips=(d.groups||[]).map(g=>`<div class="chip ${S.tkGroup===g.id?'active':''}" onclick="setTkGroup('${g.id}')">
+      <b>${openCount(g.id)}</b><span>${g.title.replace(/ -.*$/,'')}</span></div>`).join('');
+  const isMobile=window.matchMedia('(max-width:760px)').matches;
+  const opt=(v,l)=>`<option value="${v}" ${S.tkStatus===v?'selected':''}>${l}</option>`;
+  const body=!items.length?'<div class="empty">אין משימות מתאימות לסינון</div>'
+    :(isMobile?`<div class="ls-cards">${items.slice(0,120).map(t=>tkRow(t,true,d.board_url)).join('')}</div>`
+    :`<table class="admin"><thead><tr><th>#</th><th>משימה</th><th>סוכן</th><th>עדיפות</th><th>סוג</th><th>סטטוס</th><th>עדכון</th><th>נוצר</th><th></th></tr></thead>
+      <tbody>${items.slice(0,200).map(t=>tkRow(t,false,d.board_url)).join('')}</tbody></table>`);
+  app.innerHTML=`<h1 class="title">🗂️ משימות סוכנים</h1>
+    <div class="chips">${chips}</div>
+    <div class="rebal-bar">
+      <span class="ls-searchwrap">
+        <input id="tkSearch" placeholder="🔎 חיפוש משימה / מס׳ / טקסט" value="${(S.tkSearch||'').replace(/"/g,'&quot;')}"
+          oninput="setTkSearch(this.value)" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+        ${S.tkSearch?`<button class="ls-clear" onclick="setTkSearch('')">✕</button>`:''}
+      </span>
+      <select onchange="setTkStatus(this.value)">
+        ${opt('open','פתוחות (ברירת מחדל)')}${opt('','הכל')}${opt('בעבודה','בעבודה')}${opt('תקוע','תקועות')}${opt('לא התחיל','לא התחילו')}${opt('הושלם','הושלמו')}
+      </select>
+      <button class="btn-ghost" onclick="loadTasks(true,1)">🔄 רענן</button>
+      ${d.board_url?`<a class="btn-ghost" style="text-decoration:none" href="${d.board_url}" target="_blank" rel="noopener">פתח במאנדיי ↗</a>`:''}
+      <span class="muted" style="margin-inline-start:auto;font-size:13px">מציג ${Math.min(items.length,isMobile?120:200)} מתוך ${all.length}</span>
+    </div>
+    ${body}`;
+  if(S._refocusTk){ const el=document.getElementById('tkSearch'); if(el){ el.focus(); const v=el.value; el.value=''; el.value=v; } S._refocusTk=false; }
+}
+
 function renderEmbed(app){
   const a=S.embedApp; if(!a){ S.view='board'; return render(); }
   app.innerHTML=`
@@ -757,6 +865,7 @@ function render(){
   document.getElementById('adminBtn').style.display =
     (Number(S.branchId)===S.cfg.admin_branch_id)?'inline-block':'none';
   if(S.view==='embed') return renderEmbed(app);
+  if(S.view==='tasks') return S.tasksData?renderTasks():loadTasks(true);
   if(S.view==='admin') return S.adminData?renderAdmin():loadAdmin(true);
   if(S.view==='scan')  return renderScan(app);
   return renderBoard(app);

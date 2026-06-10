@@ -729,6 +729,38 @@ def admin_wc_link(sku: str, pos: int = 0, fallback: int = 0, fresh: int = 0,
     return out
 
 
+# ── Ops Hub: משימות סוכנים (Monday proxy — הטוקן בצד השרת בלבד) ────
+@app.get("/api/admin/tasks")
+def admin_tasks(force: int = 0, x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    import monday_proxy
+    if not monday_proxy.available():
+        return {"available": False}
+    try:
+        return monday_proxy.fetch_tasks(force=bool(force))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("monday tasks fetch failed: %s", e)
+        raise HTTPException(502, "שגיאה בקריאת מאנדיי")
+
+
+class TaskStatusIn(BaseModel):
+    label: str
+
+
+@app.post("/api/admin/tasks/{item_id}/status")
+def admin_task_status(item_id: int, body: TaskStatusIn,
+                      x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    import monday_proxy
+    if not monday_proxy.available():
+        raise HTTPException(400, "MONDAY_API_TOKEN לא מוגדר")
+    try:
+        return monday_proxy.set_status(item_id, body.label)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("monday status update failed: %s", e)
+        raise HTTPException(502, "שגיאה בעדכון מאנדיי")
+
+
 # ── הורדות מלאי מרלוג ──────────────────────────────────────────────
 @app.get("/api/admin/removals")
 def admin_removals(days: int = 30, from_date: Optional[str] = None, to_date: Optional[str] = None,
