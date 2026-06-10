@@ -612,6 +612,80 @@ def admin_live_stock(pid: str, serials: int = 0, fresh: int = 0,
     return out
 
 
+# ── חיבור לאתר (WooCommerce) — אייקון "אתר" בטאב מלאי חי ──────────
+# מק"ט בקופה == SKU באתר. found=וריאציה/מוצר מחובר. creds מ-.env (WC_*); בלעדיהם — האייקון מוסתר.
+_wc_cache: dict = {}
+_WC_TTL_SEC = 900
+
+
+def _wc_creds():
+    u = os.getenv("WC_STORE_URL", "").rstrip("/")
+    k = os.getenv("WC_CONSUMER_KEY", "")
+    s = os.getenv("WC_CONSUMER_SECRET", "")
+    return (u, k, s) if (u and k and s) else None
+
+
+@app.get("/api/admin/wc-link/{sku}")
+def admin_wc_link(sku: str, pos: int = 0, fallback: int = 0, name: Optional[str] = None,
+                  x_admin_key: Optional[str] = Header(None)):
+    """איתור הפריט באתר לפי SKU. pos=1 מוסיף מחיר קופה חי (להשוואת מחיר — כלל חובה);
+    fallback=1 מנסה למצוא את עמוד המוצר הראשי לפי שם כשאין חיבור SKU."""
+    _require_admin(x_admin_key)
+    creds = _wc_creds()
+    if not creds:
+        return {"available": False}
+    import time as _time
+    import requests as _rq
+    base, k, s = creds
+    hit = _wc_cache.get(sku)
+    if hit and (_time.time() - hit[0]) < _WC_TTL_SEC:
+        out = dict(hit[1])
+    else:
+        out = {"available": True, "found": False, "sku": sku, "store": base}
+        try:
+            r = _rq.get(base + "/wp-json/wc/v3/products", params={"sku": sku},
+                        auth=(k, s), timeout=15)
+            items = r.json() if r.ok else []
+        except Exception as e:  # noqa: BLE001
+            logger.warning("wc lookup failed for %s: %s", sku, e)
+            items = []
+        p = items[0] if isinstance(items, list) and items else None
+        if p:
+            img = (p.get("image") or (p.get("images") or [{}])[0] or {})
+            out.update({
+                "found": True, "type": p.get("type"), "name": p.get("name"),
+                "price": p.get("price"), "regular_price": p.get("regular_price"),
+                "sale_price": p.get("sale_price"), "permalink": p.get("permalink"),
+                "image": (img or {}).get("src", ""),
+                "attributes": [{"name": a.get("name"), "option": a.get("option")}
+                               for a in (p.get("attributes") or []) if a.get("option")],
+            })
+        _wc_cache[sku] = (_time.time(), dict(out))
+    if fallback and not out.get("found") and name:
+        # ניסיון לעמוד הראשי לפי שם (האייקון נשאר "כבוי", אבל יש לאן לפתוח)
+        try:
+            q = (name or "").split(" - ")[0].strip()[:60]
+            r = _rq.get(base + "/wp-json/wc/v3/products",
+                        params={"search": q, "per_page": 1}, auth=(k, s), timeout=15)
+            arr = r.json() if r.ok else []
+            if arr:
+                f = arr[0]
+                fimg = (f.get("images") or [{}])[0] or {}
+                out["fallback"] = {"name": f.get("name"), "permalink": f.get("permalink"),
+                                   "price": f.get("price"), "image": fimg.get("src", "")}
+        except Exception as e:  # noqa: BLE001
+            logger.warning("wc fallback search failed for %s: %s", sku, e)
+    if pos:
+        # מחיר קופה חי — תמיד להשוות מחיר קופה↔אתר לפני אזכור מחיר ללקוח
+        try:
+            prod = poller.client().get_product(sku)
+            out["pos_price"] = prod.get("price") if prod else None
+        except Exception as e:  # noqa: BLE001
+            logger.warning("pos price lookup failed for %s: %s", sku, e)
+            out["pos_price"] = None
+    return out
+
+
 # ── הורדות מלאי מרלוג ──────────────────────────────────────────────
 @app.get("/api/admin/removals")
 def admin_removals(days: int = 30, from_date: Optional[str] = None, to_date: Optional[str] = None,

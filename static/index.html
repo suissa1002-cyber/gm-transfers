@@ -125,6 +125,10 @@
   .ls-live .dot{width:8px;height:8px;border-radius:50%;background:var(--green);animation:lspulse 1.6s infinite}
   @keyframes lspulse{0%,100%{opacity:1}50%{opacity:.35}}
   table.admin tr.ls-row{cursor:pointer}
+  .ls-wc{cursor:pointer;font-size:16px;opacity:.25;filter:grayscale(1);padding:2px 7px;border-radius:7px;display:inline-block}
+  .ls-wc.lit{opacity:1;filter:none}
+  .ls-wc.wait{opacity:.12}
+  .ls-wc:hover{background:var(--bg)}
   .ls-chipline{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 14px}
   .ls-bchip{border:1px solid var(--line);border-radius:10px;padding:8px 14px;background:var(--card2);font-weight:700;display:flex;gap:8px;align-items:center}
   .ls-bchip b.q-has{color:var(--green)} .ls-bchip b.q-zero{color:var(--muted)} .ls-bchip b.q-neg{color:var(--red)}
@@ -314,7 +318,7 @@ const S = { branchId:null, branchName:null, employee:null, adminKey:null,
             orderData:null, orderCount:0, orderSearch:'', orderSupplier:'', orderCategory:'', _refocusOrder:false,
             removalsData:null, removalsDays:30, removalsFrom:'', removalsTo:'', removalsMfr:'', removalsSearch:'', _refocusRemovals:false,
             lsCat:null, lsCatAt:null, lsQuery:'', lsKind:'serial', lsCategory:'', lsMfr:'', lsStock:true,
-            lsLive:{}, lsSeq:0, lsSerialHits:null, _refocusLs:false, _lsDetail:null };
+            lsLive:{}, lsSeq:0, lsSerialHits:null, _refocusLs:false, _lsDetail:null, lsWc:{}, lsWcOff:false };
 
 // ── ערכת נושא (כהה/בהיר) ──
 function applyTheme(){
@@ -1731,6 +1735,8 @@ function lsRow(it,live){
     <td>${it.kind==='serial'?'📱':'🏷️'}</td>
     <td class="muted">${it.category||'—'}</td>
     ${bcells}
+    <td style="text-align:center"><span id="lsw-${pid}" class="ls-wc ${S.lsWcOff?'':(S.lsWc[pid]?(S.lsWc[pid].data&&S.lsWc[pid].data.found?'lit':'dim'):'wait')}" style="${S.lsWcOff?'display:none':''}"
+      onclick="event.stopPropagation();openWcQuick('${pid}')" title="צפייה במוצר באתר">🌐</span></td>
     <td id="lst-${pid}" class="muted" style="font-size:11px;white-space:nowrap">${tcell}</td>
   </tr>`;
 }
@@ -1748,6 +1754,17 @@ async function lsFetchLive(list,attempt){
         S.lsLive[pid]={at:Date.now(),data:d}; }
       catch(e){ S.lsLive[pid]={at:Date.now(),err:true}; }
       if(seq===S.lsSeq) lsPaint(pid);
+      // אייקון אתר: בדיקת חיבור SKU↔אתר (cache 15 דק' בשרת ובדפדפן)
+      if(!S.lsWcOff){
+        const w=S.lsWc[pid];
+        if(!(w&&Date.now()-w.at<900000)){
+          try{ const d=await api('/api/admin/wc-link/'+encodeURIComponent(pid));
+            if(d&&d.available===false) S.lsWcOff=true;
+            else S.lsWc[pid]={at:Date.now(),data:d};
+          }catch(e){ S.lsWc[pid]={at:Date.now(),data:null}; }
+        }
+        if(seq===S.lsSeq) lsPaintWc(pid);
+      }
     }));
   }
   // ניסיון חוזר אוטומטי לשורות שנכשלו (הקופה עמוסה/הקצב המשותף תפוס) — עד 3 פעמים
@@ -1766,6 +1783,62 @@ function lsPaint(pid){
   });
   const t=document.getElementById('lst-'+pid);
   if(t) t.textContent=c.err?'🔁 מנסה שוב…':('🟢 '+fmtClock(c.data.fetched_at));
+}
+function lsPaintWc(pid){
+  const el=document.getElementById('lsw-'+pid); if(!el) return;
+  if(S.lsWcOff){ el.style.display='none'; return; }
+  const w=S.lsWc[pid];
+  el.className='ls-wc '+(w&&w.data&&w.data.found?'lit':(w?'dim':'wait'));
+}
+// ── תצוגה מקוצרת של המוצר באתר (quick view) ──
+async function openWcQuick(pid){
+  const it=(S.lsCat||[]).find(x=>String(x.product_id)===String(pid));
+  showLoading('קורא מהאתר…');
+  let d=null;
+  try{ d=await api('/api/admin/wc-link/'+encodeURIComponent(pid)+'?pos=1&fallback=1&name='+encodeURIComponent((it&&it.name)||''),null,30000); }catch(e){}
+  hideLoading();
+  if(!d||d.available===false){ toast('חיבור האתר לא מוגדר בשרת',false); return; }
+  const fmt=v=>{const n=Number(v); return (v===''||v==null||isNaN(n))?'—':('₪'+n.toLocaleString('he-IL'));};
+  let body='';
+  if(d.found){
+    const attrs=(d.attributes||[]).slice(0,3).map(a=>a.option).join(' · ');
+    const sale=d.sale_price&&d.sale_price!==''&&Number(d.sale_price)<Number(d.regular_price||0);
+    const priceHtml=sale
+      ?`<span style="text-decoration:line-through;color:var(--muted);font-size:16px">${fmt(d.regular_price)}</span> <b style="color:var(--green);font-size:26px">${fmt(d.price)}</b>`
+      :`<b style="color:var(--green);font-size:26px">${fmt(d.price)}</b>`;
+    const pos=d.pos_price!=null&&d.pos_price!==''?Number(d.pos_price):null;
+    const site=Number(d.price);
+    // מחיר קופה 0/1 = placeholder (מתומחר במכירה) — לא פער אמיתי
+    const cmp=pos==null?''
+      :(pos<=1?`<div class="muted" style="font-size:13px">מחיר בקופה לא מוגדר (מתומחר במכירה)</div>`
+      :(Math.round(pos)===Math.round(site)
+      ?`<div class="muted" style="font-size:13px">מחיר בקופה: ${fmt(pos)} <span style="color:var(--green);font-weight:800">✅ תואם</span></div>`
+      :`<div style="font-size:13px;color:var(--red);font-weight:800">❗ מחיר בקופה: ${fmt(pos)} — פער מול האתר</div>`));
+    body=`
+      ${d.image?`<div style="background:#fff;border-radius:14px;padding:10px;text-align:center;margin-bottom:12px;border:1px solid var(--line)"><img src="${d.image}" style="max-height:200px;max-width:100%;object-fit:contain"></div>`:''}
+      <div style="font-weight:800;font-size:17px;text-align:center">${d.name}</div>
+      ${attrs?`<div class="muted" style="text-align:center;font-size:13px;margin-top:2px">${attrs}</div>`:''}
+      <div style="text-align:center;margin:10px 0 4px">${priceHtml}</div>
+      <div style="text-align:center;margin-bottom:14px">${cmp}</div>
+      <a class="btn-primary" style="display:block;text-align:center;text-decoration:none;padding:13px;border-radius:12px" href="${d.permalink}" target="_blank" rel="noopener">לעמוד המלא באתר ↗</a>`;
+  } else {
+    const f=d.fallback;
+    const searchUrl=(d.store||'https://greenmobile.co.il')+'/?s='+encodeURIComponent((it&&it.name)||'');
+    body=`<div style="text-align:center;font-size:34px;margin:4px 0">🔌</div>
+      <div style="font-weight:800;text-align:center">הפריט לא מחובר לאתר</div>
+      <div class="muted" style="text-align:center;font-size:13px;margin:4px 0 14px">אין מוצר/וריאציה עם מק״ט ${pid} באתר</div>
+      ${f?`<div style="border:1px solid var(--line);border-radius:12px;padding:10px;display:flex;gap:10px;align-items:center;margin-bottom:12px">
+            ${f.image?`<img src="${f.image}" style="width:54px;height:54px;object-fit:contain;background:#fff;border-radius:8px">`:''}
+            <div style="flex:1;text-align:right"><div style="font-weight:700;font-size:14px">${f.name}</div>
+            <div class="muted" style="font-size:12px">ייתכן שזה העמוד הראשי · ${fmt(f.price)}</div></div>
+            <a class="btn-ghost" style="text-decoration:none;white-space:nowrap" href="${f.permalink}" target="_blank" rel="noopener">פתח ↗</a></div>`:''}
+      <a class="btn-ghost" style="display:block;text-align:center;text-decoration:none" href="${searchUrl}" target="_blank" rel="noopener">חיפוש באתר ↗</a>`;
+  }
+  document.getElementById('modalRoot').innerHTML=`<div class="overlay"><div class="modal" style="max-width:430px;text-align:right;position:relative;max-height:88vh;overflow:auto">
+    <button class="dr-x" style="position:absolute;top:10px;inset-inline-start:10px" onclick="closeModal()">✕</button>
+    ${body}
+    <button class="btn-ghost" style="width:100%;margin-top:10px" onclick="closeModal()">סגור</button>
+  </div></div>`;
 }
 function renderLive(){
   const app=document.getElementById('app');
@@ -1790,7 +1863,7 @@ function renderLive(){
     <table class="admin"><thead><tr>
       <th>מק״ט</th><th>מוצר</th><th>סוג</th><th>קטגוריה</th>
       ${(S.branchList||[]).map(b=>`<th style="text-align:center">${b.name}</th>`).join('')}
-      <th>עדכון</th>
+      <th style="text-align:center">אתר</th><th>עדכון</th>
     </tr></thead><tbody>${shown.map((it,i)=>lsRow(it,i<LS_LIVE_CAP)).join('')}</tbody></table>
     ${items.length>LS_SHOW_CAP?`<div class="muted" style="margin-top:8px">מציג ${LS_SHOW_CAP} מתוך ${items.length} — צמצם את החיפוש</div>`:''}`;
   app.innerHTML=`<h1 class="title">🛠️ ניהול אופרציה</h1>${adminTabsHTML()}
