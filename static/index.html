@@ -1726,7 +1726,6 @@ async function refreshLiveDetail(){
   catch(e){ toast('שגיאה ברענון',false); }
   hideLoading(); renderLiveDetail();
 }
-function toggleSerialDetail(i){ const D=S._lsDetail; if(!D) return; D.open=(D.open===i)?null:i; renderLiveDetail(); }
 function renderLiveDetail(){
   const D=S._lsDetail; if(!D) return;
   const {it,d}=D;
@@ -1739,22 +1738,29 @@ function renderLiveDetail(){
   if(it.kind==='serial'){
     if(d.serials_error) serHtml='<div class="muted">⚠️ לא ניתן לקרוא את הסריאלים כרגע</div>';
     else if(!(d.serials||[]).length) serHtml='<div class="muted">אין יחידות סריאליות זמינות בקופה</div>';
-    else serHtml=`<div style="font-weight:700;margin-bottom:6px">יחידות בקופה (${d.serials.length})</div>
-      <table class="serials"><thead><tr><th>סריאל</th><th>סניף</th><th>נקלט</th><th>סטטוס</th></tr></thead><tbody>
-      ${d.serials.map((s,i)=>{
+    else{
+      // קיבוץ לפי סניף (בסדר הצ'יפים), ובתוך כל סניף לפי תאריך קליטה
+      const bOrder={}; (d.branches||[]).forEach((b,i)=>bOrder[String(b.id)]=i);
+      const sorted=d.serials.slice().sort((a,b)=>
+        ((bOrder[String(a.branch_id)]!==undefined?bOrder[String(a.branch_id)]:99)-(bOrder[String(b.branch_id)]!==undefined?bOrder[String(b.branch_id)]:99))
+        ||String(a.insert_date).localeCompare(String(b.insert_date))
+        ||String(a.serial).localeCompare(String(b.serial)));
+      serHtml=`<div style="font-weight:700;margin-bottom:6px">יחידות בקופה (${d.serials.length})</div>
+      <table class="serials"><thead><tr><th>סריאל</th><th>סניף</th><th>נקלט</th><th>ספק</th><th>אחריות</th><th>סטטוס</th></tr></thead><tbody>
+      ${sorted.map(s=>{
         const st=s.status===1?'<span style="color:var(--green);font-weight:700">זמין</span>':('סטטוס '+s.status);
         const dt=s.insert_date?new Date(s.insert_date):null;
         const ds=dt&&!isNaN(dt)?dt.toLocaleDateString('he-IL'):'';
-        const open=D.open===i;
+        const war=(s.warranty||'—')+(s.warranty_months?(' · '+Math.round(s.warranty_months)+' ח׳'):'');
         const mark=hitSet.has(String(s.serial))?' style="background:rgba(31,191,107,.10)"':'';
-        return `<tr class="srow"${mark} onclick="toggleSerialDetail(${i})">
-          <td style="direction:ltr;text-align:right;font-family:monospace">${open?'▼':'◀'} ${s.serial}</td>
-          <td>${s.branch_name||s.branch_id||''}</td><td>${ds}</td><td>${st}</td></tr>`
-          +(open?`<tr class="sdetail"><td colspan="4">🏭 ספק: <b>${s.supplier||'—'}</b> &nbsp;·&nbsp; 🛡️ אחריות: <b>${s.warranty||'—'}${s.warranty_months?(' · '+Math.round(s.warranty_months)+' חודשים'):''}</b></td></tr>`:'');
-      }).join('')}</tbody></table>
-      <div class="muted" style="font-size:12px;margin-top:6px">לחיצה על שורת סריאל מציגה ספק + אחריות</div>`;
+        return `<tr${mark}>
+          <td style="direction:ltr;text-align:right;font-family:monospace">${s.serial}</td>
+          <td style="font-weight:700">${s.branch_name||s.branch_id||''}</td><td>${ds}</td>
+          <td>${s.supplier||'—'}</td><td>${war}</td><td>${st}</td></tr>`;
+      }).join('')}</tbody></table>`;
+    }
   }
-  document.getElementById('modalRoot').innerHTML=`<div class="overlay"><div class="modal" style="max-width:680px;text-align:right;max-height:84vh;overflow:auto">
+  document.getElementById('modalRoot').innerHTML=`<div class="overlay"><div class="modal" style="max-width:940px;text-align:right;max-height:84vh;overflow:auto">
     <h3 style="margin-bottom:2px">${it.name}</h3>
     <div class="muted" style="font-family:monospace;direction:ltr;text-align:right">${it.product_id}${it.barcode?(' · '+it.barcode):''}</div>
     <div style="display:flex;align-items:center;gap:10px;margin:10px 0 4px">
