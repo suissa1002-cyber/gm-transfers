@@ -133,6 +133,20 @@
            padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer}
   .wcq-btn.on{border-color:var(--green);color:var(--green);font-weight:800;background:rgba(31,191,107,.08)}
   .wcq-btn.off{opacity:.4}
+  /* מלאי חי — תצוגת כרטיסים למובייל */
+  .ls-has{color:var(--green);font-weight:800} .ls-zero{color:var(--muted)}
+  .ls-neg{color:var(--red);font-weight:800} .ls-wait{color:var(--muted);opacity:.6}
+  .ls-cards{display:flex;flex-direction:column;gap:10px}
+  .ls-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;cursor:pointer}
+  .ls-card:active{background:var(--card2)}
+  .ls-card-top{display:flex;align-items:flex-start;gap:8px}
+  .ls-card-name{font-size:15px;flex:1;line-height:1.35}
+  .ls-card-sub{color:var(--muted);font-size:12px;margin:4px 0 9px}
+  .ls-card-branches{display:flex;flex-wrap:wrap;gap:6px}
+  .ls-bq{border:1px solid var(--line);border-radius:9px;padding:4px 10px;font-size:12px;color:var(--muted);
+         background:var(--card2);display:inline-flex;gap:6px;align-items:center;white-space:nowrap}
+  .ls-bq b{font-size:13px}
+  .ls-card-meta{margin-top:8px;font-size:11px;color:var(--muted)}
   .ls-chipline{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 14px}
   .ls-bchip{border:1px solid var(--line);border-radius:10px;padding:8px 14px;background:var(--card2);font-weight:700;display:flex;gap:8px;align-items:center}
   .ls-bchip b.q-has{color:var(--green)} .ls-bchip b.q-zero{color:var(--muted)} .ls-bchip b.q-neg{color:var(--red)}
@@ -286,6 +300,12 @@
     header{padding:12px 14px} .wrap{padding:14px}
     table.admin{display:block;overflow-x:auto;white-space:nowrap}
     .embed-frame{height:calc(100vh - 215px)}
+    /* סרגל סינון נוח לאצבע: חיפוש ברוחב מלא, פילטרים בזוגות */
+    .rebal-bar input{flex:1 1 100%;min-width:0;font-size:16px;padding:12px 14px}
+    .rebal-bar select{flex:1 1 45%;min-width:0}
+    .ls-check{flex:1 1 45%;justify-content:center}
+    table.serials{display:block;overflow-x:auto;white-space:nowrap}
+    .modal{padding:18px 14px}
   }
 </style>
 </head>
@@ -1744,6 +1764,31 @@ function lsRow(it,live){
     <td id="lst-${pid}" class="muted" style="font-size:11px;white-space:nowrap">${tcell}</td>
   </tr>`;
 }
+// כרטיס מובייל — אותם מזהי lsb-/lst-/lsw- כמו בטבלה, כך ש-lsPaint/lsPaintWc עובדים על שניהם
+function lsCard(it,live){
+  const pid=String(it.product_id);
+  const hits=(S.lsSerialHits||[]).filter(h=>String(h.product_id)===pid);
+  const serBadge=hits.length?` <span class="mtag ok" style="direction:ltr">${hits[0].serial}${hits.length>1?' +'+(hits.length-1):''}</span>`:'';
+  const c=S.lsLive[pid], fresh=c&&!c.err&&Date.now()-c.at<LS_TTL_MS;
+  const chips=(S.branchList||[]).map(b=>{
+    let inner=`<b id="lsb-${pid}-${b.id}" class="ls-wait">${live?'⏳':'—'}</b>`;
+    if(live&&fresh){ const q=((c.data.branches||[]).find(x=>String(x.id)===String(b.id))||{}).qty||0;
+      inner=`<b id="lsb-${pid}-${b.id}" class="${q>0?'ls-has':(q<0?'ls-neg':'ls-zero')}">${q}</b>`; }
+    return `<span class="ls-bq">${b.name} ${inner}</span>`;
+  }).join('');
+  const tmeta=live?(fresh?('🟢 '+fmtClock(c.data.fetched_at)):(c&&c.err?'🔁 מנסה שוב…':'⏳ קורא מהקופה…')):'';
+  return `<div class="ls-card" onclick='openLiveDetail(${JSON.stringify(pid)})'>
+    <div class="ls-card-top">
+      <span class="ls-card-name"><b>${it.name}</b>${it.active?'':' <span class="mtag warn">לא פעיל</span>'}${serBadge}</span>
+      <span>${it.kind==='serial'?'📱':'🏷️'}</span>
+      <span id="lsw-${pid}" class="ls-wc ${S.lsWcOff?'':(S.lsWc[pid]?(S.lsWc[pid].data&&S.lsWc[pid].data.found?'lit':'dim'):'wait')}" style="${S.lsWcOff?'display:none':''}"
+        onclick="event.stopPropagation();openWcQuick('${pid}')" title="צפייה במוצר באתר">🌐</span>
+    </div>
+    <div class="ls-card-sub">מק״ט <span style="direction:ltr;unicode-bidi:embed;font-family:monospace">${pid}</span>${it.category?(' · '+it.category):''}</div>
+    <div class="ls-card-branches">${chips}</div>
+    <div class="ls-card-meta" id="lst-${pid}">${tmeta}</div>
+  </div>`;
+}
 let _lsLiveT=null;
 function lsScheduleLive(list){ clearTimeout(_lsLiveT); _lsLiveT=setTimeout(()=>{ lsFetchLive(list,0); lsFetchWc(list); },350); }
 // אייקוני אתר — תור נפרד לגמרי מהמלאי החי: WordPress איטי לא מעכב את מספרי המלאי
@@ -1941,14 +1986,18 @@ function renderLive(){
   else if(!items.length){
     const isNum=/^\d{3,}$/.test(fixHebrewLayout((S.lsQuery||'').trim()));
     body=`<div class="empty">${isNum?'מחפש לפי מספר סידורי…':'לא נמצאו מוצרים מתאימים'}</div>`;
-  } else body=`
-    ${items.length>LS_LIVE_CAP?`<div class="muted" style="margin-bottom:8px;font-size:13px">⚡ מלאי חי מוצג ל-${liveCount} הראשונים — צמצם את החיפוש לתצוגה חיה מלאה</div>`:''}
-    <table class="admin"><thead><tr>
+  } else {
+    const isMobile=window.matchMedia('(max-width:760px)').matches;
+    const capNote=items.length>LS_LIVE_CAP?`<div class="muted" style="margin-bottom:8px;font-size:13px">⚡ מלאי חי מוצג ל-${liveCount} הראשונים — צמצם את החיפוש לתצוגה חיה מלאה</div>`:'';
+    const overNote=items.length>LS_SHOW_CAP?`<div class="muted" style="margin-top:8px">מציג ${LS_SHOW_CAP} מתוך ${items.length} — צמצם את החיפוש</div>`:'';
+    body=isMobile
+      ?`${capNote}<div class="ls-cards">${shown.map((it,i)=>lsCard(it,i<LS_LIVE_CAP)).join('')}</div>${overNote}`
+      :`${capNote}<table class="admin"><thead><tr>
       <th>מק״ט</th><th>מוצר</th><th>סוג</th><th>קטגוריה</th>
       ${(S.branchList||[]).map(b=>`<th style="text-align:center">${b.name}</th>`).join('')}
       <th style="text-align:center">אתר</th><th>עדכון</th>
-    </tr></thead><tbody>${shown.map((it,i)=>lsRow(it,i<LS_LIVE_CAP)).join('')}</tbody></table>
-    ${items.length>LS_SHOW_CAP?`<div class="muted" style="margin-top:8px">מציג ${LS_SHOW_CAP} מתוך ${items.length} — צמצם את החיפוש</div>`:''}`;
+    </tr></thead><tbody>${shown.map((it,i)=>lsRow(it,i<LS_LIVE_CAP)).join('')}</tbody></table>${overNote}`;
+  }
   app.innerHTML=`<h1 class="title">🛠️ ניהול אופרציה</h1>${adminTabsHTML()}
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap">
       <span class="ls-live"><span class="dot"></span> מלאי בזמן אמת מהקופה</span>
