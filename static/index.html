@@ -129,6 +129,9 @@
   .ls-wc.lit{opacity:1;filter:none}
   .ls-wc.wait{opacity:.12}
   .ls-wc:hover{background:var(--bg)}
+  .wcq-btn{border:1.5px solid var(--line);background:var(--card2);color:var(--txt);border-radius:10px;
+           padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer}
+  .wcq-btn.on{border-color:var(--green);color:var(--green);font-weight:800;background:rgba(31,191,107,.08)}
   .ls-chipline{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 14px}
   .ls-bchip{border:1px solid var(--line);border-radius:10px;padding:8px 14px;background:var(--card2);font-weight:700;display:flex;gap:8px;align-items:center}
   .ls-bchip b.q-has{color:var(--green)} .ls-bchip b.q-zero{color:var(--muted)} .ls-bchip b.q-neg{color:var(--red)}
@@ -1801,26 +1804,14 @@ async function openWcQuick(pid){
   const fmt=v=>{const n=Number(v); return (v===''||v==null||isNaN(n))?'—':('₪'+n.toLocaleString('he-IL'));};
   let body='';
   if(d.found){
-    const attrs=(d.attributes||[]).slice(0,3).map(a=>a.option).join(' · ');
-    const sale=d.sale_price&&d.sale_price!==''&&Number(d.sale_price)<Number(d.regular_price||0);
-    const priceHtml=sale
-      ?`<span style="text-decoration:line-through;color:var(--muted);font-size:16px">${fmt(d.regular_price)}</span> <b style="color:var(--green);font-size:26px">${fmt(d.price)}</b>`
-      :`<b style="color:var(--green);font-size:26px">${fmt(d.price)}</b>`;
-    const pos=d.pos_price!=null&&d.pos_price!==''?Number(d.pos_price):null;
-    const site=Number(d.price);
-    // מחיר קופה 0/1 = placeholder (מתומחר במכירה) — לא פער אמיתי
-    const cmp=pos==null?''
-      :(pos<=1?`<div class="muted" style="font-size:13px">מחיר בקופה לא מוגדר (מתומחר במכירה)</div>`
-      :(Math.round(pos)===Math.round(site)
-      ?`<div class="muted" style="font-size:13px">מחיר בקופה: ${fmt(pos)} <span style="color:var(--green);font-weight:800">✅ תואם</span></div>`
-      :`<div style="font-size:13px;color:var(--red);font-weight:800">❗ מחיר בקופה: ${fmt(pos)} — פער מול האתר</div>`));
-    body=`
-      ${d.image?`<div style="background:#fff;border-radius:14px;padding:10px;text-align:center;margin-bottom:12px;border:1px solid var(--line)"><img src="${d.image}" style="max-height:200px;max-width:100%;object-fit:contain"></div>`:''}
-      <div style="font-weight:800;font-size:17px;text-align:center">${d.name}</div>
-      ${attrs?`<div class="muted" style="text-align:center;font-size:13px;margin-top:2px">${attrs}</div>`:''}
-      <div style="text-align:center;margin:10px 0 4px">${priceHtml}</div>
-      <div style="text-align:center;margin-bottom:14px">${cmp}</div>
-      <a class="btn-primary" style="display:block;text-align:center;text-decoration:none;padding:13px;border-radius:12px" href="${d.permalink}" target="_blank" rel="noopener">לעמוד המלא באתר ↗</a>`;
+    // יש מאפיינים נוספים שמשנים מחיר (אחריות יבואן וכד') → חלונית עם כפתורי החלפה
+    const sel={};
+    if(d.variants){
+      const mine={}; (d.attributes||[]).forEach(a=>mine[a.name]=a.option);
+      d.variants.switch_attrs.forEach(sa=>{ sel[sa.name]=mine[sa.name]||sa.options[0]; });
+    }
+    S._wcQuick={pid:String(pid),d,sel};
+    return renderWcQuick();
   } else {
     const f=d.fallback;
     const searchUrl=(d.store||'https://greenmobile.co.il')+'/?s='+encodeURIComponent((it&&it.name)||'');
@@ -1834,6 +1825,64 @@ async function openWcQuick(pid){
             <a class="btn-ghost" style="text-decoration:none;white-space:nowrap" href="${f.permalink}" target="_blank" rel="noopener">פתח ↗</a></div>`:''}
       <a class="btn-ghost" style="display:block;text-align:center;text-decoration:none" href="${searchUrl}" target="_blank" rel="noopener">חיפוש באתר ↗</a>`;
   }
+  document.getElementById('modalRoot').innerHTML=`<div class="overlay"><div class="modal" style="max-width:430px;text-align:right;position:relative;max-height:88vh;overflow:auto">
+    <button class="dr-x" style="position:absolute;top:10px;inset-inline-start:10px" onclick="closeModal()">✕</button>
+    ${body}
+    <button class="btn-ghost" style="width:100%;margin-top:10px" onclick="closeModal()">סגור</button>
+  </div></div>`;
+}
+function wcQuickSel(name,opt){ const Q=S._wcQuick; if(!Q) return; Q.sel[name]=opt; renderWcQuick(); }
+function renderWcQuick(){
+  const Q=S._wcQuick; if(!Q) return;
+  const {pid,d,sel}=Q;
+  const fmt=v=>{const n=Number(v); return (v===''||v==null||isNaN(n))?'—':('₪'+n.toLocaleString('he-IL'));};
+  // הוואריאציה המוצגת: ברירת מחדל = המחוברת לקופה; עם בחירת כפתורים — האחות המתאימה
+  let cur={price:d.price,regular_price:d.regular_price,sale_price:d.sale_price,
+           image:d.image,permalink:d.permalink,sku:String(d.sku||pid)};
+  let comboMissing=false;
+  if(d.variants){
+    const m=(d.variants.options||[]).find(c=>d.variants.switch_attrs.every(sa=>String(c.attrs[sa.name]||'')===String(sel[sa.name]||'')));
+    if(m) cur={price:m.price,regular_price:m.regular_price,sale_price:m.sale_price,
+               image:m.image||d.image,permalink:m.permalink||d.permalink,sku:String(m.sku||'')};
+    else comboMissing=true;
+  }
+  const isPosVar=String(cur.sku)===String(pid);
+  const fixed=(d.variants?d.variants.fixed:[]).map(a=>a.option)
+    .concat(d.variants?[]:(d.attributes||[]).slice(0,3).map(a=>a.option)).filter(Boolean).join(' · ');
+  const switches=(d.variants?d.variants.switch_attrs:[]).map(sa=>{
+    const label=sa.name.replace(/^בחירת /,'');
+    return `<div style="margin:10px 0 2px;text-align:center">
+      <div class="muted" style="font-size:12px;margin-bottom:5px">${label}</div>
+      <div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap">
+        ${sa.options.map(o=>`<button class="wcq-btn ${String(sel[sa.name])===String(o)?'on':''}" onclick='wcQuickSel(${JSON.stringify(sa.name)},${JSON.stringify(o)})'>${o}</button>`).join('')}
+      </div></div>`;
+  }).join('');
+  const sale=cur.sale_price&&cur.sale_price!==''&&Number(cur.sale_price)<Number(cur.regular_price||0);
+  const priceHtml=comboMissing?`<span class="muted">הצירוף הזה לא קיים באתר</span>`
+    :(sale?`<span style="text-decoration:line-through;color:var(--muted);font-size:16px">${fmt(cur.regular_price)}</span> <b style="color:var(--green);font-size:26px">${fmt(cur.price)}</b>`
+          :`<b style="color:var(--green);font-size:26px">${fmt(cur.price)}</b>`);
+  const pos=d.pos_price!=null&&d.pos_price!==''?Number(d.pos_price):null;
+  // השוואת מחיר קופה↔אתר — רלוונטית רק לוואריאציה שמחוברת למק"ט הזה בקופה
+  let cmp='';
+  if(!comboMissing){
+    if(isPosVar){
+      cmp=pos==null?''
+        :(pos<=1?`<div class="muted" style="font-size:13px">מחיר בקופה לא מוגדר (מתומחר במכירה)</div>`
+        :(Math.round(pos)===Math.round(Number(cur.price))
+        ?`<div class="muted" style="font-size:13px">מחיר בקופה: ${fmt(pos)} <span style="color:var(--green);font-weight:800">✅ תואם</span></div>`
+        :`<div style="font-size:13px;color:var(--red);font-weight:800">❗ מחיר בקופה: ${fmt(pos)} — פער מול האתר</div>`));
+    } else {
+      cmp=`<div class="muted" style="font-size:12px">וריאציה אחות באתר${cur.sku?` (מק״ט ${cur.sku})`:''} — המק״ט שבקופה הוא ${pid}</div>`;
+    }
+  }
+  const body=`
+    ${cur.image?`<div style="background:#fff;border-radius:14px;padding:10px;text-align:center;margin-bottom:12px;border:1px solid var(--line)"><img src="${cur.image}" style="max-height:200px;max-width:100%;object-fit:contain"></div>`:''}
+    <div style="font-weight:800;font-size:17px;text-align:center">${d.name}</div>
+    ${fixed?`<div class="muted" style="text-align:center;font-size:13px;margin-top:2px">${fixed}</div>`:''}
+    ${switches}
+    <div style="text-align:center;margin:10px 0 4px">${priceHtml}</div>
+    <div style="text-align:center;margin-bottom:14px">${cmp}</div>
+    <a class="btn-primary" style="display:block;text-align:center;text-decoration:none;padding:13px;border-radius:12px${comboMissing?';opacity:.4;pointer-events:none':''}" href="${cur.permalink}" target="_blank" rel="noopener">לעמוד המלא באתר ↗</a>`;
   document.getElementById('modalRoot').innerHTML=`<div class="overlay"><div class="modal" style="max-width:430px;text-align:right;position:relative;max-height:88vh;overflow:auto">
     <button class="dr-x" style="position:absolute;top:10px;inset-inline-start:10px" onclick="closeModal()">✕</button>
     ${body}

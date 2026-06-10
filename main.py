@@ -654,6 +654,7 @@ def admin_wc_link(sku: str, pos: int = 0, fallback: int = 0, name: Optional[str]
             img = (p.get("image") or (p.get("images") or [{}])[0] or {})
             out.update({
                 "found": True, "type": p.get("type"), "name": p.get("name"),
+                "parent_id": p.get("parent_id"),
                 "price": p.get("price"), "regular_price": p.get("regular_price"),
                 "sale_price": p.get("sale_price"), "permalink": p.get("permalink"),
                 "image": (img or {}).get("src", ""),
@@ -683,6 +684,39 @@ def admin_wc_link(sku: str, pos: int = 0, fallback: int = 0, name: Optional[str]
         except Exception as e:  # noqa: BLE001
             logger.warning("pos price lookup failed for %s: %s", sku, e)
             out["pos_price"] = None
+    if pos and out.get("found") and out.get("type") == "variation":
+        # וריאציות-אחיות (רק בפתיחת חלונית): אותו צבע+נפח (זהות המק"ט בקופה),
+        # מאפיינים אחרים שמשנים מחיר (אחריות יבואן וכד') → כפתורי החלפה בחלונית
+        _IDENT = {"בחירת צבע", "בחירת נפח אחסון"}
+        try:
+            parent = out.get("parent_id")
+            if parent:
+                r = _rq.get(base + f"/wp-json/wc/v3/products/{parent}/variations",
+                            params={"per_page": 100}, auth=(k, s), timeout=20)
+                vars_ = r.json() if r.ok else []
+                mine = {a["name"]: a["option"] for a in out.get("attributes", [])}
+                ident = {n: v for n, v in mine.items() if n in _IDENT}
+                cands = []
+                for v in vars_:
+                    va = {a.get("name"): a.get("option") for a in (v.get("attributes") or [])}
+                    if any(va.get(n) != val for n, val in ident.items()):
+                        continue
+                    vimg = (v.get("image") or {})
+                    cands.append({"sku": v.get("sku") or "", "price": v.get("price"),
+                                  "regular_price": v.get("regular_price"), "sale_price": v.get("sale_price"),
+                                  "permalink": v.get("permalink"), "image": vimg.get("src", ""),
+                                  "attrs": {n: va.get(n) for n in va if n not in ident and va.get(n)}})
+                switch = {}
+                for c in cands:
+                    for n, vv in c["attrs"].items():
+                        switch.setdefault(n, set()).add(vv)
+                switch_attrs = [{"name": n, "options": sorted(vals)}
+                                for n, vals in switch.items() if len(vals) > 1]
+                if switch_attrs and len(cands) > 1:
+                    out["variants"] = {"fixed": [{"name": n, "option": v} for n, v in ident.items()],
+                                       "switch_attrs": switch_attrs, "options": cands}
+        except Exception as e:  # noqa: BLE001
+            logger.warning("wc sibling variations failed for %s: %s", sku, e)
     return out
 
 
