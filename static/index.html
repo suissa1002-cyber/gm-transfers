@@ -1605,7 +1605,7 @@ function lsRow(it,live){
   const pid=String(it.product_id);
   const hits=(S.lsSerialHits||[]).filter(h=>String(h.product_id)===pid);
   const serBadge=hits.length
-    ?` <span class="mtag ok" style="direction:ltr">סריאל ${hits[0].serial}${hits.length>1?' +'+(hits.length-1):''}</span>`:'';
+    ?` <span class="mtag ok" style="direction:ltr">${hits[0].serial}${hits.length>1?' +'+(hits.length-1):''}</span>`:'';
   const c=S.lsLive[pid];
   const fresh=c&&!c.err&&Date.now()-c.at<LS_TTL_MS;
   const bcells=(S.branchList||[]).map(b=>{
