@@ -110,6 +110,23 @@
   .plan-actions .pa-danger:hover{background:rgba(229,72,77,.12);color:var(--red)}
   .plan-actions .pa-sep{width:1px;background:var(--line);margin:3px 2px}
   .btn-req-in{background:var(--green);color:#fff;font-weight:700}
+  /* 🔎 מלאי חי */
+  td.ls-has{color:var(--green);font-weight:800;text-align:center}
+  td.ls-zero{color:var(--muted);text-align:center}
+  td.ls-neg{color:var(--red);font-weight:800;text-align:center}
+  td.ls-wait{color:var(--muted);text-align:center;opacity:.6}
+  .ls-live{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:var(--green)}
+  .ls-live .dot{width:8px;height:8px;border-radius:50%;background:var(--green);animation:lspulse 1.6s infinite}
+  @keyframes lspulse{0%,100%{opacity:1}50%{opacity:.35}}
+  table.admin tr.ls-row{cursor:pointer}
+  .ls-chipline{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 14px}
+  .ls-bchip{border:1px solid var(--line);border-radius:10px;padding:8px 14px;background:var(--card2);font-weight:700;display:flex;gap:8px;align-items:center}
+  .ls-bchip b.q-has{color:var(--green)} .ls-bchip b.q-zero{color:var(--muted)} .ls-bchip b.q-neg{color:var(--red)}
+  table.serials{width:100%;border-collapse:collapse;font-size:14px}
+  table.serials th{color:var(--muted);font-weight:600;text-align:right;padding:6px 8px;border-bottom:1px solid var(--line);font-size:12px}
+  table.serials td{padding:7px 8px;border-bottom:1px solid var(--line)}
+  table.serials tr.srow{cursor:pointer} table.serials tr.srow:hover{background:var(--bg)}
+  tr.sdetail td{background:var(--bg);font-size:13px;color:var(--txt)}
   table.admin tr.has-req{background:rgba(31,191,107,.08)}
   table.admin tr.has-req:hover{background:rgba(31,191,107,.14)}
   .lastscan .sub{font-size:14px;opacity:.85;font-weight:600}
@@ -259,7 +276,9 @@ const S = { branchId:null, branchName:null, employee:null, adminKey:null,
             recoSearch:'', recoSupplier:'', recoCategory:'', recoMfr:'', _refocusReco:false,
             recoSort:{col:'recommended',dir:'desc'},
             orderData:null, orderCount:0, orderSearch:'', orderSupplier:'', orderCategory:'', _refocusOrder:false,
-            removalsData:null, removalsDays:30, removalsFrom:'', removalsTo:'', removalsMfr:'', removalsSearch:'', _refocusRemovals:false };
+            removalsData:null, removalsDays:30, removalsFrom:'', removalsTo:'', removalsMfr:'', removalsSearch:'', _refocusRemovals:false,
+            lsCat:null, lsCatAt:null, lsQuery:'', lsKind:'all', lsCategory:'', lsMfr:'', lsInactive:false,
+            lsLive:{}, lsSeq:0, lsSerialHit:null, _refocusLs:false, _lsDetail:null };
 
 // ── ערכת נושא (כהה/בהיר) ──
 function applyTheme(){
@@ -854,9 +873,10 @@ function adminTabsHTML(){
   const pc=S.planCount?` (${S.planCount})`:'';
   const oc=S.orderCount?` (${S.orderCount})`:'';
   const a=t=>S.adminTab===t?'active':'';
-  const base=S.adminTab!=='rebalance'&&S.adminTab!=='plan'&&S.adminTab!=='reco'&&S.adminTab!=='order'?'active':'';
+  const base=['rebalance','plan','reco','order','removals','live'].includes(S.adminTab)?'':'active';
   return `<div class="tabs">
     <button class="${base}" onclick="setAdminTab('transfers')">📋 העברות</button>
+    <button class="${a('live')}" onclick="setAdminTab('live')">🔎 מלאי חי</button>
     <div class="tabgroup">
       <button class="${a('rebalance')}" onclick="setAdminTab('rebalance')">⚖️ איזון מלאי</button>
       <button class="${a('plan')}" onclick="setAdminTab('plan')">📝 בקשות העברה${pc}</button>
@@ -870,7 +890,8 @@ function adminTabsHTML(){
 }
 function setAdminTab(tab){
   S.adminTab=tab;
-  if(tab==='rebalance'){ if(!S.rebalanceData) loadRebalance(true); else renderRebalance(); }
+  if(tab==='live'){ if(!S.lsCat) loadLiveCatalog(true); else renderLive(); }
+  else if(tab==='rebalance'){ if(!S.rebalanceData) loadRebalance(true); else renderRebalance(); }
   else if(tab==='plan'){ loadPlan(true); }
   else if(tab==='reco'){ if(!S.recoData) loadReco(true); else renderReco(); }
   else if(tab==='order'){ loadOrder(true); }
@@ -1498,7 +1519,223 @@ async function runRemovalsIngest(){
   setTimeout(()=>{ loadRemovals(false); hideLoading(); toast('איסוף הורדות רץ ברקע — יתעדכן בקרוב',true); }, 2500);
 }
 
+// ── 🔎 מלאי חי — חיפוש דינמי (קטלוג מקומי) + מלאי בזמן אמת מהקופה ──
+const LS_LIVE_CAP=12, LS_TTL_MS=30000, LS_SHOW_CAP=50;
+async function loadLiveCatalog(spinner){
+  if(spinner) showLoading('טוען קטלוג חיפוש…');
+  try{ const d=await api('/api/admin/live-search/catalog'); S.lsCat=d.items||[]; S.lsCatAt=d.updated_at; }
+  catch(e){ S.lsCat=S.lsCat||[]; }
+  if(spinner) hideLoading();
+  if(S.view==='admin'&&S.adminTab==='live') renderLive();
+}
+function setLsQuery(v){ S.lsQuery=v; S.lsSerialHit=null; S._refocusLs=true; renderLive(); }
+function setLsKind(v){ S.lsKind=v; renderLive(); }
+function setLsCategory(v){ S.lsCategory=v; renderLive(); }
+function setLsMfr(v){ S.lsMfr=v; renderLive(); }
+function setLsInactive(v){ S.lsInactive=v; renderLive(); }
+function lsFiltered(){
+  let items=(S.lsCat||[]);
+  if(!S.lsInactive) items=items.filter(i=>i.active);
+  if(S.lsKind!=='all') items=items.filter(i=>i.kind===S.lsKind);
+  if(S.lsCategory) items=items.filter(i=>(i.category||'')===S.lsCategory);
+  if(S.lsMfr) items=items.filter(i=>brandOf(i.name)===S.lsMfr);
+  const q=(S.lsQuery||'').trim();
+  const hasFilter=S.lsKind!=='all'||S.lsCategory||S.lsMfr;
+  if(q.length<2 && !hasFilter) return null;   // עוד אין מה להציג — מחכים להקלדה
+  if(q.length>=2){
+    const ql=q.toLowerCase(), q2=fixHebrewLayout(q).toLowerCase();
+    items=items.filter(i=>{
+      const blob=((i.name||'')+' '+(i.product_id||'')+' '+(i.barcode||'')).toLowerCase();
+      return blob.includes(ql)||(q2&&q2!==ql&&blob.includes(q2));
+    });
+    items.sort((a,b)=>{
+      const ex=x=>(String(x.product_id)===q||String(x.barcode)===q)?0:1;   // התאמה מדויקת קודם
+      return ex(a)-ex(b)||String(a.name).localeCompare(String(b.name),'he');
+    });
+  } else items=items.slice().sort((a,b)=>String(a.name).localeCompare(String(b.name),'he'));
+  // נמצא לפי סריאל — מקדימים את המוצר לראש הרשימה
+  if(S.lsSerialHit&&S.lsSerialHit.product_id){
+    const pid=String(S.lsSerialHit.product_id);
+    if(!items.some(x=>String(x.product_id)===pid)){
+      const hit=(S.lsCat||[]).find(x=>String(x.product_id)===pid);
+      if(hit) items.unshift(hit);
+    }
+  }
+  return items;
+}
+let _lsSerialT=null;
+function lsMaybeSerial(q,found){
+  if(found>0||S.lsSerialHit) return;
+  const qq=fixHebrewLayout(q).trim();
+  if(!/^\d{9,}$/.test(qq)) return;   // נראה כמו סריאל (IMEI וכד')
+  clearTimeout(_lsSerialT);
+  _lsSerialT=setTimeout(async()=>{
+    if((S.lsQuery||'').trim()!==q) return;
+    try{ const d=await api('/api/admin/live-search/serial?q='+encodeURIComponent(qq));
+      if((S.lsQuery||'').trim()!==q) return;
+      if(d&&d.found){ S.lsSerialHit=d; S._refocusLs=true; renderLive(); }
+    }catch(e){}
+  },300);
+}
+function fmtClock(iso){ if(!iso) return ''; const d=new Date(iso); return isNaN(d)?'':d.toLocaleTimeString('he-IL'); }
+function lsRow(it,live){
+  const pid=String(it.product_id);
+  const serBadge=(S.lsSerialHit&&String(S.lsSerialHit.product_id)===pid)
+    ?` <span class="mtag ok" style="direction:ltr">סריאל ${S.lsSerialHit.serial}</span>`:'';
+  const c=S.lsLive[pid];
+  const fresh=c&&!c.err&&Date.now()-c.at<LS_TTL_MS;
+  const bcells=(S.branchList||[]).map(b=>{
+    if(!live) return `<td class="ls-wait">—</td>`;
+    if(fresh){ const q=((c.data.branches||[]).find(x=>String(x.id)===String(b.id))||{}).qty||0;
+      return `<td id="lsb-${pid}-${b.id}" class="${q>0?'ls-has':(q<0?'ls-neg':'ls-zero')}">${q}</td>`; }
+    return `<td id="lsb-${pid}-${b.id}" class="ls-wait">⏳</td>`;
+  }).join('');
+  const tcell=live?(fresh?('🟢 '+fmtClock(c.data.fetched_at)):(c&&c.err?'שגיאת קופה':'…')):'צמצם לתצוגה חיה';
+  return `<tr class="ls-row" onclick='openLiveDetail(${JSON.stringify(pid)})'>
+    <td style="direction:ltr;text-align:right;font-family:monospace">${pid}</td>
+    <td>${it.name}${it.active?'':' <span class="mtag warn">לא פעיל</span>'}${serBadge}</td>
+    <td>${it.kind==='serial'?'📱':'🏷️'}</td>
+    <td class="muted">${it.category||'—'}</td>
+    ${bcells}
+    <td id="lst-${pid}" class="muted" style="font-size:11px;white-space:nowrap">${tcell}</td>
+  </tr>`;
+}
+let _lsLiveT=null;
+function lsScheduleLive(list){ clearTimeout(_lsLiveT); _lsLiveT=setTimeout(()=>lsFetchLive(list),350); }
+async function lsFetchLive(list){
+  const seq=++S.lsSeq, now=Date.now();
+  const todo=list.filter(i=>{const c=S.lsLive[String(i.product_id)];return !(c&&!c.err&&now-c.at<LS_TTL_MS);});
+  await Promise.all(todo.map(async i=>{
+    const pid=String(i.product_id);
+    try{ const d=await api('/api/admin/live-stock/'+encodeURIComponent(pid));
+      S.lsLive[pid]={at:Date.now(),data:d}; }
+    catch(e){ S.lsLive[pid]={at:Date.now(),err:true}; }
+    if(seq===S.lsSeq) lsPaint(pid);
+  }));
+}
+function lsPaint(pid){
+  const c=S.lsLive[pid]; if(!c) return;
+  (S.branchList||[]).forEach(b=>{
+    const el=document.getElementById('lsb-'+pid+'-'+b.id); if(!el) return;
+    if(c.err){ el.textContent='⚠️'; el.className='ls-wait'; return; }
+    const q=((c.data.branches||[]).find(x=>String(x.id)===String(b.id))||{}).qty||0;
+    el.textContent=q; el.className=q>0?'ls-has':(q<0?'ls-neg':'ls-zero');
+  });
+  const t=document.getElementById('lst-'+pid);
+  if(t) t.textContent=c.err?'שגיאת קופה':('🟢 '+fmtClock(c.data.fetched_at));
+}
+function renderLive(){
+  const app=document.getElementById('app');
+  const cat=S.lsCat||[];
+  const items=lsFiltered();
+  const act=cat.filter(i=>i.active);
+  const cats=[...new Set(act.map(i=>i.category).filter(Boolean))].sort();
+  const mfrs=[...new Set(act.map(i=>brandOf(i.name)).filter(Boolean))].sort();
+  const opt=(v,sel,lbl)=>`<option value="${v}" ${String(sel)===String(v)?'selected':''}>${lbl}</option>`;
+  const shown=(items||[]).slice(0,LS_SHOW_CAP);
+  const liveCount=Math.min(shown.length,LS_LIVE_CAP);
+  let body='';
+  if(!cat.length)
+    body=`<div class="empty">⏳ קטלוג החיפוש עוד לא נבנה — נסה שוב בעוד ~דקה<br><button class="btn-ghost" style="margin-top:10px" onclick="loadLiveCatalog(true)">טען שוב</button></div>`;
+  else if(items===null)
+    body=`<div class="empty">🔎 הקלד שם מוצר / מק״ט / ברקוד / סריאל — הרשימה מצטמצמת תוך כדי הקלדה</div>`;
+  else if(!items.length){
+    const isNum=/^\d{9,}$/.test(fixHebrewLayout((S.lsQuery||'').trim()));
+    body=`<div class="empty">${isNum?'מחפש לפי מספר סידורי…':'לא נמצאו מוצרים מתאימים'}</div>`;
+  } else body=`
+    ${items.length>LS_LIVE_CAP?`<div class="muted" style="margin-bottom:8px;font-size:13px">⚡ מלאי חי מוצג ל-${liveCount} הראשונים — צמצם את החיפוש לתצוגה חיה מלאה</div>`:''}
+    <table class="admin"><thead><tr>
+      <th>מק״ט</th><th>מוצר</th><th>סוג</th><th>קטגוריה</th>
+      ${(S.branchList||[]).map(b=>`<th style="text-align:center">${b.name}</th>`).join('')}
+      <th>עדכון</th>
+    </tr></thead><tbody>${shown.map((it,i)=>lsRow(it,i<LS_LIVE_CAP)).join('')}</tbody></table>
+    ${items.length>LS_SHOW_CAP?`<div class="muted" style="margin-top:8px">מציג ${LS_SHOW_CAP} מתוך ${items.length} — צמצם את החיפוש</div>`:''}`;
+  app.innerHTML=`<h1 class="title">🛠️ ניהול אופרציה</h1>${adminTabsHTML()}
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap">
+      <span class="ls-live"><span class="dot"></span> מלאי בזמן אמת מהקופה</span>
+      <span class="muted" style="font-size:12px">החיפוש מקומי ומיידי; כמויות המלאי נקראות חי מ-NewOrder ברגע הצמצום · לחיצה על מוצר = פירוט סניפים + סריאלים</span>
+    </div>
+    <div class="rebal-bar">
+      <input id="lsSearch" placeholder="🔎 שם מוצר / מק״ט / ברקוד / סריאל" value="${(S.lsQuery||'').replace(/"/g,'&quot;')}" oninput="setLsQuery(this.value)" autocomplete="off">
+      <select onchange="setLsKind(this.value)">
+        ${opt('all',S.lsKind,'סוג — הכל')}${opt('serial',S.lsKind,'📱 סריאליים')}${opt('barcode',S.lsKind,'🏷️ ברקוד')}
+      </select>
+      <select onchange="setLsMfr(this.value)">
+        <option value="">יצרן — הכל</option>${mfrs.map(s=>opt(s,S.lsMfr,s)).join('')}
+      </select>
+      <select onchange="setLsCategory(this.value)">
+        <option value="">קטגוריה — הכל</option>${cats.map(s=>opt(s,S.lsCategory,s)).join('')}
+      </select>
+      <label class="muted" style="font-size:13px;display:flex;align-items:center;gap:5px">
+        <input type="checkbox" ${S.lsInactive?'checked':''} onchange="setLsInactive(this.checked)">כולל לא פעילים</label>
+      <span class="muted" style="margin-inline-start:auto;font-size:13px">${items?`מציג ${shown.length} מתוך ${items.length}`:''}</span>
+    </div>
+    ${body}`;
+  if(S._refocusLs){ const el=document.getElementById('lsSearch'); if(el){ el.focus(); const v=el.value; el.value=''; el.value=v; } S._refocusLs=false; }
+  if(items&&shown.length) lsScheduleLive(shown.slice(0,LS_LIVE_CAP));
+  lsMaybeSerial((S.lsQuery||'').trim(),(items||[]).length);
+}
+async function openLiveDetail(pid){
+  const it=(S.lsCat||[]).find(x=>String(x.product_id)===String(pid)); if(!it) return;
+  showLoading('קורא מלאי חי מהקופה…');
+  let d=null;
+  try{ d=await api('/api/admin/live-stock/'+encodeURIComponent(pid)+(it.kind==='serial'?'?serials=1':'')); }catch(e){}
+  hideLoading();
+  if(!d){ toast('לא ניתן לקרוא מהקופה כרגע',false); return; }
+  S._lsDetail={it,d,open:null};
+  renderLiveDetail();
+}
+async function refreshLiveDetail(){
+  const D=S._lsDetail; if(!D) return;
+  showLoading('מרענן מהקופה…');
+  try{ const d=await api('/api/admin/live-stock/'+encodeURIComponent(D.it.product_id)+'?fresh=1'+(D.it.kind==='serial'?'&serials=1':''));
+    D.d=d; S.lsLive[String(D.it.product_id)]={at:Date.now(),data:d}; }
+  catch(e){ toast('שגיאה ברענון',false); }
+  hideLoading(); renderLiveDetail();
+}
+function toggleSerialDetail(i){ const D=S._lsDetail; if(!D) return; D.open=(D.open===i)?null:i; renderLiveDetail(); }
+function renderLiveDetail(){
+  const D=S._lsDetail; if(!D) return;
+  const {it,d}=D;
+  const hitSer=(S.lsSerialHit&&String(S.lsSerialHit.product_id)===String(it.product_id))?S.lsSerialHit.serial:null;
+  const chips=(d.branches||[]).map(b=>{
+    const q=b.qty||0, cls=q>0?'q-has':(q<0?'q-neg':'q-zero');
+    return `<div class="ls-bchip">${b.name} <b class="${cls}">${q}</b></div>`;
+  }).join('');
+  let serHtml='';
+  if(it.kind==='serial'){
+    if(d.serials_error) serHtml='<div class="muted">⚠️ לא ניתן לקרוא את הסריאלים כרגע</div>';
+    else if(!(d.serials||[]).length) serHtml='<div class="muted">אין יחידות סריאליות זמינות בקופה</div>';
+    else serHtml=`<div style="font-weight:700;margin-bottom:6px">יחידות בקופה (${d.serials.length})</div>
+      <table class="serials"><thead><tr><th>סריאל</th><th>סניף</th><th>נקלט</th><th>סטטוס</th></tr></thead><tbody>
+      ${d.serials.map((s,i)=>{
+        const st=s.status===1?'<span style="color:var(--green);font-weight:700">זמין</span>':('סטטוס '+s.status);
+        const dt=s.insert_date?new Date(s.insert_date):null;
+        const ds=dt&&!isNaN(dt)?dt.toLocaleDateString('he-IL'):'';
+        const open=D.open===i;
+        const mark=hitSer&&String(s.serial)===String(hitSer)?' style="background:rgba(31,191,107,.10)"':'';
+        return `<tr class="srow"${mark} onclick="toggleSerialDetail(${i})">
+          <td style="direction:ltr;text-align:right;font-family:monospace">${open?'▼':'◀'} ${s.serial}</td>
+          <td>${s.branch_name||s.branch_id||''}</td><td>${ds}</td><td>${st}</td></tr>`
+          +(open?`<tr class="sdetail"><td colspan="4">🏭 ספק: <b>${s.supplier||'—'}</b> &nbsp;·&nbsp; 🛡️ אחריות: <b>${s.warranty||'—'}${s.warranty_months?(' · '+Math.round(s.warranty_months)+' חודשים'):''}</b></td></tr>`:'');
+      }).join('')}</tbody></table>
+      <div class="muted" style="font-size:12px;margin-top:6px">לחיצה על שורת סריאל מציגה ספק + אחריות</div>`;
+  }
+  document.getElementById('modalRoot').innerHTML=`<div class="overlay"><div class="modal" style="max-width:680px;text-align:right;max-height:84vh;overflow:auto">
+    <h3 style="margin-bottom:2px">${it.name}</h3>
+    <div class="muted" style="font-family:monospace;direction:ltr;text-align:right">${it.product_id}${it.barcode?(' · '+it.barcode):''}</div>
+    <div style="display:flex;align-items:center;gap:10px;margin:10px 0 4px">
+      <span class="ls-live"><span class="dot"></span> חי מהקופה · ${fmtClock(d.fetched_at)}</span>
+      <button class="btn-ghost" style="padding:5px 10px;font-size:12px" onclick="refreshLiveDetail()">🔄 רענן</button>
+    </div>
+    <div class="ls-chipline">${chips}</div>
+    ${serHtml}
+    <div style="display:flex;margin-top:14px"><button class="btn-ghost" style="flex:1" onclick="closeModal()">סגור</button></div>
+  </div></div>`;
+}
+
 function renderAdmin(){
+  if(S.adminTab==='live') return S.lsCat?renderLive():loadLiveCatalog(true);
   if(S.adminTab==='rebalance') return S.rebalanceData?renderRebalance():loadRebalance(true);
   if(S.adminTab==='plan') return S.planData?renderPlan():loadPlan(true);
   if(S.adminTab==='reco') return S.recoData?renderReco():loadReco(true);
@@ -1615,7 +1852,7 @@ function startPoll(){ clearInterval(S.pollTimer);
       if(bs && document.activeElement===bs && bs.value) return;
       renderBoard(a, true);
     } else if(S.view==='admin'){
-      if(S.adminTab==='rebalance'||S.adminTab==='reco'||S.adminTab==='order'||S.adminTab==='removals') return;   // נתונים מחושבים/עריכה — לא מרעננים אוטומטית
+      if(['rebalance','reco','order','removals','live'].includes(S.adminTab)) return;   // נתונים מחושבים/עריכה/חיפוש חי — לא מרעננים אוטומטית
       const ae=document.activeElement;   // אל תרענן תוך כדי שימוש בסינון
       if(ae && ae.closest && ae.closest('.filters')) return;
       loadAdmin(false);   // רענון שקט ברקע

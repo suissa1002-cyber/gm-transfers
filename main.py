@@ -24,6 +24,9 @@ logging.basicConfig(level=logging.INFO,
 logger = logging.getLogger("transfers.main")
 
 app = FastAPI(title=cfg.APP_TITLE)
+# דחיסת תשובות גדולות (קטלוג החיפוש של מלאי-חי ~5,600 מוצרים)
+from fastapi.middleware.gzip import GZipMiddleware  # noqa: E402
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 _here = os.path.dirname(__file__)
 _static_dir = os.path.join(_here, "static")
 
@@ -119,6 +122,11 @@ def _removals_backfill_job(days: int = 90):
 def _startup():
     db.init_db()
     logger.info("DB ready (%s)", "Postgres" if cfg.DATABASE_URL else "SQLite")
+    # פיתוח מקומי: DISABLE_BACKGROUND_JOBS=1 מכבה את כל עבודות הרקע (פולר/סנכרונים),
+    # כדי לא להעמיס על הטוקן המשותף במקביל לפרודקשן. ה-API וה-UI עובדים רגיל.
+    if os.getenv("DISABLE_BACKGROUND_JOBS", "").strip() in ("1", "true", "yes"):
+        logger.warning("background jobs DISABLED (DISABLE_BACKGROUND_JOBS)")
+        return
     # סבב ראשון מיד, ואז לפי האינטרוול
     scheduler.add_job(_poll_job, "interval", seconds=cfg.POLL_INTERVAL_SEC,
                       id="poll", next_run_time=None, max_instances=1)
@@ -487,6 +495,86 @@ def admin_catalog_refresh(x_admin_key: Optional[str] = Header(None)):
     scheduler.add_job(_catalog_refresh_job, "date", id="catalog_manual",
                       run_date=datetime.now() + timedelta(seconds=1), replace_existing=True)
     return {"started": True, "meta": db.catalog_meta()}
+
+
+# ──────────────────────────────────────────────────────────────
+# 🔎 מלאי חי — חיפוש מוצר (מה-DB) + קריאת מלאי/סריאלים חיה מהקופה
+# ──────────────────────────────────────────────────────────────
+@app.get("/api/admin/live-search/catalog")
+def admin_live_catalog(x_admin_key: Optional[str] = Header(None)):
+    """קטלוג מצומצם לצמצום תוך-כדי-הקלדה בצד הלקוח (שמות/ברקודים — לא מלאי)."""
+    _require_admin(x_admin_key)
+    meta = db.catalog_meta()
+    return {"items": db.catalog_light(), "updated_at": meta.get("updated_at"),
+            "count": meta.get("count")}
+
+
+@app.get("/api/admin/live-search/serial")
+def admin_live_serial(q: str, x_admin_key: Optional[str] = Header(None)):
+    """איתור מוצר לפי מספר סידורי (מאינדקס סריאל→מוצר). אין ל-NewOrder חיפוש הפוך."""
+    _require_admin(x_admin_key)
+    rec = db.serial_product((q or "").strip())
+    if not rec:
+        return {"found": False}
+    return {"found": True, "serial": (q or "").strip(),
+            "product_id": rec.get("product_id"), "product_name": rec.get("product_name")}
+
+
+# micro-cache קצרצר כדי לרכך לחיצות כפולות/כמה מסכי ניהול במקביל — עדיין "חי" לכל דבר
+_live_stock_cache: dict = {}
+_LIVE_STOCK_TTL_SEC = 20
+
+
+@app.get("/api/admin/live-stock/{pid}")
+def admin_live_stock(pid: str, serials: int = 0, fresh: int = 0,
+                     x_admin_key: Optional[str] = Header(None)):
+    """מלאי חי לפי סניף ישירות מהקופה, ואופציונלית גם היחידות הסריאליות (ספק+אחריות)."""
+    _require_admin(x_admin_key)
+    import time as _time
+    key = (str(pid), bool(serials))
+    hit = _live_stock_cache.get(key)
+    if hit and not fresh and (_time.time() - hit[0]) < _LIVE_STOCK_TTL_SEC:
+        return hit[1]
+    no = poller.client()
+    try:
+        stock = no.get_product_stock(pid)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("live stock failed for %s: %s", pid, e)
+        raise HTTPException(502, "לא ניתן לקרוא מהקופה כרגע")
+    out = {
+        "product_id": str(pid),
+        "fetched_at": datetime.now().isoformat(timespec="seconds"),
+        "branches": [{"id": b, "name": cfg.branch_name(b), "qty": stock.get(b, 0) or 0}
+                     for b in cfg.BRANCHES],
+    }
+    if serials:
+        try:
+            raw = no.get_product_serials(pid) or []
+        except Exception as e:  # noqa: BLE001
+            logger.warning("live serials failed for %s: %s", pid, e)
+            raw = None
+        if raw is None:
+            out["serials_error"] = True
+        else:
+            ser = []
+            for s in raw:
+                try:
+                    bid = int(s.get("branchId"))
+                except (TypeError, ValueError):
+                    bid = None
+                sup = s.get("supplier") or {}
+                war = s.get("warranty") or {}
+                ser.append({
+                    "serial": s.get("serial"), "status": s.get("status"),
+                    "branch_id": bid, "branch_name": cfg.branch_name(bid) if bid else "",
+                    "insert_date": s.get("insertDate") or "",
+                    "supplier": (sup.get("name") or "").strip() if isinstance(sup, dict) else "",
+                    "warranty": (war.get("name") or "").strip() if isinstance(war, dict) else "",
+                    "warranty_months": war.get("duration") if isinstance(war, dict) else None,
+                })
+            out["serials"] = ser
+    _live_stock_cache[key] = (_time.time(), out)
+    return out
 
 
 # ── הורדות מלאי מרלוג ──────────────────────────────────────────────
