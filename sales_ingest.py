@@ -20,12 +20,14 @@ qty חתום: מכירה (docType 0) חיובי, החזרה/זיכוי (docType 
 import logging
 from datetime import date, timedelta, datetime
 
+import config as cfg
 import db
 import poller
 
 logger = logging.getLogger("transfers.sales")
 
 DEFAULT_INCREMENTAL_LOOKBACK = 3   # ימים אחורה לחפיפה (לתפוס מסמכים מאוחרים)
+_DAY_CAP = 200                     # ה-API מחזיר עד 200/יום וה-pagination שבור
 _running = False
 
 
@@ -34,11 +36,28 @@ def _dd(d: date) -> str:
 
 
 def _day_docs(no, d: date) -> list:
-    """כל מסמכי יום בודד (קריאה אחת; ≤200 ⇒ שלם). מתריע אם נחתך."""
+    """כל מסמכי יום בודד. ה-API מחזיר עד 200/שאילתה (pagination שבור), לכן אם יום
+    מגיע ל-200 — מפצלים לפי סניף (כל סניף ביום כמעט אף פעם לא עובר 200) וממזגים.
+    כך לא מפספסים מסמכים ביום עמוס במיוחד."""
     docs = no.get_documents(from_date=_dd(d), to_date=_dd(d), page_size=200, page_num=1) or []
-    if len(docs) >= 200:
-        logger.warning("sales: day %s returned %d docs — possible truncation!", d, len(docs))
-    return docs
+    if len(docs) < _DAY_CAP:
+        return docs
+    # יום עמוס — נפצל לפי סניף כדי לא לפספס
+    logger.warning("sales: day %s hit %d — splitting by branch", d, len(docs))
+    merged = {str(x.get("id")): x for x in docs}
+    for b in cfg.BRANCHES:
+        try:
+            bd = no.get_documents(branch_id=b, from_date=_dd(d), to_date=_dd(d),
+                                  page_size=200, page_num=1) or []
+        except Exception as e:  # noqa: BLE001
+            logger.warning("sales: per-branch %s day %s failed: %s", b, d, e)
+            continue
+        if len(bd) >= _DAY_CAP:
+            logger.error("sales: branch %s day %s STILL %d — may truncate!", b, d, len(bd))
+        for x in bd:
+            merged[str(x.get("id"))] = x
+    logger.warning("sales: day %s merged to %d docs after per-branch split", d, len(merged))
+    return list(merged.values())
 
 
 def _ingest_range(no, start: date, end: date, skip: set, max_new_docs=None) -> dict:
