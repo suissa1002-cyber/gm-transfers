@@ -283,7 +283,7 @@ const S = { branchId:null, branchName:null, employee:null, adminKey:null,
             recoSort:{col:'recommended',dir:'desc'},
             orderData:null, orderCount:0, orderSearch:'', orderSupplier:'', orderCategory:'', _refocusOrder:false,
             removalsData:null, removalsDays:30, removalsFrom:'', removalsTo:'', removalsMfr:'', removalsSearch:'', _refocusRemovals:false,
-            lsCat:null, lsCatAt:null, lsQuery:'', lsKind:'serial', lsCategory:'', lsMfr:'', lsInactive:false, lsStock:true,
+            lsCat:null, lsCatAt:null, lsQuery:'', lsKind:'serial', lsCategory:'', lsMfr:'', lsStock:true,
             lsLive:{}, lsSeq:0, lsSerialHit:null, _refocusLs:false, _lsDetail:null };
 
 // ── ערכת נושא (כהה/בהיר) ──
@@ -1538,11 +1538,10 @@ function setLsQuery(v){ S.lsQuery=v; S.lsSerialHit=null; S._refocusLs=true; rend
 function setLsKind(v){ S.lsKind=v; renderLive(); }
 function setLsCategory(v){ S.lsCategory=v; renderLive(); }
 function setLsMfr(v){ S.lsMfr=v; renderLive(); }
-function setLsInactive(v){ S.lsInactive=v; renderLive(); }
 function setLsStock(v){ S.lsStock=v; renderLive(); }
 function lsFiltered(){
   let items=(S.lsCat||[]);
-  if(!S.lsInactive) items=items.filter(i=>i.active);
+  items=items.filter(i=>i.active);   // לא-פעילים לא מוצגים (מק"טים שנסגרו בקופה)
   if(S.lsStock) items=items.filter(i=>(i.stock||0)>0);   // רק עם מלאי (לפי הקטלוג; הכמויות עצמן חיות)
   if(S.lsKind!=='all') items=items.filter(i=>i.kind===S.lsKind);
   if(S.lsCategory) items=items.filter(i=>(i.category||'')===S.lsCategory);
@@ -1696,7 +1695,6 @@ function renderLive(){
         <option value="">קטגוריה — הכל</option>${cats.map(s=>opt(s,S.lsCategory,s)).join('')}
       </select>
       <label class="ls-check"><input type="checkbox" ${S.lsStock?'checked':''} onchange="setLsStock(this.checked)"><span>רק עם מלאי</span></label>
-      <label class="ls-check"><input type="checkbox" ${S.lsInactive?'checked':''} onchange="setLsInactive(this.checked)"><span>כולל לא פעילים</span></label>
       <span class="muted" style="margin-inline-start:auto;font-size:13px">${items?`מציג ${shown.length} מתוך ${items.length}`:''}</span>
     </div>
     ${body}`;
