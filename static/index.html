@@ -132,6 +132,7 @@
   .wcq-btn{border:1.5px solid var(--line);background:var(--card2);color:var(--txt);border-radius:10px;
            padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer}
   .wcq-btn.on{border-color:var(--green);color:var(--green);font-weight:800;background:rgba(31,191,107,.08)}
+  .wcq-btn.off{opacity:.4}
   .ls-chipline{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 14px}
   .ls-bchip{border:1px solid var(--line);border-radius:10px;padding:8px 14px;background:var(--card2);font-weight:700;display:flex;gap:8px;align-items:center}
   .ls-bchip b.q-has{color:var(--green)} .ls-bchip b.q-zero{color:var(--muted)} .ls-bchip b.q-neg{color:var(--red)}
@@ -1831,7 +1832,28 @@ async function openWcQuick(pid){
     <button class="btn-ghost" style="width:100%;margin-top:10px" onclick="closeModal()">סגור</button>
   </div></div>`;
 }
-function wcQuickSel(name,opt){ const Q=S._wcQuick; if(!Q) return; Q.sel[name]=opt; renderWcQuick(); }
+function wcQuickSel(name,opt){
+  const Q=S._wcQuick; if(!Q) return;
+  Q.sel[name]=opt;
+  // התאמה אוטומטית (כמו באתר): אם הצירוף לא קיים — מצמידים את שאר המאפיינים
+  // לצירוף הקיים הקרוב ביותר ששומר על מה שנלחץ עכשיו
+  const v=Q.d.variants;
+  if(v){
+    const exact=(v.options||[]).some(c=>v.switch_attrs.every(sa=>String(c.attrs[sa.name]||'')===String(Q.sel[sa.name]||'')));
+    if(!exact){
+      const withClicked=(v.options||[]).filter(c=>String(c.attrs[name]||'')===String(opt));
+      if(withClicked.length){
+        let best=withClicked[0], bestScore=-1;
+        withClicked.forEach(c=>{
+          const score=v.switch_attrs.reduce((a,sa)=>a+(String(c.attrs[sa.name]||'')===String(Q.sel[sa.name]||'')?1:0),0);
+          if(score>bestScore){ bestScore=score; best=c; }
+        });
+        v.switch_attrs.forEach(sa=>{ Q.sel[sa.name]=best.attrs[sa.name]||''; });
+      }
+    }
+  }
+  renderWcQuick();
+}
 function renderWcQuick(){
   const Q=S._wcQuick; if(!Q) return;
   const {pid,d,sel}=Q;
@@ -1851,10 +1873,14 @@ function renderWcQuick(){
     .concat(d.variants?[]:(d.attributes||[]).slice(0,3).map(a=>a.option)).filter(Boolean).join(' · ');
   const switches=(d.variants?d.variants.switch_attrs:[]).map(sa=>{
     const label=sa.name.replace(/^בחירת /,'');
+    // אפשרות שלא משתלבת עם שאר הבחירות הנוכחיות — מעומעמת (לחיצה תתאים אוטומטית)
+    const others=d.variants.switch_attrs.filter(x=>x.name!==sa.name);
+    const avail=o=>(d.variants.options||[]).some(c=>String(c.attrs[sa.name]||'')===String(o)
+      &&others.every(x=>String(c.attrs[x.name]||'')===String(sel[x.name]||'')));
     return `<div style="margin:10px 0 2px;text-align:center">
       <div class="muted" style="font-size:12px;margin-bottom:5px">${label}</div>
       <div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap">
-        ${sa.options.map(o=>`<button class="wcq-btn ${String(sel[sa.name])===String(o)?'on':''}" onclick='wcQuickSel(${JSON.stringify(sa.name)},${JSON.stringify(o)})'>${o}</button>`).join('')}
+        ${sa.options.map(o=>`<button class="wcq-btn ${String(sel[sa.name])===String(o)?'on':(avail(o)?'':'off')}" onclick='wcQuickSel(${JSON.stringify(sa.name)},${JSON.stringify(o)})'>${o}</button>`).join('')}
       </div></div>`;
   }).join('');
   const sale=cur.sale_price&&cur.sale_price!==''&&Number(cur.sale_price)<Number(cur.regular_price||0);
