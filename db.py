@@ -580,6 +580,14 @@ def serial_index_count() -> int:
         return cur.fetchone()["n"]
 
 
+def serial_index_last_sync() -> str:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute("SELECT MAX(synced_at) AS m FROM serial_index")
+        row = cur.fetchone()
+        return (row["m"] if row else None) or None
+
+
 # ──────────────────────────────────────────────────────────────
 # חריגות "מכשיר לא במקום"
 # ──────────────────────────────────────────────────────────────

@@ -401,10 +401,10 @@ function fetchT(url,opts,ms){
   const id=setTimeout(()=>ctrl.abort(),ms||30000);
   return fetch(url,{...opts,signal:ctrl.signal}).finally(()=>clearTimeout(id));
 }
-async function api(path,opts){
+async function api(path,opts,ms){
   opts=opts||{}; opts.headers=opts.headers||{};
   if(S.adminKey) opts.headers['X-Admin-Key']=S.adminKey;
-  const r=await fetchT(path,opts,30000);
+  const r=await fetchT(path,opts,ms||30000);
   if(!r.ok){ const e=new Error('http '+r.status); e.status=r.status; throw e; }
   return r.json();
 }
@@ -1611,17 +1611,22 @@ function lsRow(it,live){
   </tr>`;
 }
 let _lsLiveT=null;
-function lsScheduleLive(list){ clearTimeout(_lsLiveT); _lsLiveT=setTimeout(()=>lsFetchLive(list),350); }
-async function lsFetchLive(list){
+function lsScheduleLive(list){ clearTimeout(_lsLiveT); _lsLiveT=setTimeout(()=>lsFetchLive(list,0),350); }
+async function lsFetchLive(list,attempt){
   const seq=++S.lsSeq, now=Date.now();
   const todo=list.filter(i=>{const c=S.lsLive[String(i.product_id)];return !(c&&!c.err&&now-c.at<LS_TTL_MS);});
   await Promise.all(todo.map(async i=>{
     const pid=String(i.product_id);
-    try{ const d=await api('/api/admin/live-stock/'+encodeURIComponent(pid));
+    try{ const d=await api('/api/admin/live-stock/'+encodeURIComponent(pid),null,45000);
       S.lsLive[pid]={at:Date.now(),data:d}; }
     catch(e){ S.lsLive[pid]={at:Date.now(),err:true}; }
     if(seq===S.lsSeq) lsPaint(pid);
   }));
+  // ניסיון חוזר אוטומטי לשורות שנכשלו (הקופה עמוסה/הקצב המשותף תפוס) — עד 3 פעמים
+  if(seq!==S.lsSeq) return;
+  const failed=list.filter(i=>{const c=S.lsLive[String(i.product_id)];return c&&c.err;});
+  if(failed.length && (attempt||0)<3)
+    setTimeout(()=>{ if(seq===S.lsSeq) lsFetchLive(failed,(attempt||0)+1); },5000);
 }
 function lsPaint(pid){
   const c=S.lsLive[pid]; if(!c) return;
@@ -1632,7 +1637,7 @@ function lsPaint(pid){
     el.textContent=q; el.className=q>0?'ls-has':(q<0?'ls-neg':'ls-zero');
   });
   const t=document.getElementById('lst-'+pid);
-  if(t) t.textContent=c.err?'שגיאת קופה':('🟢 '+fmtClock(c.data.fetched_at));
+  if(t) t.textContent=c.err?'🔁 מנסה שוב…':('🟢 '+fmtClock(c.data.fetched_at));
 }
 function renderLive(){
   const app=document.getElementById('app');
@@ -1689,7 +1694,7 @@ async function openLiveDetail(pid){
   const it=(S.lsCat||[]).find(x=>String(x.product_id)===String(pid)); if(!it) return;
   showLoading('קורא מלאי חי מהקופה…');
   let d=null;
-  try{ d=await api('/api/admin/live-stock/'+encodeURIComponent(pid)+(it.kind==='serial'?'?serials=1':'')); }catch(e){}
+  try{ d=await api('/api/admin/live-stock/'+encodeURIComponent(pid)+(it.kind==='serial'?'?serials=1':''),null,45000); }catch(e){}
   hideLoading();
   if(!d){ toast('לא ניתן לקרוא מהקופה כרגע',false); return; }
   S._lsDetail={it,d,open:null};
@@ -1698,7 +1703,7 @@ async function openLiveDetail(pid){
 async function refreshLiveDetail(){
   const D=S._lsDetail; if(!D) return;
   showLoading('מרענן מהקופה…');
-  try{ const d=await api('/api/admin/live-stock/'+encodeURIComponent(D.it.product_id)+'?fresh=1'+(D.it.kind==='serial'?'&serials=1':''));
+  try{ const d=await api('/api/admin/live-stock/'+encodeURIComponent(D.it.product_id)+'?fresh=1'+(D.it.kind==='serial'?'&serials=1':''),null,45000);
     D.d=d; S.lsLive[String(D.it.product_id)]={at:Date.now(),data:d}; }
   catch(e){ toast('שגיאה ברענון',false); }
   hideLoading(); renderLiveDetail();

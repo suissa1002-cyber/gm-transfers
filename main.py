@@ -118,6 +118,18 @@ def _removals_backfill_job(days: int = 90):
         logger.warning("removals_backfill failed: %s", e)
 
 
+def _is_stale(iso_ts, hours: float) -> bool:
+    """האם חותמת זמן ISO ישנה מ-X שעות (או חסרה/לא תקינה)."""
+    if not iso_ts:
+        return True
+    try:
+        t = datetime.fromisoformat(str(iso_ts))
+        now = datetime.now(t.tzinfo) if t.tzinfo else datetime.now()
+        return (now - t).total_seconds() > hours * 3600
+    except Exception:  # noqa: BLE001
+        return True
+
+
 @app.on_event("startup")
 def _startup():
     db.init_db()
@@ -135,10 +147,15 @@ def _startup():
     scheduler.add_job(_digest_job, "cron", id="digest",
                       hour=cfg.DIGEST_HOUR, minute=0, day_of_week=cfg.DIGEST_DAYS,
                       max_instances=1)
-    # אינדקס סריאל→מוצר: סבב baseline כל 3 שעות + ריצה ראשונית ~60ש' אחרי עליה
+    # אינדקס סריאל→מוצר: סבב baseline כל 3 שעות. ריצה ראשונית רק אם האינדקס ישן —
+    # הוא נשמר ב-DB, ואין סיבה לשרוף ~555 קריאות אחרי כל deploy/restart
+    # (זה גם מה שגרם ל"שגיאת קופה" בטאב מלאי חי: הסנכרון הרווה את מגבלת הקצב).
     scheduler.add_job(_serial_sync_job, "interval", hours=3, id="serial_sync", max_instances=1)
-    scheduler.add_job(_serial_sync_job, "date", id="serial_sync_initial",
-                      run_date=datetime.now() + timedelta(seconds=60))
+    if _is_stale(db.serial_index_last_sync(), hours=3):
+        scheduler.add_job(_serial_sync_job, "date", id="serial_sync_initial",
+                          run_date=datetime.now() + timedelta(seconds=60))
+    else:
+        logger.info("serial index fresh — skipping initial full sync")
     # איזון מלאי: פעמיים ביום (כך שתמיד נופל בתוך שעות הפעילות של איזה יום) — תחילת/סוף יום
     scheduler.add_job(_rebalance_job, "cron", id="rebalance_am", hour=8, minute=30, max_instances=1)
     scheduler.add_job(_rebalance_job, "cron", id="rebalance_pm", hour=21, minute=0, max_instances=1)
@@ -150,10 +167,13 @@ def _startup():
     scheduler.add_job(_removals_ingest_job, "interval", hours=3, id="removals_ingest", max_instances=1)
     scheduler.add_job(_removals_ingest_job, "date", id="removals_initial",
                       run_date=datetime.now() + timedelta(seconds=180))
-    # קטלוג מוצרים ל-DB: רענון כל 6 שעות + ריצה ראשונית (~150ש' אחרי עליה, מרווח מ-sales)
+    # קטלוג מוצרים ל-DB: רענון כל 6 שעות. ריצה ראשונית רק אם הקטלוג ישן (נשמר ב-DB).
     scheduler.add_job(_catalog_refresh_job, "interval", hours=6, id="catalog_refresh", max_instances=1)
-    scheduler.add_job(_catalog_refresh_job, "date", id="catalog_initial",
-                      run_date=datetime.now() + timedelta(seconds=150))
+    if _is_stale(db.catalog_meta().get("updated_at"), hours=6):
+        scheduler.add_job(_catalog_refresh_job, "date", id="catalog_initial",
+                          run_date=datetime.now() + timedelta(seconds=150))
+    else:
+        logger.info("catalog fresh — skipping initial refresh")
     scheduler.start()
     # סבב ראשוני סינכרוני קצר כדי שהלוח לא יהיה ריק בהפעלה
     try:
