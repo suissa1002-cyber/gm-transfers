@@ -206,6 +206,17 @@ def _require_admin(x_admin_key: Optional[str] = Header(None)):
         raise HTTPException(401, "admin auth required")
 
 
+def _require_admin_or_device(x_admin_key, x_device_token):
+    """גישה למנהל (סיסמה) או למכשיר סניף מאושר — לפיצ'רים שפתוחים לסניפים
+    (מלאי חי, בקשת משיכה). הניהול המלא נשאר בסיסמה בלבד."""
+    if not cfg.ADMIN_PASSWORD or (x_admin_key or "") == cfg.ADMIN_PASSWORD:
+        return
+    d = db.device_get(x_device_token or "") if x_device_token else None
+    if d and d.get("status") == "approved":
+        return
+    raise HTTPException(401, "admin or approved device required")
+
+
 @app.get("/health")
 def health():
     return {"ok": True, "stats": db.stats()}
@@ -310,9 +321,9 @@ class BroadcastIn(BaseModel):
 
 
 @app.post("/api/admin/broadcast")
-def admin_broadcast(body: BroadcastIn, x_admin_key: Optional[str] = Header(None)):
+def admin_broadcast(body: BroadcastIn, x_admin_key: Optional[str] = Header(None), x_device_token: Optional[str] = Header(None)):
     """משדר בקשות העברה למסך הקליטה של סניף המקור (תצוגה בלבד)."""
-    _require_admin(x_admin_key)
+    _require_admin_or_device(x_admin_key, x_device_token)
     n = db.plan_mark_broadcast(body.branch_id, body.line_ids)
     return {"ok": True, "lines": n}
 
@@ -449,8 +460,8 @@ def admin_plan(x_admin_key: Optional[str] = Header(None)):
 
 
 @app.post("/api/admin/plan")
-def admin_plan_add(body: PlanAdd, x_admin_key: Optional[str] = Header(None)):
-    _require_admin(x_admin_key)
+def admin_plan_add(body: PlanAdd, x_admin_key: Optional[str] = Header(None), x_device_token: Optional[str] = Header(None)):
+    _require_admin_or_device(x_admin_key, x_device_token)
     ids = db.plan_add([l.model_dump() for l in body.lines])
     return {"added": len(ids), "ids": ids}
 
@@ -546,18 +557,18 @@ def admin_catalog_refresh(x_admin_key: Optional[str] = Header(None)):
 # 🔎 מלאי חי — חיפוש מוצר (מה-DB) + קריאת מלאי/סריאלים חיה מהקופה
 # ──────────────────────────────────────────────────────────────
 @app.get("/api/admin/live-search/catalog")
-def admin_live_catalog(x_admin_key: Optional[str] = Header(None)):
+def admin_live_catalog(x_admin_key: Optional[str] = Header(None), x_device_token: Optional[str] = Header(None)):
     """קטלוג מצומצם לצמצום תוך-כדי-הקלדה בצד הלקוח (שמות/ברקודים — לא מלאי)."""
-    _require_admin(x_admin_key)
+    _require_admin_or_device(x_admin_key, x_device_token)
     meta = db.catalog_meta()
     return {"items": db.catalog_light(), "updated_at": meta.get("updated_at"),
             "count": meta.get("count")}
 
 
 @app.get("/api/admin/live-search/serial")
-def admin_live_serial(q: str, x_admin_key: Optional[str] = Header(None)):
+def admin_live_serial(q: str, x_admin_key: Optional[str] = Header(None), x_device_token: Optional[str] = Header(None)):
     """איתור מוצרים לפי מספר סידורי — גם חלקי (מאינדקס סריאל→מוצר; אין ל-NewOrder חיפוש הפוך)."""
-    _require_admin(x_admin_key)
+    _require_admin_or_device(x_admin_key, x_device_token)
     matches = db.serial_search((q or "").strip(), limit=50)
     return {"found": bool(matches), "matches": matches}
 
@@ -569,9 +580,9 @@ _LIVE_STOCK_TTL_SEC = 20
 
 @app.get("/api/admin/live-stock/{pid}")
 def admin_live_stock(pid: str, serials: int = 0, fresh: int = 0,
-                     x_admin_key: Optional[str] = Header(None)):
+                     x_admin_key: Optional[str] = Header(None), x_device_token: Optional[str] = Header(None)):
     """מלאי חי לפי סניף ישירות מהקופה, ואופציונלית גם היחידות הסריאליות (ספק+אחריות)."""
-    _require_admin(x_admin_key)
+    _require_admin_or_device(x_admin_key, x_device_token)
     import time as _time
     key = (str(pid), bool(serials))
     hit = _live_stock_cache.get(key)
@@ -635,11 +646,11 @@ def _wc_creds():
 @app.get("/api/admin/wc-link/{sku}")
 def admin_wc_link(sku: str, pos: int = 0, fallback: int = 0, fresh: int = 0,
                   name: Optional[str] = None,
-                  x_admin_key: Optional[str] = Header(None)):
+                  x_admin_key: Optional[str] = Header(None), x_device_token: Optional[str] = Header(None)):
     """איתור הפריט באתר לפי SKU. pos=1 מוסיף מחיר קופה חי (להשוואת מחיר — כלל חובה);
     fallback=1 מנסה למצוא את עמוד המוצר הראשי לפי שם; fresh=1 עוקף את ה-cache
     (פתיחת חלונית — כדי שחיבור מק"ט טרי ייראה מיד)."""
-    _require_admin(x_admin_key)
+    _require_admin_or_device(x_admin_key, x_device_token)
     creds = _wc_creds()
     if not creds:
         return {"available": False}

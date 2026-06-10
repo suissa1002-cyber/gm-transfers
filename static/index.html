@@ -367,7 +367,8 @@ const S = { branchId:null, branchName:null, employee:null, adminKey:null,
             removalsData:null, removalsDays:30, removalsFrom:'', removalsTo:'', removalsMfr:'', removalsSearch:'', _refocusRemovals:false,
             lsCat:null, lsCatAt:null, lsQuery:'', lsKind:'serial', lsCategory:'', lsMfr:'', lsStock:true,
             lsLive:{}, lsSeq:0, lsSerialHits:null, _refocusLs:false, _lsDetail:null, lsWc:{}, lsWcOff:false,
-            tasksData:null, tkGroup:'', tkStatus:'open', tkSearch:'', _refocusTk:false };
+            tasksData:null, tkGroup:'', tkStatus:'open', tkSearch:'', _refocusTk:false,
+            branchTab:'board', deviceToken:null };
 
 // ── ערכת נושא (כהה/בהיר) ──
 function applyTheme(){
@@ -985,7 +986,22 @@ function render(){
   if(S.view==='sentinel') return S.sentinelData?renderSentinel():loadSentinel(true);
   if(S.view==='admin') return S.adminData?renderAdmin():loadAdmin(true);
   if(S.view==='scan')  return renderScan(app);
+  if(S.branchTab==='live') return S.lsCat?renderLive():loadLiveCatalog(true);
   return renderBoard(app);
+}
+
+// ── טאבים בעמוד הסניף: קליטה / מלאי חי ──
+function branchTabsHTML(){
+  const live=S.branchTab==='live';
+  return `<div class="tabs">
+    <button class="${live?'':'active'}" onclick="setBranchTab('board')">📥 קליטת העברות</button>
+    <button class="${live?'active':''}" onclick="setBranchTab('live')">🔎 מלאי חי</button>
+  </div>`;
+}
+function setBranchTab(t){
+  S.branchTab=t;
+  if(t==='live'){ if(!S.lsCat) loadLiveCatalog(true); else renderLive(); }
+  else render();
 }
 
 async function renderPicker(app){
@@ -1058,6 +1074,7 @@ async function renderBoard(app, silent){
        : `<div class="lastscan err">✗ ${ls.message}${ls.name?` <span class="sub">· ${ls.name}</span>`:''}${ls.code?` <span class="sub">· ${ls.code}</span>`:''}</div>`)
     : `<div class="lastscan idle">המכשיר האחרון שתסרוק יוצג כאן</div>`);
   app.innerHTML=`
+    ${branchTabsHTML()}
     <h1 class="title">📥 קליטת מכשירים נכנסים</h1>
     <div style="text-align:center">${notifBtn}</div>
     ${bcHtml}
@@ -1920,7 +1937,7 @@ async function loadLiveCatalog(spinner){
   try{ const d=await api('/api/admin/live-search/catalog'); S.lsCat=d.items||[]; S.lsCatAt=d.updated_at; }
   catch(e){ S.lsCat=S.lsCat||[]; }
   if(spinner) hideLoading();
-  if(S.view==='admin'&&S.adminTab==='live') renderLive();
+  if((S.view==='admin'&&S.adminTab==='live')||(S.view==='board'&&S.branchTab==='live')) renderLive();
 }
 function setLsQuery(v){ S.lsQuery=v; S.lsSerialHits=null; S._refocusLs=true; renderLive(); }
 function setLsKind(v){ S.lsKind=v; renderLive(); }
@@ -2249,7 +2266,10 @@ function renderLive(){
       <th style="text-align:center">אתר</th><th>עדכון</th>
     </tr></thead><tbody>${shown.map((it,i)=>lsRow(it,i<LS_LIVE_CAP)).join('')}</tbody></table>${overNote}`;
   }
-  app.innerHTML=`<h1 class="title">🛠️ ניהול אופרציה</h1>${adminTabsHTML()}
+  const lsHeader=(S.view==='admin')
+    ? `<h1 class="title">🛠️ ניהול אופרציה</h1>${adminTabsHTML()}`
+    : branchTabsHTML();
+  app.innerHTML=`${lsHeader}
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap">
       <span class="ls-live"><span class="dot"></span> מלאי בזמן אמת מהקופה</span>
       <span class="muted ls-hint" style="font-size:12px">החיפוש מקומי ומיידי; כמויות המלאי נקראות חי מ-NewOrder ברגע הצמצום · לחיצה על מוצר = פירוט סניפים + סריאלים</span>
@@ -2524,6 +2544,7 @@ function startNotifPoll(){ clearInterval(S.notifTimer);
 function startPoll(){ clearInterval(S.pollTimer);
   S.pollTimer=setInterval(()=>{ const a=document.getElementById('app');
     if(S.view==='board'){
+      if(S.branchTab==='live') return;   // טאב מלאי חי — אין רענון לוח שידרוס את החיפוש
       // לא מרעננים תוך כדי הקלדה/סריקה פעילה כדי לא לשבש
       const bs=document.getElementById('boardScan');
       if(bs && document.activeElement===bs && bs.value) return;
