@@ -671,6 +671,48 @@ def transfer_receivers(op_id: str) -> list:
         return [n for n in names if n and not str(n).startswith("branch:")]
 
 
+def transfers_overview_aggregates(op_ids: list) -> dict:
+    """כל אגרגטי ה-transfer_items עבור רשימת op_ids בשאילתה אחת (במקום N+1 = 4 שאילתות לכל העברה).
+    מחזיר {op_id: {receivers[], manual_count, redirected, missing, search_text}}."""
+    if not op_ids:
+        return {}
+    ids = [str(x) for x in op_ids]
+    ph = ",".join("?" for _ in ids)
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q(f"""
+            SELECT op_id, received, received_method, received_by, serial, barcode, name
+            FROM transfer_items WHERE op_id IN ({ph})
+        """), tuple(ids))
+        rows = cur.fetchall()
+    acc = {op: {"receivers": set(), "manual_count": 0, "redirected": 0, "missing": 0, "parts": []}
+           for op in ids}
+    for r in rows:
+        op = str(r["op_id"])
+        d = acc.get(op)
+        if d is None:
+            d = acc[op] = {"receivers": set(), "manual_count": 0, "redirected": 0, "missing": 0, "parts": []}
+        rec = r["received"]
+        if rec == 1:
+            rb = r["received_by"]
+            if rb and not str(rb).startswith("branch:"):
+                d["receivers"].add(rb)
+            if r["received_method"] in ("manual", "paste"):
+                d["manual_count"] += 1
+        elif rec == 2:
+            d["redirected"] += 1
+        elif rec == 3:
+            d["missing"] += 1
+        for k in ("serial", "barcode", "name"):
+            v = r[k]
+            if v:
+                d["parts"].append(str(v))
+    return {op: {"receivers": list(d["receivers"]), "manual_count": d["manual_count"],
+                 "redirected": d["redirected"], "missing": d["missing"],
+                 "search_text": " ".join(d["parts"])}
+            for op, d in acc.items()}
+
+
 def rebalance_replace(rows: list, scanned_at: str):
     """מחליף את כל רשימת האיזון בתוצאות סריקה חדשות."""
     import json as _json

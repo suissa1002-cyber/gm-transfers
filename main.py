@@ -279,6 +279,7 @@ def admin_overview(days: int = 7, x_admin_key: Optional[str] = Header(None)):
     _require_admin(x_admin_key)
     import alerts  # שימוש חוזר ב-_age_hours
     rows = db.list_all_transfers(include_received_days=days)
+    agg = db.transfers_overview_aggregates([t["op_id"] for t in rows])   # שאילתה אחת במקום 4×N
     out = []
     for t in rows:
         age = alerts._age_hours(t)
@@ -287,12 +288,12 @@ def admin_overview(days: int = 7, x_admin_key: Optional[str] = Header(None)):
         t["overdue"] = (t["status"] != "received"
                         and age >= cfg.RECEIVE_ESCALATE_HOURS)
         t["missing"] = (t.get("total_units", 0) or 0) - (t.get("received_units", 0) or 0)
-        t["receivers"] = db.transfer_receivers(t["op_id"])
-        t["manual_count"] = db.transfer_manual_count(t["op_id"])
-        sc = db.transfer_state_counts(t["op_id"])
-        t["redirected_count"] = sc["redirected"]
-        t["missing_count"] = sc["missing"]
-        t["items_search"] = db.transfer_search_text(t["op_id"])
+        a = agg.get(str(t["op_id"]), {})
+        t["receivers"] = a.get("receivers", [])
+        t["manual_count"] = a.get("manual_count", 0)
+        t["redirected_count"] = a.get("redirected", 0)
+        t["missing_count"] = a.get("missing", 0)
+        t["items_search"] = a.get("search_text", "")
         out.append(t)
     mis = db.list_open_misroutes()
     for m in mis:
