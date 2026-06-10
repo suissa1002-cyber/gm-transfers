@@ -586,6 +586,17 @@ async function renderBoard(app, silent){
   let bc=null; try{ bc=await api('/api/broadcast?branch_id='+S.branchId); }catch(e){}
   if(!silent) hideLoading();
   S._boardErr=loadErr;
+  // קולד-סטארט (Render Free נרדם): הבקשה נכשלה כי השרת מתעורר — מציגים חיווי ומנסים שוב מהר
+  if(loadErr && S.view==='board'){
+    S._wakeTries=(S._wakeTries||0)+1;
+    app.innerHTML=`<h1 class="title">📥 קליטת מכשירים נכנסים</h1>
+      <div class="empty" style="padding-top:50px">⏳ מתחבר לשרת…<br>
+      <span class="muted" style="font-size:14px">בכניסה ראשונה זה לוקח עד דקה (השרת מתעורר). מתחבר אוטומטית${S._wakeTries>1?` · ניסיון ${S._wakeTries}`:''}.</span></div>`;
+    clearTimeout(S._wakeT);
+    S._wakeT=setTimeout(()=>{ if(S.view==='board') renderBoard(app, true); }, 4000);
+    return;
+  }
+  S._wakeTries=0; clearTimeout(S._wakeT);
   detectNewTransfers(list);   // התראה על העברות חדשות
   detectBroadcast(bc);        // התראה על שידור בקשת העברה
   if(S.view!=='board') return;   // המשתמש ניווט בינתיים — אל תדרוס
