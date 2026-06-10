@@ -934,6 +934,33 @@ def admin_sentinel(x_admin_key: Optional[str] = Header(None)):
     return {"available": True, "stale": stale, "report": rep}
 
 
+# ── Ops Hub: דף ניהול צ'קים (מתארח אצלנו, proxy במקום טוקן חשוף) ───
+@app.get("/checks")
+def checks_page():
+    p = os.path.join(_static_dir, "checks.html")
+    if os.path.exists(p):
+        return FileResponse(p)
+    raise HTTPException(404)
+
+
+@app.post("/api/checks/gql")
+async def checks_gql(request: Request, x_admin_key: Optional[str] = Header(None)):
+    """GraphQL passthrough לבורד הצ'קים — אדמין בלבד; הטוקן נשאר בשרת."""
+    _require_admin(x_admin_key)
+    import monday_proxy
+    if not monday_proxy.available():
+        raise HTTPException(400, "MONDAY_API_TOKEN לא מוגדר")
+    body = await request.json()
+    q = (body or {}).get("query", "")
+    if not q:
+        raise HTTPException(400, "missing query")
+    import requests as _rq
+    r = _rq.post("https://api.monday.com/v2", json={"query": q},
+                 headers={"Authorization": os.getenv("MONDAY_API_TOKEN", ""),
+                          "API-Version": "2024-10"}, timeout=40)
+    return JSONResponse(r.json(), status_code=r.status_code)
+
+
 # ── Ops Hub: משימות סוכנים (Monday proxy — הטוקן בצד השרת בלבד) ────
 @app.get("/api/admin/tasks")
 def admin_tasks(force: int = 0, x_admin_key: Optional[str] = Header(None)):
