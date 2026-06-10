@@ -248,17 +248,45 @@
                background:var(--card2);color:var(--txt);outline:none;margin:14px 0;text-align:center}
   .modal input:focus{border-color:var(--blue)}
   .modal .err{color:var(--red);font-size:13px;min-height:18px}
+  /* ── Ops Hub: תפריט בורגר + הטמעת אפליקציות ── */
+  .burger{background:transparent;border:1px solid var(--line);color:var(--txt);font-size:19px;cursor:pointer;
+          padding:6px 12px;border-radius:10px;line-height:1}
+  .burger:hover{background:var(--card2);border-color:var(--blue)}
+  .drawer-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:64;opacity:0;pointer-events:none;transition:.2s}
+  .drawer-backdrop.open{opacity:1;pointer-events:auto}
+  .drawer{position:fixed;top:0;right:0;height:100%;width:310px;max-width:85vw;background:var(--card);
+          border-inline-start:1px solid var(--line);z-index:65;transform:translateX(100%);transition:transform .22s;
+          display:flex;flex-direction:column;box-shadow:-8px 0 30px rgba(0,0,0,.25)}
+  .drawer.open{transform:none}
+  .dr-head{display:flex;align-items:center;justify-content:space-between;padding:18px 16px;
+           border-bottom:1px solid var(--line);font-weight:800;font-size:17px}
+  .dr-x{background:transparent;border:none;color:var(--muted);font-size:18px;cursor:pointer;padding:4px 8px}
+  .dr-x:hover{color:var(--txt)}
+  .dr-sec{padding:14px 16px 6px;color:var(--muted);font-size:12px;font-weight:700;letter-spacing:.4px}
+  .dr-item{display:flex;align-items:center;gap:10px;width:100%;text-align:right;padding:13px 16px;
+           background:transparent;border:none;color:var(--txt);font-size:15px;font-weight:600;cursor:pointer}
+  .dr-item:hover{background:var(--card2)}
+  .dr-item.active{color:var(--blue);background:rgba(37,99,235,.08)}
+  .dr-ext{margin-inline-start:auto;color:var(--muted);font-size:14px;padding:4px 8px;border-radius:7px;text-decoration:none}
+  .dr-ext:hover{background:var(--bg);color:var(--blue)}
+  .dr-foot{margin-top:auto;padding:12px 16px;border-top:1px solid var(--line);color:var(--muted);font-size:11px}
+  .embed-bar{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+  .embed-frame{width:100%;height:calc(100vh - 185px);border:1px solid var(--line);border-radius:14px;background:#fff}
   @media (max-width:760px){
     .scan-layout{grid-template-columns:1fr}
     .scan-side{position:static}
     header{padding:12px 14px} .wrap{padding:14px}
     table.admin{display:block;overflow-x:auto;white-space:nowrap}
+    .embed-frame{height:calc(100vh - 215px)}
   }
 </style>
 </head>
 <body>
 <header>
-  <div class="brand">📦 קליטת העברות</div>
+  <div style="display:flex;align-items:center;gap:12px">
+    <button class="burger" id="burgerBtn" style="display:none" onclick="toggleDrawer(true)" title="תפריט ניהול אופרציה">☰</button>
+    <div class="brand">📦 קליטת העברות</div>
+  </div>
   <div class="right" id="hdr" style="display:none">
     <button class="btn-ghost" id="adminBtn" style="display:none" onclick="toggleAdmin()">🛠️ ניהול</button>
     סניף: <b id="branchName"></b>
@@ -270,6 +298,8 @@
 <div class="wrap" id="app"></div>
 <div class="toast" id="toast"></div>
 <div id="modalRoot"></div>
+<div class="drawer-backdrop" id="drawerBack" onclick="toggleDrawer(false)"></div>
+<aside class="drawer" id="drawer"></aside>
 
 <script>
 const S = { branchId:null, branchName:null, employee:null, adminKey:null,
@@ -588,14 +618,90 @@ function closeCamera(){
   const root=document.getElementById('modalRoot'); if(root) root.innerHTML='';
 }
 
+// ── Ops Hub: תפריט בורגר + הטמעת אפליקציות הסוכנים (App-Shell) ──
+// כל אפליקציה ממשיכה לרוץ עצמאית; כאן רק מטמיעים אותה ב-iframe. לא נוגעים בכלום.
+const HUB_APPS=[
+  {key:'invoices',   icon:'🧾', title:'ניהול חשבוניות (איציק)',      url:'https://invoice-manager-tfqj.onrender.com/'},
+  {key:'stockwatch', icon:'🔔', title:'תזכורות מלאי — Stock Watcher', url:'https://uri-stock-watcher.onrender.com/'},
+  {key:'checks',     icon:'🏦', title:'ניהול צ׳קים',                  url:'https://greenmobilechat-debug.github.io/green-mobile-checks/'},
+];
+function renderDrawer(){
+  const d=document.getElementById('drawer');
+  const act=(v)=>S.view===v?'active':'';
+  const lock=(S.cfg.admin_required&&!S.adminKey)?' 🔒':'';
+  d.innerHTML=`
+    <div class="dr-head"><span>🛠️ מרכז ניהול אופרציה</span><button class="dr-x" onclick="toggleDrawer(false)">✕</button></div>
+    <div class="dr-sec">קליטת העברות</div>
+    <div class="dr-item ${S.view==='board'||S.view==='scan'?'active':''}" onclick="hubGo('board')"><span>📦</span><span>לוח קליטה</span></div>
+    <div class="dr-item ${act('admin')}" onclick="hubGo('admin')"><span>🛠️</span><span>קונסולת ניהול${lock}</span></div>
+    <div class="dr-sec">אפליקציות</div>
+    ${HUB_APPS.map(a=>`
+      <div class="dr-item ${S.view==='embed'&&S.embedApp&&S.embedApp.key===a.key?'active':''}" onclick="hubOpen('${a.key}')">
+        <span>${a.icon}</span><span>${a.title}${lock}</span>
+        <a class="dr-ext" href="${a.url}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="פתח בחלון נפרד">↗</a>
+      </div>`).join('')}
+    <div class="dr-foot">Green Mobile · Ops Hub</div>`;
+}
+let _hubWarmed=false;
+function toggleDrawer(open){
+  if(open) renderDrawer();
+  document.getElementById('drawer').classList.toggle('open',!!open);
+  document.getElementById('drawerBack').classList.toggle('open',!!open);
+  // פתיחת התפריט "מעירה" את אפליקציות Render ברקע — עד שלוחצים הן כבר ערות
+  if(open&&!_hubWarmed){ _hubWarmed=true;
+    HUB_APPS.forEach(a=>{ try{ fetch(a.url,{mode:'no-cors'}).catch(()=>{}); }catch(e){} }); }
+}
+function ensureAdmin(retry){
+  // אפליקציות הניהול נעולות מאחורי סיסמת הניהול הקיימת (אותה סיסמה של סניף אתר)
+  if(!S.cfg.admin_required||S.adminKey) return true;
+  modal({title:'כניסת ניהול',sub:'הכלים האלה דורשים סיסמת ניהול',placeholder:'סיסמה',type:'password',
+    onok:async(pw)=>{
+      try{ const r=await fetchT('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({password:pw})},15000); if(!r.ok) throw 0; }
+      catch(e){ return 'סיסמה שגויה'; }
+      S.adminKey=pw; localStorage.setItem('tr_admin_key',pw);
+      if(retry) retry();
+    }});
+  return false;
+}
+function hubGo(view){
+  toggleDrawer(false);
+  if(view==='admin'){
+    if(!ensureAdmin(()=>hubGo('admin'))) return;
+    S.view='admin'; S.embedApp=null; loadAdmin(true); return;
+  }
+  S.view='board'; S.embedApp=null; render();
+}
+function hubOpen(key){
+  const a=HUB_APPS.find(x=>x.key===key); if(!a) return;
+  if(!ensureAdmin(()=>hubOpen(key))) return;
+  toggleDrawer(false);
+  S.view='embed'; S.embedApp=a; render();
+}
+function renderEmbed(app){
+  const a=S.embedApp; if(!a){ S.view='board'; return render(); }
+  app.innerHTML=`
+    <div class="embed-bar">
+      <button class="btn-ghost" onclick="hubGo('board')">→ חזרה</button>
+      <b style="font-size:17px">${a.icon} ${a.title}</b>
+      <a class="btn-ghost" style="text-decoration:none" href="${a.url}" target="_blank" rel="noopener">פתח בחלון נפרד ↗</a>
+      <span class="muted" style="font-size:12px;margin-inline-start:auto">אם המסך ריק — האפליקציה מתעוררת (עד ~דקה בכניסה ראשונה)</span>
+    </div>
+    <iframe class="embed-frame" src="${a.url}" allow="clipboard-write"></iframe>`;
+}
+
 // ── רינדור ראשי ──
 function render(){
   const app=document.getElementById('app'), hdr=document.getElementById('hdr');
+  // הבורגר (Ops Hub) מוצג רק במחשב שמחובר כסניף "אתר" עם סיסמת ניהול — סניפים לא רואים אותו
+  const isAdminPC=S.branchId&&Number(S.branchId)===S.cfg.admin_branch_id&&(!S.cfg.admin_required||S.adminKey);
+  document.getElementById('burgerBtn').style.display=isAdminPC?'inline-block':'none';
   if(!S.branchId){ hdr.style.display='none'; return renderPicker(app); }
   hdr.style.display='flex';
   document.getElementById('branchName').textContent=S.branchName;
   document.getElementById('adminBtn').style.display =
     (Number(S.branchId)===S.cfg.admin_branch_id)?'inline-block':'none';
+  if(S.view==='embed') return renderEmbed(app);
   if(S.view==='admin') return S.adminData?renderAdmin():loadAdmin(true);
   if(S.view==='scan')  return renderScan(app);
   return renderBoard(app);
@@ -1909,7 +2015,7 @@ async function handleDeepLink(){
 document.addEventListener('click', (e)=>{
   if(window.getSelection && String(window.getSelection()).trim()) return;   // המשתמש מסמן טקסט
   const t=e.target;
-  if(t.closest && t.closest('.item, .serial, .sub, a, button, input, select, textarea, .arow, table')) return;
+  if(t.closest && t.closest('.item, .serial, .sub, a, button, input, select, textarea, .arow, table, .drawer, .embed-frame')) return;
   focusScan();
 });
 (async()=>{
