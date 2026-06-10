@@ -692,6 +692,7 @@ function renderDrawer(){
     <div class="dr-item ${act('admin')}" onclick="hubGo('admin')"><span>🛠️</span><span>קונסולת ניהול${lock}</span></div>
     <div class="dr-sec">Hub</div>
     <div class="dr-item ${S.view==='tasks'?'active':''}" onclick="hubGo('tasks')"><span>🗂️</span><span>משימות סוכנים${lock}</span></div>
+    <div class="dr-item ${S.view==='sentinel'?'active':''}" onclick="hubGo('sentinel')"><span>🛡️</span><span>סטטוס Sentinel${lock}</span></div>
     <div class="dr-sec">אפליקציות</div>
     ${HUB_APPS.map(a=>`
       <div class="dr-item ${S.view==='embed'&&S.embedApp&&S.embedApp.key===a.key?'active':''}" onclick="hubOpen('${a.key}')">
@@ -731,6 +732,10 @@ function hubGo(view){
   if(view==='tasks'){
     if(!ensureAdmin(()=>hubGo('tasks'))) return;
     S.view='tasks'; S.embedApp=null; loadTasks(true); return;
+  }
+  if(view==='sentinel'){
+    if(!ensureAdmin(()=>hubGo('sentinel'))) return;
+    S.view='sentinel'; S.embedApp=null; loadSentinel(true); return;
   }
   S.view='board'; S.embedApp=null; render();
 }
@@ -841,6 +846,50 @@ function renderTasks(){
   if(S._refocusTk){ const el=document.getElementById('tkSearch'); if(el){ el.focus(); const v=el.value; el.value=''; el.value=v; } S._refocusTk=false; }
 }
 
+// ── Ops Hub: סטטוס Sentinel ──
+async function loadSentinel(spinner){
+  if(spinner) showLoading('טוען סטטוס Sentinel…');
+  try{ S.sentinelData=await api('/api/admin/sentinel'); }catch(e){ S.sentinelData={error:true}; }
+  if(spinner) hideLoading();
+  if(S.view==='sentinel') renderSentinel();
+}
+function renderSentinel(){
+  const app=document.getElementById('app');
+  const d=S.sentinelData||{};
+  let banner, sub='';
+  if(d.error) banner=['⚠️','שגיאה בטעינה','var(--amber)'];
+  else if(!d.available) banner=['⚪','אין עדיין דיווח מה-Sentinel','var(--muted)'];
+  else{
+    const r=d.report||{};
+    const fails=(r.findings||[]).filter(f=>f.level==='FAIL');
+    const warns=(r.findings||[]).filter(f=>f.level==='WARN');
+    if(d.stale) banner=['🟠','ה-Sentinel לא דיווח מעל שעתיים וחצי — ייתכן שה-runner תקוע','var(--amber)'];
+    else if(r.degraded) banner=['🟠',`המוניטור לא מצליח להגיע לחנות (${r.degraded_count||'?'} בדיקות רצופות)`,'var(--amber)'];
+    else if(fails.length) banner=['🔴',`${fails.length} תקלות פעילות בחנות`,'var(--red)'];
+    else if(warns.length) banner=['🟡',`תקין עם ${warns.length} אזהרות`,'var(--amber)'];
+    else banner=['🟢','החנות תקינה — כל הבדיקות עברו','var(--green)'];
+    sub=`ריצה אחרונה: ${r.ran_at||'?'} · התקבל: ${fmtTime(r.received_at)||r.received_at||''}`;
+  }
+  const r=(d.report||{});
+  const icon=l=>l==='FAIL'?'❌':(l==='WARN'?'⚠️':'✅');
+  const rows=(r.findings||[]).map(f=>`
+    <tr><td style="text-align:center">${icon(f.level)}</td>
+        <td style="font-weight:700">${f.title||f.key||''}</td>
+        <td class="muted" style="font-size:12px">${(f.detail||'').slice(0,160)}</td></tr>`).join('');
+  app.innerHTML=`<h1 class="title">🛡️ סטטוס Sentinel — בריאות החנות</h1>
+    <div style="border:1px solid var(--line);border-radius:16px;background:var(--card);padding:22px;margin-bottom:16px;display:flex;gap:16px;align-items:center">
+      <div style="font-size:42px;line-height:1">${banner[0]}</div>
+      <div style="flex:1">
+        <div style="font-size:19px;font-weight:800;color:${banner[2]}">${banner[1]}</div>
+        ${sub?`<div class="muted" style="font-size:13px;margin-top:3px">${sub}</div>`:''}
+      </div>
+      <button class="btn-ghost" onclick="loadSentinel(true)">🔄 רענן</button>
+    </div>
+    ${rows?`<table class="admin"><thead><tr><th style="width:40px"></th><th>בדיקה</th><th>פרטים</th></tr></thead><tbody>${rows}</tbody></table>`
+      :(d.available?'':'<div class="empty">הדיווח הראשון יגיע בריצה השעתית הבאה של ה-Sentinel (GitHub Actions). אפשר גם להריץ ידנית: workflow_dispatch.</div>')}
+    <div class="muted" style="font-size:12px;margin-top:12px">המוניטור רץ כל שעה ב-GitHub Actions, בודק: גשר Dvir · תוספים קריטיים · סניפטים פעילים · שגיאות WPCode · שמירת סניף בהזמנות איסוף. התראות בזמן אמת — בטלגרם.</div>`;
+}
+
 function renderEmbed(app){
   const a=S.embedApp; if(!a){ S.view='board'; return render(); }
   app.innerHTML=`
@@ -866,6 +915,7 @@ function render(){
     (Number(S.branchId)===S.cfg.admin_branch_id)?'inline-block':'none';
   if(S.view==='embed') return renderEmbed(app);
   if(S.view==='tasks') return S.tasksData?renderTasks():loadTasks(true);
+  if(S.view==='sentinel') return S.sentinelData?renderSentinel():loadSentinel(true);
   if(S.view==='admin') return S.adminData?renderAdmin():loadAdmin(true);
   if(S.view==='scan')  return renderScan(app);
   return renderBoard(app);

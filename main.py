@@ -729,6 +729,40 @@ def admin_wc_link(sku: str, pos: int = 0, fallback: int = 0, fresh: int = 0,
     return out
 
 
+# ── Ops Hub: סטטוס Sentinel (דביר) ─────────────────────────────────
+# ה-Sentinel (GitHub Actions, שעתי) דוחף לכאן JSON בסוף כל ריצה; ה-hub מציג.
+from fastapi import Request  # noqa: E402
+
+
+@app.post("/api/sentinel/report")
+async def sentinel_report(request: Request, x_sentinel_key: Optional[str] = Header(None)):
+    key = os.getenv("SENTINEL_KEY", "").strip()
+    if not key or (x_sentinel_key or "") != key:
+        raise HTTPException(401, "bad sentinel key")
+    import json as _json
+    body = await request.json()
+    if not isinstance(body, dict):
+        raise HTTPException(400, "bad payload")
+    body["received_at"] = datetime.now().isoformat(timespec="seconds")
+    db.sales_state_set("sentinel_report", _json.dumps(body, ensure_ascii=False))
+    return {"ok": True}
+
+
+@app.get("/api/admin/sentinel")
+def admin_sentinel(x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    import json as _json
+    raw = db.sales_state_get("sentinel_report")
+    if not raw:
+        return {"available": False}
+    try:
+        rep = _json.loads(raw)
+    except Exception:  # noqa: BLE001
+        return {"available": False}
+    stale = _is_stale(rep.get("received_at"), hours=2.5)   # ריצה שעתית — מעל שעתיים וחצי = לא מדווח
+    return {"available": True, "stale": stale, "report": rep}
+
+
 # ── Ops Hub: משימות סוכנים (Monday proxy — הטוקן בצד השרת בלבד) ────
 @app.get("/api/admin/tasks")
 def admin_tasks(force: int = 0, x_admin_key: Optional[str] = Header(None)):
