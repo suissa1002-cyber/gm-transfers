@@ -284,7 +284,7 @@ const S = { branchId:null, branchName:null, employee:null, adminKey:null,
             orderData:null, orderCount:0, orderSearch:'', orderSupplier:'', orderCategory:'', _refocusOrder:false,
             removalsData:null, removalsDays:30, removalsFrom:'', removalsTo:'', removalsMfr:'', removalsSearch:'', _refocusRemovals:false,
             lsCat:null, lsCatAt:null, lsQuery:'', lsKind:'serial', lsCategory:'', lsMfr:'', lsStock:true,
-            lsLive:{}, lsSeq:0, lsSerialHit:null, _refocusLs:false, _lsDetail:null };
+            lsLive:{}, lsSeq:0, lsSerialHits:null, _refocusLs:false, _lsDetail:null };
 
 // ── ערכת נושא (כהה/בהיר) ──
 function applyTheme(){
@@ -1534,7 +1534,7 @@ async function loadLiveCatalog(spinner){
   if(spinner) hideLoading();
   if(S.view==='admin'&&S.adminTab==='live') renderLive();
 }
-function setLsQuery(v){ S.lsQuery=v; S.lsSerialHit=null; S._refocusLs=true; renderLive(); }
+function setLsQuery(v){ S.lsQuery=v; S.lsSerialHits=null; S._refocusLs=true; renderLive(); }
 function setLsKind(v){ S.lsKind=v; renderLive(); }
 function setLsCategory(v){ S.lsCategory=v; renderLive(); }
 function setLsMfr(v){ S.lsMfr=v; renderLive(); }
@@ -1572,35 +1572,40 @@ function lsFiltered(){
         ||String(a.name).localeCompare(String(b.name),'he');
     });
   } else items=items.slice().sort((a,b)=>((b.stock||0)-(a.stock||0))||String(a.name).localeCompare(String(b.name),'he'));
-  // נמצא לפי סריאל — מקדימים את המוצר לראש הרשימה
-  if(S.lsSerialHit&&S.lsSerialHit.product_id){
-    const pid=String(S.lsSerialHit.product_id);
-    if(!items.some(x=>String(x.product_id)===pid)){
-      const hit=(S.lsCat||[]).find(x=>String(x.product_id)===pid);
-      if(hit) items.unshift(hit);
-    }
+  // נמצאו לפי סריאל (גם חלקי) — מקדימים את המוצרים לראש הרשימה (גם אם אין מלאי בקטלוג)
+  if(S.lsSerialHits&&S.lsSerialHits.length){
+    const pids=[...new Set(S.lsSerialHits.map(h=>String(h.product_id)))];
+    pids.reverse().forEach(pid=>{
+      if(!items.some(x=>String(x.product_id)===pid)){
+        const hit=(S.lsCat||[]).find(x=>String(x.product_id)===pid);
+        if(hit) items.unshift(hit);
+      }
+    });
   }
   return items;
 }
 let _lsSerialT=null;
-function lsMaybeSerial(q,found){
-  if(found>0||S.lsSerialHit) return;
+function lsMaybeSerial(q){
   const qq=fixHebrewLayout(q).trim();
-  if(!/^\d{9,}$/.test(qq)) return;   // נראה כמו סריאל (IMEI וכד')
+  if(!/^\d{5,}$/.test(qq)) return;   // קטע מספרי (5+ ספרות) — ייתכן סריאל חלקי
   clearTimeout(_lsSerialT);
   _lsSerialT=setTimeout(async()=>{
     if((S.lsQuery||'').trim()!==q) return;
     try{ const d=await api('/api/admin/live-search/serial?q='+encodeURIComponent(qq));
       if((S.lsQuery||'').trim()!==q) return;
-      if(d&&d.found){ S.lsSerialHit=d; S._refocusLs=true; renderLive(); }
+      const m=(d&&d.matches)||[];
+      if(JSON.stringify(m)!==JSON.stringify(S.lsSerialHits||[])){
+        S.lsSerialHits=m; S._refocusLs=true; renderLive();
+      }
     }catch(e){}
   },300);
 }
 function fmtClock(iso){ if(!iso) return ''; const d=new Date(iso); return isNaN(d)?'':d.toLocaleTimeString('he-IL'); }
 function lsRow(it,live){
   const pid=String(it.product_id);
-  const serBadge=(S.lsSerialHit&&String(S.lsSerialHit.product_id)===pid)
-    ?` <span class="mtag ok" style="direction:ltr">סריאל ${S.lsSerialHit.serial}</span>`:'';
+  const hits=(S.lsSerialHits||[]).filter(h=>String(h.product_id)===pid);
+  const serBadge=hits.length
+    ?` <span class="mtag ok" style="direction:ltr">סריאל ${hits[0].serial}${hits.length>1?' +'+(hits.length-1):''}</span>`:'';
   const c=S.lsLive[pid];
   const fresh=c&&!c.err&&Date.now()-c.at<LS_TTL_MS;
   const bcells=(S.branchList||[]).map(b=>{
@@ -1668,7 +1673,7 @@ function renderLive(){
   else if(items===null)
     body=`<div class="empty">🔎 הקלד שם מוצר / מק״ט / ברקוד / סריאל — הרשימה מצטמצמת תוך כדי הקלדה</div>`;
   else if(!items.length){
-    const isNum=/^\d{9,}$/.test(fixHebrewLayout((S.lsQuery||'').trim()));
+    const isNum=/^\d{5,}$/.test(fixHebrewLayout((S.lsQuery||'').trim()));
     body=`<div class="empty">${isNum?'מחפש לפי מספר סידורי…':'לא נמצאו מוצרים מתאימים'}</div>`;
   } else body=`
     ${items.length>LS_LIVE_CAP?`<div class="muted" style="margin-bottom:8px;font-size:13px">⚡ מלאי חי מוצג ל-${liveCount} הראשונים — צמצם את החיפוש לתצוגה חיה מלאה</div>`:''}
@@ -1700,7 +1705,7 @@ function renderLive(){
     ${body}`;
   if(S._refocusLs){ const el=document.getElementById('lsSearch'); if(el){ el.focus(); const v=el.value; el.value=''; el.value=v; } S._refocusLs=false; }
   if(items&&shown.length) lsScheduleLive(shown.slice(0,LS_LIVE_CAP));
-  lsMaybeSerial((S.lsQuery||'').trim(),(items||[]).length);
+  lsMaybeSerial((S.lsQuery||'').trim());
 }
 async function openLiveDetail(pid){
   const it=(S.lsCat||[]).find(x=>String(x.product_id)===String(pid)); if(!it) return;
@@ -1724,7 +1729,7 @@ function toggleSerialDetail(i){ const D=S._lsDetail; if(!D) return; D.open=(D.op
 function renderLiveDetail(){
   const D=S._lsDetail; if(!D) return;
   const {it,d}=D;
-  const hitSer=(S.lsSerialHit&&String(S.lsSerialHit.product_id)===String(it.product_id))?S.lsSerialHit.serial:null;
+  const hitSet=new Set((S.lsSerialHits||[]).filter(h=>String(h.product_id)===String(it.product_id)).map(h=>String(h.serial)));
   const chips=(d.branches||[]).map(b=>{
     const q=b.qty||0, cls=q>0?'q-has':(q<0?'q-neg':'q-zero');
     return `<div class="ls-bchip">${b.name} <b class="${cls}">${q}</b></div>`;
@@ -1740,7 +1745,7 @@ function renderLiveDetail(){
         const dt=s.insert_date?new Date(s.insert_date):null;
         const ds=dt&&!isNaN(dt)?dt.toLocaleDateString('he-IL'):'';
         const open=D.open===i;
-        const mark=hitSer&&String(s.serial)===String(hitSer)?' style="background:rgba(31,191,107,.10)"':'';
+        const mark=hitSet.has(String(s.serial))?' style="background:rgba(31,191,107,.10)"':'';
         return `<tr class="srow"${mark} onclick="toggleSerialDetail(${i})">
           <td style="direction:ltr;text-align:right;font-family:monospace">${open?'▼':'◀'} ${s.serial}</td>
           <td>${s.branch_name||s.branch_id||''}</td><td>${ds}</td><td>${st}</td></tr>`

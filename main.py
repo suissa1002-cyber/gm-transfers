@@ -531,13 +531,10 @@ def admin_live_catalog(x_admin_key: Optional[str] = Header(None)):
 
 @app.get("/api/admin/live-search/serial")
 def admin_live_serial(q: str, x_admin_key: Optional[str] = Header(None)):
-    """איתור מוצר לפי מספר סידורי (מאינדקס סריאל→מוצר). אין ל-NewOrder חיפוש הפוך."""
+    """איתור מוצרים לפי מספר סידורי — גם חלקי (מאינדקס סריאל→מוצר; אין ל-NewOrder חיפוש הפוך)."""
     _require_admin(x_admin_key)
-    rec = db.serial_product((q or "").strip())
-    if not rec:
-        return {"found": False}
-    return {"found": True, "serial": (q or "").strip(),
-            "product_id": rec.get("product_id"), "product_name": rec.get("product_name")}
+    matches = db.serial_search((q or "").strip(), limit=20)
+    return {"found": bool(matches), "matches": matches}
 
 
 # micro-cache קצרצר כדי לרכך לחיצות כפולות/כמה מסכי ניהול במקביל — עדיין "חי" לכל דבר

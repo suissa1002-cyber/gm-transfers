@@ -573,6 +573,20 @@ def serial_product(serial: str) -> dict:
         return _row_to_dict(cur.fetchone())
 
 
+def serial_search(q: str, limit: int = 20) -> list:
+    """חיפוש סריאל חלקי (substring) באינדקס — לטאב מלאי חי."""
+    q = (q or "").strip()
+    if not q:
+        return []
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""
+            SELECT serial, product_id, product_name FROM serial_index
+            WHERE serial LIKE ? ORDER BY serial LIMIT ?
+        """), ("%" + q + "%", limit))
+        return [dict(r) for r in cur.fetchall()]
+
+
 def serial_index_count() -> int:
     with _conn() as c:
         cur = c.cursor()
