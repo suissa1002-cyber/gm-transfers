@@ -1805,9 +1805,11 @@ async function openWcQuick(pid){
   const it=(S.lsCat||[]).find(x=>String(x.product_id)===String(pid));
   showLoading('קורא מהאתר…');
   let d=null;
-  try{ d=await api('/api/admin/wc-link/'+encodeURIComponent(pid)+'?pos=1&fallback=1&name='+encodeURIComponent((it&&it.name)||''),null,30000); }catch(e){}
+  try{ d=await api('/api/admin/wc-link/'+encodeURIComponent(pid)+'?pos=1&fallback=1&fresh=1&name='+encodeURIComponent((it&&it.name)||''),null,30000); }catch(e){}
   hideLoading();
   if(!d||d.available===false){ toast('חיבור האתר לא מוגדר בשרת',false); return; }
+  // עדכון האייקון בשורה לפי הנתון הטרי (חיבור חדש נדלק מיד)
+  S.lsWc[String(pid)]={at:Date.now(),data:d}; lsPaintWc(String(pid));
   const fmt=v=>{const n=Number(v); return (v===''||v==null||isNaN(n))?'—':('₪'+n.toLocaleString('he-IL'));};
   let body='';
   if(d.found){

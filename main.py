@@ -633,10 +633,12 @@ def _wc_creds():
 
 
 @app.get("/api/admin/wc-link/{sku}")
-def admin_wc_link(sku: str, pos: int = 0, fallback: int = 0, name: Optional[str] = None,
+def admin_wc_link(sku: str, pos: int = 0, fallback: int = 0, fresh: int = 0,
+                  name: Optional[str] = None,
                   x_admin_key: Optional[str] = Header(None)):
     """איתור הפריט באתר לפי SKU. pos=1 מוסיף מחיר קופה חי (להשוואת מחיר — כלל חובה);
-    fallback=1 מנסה למצוא את עמוד המוצר הראשי לפי שם כשאין חיבור SKU."""
+    fallback=1 מנסה למצוא את עמוד המוצר הראשי לפי שם; fresh=1 עוקף את ה-cache
+    (פתיחת חלונית — כדי שחיבור מק"ט טרי ייראה מיד)."""
     _require_admin(x_admin_key)
     creds = _wc_creds()
     if not creds:
@@ -644,7 +646,7 @@ def admin_wc_link(sku: str, pos: int = 0, fallback: int = 0, name: Optional[str]
     import time as _time
     import requests as _rq
     base, k, s = creds
-    hit = _wc_cache.get(sku)
+    hit = None if fresh else _wc_cache.get(sku)
     if hit and (_time.time() - hit[0]) < _WC_TTL_SEC:
         out = dict(hit[1])
     else:
