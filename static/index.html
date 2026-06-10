@@ -1587,7 +1587,7 @@ function lsFiltered(){
 let _lsSerialT=null;
 function lsMaybeSerial(q){
   const qq=fixHebrewLayout(q).trim();
-  if(!/^\d{5,}$/.test(qq)) return;   // קטע מספרי (5+ ספרות) — ייתכן סריאל חלקי
+  if(!/^\d{3,}$/.test(qq)) return;   // קטע מספרי (3+ ספרות) — ייתכן סריאל חלקי
   clearTimeout(_lsSerialT);
   _lsSerialT=setTimeout(async()=>{
     if((S.lsQuery||'').trim()!==q) return;
@@ -1673,7 +1673,7 @@ function renderLive(){
   else if(items===null)
     body=`<div class="empty">🔎 הקלד שם מוצר / מק״ט / ברקוד / סריאל — הרשימה מצטמצמת תוך כדי הקלדה</div>`;
   else if(!items.length){
-    const isNum=/^\d{5,}$/.test(fixHebrewLayout((S.lsQuery||'').trim()));
+    const isNum=/^\d{3,}$/.test(fixHebrewLayout((S.lsQuery||'').trim()));
     body=`<div class="empty">${isNum?'מחפש לפי מספר סידורי…':'לא נמצאו מוצרים מתאימים'}</div>`;
   } else body=`
     ${items.length>LS_LIVE_CAP?`<div class="muted" style="margin-bottom:8px;font-size:13px">⚡ מלאי חי מוצג ל-${liveCount} הראשונים — צמצם את החיפוש לתצוגה חיה מלאה</div>`:''}

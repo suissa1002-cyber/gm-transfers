@@ -533,7 +533,7 @@ def admin_live_catalog(x_admin_key: Optional[str] = Header(None)):
 def admin_live_serial(q: str, x_admin_key: Optional[str] = Header(None)):
     """איתור מוצרים לפי מספר סידורי — גם חלקי (מאינדקס סריאל→מוצר; אין ל-NewOrder חיפוש הפוך)."""
     _require_admin(x_admin_key)
-    matches = db.serial_search((q or "").strip(), limit=20)
+    matches = db.serial_search((q or "").strip(), limit=50)
     return {"found": bool(matches), "matches": matches}
 
 
