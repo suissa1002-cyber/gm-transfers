@@ -379,31 +379,33 @@ function requestNotif(){
   if(!window.Notification){ toast('הדפדפן לא תומך בהתראות',false); return; }
   Notification.requestPermission().then(()=>{ render(); });
 }
-// התראה על שידור בקשת העברה למסך
+// התראה על שידור בקשת העברה למסך — לפי שורות חדשות (גם כשמצטרפות לטייל קיים)
 function detectBroadcast(bc){
-  const at=(bc&&bc.active)?bc.broadcast_at:null;
-  if(S._knownBcast===undefined){ S._knownBcast=at; return; }   // טעינה ראשונה — בסיס
-  if(at && at!==S._knownBcast){
-    S._knownBcast=at;
-    const n=(bc.lines||[]).length, title='📡 בקשת העברה חדשה מהאתר';
-    const body=`${n} פריטים להעברה`;
+  const ids=((bc&&bc.groups)||[]).flatMap(g=>(g.lines||[]).map(l=>l.id));
+  if(S._knownBcastIds===undefined){ S._knownBcastIds=new Set(ids); return; }   // טעינה ראשונה — בסיס
+  const fresh=ids.filter(i=>!S._knownBcastIds.has(i));
+  S._knownBcastIds=new Set(ids);
+  if(fresh.length){
+    const title='📡 בקשת העברה חדשה מהאתר';
+    const body=`${fresh.length} פריטים להעברה`;
     if(window.Notification && Notification.permission==='granted'){
       try{ const ntf=new Notification(title,{body, tag:'gm-bcast', renotify:true});
         ntf.onclick=()=>{ window.focus(); S.view='board'; render(); ntf.close(); };
         setTimeout(()=>{ try{ntf.close();}catch(e){} }, 12000); }catch(e){}
     }
     alarm(); flashTitle(title);
-  } else { S._knownBcast=at; }
+  }
 }
-function openBroadcast(){
-  const bc=S.broadcast; if(!bc||!bc.lines||!bc.lines.length) return;
-  openHTMLWindow(transferRequestHTML(bc.from_name||'האתר', bc.lines));
+function openBroadcast(toBranch){
+  const bc=S.broadcast; if(!bc) return;
+  const g=(bc.groups||[]).find(x=>String(x.to_branch)===String(toBranch));
+  if(!g||!g.lines.length) return;
+  openHTMLWindow(transferRequestHTML(bc.from_name||'האתר', g.lines));
 }
-async function dismissBroadcast(){
+async function dismissBroadcast(toBranch){
   if(!confirm('לסגור את בקשת ההעברה מהמסך? (בצע אותה דרך הקופה תחילה)')) return;
   try{ await api('/api/broadcast/dismiss',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({branch_id:Number(S.branchId)})}); }catch(e){}
-  S.broadcast=null; S._knownBcast=null;
+    body:JSON.stringify({branch_id:Number(S.branchId), to_branch:Number(toBranch)})}); }catch(e){}
   renderBoard(document.getElementById('app'), true);
 }
 function toast(msg,ok){ const t=document.getElementById('toast');
@@ -758,12 +760,13 @@ async function renderBoard(app, silent){
   if(S.view!=='board') return;   // המשתמש ניווט בינתיים — אל תדרוס
   S.transfers=list;
   S.broadcast=(bc&&bc.active)?bc:null;
+  // טייל נפרד לכל סניף יעד — בקשות לאותו יעד מתרכזות יחד
   const bcHtml = S.broadcast
-    ? `<div class="bcast" onclick="openBroadcast()">
+    ? (S.broadcast.groups||[]).map(g=>`<div class="bcast" onclick="openBroadcast(${g.to_branch})">
          <div class="bc-ic">📡</div>
-         <div class="bc-txt"><b>בקשת העברה מהאתר</b><span>${(S.broadcast.lines||[]).length} פריטים · לחץ לצפייה</span></div>
-         <button class="bc-x" onclick="event.stopPropagation();dismissBroadcast()">✕</button>
-       </div>` : '';
+         <div class="bc-txt"><b>בקשת העברה אל ${g.to_name}</b><span>${(g.lines||[]).length} פריטים · ${fmtTime(g.latest)} · לחץ לצפייה</span></div>
+         <button class="bc-x" onclick="event.stopPropagation();dismissBroadcast(${g.to_branch})">✕</button>
+       </div>`).join('') : '';
   const needEmp=!S.employee;
   const notifBtn = (window.Notification && Notification.permission!=='granted')
     ? `<button class="btn-ghost" style="margin-bottom:12px" onclick="requestNotif()">🔔 הפעל התראות להעברה נכנסת</button>` : '';
@@ -1895,7 +1898,7 @@ function lsSerialTransfer(i){
     info:`סריאל <b style="font-family:monospace;direction:ltr;unicode-bidi:embed">${s.serial}</b> · נמצא ב<b>${s.branch_name}</b>`,
     from:s.branch_id, maxQty:1, fixedQty:true,
     line:(to)=>({product_id:String(D.it.product_id), name:`${D.it.name} — סריאל ${s.serial}`,
-                 from_branch:Number(s.branch_id), to_branch:to, qty:1})
+                 from_branch:Number(s.branch_id), to_branch:to, qty:1, serial:String(s.serial)})
   });
 }
 function lsQtyTransfer(bid,avail){
@@ -1937,8 +1940,10 @@ async function lsSendTransfer(){
   const line=cfg.line(to,qty);
   showLoading('שולח בקשה…');
   try{
-    await api('/api/admin/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({lines:[line]})});
-    await api('/api/admin/broadcast',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({branch_id:Number(cfg.from)})});
+    const r=await api('/api/admin/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({lines:[line]})});
+    // שידור ממוקד — רק השורות שנוספו עכשיו (מצטרפות לטייל של אותו יעד אם כבר קיים)
+    await api('/api/admin/broadcast',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({branch_id:Number(cfg.from), line_ids:(r&&r.ids)||null})});
     toast('הבקשה שודרה לסניף '+lsBranchName(cfg.from)+' 📡',true);
   }catch(e){ toast('שגיאה בשליחת הבקשה',false); }
   hideLoading();

@@ -295,17 +295,19 @@ def stats():
     return db.stats()
 
 
-# ── שידור בקשת העברה למסך הסניף ──
+# ── שידור בקשות העברה למסך הסניף ──
+# טייל אחד לכל סניף יעד; בקשות חדשות לאותו יעד מצטרפות לטייל הקיים.
 class BroadcastIn(BaseModel):
     branch_id: int
+    line_ids: Optional[list[int]] = None     # שידור ממוקד (בקשה ממלאי חי)
 
 
 @app.post("/api/admin/broadcast")
 def admin_broadcast(body: BroadcastIn, x_admin_key: Optional[str] = Header(None)):
-    """משדר את בקשת ההעברה של סניף המקור למסך הקליטה שלו (תצוגה בלבד)."""
+    """משדר בקשות העברה למסך הקליטה של סניף המקור (תצוגה בלבד)."""
     _require_admin(x_admin_key)
-    db.broadcast_set(body.branch_id)
-    return {"ok": True, "lines": len(db.plan_for_branch(body.branch_id))}
+    n = db.plan_mark_broadcast(body.branch_id, body.line_ids)
+    return {"ok": True, "lines": n}
 
 
 @app.get("/api/admin/broadcasts")
@@ -316,21 +318,35 @@ def admin_broadcasts(x_admin_key: Optional[str] = Header(None)):
 
 @app.get("/api/broadcast")
 def get_broadcast(branch_id: int):
-    """ציבורי — מסך הסניף בודק אם יש בקשת העברה משודרת אליו (תצוגה בלבד)."""
-    at = db.broadcast_get(branch_id)
-    lines = db.plan_for_branch(branch_id)
-    for ln in lines:
-        ln["from_name"] = cfg.branch_name(ln.get("from_branch"))
-        ln["to_name"] = cfg.branch_name(ln.get("to_branch"))
-    active = bool(at) and len(lines) > 0
-    return {"active": active, "broadcast_at": at,
-            "from_name": cfg.branch_name(branch_id), "lines": lines}
+    """ציבורי — הבקשות המשודרות לסניף, מקובצות לפי סניף יעד (טייל לכל יעד)."""
+    # מעבר גרסה: שידור ישן (טבלת broadcasts) → מסמן את שורות הסניף כ-bcast=1 ומנקה
+    legacy = db.broadcast_get(branch_id)
+    if legacy:
+        db.plan_mark_broadcast(branch_id)
+        db.broadcast_clear(branch_id)
+    groups = db.broadcast_groups(branch_id)
+    all_lines = []
+    for g in groups:
+        g["to_name"] = cfg.branch_name(g["to_branch"])
+        for ln in g["lines"]:
+            ln["from_name"] = cfg.branch_name(ln.get("from_branch"))
+            ln["to_name"] = cfg.branch_name(ln.get("to_branch"))
+        all_lines.extend(g["lines"])
+    return {"active": bool(groups), "groups": groups,
+            "broadcast_at": groups[0]["latest"] if groups else None,
+            "from_name": cfg.branch_name(branch_id), "lines": all_lines}
+
+
+class DismissIn(BaseModel):
+    branch_id: int
+    to_branch: Optional[int] = None
 
 
 @app.post("/api/broadcast/dismiss")
-def dismiss_broadcast(body: BroadcastIn):
-    """ציבורי — הסניף מאשר שראה את הבקשה."""
-    db.broadcast_clear(body.branch_id)
+def dismiss_broadcast(body: DismissIn):
+    """ציבורי — הסניף סוגר טייל של יעד מסוים (או הכל). השורות נשארות בתוכנית."""
+    db.broadcast_dismiss_group(body.branch_id, body.to_branch)
+    db.broadcast_clear(body.branch_id)   # legacy
     return {"ok": True}
 
 
@@ -408,6 +424,7 @@ class PlanLine(BaseModel):
     from_branch: int
     to_branch: int
     qty: int = 1
+    serial: Optional[str] = ""    # בקשה ליחידה סריאלית ספציפית (התאמה אוטומטית מול העברות)
 
 
 class PlanAdd(BaseModel):
@@ -427,7 +444,8 @@ def admin_plan(x_admin_key: Optional[str] = Header(None)):
 @app.post("/api/admin/plan")
 def admin_plan_add(body: PlanAdd, x_admin_key: Optional[str] = Header(None)):
     _require_admin(x_admin_key)
-    return {"added": db.plan_add([l.model_dump() for l in body.lines])}
+    ids = db.plan_add([l.model_dump() for l in body.lines])
+    return {"added": len(ids), "ids": ids}
 
 
 class PlanReplace(BaseModel):

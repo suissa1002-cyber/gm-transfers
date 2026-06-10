@@ -89,6 +89,20 @@ def poll_once() -> dict:
                            for s in (it.get("serials") or []) if s]
                     if idx:
                         db.serial_index_upsert_many(idx)
+                    # ניקוי אוטומטי של בקשות העברה: העברה אמיתית בקופה שתואמת
+                    # בקשה (אותו מקור→יעד, אותו סריאל/מוצר) מורידה אותה מהתוכנית ומהטייל
+                    try:
+                        items = [{"product_id": it.get("id"),
+                                  "serials": it.get("serials") or [],
+                                  "qty": it.get("quantity") or 0}
+                                 for it in (o.get("stockItems") or [])]
+                        n = db.plan_match_transfer(o.get("branchId"),
+                                                   o.get("receivingBranchId"), items)
+                        if n:
+                            logger.info("plan auto-clean: %d request line(s) matched by op %s",
+                                        n, o.get("id"))
+                    except Exception as e:  # noqa: BLE001
+                        logger.warning("plan_match_transfer failed for op %s: %s", o.get("id"), e)
             if len(ops) < 200:
                 break
     except NewOrderError as e:

@@ -264,6 +264,10 @@ def _migrate():
         ("transfers",      "close_reason", "TEXT"),
         ("transfers",      "closed_by", "TEXT"),
         ("removals",       "note", "TEXT"),
+        # בקשות העברה: serial = יחידה ספציפית (להתאמה אוטומטית מול העברות);
+        # bcast = מצב שידור למסך הסניף (0=לא שודר, 1=פעיל/מוצג, 2=נסגר ע"י הסניף)
+        ("transfer_plan",  "serial", "TEXT"),
+        ("transfer_plan",  "bcast", "INTEGER"),
     ]
     for table, col, typ in cols:
         try:
@@ -800,20 +804,29 @@ def rebalance_list() -> list:
         return out
 
 
-def plan_add(lines: list) -> int:
-    """מוסיף שורות לתוכנית ההעברות. line: {product_id,name,from_branch,to_branch,qty}."""
-    n = 0
+def plan_add(lines: list) -> list:
+    """מוסיף שורות לתוכנית ההעברות. line: {product_id,name,from_branch,to_branch,qty,serial?}.
+    מחזיר את ה-ids של השורות שנוספו (לשידור ממוקד)."""
+    ids = []
     with _conn() as c:
         cur = c.cursor()
         for ln in lines:
-            cur.execute(_q("""
-                INSERT INTO transfer_plan (product_id, name, from_branch, to_branch, qty, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """), (str(ln.get("product_id") or ""), ln.get("name") or "",
-                   int(ln.get("from_branch")), int(ln.get("to_branch")),
-                   int(ln.get("qty") or 1), now_iso()))
-            n += 1
-    return n
+            vals = (str(ln.get("product_id") or ""), ln.get("name") or "",
+                    int(ln.get("from_branch")), int(ln.get("to_branch")),
+                    int(ln.get("qty") or 1), (ln.get("serial") or "").strip(), now_iso())
+            if _USE_PG:
+                cur.execute(_q("""
+                    INSERT INTO transfer_plan (product_id, name, from_branch, to_branch, qty, serial, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id
+                """), vals)
+                ids.append(cur.fetchone()["id"])
+            else:
+                cur.execute(_q("""
+                    INSERT INTO transfer_plan (product_id, name, from_branch, to_branch, qty, serial, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """), vals)
+                ids.append(cur.lastrowid)
+    return ids
 
 
 def plan_replace_product(product_id, lines: list) -> int:
@@ -861,14 +874,116 @@ def plan_count() -> int:
         return cur.fetchone()["n"]
 
 
-def broadcast_set(branch_id):
+# ── שידור בקשות העברה למסך הסניף ──────────────────────────────────
+# מודל: כל שורת תוכנית נושאת bcast (0/NULL=לא שודר, 1=מוצג במסך הסניף, 2=נסגר ע"י הסניף).
+# במסך הסניף השורות הפעילות מקובצות לפי סניף יעד → טייל אחד לכל יעד; בקשה חדשה
+# לאותו יעד מצטרפת לטייל הקיים. קליטת העברה תואמת בקופה מוחקת את השורה (plan_match_transfer).
+
+def plan_mark_broadcast(branch_id, line_ids=None) -> int:
+    """משדר: מסמן bcast=1. עם line_ids — רק שורות אלה; בלעדיהם — כל שורות הסניף (כולל שידור חוזר)."""
     with _conn() as c:
-        c.cursor().execute(_q("""
-            INSERT INTO broadcasts (branch_id, broadcast_at) VALUES (?, ?)
-            ON CONFLICT(branch_id) DO UPDATE SET broadcast_at=excluded.broadcast_at
-        """), (int(branch_id), now_iso()))
+        cur = c.cursor()
+        if line_ids:
+            ph = ",".join("?" * len(line_ids))
+            cur.execute(_q(f"UPDATE transfer_plan SET bcast = 1 WHERE id IN ({ph})"),
+                        tuple(int(i) for i in line_ids))
+        else:
+            cur.execute(_q("UPDATE transfer_plan SET bcast = 1 WHERE from_branch = ?"), (int(branch_id),))
+        n = cur.rowcount if hasattr(cur, "rowcount") else 0
+        return max(n or 0, 0)
 
 
+def broadcast_groups(branch_id) -> list:
+    """הבקשות הפעילות לסניף, מקובצות לפי סניף יעד: [{to_branch, latest, lines:[...]}]."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""
+            SELECT * FROM transfer_plan WHERE from_branch = ? AND bcast = 1
+            ORDER BY to_branch, name
+        """), (int(branch_id),))
+        rows = [dict(r) for r in cur.fetchall()]
+    groups = {}
+    for r in rows:
+        g = groups.setdefault(int(r["to_branch"]), {"to_branch": int(r["to_branch"]),
+                                                    "latest": "", "lines": []})
+        g["lines"].append(r)
+        g["latest"] = max(g["latest"], r.get("created_at") or "")
+    return sorted(groups.values(), key=lambda g: g["latest"], reverse=True)
+
+
+def broadcast_dismiss_group(branch_id, to_branch=None):
+    """הסניף סגר טייל: bcast=2 (השורות נשארות בתוכנית). בלי to_branch — סוגר הכל."""
+    with _conn() as c:
+        cur = c.cursor()
+        if to_branch is None:
+            cur.execute(_q("UPDATE transfer_plan SET bcast = 2 WHERE from_branch = ? AND bcast = 1"),
+                        (int(branch_id),))
+        else:
+            cur.execute(_q("""UPDATE transfer_plan SET bcast = 2
+                              WHERE from_branch = ? AND to_branch = ? AND bcast = 1"""),
+                        (int(branch_id), int(to_branch)))
+
+
+def broadcast_branches() -> list:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute("SELECT DISTINCT from_branch AS b FROM transfer_plan WHERE bcast = 1")
+        return [r["b"] for r in cur.fetchall()]
+
+
+def plan_match_transfer(from_branch, to_branch, items) -> int:
+    """ניקוי אוטומטי: העברה אמיתית בקופה מ-from ל-to מוחקת שורות בקשה תואמות.
+    item: {product_id, serials:[...], qty}. סריאל תואם → מחיקת השורה הסריאלית;
+    מוצר לא-סריאלי → הפחתת qty משורת המוצר (מחיקה כשמגיע ל-0). מחזיר כמה שורות נוקו."""
+    cleaned = 0
+    fb, tb = int(from_branch or 0), int(to_branch or 0)
+    if not fb or not tb:
+        return 0
+    with _conn() as c:
+        cur = c.cursor()
+        for it in items or []:
+            pid = str(it.get("product_id") or "")
+            serials = [s for s in (it.get("serials") or []) if s]
+            if serials:
+                for sn in serials:
+                    cur.execute(_q("""DELETE FROM transfer_plan
+                                      WHERE from_branch = ? AND to_branch = ? AND serial = ?"""),
+                                (fb, tb, str(sn)))
+                    hit = (cur.rowcount or 0) if hasattr(cur, "rowcount") else 0
+                    if hit:
+                        cleaned += hit
+                    else:
+                        # אין בקשה על הסריאל הספציפי — יחידה סריאלית שהועברה מספקת גם בקשה כמותית על המוצר
+                        cleaned += _plan_decrement(cur, fb, tb, pid, 1)
+            else:
+                qty = int(it.get("qty") or 0)
+                if qty > 0 and pid:
+                    cleaned += _plan_decrement(cur, fb, tb, pid, qty)
+    return cleaned
+
+
+def _plan_decrement(cur, fb, tb, pid, qty) -> int:
+    """מפחית כמות משורת בקשה כמותית (ללא סריאל) של המוצר; מוחק כשמתאפסת."""
+    cur.execute(_q("""SELECT id, qty FROM transfer_plan
+                      WHERE from_branch = ? AND to_branch = ? AND product_id = ?
+                        AND (serial IS NULL OR serial = '') ORDER BY id"""), (fb, tb, str(pid)))
+    rows = [dict(r) for r in cur.fetchall()]
+    cleaned = 0
+    for r in rows:
+        if qty <= 0:
+            break
+        take = min(qty, int(r["qty"] or 1))
+        left = int(r["qty"] or 1) - take
+        qty -= take
+        if left <= 0:
+            cur.execute(_q("DELETE FROM transfer_plan WHERE id = ?"), (r["id"],))
+            cleaned += 1
+        else:
+            cur.execute(_q("UPDATE transfer_plan SET qty = ? WHERE id = ?"), (left, r["id"]))
+    return cleaned
+
+
+# legacy (טבלת broadcasts הישנה) — נשמר לקריאת מצב ישן בלבד בזמן מעבר גרסה
 def broadcast_get(branch_id):
     with _conn() as c:
         cur = c.cursor()
@@ -880,13 +995,6 @@ def broadcast_get(branch_id):
 def broadcast_clear(branch_id):
     with _conn() as c:
         c.cursor().execute(_q("DELETE FROM broadcasts WHERE branch_id = ?"), (int(branch_id),))
-
-
-def broadcast_branches() -> list:
-    with _conn() as c:
-        cur = c.cursor()
-        cur.execute("SELECT branch_id FROM broadcasts")
-        return [r["branch_id"] for r in cur.fetchall()]
 
 
 def plan_for_branch(branch_id) -> list:
