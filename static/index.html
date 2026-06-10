@@ -1836,9 +1836,11 @@ function renderLiveDetail(){
   const D=S._lsDetail; if(!D) return;
   const {it,d}=D;
   const hitSet=new Set((S.lsSerialHits||[]).filter(h=>String(h.product_id)===String(it.product_id)).map(h=>String(h.serial)));
+  const chipClickable=it.kind!=='serial';   // במוצרי ברקוד הקוביות עצמן פותחות בקשת העברה
   const chips=(d.branches||[]).map(b=>{
     const q=b.qty||0, cls=q>0?'q-has':(q<0?'q-neg':'q-zero');
-    return `<div class="ls-bchip">${b.name} <b class="${cls}">${q}</b></div>`;
+    const click=(chipClickable&&q>0)?` style="cursor:pointer" onclick="lsQtyTransfer(${b.id},${q})" title="בקשת העברה מ${b.name}"`:'';
+    return `<div class="ls-bchip"${click}>${b.name} <b class="${cls}">${q}</b></div>`;
   }).join('');
   let serHtml='';
   if(it.kind==='serial'){
@@ -1851,19 +1853,21 @@ function renderLiveDetail(){
         ((bOrder[String(a.branch_id)]!==undefined?bOrder[String(a.branch_id)]:99)-(bOrder[String(b.branch_id)]!==undefined?bOrder[String(b.branch_id)]:99))
         ||String(a.insert_date).localeCompare(String(b.insert_date))
         ||String(a.serial).localeCompare(String(b.serial)));
+      D.sorted=sorted;
       serHtml=`<div style="font-weight:700;margin-bottom:6px">יחידות בקופה (${d.serials.length})</div>
       <table class="serials"><thead><tr><th>סריאל</th><th>סניף</th><th>נקלט</th><th>ספק</th><th>אחריות</th><th>סטטוס</th></tr></thead><tbody>
-      ${sorted.map(s=>{
+      ${sorted.map((s,i)=>{
         const st=s.status===1?'<span style="color:var(--green);font-weight:700">זמין</span>':('סטטוס '+s.status);
         const dt=s.insert_date?new Date(s.insert_date):null;
         const ds=dt&&!isNaN(dt)?dt.toLocaleDateString('he-IL'):'';
         const war=(s.warranty||'—')+(s.warranty_months?(' · '+Math.round(s.warranty_months)+' ח׳'):'');
         const mark=hitSet.has(String(s.serial))?' style="background:rgba(31,191,107,.10)"':'';
-        return `<tr${mark}>
+        return `<tr class="srow"${mark} onclick="lsSerialTransfer(${i})" title="בקשת העברה לסניף אחר">
           <td style="direction:ltr;text-align:right;font-family:monospace">${s.serial}</td>
           <td style="font-weight:700">${s.branch_name||s.branch_id||''}</td><td>${ds}</td>
           <td>${s.supplier||'—'}</td><td>${war}</td><td>${st}</td></tr>`;
-      }).join('')}</tbody></table>`;
+      }).join('')}</tbody></table>
+      <div class="muted" style="font-size:12px;margin-top:6px">📡 לחיצה על שורת סריאל — בקשת העברה לסניף אחר</div>`;
     }
   }
   document.getElementById('modalRoot').innerHTML=`<div class="overlay"><div class="modal" style="max-width:940px;text-align:right;max-height:84vh;overflow:auto">
@@ -1874,9 +1878,72 @@ function renderLiveDetail(){
       <button class="btn-ghost" style="padding:5px 10px;font-size:12px" onclick="refreshLiveDetail()">🔄 רענן</button>
     </div>
     <div class="ls-chipline">${chips}</div>
+    ${chipClickable?'<div class="muted" style="font-size:12px;margin:-6px 0 10px">📡 לחיצה על סניף עם מלאי — בקשת העברה ממנו</div>':''}
     ${serHtml}
     <div style="display:flex;margin-top:14px"><button class="btn-ghost" style="flex:1" onclick="closeModal()">סגור</button></div>
   </div></div>`;
+}
+
+// ── בקשת העברה מתוך מלאי חי: סריאל ספציפי או כמות ממוצר ברקוד ──
+// משתמש במנגנון הקיים: שורת transfer_plan + שידור 📡 ללוח הקליטה של הסניף המחזיק.
+function lsBranchName(id){ const b=(S.branchList||[]).find(x=>String(x.id)===String(id)); return b?b.name:String(id); }
+function lsSerialTransfer(i){
+  const D=S._lsDetail; if(!D||!D.sorted) return;
+  const s=D.sorted[i]; if(!s||!s.branch_id) return;
+  lsTransferDialog({
+    title:'בקשת העברת מכשיר', sub:D.it.name,
+    info:`סריאל <b style="font-family:monospace;direction:ltr;unicode-bidi:embed">${s.serial}</b> · נמצא ב<b>${s.branch_name}</b>`,
+    from:s.branch_id, maxQty:1, fixedQty:true,
+    line:(to)=>({product_id:String(D.it.product_id), name:`${D.it.name} — סריאל ${s.serial}`,
+                 from_branch:Number(s.branch_id), to_branch:to, qty:1})
+  });
+}
+function lsQtyTransfer(bid,avail){
+  const D=S._lsDetail; if(!D) return;
+  lsTransferDialog({
+    title:'בקשת העברת מלאי', sub:D.it.name,
+    info:`מ<b>${lsBranchName(bid)}</b> · זמין: <b>${avail}</b>`,
+    from:bid, maxQty:Math.max(1,Math.floor(avail)), fixedQty:false,
+    line:(to,qty)=>({product_id:String(D.it.product_id), name:D.it.name,
+                     from_branch:Number(bid), to_branch:to, qty})
+  });
+}
+function lsTransferDialog(cfg){
+  S._lsTransfer=cfg;
+  const opts=(S.branchList||[]).filter(b=>Number(b.id)!==Number(cfg.from))
+    .map(b=>`<option value="${b.id}">${b.name}</option>`).join('');
+  document.getElementById('modalRoot').innerHTML=`<div class="overlay"><div class="modal" style="max-width:460px;text-align:right">
+    <h3 style="text-align:center">📡 ${cfg.title}</h3>
+    <div style="text-align:center;font-weight:700">${cfg.sub}</div>
+    <div class="muted" style="text-align:center;margin:6px 0 14px;font-size:14px">${cfg.info}</div>
+    ${cfg.fixedQty?'':`<div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:12px">
+      <span>כמות:</span><input id="ltQty" type="number" min="1" max="${cfg.maxQty}" value="1" style="width:90px;font-size:18px;text-align:center;margin:0"></div>`}
+    <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:16px">
+      <span>העבר אל:</span>
+      <select id="ltTo" style="font-family:inherit;font-size:16px;padding:9px 14px;border-radius:10px;border:1px solid var(--line);background:var(--card2);color:var(--txt)">${opts}</select>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn-primary" style="flex:1" onclick="lsSendTransfer()">שלח בקשה 📡</button>
+      <button class="btn-ghost" onclick="renderLiveDetail()">ביטול</button>
+    </div>
+    <div class="muted" style="text-align:center;font-size:12px;margin-top:10px">הבקשה תקפוץ בלוח הקליטה של הסניף המחזיק ותתווסף לטאב 📝 בקשות העברה</div>
+  </div></div>`;
+}
+async function lsSendTransfer(){
+  const cfg=S._lsTransfer; if(!cfg) return;
+  const to=Number(document.getElementById('ltTo').value);
+  let qty=1;
+  if(!cfg.fixedQty) qty=Math.max(1,Math.min(cfg.maxQty,parseInt(document.getElementById('ltQty').value)||1));
+  const line=cfg.line(to,qty);
+  showLoading('שולח בקשה…');
+  try{
+    await api('/api/admin/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({lines:[line]})});
+    await api('/api/admin/broadcast',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({branch_id:Number(cfg.from)})});
+    toast('הבקשה שודרה לסניף '+lsBranchName(cfg.from)+' 📡',true);
+  }catch(e){ toast('שגיאה בשליחת הבקשה',false); }
+  hideLoading();
+  S._lsTransfer=null;
+  renderLiveDetail();
 }
 
 function renderAdmin(){
