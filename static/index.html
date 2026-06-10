@@ -375,10 +375,16 @@ function changeBranch(){
   S.branchId=null;S.view='board';render();
 }
 
+// fetch עם timeout (AbortController) — שלא תיתקע בקשה לנצח (קולד-סטארט/רשת חלשה במובייל)
+function fetchT(url,opts,ms){
+  opts=opts||{}; const ctrl=new AbortController();
+  const id=setTimeout(()=>ctrl.abort(),ms||30000);
+  return fetch(url,{...opts,signal:ctrl.signal}).finally(()=>clearTimeout(id));
+}
 async function api(path,opts){
   opts=opts||{}; opts.headers=opts.headers||{};
   if(S.adminKey) opts.headers['X-Admin-Key']=S.adminKey;
-  const r=await fetch(path,opts);
+  const r=await fetchT(path,opts,30000);
   if(!r.ok){ const e=new Error('http '+r.status); e.status=r.status; throw e; }
   return r.json();
 }
@@ -576,9 +582,10 @@ function finishPick(id,name){
 // ── לוח בהעברה ──
 async function renderBoard(app, silent){
   if(!silent) showLoading();
-  let list=[]; try{ list=await api('/api/transfers?branch_id='+S.branchId); }catch(e){}
+  let list=[], loadErr=false; try{ list=await api('/api/transfers?branch_id='+S.branchId); }catch(e){ loadErr=true; }
   let bc=null; try{ bc=await api('/api/broadcast?branch_id='+S.branchId); }catch(e){}
   if(!silent) hideLoading();
+  S._boardErr=loadErr;
   detectNewTransfers(list);   // התראה על העברות חדשות
   detectBroadcast(bc);        // התראה על שידור בקשת העברה
   if(S.view!=='board') return;   // המשתמש ניווט בינתיים — אל תדרוס
@@ -618,7 +625,7 @@ async function renderBoard(app, silent){
     </div>
     ${lastHtml}
     ${list.length?`<div class="board-grid">${list.map(cardHtml).join('')}</div>`
-                 :'<div class="empty">אין כרגע העברות בדרך אליך 🎉</div>'}`;
+                 :(S._boardErr?'<div class="empty">בעיית רשת — מתחבר מחדש… 🔄</div>':'<div class="empty">אין כרגע העברות בדרך אליך 🎉</div>')}`;
   if(needEmp){
     const e=document.getElementById('empInput'); try{e.focus();}catch(x){}
     e.addEventListener('keydown',ev=>{ if(ev.key!=='Enter')return; const v=e.value.trim(); if(!v)return; if(submitEmployee(v)) render(); });
@@ -1501,9 +1508,11 @@ document.addEventListener('click', (e)=>{
 });
 (async()=>{
   loadState(); applyTheme();
-  try{ S.cfg=await (await fetch('/api/config')).json(); }catch(e){}
-  try{ S.branchList=await (await fetch('/api/branches')).json(); }catch(e){}
-  render(); applyTheme(); if(S.branchId){ startPoll(); startNotifPoll(); handleDeepLink(); }
+  try{ S.cfg=await (await fetchT('/api/config',{},15000)).json(); }catch(e){}
+  try{ S.branchList=await (await fetchT('/api/branches',{},15000)).json(); }catch(e){}
+  try{ render(); }catch(e){ hideLoading(); }
+  applyTheme();
+  if(S.branchId){ startPoll(); startNotifPoll(); handleDeepLink(); }
 })();
 </script>
 </body>
