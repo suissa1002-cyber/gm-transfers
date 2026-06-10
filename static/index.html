@@ -111,6 +111,12 @@
   .plan-actions .pa-sep{width:1px;background:var(--line);margin:3px 2px}
   .btn-req-in{background:var(--green);color:#fff;font-weight:700}
   /* 🔎 מלאי חי */
+  .ls-check{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:10px;
+            padding:9px 12px;background:var(--card);cursor:pointer;font-size:13px;color:var(--muted);
+            white-space:nowrap;user-select:none}
+  .ls-check input{min-width:0 !important;width:16px;height:16px;padding:0 !important;margin:0;
+                  accent-color:var(--blue);cursor:pointer;flex:none}
+  .ls-check:has(input:checked){color:var(--txt);border-color:var(--blue)}
   td.ls-has{color:var(--green);font-weight:800;text-align:center}
   td.ls-zero{color:var(--muted);text-align:center}
   td.ls-neg{color:var(--red);font-weight:800;text-align:center}
@@ -1689,10 +1695,8 @@ function renderLive(){
       <select onchange="setLsCategory(this.value)">
         <option value="">קטגוריה — הכל</option>${cats.map(s=>opt(s,S.lsCategory,s)).join('')}
       </select>
-      <label class="muted" style="font-size:13px;display:flex;align-items:center;gap:5px">
-        <input type="checkbox" ${S.lsStock?'checked':''} onchange="setLsStock(this.checked)">רק עם מלאי</label>
-      <label class="muted" style="font-size:13px;display:flex;align-items:center;gap:5px">
-        <input type="checkbox" ${S.lsInactive?'checked':''} onchange="setLsInactive(this.checked)">כולל לא פעילים</label>
+      <label class="ls-check"><input type="checkbox" ${S.lsStock?'checked':''} onchange="setLsStock(this.checked)"><span>רק עם מלאי</span></label>
+      <label class="ls-check"><input type="checkbox" ${S.lsInactive?'checked':''} onchange="setLsInactive(this.checked)"><span>כולל לא פעילים</span></label>
       <span class="muted" style="margin-inline-start:auto;font-size:13px">${items?`מציג ${shown.length} מתוך ${items.length}`:''}</span>
     </div>
     ${body}`;
