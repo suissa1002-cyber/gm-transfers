@@ -1474,7 +1474,7 @@ function renderRemovals(){
       <span class="muted" style="margin-inline-start:auto">${rows.length} שורות · <b>${totalQty}</b> יח׳ · מתוך ${total}</span>
     </div>
     ${rows.length?`<table class="admin"><thead><tr>
-      <th>מק״ט</th><th>מוצר</th><th>יצרן</th><th>כמות</th><th>סריאל</th><th>עובד</th><th>תאריך</th>
+      <th>מק״ט</th><th>מוצר</th><th>יצרן</th><th>כמות</th><th>סריאל</th><th>עובד</th><th>הערה</th><th>תאריך</th>
     </tr></thead><tbody>${rows.map(removalRow).join('')}</tbody></table>`
     :`<div class="empty">${sm.ops?'אין הורדות מתאימות לסינון/טווח':'אין נתוני הורדות עדיין — לחץ "🔄 אסוף הורדות" (או המתן לאיסוף האוטומטי)'}</div>`}`;
   if(S._refocusRemovals){ const el=document.getElementById('removalsSearch'); if(el){ el.focus(); const v=el.value; el.value=''; el.value=v; } S._refocusRemovals=false; }
@@ -1487,6 +1487,7 @@ function removalRow(r){
     <td style="font-weight:700;text-align:center">${r.qty}</td>
     <td style="direction:ltr;text-align:right;font-family:monospace;font-size:12px">${r.serials||'—'}</td>
     <td>${r.employee||'—'}</td>
+    <td>${r.note?r.note:'<span class="muted">—</span>'}</td>
     <td class="muted">${fmtTime(r.removed_at)}</td>
   </tr>`;
 }

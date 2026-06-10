@@ -53,6 +53,10 @@ def _ingest_range(no, start: date, end: date, skip_ops: set) -> dict:
         new_ops += 1
         when = o.get("createDate") or ""
         emp = o.get("employee") or ""
+        # ההערה אינה נחשפת כיום ב-API הציבורי (Monday 2983951787); נתפוס אותה אוטומטית
+        # ברגע שרפי יוסיף אותה — בודקים מספר שמות אפשריים ברמת הפעולה.
+        note = (o.get("note") or o.get("remark") or o.get("comment")
+                or o.get("description") or o.get("documentNumber") or "").strip()
         for i, it in enumerate(o.get("stockItems") or []):
             sers = it.get("serials") or []
             rows.append({
@@ -60,7 +64,9 @@ def _ingest_range(no, start: date, end: date, skip_ops: set) -> dict:
                 "product_id": it.get("id"), "name": it.get("name") or "",
                 "qty": abs(it.get("quantity") or 0),
                 "serials": ",".join(str(s) for s in sers),
-                "employee": emp, "branch_id": REMOVAL_BRANCH, "removed_at": when,
+                "employee": emp,
+                "note": note or (it.get("note") or it.get("remark") or "").strip(),
+                "branch_id": REMOVAL_BRANCH, "removed_at": when,
             })
         skip_ops.add(op_id)
     lines = db.removals_insert(rows)

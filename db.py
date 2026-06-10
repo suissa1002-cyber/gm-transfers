@@ -200,6 +200,7 @@ _SCHEMA = [
         qty         REAL,
         serials     TEXT,
         employee    TEXT,
+        note        TEXT,
         branch_id   INTEGER,
         removed_at  TEXT,
         UNIQUE(op_id, line_no)
@@ -262,6 +263,7 @@ def _migrate():
         ("receive_scans",  "method", "TEXT"),
         ("transfers",      "close_reason", "TEXT"),
         ("transfers",      "closed_by", "TEXT"),
+        ("removals",       "note", "TEXT"),
     ]
     for table, col, typ in cols:
         try:
@@ -963,12 +965,12 @@ def removals_insert(rows: list) -> int:
         cur = c.cursor()
         for r in rows:
             cur.execute(_q("""
-                INSERT INTO removals (op_id, line_no, product_id, name, qty, serials, employee, branch_id, removed_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO removals (op_id, line_no, product_id, name, qty, serials, employee, note, branch_id, removed_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(op_id, line_no) DO NOTHING
             """), (str(r.get("op_id")), int(r.get("line_no") or 0), str(r.get("product_id") or ""),
                    r.get("name") or "", float(r.get("qty") or 0), r.get("serials") or "",
-                   r.get("employee") or "",
+                   r.get("employee") or "", r.get("note") or "",
                    int(r["branch_id"]) if r.get("branch_id") not in (None, "") else None,
                    r.get("removed_at") or ""))
             n += 1
