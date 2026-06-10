@@ -177,8 +177,9 @@ def _enrich(t: dict) -> dict:
 
 @app.get("/api/transfers")
 def transfers(branch_id: int):
-    rows = db.list_in_transit(branch_id)
-    return [_enrich(db.get_transfer(t["op_id"])) for t in rows]
+    # list_in_transit כבר מחזיר את שדות הכותרת (כולל received_units/total_units/status)
+    # שהכרטיסים בלוח צריכים — אין צורך ב-get_transfer פר-שורה (שמושך גם items).
+    return [_enrich(t) for t in db.list_in_transit(branch_id)]
 
 
 @app.get("/api/transfers/{op_id}")
