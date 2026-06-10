@@ -1133,13 +1133,15 @@ def catalog_meta() -> dict:
 
 
 def catalog_light() -> list:
-    """קטלוג מצומצם לחיפוש בצד הלקוח (טאב מלאי חי) — בלי מלאי (המלאי נקרא חי)."""
+    """קטלוג מצומצם לחיפוש בצד הלקוח (טאב מלאי חי).
+    `stock` (סך כל הסניפים, מהרענון האחרון) משמש רק לסינון/מיון "רק עם מלאי" —
+    הכמויות המוצגות עצמן תמיד נקראות חי."""
     with _conn() as c:
         cur = c.cursor()
-        cur.execute("SELECT product_id, name, barcode, kind, category, supplier, active FROM catalog")
+        cur.execute("SELECT product_id, name, barcode, kind, category, supplier, active, stock FROM catalog")
         return [{"product_id": r["product_id"], "name": r["name"], "barcode": r["barcode"],
                  "kind": r["kind"], "category": r["category"], "supplier": r["supplier"],
-                 "active": bool(r["active"])} for r in cur.fetchall()]
+                 "active": bool(r["active"]), "stock": r["stock"] or 0} for r in cur.fetchall()]
 
 
 def rebalance_last_scan() -> str:

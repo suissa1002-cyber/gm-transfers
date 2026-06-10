@@ -277,7 +277,7 @@ const S = { branchId:null, branchName:null, employee:null, adminKey:null,
             recoSort:{col:'recommended',dir:'desc'},
             orderData:null, orderCount:0, orderSearch:'', orderSupplier:'', orderCategory:'', _refocusOrder:false,
             removalsData:null, removalsDays:30, removalsFrom:'', removalsTo:'', removalsMfr:'', removalsSearch:'', _refocusRemovals:false,
-            lsCat:null, lsCatAt:null, lsQuery:'', lsKind:'serial', lsCategory:'', lsMfr:'', lsInactive:false,
+            lsCat:null, lsCatAt:null, lsQuery:'', lsKind:'serial', lsCategory:'', lsMfr:'', lsInactive:false, lsStock:true,
             lsLive:{}, lsSeq:0, lsSerialHit:null, _refocusLs:false, _lsDetail:null };
 
 // ── ערכת נושא (כהה/בהיר) ──
@@ -1520,7 +1520,7 @@ async function runRemovalsIngest(){
 }
 
 // ── 🔎 מלאי חי — חיפוש דינמי (קטלוג מקומי) + מלאי בזמן אמת מהקופה ──
-const LS_LIVE_CAP=12, LS_TTL_MS=30000, LS_SHOW_CAP=50;
+const LS_SHOW_CAP=50, LS_LIVE_CAP=LS_SHOW_CAP, LS_TTL_MS=30000, LS_CHUNK=8;
 async function loadLiveCatalog(spinner){
   if(spinner) showLoading('טוען קטלוג חיפוש…');
   try{ const d=await api('/api/admin/live-search/catalog'); S.lsCat=d.items||[]; S.lsCatAt=d.updated_at; }
@@ -1533,9 +1533,11 @@ function setLsKind(v){ S.lsKind=v; renderLive(); }
 function setLsCategory(v){ S.lsCategory=v; renderLive(); }
 function setLsMfr(v){ S.lsMfr=v; renderLive(); }
 function setLsInactive(v){ S.lsInactive=v; renderLive(); }
+function setLsStock(v){ S.lsStock=v; renderLive(); }
 function lsFiltered(){
   let items=(S.lsCat||[]);
   if(!S.lsInactive) items=items.filter(i=>i.active);
+  if(S.lsStock) items=items.filter(i=>(i.stock||0)>0);   // רק עם מלאי (לפי הקטלוג; הכמויות עצמן חיות)
   if(S.lsKind!=='all') items=items.filter(i=>i.kind===S.lsKind);
   if(S.lsCategory) items=items.filter(i=>(i.category||'')===S.lsCategory);
   if(S.lsMfr) items=items.filter(i=>brandOf(i.name)===S.lsMfr);
@@ -1560,9 +1562,11 @@ function lsFiltered(){
         if(n.includes(ql)) return 1;                                          // הביטוי כרצף בשם
         return 2;                                                             // מילים מפוזרות
       };
-      return score(a)-score(b)||String(a.name).localeCompare(String(b.name),'he');
+      return score(a)-score(b)
+        ||((b.stock||0)-(a.stock||0))                                         // עם מלאי קודם
+        ||String(a.name).localeCompare(String(b.name),'he');
     });
-  } else items=items.slice().sort((a,b)=>String(a.name).localeCompare(String(b.name),'he'));
+  } else items=items.slice().sort((a,b)=>((b.stock||0)-(a.stock||0))||String(a.name).localeCompare(String(b.name),'he'));
   // נמצא לפי סריאל — מקדימים את המוצר לראש הרשימה
   if(S.lsSerialHit&&S.lsSerialHit.product_id){
     const pid=String(S.lsSerialHit.product_id);
@@ -1615,13 +1619,17 @@ function lsScheduleLive(list){ clearTimeout(_lsLiveT); _lsLiveT=setTimeout(()=>l
 async function lsFetchLive(list,attempt){
   const seq=++S.lsSeq, now=Date.now();
   const todo=list.filter(i=>{const c=S.lsLive[String(i.product_id)];return !(c&&!c.err&&now-c.at<LS_TTL_MS);});
-  await Promise.all(todo.map(async i=>{
-    const pid=String(i.product_id);
-    try{ const d=await api('/api/admin/live-stock/'+encodeURIComponent(pid),null,45000);
-      S.lsLive[pid]={at:Date.now(),data:d}; }
-    catch(e){ S.lsLive[pid]={at:Date.now(),err:true}; }
-    if(seq===S.lsSeq) lsPaint(pid);
-  }));
+  // במנות של LS_CHUNK במקביל — השורות הראשונות נצבעות מיד, ולא מציפים את הקצב המשותף
+  for(let k=0;k<todo.length;k+=LS_CHUNK){
+    if(seq!==S.lsSeq) return;   // המשתמש הקליד עוד — מפסיקים, חיפוש חדש כבר רץ
+    await Promise.all(todo.slice(k,k+LS_CHUNK).map(async i=>{
+      const pid=String(i.product_id);
+      try{ const d=await api('/api/admin/live-stock/'+encodeURIComponent(pid),null,45000);
+        S.lsLive[pid]={at:Date.now(),data:d}; }
+      catch(e){ S.lsLive[pid]={at:Date.now(),err:true}; }
+      if(seq===S.lsSeq) lsPaint(pid);
+    }));
+  }
   // ניסיון חוזר אוטומטי לשורות שנכשלו (הקופה עמוסה/הקצב המשותף תפוס) — עד 3 פעמים
   if(seq!==S.lsSeq) return;
   const failed=list.filter(i=>{const c=S.lsLive[String(i.product_id)];return c&&c.err;});
@@ -1681,6 +1689,8 @@ function renderLive(){
       <select onchange="setLsCategory(this.value)">
         <option value="">קטגוריה — הכל</option>${cats.map(s=>opt(s,S.lsCategory,s)).join('')}
       </select>
+      <label class="muted" style="font-size:13px;display:flex;align-items:center;gap:5px">
+        <input type="checkbox" ${S.lsStock?'checked':''} onchange="setLsStock(this.checked)">רק עם מלאי</label>
       <label class="muted" style="font-size:13px;display:flex;align-items:center;gap:5px">
         <input type="checkbox" ${S.lsInactive?'checked':''} onchange="setLsInactive(this.checked)">כולל לא פעילים</label>
       <span class="muted" style="margin-inline-start:auto;font-size:13px">${items?`מציג ${shown.length} מתוך ${items.length}`:''}</span>
