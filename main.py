@@ -8,7 +8,7 @@ import logging
 from typing import Optional
 from datetime import datetime, timedelta
 
-from fastapi import FastAPI, HTTPException, Header
+from fastapi import FastAPI, HTTPException, Header, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -727,6 +727,166 @@ def admin_wc_link(sku: str, pos: int = 0, fallback: int = 0, fresh: int = 0,
         except Exception as e:  # noqa: BLE001
             logger.warning("wc sibling variations failed for %s: %s", sku, e)
     return out
+
+
+# ── אבטחת מכשירים (device allowlist) ───────────────────────────────
+# כל דפדפן מזדהה ב-X-Device-Token. מכשיר חדש = ממתין לאישור אסי בטלגרם
+# (כפתורי אשר/דחה כקישורים חתומים). מכשיר קיים עם סניף שמור = אישור אוטומטי.
+# אכיפה ב-middleware על endpoints של נתוני סניפים; מופעלת עם DEVICE_ENFORCE=1.
+import hashlib
+import hmac as _hmac
+
+DEVICE_ENFORCE = os.getenv("DEVICE_ENFORCE", "").strip() in ("1", "true", "yes")
+TG_BOT = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+TG_ADMIN_CHAT = os.getenv("TELEGRAM_ADMIN_CHAT", "448181407").strip()
+_GATED = ("/api/transfers", "/api/scan", "/api/broadcast", "/api/stats")
+
+
+def _sig(token: str, action: str) -> str:
+    secret = os.getenv("SENTINEL_KEY", "") or cfg.ADMIN_PASSWORD or "gm"
+    return _hmac.new(secret.encode(), f"{token}:{action}".encode(), hashlib.sha256).hexdigest()[:24]
+
+
+def _tg_admin(text: str, buttons=None):
+    if not TG_BOT or not TG_ADMIN_CHAT:
+        logger.warning("telegram not configured — skipping device alert")
+        return
+    payload = {"chat_id": TG_ADMIN_CHAT, "text": text, "parse_mode": "HTML",
+               "disable_web_page_preview": True}
+    if buttons:
+        payload["reply_markup"] = {"inline_keyboard": [buttons]}
+    try:
+        import requests as _rq
+        _rq.post(f"https://api.telegram.org/bot{TG_BOT}/sendMessage", json=payload, timeout=15)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("telegram send failed: %s", e)
+
+
+def _ua_human(ua: str) -> str:
+    ua = ua or ""
+    os_n = ("iPhone" if "iPhone" in ua else "iPad" if "iPad" in ua else
+            "Android" if "Android" in ua else "Mac" if "Macintosh" in ua else
+            "Windows" if "Windows" in ua else "Linux" if "Linux" in ua else "?")
+    br = ("Edge" if "Edg/" in ua else "Samsung" if "SamsungBrowser" in ua else
+          "Chrome" if "Chrome/" in ua else "Safari" if "Safari/" in ua else
+          "Firefox" if "Firefox/" in ua else "?")
+    return f"{os_n} · {br}"
+
+
+def _client_ip(request) -> str:
+    fwd = request.headers.get("x-forwarded-for", "")
+    return (fwd.split(",")[0].strip() if fwd else (request.client.host if request.client else ""))
+
+
+@app.middleware("http")
+async def _device_gate(request, call_next):
+    p = request.url.path
+    if DEVICE_ENFORCE and any(p.startswith(g) for g in _GATED):
+        akey = request.headers.get("x-admin-key", "")
+        tok = request.headers.get("x-device-token", "")
+        if cfg.ADMIN_PASSWORD and akey == cfg.ADMIN_PASSWORD:
+            pass
+        else:
+            d = db.device_get(tok) if tok else None
+            if not d or d.get("status") != "approved":
+                return JSONResponse({"detail": "device not approved", "code": "device"}, status_code=401)
+            try:
+                db.device_touch(tok)
+            except Exception:  # noqa: BLE001
+                pass
+    return await call_next(request)
+
+
+class DeviceRegIn(BaseModel):
+    token: str
+    name: Optional[str] = ""
+    had_branch: Optional[bool] = False
+    branch_id: Optional[str] = ""
+
+
+@app.post("/api/device/register")
+def device_register(body: DeviceRegIn, request: Request):
+    tok = (body.token or "").strip()
+    if not tok or len(tok) < 16:
+        raise HTTPException(400, "bad token")
+    existing = db.device_get(tok)
+    if existing:
+        return {"status": existing["status"]}
+    ua = request.headers.get("user-agent", "")
+    ip = _client_ip(request)
+    base = (cfg.APP_BASE_URL or "https://gm-transfers.onrender.com").rstrip("/")
+    if body.had_branch:
+        # grandfathering: דפדפן שכבר עבד עם סניף שמור — אישור אוטומטי + יידוע
+        db.device_register(tok, body.name or "מכשיר קיים", ua, ip,
+                           body.branch_id, "approved", auto=True)
+        bn = cfg.branch_name(body.branch_id) if body.branch_id else "?"
+        _tg_admin(f"🖥️ <b>מכשיר קיים אושר אוטומטית</b>\n"
+                  f"סניף: <b>{bn}</b> · {_ua_human(ua)} · IP {ip}\n"
+                  f"<i>דפדפן שכבר היה מחובר לפני הפעלת האבטחה</i>")
+        return {"status": "approved"}
+    name = (body.name or "").strip()
+    if len(name) < 2:
+        raise HTTPException(400, "נדרש שם מבקש")
+    db.device_register(tok, name[:60], ua, ip, body.branch_id, "pending")
+    ok_url = f"{base}/device-action?token={tok}&action=approve&sig={_sig(tok,'approve')}"
+    no_url = f"{base}/device-action?token={tok}&action=deny&sig={_sig(tok,'deny')}"
+    _tg_admin(f"🔐 <b>מכשיר חדש מבקש גישה למערכת</b>\n"
+              f"👤 מבקש: <b>{name}</b>\n"
+              f"💻 {_ua_human(ua)}\n🌐 IP: <code>{ip}</code>\n"
+              f"לאשר כניסה?",
+              buttons=[{"text": "✅ אשר", "url": ok_url},
+                       {"text": "❌ דחה", "url": no_url}])
+    return {"status": "pending"}
+
+
+@app.get("/api/device/status")
+def device_status(token: str):
+    d = db.device_get(token)
+    return {"status": (d or {}).get("status", "unknown")}
+
+
+@app.get("/device-action")
+def device_action(token: str, action: str, sig: str):
+    """קישור האישור/דחייה מהטלגרם — חתום HMAC, נפתח בדפדפן של אסי."""
+    if action not in ("approve", "deny") or not _hmac.compare_digest(sig, _sig(token, action)):
+        raise HTTPException(403, "bad signature")
+    d = db.device_get(token)
+    if not d:
+        raise HTTPException(404, "device not found")
+    db.device_set_status(token, "approved" if action == "approve" else "denied")
+    msg = "✅ המכשיר אושר — אפשר לסגור את החלון" if action == "approve" else "❌ הבקשה נדחתה"
+    from fastapi.responses import HTMLResponse
+    return HTMLResponse(f"""<!doctype html><html dir="rtl"><head><meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1"></head>
+      <body style="font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:90vh;background:#f4f6f8">
+      <div style="background:#fff;border-radius:16px;padding:34px 40px;box-shadow:0 8px 30px rgba(0,0,0,.12);text-align:center">
+      <div style="font-size:44px">{'✅' if action=='approve' else '❌'}</div>
+      <h2 style="margin:10px 0 4px">{msg}</h2>
+      <div style="color:#777">{(d.get('name') or '')} · {_ua_human(d.get('ua') or '')}</div>
+      </div></body></html>""")
+
+
+@app.get("/api/admin/devices")
+def admin_devices(x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    out = db.device_list()
+    for d in out:
+        d["ua_human"] = _ua_human(d.get("ua") or "")
+        d["branch_name"] = cfg.branch_name(d.get("branch_hint")) if d.get("branch_hint") else ""
+    return {"devices": out, "enforce": DEVICE_ENFORCE}
+
+
+class DeviceSetIn(BaseModel):
+    token: str
+    status: str
+
+
+@app.post("/api/admin/devices/set")
+def admin_device_set(body: DeviceSetIn, x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    if body.status not in ("approved", "denied"):
+        raise HTTPException(400, "bad status")
+    return {"ok": db.device_set_status(body.token, body.status)}
 
 
 # ── Ops Hub: סטטוס Sentinel (דביר) ─────────────────────────────────

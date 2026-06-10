@@ -496,9 +496,76 @@ function fetchT(url,opts,ms){
 async function api(path,opts,ms){
   opts=opts||{}; opts.headers=opts.headers||{};
   if(S.adminKey) opts.headers['X-Admin-Key']=S.adminKey;
+  if(S.deviceToken) opts.headers['X-Device-Token']=S.deviceToken;
   const r=await fetchT(path,opts,ms||30000);
-  if(!r.ok){ const e=new Error('http '+r.status); e.status=r.status; throw e; }
+  if(!r.ok){
+    // המכשיר כבר לא מאושר (בוטל/נמחק) — חזרה למסך הבקשה
+    if(r.status===401){ try{ const j=await r.clone().json(); if(j&&j.code==='device'){ deviceBlockedFlow(); } }catch(e){} }
+    const e=new Error('http '+r.status); e.status=r.status; throw e;
+  }
   return r.json();
+}
+
+// ── אבטחת מכשיר: זיהוי, רישום, מסכי המתנה ──
+function deviceToken(){
+  let t=localStorage.getItem('tr_device');
+  if(!t){ t=(crypto.randomUUID?crypto.randomUUID():(Date.now()+'-'+Math.random().toString(36).slice(2)+Math.random().toString(36).slice(2)));
+    localStorage.setItem('tr_device',t); }
+  return t;
+}
+async function deviceRegister(name){
+  const body={token:S.deviceToken, name:name||'',
+              had_branch: !!localStorage.getItem('tr_branch_id'),
+              branch_id: localStorage.getItem('tr_branch_id')||''};
+  const r=await fetchT('/api/device/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)},20000);
+  if(!r.ok){ const j=await r.json().catch(()=>({})); throw new Error(j.detail||('http '+r.status)); }
+  return (await r.json()).status;
+}
+function deviceAskScreen(err){
+  document.getElementById('app').innerHTML=`<div class="picker" style="max-width:420px;margin:40px auto">
+    <div style="font-size:46px;text-align:center">🔒</div>
+    <h1 style="text-align:center">נדרש אישור מנהל</h1>
+    <div class="muted" style="text-align:center;margin-bottom:14px">מכשיר זה אינו מאושר עדיין.<br>מלא את שמך ושלח בקשת גישה.</div>
+    <input id="devName" placeholder="שם מבקש האישור (חובה)" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+      style="width:100%;padding:14px;font-size:17px;border-radius:12px;border:2px solid var(--line);background:var(--card2);color:var(--txt);outline:none;text-align:center;margin-bottom:6px">
+    <div class="err" style="color:var(--red);min-height:18px;text-align:center;font-size:13px">${err||''}</div>
+    <button class="btn-primary" style="width:100%;padding:14px" onclick="deviceSubmit()">שלח בקשת גישה 🔐</button>
+  </div>`;
+  const inp=document.getElementById('devName'); if(inp){ inp.focus();
+    inp.addEventListener('keydown',e=>{ if(e.key==='Enter') deviceSubmit(); }); }
+}
+async function deviceSubmit(){
+  const name=(document.getElementById('devName').value||'').trim();
+  if(name.length<2){ deviceAskScreen('יש להזין שם'); return; }
+  showLoading('שולח בקשה…');
+  try{ const st=await deviceRegister(name); hideLoading();
+    if(st==='approved'){ bootApp(); return; }
+    devicePendingScreen(name);
+  }catch(e){ hideLoading(); deviceAskScreen('שגיאה בשליחה — נסה שוב'); }
+}
+function devicePendingScreen(name){
+  document.getElementById('app').innerHTML=`<div class="picker" style="max-width:420px;margin:40px auto;text-align:center">
+    <div style="font-size:46px">⏳</div>
+    <h1>הבקשה נשלחה לאדמין</h1>
+    <div class="muted">ממתין לאישור עבור <b>${name||''}</b>…<br>המסך יתעדכן אוטומטית ברגע האישור.</div>
+    <div class="spinner" style="margin:22px auto;width:36px;height:36px;border:4px solid var(--line);border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite"></div>
+  </div>`;
+  clearInterval(S._devPoll);
+  S._devPoll=setInterval(async()=>{
+    try{ const r=await (await fetchT('/api/device/status?token='+encodeURIComponent(S.deviceToken),{},15000)).json();
+      if(r.status==='approved'){ clearInterval(S._devPoll); toast('המכשיר אושר ✓',true); bootApp(); }
+      else if(r.status==='denied'){ clearInterval(S._devPoll); deviceDeniedScreen(); }
+    }catch(e){}
+  },8000);
+}
+function deviceDeniedScreen(){
+  document.getElementById('app').innerHTML=`<div class="picker" style="max-width:420px;margin:40px auto;text-align:center">
+    <div style="font-size:46px">⛔</div><h1>הגישה נדחתה</h1>
+    <div class="muted">פנה למנהל המערכת.</div></div>`;
+}
+function deviceBlockedFlow(){
+  clearInterval(S.pollTimer); clearInterval(S.notifTimer);
+  deviceAskScreen('');
 }
 
 // ── מודאלים ──
@@ -2483,13 +2550,26 @@ document.addEventListener('click', (e)=>{
   if(t.closest && t.closest('.item, .serial, .sub, a, button, input, select, textarea, .arow, table, .drawer, .embed-frame')) return;
   focusScan();
 });
-(async()=>{
-  loadState(); applyTheme();
-  try{ S.cfg=await (await fetchT('/api/config',{},15000)).json(); }catch(e){}
+async function bootApp(){
   try{ S.branchList=await (await fetchT('/api/branches',{},15000)).json(); }catch(e){}
   try{ render(); }catch(e){ hideLoading(); }
   applyTheme();
   if(S.branchId){ startPoll(); startNotifPoll(); handleDeepLink(); }
+}
+(async()=>{
+  loadState(); applyTheme();
+  S.deviceToken=deviceToken();
+  try{ S.cfg=await (await fetchT('/api/config',{},15000)).json(); }catch(e){}
+  // רישום מכשיר שקט: מאושר/קיים → ממשיך רגיל; חדש לגמרי → מסך בקשת גישה
+  try{
+    const st=await deviceRegister('');
+    if(st==='pending') return devicePendingScreen('');
+    if(st==='denied') return deviceDeniedScreen();
+    return bootApp();                      // approved
+  }catch(e){
+    if(String(e.message||'').includes('שם')) return deviceAskScreen('');   // מכשיר חדש — נדרש שם
+    return bootApp();                      // תקלת רשת/קולד-סטארט — ממשיכים; האכיפה בשרת תחליט
+  }
 })();
 </script>
 </body>

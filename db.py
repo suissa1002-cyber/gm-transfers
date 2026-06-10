@@ -206,6 +206,21 @@ _SCHEMA = [
         UNIQUE(op_id, line_no)
     )
     """.format(pk=_PK),
+    # מכשירים מאושרים — device allowlist (אבטחת גישה לאפליקציה)
+    """
+    CREATE TABLE IF NOT EXISTS devices (
+        token       TEXT PRIMARY KEY,
+        name        TEXT,
+        status      TEXT DEFAULT 'pending',   -- pending / approved / denied
+        auto        INTEGER DEFAULT 0,        -- 1 = אושר אוטומטית (מכשיר קיים)
+        ua          TEXT,
+        ip          TEXT,
+        branch_hint TEXT,
+        created_at  TEXT,
+        approved_at TEXT,
+        last_seen   TEXT
+    )
+    """,
     # קטלוג מוצרים (cache ב-DB) — שורד restart; נבנה ע"י job מתוזמן, לא בכל בקשה.
     # כך המלצות ההזמנה קוראות מ-DB (מיידי, 0 קריאות NewOrder) ולא מפוצצות את הטוקן המשותף.
     """
@@ -1252,6 +1267,47 @@ def catalog_meta() -> dict:
         cur.execute("SELECT COUNT(*) AS n, MAX(updated_at) AS u FROM catalog")
         r = dict(cur.fetchone())
         return {"count": r.get("n") or 0, "updated_at": r.get("u")}
+
+
+# ── מכשירים מאושרים (device allowlist) ─────────────────────────────
+def device_get(token: str):
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM devices WHERE token = ?"), (str(token),))
+        return _row_to_dict(cur.fetchone())
+
+
+def device_register(token, name, ua, ip, branch_hint, status, auto=False):
+    with _conn() as c:
+        c.cursor().execute(_q("""
+            INSERT INTO devices (token, name, status, auto, ua, ip, branch_hint, created_at, last_seen, approved_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(token) DO NOTHING
+        """), (str(token), name or "", status, 1 if auto else 0, ua or "", ip or "",
+               str(branch_hint or ""), now_iso(), now_iso(),
+               now_iso() if status == "approved" else None))
+
+
+def device_set_status(token: str, status: str) -> bool:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""UPDATE devices SET status = ?, approved_at = ?
+                          WHERE token = ?"""),
+                    (status, now_iso() if status == "approved" else None, str(token)))
+        return bool(cur.rowcount)
+
+
+def device_touch(token: str):
+    with _conn() as c:
+        c.cursor().execute(_q("UPDATE devices SET last_seen = ? WHERE token = ?"),
+                           (now_iso(), str(token)))
+
+
+def device_list() -> list:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute("SELECT * FROM devices ORDER BY created_at DESC")
+        return [dict(r) for r in cur.fetchall()]
 
 
 def catalog_light() -> list:
