@@ -254,9 +254,9 @@ const S = { branchId:null, branchName:null, employee:null, adminKey:null,
             branchList:[], adminFilters:{q:'',from:'',to:'',status:'',fromDate:'',toDate:''}, _refocusFilter:false,
             view:'board', op:null, _fromAdmin:false, pollTimer:null, knownOps:null, notifTimer:null,
             adminTab:'transfers', rebalanceData:null, rebalFilter:'serial', rebalSearch:'', _refocusRebal:false,
-            rebalBranch:'', planData:null, planCount:0,
+            rebalBranch:'', rebalMfr:'', planData:null, planCount:0,
             recoData:null, recoDays:30, recoBranch:'', recoTarget:21, recoKind:'all',
-            recoSearch:'', recoSupplier:'', recoCategory:'', _refocusReco:false,
+            recoSearch:'', recoSupplier:'', recoCategory:'', recoMfr:'', _refocusReco:false,
             recoSort:{col:'recommended',dir:'desc'},
             orderData:null, orderCount:0, orderSearch:'', orderSupplier:'', orderCategory:'', _refocusOrder:false };
 
@@ -425,6 +425,30 @@ const _HE2EN = {
 function fixHebrewLayout(s){
   if(!s || !/[֐-׿]/.test(s)) return s;   // אין אותיות עבריות — להשאיר
   return s.split('').map(ch => _HE2EN[ch] !== undefined ? _HE2EN[ch] : ch).join('');
+}
+
+// ── זיהוי יצרן/מותג משם המוצר (אין שדה יצרן ב-NewOrder; המותג בשם) ──
+const _BRANDS=[
+  ['Apple',['apple','iphone','ipad','macbook',' imac','airpods','apple watch','magsafe']],
+  ['Samsung',['samsung','galaxy']],
+  ['Xiaomi',['xiaomi','redmi','poco','mi band','xiomi']],
+  ['Google',['google','pixel']],
+  ['Sony',['sony','playstation','ps5','ps4','dualsense']],
+  ['JBL',['jbl']],['Oppo',['oppo']],['OnePlus',['oneplus','one plus']],['Realme',['realme']],
+  ['Honor',['honor']],['Huawei',['huawei']],['Motorola',['motorola','moto ']],['Nokia',['nokia']],
+  ['Nothing',['nothing']],['TCL',['tcl']],['Lenovo',['lenovo']],['Asus',['asus','rog ']],
+  ['HP',['hewlett','hp ']],['Dell',['dell']],['AOC',['aoc']],['LG',['lg ']],
+  ['Blackview',['blackview']],['Nubia',['nubia']],['ZTE',['zte']],['Tecno',['tecno']],['Infinix',['infinix']],
+  ['Anker',['anker']],['Baseus',['baseus']],['Belkin',['belkin']],['Ugreen',['ugreen']],['WUW',['wuw']],
+  ['Hoco',['hoco']],['Remax',['remax']],['Devia',['devia']],['Recci',['recci']],['Green',['green lion','green ']],
+  ['Microsoft',['microsoft','xbox','surface']],['Nintendo',['nintendo']],
+  ['Logitech',['logitech']],['Razer',['razer']],['Bose',['bose']],['Marshall',['marshall']],['Beats',['beats']],
+  ['Energizer',['energizer']],['Duracell',['duracell']],['Varta',['varta']],['CMF',['cmf ']],
+];
+function brandOf(name){
+  const n=' '+String(name||'').toLowerCase().replace(/[\-]/g,' ')+' ';
+  for(const [brand,toks] of _BRANDS){ for(const t of toks){ if(n.includes(t)) return brand; } }
+  return '';
 }
 
 // ── זיהוי אופן הקלט: סורק (מהיר) / ידני / הדבקה ──
@@ -875,6 +899,7 @@ function rebalFiltered(){
   if(S.rebalFilter && S.rebalFilter!=='all') items=items.filter(i=>i.kind===S.rebalFilter);
   if(S.rebalBranch){ const b=Number(S.rebalBranch);
     items=items.filter(i=>(i.needs||[]).includes(b)||(i.surplus||[]).includes(b)); }
+  if(S.rebalMfr) items=items.filter(i=>brandOf(i.name)===S.rebalMfr);
   const q=(S.rebalSearch||'').trim().toLowerCase();
   if(q){ const q2=fixHebrewLayout(S.rebalSearch.trim()).toLowerCase();
     items=items.filter(i=>{ const blob=((i.name||'')+' '+(i.product_id||'')).toLowerCase();
@@ -913,6 +938,7 @@ function rebalRow(it, branches){
   </tr>`;
 }
 function setRebalBranch(v){ S.rebalBranch=v; renderRebalance(); }
+function setRebalMfr(v){ S.rebalMfr=v; renderRebalance(); }
 function renderRebalance(){
   const app=document.getElementById('app');
   const d=S.rebalanceData||{items:[],branches:[],last_scan:null};
@@ -935,6 +961,10 @@ function renderRebalance(){
       <select onchange="setRebalBranch(this.value)">
         <option value="">סניף — הכל</option>
         ${branches.map(b=>`<option value="${b.id}" ${String(b.id)===String(S.rebalBranch)?'selected':''}>${b.name}</option>`).join('')}
+      </select>
+      <select onchange="setRebalMfr(this.value)">
+        <option value="">יצרן — הכל</option>
+        ${[...new Set((d.items||[]).map(i=>brandOf(i.name)).filter(Boolean))].sort().map(m=>`<option value="${m}" ${m===S.rebalMfr?'selected':''}>${m}</option>`).join('')}
       </select>
       <button class="btn-primary" onclick="runRebalanceScan()">🔄 סרוק עכשיו</button>
       <button class="btn-ghost" onclick="exportRebalCSV()">📄 ייצא דוח</button>
@@ -1146,6 +1176,7 @@ function setRecoTarget(v){ S.recoTarget=Math.max(1,parseInt(v)||21); loadReco(tr
 function setRecoKind(v){ S.recoKind=v; renderReco(); }
 function setRecoSupplier(v){ S.recoSupplier=v; renderReco(); }
 function setRecoCategory(v){ S.recoCategory=v; renderReco(); }
+function setRecoMfr(v){ S.recoMfr=v; renderReco(); }
 function setRecoSearch(v){ S.recoSearch=v; S._refocusReco=true; renderReco(); }
 function orderQtyFor(pid){ const l=((S.orderData||{}).lines||[]).find(x=>String(x.product_id)===String(pid)); return l?l.qty:0; }
 function recoFiltered(){
@@ -1153,6 +1184,7 @@ function recoFiltered(){
   if(S.recoKind!=='all') items=items.filter(i=>i.kind===S.recoKind);
   if(S.recoSupplier) items=items.filter(i=>(i.supplier||'')===S.recoSupplier);
   if(S.recoCategory) items=items.filter(i=>(i.category||'')===S.recoCategory);
+  if(S.recoMfr) items=items.filter(i=>brandOf(i.name)===S.recoMfr);
   const q=(S.recoSearch||'').trim().toLowerCase();
   if(q){ const q2=fixHebrewLayout(S.recoSearch.trim()).toLowerCase();
     items=items.filter(i=>{ const blob=((i.name||'')+' '+(i.product_id||'')+' '+(i.barcode||'')).toLowerCase();
@@ -1204,6 +1236,7 @@ function renderReco(){
   const sum=(d.meta||{}).sales_summary||{};
   const suppliers=[...new Set((d.items||[]).map(i=>i.supplier).filter(Boolean))].sort();
   const cats=[...new Set((d.items||[]).map(i=>i.category).filter(Boolean))].sort();
+  const mfrs=[...new Set((d.items||[]).map(i=>brandOf(i.name)).filter(Boolean))].sort();
   const dataNote = sum.docs ? `מאגר מכירות: ${sum.docs} חשבוניות · ${(sum.min_date||'').slice(0,10)}…${(sum.max_date||'').slice(0,10)}` : 'מאגר מכירות ריק — לחץ "אסוף מכירות"';
   const opt=(v,sel,lbl)=>`<option value="${v}" ${String(sel)===String(v)?'selected':''}>${lbl}</option>`;
   app.innerHTML=`<h1 class="title">🛠️ ניהול אופרציה</h1>${adminTabsHTML()}
@@ -1219,6 +1252,9 @@ function renderReco(){
       </select>
       <select onchange="setRecoKind(this.value)">
         ${opt('all',S.recoKind,'סוג — הכל')}${opt('serial',S.recoKind,'📱 סריאליים')}${opt('barcode',S.recoKind,'🏷️ ברקוד')}
+      </select>
+      <select onchange="setRecoMfr(this.value)">
+        <option value="">יצרן — הכל</option>${mfrs.map(s=>opt(s,S.recoMfr,s)).join('')}
       </select>
       <select onchange="setRecoSupplier(this.value)">
         <option value="">ספק — הכל</option>${suppliers.map(s=>opt(s,S.recoSupplier,s)).join('')}
