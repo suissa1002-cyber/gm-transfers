@@ -1543,14 +1543,24 @@ function lsFiltered(){
   const hasFilter=S.lsKind!=='all'||S.lsCategory||S.lsMfr;
   if(q.length<2 && !hasFilter) return null;   // עוד אין מה להציג — מחכים להקלדה
   if(q.length>=2){
-    const ql=q.toLowerCase(), q2=fixHebrewLayout(q).toLowerCase();
+    // חיפוש חכם: מפצלים למילים — כל מילה חייבת להופיע איפשהו בשם/מק"ט/ברקוד,
+    // בלי תלות בסדר שבו המוצר רשום בקופה ("a57 navy" ימצא "OPPO A57 ... Navy")
+    const toks=q.toLowerCase().split(/\s+/).filter(Boolean);
+    const toks2=fixHebrewLayout(q).toLowerCase().split(/\s+/).filter(Boolean);
+    const alt=toks2.join(' ')!==toks.join(' ');
     items=items.filter(i=>{
       const blob=((i.name||'')+' '+(i.product_id||'')+' '+(i.barcode||'')).toLowerCase();
-      return blob.includes(ql)||(q2&&q2!==ql&&blob.includes(q2));
+      return toks.every(t=>blob.includes(t))||(alt&&toks2.every(t=>blob.includes(t)));
     });
+    const ql=q.toLowerCase();
     items.sort((a,b)=>{
-      const ex=x=>(String(x.product_id)===q||String(x.barcode)===q)?0:1;   // התאמה מדויקת קודם
-      return ex(a)-ex(b)||String(a.name).localeCompare(String(b.name),'he');
+      const score=x=>{
+        if(String(x.product_id)===q||String(x.barcode)===q) return 0;        // התאמה מדויקת
+        const n=String(x.name||'').toLowerCase();
+        if(n.includes(ql)) return 1;                                          // הביטוי כרצף בשם
+        return 2;                                                             // מילים מפוזרות
+      };
+      return score(a)-score(b)||String(a.name).localeCompare(String(b.name),'he');
     });
   } else items=items.slice().sort((a,b)=>String(a.name).localeCompare(String(b.name),'he'));
   // נמצא לפי סריאל — מקדימים את המוצר לראש הרשימה
