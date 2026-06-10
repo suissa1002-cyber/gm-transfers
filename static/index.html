@@ -1440,7 +1440,7 @@ function removalsFiltered(){
   if(S.removalsMfr) rows=rows.filter(r=>brandOf(r.name)===S.removalsMfr);
   const q=(S.removalsSearch||'').trim().toLowerCase();
   if(q){ const q2=fixHebrewLayout(S.removalsSearch.trim()).toLowerCase();
-    rows=rows.filter(r=>{ const blob=((r.name||'')+' '+(r.product_id||'')+' '+(r.serials||'')+' '+(r.employee||'')).toLowerCase();
+    rows=rows.filter(r=>{ const blob=((r.name||'')+' '+(r.product_id||'')+' '+(r.serials||'')+' '+(r.employee||'')+' '+(r.op_id||'')).toLowerCase();
       return blob.includes(q)||(q2&&blob.includes(q2)); }); }
   return rows;
 }
@@ -1458,7 +1458,7 @@ function renderRemovals(){
   app.innerHTML=`<h1 class="title">🛠️ ניהול אופרציה</h1>${adminTabsHTML()}
     <div class="muted" style="margin-bottom:10px;font-size:13px">הורדות מלאי בסניף <b>מרלוג</b> (חצי-קופה) — נספרות כמכירות בהמלצות ההזמנה. ${note}.</div>
     <div class="rebal-bar">
-      <input id="removalsSearch" placeholder="🔎 חיפוש מוצר / מק״ט / סריאל / עובד" value="${(S.removalsSearch||'').replace(/"/g,'&quot;')}" oninput="setRemovalsSearch(this.value)">
+      <input id="removalsSearch" placeholder="🔎 חיפוש מוצר / מק״ט / סריאל / עובד / מס׳ פעולה" value="${(S.removalsSearch||'').replace(/"/g,'&quot;')}" oninput="setRemovalsSearch(this.value)">
       <select onchange="setRemovalsDays(this.value)" ${rangeActive?'disabled':''}>
         ${[1,7,14,30,45,60,90].map(n=>opt(n,S.removalsDays,n+' ימים')).join('')}
       </select>
@@ -1474,13 +1474,14 @@ function renderRemovals(){
       <span class="muted" style="margin-inline-start:auto">${rows.length} שורות · <b>${totalQty}</b> יח׳ · מתוך ${total}</span>
     </div>
     ${rows.length?`<table class="admin"><thead><tr>
-      <th>מק״ט</th><th>מוצר</th><th>יצרן</th><th>כמות</th><th>סריאל</th><th>עובד</th><th>הערה</th><th>תאריך</th>
+      <th>מס׳ פעולה</th><th>מק״ט</th><th>מוצר</th><th>יצרן</th><th>כמות</th><th>סריאל</th><th>עובד</th><th>הערה</th><th>תאריך</th>
     </tr></thead><tbody>${rows.map(removalRow).join('')}</tbody></table>`
     :`<div class="empty">${sm.ops?'אין הורדות מתאימות לסינון/טווח':'אין נתוני הורדות עדיין — לחץ "🔄 אסוף הורדות" (או המתן לאיסוף האוטומטי)'}</div>`}`;
   if(S._refocusRemovals){ const el=document.getElementById('removalsSearch'); if(el){ el.focus(); const v=el.value; el.value=''; el.value=v; } S._refocusRemovals=false; }
 }
 function removalRow(r){
   return `<tr>
+    <td style="direction:ltr;text-align:right;font-family:monospace;font-weight:700;color:var(--blue)">${r.op_id||''}</td>
     <td style="direction:ltr;text-align:right;font-family:monospace">${r.product_id||''}</td>
     <td>${r.name||''}</td>
     <td>${brandOf(r.name)||'—'}</td>
