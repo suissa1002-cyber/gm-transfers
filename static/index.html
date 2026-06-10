@@ -297,7 +297,21 @@
   @media (max-width:760px){
     .scan-layout{grid-template-columns:1fr}
     .scan-side{position:static}
-    header{padding:12px 14px} .wrap{padding:14px}
+    header{padding:10px 12px;gap:8px;flex-wrap:nowrap} .wrap{padding:14px}
+    /* header קומפקטי בשורה אחת: אייקונים בלבד, בלי טקסטים */
+    .hlbl{display:none}
+    header .brand{font-size:16px}
+    header .right{gap:6px;flex-wrap:nowrap;font-size:13px}
+    header .btn-ghost{padding:7px 9px;font-size:14px}
+    .burger{padding:5px 10px;font-size:17px}
+    /* כותרת + טאבים: שורה אחת נגללת במקום 4 שורות */
+    h1.title{font-size:17px;margin:0 0 10px}
+    .tabs{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;gap:7px;
+          margin:0 -14px 12px;padding:0 14px 6px;scrollbar-width:none}
+    .tabs::-webkit-scrollbar{display:none}
+    .tabs>button,.tabgroup button{padding:8px 13px;font-size:13px;white-space:nowrap;flex:none}
+    .tabgroup{flex:none}
+    .ls-hint{display:none}
     table.admin{display:block;overflow-x:auto;white-space:nowrap}
     .embed-frame{height:calc(100vh - 215px)}
     /* סרגל סינון נוח לאצבע: חיפוש ברוחב מלא, פילטרים בזוגות */
@@ -316,9 +330,9 @@
     <div class="brand">📦 קליטת העברות</div>
   </div>
   <div class="right" id="hdr" style="display:none">
-    <button class="btn-ghost" id="adminBtn" style="display:none" onclick="toggleAdmin()">🛠️ ניהול</button>
-    סניף: <b id="branchName"></b>
-    <button class="btn-ghost" onclick="changeBranch()">החלף סניף</button>
+    <button class="btn-ghost" id="adminBtn" style="display:none" onclick="toggleAdmin()">🛠️<span class="hlbl"> ניהול</span></button>
+    <span class="hlbl">סניף: </span><b id="branchName"></b>
+    <button class="btn-ghost" onclick="changeBranch()" title="החלף סניף">🔁<span class="hlbl"> החלף סניף</span></button>
     <button class="btn-ghost" id="themeBtn" onclick="toggleTheme()"></button>
   </div>
 </header>
@@ -348,7 +362,8 @@ const S = { branchId:null, branchName:null, employee:null, adminKey:null,
 function applyTheme(){
   const light = S.theme==='light';
   document.body.classList.toggle('light', light);
-  const b=document.getElementById('themeBtn'); if(b) b.textContent = light?'☀️ בהיר':'🌙 כהה';
+  const b=document.getElementById('themeBtn');
+  if(b) b.innerHTML = (light?'☀️':'🌙')+'<span class="hlbl"> '+(light?'בהיר':'כהה')+'</span>';
 }
 function toggleTheme(){ S.theme = (S.theme==='light')?'dark':'light';
   localStorage.setItem('tr_theme',S.theme); applyTheme(); }
@@ -2001,7 +2016,7 @@ function renderLive(){
   app.innerHTML=`<h1 class="title">🛠️ ניהול אופרציה</h1>${adminTabsHTML()}
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap">
       <span class="ls-live"><span class="dot"></span> מלאי בזמן אמת מהקופה</span>
-      <span class="muted" style="font-size:12px">החיפוש מקומי ומיידי; כמויות המלאי נקראות חי מ-NewOrder ברגע הצמצום · לחיצה על מוצר = פירוט סניפים + סריאלים</span>
+      <span class="muted ls-hint" style="font-size:12px">החיפוש מקומי ומיידי; כמויות המלאי נקראות חי מ-NewOrder ברגע הצמצום · לחיצה על מוצר = פירוט סניפים + סריאלים</span>
     </div>
     <div class="rebal-bar">
       <input id="lsSearch" placeholder="🔎 שם מוצר / מק״ט / ברקוד / סריאל" value="${(S.lsQuery||'').replace(/"/g,'&quot;')}" oninput="setLsQuery(this.value)" autocomplete="off">
