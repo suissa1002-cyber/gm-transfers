@@ -1617,7 +1617,8 @@ function lsRow(it,live){
   const tcell=live?(fresh?('🟢 '+fmtClock(c.data.fetched_at)):(c&&c.err?'שגיאת קופה':'…')):'צמצם לתצוגה חיה';
   return `<tr class="ls-row" onclick='openLiveDetail(${JSON.stringify(pid)})'>
     <td style="direction:ltr;text-align:right;font-family:monospace">${pid}</td>
-    <td>${serBadge?serBadge+' ':''}${it.name}${it.active?'':' <span class="mtag warn">לא פעיל</span>'}</td>
+    <td><div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <span>${it.name}${it.active?'':' <span class="mtag warn">לא פעיל</span>'}</span>${serBadge||''}</div></td>
     <td>${it.kind==='serial'?'📱':'🏷️'}</td>
     <td class="muted">${it.category||'—'}</td>
     ${bcells}
