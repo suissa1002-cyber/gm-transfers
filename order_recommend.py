@@ -63,9 +63,17 @@ def compute(days: int = 30, branch_id=None, target_days: int = None) -> dict:
     today = date.today()
     since = (today - timedelta(days=days)).isoformat()
     agg = db.sales_aggregate(since, branch_id=branch_id)   # {pid: {qty,last_date,branches}}
+    rem = db.removals_aggregate(since, branch_id=branch_id)  # מרלוג: הורדת מלאי = מכירה בפועל
     catalog = db.catalog_load()                            # מ-DB — 0 קריאות NewOrder
     summary = db.sales_summary()
     cat_meta = db.catalog_meta()
+    # מאחדים מכירות-חשבונית (נטו) + הורדות-מרלוג לכל מוצר
+    combined = {}
+    for pid, s in agg.items():
+        combined[pid] = {"qty": s["qty"], "last_date": s.get("last_date", "")}
+    for pid, q in rem.items():
+        d = combined.setdefault(pid, {"qty": 0.0, "last_date": ""})
+        d["qty"] += q
 
     # מכנה אפקטיבי: אם יש לנו פחות היסטוריה מהחלון המבוקש, מחלקים במספר הימים שבאמת נאספו
     # (אחרת קצב המכירה מוערך בחסר בזמן רולאאוט). מקסימום = days.
@@ -78,7 +86,7 @@ def compute(days: int = 30, branch_id=None, target_days: int = None) -> dict:
             data_days = days
 
     items = []
-    for pid, s in agg.items():
+    for pid, s in combined.items():
         sold = round(s["qty"], 2)
         if sold <= 0:
             continue                       # נטו אפס/שלילי (החזרות) — לא ממליצים

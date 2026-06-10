@@ -258,7 +258,8 @@ const S = { branchId:null, branchName:null, employee:null, adminKey:null,
             recoData:null, recoDays:30, recoBranch:'', recoTarget:21, recoKind:'all',
             recoSearch:'', recoSupplier:'', recoCategory:'', recoMfr:'', _refocusReco:false,
             recoSort:{col:'recommended',dir:'desc'},
-            orderData:null, orderCount:0, orderSearch:'', orderSupplier:'', orderCategory:'', _refocusOrder:false };
+            orderData:null, orderCount:0, orderSearch:'', orderSupplier:'', orderCategory:'', _refocusOrder:false,
+            removalsData:null, removalsDays:30, removalsFrom:'', removalsTo:'', removalsMfr:'', removalsSearch:'', _refocusRemovals:false };
 
 // ── ערכת נושא (כהה/בהיר) ──
 function applyTheme(){
@@ -864,6 +865,7 @@ function adminTabsHTML(){
       <button class="${a('reco')}" onclick="setAdminTab('reco')">🛒 המלצות הזמנה</button>
       <button class="${a('order')}" onclick="setAdminTab('order')">📋 טיוטת הזמנה${oc}</button>
     </div>
+    <button class="${a('removals')}" onclick="setAdminTab('removals')">📉 הורדות מרלוג</button>
   </div>`;
 }
 function setAdminTab(tab){
@@ -872,6 +874,7 @@ function setAdminTab(tab){
   else if(tab==='plan'){ loadPlan(true); }
   else if(tab==='reco'){ if(!S.recoData) loadReco(true); else renderReco(); }
   else if(tab==='order'){ loadOrder(true); }
+  else if(tab==='removals'){ if(!S.removalsData) loadRemovals(true); else renderRemovals(); }
   else renderAdmin();
 }
 async function loadPlan(spinner){
@@ -1416,11 +1419,89 @@ function openOrderRequestPage(){
   openHTMLWindow(orderRequestHTML(lines));
 }
 
+// ── 📉 הורדות מלאי מרלוג ──
+async function loadRemovals(spinner){
+  if(spinner) showLoading('טוען הורדות מלאי…');
+  let qs;
+  if(S.removalsFrom && S.removalsTo) qs=`?from_date=${S.removalsFrom}&to_date=${S.removalsTo}`;
+  else qs=`?days=${S.removalsDays}`;
+  try{ S.removalsData=await api('/api/admin/removals'+qs); }catch(e){}
+  if(spinner) hideLoading();
+  if(S.view==='admin' && S.adminTab==='removals') renderRemovals();
+}
+function setRemovalsDays(v){ S.removalsDays=Number(v)||30; S.removalsFrom=''; S.removalsTo=''; loadRemovals(true); }
+function setRemovalsFrom(v){ S.removalsFrom=v; if(S.removalsFrom&&S.removalsTo) loadRemovals(true); }
+function setRemovalsTo(v){ S.removalsTo=v; if(S.removalsFrom&&S.removalsTo) loadRemovals(true); }
+function clearRemovalsRange(){ S.removalsFrom=''; S.removalsTo=''; loadRemovals(true); }
+function setRemovalsMfr(v){ S.removalsMfr=v; renderRemovals(); }
+function setRemovalsSearch(v){ S.removalsSearch=v; S._refocusRemovals=true; renderRemovals(); }
+function removalsFiltered(){
+  let rows=((S.removalsData||{}).rows||[]).slice();
+  if(S.removalsMfr) rows=rows.filter(r=>brandOf(r.name)===S.removalsMfr);
+  const q=(S.removalsSearch||'').trim().toLowerCase();
+  if(q){ const q2=fixHebrewLayout(S.removalsSearch.trim()).toLowerCase();
+    rows=rows.filter(r=>{ const blob=((r.name||'')+' '+(r.product_id||'')+' '+(r.serials||'')+' '+(r.employee||'')).toLowerCase();
+      return blob.includes(q)||(q2&&blob.includes(q2)); }); }
+  return rows;
+}
+function renderRemovals(){
+  const app=document.getElementById('app');
+  const d=S.removalsData||{rows:[],summary:{}};
+  const rows=removalsFiltered();
+  const total=(d.rows||[]).length;
+  const totalQty=rows.reduce((a,r)=>a+(Number(r.qty)||0),0);
+  const sm=d.summary||{};
+  const mfrs=[...new Set((d.rows||[]).map(r=>brandOf(r.name)).filter(Boolean))].sort();
+  const opt=(v,sel,lbl)=>`<option value="${v}" ${String(sel)===String(v)?'selected':''}>${lbl}</option>`;
+  const rangeActive=!!(S.removalsFrom&&S.removalsTo);
+  const note=sm.ops?`מאגר הורדות: ${sm.ops} פעולות · ${(sm.min_date||'').slice(0,10)}…${(sm.max_date||'').slice(0,10)}`:'מאגר ריק — לחץ "אסוף הורדות"';
+  app.innerHTML=`<h1 class="title">🛠️ ניהול אופרציה</h1>${adminTabsHTML()}
+    <div class="muted" style="margin-bottom:10px;font-size:13px">הורדות מלאי בסניף <b>מרלוג</b> (חצי-קופה) — נספרות כמכירות בהמלצות ההזמנה. ${note}.</div>
+    <div class="rebal-bar">
+      <input id="removalsSearch" placeholder="🔎 חיפוש מוצר / מק״ט / סריאל / עובד" value="${(S.removalsSearch||'').replace(/"/g,'&quot;')}" oninput="setRemovalsSearch(this.value)">
+      <select onchange="setRemovalsDays(this.value)" ${rangeActive?'disabled':''}>
+        ${[1,7,14,30,45,60,90].map(n=>opt(n,S.removalsDays,n+' ימים')).join('')}
+      </select>
+      <label class="muted" style="font-size:13px;display:flex;align-items:center;gap:4px">מ־
+        <input type="date" value="${S.removalsFrom}" onchange="setRemovalsFrom(this.value)"></label>
+      <label class="muted" style="font-size:13px;display:flex;align-items:center;gap:4px">עד
+        <input type="date" value="${S.removalsTo}" onchange="setRemovalsTo(this.value)"></label>
+      ${rangeActive?`<button class="btn-ghost" onclick="clearRemovalsRange()">✕ נקה טווח</button>`:''}
+      <select onchange="setRemovalsMfr(this.value)">
+        <option value="">יצרן — הכל</option>${mfrs.map(m=>opt(m,S.removalsMfr,m)).join('')}
+      </select>
+      <button class="btn-primary" onclick="runRemovalsIngest()">🔄 אסוף הורדות</button>
+      <span class="muted" style="margin-inline-start:auto">${rows.length} שורות · <b>${totalQty}</b> יח׳ · מתוך ${total}</span>
+    </div>
+    ${rows.length?`<table class="admin"><thead><tr>
+      <th>מק״ט</th><th>מוצר</th><th>יצרן</th><th>כמות</th><th>סריאל</th><th>עובד</th><th>תאריך</th>
+    </tr></thead><tbody>${rows.map(removalRow).join('')}</tbody></table>`
+    :`<div class="empty">${sm.ops?'אין הורדות מתאימות לסינון/טווח':'אין נתוני הורדות עדיין — לחץ "🔄 אסוף הורדות" (או המתן לאיסוף האוטומטי)'}</div>`}`;
+  if(S._refocusRemovals){ const el=document.getElementById('removalsSearch'); if(el){ el.focus(); const v=el.value; el.value=''; el.value=v; } S._refocusRemovals=false; }
+}
+function removalRow(r){
+  return `<tr>
+    <td style="direction:ltr;text-align:right;font-family:monospace">${r.product_id||''}</td>
+    <td>${r.name||''}</td>
+    <td>${brandOf(r.name)||'—'}</td>
+    <td style="font-weight:700;text-align:center">${r.qty}</td>
+    <td style="direction:ltr;text-align:right;font-family:monospace;font-size:12px">${r.serials||'—'}</td>
+    <td>${r.employee||'—'}</td>
+    <td class="muted">${fmtTime(r.removed_at)}</td>
+  </tr>`;
+}
+async function runRemovalsIngest(){
+  showLoading('אוסף הורדות מלאי…');
+  try{ await api('/api/admin/removals-ingest',{method:'POST'}); }catch(e){}
+  setTimeout(()=>{ loadRemovals(false); hideLoading(); toast('איסוף הורדות רץ ברקע — יתעדכן בקרוב',true); }, 2500);
+}
+
 function renderAdmin(){
   if(S.adminTab==='rebalance') return S.rebalanceData?renderRebalance():loadRebalance(true);
   if(S.adminTab==='plan') return S.planData?renderPlan():loadPlan(true);
   if(S.adminTab==='reco') return S.recoData?renderReco():loadReco(true);
   if(S.adminTab==='order') return S.orderData?renderOrder():loadOrder(true);
+  if(S.adminTab==='removals') return S.removalsData?renderRemovals():loadRemovals(true);
   const app=document.getElementById('app');
   const f=S.adminFilters;
   const data=S.adminData||{summary:{},transfers:[],misroutes:[]};
@@ -1532,7 +1613,7 @@ function startPoll(){ clearInterval(S.pollTimer);
       if(bs && document.activeElement===bs && bs.value) return;
       renderBoard(a, true);
     } else if(S.view==='admin'){
-      if(S.adminTab==='rebalance'||S.adminTab==='reco'||S.adminTab==='order') return;   // נתונים מחושבים/עריכה — לא מרעננים אוטומטית
+      if(S.adminTab==='rebalance'||S.adminTab==='reco'||S.adminTab==='order'||S.adminTab==='removals') return;   // נתונים מחושבים/עריכה — לא מרעננים אוטומטית
       const ae=document.activeElement;   // אל תרענן תוך כדי שימוש בסינון
       if(ae && ae.closest && ae.closest('.filters')) return;
       loadAdmin(false);   // רענון שקט ברקע

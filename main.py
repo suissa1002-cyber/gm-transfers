@@ -99,6 +99,22 @@ def _catalog_refresh_job():
         logger.warning("catalog_refresh failed: %s", e)
 
 
+def _removals_ingest_job():
+    try:
+        import removals_ingest
+        removals_ingest.ingest_incremental()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("removals_ingest failed: %s", e)
+
+
+def _removals_backfill_job(days: int = 90):
+    try:
+        import removals_ingest
+        removals_ingest.backfill(days=days)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("removals_backfill failed: %s", e)
+
+
 @app.on_event("startup")
 def _startup():
     db.init_db()
@@ -122,6 +138,10 @@ def _startup():
     scheduler.add_job(_sales_ingest_job, "interval", hours=3, id="sales_ingest", max_instances=1)
     scheduler.add_job(_sales_ingest_job, "date", id="sales_ingest_initial",
                       run_date=datetime.now() + timedelta(seconds=120))
+    # הורדות מלאי מרלוג: כל 3 שעות + ריצה ראשונית (~180ש', מרווח מהשאר)
+    scheduler.add_job(_removals_ingest_job, "interval", hours=3, id="removals_ingest", max_instances=1)
+    scheduler.add_job(_removals_ingest_job, "date", id="removals_initial",
+                      run_date=datetime.now() + timedelta(seconds=180))
     # קטלוג מוצרים ל-DB: רענון כל 6 שעות + ריצה ראשונית (~150ש' אחרי עליה, מרווח מ-sales)
     scheduler.add_job(_catalog_refresh_job, "interval", hours=6, id="catalog_refresh", max_instances=1)
     scheduler.add_job(_catalog_refresh_job, "date", id="catalog_initial",
@@ -467,6 +487,46 @@ def admin_catalog_refresh(x_admin_key: Optional[str] = Header(None)):
     scheduler.add_job(_catalog_refresh_job, "date", id="catalog_manual",
                       run_date=datetime.now() + timedelta(seconds=1), replace_existing=True)
     return {"started": True, "meta": db.catalog_meta()}
+
+
+# ── הורדות מלאי מרלוג ──────────────────────────────────────────────
+@app.get("/api/admin/removals")
+def admin_removals(days: int = 30, from_date: Optional[str] = None, to_date: Optional[str] = None,
+                   x_admin_key: Optional[str] = Header(None)):
+    """רשימת הורדות מלאי מרלוג. או לפי `days`, או טווח `from_date`/`to_date` (YYYY-MM-DD)."""
+    _require_admin(x_admin_key)
+    from datetime import date as _date, timedelta as _td
+    if from_date:
+        rows = db.removals_list(from_date, to_date or _date.today().isoformat())
+    else:
+        since = (_date.today() - _td(days=int(days or 30))).isoformat()
+        rows = db.removals_list(since)
+    return {"rows": rows, "summary": db.removals_summary(),
+            "branch_name": cfg.branch_name(3)}
+
+
+@app.get("/api/admin/removals-status")
+def admin_removals_status(x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    return {"summary": db.removals_summary(),
+            "last_run": db.sales_state_get("removals_last_run"),
+            "backfill_last_run": db.sales_state_get("removals_backfill_last_run")}
+
+
+@app.post("/api/admin/removals-ingest")
+def admin_removals_ingest(x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    scheduler.add_job(_removals_ingest_job, "date", id="removals_manual",
+                      run_date=datetime.now() + timedelta(seconds=1), replace_existing=True)
+    return {"started": True}
+
+
+@app.post("/api/admin/removals-backfill")
+def admin_removals_backfill(days: int = 90, x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    scheduler.add_job(lambda: _removals_backfill_job(days), "date", id="removals_backfill_manual",
+                      run_date=datetime.now() + timedelta(seconds=1), replace_existing=True)
+    return {"started": True, "days": days}
 
 
 @app.get("/api/admin/sales-status")

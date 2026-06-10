@@ -189,6 +189,22 @@ _SCHEMA = [
         v  TEXT
     )
     """,
+    # הורדות מלאי בסניף מרלוג (operationType=2). חצי-קופה — הורדה = מכירה בפועל.
+    """
+    CREATE TABLE IF NOT EXISTS removals (
+        id          {pk},
+        op_id       TEXT,
+        line_no     INTEGER,
+        product_id  TEXT,
+        name        TEXT,
+        qty         REAL,
+        serials     TEXT,
+        employee    TEXT,
+        branch_id   INTEGER,
+        removed_at  TEXT,
+        UNIQUE(op_id, line_no)
+    )
+    """.format(pk=_PK),
     # קטלוג מוצרים (cache ב-DB) — שורד restart; נבנה ע"י job מתוזמן, לא בכל בקשה.
     # כך המלצות ההזמנה קוראות מ-DB (מיידי, 0 קריאות NewOrder) ולא מפוצצות את הטוקן המשותף.
     """
@@ -222,6 +238,8 @@ _SCHEMA = [
     "CREATE INDEX IF NOT EXISTS idx_transfers_to ON transfers(to_branch_id, status)",
     "CREATE INDEX IF NOT EXISTS idx_sales_product ON sales(product_id, sale_date)",
     "CREATE INDEX IF NOT EXISTS idx_sales_date ON sales(sale_date)",
+    "CREATE INDEX IF NOT EXISTS idx_removals_product ON removals(product_id, removed_at)",
+    "CREATE INDEX IF NOT EXISTS idx_removals_date ON removals(removed_at)",
 ]
 
 
@@ -933,6 +951,74 @@ def sales_aggregate(since_date: str, branch_id=None) -> dict:
             if sd > d["last_date"]:
                 d["last_date"] = sd
     return out
+
+
+# ── הורדות מלאי מרלוג (removals) ───────────────────────────────────
+def removals_insert(rows: list) -> int:
+    """row: {op_id,line_no,product_id,name,qty,serials,employee,branch_id,removed_at}. idempotent."""
+    if not rows:
+        return 0
+    n = 0
+    with _conn() as c:
+        cur = c.cursor()
+        for r in rows:
+            cur.execute(_q("""
+                INSERT INTO removals (op_id, line_no, product_id, name, qty, serials, employee, branch_id, removed_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(op_id, line_no) DO NOTHING
+            """), (str(r.get("op_id")), int(r.get("line_no") or 0), str(r.get("product_id") or ""),
+                   r.get("name") or "", float(r.get("qty") or 0), r.get("serials") or "",
+                   r.get("employee") or "",
+                   int(r["branch_id"]) if r.get("branch_id") not in (None, "") else None,
+                   r.get("removed_at") or ""))
+            n += 1
+    return n
+
+
+def removals_opids_since(since_prefix: str) -> set:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT DISTINCT op_id FROM removals WHERE removed_at >= ?"), (since_prefix,))
+        return {str(r["op_id"]) for r in cur.fetchall()}
+
+
+def removals_aggregate(since_date: str, branch_id=None) -> dict:
+    """סך כמות שהורדה לכל מוצר מאז תאריך. {product_id: qty}. (מרלוג בלבד = מכירות בפועל)."""
+    out = {}
+    with _conn() as c:
+        cur = c.cursor()
+        sql = "SELECT product_id, qty FROM removals WHERE removed_at >= ?"
+        params = [since_date]
+        if branch_id not in (None, "", "all"):
+            sql += " AND branch_id = ?"
+            params.append(int(branch_id))
+        cur.execute(_q(sql), tuple(params))
+        for r in cur.fetchall():
+            pid = str(r["product_id"])
+            out[pid] = out.get(pid, 0.0) + float(r["qty"] or 0)
+    return out
+
+
+def removals_list(from_date: str, to_date: str = None) -> list:
+    """שורות הורדה בטווח (removed_at בין from..to). מוחזר ממוין מהחדש לישן."""
+    with _conn() as c:
+        cur = c.cursor()
+        if to_date:
+            cur.execute(_q("""SELECT * FROM removals WHERE removed_at >= ? AND removed_at <= ?
+                              ORDER BY removed_at DESC"""), (from_date, to_date + "T99"))
+        else:
+            cur.execute(_q("SELECT * FROM removals WHERE removed_at >= ? ORDER BY removed_at DESC"),
+                        (from_date,))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def removals_summary() -> dict:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute("SELECT COUNT(*) AS lines, COUNT(DISTINCT op_id) AS ops, MIN(removed_at) AS mn, MAX(removed_at) AS mx FROM removals")
+        r = dict(cur.fetchone())
+        return {"lines": r.get("lines") or 0, "ops": r.get("ops") or 0,
+                "min_date": r.get("mn"), "max_date": r.get("mx")}
 
 
 # ── טיוטת הזמנה (order_plan) — רשימה שטוחה ─────────────────────────
