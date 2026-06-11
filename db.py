@@ -1424,10 +1424,17 @@ def device_set_status(token: str, status: str) -> bool:
         return bool(cur.rowcount)
 
 
-def device_touch(token: str):
+def device_touch(token: str, branch_id=None):
+    """מעדכן last_seen, ואם סופק branch_id — גם את הסניף הנוכחי (כדי שלוח
+    ניהול המכשירים יראה מאיפה המכשיר עובד עכשיו, לא איפה שנרשם לראשונה)."""
     with _conn() as c:
-        c.cursor().execute(_q("UPDATE devices SET last_seen = ? WHERE token = ?"),
-                           (now_iso(), str(token)))
+        cur = c.cursor()
+        if branch_id:
+            cur.execute(_q("UPDATE devices SET last_seen = ?, branch_hint = ? WHERE token = ?"),
+                        (now_iso(), str(branch_id), str(token)))
+        else:
+            cur.execute(_q("UPDATE devices SET last_seen = ? WHERE token = ?"),
+                        (now_iso(), str(token)))
 
 
 def device_list() -> list:

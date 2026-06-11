@@ -840,7 +840,7 @@ async def _device_gate(request, call_next):
             if not d or d.get("status") != "approved":
                 return JSONResponse({"detail": "device not approved", "code": "device"}, status_code=401)
             try:
-                db.device_touch(tok)
+                db.device_touch(tok, request.query_params.get("branch_id"))
             except Exception:  # noqa: BLE001
                 pass
     return await call_next(request)
