@@ -1371,8 +1371,35 @@ class WaCanned(BaseModel):
 
 @app.get("/api/admin/wa/canned")
 def wa_canned(x_admin_key: Optional[str] = Header(None)):
+    """שלנו (ניתנות לעריכה) + התשובות השמורות של ConnectOp (read-only)."""
     _require_admin(x_admin_key)
-    return {"items": db.wa_canned_list()}
+    import wa
+    try:
+        connectop = wa.saved_replies()
+    except Exception:  # noqa: BLE001
+        connectop = []
+    return {"items": db.wa_canned_list(), "connectop": connectop}
+
+
+@app.get("/api/admin/wa/templates")
+def wa_templates_list(x_admin_key: Optional[str] = Header(None)):
+    """תבניות WhatsApp מאושרות-מטא (לשליחה מחוץ לחלון 24ש)."""
+    _require_admin(x_admin_key)
+    import wa
+    return {"templates": _wa_guard(wa.wa_templates)}
+
+
+class WaTplSend(BaseModel):
+    phone: str
+    template_id: str
+    params: list = []
+
+
+@app.post("/api/admin/wa/send-wa-template")
+def wa_send_wa_template(body: WaTplSend, x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    import wa
+    return _wa_guard(wa.send_wa_template, body.phone, body.template_id, body.params)
 
 
 @app.post("/api/admin/wa/canned")

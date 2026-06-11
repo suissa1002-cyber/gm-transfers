@@ -240,6 +240,60 @@ def send_media(phone: str, filename: str, content: bytes, mime: str, caption: st
 
 # ── פעולות שיחה ─────────────────────────────────────────────────────
 
+# ── תשובות שמורות + תבניות מאושרות מ-ConnectOp ─────────────────────
+# התגלית (11/06, מתוך inbox.js של הדשבורד): התשובות חוזרות בשדה `results`
+# (לא `data`!): op=inbox_saved_reply/get; תבניות: op=whatsapp/templates/get.
+
+_sr_cache = {"at": 0.0, "items": None}
+_tpl_cache = {"at": 0.0, "items": None}
+
+
+def saved_replies():
+    """התשובות השמורות של ConnectOp (read-only אצלנו), cache 5 דקות."""
+    now = time.time()
+    if _sr_cache["items"] is None or now - _sr_cache["at"] > 300:
+        r = _dash_call(_dash()._post_user_php, {"op": "inbox_saved_reply", "op1": "get"})
+        items = r.get("results", []) if isinstance(r, dict) else []
+        _sr_cache.update(at=now, items=[
+            {"id": i.get("id"), "title": (i.get("shortcode") or "").lstrip("/"),
+             "text": i.get("value") or ""} for i in items])
+    return _sr_cache["items"]
+
+
+def wa_templates():
+    """תבניות WhatsApp מאושרות-מטא, מפוענחות: id, שפה, טקסט, מספר פרמטרים."""
+    import json as _json
+    now = time.time()
+    if _tpl_cache["items"] is None or now - _tpl_cache["at"] > 600:
+        r = _dash_call(_dash()._post_user_php, {"op": "whatsapp", "op1": "templates", "op2": "get"})
+        out = []
+        for t in (r.get("results", []) if isinstance(r, dict) else []):
+            try:
+                jb = _json.loads(t.get("json_builder") or "{}")
+            except Exception:  # noqa: BLE001
+                jb = {}
+            body = ((jb.get("body") or {}).get("text")) or ""
+            nums = [int(m) for m in re.findall(r"\{\{(\d+)\}\}", body)]
+            out.append({"id": t.get("id"), "language": t.get("language") or "he",
+                        "body": body, "params": max(nums) if nums else 0})
+        _tpl_cache.update(at=now, items=out)
+    return _tpl_cache["items"]
+
+
+def send_wa_template(phone: str, template_id: str, params=None, language: str = "he"):
+    """שליחת תבנית מאושרת כלשהי (לא רק new_message) — עוקפת את חלון ה-24ש."""
+    tpl = next((t for t in wa_templates() if t["id"] == template_id), None)
+    if tpl is None:
+        raise WaError(f"תבנית '{template_id}' לא נמצאה")
+    params = [str(p) for p in (params or [])]
+    if len(params) < tpl["params"]:
+        raise WaError(f"התבנית דורשת {tpl['params']} פרמטרים, התקבלו {len(params)}")
+    resp = _dash_call(_dash().send_whatsapp_template,
+                      phone, template_id, params, language=tpl.get("language") or language)
+    logger.info("wa send template %s -> %s", template_id, phone)
+    return {"sent": True, "via": f"template:{template_id}", "resp": resp}
+
+
 # ── כרטיס פונה: ConnectOp + הזמנות אתר + מטא שלנו ──────────────────
 
 _tags_cache = {"at": 0.0, "tags": None}

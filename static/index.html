@@ -2133,10 +2133,12 @@ function waThreadHTML(){
         </div>
         <div class="wa-send" style="position:relative">
           <div id="waCannedPop" class="wa-canned" style="display:none"></div>
+          <div id="waTplPop" class="wa-canned" style="display:none"></div>
           <button class="btn-ghost" onclick="waToggleCanned()" title="תשובות מוכנות">⚡</button>
+          <button class="btn-ghost" onclick="waToggleTpl()" title="שליחת תבנית מאושרת (עוקפת חלון 24ש׳)" ${w.in_window?'':'style="border-color:#dc2626;color:#dc2626"'}>📋</button>
           <button class="btn-ghost" onclick="document.getElementById('waFile').click()" title="צרף קובץ" ${w.in_window?'':'disabled style="opacity:.4"'}>📎</button>
           <input type="file" id="waFile" style="display:none" onchange="waSendFile(this)">
-          <textarea id="waText" placeholder="${w.in_window?'הקלד תשובה…':'מחוץ לחלון — יישלח כתבנית new_message (שורה אחת)'}"
+          <textarea id="waText" placeholder="${w.in_window?'הקלד תשובה…':'מחוץ לחלון — שלח תבנית 📋 או טקסט שיעטף ב-new_message'}"
                     onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendWaMsg();}"></textarea>
           <button class="btn-primary" id="waSendBtn" onclick="sendWaMsg()">שלח</button>
         </div>
@@ -2272,32 +2274,94 @@ async function waSendFile(inp){
 }
 async function waToggleCanned(){
   const pop=document.getElementById('waCannedPop'); if(!pop) return;
+  const tp=document.getElementById('waTplPop'); if(tp) tp.style.display='none';
   if(pop.style.display!=='none'){ pop.style.display='none'; return; }
-  if(!S.waCanned){ try{ S.waCanned=(await api('/api/admin/wa/canned')).items||[]; }catch(e){ S.waCanned=[]; } }
+  if(!S.waCanned){ try{ const r=await api('/api/admin/wa/canned'); S.waCanned=r.items||[]; S.waCannedCop=r.connectop||[]; }catch(e){ S.waCanned=[]; S.waCannedCop=[]; } }
   waPaintCanned(); pop.style.display='block';
+}
+function waCannedRow(c,src){
+  return `<div class="wa-canned-item">
+    <span onclick="waUseCanned('${src}','${escW(String(c.id))}')" style="cursor:pointer;flex:1"><b>${escW(c.title)}</b>
+      <div class="muted" style="font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escW((c.text||'').slice(0,60))}</div></span>
+    ${src==='gm'?`<span class="del" onclick="waDelCanned(${c.id})" title="מחק">🗑</span>`:''}
+  </div>`;
 }
 function waPaintCanned(){
   const pop=document.getElementById('waCannedPop'); if(!pop) return;
-  const items=S.waCanned||[];
+  const q=(S.waCannedQ||'').toLowerCase();
+  const filt=l=>(l||[]).filter(c=>!q||((c.title||'')+' '+(c.text||'')).toLowerCase().includes(q));
+  const ours=filt(S.waCanned), cop=filt(S.waCannedCop);
   pop.innerHTML=`
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
       <b style="font-size:13px">⚡ תשובות מוכנות</b>
       <span><button class="btn-ghost" style="padding:3px 8px" onclick="waAddCanned()">➕</button>
       <button class="btn-ghost" style="padding:3px 8px" onclick="document.getElementById('waCannedPop').style.display='none'">✕</button></span>
     </div>
-    ${items.length?items.map(c=>`<div class="wa-canned-item">
-        <span onclick="waUseCanned(${c.id})" style="cursor:pointer;flex:1"><b>${escW(c.title)}</b>
-          <div class="muted" style="font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escW(c.text.slice(0,60))}</div></span>
-        <span class="del" onclick="waDelCanned(${c.id})" title="מחק">🗑</span>
-      </div>`).join(''):'<div class="muted" style="padding:6px">אין תשובות מוכנות — לחץ ➕ להוספה</div>'}`;
+    <input id="waCannedQ" placeholder="🔎 סינון…" value="${escW(S.waCannedQ||'')}" oninput="S.waCannedQ=this.value;waPaintCanned();document.getElementById('waCannedQ').focus()"
+           style="width:100%;margin-bottom:6px;padding:6px 9px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--txt)">
+    ${cop.length?`<div class="muted" style="font-size:11px;margin:4px 0">📥 מקונקטופ (${cop.length})</div>`+cop.map(c=>waCannedRow(c,'cop')).join(''):''}
+    ${ours.length?`<div class="muted" style="font-size:11px;margin:6px 0 4px">🟢 GreenOS (${ours.length})</div>`+ours.map(c=>waCannedRow(c,'gm')).join(''):''}
+    ${!cop.length&&!ours.length?'<div class="muted" style="padding:6px">אין תוצאות</div>':''}`;
 }
-function waUseCanned(id){
-  const c=(S.waCanned||[]).find(x=>x.id===id); if(!c) return;
+function waUseCanned(src,id){
+  const list=src==='cop'?(S.waCannedCop||[]):(S.waCanned||[]);
+  const c=list.find(x=>String(x.id)===String(id)); if(!c) return;
   const conv=(S.waConvs||[]).find(x=>x.phone===S.waPhone)||{};
   const firstName=(conv.name||'').split(' ')[0];
   const ta=document.getElementById('waText');
-  if(ta){ ta.value=c.text.replace(/\{שם\}/g,firstName); ta.focus(); }
+  if(ta){ ta.value=(c.text||'').replace(/\{שם\}/g,firstName); ta.focus(); }
   document.getElementById('waCannedPop').style.display='none';
+}
+// ── 📋 תבניות מאושרות (עוקפות חלון 24ש) ──
+async function waToggleTpl(){
+  const pop=document.getElementById('waTplPop'); if(!pop) return;
+  const cp=document.getElementById('waCannedPop'); if(cp) cp.style.display='none';
+  if(pop.style.display!=='none'){ pop.style.display='none'; return; }
+  if(!S.waTpls){ try{ S.waTpls=(await api('/api/admin/wa/templates')).templates||[]; }catch(e){ S.waTpls=[]; } }
+  waPaintTpl(null); pop.style.display='block';
+}
+function waPaintTpl(selId){
+  const pop=document.getElementById('waTplPop'); if(!pop) return;
+  const tpls=S.waTpls||[];
+  if(selId===null){
+    pop.innerHTML=`
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <b style="font-size:13px">📋 שליחת תבנית מאושרת</b>
+        <button class="btn-ghost" style="padding:3px 8px" onclick="document.getElementById('waTplPop').style.display='none'">✕</button>
+      </div>
+      <div class="muted" style="font-size:11.5px;margin-bottom:6px">תבניות מאושרות-Meta — מותר גם מחוץ לחלון 24ש׳</div>
+      ${tpls.map(t=>`<div class="wa-canned-item" onclick="waPaintTpl('${escW(String(t.id))}')" style="cursor:pointer">
+        <span style="flex:1"><b style="direction:ltr">${escW(t.id)}</b>${t.params?` <span class="muted">(${t.params} פרמ׳)</span>`:''}
+          <div class="muted" style="font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escW((t.body||'').slice(0,70))}</div></span>
+      </div>`).join('')||'<div class="muted">אין תבניות</div>'}`;
+    return;
+  }
+  const t=tpls.find(x=>String(x.id)===String(selId)); if(!t) return;
+  const conv=(S.waConvs||[]).find(x=>x.phone===S.waPhone)||{};
+  const firstName=(conv.name||'').split(' ')[0];
+  const inputs=Array.from({length:t.params},(_,i)=>`
+    <input id="waTplP${i+1}" placeholder="{{${i+1}}}" value="${i===0?escW(firstName):''}"
+           style="width:100%;margin-bottom:5px;padding:7px 9px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--txt)">`).join('');
+  pop.innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <b style="font-size:13px;direction:ltr">${escW(t.id)}</b>
+      <span><button class="btn-ghost" style="padding:3px 8px" onclick="waPaintTpl(null)">⬅</button>
+      <button class="btn-ghost" style="padding:3px 8px" onclick="document.getElementById('waTplPop').style.display='none'">✕</button></span>
+    </div>
+    <div style="font-size:12.5px;background:var(--card2);border:1px solid var(--line);border-radius:9px;padding:8px;margin-bottom:7px;white-space:pre-wrap">${escW(t.body||'')}</div>
+    ${inputs}
+    <button class="btn-primary" style="width:100%" onclick="waSendTpl('${escW(String(t.id))}',${t.params})">שלח תבנית</button>`;
+}
+async function waSendTpl(id,n){
+  const params=[]; for(let i=1;i<=n;i++){ const el=document.getElementById('waTplP'+i); params.push(el?el.value:''); }
+  if(params.some(p=>!String(p).trim())&&!confirm('יש פרמטרים ריקים — לשלוח בכל זאת?')) return;
+  try{
+    await api('/api/admin/wa/send-wa-template',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({phone:S.waPhone,template_id:id,params})});
+    document.getElementById('waTplPop').style.display='none';
+    toast('התבנית נשלחה ✓',true);
+    setTimeout(()=>loadWaThread(true),1500);
+  }catch(e){ toast('שליחת תבנית נכשלה',false); }
 }
 async function waAddCanned(){
   const title=prompt('כותרת קצרה לתשובה:'); if(!title) return;
