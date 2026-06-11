@@ -1313,6 +1313,14 @@ def wa_contact(phone: str, x_admin_key: Optional[str] = Header(None)):
     return _wa_guard(wa.contact_card, phone)
 
 
+@app.get("/api/admin/wa/media/{phone}")
+def wa_media(phone: str, x_admin_key: Optional[str] = Header(None)):
+    """גלריית מדיה מרוכזת מהשיחה (לפאנל פרטי פונה)."""
+    _require_admin(x_admin_key)
+    import wa
+    return {"media": _wa_guard(wa.media_list, phone)}
+
+
 @app.get("/api/admin/wa/tags")
 def wa_tags(x_admin_key: Optional[str] = Header(None)):
     _require_admin(x_admin_key)

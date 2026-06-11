@@ -373,6 +373,8 @@
   .wa-order .st{font-size:11px;font-weight:700;padding:1px 7px;border-radius:999px;background:rgba(37,99,235,.12);color:var(--blue)}
   .wa-note{border:1px solid var(--line);border-radius:10px;padding:7px 10px;margin-bottom:6px;background:var(--card2)}
   .wa-note .by{font-size:11px;color:var(--muted);margin-top:3px;display:flex;justify-content:space-between}
+  .wa-gal{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}
+  .wa-gal img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;border:1px solid var(--line);cursor:zoom-in}
   .wa-note .del{cursor:pointer;color:var(--muted)} .wa-note .del:hover{color:#dc2626}
   @media (max-width:760px){
     .wa-panel{position:absolute;inset:0;background:var(--card);z-index:6;width:auto}
@@ -2192,11 +2194,33 @@ function waPanelHTML(){
              onkeydown="if(event.key==='Enter')waAddNote()">
       <button class="btn-ghost" onclick="waAddNote()">➕</button>
     </div>
+    <h4>🖼️ מדיה וקבצים${S.waMedia&&S.waMedia.phone===S.waPhone?` (${S.waMedia.items.length})`:''}</h4>
+    <div id="waMediaBox">${waMediaHTML()}</div>
     <h4>⚙️ פעולות</h4>
     <button class="btn-ghost" onclick="waExport()" style="width:100%">⬇️ ייצוא שיחה לקובץ</button>`;
 }
+function waMediaHTML(){
+  const m=S.waMedia;
+  if(!m||m.phone!==S.waPhone) return '<div class="muted">טוען מדיה…</div>';
+  const items=m.items||[];
+  if(!items.length) return '<div class="muted">אין מדיה בשיחה</div>';
+  const imgs=items.filter(x=>x.type==='image'||x.type==='sticker');
+  const other=items.filter(x=>x.type!=='image'&&x.type!=='sticker');
+  return `
+    ${imgs.length?`<div class="wa-gal">${imgs.map(x=>`<a href="${escW(x.url)}" target="_blank" title="${x.ts?fmtTime(new Date(x.ts*1000).toISOString()):''}"><img src="${escW(x.url)}" loading="lazy"></a>`).join('')}</div>`:''}
+    ${other.map(x=>`<a class="wa-doc" style="display:block;margin-top:5px" href="${escW(x.url)}" target="_blank">
+      ${x.type==='video'?'🎬':x.type==='audio'?'🎵':'📎'} ${escW(x.caption||x.type)} <span class="muted" style="font-size:11px">${x.ts?fmtTime(new Date(x.ts*1000).toISOString()):''}</span></a>`).join('')}`;
+}
+async function loadWaMedia(){
+  const phone=S.waPhone; if(!phone) return;
+  try{ const r=await api('/api/admin/wa/media/'+encodeURIComponent(phone));
+       if(S.waPhone===phone){ S.waMedia={phone, items:r.media||[]};
+         const b=document.getElementById('waMediaBox'); if(b) b.innerHTML=waMediaHTML(); } }
+  catch(e){}
+}
 async function loadWaContact(){
   const phone=S.waPhone; if(!phone) return;
+  loadWaMedia();   // גלריה נטענת במקביל
   if(!S.waTags){ try{ S.waTags=(await api('/api/admin/wa/tags')).tags||[]; }catch(e){ S.waTags=[]; } }
   try{ const c=await api('/api/admin/wa/contact/'+encodeURIComponent(phone));
        if(S.waPhone===phone){ S.waContact=c; const p=document.getElementById('waPanelBox'); if(p) p.innerHTML=waPanelHTML(); } }

@@ -350,6 +350,17 @@ def send_wa_template(phone: str, template_id: str, params=None, language: str = 
     return {"sent": True, "via": f"template:{template_id}", "resp": resp}
 
 
+def media_list(phone: str, limit: int = 200):
+    """כל המדיה מהשיחה (תמונות/וידאו/קבצים), חדש→ישן — לגלריה בפאנל הפרטים."""
+    msgs = _dash_call(_dash().get_conversation, phone, limit=limit)
+    out = []
+    for m in msgs:  # הדשבורד מחזיר חדש→ישן — נשארים בסדר הזה
+        for item in _extract_media(m.get("content")):
+            out.append({**item, "ts": m.get("ts") or 0,
+                        "direction": m.get("direction")})
+    return out
+
+
 # ── כרטיס פונה: ConnectOp + הזמנות אתר + מטא שלנו ──────────────────
 
 _tags_cache = {"at": 0.0, "tags": None}
