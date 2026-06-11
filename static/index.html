@@ -210,8 +210,6 @@
   .items-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px}
   .item{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);
         border-radius:12px;padding:13px 15px}
-  .item.item-tap{cursor:pointer} .item.item-tap:hover{border-color:var(--blue);background:rgba(37,99,235,.05)}
-  .item.item-tap:active{background:rgba(37,99,235,.12)}
   .item.received{border-color:var(--green);background:rgba(31,191,107,.07)}
   .item.redirected{border-color:var(--amber);background:rgba(245,165,36,.07)}
   .item.missing{border-color:var(--red);background:rgba(229,72,77,.06)}
@@ -1210,22 +1208,14 @@ function itemHtml(it){
     who=(it.received_by&&!String(it.received_by).startsWith('branch:'))?`נקלט ע״י ${it.received_by} ${methodTag(it.received_method)}`:''; }
   else if(st===2){ cls='redirected'; tick='↪'; who=`הופנה — ${it.received_by||'נקלט בסניף אחר'}`; }
   else if(st===3){ cls='missing'; tick='✗'; who='חוסר — לא הגיע'; }
-  // פריט ממתין → ניתן להקשה לקליטה ידנית (כשהברקוד לא נסרק)
-  const code=it.serial||it.barcode||'';
-  const tap=(st===0&&code)?` item-tap" onclick='tapReceive(${JSON.stringify(code)},${JSON.stringify(it.name||it.product_id||"")})' title="הקש לקליטה ידנית`:'';
-  return `<div class="item ${cls}${tap}">
+  return `<div class="item ${cls}">
     <div class="tick">${tick}</div>
     <div style="flex:1;min-width:0">
       <div class="name">${it.name||it.product_id}</div>
       <div class="sub">${sub}</div>
-      ${who?`<div class="who">${who}</div>`:(st===0&&code?`<div class="who" style="color:var(--blue)">👆 הקש לקליטה ידנית</div>`:'')}
+      ${who?`<div class="who">${who}</div>`:''}
     </div>
   </div>`;
-}
-function tapReceive(code,name){
-  if(!code){ toast('לפריט אין סריאל/ברקוד',false); return; }
-  if(!confirm('לקלוט ידנית את "'+name+'"?\n(לשימוש כשהברקוד לא נסרק)')) return;
-  doScan(code,'tap');
 }
 async function doScan(code, method){
   if(!S.employee) return;   // לא אמור לקרות — שדה הסריקה מופיע רק אחרי שם
