@@ -311,6 +311,25 @@ _SCHEMA = [
     )
     """.format(pk=_PK),
     "CREATE INDEX IF NOT EXISTS idx_wa_notes_phone ON wa_notes(phone)",
+    # תשובות מוכנות (canned replies) לשליחה מהירה בוואטסאפ
+    """
+    CREATE TABLE IF NOT EXISTS wa_canned (
+        id          {pk},
+        title       TEXT,
+        text        TEXT,
+        created_at  TEXT
+    )
+    """.format(pk=_PK),
+    # מנויי Web Push (PWA באייפון/דסקטופ) להתראות וואטסאפ
+    """
+    CREATE TABLE IF NOT EXISTS wa_push_subs (
+        id          {pk},
+        endpoint    TEXT UNIQUE,
+        sub         TEXT,
+        ua          TEXT,
+        created_at  TEXT
+    )
+    """.format(pk=_PK),
     "CREATE INDEX IF NOT EXISTS idx_misroutes_serial ON misroutes(serial)",
     "CREATE INDEX IF NOT EXISTS idx_misroutes_status ON misroutes(status)",
     "CREATE INDEX IF NOT EXISTS idx_transfers_to ON transfers(to_branch_id, status)",
@@ -1250,6 +1269,47 @@ def wa_note_delete(nid: int) -> bool:
         cur = c.cursor()
         cur.execute(_q("DELETE FROM wa_notes WHERE id = ?"), (nid,))
         return cur.rowcount > 0
+
+
+def wa_canned_list() -> list:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT id, title, text FROM wa_canned ORDER BY title"))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def wa_canned_add(title: str, text: str):
+    with _conn() as c:
+        c.cursor().execute(_q(
+            "INSERT INTO wa_canned (title, text, created_at) VALUES (?, ?, ?)"),
+            (title, text, now_iso()))
+
+
+def wa_canned_delete(cid: int) -> bool:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("DELETE FROM wa_canned WHERE id = ?"), (cid,))
+        return cur.rowcount > 0
+
+
+def wa_push_sub_add(endpoint: str, sub_json: str, ua: str = ""):
+    with _conn() as c:
+        c.cursor().execute(_q("""
+            INSERT INTO wa_push_subs (endpoint, sub, ua, created_at) VALUES (?, ?, ?, ?)
+            ON CONFLICT(endpoint) DO UPDATE SET sub=excluded.sub, ua=excluded.ua
+        """), (endpoint, sub_json, ua, now_iso()))
+
+
+def wa_push_subs() -> list:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT id, endpoint, sub, ua FROM wa_push_subs"))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def wa_push_sub_delete(endpoint: str):
+    with _conn() as c:
+        c.cursor().execute(_q("DELETE FROM wa_push_subs WHERE endpoint = ?"), (endpoint,))
 
 
 def sales_docids_since(since_prefix: str) -> set:

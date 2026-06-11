@@ -126,6 +126,14 @@ def _token_watch_job():
         logger.warning("token_watch failed: %s", e)
 
 
+def _wa_push_job():
+    try:
+        import wa_push
+        wa_push.poll_and_push()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("wa_push failed: %s", e)
+
+
 def _is_stale(iso_ts, hours: float) -> bool:
     """האם חותמת זמן ISO ישנה מ-X שעות (או חסרה/לא תקינה)."""
     if not iso_ts:
@@ -189,6 +197,8 @@ def _startup():
                           run_date=datetime.now() + timedelta(seconds=150))
     else:
         logger.info("catalog fresh — skipping initial refresh")
+    # Web Push וואטסאפ: זיהוי הודעות נכנסות כל 60ש (מדלג כשאין מכשירים רשומים)
+    scheduler.add_job(_wa_push_job, "interval", seconds=60, id="wa_push", max_instances=1)
     # ניטור טוקן ConnectOp: בדיקה יומית 09:30 + בדיקת boot (לוג בלבד כשהכל תקין)
     scheduler.add_job(_token_watch_job, "cron", id="token_watch",
                       hour=9, minute=30, max_instances=1)
@@ -1337,6 +1347,76 @@ def wa_star(body: WaFlag, x_admin_key: Optional[str] = Header(None)):
     return {"ok": True}
 
 
+# ── שליחת קובץ (📎) — מעלה ל-WP media ושולח ללקוח ──
+@app.post("/api/admin/wa/send-file")
+async def wa_send_file(request: Request, x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    form = await request.form()
+    phone = str(form.get("phone") or "")
+    caption = str(form.get("caption") or "")
+    up = form.get("file")
+    if not phone or up is None or isinstance(up, str):
+        raise HTTPException(400, "phone + file required")
+    content = await up.read()
+    import wa
+    return _wa_guard(wa.send_media, phone, up.filename or "file",
+                     content, up.content_type or "", caption)
+
+
+# ── תשובות מוכנות (⚡ canned replies) — מנוהלות ב-GreenOS ──
+class WaCanned(BaseModel):
+    title: str
+    text: str
+
+
+@app.get("/api/admin/wa/canned")
+def wa_canned(x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    return {"items": db.wa_canned_list()}
+
+
+@app.post("/api/admin/wa/canned")
+def wa_canned_add(body: WaCanned, x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    db.wa_canned_add(body.title.strip(), body.text.strip())
+    return {"items": db.wa_canned_list()}
+
+
+@app.delete("/api/admin/wa/canned/{cid}")
+def wa_canned_del(cid: int, x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    return {"deleted": db.wa_canned_delete(cid)}
+
+
+# ── Web Push (PWA) — התראות וואטסאפ כשהאפליקציה סגורה ──
+class WaPushSub(BaseModel):
+    sub: dict
+    ua: str = ""
+
+
+@app.get("/api/admin/wa/push/key")
+def wa_push_key(x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    import wa_push
+    return {"key": wa_push.VAPID_PUBLIC, "devices": len(db.wa_push_subs())}
+
+
+@app.post("/api/admin/wa/push/subscribe")
+def wa_push_subscribe(body: WaPushSub, x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    import wa_push
+    return wa_push.subscribe(body.sub, body.ua)
+
+
+@app.post("/api/admin/wa/push/test")
+def wa_push_test(x_admin_key: Optional[str] = Header(None)):
+    """שולח push בדיקה לכל המכשירים הרשומים — לאימות מהאייפון."""
+    _require_admin(x_admin_key)
+    import wa_push
+    n = wa_push.send_to_all("GreenOS ✅", "התראות הוואטסאפ פעילות במכשיר הזה")
+    return {"sent": n}
+
+
 # ──────────────────────────────────────────────────────────────
 # Frontend (SPA)
 # ──────────────────────────────────────────────────────────────
@@ -1350,6 +1430,13 @@ def index():
     if os.path.exists(idx):
         return FileResponse(idx)
     return JSONResponse({"app": cfg.APP_TITLE, "note": "frontend not built yet"})
+
+
+@app.get("/sw.js")
+def service_worker():
+    """ה-service worker חייב להיות מוגש מהשורש כדי לקבל scope '/'. """
+    return FileResponse(os.path.join(_static_dir, "sw.js"),
+                        media_type="application/javascript")
 
 
 if __name__ == "__main__":

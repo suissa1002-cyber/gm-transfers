@@ -1,0 +1,15 @@
+{
+  "name": "GreenOS — Green Mobile",
+  "short_name": "GreenOS",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "dir": "rtl",
+  "lang": "he",
+  "background_color": "#f5f7fb",
+  "theme_color": "#16a34a",
+  "icons": [
+    { "src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

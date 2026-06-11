@@ -198,6 +198,46 @@ def send_template(phone: str, name: str, body: str):
     return {"sent": True, "via": "template", "resp": resp}
 
 
+def send_media(phone: str, filename: str, content: bytes, mime: str, caption: str = ""):
+    """
+    שליחת קובץ ללקוח: מעלים ל-WordPress media (URL ציבורי) ואז שולחים
+    דרך ה-API הציבורי (`send_file` דורש URL). גם מדיה כפופה לחלון 24ש.
+    """
+    import os
+    import requests as rq
+    if len(content) > 15 * 1024 * 1024:
+        raise WaError("קובץ גדול מדי (מקס׳ 15MB)")
+    win = _window_state(get_thread(phone, limit=60)["messages"])
+    if not win["in_window"]:
+        raise WaError("מחוץ לחלון 24ש׳ — אי אפשר לשלוח מדיה (רק template טקסט)")
+    base = os.getenv("WC_STORE_URL", "").rstrip("/")
+    user = os.getenv("WP_USERNAME", "")
+    pw = os.getenv("WP_APP_PASSWORD", "")
+    if not (base and user and pw):
+        raise WaError("חסרים פרטי WordPress להעלאת הקובץ (WP_USERNAME/WP_APP_PASSWORD)")
+    safe = re.sub(r"[^\w.\-]+", "_", filename or "file")
+    try:
+        r = rq.post(f"{base}/wp-json/wp/v2/media",
+                    headers={"Content-Disposition": f'attachment; filename="{safe}"',
+                             "Content-Type": mime or "application/octet-stream"},
+                    data=content, auth=(user, pw), timeout=60)
+        if r.status_code not in (200, 201):
+            raise WaError(f"העלאה ל-WordPress נכשלה ({r.status_code})")
+        url = r.json().get("source_url", "")
+    except WaError:
+        raise
+    except Exception as e:  # noqa: BLE001
+        raise WaError(f"העלאת קובץ נכשלה: {e}") from e
+    if not url:
+        raise WaError("WordPress לא החזיר כתובת קובץ")
+    kind = ("image" if (mime or "").startswith("image/") else
+            "video" if (mime or "").startswith("video/") else
+            "audio" if (mime or "").startswith("audio/") else "document")
+    resp = _pub().send_file(phone, url, caption=caption, file_type=kind)
+    logger.info("wa send %s -> %s (%s)", kind, phone, safe)
+    return {"sent": True, "via": kind, "url": url, "resp": resp}
+
+
 # ── פעולות שיחה ─────────────────────────────────────────────────────
 
 # ── כרטיס פונה: ConnectOp + הזמנות אתר + מטא שלנו ──────────────────

@@ -5,7 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>GreenOS — Green Mobile</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='88'%3E📦%3C/text%3E%3C/svg%3E">
-<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='52' font-size='62' text-anchor='middle' dominant-baseline='central'%3E📦%3C/text%3E%3C/svg%3E">
+<link rel="manifest" href="/static/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/static/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="GreenOS">
+<meta name="theme-color" content="#16a34a">
 <style>
   :root{
     --bg:#0e1116; --card:#171c24; --card2:#212834; --line:#2c3442;
@@ -333,6 +337,24 @@
   .wa-back{display:none}
   .wa-badge{position:absolute;top:-6px;inset-inline-end:-6px;background:#dc2626;color:#fff;font-size:11px;
             font-weight:800;min-width:18px;height:18px;line-height:18px;border-radius:999px;padding:0 5px;text-align:center}
+  /* מצב מסך-מלא לוואטסאפ: בלי כותרת/טאבים, סרגל עליון נקי (רק 💬 + בורגר) */
+  body.wa-mode #hdr > *:not(#waBtn){display:none!important}
+  body.wa-mode .wrap{padding:10px 14px;max-width:none}
+  .wa-full{height:calc(100vh - 88px)}
+  .wa-full .wa-list{max-height:none;height:100%;display:flex;flex-direction:column;min-height:0}
+  .wa-full #waListPane{flex:1;overflow-y:auto;min-height:0}
+  .wa-full .wa-thread{height:100%;max-height:none;min-height:0}
+  .wa-listbar{display:flex;gap:6px;padding:8px;border-bottom:1px solid var(--line);align-items:center;flex:none}
+  .wa-listbar input{flex:1;min-width:0;padding:8px 10px;border-radius:9px;border:1px solid var(--line);
+                    background:var(--bg);color:var(--txt);font-size:14px}
+  .wa-listbar .btn-ghost{padding:6px 9px;flex:none}
+  .wa-listbar .ls-check{flex:none;font-size:12.5px}
+  .wa-canned{position:absolute;bottom:calc(100% + 6px);inset-inline-start:8px;width:320px;max-width:90%;
+             max-height:300px;overflow-y:auto;background:var(--card);border:1px solid var(--line);
+             border-radius:12px;padding:10px;box-shadow:0 10px 30px rgba(0,0,0,.25);z-index:8}
+  .wa-canned-item{display:flex;gap:8px;align-items:center;padding:7px 8px;border-radius:8px;border-bottom:1px solid var(--line)}
+  .wa-canned-item:hover{background:var(--card2)}
+  .wa-canned-item .del{cursor:pointer;color:var(--muted)} .wa-canned-item .del:hover{color:#dc2626}
   .wa-body{display:flex;flex:1;min-height:0;position:relative}
   .wa-main{flex:1;display:flex;flex-direction:column;min-width:0}
   .wa-panel{width:300px;flex:none;border-inline-start:1px solid var(--line);overflow-y:auto;padding:13px;font-size:13.5px}
@@ -360,6 +382,9 @@
     .wa-bar-hidden{display:none!important}
     .wa-head{gap:6px;padding:9px 10px}
     .wa-head .btn-ghost{padding:6px 9px;font-size:13px;display:inline-flex;align-items:center}
+    .wa-full{height:calc(100vh - 86px)}
+    .wa-full .wa-thread{height:100%}
+    body.wa-mode .wrap{padding:8px 10px}
     .scan-layout{grid-template-columns:1fr}
     .scan-side{position:static}
     header{padding:10px 12px;gap:8px;flex-wrap:nowrap} .wrap{padding:14px}
@@ -1040,6 +1065,7 @@ function renderEmbed(app){
 // ── רינדור ראשי ──
 function render(){
   const app=document.getElementById('app'), hdr=document.getElementById('hdr');
+  if(!(S.view==='admin'&&S.adminTab==='wa')) document.body.classList.remove('wa-mode');
   // הבורגר (Ops Hub) מוצג רק במחשב שמחובר כסניף "אתר" עם סיסמת ניהול — סניפים לא רואים אותו
   const isAdminPC=S.branchId&&Number(S.branchId)===S.cfg.admin_branch_id&&(!S.cfg.admin_required||S.adminKey);
   document.getElementById('burgerBtn').style.display=isAdminPC?'inline-block':'none';
@@ -1370,6 +1396,7 @@ function adminTabsHTML(){
 }
 function setAdminTab(tab){
   S.adminTab=tab;
+  if(tab!=='wa') document.body.classList.remove('wa-mode');
   if(tab==='live'){ if(!S.lsCat) loadLiveCatalog(true); else renderLive(); }
   else if(tab==='rebalance'){ if(!S.rebalanceData) loadRebalance(true); else renderRebalance(); }
   else if(tab==='plan'){ loadPlan(true); }
@@ -2047,26 +2074,33 @@ function updateWaBadge(convs){
   }
   S._waBadgePrev=n;
 }
-function openWaTab(){ S.view='admin'; setAdminTab('wa'); }
+function openWaTab(){
+  // לחיצה כשכבר בוואטסאפ = יציאה חזרה לקונסולה
+  if(S.view==='admin'&&S.adminTab==='wa'){ document.body.classList.remove('wa-mode'); setAdminTab('transfers'); return; }
+  S.view='admin'; setAdminTab('wa');
+}
 function renderWa(){
   const app=document.getElementById('app');
   const rows=waFiltered();
   const mobileThread=S.waPhone&&window.innerWidth<=760;
-  app.innerHTML=`<h1 class="title">🛠️ ניהול אופרציה</h1>${adminTabsHTML()}
-    <div class="rebal-bar ${mobileThread?'wa-bar-hidden':''}" id="waBar">
-      <input id="waSearch" placeholder="🔎 חיפוש שם / טלפון / הודעה" value="${escW(S.waSearch||'')}"
-             oninput="S.waSearch=this.value;S._refocusWa=true;renderWa()">
-      <label class="ls-check"><input type="checkbox" ${S.waArchived?'checked':''}
-             onchange="S.waArchived=this.checked?1:0;loadWa(true)"> כולל ארכיון</label>
-      <button class="btn-ghost" onclick="loadWa(true)">🔄 רענן</button>
-      <span class="muted" style="margin-inline-start:auto">${rows.length} שיחות${S.waErr?' · <b style="color:#dc2626">'+S.waErr+'</b>':''}</span>
-    </div>
-    <div class="wa-layout ${S.waPhone?'thread-open':''}" id="waLayout">
-      <div class="wa-list" id="waListPane">${rows.map(waConvRow).join('')||'<div class="empty">אין שיחות</div>'}</div>
+  document.body.classList.add('wa-mode');   // מסך מלא: מסתיר את כפתורי הסרגל (חוץ מ-💬 ובורגר)
+  app.innerHTML=`
+    <div class="wa-layout wa-full ${S.waPhone?'thread-open':''}" id="waLayout">
+      <div class="wa-list" id="waListWrap">
+        <div class="wa-listbar ${mobileThread?'wa-bar-hidden':''}" id="waBar">
+          <input id="waSearch" placeholder="🔎 חיפוש שם / טלפון / הודעה" value="${escW(S.waSearch||'')}"
+                 oninput="S.waSearch=this.value;S._refocusWa=true;renderWa()">
+          <button class="btn-ghost" onclick="loadWa(true)" title="רענן">🔄</button>
+          <button class="btn-ghost" id="waPushBtn" onclick="waEnablePush()" title="התראות במכשיר הזה">🔔</button>
+          <label class="ls-check" title="כולל ארכיון"><input type="checkbox" ${S.waArchived?'checked':''}
+                 onchange="S.waArchived=this.checked?1:0;loadWa(true)"> ארכיון</label>
+        </div>
+        <div id="waListPane">${rows.map(waConvRow).join('')||'<div class="empty">אין שיחות</div>'}</div>
+      </div>
       <div class="wa-thread" id="waThreadPane">${waThreadHTML()}</div>
     </div>`;
   if(S._refocusWa){ const el=document.getElementById('waSearch'); if(el){ el.focus(); const v=el.value; el.value=''; el.value=v; } S._refocusWa=false; }
-  waScrollBottom();
+  waScrollBottom(); waPushBtnState();
 }
 function waThreadHTML(){
   if(!S.waPhone) return '<div class="empty" style="margin:auto">בחר שיחה מהרשימה 💬</div>';
@@ -2097,7 +2131,11 @@ function waThreadHTML(){
         <div class="wa-msgs" id="waMsgs">
           ${msgs.map(waBubble).join('')||'<div class="empty">אין הודעות בשיחה</div>'}
         </div>
-        <div class="wa-send">
+        <div class="wa-send" style="position:relative">
+          <div id="waCannedPop" class="wa-canned" style="display:none"></div>
+          <button class="btn-ghost" onclick="waToggleCanned()" title="תשובות מוכנות">⚡</button>
+          <button class="btn-ghost" onclick="document.getElementById('waFile').click()" title="צרף קובץ" ${w.in_window?'':'disabled style="opacity:.4"'}>📎</button>
+          <input type="file" id="waFile" style="display:none" onchange="waSendFile(this)">
           <textarea id="waText" placeholder="${w.in_window?'הקלד תשובה…':'מחוץ לחלון — יישלח כתבנית new_message (שורה אחת)'}"
                     onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendWaMsg();}"></textarea>
           <button class="btn-primary" id="waSendBtn" onclick="sendWaMsg()">שלח</button>
@@ -2216,6 +2254,102 @@ function waBubble(m){
   let txt=(m.text||'').trim();
   if(media) txt=txt.replace(/\[(image|video|audio|document|file|sticker)[^\]]*\]/g,'').trim();
   return `<div class="wa-b ${m.direction==='in'?'wa-in':'wa-out'}">${media}${escW(txt)}<div class="wa-t">${m.ts?fmtTime(new Date(m.ts*1000).toISOString()):''}</div></div>`;
+}
+// ── 📎 שליחת קובץ + ⚡ תשובות מוכנות ──
+async function waSendFile(inp){
+  const f=inp.files&&inp.files[0]; inp.value=''; if(!f||!S.waPhone) return;
+  if(f.size>15*1024*1024){ toast('קובץ גדול מדי (מקס׳ 15MB)',false); return; }
+  showLoading('מעלה ושולח קובץ…');
+  try{
+    const fd=new FormData(); fd.append('phone',S.waPhone); fd.append('file',f);
+    const cap=(document.getElementById('waText')||{}).value||'';
+    if(cap.trim()) fd.append('caption',cap.trim());
+    const r=await api('/api/admin/wa/send-file',{method:'POST',body:fd},120000);
+    hideLoading(); toast('הקובץ נשלח ✓',true);
+    const ta=document.getElementById('waText'); if(ta) ta.value='';
+    setTimeout(()=>loadWaThread(true),1500);
+  }catch(e){ hideLoading(); toast('שליחת קובץ נכשלה — '+(e.status===502?'בדוק חלון 24ש׳/חיבור':'תקלה'),false); }
+}
+async function waToggleCanned(){
+  const pop=document.getElementById('waCannedPop'); if(!pop) return;
+  if(pop.style.display!=='none'){ pop.style.display='none'; return; }
+  if(!S.waCanned){ try{ S.waCanned=(await api('/api/admin/wa/canned')).items||[]; }catch(e){ S.waCanned=[]; } }
+  waPaintCanned(); pop.style.display='block';
+}
+function waPaintCanned(){
+  const pop=document.getElementById('waCannedPop'); if(!pop) return;
+  const items=S.waCanned||[];
+  pop.innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <b style="font-size:13px">⚡ תשובות מוכנות</b>
+      <span><button class="btn-ghost" style="padding:3px 8px" onclick="waAddCanned()">➕</button>
+      <button class="btn-ghost" style="padding:3px 8px" onclick="document.getElementById('waCannedPop').style.display='none'">✕</button></span>
+    </div>
+    ${items.length?items.map(c=>`<div class="wa-canned-item">
+        <span onclick="waUseCanned(${c.id})" style="cursor:pointer;flex:1"><b>${escW(c.title)}</b>
+          <div class="muted" style="font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escW(c.text.slice(0,60))}</div></span>
+        <span class="del" onclick="waDelCanned(${c.id})" title="מחק">🗑</span>
+      </div>`).join(''):'<div class="muted" style="padding:6px">אין תשובות מוכנות — לחץ ➕ להוספה</div>'}`;
+}
+function waUseCanned(id){
+  const c=(S.waCanned||[]).find(x=>x.id===id); if(!c) return;
+  const conv=(S.waConvs||[]).find(x=>x.phone===S.waPhone)||{};
+  const firstName=(conv.name||'').split(' ')[0];
+  const ta=document.getElementById('waText');
+  if(ta){ ta.value=c.text.replace(/\{שם\}/g,firstName); ta.focus(); }
+  document.getElementById('waCannedPop').style.display='none';
+}
+async function waAddCanned(){
+  const title=prompt('כותרת קצרה לתשובה:'); if(!title) return;
+  const text=prompt('תוכן ההודעה ({שם} יוחלף בשם הלקוח):'); if(!text) return;
+  try{ const r=await api('/api/admin/wa/canned',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({title,text})});
+       S.waCanned=r.items||[]; waPaintCanned(); toast('נשמר ✓',true); }
+  catch(e){ toast('שמירה נכשלה',false); }
+}
+async function waDelCanned(id){
+  if(!confirm('למחוק את התשובה המוכנה?')) return;
+  try{ await api('/api/admin/wa/canned/'+id,{method:'DELETE'});
+       S.waCanned=(S.waCanned||[]).filter(c=>c.id!==id); waPaintCanned(); }
+  catch(e){ toast('מחיקה נכשלה',false); }
+}
+
+// ── Web Push (PWA): התראות גם כשהאפליקציה סגורה. באייפון — חובה "הוסף למסך הבית" קודם ──
+function urlB64ToU8(b64){ const pad='='.repeat((4-b64.length%4)%4); const raw=atob((b64+pad).replace(/-/g,'+').replace(/_/g,'/'));
+  return Uint8Array.from([...raw].map(c=>c.charCodeAt(0))); }
+async function waSWReady(){
+  if(!('serviceWorker' in navigator)) return null;
+  try{ return await navigator.serviceWorker.register('/sw.js'); }catch(e){ return null; }
+}
+async function waPushBtnState(){
+  const btn=document.getElementById('waPushBtn'); if(!btn) return;
+  if(!('serviceWorker' in navigator)||!('PushManager' in window)){ btn.textContent='🔕'; btn.title='הדפדפן לא תומך / לא מותקן כאפליקציה'; return; }
+  try{ const reg=await navigator.serviceWorker.getRegistration();
+       const sub=reg&&await reg.pushManager.getSubscription();
+       if(sub&&Notification.permission==='granted'){ btn.textContent='🔔'; btn.style.color='#16a34a'; btn.title='התראות פעילות במכשיר הזה ✓ (לחץ לבדיקה)'; btn.onclick=waPushTest; }
+       else { btn.textContent='🔕'; btn.style.color=''; btn.title='הפעל התראות במכשיר הזה'; btn.onclick=waEnablePush; }
+  }catch(e){}
+}
+async function waEnablePush(){
+  if(!('serviceWorker' in navigator)||!('PushManager' in window)){
+    toast('באייפון: קודם שתף ← "הוסף למסך הבית", ואז להפעיל התראות מתוך האפליקציה',false); return; }
+  try{
+    const perm=await Notification.requestPermission();
+    if(perm!=='granted'){ toast('ההרשאה נדחתה — אפשר לאפשר בהגדרות',false); return; }
+    const reg=await waSWReady(); if(!reg){ toast('רישום service worker נכשל',false); return; }
+    const {key}=await api('/api/admin/wa/push/key');
+    if(!key){ toast('מפתח push חסר בשרת',false); return; }
+    const sub=await reg.pushManager.subscribe({userVisibleOnly:true, applicationServerKey:urlB64ToU8(key)});
+    const r=await api('/api/admin/wa/push/subscribe',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({sub:sub.toJSON(), ua:navigator.userAgent})});
+    toast(`התראות הופעלו ✓ (${r.devices} מכשירים רשומים)`,true);
+    waPushBtnState();
+  }catch(e){ toast('הפעלת התראות נכשלה — '+(e.message||e),false); }
+}
+async function waPushTest(){
+  try{ const r=await api('/api/admin/wa/push/test',{method:'POST'});
+       toast(`נשלחה התראת בדיקה ל-${r.sent} מכשירים`,true); }
+  catch(e){ toast('שליחת בדיקה נכשלה',false); }
 }
 function waScrollBottom(){ const el=document.getElementById('waMsgs'); if(el) el.scrollTop=el.scrollHeight; }
 function renderWaThread(){ const p=document.getElementById('waThreadPane'); if(p){ p.innerHTML=waThreadHTML(); waScrollBottom(); } }
@@ -2983,10 +3117,16 @@ function startPoll(){ clearInterval(S.pollTimer);
     }
   },15000); }
 
-// ── deep-link ?op= ──
+// ── deep-link ?op= / ?wa=1&phone= ──
 async function handleDeepLink(){
-  const op=new URLSearchParams(location.search).get('op');
+  const q=new URLSearchParams(location.search);
+  const op=q.get('op');
   if(op && S.branchId){ try{ await openScan(op); }catch(e){} }
+  if(q.get('wa')==='1' && S.branchId){
+    openWaTab();
+    const ph=q.get('phone');
+    if(ph) setTimeout(()=>openWaConv(ph), 1200);
+  }
 }
 
 // ── init ──
@@ -3001,6 +3141,7 @@ async function bootApp(){
   try{ S.branchList=await (await fetchT('/api/branches',{},15000)).json(); }catch(e){}
   try{ render(); }catch(e){ hideLoading(); }
   applyTheme();
+  waSWReady();   // רישום service worker (PWA/push) — לא חוסם
   if(S.branchId){ startPoll(); startNotifPoll(); handleDeepLink(); }
 }
 (async()=>{
