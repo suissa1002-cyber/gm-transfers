@@ -1553,12 +1553,14 @@ def _payplus_headers():
             "Content-Type": "application/json", "User-Agent": _PP_UA}
 
 
-def _payplus_link(amount: float, order_number: str, customer: dict, payments: int = 1) -> str:
-    """יוצר קישור דף תשלום PayPlus עבור ההזמנה. דורש env PAYPLUS_PAGE_UID."""
+def _payplus_link(amount: float, order_number: str, customer: dict, payments: int = 1) -> dict:
+    """יוצר קישור דף תשלום PayPlus עבור ההזמנה. דורש env PAYPLUS_PAGE_UID.
+    מחזיר {"link":..., "pru": page_request_uid} — ה-pru משמש לאימות IPN ולבדיקת סטטוס."""
     import requests as _rq
     page_uid = os.getenv("PAYPLUS_PAGE_UID", "").strip()
     if not (page_uid and os.getenv("PAYPLUS_API_KEY")):
         raise HTTPException(400, "PayPlus עוד לא מוגדר (PAYPLUS_PAGE_UID חסר)")
+    base_url = (cfg.APP_BASE_URL or "https://gm-transfers.onrender.com").rstrip("/")
     body = {
         "payment_page_uid": page_uid,
         "charge_method": 1,                      # חיוב מיידי
@@ -1568,6 +1570,11 @@ def _payplus_link(amount: float, order_number: str, customer: dict, payments: in
         "send_failure_callback": False,
         "more_info": f"GreenOS order {order_number}",
         "payments": max(1, int(payments or 1)),
+        # חזרה אלינו בסיום (נטען בתוך iframe ב-GreenOS) + callback שרת-לשרת
+        "refURL_success": f"{base_url}/pay-done?ok=1",
+        "refURL_failure": f"{base_url}/pay-done?ok=0",
+        "refURL_cancel": f"{base_url}/pay-done?ok=0",
+        "refURL_callback": f"{base_url}/api/payplus/ipn",
         "customer": {
             "customer_name": (customer.get("name") or "").strip()[:60] or "לקוח",
             "email": customer.get("email") or "",
@@ -1580,12 +1587,196 @@ def _payplus_link(amount: float, order_number: str, customer: dict, payments: in
         j = r.json()
     except Exception:  # noqa: BLE001
         j = {}
-    link = ((j.get("data") or {}).get("payment_page_link")
-            or (j.get("data") or {}).get("link") or "")
+    data = j.get("data") or {}
+    link = data.get("payment_page_link") or data.get("link") or ""
     if r.status_code != 200 or not link:
         logger.warning("payplus link failed %s: %s", r.status_code, r.text[:300])
         raise HTTPException(502, f"PayPlus דחה את הבקשה ({r.status_code}): {str(j)[:150]}")
-    return link
+    pru = data.get("page_request_uid") or link.rstrip("/").rsplit("/", 1)[-1]
+    return {"link": link, "pru": pru}
+
+
+def _payplus_ipn_check(pru: str) -> Optional[dict]:
+    """אימות שרת-לשרת מול PayPlus: מה מצב הבקשה pru? מחזיר את ה-data אם שולם בהצלחה."""
+    import requests as _rq
+    if not pru:
+        return None
+    try:
+        r = _rq.post(f"{PAYPLUS_BASE}/PaymentPages/ipn",
+                     headers=_payplus_headers(),
+                     json={"payment_request_uid": pru, "related_transaction": False},
+                     timeout=30)
+        j = r.json()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("payplus ipn check error: %s", e)
+        return None
+    res = j.get("results") or {}
+    data = j.get("data") or {}
+    if r.status_code == 200 and res.get("status") == "success" and str(
+            data.get("status_code") or "") in ("000", "0"):
+        return data
+    return None
+
+
+def _pp_tx_fields(d: dict) -> dict:
+    """מנרמל פרטי עסקה משני המבנים של PayPlus (callback שטוח / IPN-API מקונן)."""
+    tx = d.get("transaction") or {}
+    card = ((d.get("data") or {}).get("card_information")
+            or d.get("card_information") or {})
+    g = lambda *keys: next((str(src.get(k)) for src in (d, tx, card)
+                            for k in keys if src.get(k) not in (None, "")), "")
+    return {
+        "tx": g("transaction_uid", "uid"),
+        "number": g("transaction_number", "number"),
+        "approval": g("approval_num", "approval_number"),
+        "voucher": g("voucher_num", "voucher_number"),
+        "four_digits": g("four_digits"),
+        "brand": g("brand_name"),
+        "payments": g("number_of_payments", "payments"),
+        "amount": g("amount"),
+        "date": g("date", "transaction_date"),
+        "method": g("method", "payment_method"),
+        "status_code": g("status_code"),
+        "pru": g("page_request_uid", "payment_page_request_uid", "payment_request_uid"),
+        "more_info": g("more_info"),
+    }
+
+
+def _pp_mark_paid(order_id: int, f: dict) -> bool:
+    """מעדכן הזמנת WC לשולם: סטטוס 'בטיפול' + פרטי העסקה בשדות meta. אידמפוטנטי."""
+    import requests as _rq
+    creds = _wc_creds()
+    if not creds:
+        return False
+    base, k, s = creds
+    try:
+        cur = _rq.get(f"{base}/wp-json/wc/v3/orders/{order_id}", auth=(k, s), timeout=30)
+        if not cur.ok:
+            return False
+        o = cur.json()
+        already = any(m.get("key") == "greenos_payplus_tx" and m.get("value")
+                      for m in (o.get("meta_data") or []))
+        if already and o.get("status") in ("processing", "completed"):
+            return True  # כבר עודכן (IPN כפול / poll מקביל)
+        meta = [{"key": f"greenos_payplus_{mk}", "value": str(f.get(fk) or "")}
+                for mk, fk in (("tx", "tx"), ("approval", "approval"),
+                               ("voucher", "voucher"), ("4digits", "four_digits"),
+                               ("brand", "brand"), ("payments", "payments"),
+                               ("amount", "amount"), ("date", "date"))]
+        r = _rq.put(f"{base}/wp-json/wc/v3/orders/{order_id}",
+                    json={"status": "processing", "set_paid": True,
+                          "transaction_id": f.get("tx") or "",
+                          "payment_method": "payplus",
+                          "payment_method_title": "כרטיס אשראי (PayPlus)",
+                          "meta_data": meta},
+                    auth=(k, s), timeout=30)
+        if r.ok:
+            try:  # הערה פנימית על ההזמנה — נראית למוקדנים ב-WC
+                _rq.post(f"{base}/wp-json/wc/v3/orders/{order_id}/notes",
+                         json={"note": (f"GreenOS · PayPlus: התשלום אושר ✓ "
+                                        f"עסקה {f.get('tx') or '?'} · אישור {f.get('approval') or '?'} · "
+                                        f"{f.get('brand') or ''} ****{f.get('four_digits') or ''} · "
+                                        f"{f.get('payments') or 1} תשלומים")},
+                         auth=(k, s), timeout=20)
+            except Exception:  # noqa: BLE001
+                pass
+            logger.info("order %s marked paid (tx %s)", order_id, f.get("tx"))
+            return True
+        logger.warning("order paid-update failed %s: %s", r.status_code, r.text[:200])
+    except Exception as e:  # noqa: BLE001
+        logger.warning("mark-paid error for order %s: %s", order_id, e)
+    return False
+
+
+@app.post("/api/payplus/ipn")
+async def payplus_ipn(request: Request):
+    """Callback שרת-לשרת מ-PayPlus בסיום תשלום (refURL_callback).
+    מאומת מול ה-IPN API של PayPlus לפני עדכון ההזמנה — לא סומכים על גוף הבקשה לבדו."""
+    import json as _json
+    try:
+        raw = await request.body()
+        try:
+            payload = _json.loads(raw.decode("utf-8", "ignore") or "{}")
+        except Exception:  # noqa: BLE001
+            payload = dict((await request.form()) or {})
+    except Exception:  # noqa: BLE001
+        payload = {}
+    if not payload:
+        payload = dict(request.query_params)
+    f = _pp_tx_fields(payload)
+    pru = f.get("pru") or ""
+    logger.info("payplus ipn: pru=%s status=%s tx=%s", pru, f.get("status_code"), f.get("tx"))
+    # אימות אמיתי מול PayPlus (לא מסתמכים על payload שכל אחד יכול לשלוח)
+    verified = _payplus_ipn_check(pru)
+    if not verified:
+        logger.warning("payplus ipn NOT verified (pru=%s) — ignoring", pru)
+        return {"ok": False, "verified": False}
+    vf = _pp_tx_fields(verified)
+    for k2, v in vf.items():  # ערכים מהאימות גוברים על ה-payload
+        if v:
+            f[k2] = v
+    order_id = db.sales_state_get(f"payplus_pru:{pru}")
+    if not order_id:
+        logger.warning("payplus ipn: no order mapping for pru %s (more_info=%s)", pru, f.get("more_info"))
+        return {"ok": False, "order": None}
+    ok = _pp_mark_paid(int(order_id), f)
+    return {"ok": ok, "order": int(order_id)}
+
+
+@app.get("/pay-done")
+def pay_done(ok: str = "1"):
+    """עמוד הנחיתה בסיום תשלום — נטען בתוך ה-iframe ב-GreenOS ומאותת להורה."""
+    from fastapi.responses import HTMLResponse
+    good = str(ok) == "1"
+    icon = "✓" if good else "✕"
+    color = "#16a34a" if good else "#dc2626"
+    msg = "התשלום התקבל בהצלחה" if good else "התשלום לא הושלם"
+    sub = "אפשר לסגור את החלון — ההזמנה מתעדכנת" if good else "אפשר לנסות שוב או לשלוח קישור ללקוח"
+    return HTMLResponse(f"""<!doctype html><html dir="rtl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>GreenOS</title></head>
+<body style="margin:0;font-family:-apple-system,Segoe UI,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#f4f6f8">
+<div style="text-align:center;padding:30px">
+  <div style="width:74px;height:74px;border-radius:50%;background:{color};color:#fff;font-size:38px;line-height:74px;margin:0 auto 14px">{icon}</div>
+  <h2 style="margin:0 0 6px;color:#1f2937">{msg}</h2>
+  <div style="color:#6b7280;font-size:14px">{sub}</div>
+</div>
+<script>try{{ (window.parent!==window?window.parent:window.opener||{{postMessage:function(){{}}}}).postMessage({{type:'payplus-done',ok:{str(good).lower()}}},'*'); }}catch(e){{}}</script>
+</body></html>""")
+
+
+@app.get("/api/admin/wa/order/paystatus/{order_id}")
+def wa_order_paystatus(order_id: int, x_admin_key: Optional[str] = Header(None)):
+    """בדיקת מצב תשלום של הזמנה — ל-polling מה-frontend בזמן שה-iframe פתוח.
+    אם ה-IPN לא הגיע (נדיר), בודק אקטיבית מול PayPlus ומעדכן בעצמו."""
+    _require_admin(x_admin_key)
+    import requests as _rq
+    creds = _wc_creds()
+    if not creds:
+        raise HTTPException(502, "חיבור WooCommerce לא מוגדר")
+    base, k, s = creds
+    r = _rq.get(f"{base}/wp-json/wc/v3/orders/{order_id}", auth=(k, s), timeout=30)
+    if not r.ok:
+        raise HTTPException(404, "הזמנה לא נמצאה")
+    o = r.json()
+    meta = {m.get("key"): m.get("value") for m in (o.get("meta_data") or [])}
+    paid = bool(meta.get("greenos_payplus_tx")) or o.get("status") in ("processing", "completed")
+    if not paid:
+        pru = meta.get("greenos_payplus_pru") or ""
+        verified = _payplus_ipn_check(pru) if pru else None
+        if verified:
+            f = _pp_tx_fields(verified)
+            if _pp_mark_paid(order_id, f):
+                paid = True
+                meta.update({"greenos_payplus_tx": f.get("tx"),
+                             "greenos_payplus_approval": f.get("approval"),
+                             "greenos_payplus_4digits": f.get("four_digits"),
+                             "greenos_payplus_brand": f.get("brand")})
+                o["status"] = "processing"
+    return {"order_id": order_id, "status": o.get("status"), "paid": paid,
+            "tx": meta.get("greenos_payplus_tx") or "",
+            "approval": meta.get("greenos_payplus_approval") or "",
+            "four_digits": meta.get("greenos_payplus_4digits") or "",
+            "brand": meta.get("greenos_payplus_brand") or ""}
 
 
 class WaOrderItem(BaseModel):
@@ -1681,14 +1872,17 @@ def wa_order_create(body: WaOrderCreate, x_admin_key: Optional[str] = Header(Non
            "admin_url": f"{base}/wp-admin/post.php?post={o.get('id')}&action=edit",
            "pay_link": ""}
     if body.payment == "link":
-        link = _payplus_link(float(o.get("total") or 0), str(o.get("number")), {
+        pp = _payplus_link(float(o.get("total") or 0), str(o.get("number")), {
             "name": f"{cust.first_name} {cust.last_name}".strip(),
             "email": cust.email, "phone": cust.phone or body.phone},
             payments=body.installments)
-        out["pay_link"] = link
-        try:  # שומרים את הקישור על ההזמנה
+        out["pay_link"] = pp["link"]
+        out["pru"] = pp["pru"]
+        try:  # מיפוי pru→order ל-IPN + שמירת הקישור על ההזמנה
+            db.sales_state_set(f"payplus_pru:{pp['pru']}", str(o["id"]))
             _rq.put(f"{base}/wp-json/wc/v3/orders/{o['id']}",
-                    json={"meta_data": [{"key": "greenos_payplus_link", "value": link}]},
+                    json={"meta_data": [{"key": "greenos_payplus_link", "value": pp["link"]},
+                                        {"key": "greenos_payplus_pru", "value": pp["pru"]}]},
                     auth=(k, s), timeout=30)
         except Exception:  # noqa: BLE001
             pass

@@ -2421,6 +2421,61 @@ async function waChargeSubmit(orderId){
     toast(msg+' — בדוק פרטים או נסה קישור תשלום',false);
   }
 }
+// ── 💳 תשלום בתוך GreenOS: דף PayPlus ב-iframe + עדכון הזמנה אוטומטי בסיום ──
+function waPayOpen(r){
+  const old=document.getElementById('waPayModal'); if(old) old.remove();
+  const div=document.createElement('div');
+  div.id='waPayModal'; div.className='wa-lb'; div.style.cursor='default';
+  const fmt=v=>'₪'+Number(v||0).toLocaleString('he-IL');
+  div.innerHTML=`<div onclick="event.stopPropagation()" style="background:var(--card);border:1px solid var(--line);border-radius:16px;width:min(560px,96vw);height:min(760px,92vh);display:flex;flex-direction:column;overflow:hidden">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line);gap:8px">
+      <b style="font-size:13.5px;white-space:nowrap">הזמנה #${r.number} · ${fmt(r.total)}</b>
+      <span id="waPayStat" class="muted" style="font-size:12px;flex:1;text-align:left">ממתין לתשלום…</span>
+      <button class="btn-ghost" onclick="waPayClose()" title="סגירה — ההזמנה נשארת פתוחה">✕</button>
+    </div>
+    <iframe src="${r.pay_link}" allow="payment *" style="flex:1;border:0;width:100%;background:#fff"></iframe>
+  </div>`;
+  div.onclick=()=>waPayClose();
+  document.body.appendChild(div);
+  S.waPayOrder=r;
+  // polling fallback — גם אם הודעת הסיום מה-iframe לא תגיע, נתפוס את התשלום מהשרת
+  let n=0;
+  if(S.waPayPoll) clearInterval(S.waPayPoll);
+  S.waPayPoll=setInterval(async()=>{
+    n++;
+    if(n>150||!document.getElementById('waPayModal')){ clearInterval(S.waPayPoll); S.waPayPoll=null; return; }
+    try{
+      const st=await api('/api/admin/wa/order/paystatus/'+r.order_id);
+      if(st.paid) waPaySuccess(st);
+    }catch(e){}
+  },6000);
+}
+function waPayClose(){
+  if(S.waPayPoll){ clearInterval(S.waPayPoll); S.waPayPoll=null; }
+  const m=document.getElementById('waPayModal'); if(m) m.remove();
+  const r=S.waPayOrder; S.waPayOrder=null;
+  if(r) toast('הזמנה #'+r.number+' נשארה פתוחה (ממתינה לתשלום)',true);
+}
+function waPaySuccess(st){
+  if(S.waPayPoll){ clearInterval(S.waPayPoll); S.waPayPoll=null; }
+  const r=S.waPayOrder||{}; S.waPayOrder=null;
+  const m=document.getElementById('waPayModal'); if(m) m.remove();
+  toast('התשלום אושר ✓ הזמנה #'+(r.number||'')+' עברה לטיפול'+(st&&st.approval?' · אישור '+st.approval:''),true);
+  const ta=document.getElementById('waText');
+  if(ta&&S.waPhone){ ta.value='התשלום התקבל בהצלחה ✓ ההזמנה שלך בטיפול. תודה שקנית בגרין מובייל 💚'; ta.focus(); }
+}
+window.addEventListener('message',async ev=>{
+  const d=ev.data||{};
+  if(d.type!=='payplus-done') return;
+  const r=S.waPayOrder; if(!r) return;
+  const stat=document.getElementById('waPayStat');
+  if(d.ok){
+    if(stat) stat.textContent='מאמת תשלום…';
+    try{ const st=await api('/api/admin/wa/order/paystatus/'+r.order_id); if(st.paid){ waPaySuccess(st); return; } }catch(e){}
+    // ה-IPN לפעמים מגיע שניות אחרי המעבר לעמוד הסיום — ה-polling ישלים את העדכון
+    if(stat) stat.textContent='התשלום התקבל — מעדכן הזמנה…';
+  } else if(stat){ stat.textContent='התשלום לא הושלם — אפשר לנסות שוב'; stat.style.color='#dc2626'; }
+});
 function waOrderSaveInputs(){
   const o=S.waOrd; if(!o) return;
   const g=id=>{const el=document.getElementById(id);return el?el.value:undefined;};
@@ -2450,10 +2505,10 @@ async function waOrderSubmit(payment){
         note:o.note||'', payment, installments:o.installments||1})},90000);
     hideLoading(); waOrderClose();
     if(wantCharge){
-      // חיוב טלפוני: דף הסליקה נפתח אצלך — מקלידים את כרטיס הלקוח שם (כולל 3D Secure).
-      if(r.pay_link) window.open(r.pay_link,'_blank');
-      window.open(r.admin_url,'_blank');
-      toast('הזמנה #'+r.number+' נוצרה — הקלד את פרטי הכרטיס בדף PayPlus שנפתח 💳',true);
+      // חיוב טלפוני: דף הסליקה נפתח בתוך GreenOS (iframe) — מקלידים את כרטיס הלקוח (3D Secure).
+      // בסיום תשלום מוצלח ההזמנה עוברת אוטומטית ל"בטיפול" עם פרטי העסקה (IPN + polling).
+      if(r.pay_link){ waPayOpen(r); }
+      else { window.open(r.admin_url,'_blank'); toast('הזמנה #'+r.number+' נוצרה — אך קישור תשלום לא התקבל',false); }
       return;
     }
     S.waOrdDone=r;
