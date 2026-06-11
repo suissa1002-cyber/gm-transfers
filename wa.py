@@ -129,13 +129,27 @@ _MEDIA_TYPES = ("image", "video", "audio", "document", "file", "sticker")
 
 
 def _extract_media(content):
-    """חילוץ מדיה מבלוקי תוכן: [{'type','url','caption'}]. מבנה אמיתי (אומת):
-    {"type":"image","image":{"link":"https://cdnj1.com/..."}} — ה-CDN פומבי."""
+    """חילוץ מדיה מבלוקי תוכן: [{'type','url','caption'}]. שני מבנים אמיתיים (אומתו):
+    יוצא:  {"type":"image","image":{"link":"https://cdnj1.com/..."}}
+    נכנס:  {"attachment":{"type":"image","payload":{"url":"https://cdnj1.com/..."}}}
+    ה-CDN פומבי בשני המקרים."""
     out = []
     if not isinstance(content, list):
         return out
     for b in content:
-        if not isinstance(b, dict) or b.get("type") not in _MEDIA_TYPES:
+        if not isinstance(b, dict):
+            continue
+        # מבנה נכנס (מהלקוח): attachment.payload.url
+        att = b.get("attachment")
+        if isinstance(att, dict) and att.get("type") in _MEDIA_TYPES:
+            payload = att.get("payload") or {}
+            url = payload.get("url") or payload.get("link") or ""
+            if url:
+                out.append({"type": att["type"], "url": url,
+                            "caption": payload.get("caption") or ""})
+            continue
+        # מבנה יוצא: type + <type>.link
+        if b.get("type") not in _MEDIA_TYPES:
             continue
         inner = b.get(b["type"]) or {}
         if not isinstance(inner, dict):
