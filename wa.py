@@ -256,42 +256,45 @@ def send_template(phone: str, name: str, body: str):
 
 def send_media(phone: str, filename: str, content: bytes, mime: str, caption: str = ""):
     """
-    שליחת קובץ ללקוח: מעלים ל-WordPress media (URL ציבורי) ואז שולחים
-    דרך ה-API הציבורי (`send_file` דורש URL). גם מדיה כפופה לחלון 24ש.
+    שליחת קובץ ללקוח: מעלים ל-file manager של ConnectOp (multipart ל-user.php,
+    op=inbox_file_manager/upload — אותו מנגנון של הדשבורד שלהם, הקובץ יושב על
+    cdnj1) ואז שולחים דרך ה-API הציבורי. גם מדיה כפופה לחלון 24ש.
+    הערה: ההעלאה הקודמת ל-WordPress נחסמה ע"י Cloudflare מ-IP של Render.
     """
-    import os
-    import requests as rq
+    import json as _json
     if len(content) > 15 * 1024 * 1024:
         raise WaError("קובץ גדול מדי (מקס׳ 15MB)")
     win = _window_state(get_thread(phone, limit=60)["messages"])
     if not win["in_window"]:
         raise WaError("מחוץ לחלון 24ש׳ — אי אפשר לשלוח מדיה (רק template טקסט)")
-    base = os.getenv("WC_STORE_URL", "").rstrip("/")
-    user = os.getenv("WP_USERNAME", "")
-    pw = os.getenv("WP_APP_PASSWORD", "")
-    if not (base and user and pw):
-        raise WaError("חסרים פרטי WordPress להעלאת הקובץ (WP_USERNAME/WP_APP_PASSWORD)")
-    safe = re.sub(r"[^\w.\-]+", "_", filename or "file")
+    m = (mime or "").lower()
+    kind = ("image" if m.startswith("image/") else
+            "audio" if m.startswith("audio/") else
+            "video" if m.startswith("video/") else "file")
+    safe = re.sub(r"[^\w.\-]+", "_", filename or "file", flags=re.UNICODE) or "file"
+    d = _dash()
+    param = {"page_id": d.account_id, "op": "inbox_file_manager", "op1": "upload",
+             "op2": kind, "file_name": safe, "uploadFB": False, "inbox": True,
+             "ms_id": str(phone)}
     try:
-        r = rq.post(f"{base}/wp-json/wp/v2/media",
-                    headers={"Content-Disposition": f'attachment; filename="{safe}"',
-                             "Content-Type": mime or "application/octet-stream"},
-                    data=content, auth=(user, pw), timeout=60)
-        if r.status_code not in (200, 201):
-            raise WaError(f"העלאה ל-WordPress נכשלה ({r.status_code})")
-        url = r.json().get("source_url", "")
-    except WaError:
-        raise
+        r = d._session.post(f"{d.base_url}/php/user.php",
+                            data={"param": _json.dumps(param)},
+                            files={"file": (safe, content, mime or "application/octet-stream")},
+                            headers={"X-Requested-With": "XMLHttpRequest",
+                                     "Referer": f"{d.base_url}/en/inbox?acc={d.account_id}"},
+                            timeout=90)
+        j = r.json() if r.ok else {}
     except Exception as e:  # noqa: BLE001
-        raise WaError(f"העלאת קובץ נכשלה: {e}") from e
+        raise WaError(f"העלאת קובץ ל-ConnectOp נכשלה: {e}") from e
+    if not (isinstance(j, dict) and j.get("status") == "OK"):
+        raise WaError(f"העלאה נדחתה: {str(j)[:120] or r.status_code} (טוקן דשבורד?)")
+    url = (j.get("data") or {}).get("url", "")
     if not url:
-        raise WaError("WordPress לא החזיר כתובת קובץ")
-    kind = ("image" if (mime or "").startswith("image/") else
-            "video" if (mime or "").startswith("video/") else
-            "audio" if (mime or "").startswith("audio/") else "document")
-    resp = _pub().send_file(phone, url, caption=caption, file_type=kind)
-    logger.info("wa send %s -> %s (%s)", kind, phone, safe)
-    return {"sent": True, "via": kind, "url": url, "resp": resp}
+        raise WaError("ConnectOp לא החזיר כתובת קובץ")
+    send_kind = "document" if kind == "file" else kind
+    resp = _pub().send_file(phone, url, caption=caption, file_type=send_kind)
+    logger.info("wa send %s -> %s (%s)", send_kind, phone, safe)
+    return {"sent": True, "via": send_kind, "url": url, "resp": resp}
 
 
 # ── פעולות שיחה ─────────────────────────────────────────────────────

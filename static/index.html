@@ -342,13 +342,16 @@
   .wa-back{display:none}
   .wa-badge{position:absolute;top:-6px;inset-inline-end:-6px;background:#dc2626;color:#fff;font-size:11px;
             font-weight:800;min-width:18px;height:18px;line-height:18px;border-radius:999px;padding:0 5px;text-align:center}
-  /* מצב מסך-מלא לוואטסאפ: בלי כותרת/טאבים, סרגל עליון נקי (רק 💬 + בורגר) */
+  /* מצב מסך-מלא לוואטסאפ: בלי כותרת/טאבים, סרגל עליון נקי (רק 💬 + בורגר),
+     והחלון נמתח עד ה-header — בלי "חלון בתוך חלון" */
   body.wa-mode #hdr > *:not(#waBtn){display:none!important}
-  body.wa-mode .wrap{padding:10px 14px;max-width:none}
-  .wa-full{height:calc(100vh - 88px)}
-  .wa-full .wa-list{max-height:none;height:100%;display:flex;flex-direction:column;min-height:0}
+  body.wa-mode .wrap{padding:0;max-width:none}
+  .wa-full{height:calc(100vh - var(--hdr-h,57px));gap:0}
+  .wa-full .wa-list{max-height:none;height:100%;display:flex;flex-direction:column;min-height:0;
+                    border:0;border-radius:0;border-inline-end:1px solid var(--line)}
   .wa-full #waListPane{flex:1;overflow-y:auto;min-height:0}
-  .wa-full .wa-thread{height:100%;max-height:none;min-height:0}
+  .wa-full .wa-thread{height:100%;max-height:none;min-height:0;border:0;border-radius:0}
+  .wa-full .wa-panel{border-radius:0}
   .wa-listbar{display:flex;gap:6px;padding:8px;border-bottom:1px solid var(--line);align-items:center;flex:none}
   .wa-listbar input{flex:1;min-width:0;padding:8px 10px;border-radius:9px;border:1px solid var(--line);
                     background:var(--bg);color:var(--txt);font-size:14px}
@@ -413,9 +416,9 @@
     .wa-bar-hidden{display:none!important}
     .wa-head{gap:6px;padding:9px 10px}
     .wa-head .btn-ghost{padding:6px 9px;font-size:13px;display:inline-flex;align-items:center}
-    .wa-full{height:calc(100vh - 86px)}
+    .wa-full{height:calc(100vh - var(--hdr-h,57px))}
     .wa-full .wa-thread{height:100%}
-    body.wa-mode .wrap{padding:8px 10px}
+    body.wa-mode .wrap{padding:0}
     /* שורת השליחה: קומפקטית כדי להיכנס ב-375px בלי למתוח את העמוד */
     .wa-send{gap:5px;padding:8px 6px}
     .wa-send .btn-ghost{padding:7px 8px;flex:none}
@@ -2154,6 +2157,8 @@ function renderWa(){
   const rows=waFiltered();
   const mobileThread=S.waPhone&&window.innerWidth<=760;
   document.body.classList.add('wa-mode');   // מסך מלא: מסתיר את כפתורי הסרגל (חוץ מ-💬 ובורגר)
+  const hd=document.querySelector('header');  // גובה ה-header האמיתי → החלון נמתח בדיוק עד אליו
+  if(hd) document.documentElement.style.setProperty('--hdr-h', hd.offsetHeight+'px');
   app.innerHTML=`
     <div class="wa-layout wa-full ${S.waPhone?'thread-open':''}" id="waLayout">
       <div class="wa-list" id="waListWrap">
@@ -2208,9 +2213,13 @@ function waThreadHTML(){
           <div id="waQuickPop" class="wa-canned" style="display:none;width:230px"></div>
           <button class="btn-ghost wa-claude" onclick="waToggleUri()" title="אורי — סוכן ה-AI (טיוטות, מלאי, מחירים)">${CLAUDE_ICON}</button>
           <button class="btn-ghost" onclick="waToggleQuick()" title="תשובות מוכנות / תבניות" ${w.in_window?'':'style="border-color:#dc2626"'}>⚡</button>
-          <button class="btn-ghost" onclick="document.getElementById('waFile').click()" title="צרף קובץ" ${w.in_window?'':'disabled style="opacity:.4"'}>📎</button>
-          <input type="file" id="waFile" style="display:none" onchange="waSendFile(this)">
-          <textarea id="waText" placeholder="${w.in_window?'הקלד תשובה…':'מחוץ לחלון — שלח תבנית 📋 או טקסט שיעטף ב-new_message'}"
+          <div id="waAttachPop" class="wa-canned" style="display:none;width:220px"></div>
+          <button class="btn-ghost" onclick="waToggleAttach()" title="צרף — תמונה / צילום / קובץ" ${w.in_window?'':'disabled style="opacity:.4"'}>📎</button>
+          <input type="file" id="waFileGal" accept="image/*,video/*" style="display:none" onchange="waSendFile(this)">
+          <input type="file" id="waFileCam" accept="image/*" capture="environment" style="display:none" onchange="waSendFile(this)">
+          <input type="file" id="waFileAny" style="display:none" onchange="waSendFile(this)">
+          <textarea id="waText" placeholder="${w.in_window?'הקלד תשובה… (אפשר גם להדביק תמונה)':'מחוץ לחלון — שלח תבנית 📋 או טקסט שיעטף ב-new_message'}"
+                    onpaste="waPaste(event)"
                     onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendWaMsg();}"></textarea>
           <button class="btn-primary" id="waSendBtn" onclick="sendWaMsg()">שלח</button>
         </div>
@@ -2490,20 +2499,54 @@ function waToggleQuick(){
     </div>`;
   pop.style.display='block';
 }
-// ── 📎 שליחת קובץ + ⚡ תשובות מוכנות ──
+// ── 📎 שליחת קובץ (תפריט: גלריה/צילום/קובץ) + הדבקה + ⚡ תשובות מוכנות ──
+function waToggleAttach(){
+  const pop=document.getElementById('waAttachPop'); if(!pop) return;
+  ['waCannedPop','waTplPop','waQuickPop'].forEach(id=>{ const p=document.getElementById(id); if(p) p.style.display='none'; });
+  if(pop.style.display!=='none'){ pop.style.display='none'; return; }
+  pop.innerHTML=`
+    <div class="wa-canned-item" style="cursor:pointer" onclick="document.getElementById('waAttachPop').style.display='none';document.getElementById('waFileGal').click()">
+      <span style="flex:1"><b>🖼️ תמונה / וידאו</b><div class="muted" style="font-size:11.5px">בחירה מהגלריה</div></span></div>
+    <div class="wa-canned-item" style="cursor:pointer" onclick="document.getElementById('waAttachPop').style.display='none';document.getElementById('waFileCam').click()">
+      <span style="flex:1"><b>📸 צילום</b><div class="muted" style="font-size:11.5px">פתיחת מצלמה (במובייל)</div></span></div>
+    <div class="wa-canned-item" style="cursor:pointer" onclick="document.getElementById('waAttachPop').style.display='none';document.getElementById('waFileAny').click()">
+      <span style="flex:1"><b>📎 קובץ</b><div class="muted" style="font-size:11.5px">PDF / מסמך / כל קובץ</div></span></div>`;
+  pop.style.display='block';
+}
 async function waSendFile(inp){
-  const f=inp.files&&inp.files[0]; inp.value=''; if(!f||!S.waPhone) return;
+  const f=inp.files&&inp.files[0]; inp.value=''; if(!f) return;
+  waSendBlob(f, f.name);
+}
+function waPaste(e){
+  // הדבקת תמונה מה-clipboard ישירות לשיחה
+  const items=(e.clipboardData&&e.clipboardData.items)||[];
+  for(const it of items){
+    if(it.kind==='file' && it.type.startsWith('image/')){
+      e.preventDefault();
+      const f=it.getAsFile();
+      if(f && confirm('לשלוח את התמונה שהודבקה ללקוח?')) waSendBlob(f, 'pasted_image.png');
+      return;
+    }
+  }
+}
+async function waSendBlob(f, name){
+  if(!S.waPhone) return;
   if(f.size>15*1024*1024){ toast('קובץ גדול מדי (מקס׳ 15MB)',false); return; }
   showLoading('מעלה ושולח קובץ…');
   try{
-    const fd=new FormData(); fd.append('phone',S.waPhone); fd.append('file',f);
+    const fd=new FormData(); fd.append('phone',S.waPhone); fd.append('file',f,name||f.name||'file');
     const cap=(document.getElementById('waText')||{}).value||'';
     if(cap.trim()) fd.append('caption',cap.trim());
-    const r=await api('/api/admin/wa/send-file',{method:'POST',body:fd},120000);
+    const r=await api('/api/admin/wa/send-file',{method:'POST',body:fd},180000);
     hideLoading(); toast('הקובץ נשלח ✓',true);
     const ta=document.getElementById('waText'); if(ta) ta.value='';
     setTimeout(()=>loadWaThread(true),1500);
-  }catch(e){ hideLoading(); toast('שליחת קובץ נכשלה — '+(e.status===502?'בדוק חלון 24ש׳/חיבור':'תקלה'),false); }
+  }catch(e){
+    hideLoading();
+    let msg='שליחת קובץ נכשלה';
+    try{ if(e.status===502) msg+=' — '+(e.detail||'בדוק חלון 24ש׳ / טוקן'); }catch(_){}
+    toast(msg,false);
+  }
 }
 async function waToggleCanned(){
   const pop=document.getElementById('waCannedPop'); if(!pop) return;
