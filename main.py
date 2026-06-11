@@ -1569,6 +1569,7 @@ def _payplus_link(amount: float, order_number: str, customer: dict, payments: in
         "sendEmailApproval": True,
         "send_failure_callback": False,
         "more_info": f"GreenOS order {order_number}",
+        "more_info_2": "GreenOS",
         "payments": max(1, int(payments or 1)),
         # חזרה אלינו בסיום (נטען בתוך iframe ב-GreenOS) + callback שרת-לשרת
         "refURL_success": f"{base_url}/pay-done?ok=1",
@@ -1593,6 +1594,8 @@ def _payplus_link(amount: float, order_number: str, customer: dict, payments: in
         logger.warning("payplus link failed %s: %s", r.status_code, r.text[:300])
         raise HTTPException(502, f"PayPlus דחה את הבקשה ({r.status_code}): {str(j)[:150]}")
     pru = data.get("page_request_uid") or link.rstrip("/").rsplit("/", 1)[-1]
+    # utm_source — כך עמודת "מקור" בדשבורד PayPlus תציג GreenOS במקום "לא ידוע"
+    link += ("&" if "?" in link else "?") + "utm_source=GreenOS&utm_medium=greenos"
     return {"link": link, "pru": pru}
 
 
