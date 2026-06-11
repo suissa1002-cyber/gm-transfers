@@ -10,11 +10,30 @@
 """
 
 import os
+import re
 import threading
 from contextlib import contextmanager
 from datetime import datetime, timezone, timedelta
 
 import config as cfg
+
+
+def _norm_serial(s) -> str:
+    """נרמול סריאל להשוואה: אותיות+ספרות בלבד, אותיות גדולות.
+    מטפל בסריאלים עם לוכסן/מקף/רווח (למשל '35785/AGAAJF2SU03507')."""
+    return re.sub(r"[^A-Za-z0-9]", "", str(s or "")).upper()
+
+
+def _serial_loose_eq(a, b) -> bool:
+    """התאמה גמישה בין סריאל סרוק למאוחסן — מנורמל זהה, או שאחד סיומת/קידומת
+    של השני (כשהחלק המשותף ארוך מספיק, ≥8, כדי למנוע התאמות שווא)."""
+    na, nb = _norm_serial(a), _norm_serial(b)
+    if not na or not nb:
+        return False
+    if na == nb:
+        return True
+    short, lng = (na, nb) if len(na) <= len(nb) else (nb, na)
+    return len(short) >= 8 and (lng.endswith(short) or lng.startswith(short))
 
 _USE_PG = bool(cfg.DATABASE_URL)
 _lock = threading.RLock()
@@ -476,6 +495,27 @@ def receive_scan(branch_id: int, code: str, op_id: str = None, employee: str = N
         params.append(code)
         cur.execute(_q(sql), tuple(params))
         item = _row_to_dict(cur.fetchone())
+
+        # fallback: התאמה גמישה לסריאלים עם לוכסן/מקף (הברקוד הפיזי לא תמיד זהה
+        # לסריאל המאוחסן). משווים מנורמל מול הפריטים הסריאליים הפתוחים של הסניף.
+        if item is None and _norm_serial(code):
+            fb_sql = """
+                SELECT ti.* FROM transfer_items ti
+                JOIN transfers t ON t.op_id = ti.op_id
+                WHERE t.to_branch_id = ? AND ti.received = 0
+                  AND ti.serial IS NOT NULL AND ti.serial != ?
+            """
+            fb_params = [branch_id, ""]
+            if op_id:
+                fb_sql += " AND ti.op_id = ?"
+                fb_params.append(str(op_id))
+            fb_sql += " ORDER BY t.created_at ASC"
+            cur.execute(_q(fb_sql), tuple(fb_params))
+            for cand in cur.fetchall():
+                cd = _row_to_dict(cand)
+                if _serial_loose_eq(code, cd.get("serial")):
+                    item = cd
+                    break
 
         matched = item is not None
         target_op = item["op_id"] if matched else op_id
