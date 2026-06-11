@@ -2363,7 +2363,7 @@ function waOrderRender(){
     </div>
     <div style="display:flex;gap:8px;margin-top:10px">
       <button class="btn-primary" style="flex:1" onclick="waOrderSubmit('link')">הזמנה + קישור תשלום</button>
-      <button class="btn-ghost" style="flex:1;border-color:#16a34a;color:#16a34a" onclick="waOrderSubmit('charge')">💳 חיוב טלפוני</button>
+      <button class="btn-ghost" style="flex:1;border-color:#16a34a;color:#16a34a" onclick="waOrderSubmit('charge')" title="דף הסליקה נפתח אצלך — מקלידים את כרטיס הלקוח (3D Secure)">💳 חיוב טלפוני</button>
       <button class="btn-ghost" style="flex:1" onclick="waOrderSubmit('none')">הזמנה בלבד</button>
     </div>
     <div class="muted" style="font-size:11px;margin-top:6px">קישור = דף סליקה שנשלח ללקוח · חיוב טלפוני = הקלדת כרטיס כאן · "בלבד" = ללא חיוב כעת.</div>
@@ -2434,7 +2434,7 @@ async function waOrderSubmit(payment){
   waOrderSaveInputs();
   const o=S.waOrd; if(!o) return;
   if(!(o.cust.first_name||'').trim()){ toast('חסר שם פרטי',false); return; }
-  const wantCharge=(payment==='charge'); if(wantCharge) payment='none';
+  const wantCharge=(payment==='charge'); if(wantCharge) payment='link';
   const ships=waOrdShipOpts(); const sh=ships.find(x=>x.k===o.ship)||ships[0];
   const d=o.base;
   const isVar=d.type==='variation'||o.sel.id!==d.parent_id;
@@ -2449,7 +2449,13 @@ async function waOrderSubmit(payment){
         shipping_title: o.ship==='pickup'?'איסוף עצמי':sh.t, shipping_total: sh.cost,
         note:o.note||'', payment, installments:o.installments||1})},90000);
     hideLoading(); waOrderClose();
-    if(wantCharge){ waChargeOpen(r, o.installments||1); return; }
+    if(wantCharge){
+      // חיוב טלפוני: דף הסליקה נפתח אצלך — מקלידים את כרטיס הלקוח שם (כולל 3D Secure).
+      if(r.pay_link) window.open(r.pay_link,'_blank');
+      window.open(r.admin_url,'_blank');
+      toast('הזמנה #'+r.number+' נוצרה — הקלד את פרטי הכרטיס בדף PayPlus שנפתח 💳',true);
+      return;
+    }
     S.waOrdDone=r;
     const msg = r.pay_link
       ? `היי${o.cust.first_name?' '+o.cust.first_name:''}, הקמנו לך הזמנה מס׳ ${r.number} על סך ${r.currency}${Number(r.total).toLocaleString('he-IL')}.\nלתשלום מאובטח: ${r.pay_link}\nתודה, גרין מובייל 💚`
