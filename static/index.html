@@ -1212,13 +1212,13 @@ async function renderBoard(app, silent){
   // טייל נפרד לכל סניף יעד — בקשות לאותו יעד מתרכזות יחד
   const bcHtml = S.broadcast
     ? (S.broadcast.groups||[]).map(g=>`<div class="bcast" onclick="openBroadcast(${g.to_branch})">
-         <div class="bc-ic">📡</div>
+         <div class="bc-ic">${ico('radio',24)}</div>
          <div class="bc-txt"><b>בקשת העברה אל ${g.to_name}</b><span>${(g.lines||[]).length} פריטים · ${fmtTime(g.latest)} · לחץ לצפייה</span></div>
          <button class="bc-x" onclick="event.stopPropagation();dismissBroadcast(${g.to_branch})">✕</button>
        </div>`).join('') : '';
   const needEmp=!S.employee;
   const notifBtn = (window.Notification && Notification.permission!=='granted')
-    ? `<button class="btn-ghost" style="margin-bottom:12px" onclick="requestNotif()">🔔 הפעל התראות להעברה נכנסת</button>` : '';
+    ? `<button class="btn-ghost" style="margin-bottom:12px;display:inline-flex;align-items:center;gap:6px" onclick="requestNotif()">${ico('bell',14)} הפעל התראות להעברה נכנסת</button>` : '';
   const pending=list.reduce((a,t)=>a+(t.total_units-t.received_units),0);
   const ls=S.lastScan;
   const okCls = (ls&&(ls.method==='manual'||ls.method==='paste'))?'warn':'ok';
@@ -1736,7 +1736,7 @@ async function broadcastBranch(fromBranch){
   try{
     const r=await api('/api/admin/broadcast',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({branch_id:Number(fromBranch)})});
-    toast('שודר לסניף '+fn+' ('+(r.lines||lines.length)+' שורות) 📡',true);
+    toast('שודר לסניף '+fn+' ('+(r.lines||lines.length)+' שורות)',true);
   }catch(e){ toast('שגיאה בשידור',false); }
   hideLoading();
 }
@@ -2546,6 +2546,7 @@ const _IPATHS={
   inbox:'<polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>',
   trash:'<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
   radio:'<circle cx="12" cy="12" r="2"/><path d="M4.93 19.07a10 10 0 0 1 0-14.14"/><path d="M7.76 16.24a6 6 0 0 1 0-8.49"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>',
+  truck:'<rect x="1" y="3" width="15" height="13" rx="1"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>',
 };
 function ico(name, size, fill){
   return `<svg width="${size||17}" height="${size||17}" viewBox="0 0 24 24" fill="${fill?'currentColor':'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block">${_IPATHS[name]||''}</svg>`;
@@ -2972,13 +2973,13 @@ function lsResvAttr(bo){
   const col=transit?'#f5a524':'#2563eb';   // כתום=בהעברה, כחול=משוריין
   const label=(transit?'בהעברה ל':'משוריין ל')+(bo.dyn_to||'?')+(bo.dyn_n>1?` (${bo.dyn_n})`:'');
   return {style:`;background:${col}22;border-radius:8px`, title:`title="${label}"`,
-          dot:` <span style="color:${col}">${transit?'🚚':'📡'}</span>`};
+          dot:` <span style="color:${col};display:inline-flex;vertical-align:-2px">${ico(transit?'truck':'radio',13)}</span>`};
 }
 function serDynBadge(hits){
   const h=(hits||[]).find(x=>x.dyn_kind);
   if(!h) return '';
-  if(h.dyn_kind==='transit') return ` <span class="mtag warn">🚚 בהעברה ל${h.dyn_branch||'?'}</span>`;
-  if(h.dyn_kind==='reserved') return ` <span class="mtag" style="background:rgba(37,99,235,.15);color:var(--blue)">📡 משוריין ל${h.dyn_branch||'?'}</span>`;
+  if(h.dyn_kind==='transit') return ` <span class="mtag warn" style="display:inline-flex;align-items:center;gap:4px">${ico('truck',12)} בהעברה ל${h.dyn_branch||'?'}</span>`;
+  if(h.dyn_kind==='reserved') return ` <span class="mtag" style="background:rgba(37,99,235,.15);color:var(--blue);display:inline-flex;align-items:center;gap:4px">${ico('radio',12)} משוריין ל${h.dyn_branch||'?'}</span>`;
   return '';
 }
 function lsRow(it,live){
@@ -3295,8 +3296,8 @@ function lsUpdateResults(){
 // סטטוס דינמי לסריאל: בהעברה / משוריין (מ-DB שלנו) — גובר על "זמין"
 function dynStatusHtml(s){
   if(!s||!s.dyn_kind) return '';
-  if(s.dyn_kind==='transit') return `<span style="color:var(--amber);font-weight:800">🚚 בהעברה ל${s.dyn_branch||'?'}</span>`;
-  if(s.dyn_kind==='reserved') return `<span style="color:var(--blue);font-weight:800">📡 משוריין ל${s.dyn_branch||'?'}</span>`;
+  if(s.dyn_kind==='transit') return `<span style="color:var(--amber);font-weight:800;display:inline-flex;align-items:center;gap:4px">${ico('truck',12)} בהעברה ל${s.dyn_branch||'?'}</span>`;
+  if(s.dyn_kind==='reserved') return `<span style="color:var(--blue);font-weight:800;display:inline-flex;align-items:center;gap:4px">${ico('radio',12)} משוריין ל${s.dyn_branch||'?'}</span>`;
   return '';
 }
 async function openLiveDetail(pid){
@@ -3352,7 +3353,7 @@ function renderLiveDetail(){
           <td style="font-weight:700">${s.branch_name||s.branch_id||''}</td><td>${ds}</td>
           <td>${s.supplier||'—'}</td><td>${war}</td><td>${st}</td></tr>`;
       }).join('')}</tbody></table>
-      <div class="muted" style="font-size:12px;margin-top:6px">📡 לחיצה על שורת סריאל — בקשת העברה לסניף אחר</div>`;
+      <div class="muted" style="font-size:12px;margin-top:6px"><span style="display:inline-flex;vertical-align:-2px">${ico('radio',12)}</span> לחיצה על שורת סריאל — בקשת העברה לסניף אחר</div>`;
     }
   }
   document.getElementById('modalRoot').innerHTML=`<div class="overlay"><div class="modal" style="max-width:940px;text-align:right;max-height:84vh;overflow:auto">
@@ -3363,7 +3364,7 @@ function renderLiveDetail(){
       <button class="btn-ghost" style="padding:5px 10px;font-size:12px" onclick="refreshLiveDetail()">🔄 רענן</button>
     </div>
     <div class="ls-chipline">${chips}</div>
-    ${chipClickable?'<div class="muted" style="font-size:12px;margin:-6px 0 10px">📡 לחיצה על סניף עם מלאי — בקשת העברה ממנו</div>':''}
+    ${chipClickable?`<div class="muted" style="font-size:12px;margin:-6px 0 10px"><span style="display:inline-flex;vertical-align:-2px">${ico('radio',12)}</span> לחיצה על סניף עם מלאי — בקשת העברה ממנו</div>`:''}
     ${serHtml}
     <div style="display:flex;margin-top:14px"><button class="btn-ghost" style="flex:1" onclick="closeModal()">סגור</button></div>
   </div></div>`;
@@ -3398,7 +3399,7 @@ function lsTransferDialog(cfg){
   const opts=(S.branchList||[]).filter(b=>Number(b.id)!==Number(cfg.from))
     .map(b=>`<option value="${b.id}">${b.name}</option>`).join('');
   document.getElementById('modalRoot').innerHTML=`<div class="overlay"><div class="modal" style="max-width:460px;text-align:right">
-    <h3 style="text-align:center">📡 ${cfg.title}</h3>
+    <h3 style="text-align:center;display:flex;align-items:center;justify-content:center;gap:7px">${ico('radio',16)} ${cfg.title}</h3>
     <div style="text-align:center;font-weight:700">${cfg.sub}</div>
     <div class="muted" style="text-align:center;margin:6px 0 14px;font-size:14px">${cfg.info}</div>
     ${cfg.fixedQty?'':`<div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:12px">
@@ -3408,7 +3409,7 @@ function lsTransferDialog(cfg){
       <select id="ltTo" style="font-family:inherit;font-size:16px;padding:9px 14px;border-radius:10px;border:1px solid var(--line);background:var(--card2);color:var(--txt)">${opts}</select>
     </div>
     <div style="display:flex;gap:8px">
-      <button class="btn-primary" style="flex:1" onclick="lsSendTransfer()">שלח בקשה 📡</button>
+      <button class="btn-primary" style="flex:1" onclick="lsSendTransfer()">שלח בקשה</button>
       <button class="btn-ghost" onclick="renderLiveDetail()">ביטול</button>
     </div>
     <div class="muted" style="text-align:center;font-size:12px;margin-top:10px">הבקשה תקפוץ בלוח הקליטה של הסניף המחזיק ותתווסף לטאב 📝 בקשות העברה</div>
@@ -3426,7 +3427,7 @@ async function lsSendTransfer(){
     // שידור ממוקד — רק השורות שנוספו עכשיו (מצטרפות לטייל של אותו יעד אם כבר קיים)
     await api('/api/admin/broadcast',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({branch_id:Number(cfg.from), line_ids:(r&&r.ids)||null})});
-    toast('הבקשה שודרה לסניף '+lsBranchName(cfg.from)+' 📡',true);
+    toast('הבקשה שודרה לסניף '+lsBranchName(cfg.from),true);
   }catch(e){ toast('שגיאה בשליחת הבקשה',false); }
   hideLoading();
   S._lsTransfer=null;
