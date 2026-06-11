@@ -28,23 +28,38 @@ def _serial_tokens(s) -> list:
     return [_norm_serial(t) for t in re.split(r"[^A-Za-z0-9]+", str(s or "")) if _norm_serial(t)]
 
 
+def _is_subsequence(small: str, big: str) -> bool:
+    """האם small הוא תת-רצף של big (כל התווים מופיעים בסדר, לא בהכרח רצוף)."""
+    it = iter(big)
+    return all(ch in it for ch in small)
+
+
 def _serial_loose_eq(scanned, stored) -> bool:
-    """התאמה דטרמיניסטית בין סריאל סרוק למאוחסן. בטוחה — לא יוצרת התאמות שווא:
-    הברקוד הפיזי לרוב מקודד את אותם מקטעים בסדר הפוך מ-NewOrder
-    (למשל '35785/AGAAJF2SU03507' ↔ הברקוד 'AGAAJF2SU03507/35785')."""
+    """התאמה דטרמיניסטית-חזקה: מנורמל זהה, או אותם מקטעים בסדר הפוך
+    (ברקודים עם לוכסן). לא כולל תת-רצף — זה נבדק רק במצב חד-משמעי."""
     ns, nt = _norm_serial(scanned), _norm_serial(stored)
     if not ns or not nt:
         return False
-    if ns == nt:                                   # מנורמל זהה (לוכסן/מקף/רווח)
+    if ns == nt:
         return True
-    st = _serial_tokens(stored)
-    sc = _serial_tokens(scanned)
-    if len(st) >= 2 and sorted(st) == sorted(sc):  # אותם מקטעים, סדר הפוך (עם מפריד)
+    st, sc = _serial_tokens(stored), _serial_tokens(scanned)
+    if len(st) >= 2 and sorted(st) == sorted(sc):
         return True
-    if len(st) == 2 and ns in (st[0] + st[1], st[1] + st[0]):  # היפוך בלי מפריד
+    if len(st) == 2 and ns in (st[0] + st[1], st[1] + st[0]):
         return True
-    short, lng = (ns, nt) if len(ns) <= len(nt) else (nt, ns)   # סיומת/קידומת (≥8)
+    short, lng = (ns, nt) if len(ns) <= len(nt) else (nt, ns)
     return len(short) >= 8 and (lng.endswith(short) or lng.startswith(short))
+
+
+def _serial_subseq_match(scanned, stored) -> bool:
+    """התאמת תת-רצף — לסורק מצלמה שמשמיט תווים אך שומר על הסדר
+    (למשל 'L1729000001F7P00YU3B' נקרא כ-'1729000001700U3').
+    גייטים: סרוק ≥10 תווים ו-≥55% מאורך המאוחסן. בטוח רק במצב חד-משמעי
+    (מתאים לבדיוק מכשיר ממתין אחד) — נאכף ב-receive_scan."""
+    ns, nt = _norm_serial(scanned), _norm_serial(stored)
+    if len(ns) < 10 or not nt or len(ns) < 0.55 * len(nt):
+        return False
+    return _is_subsequence(ns, nt)
 
 _USE_PG = bool(cfg.DATABASE_URL)
 _lock = threading.RLock()
@@ -507,9 +522,11 @@ def receive_scan(branch_id: int, code: str, op_id: str = None, employee: str = N
         cur.execute(_q(sql), tuple(params))
         item = _row_to_dict(cur.fetchone())
 
-        # fallback: התאמה גמישה לסריאלים עם לוכסן/מקף (הברקוד הפיזי לא תמיד זהה
-        # לסריאל המאוחסן). משווים מנורמל מול הפריטים הסריאליים הפתוחים של הסניף.
-        if item is None and _norm_serial(code):
+        # fallback: הברקוד הפיזי לא תמיד זהה לסריאל המאוחסן —
+        #   (א) היפוך מקטעים סביב לוכסן  (ב) סורק מצלמה שמשמיט תווים (תת-רצף).
+        # נטען את הפריטים הסריאליים הפתוחים ומתאימים. תת-רצף מתקבל רק אם
+        # הוא חד-משמעי (בדיוק מועמד אחד) — אחרת מבקשים סריקה חוזרת.
+        if item is None and len(_norm_serial(code)) >= 4:
             fb_sql = """
                 SELECT ti.* FROM transfer_items ti
                 JOIN transfers t ON t.op_id = ti.op_id
@@ -522,11 +539,16 @@ def receive_scan(branch_id: int, code: str, op_id: str = None, employee: str = N
                 fb_params.append(str(op_id))
             fb_sql += " ORDER BY t.created_at ASC"
             cur.execute(_q(fb_sql), tuple(fb_params))
-            for cand in cur.fetchall():
-                cd = _row_to_dict(cand)
-                if _serial_loose_eq(code, cd.get("serial")):
-                    item = cd
-                    break
+            cands = [_row_to_dict(r) for r in cur.fetchall()]
+            # 1) התאמה דטרמיניסטית חזקה (זהה-מנורמל / היפוך מקטעים)
+            strong = [c for c in cands if _serial_loose_eq(code, c.get("serial"))]
+            if len(strong) == 1:
+                item = strong[0]
+            elif not strong:
+                # 2) תת-רצף (סורק מצלמה) — רק אם חד-משמעי
+                subq = [c for c in cands if _serial_subseq_match(code, c.get("serial"))]
+                if len(subq) == 1:
+                    item = subq[0]
 
         matched = item is not None
         target_op = item["op_id"] if matched else op_id
