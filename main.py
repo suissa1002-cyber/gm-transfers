@@ -1553,7 +1553,7 @@ def _payplus_headers():
             "Content-Type": "application/json", "User-Agent": _PP_UA}
 
 
-def _payplus_link(amount: float, order_number: str, customer: dict) -> str:
+def _payplus_link(amount: float, order_number: str, customer: dict, payments: int = 1) -> str:
     """יוצר קישור דף תשלום PayPlus עבור ההזמנה. דורש env PAYPLUS_PAGE_UID."""
     import requests as _rq
     page_uid = os.getenv("PAYPLUS_PAGE_UID", "").strip()
@@ -1567,6 +1567,7 @@ def _payplus_link(amount: float, order_number: str, customer: dict) -> str:
         "sendEmailApproval": True,
         "send_failure_callback": False,
         "more_info": f"GreenOS order {order_number}",
+        "payments": max(1, int(payments or 1)),
         "customer": {
             "customer_name": (customer.get("name") or "").strip()[:60] or "לקוח",
             "email": customer.get("email") or "",
@@ -1620,6 +1621,7 @@ class WaOrderCreate(BaseModel):
     shipping_total: float = 0
     note: str = ""
     payment: str = "none"           # none | link
+    installments: int = 1           # תשלומים (לקישור/חיוב)
 
 
 @app.post("/api/admin/wa/order/create")
@@ -1681,7 +1683,8 @@ def wa_order_create(body: WaOrderCreate, x_admin_key: Optional[str] = Header(Non
     if body.payment == "link":
         link = _payplus_link(float(o.get("total") or 0), str(o.get("number")), {
             "name": f"{cust.first_name} {cust.last_name}".strip(),
-            "email": cust.email, "phone": cust.phone or body.phone})
+            "email": cust.email, "phone": cust.phone or body.phone},
+            payments=body.installments)
         out["pay_link"] = link
         try:  # שומרים את הקישור על ההזמנה
             _rq.put(f"{base}/wp-json/wc/v3/orders/{o['id']}",
@@ -1690,6 +1693,74 @@ def wa_order_create(body: WaOrderCreate, x_admin_key: Optional[str] = Header(Non
         except Exception:  # noqa: BLE001
             pass
     return out
+
+
+
+
+class WaCharge(BaseModel):
+    order_id: int
+    card_number: str
+    card_exp: str                   # MMYY או MM/YY
+    cvv: str = ""
+    holder_id: str = ""             # ת.ז. בעל הכרטיס (נדרש בעסקות טלפוניות בישראל)
+    holder_name: str = ""
+    installments: int = 1
+
+
+@app.post("/api/admin/wa/order/charge")
+def wa_order_charge(body: WaCharge, x_admin_key: Optional[str] = Header(None)):
+    """חיוב טלפוני ישיר (MOTO) דרך PayPlus Transactions/Charge — בלי מעבר חיצוני.
+    פרטי הכרטיס עוברים ל-PayPlus בלבד ולא נשמרים אצלנו."""
+    _require_admin(x_admin_key)
+    import requests as _rq
+    term = os.getenv("PAYPLUS_TERMINAL_UID", "").strip()
+    if not term:
+        raise HTTPException(400, "חיוב טלפוני עוד לא מוגדר — חסר PAYPLUS_TERMINAL_UID")
+    creds = _wc_creds()
+    base, k, sct = creds
+    r = _rq.get(f"{base}/wp-json/wc/v3/orders/{body.order_id}", auth=(k, sct), timeout=30)
+    if not r.ok:
+        raise HTTPException(404, "הזמנה לא נמצאה")
+    o = r.json()
+    amount = float(o.get("total") or 0)
+    exp = body.card_exp.replace("/", "").replace(" ", "")
+    payload = {
+        "terminal_uid": term,
+        "amount": round(amount, 2),
+        "currency_code": "ILS",
+        "credit_card_number": body.card_number.replace(" ", "").replace("-", ""),
+        "card_date_mmyy": exp,
+        "payments": max(1, int(body.installments or 1)),
+        "more_info": f"GreenOS order {o.get('number')}",
+        "customer_name": body.holder_name or f"{o['billing'].get('first_name','')} {o['billing'].get('last_name','')}".strip(),
+    }
+    if body.cvv:
+        payload["cvv"] = body.cvv
+    if body.holder_id:
+        payload["identification_number"] = body.holder_id
+    cr = _rq.post(f"{PAYPLUS_BASE}/Transactions/Charge",
+                  headers=_payplus_headers(), json=payload, timeout=60)
+    try:
+        j = cr.json()
+    except Exception:  # noqa: BLE001
+        j = {}
+    res = (j.get("results") or {})
+    data = (j.get("data") or {})
+    approved = cr.status_code == 200 and res.get("status") == "success"
+    if not approved:
+        logger.warning("payplus charge failed %s: %s", cr.status_code, cr.text[:300])
+        raise HTTPException(502, f"החיוב נדחה: {res.get('description') or cr.status_code}")
+    tx = data.get("transaction_uid") or data.get("number") or ""
+    # עדכון ההזמנה לשולם
+    try:
+        _rq.put(f"{base}/wp-json/wc/v3/orders/{body.order_id}",
+                json={"status": "processing", "set_paid": True,
+                      "meta_data": [{"key": "greenos_payplus_tx", "value": str(tx)}]},
+                auth=(k, sct), timeout=30)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("order paid-update failed: %s", e)
+    return {"ok": True, "transaction": tx, "amount": amount,
+            "approval": data.get("approval_number") or data.get("voucher_number") or ""}
 
 
 # ── Web Push (PWA) — התראות וואטסאפ כשהאפליקציה סגורה ──

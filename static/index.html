@@ -2354,19 +2354,73 @@ function waOrderRender(){
       <input type="radio" name="woShip" ${o.ship===sh.k?'checked':''} onchange="S.waOrd.ship='${sh.k}';waOrderSaveInputs();waOrderRender()">
       ${escW(sh.t)} — <b>${sh.cost?fmt(sh.cost):'חינם'}</b></label>`).join('')}
     <textarea id="woNote" placeholder="הערה להזמנה (אופציונלי)" style="width:100%;min-height:40px;margin-top:6px;padding:8px 10px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:13px;font-family:inherit">${escW(o.note||'')}</textarea>
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;gap:10px">
       <b style="font-size:16px">סה״כ: ${fmt(total)}</b>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px">תשלומים:
+        <select onchange="S.waOrd.installments=Number(this.value)" style="padding:6px 9px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--txt)">
+          ${[1,3,6,12].map(n=>`<option value="${n}" ${(o.installments||1)===n?'selected':''}>${n===1?'ללא':n}</option>`).join('')}
+        </select></label>
     </div>
     <div style="display:flex;gap:8px;margin-top:10px">
-      <button class="btn-primary" style="flex:1" onclick="waOrderSubmit('link')">${'צור הזמנה + קישור תשלום'}</button>
-      <button class="btn-ghost" style="flex:1" onclick="waOrderSubmit('none')">צור הזמנה בלבד</button>
+      <button class="btn-primary" style="flex:1" onclick="waOrderSubmit('link')">הזמנה + קישור תשלום</button>
+      <button class="btn-ghost" style="flex:1;border-color:#16a34a;color:#16a34a" onclick="waOrderSubmit('charge')">💳 חיוב טלפוני</button>
+      <button class="btn-ghost" style="flex:1" onclick="waOrderSubmit('none')">הזמנה בלבד</button>
     </div>
-    <div class="muted" style="font-size:11px;margin-top:6px">קישור תשלום = דף סליקה PayPlus שנשלח ללקוח בצ׳אט. "הזמנה בלבד" — לחיוב טלפוני/אחר.</div>
+    <div class="muted" style="font-size:11px;margin-top:6px">קישור = דף סליקה שנשלח ללקוח · חיוב טלפוני = הקלדת כרטיס כאן · "בלבד" = ללא חיוב כעת.</div>
   </div>`;
   div.onclick=waOrderClose;
   document.body.appendChild(div);
 }
 function waOrdPick(sel){ waOrderSaveInputs(); S.waOrd.sel=sel; waOrderRender(); }
+// ── 💳 חיוב טלפוני: הקלדת כרטיס וחיוב ישיר דרך PayPlus (בלי מעבר חיצוני) ──
+function waChargeOpen(order, installments){
+  const div=document.createElement('div');
+  div.id='waChargeModal'; div.className='wa-lb'; div.style.cursor='default';
+  const fmt=v=>'₪'+Number(v||0).toLocaleString('he-IL');
+  div.innerHTML=`<div class="wa-ord" onclick="event.stopPropagation()">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <b style="font-size:15px">💳 חיוב טלפוני — הזמנה #${order.number}</b>
+      <button class="btn-ghost" onclick="document.getElementById('waChargeModal').remove()">✕</button>
+    </div>
+    <div style="background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:9px;margin-bottom:10px;display:flex;justify-content:space-between">
+      <span>סכום לחיוב:</span><b>${fmt(order.total)}</b>
+    </div>
+    <div class="wa-ord-grid">
+      <input id="wcCard" placeholder="מספר כרטיס" inputmode="numeric" autocomplete="off" style="grid-column:1/-1;direction:ltr;letter-spacing:1px">
+      <input id="wcExp" placeholder="תוקף MM/YY" inputmode="numeric" autocomplete="off" style="direction:ltr">
+      <input id="wcCvv" placeholder="CVV" inputmode="numeric" autocomplete="off" style="direction:ltr">
+      <input id="wcId" placeholder="ת.ז. בעל הכרטיס" inputmode="numeric" autocomplete="off" style="direction:ltr">
+      <select id="wcPay" style="padding:8px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--txt)">
+        ${[1,3,6,12].map(n=>`<option value="${n}" ${n===(installments||1)?'selected':''}>${n===1?'תשלום אחד':n+' תשלומים'}</option>`).join('')}
+      </select>
+    </div>
+    <button class="btn-primary" id="wcGo" style="width:100%;margin-top:12px" onclick="waChargeSubmit(${order.order_id})">חייב ${fmt(order.total)}</button>
+    <div class="muted" style="font-size:11px;margin-top:6px">הפרטים מועברים ישירות ל-PayPlus ולא נשמרים במערכת.</div>
+  </div>`;
+  div.onclick=()=>div.remove();
+  document.body.appendChild(div);
+  setTimeout(()=>{const e=document.getElementById('wcCard'); if(e) e.focus();},100);
+}
+async function waChargeSubmit(orderId){
+  const g=id=>(document.getElementById(id)||{}).value||'';
+  const card=g('wcCard').replace(/[\s-]/g,'');
+  if(card.length<8){ toast('מספר כרטיס לא תקין',false); return; }
+  if(!g('wcExp').trim()){ toast('חסר תוקף',false); return; }
+  const btn=document.getElementById('wcGo'); if(btn){ btn.disabled=true; btn.textContent='מחייב…'; }
+  try{
+    const r=await api('/api/admin/wa/order/charge',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({order_id:orderId, card_number:card, card_exp:g('wcExp'), cvv:g('wcCvv'),
+                           holder_id:g('wcId'), installments:Number(g('wcPay'))||1})},120000);
+    document.getElementById('waChargeModal').remove();
+    toast('החיוב אושר ✓ אישור '+(r.approval||r.transaction||''),true);
+    const ta=document.getElementById('waText');
+    if(ta){ ta.value='התשלום התקבל בהצלחה ✓ ההזמנה שלך בטיפול. תודה שקנית בגרין מובייל 💚'; ta.focus(); }
+  }catch(e){
+    if(btn){ btn.disabled=false; btn.textContent='נסה שוב'; }
+    let msg='החיוב נדחה';
+    toast(msg+' — בדוק פרטים או נסה קישור תשלום',false);
+  }
+}
 function waOrderSaveInputs(){
   const o=S.waOrd; if(!o) return;
   const g=id=>{const el=document.getElementById(id);return el?el.value:undefined;};
@@ -2380,6 +2434,7 @@ async function waOrderSubmit(payment){
   waOrderSaveInputs();
   const o=S.waOrd; if(!o) return;
   if(!(o.cust.first_name||'').trim()){ toast('חסר שם פרטי',false); return; }
+  const wantCharge=(payment==='charge'); if(wantCharge) payment='none';
   const ships=waOrdShipOpts(); const sh=ships.find(x=>x.k===o.ship)||ships[0];
   const d=o.base;
   const isVar=d.type==='variation'||o.sel.id!==d.parent_id;
@@ -2392,8 +2447,9 @@ async function waOrderSubmit(payment){
       body:JSON.stringify({phone:S.waPhone||'', customer:o.cust, items:[item],
         ship_same:o.shipSame!==false, ship_to:o.shipTo,
         shipping_title: o.ship==='pickup'?'איסוף עצמי':sh.t, shipping_total: sh.cost,
-        note:o.note||'', payment})},90000);
+        note:o.note||'', payment, installments:o.installments||1})},90000);
     hideLoading(); waOrderClose();
+    if(wantCharge){ waChargeOpen(r, o.installments||1); return; }
     S.waOrdDone=r;
     const msg = r.pay_link
       ? `היי${o.cust.first_name?' '+o.cust.first_name:''}, הקמנו לך הזמנה מס׳ ${r.number} על סך ${r.currency}${Number(r.total).toLocaleString('he-IL')}.\nלתשלום מאובטח: ${r.pay_link}\nתודה, גרין מובייל 💚`
