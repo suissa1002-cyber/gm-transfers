@@ -1894,6 +1894,42 @@ def wa_order_create(body: WaOrderCreate, x_admin_key: Optional[str] = Header(Non
 
 
 
+class WaSendSure(BaseModel):
+    phone: str
+    text: str
+    name: str = ""          # שם פרטי — לפנייה בתבנית new_message
+
+
+@app.post("/api/admin/wa/send-guaranteed")
+def wa_send_guaranteed(body: WaSendSure, x_admin_key: Optional[str] = Header(None)):
+    """שליחה מובטחת בוואטסאפ: בתוך חלון 24ש׳ → הודעה רגילה; מחוץ לחלון
+    (או איש קשר שמעולם לא כתב לנו) → תבנית new_message המאושרת של Meta — עוברת תמיד."""
+    _require_admin(x_admin_key)
+    import re as _re
+    import wa
+    phone = _re.sub(r"\D", "", body.phone or "")
+    if phone.startswith("0"):
+        phone = "972" + phone[1:]
+    if len(phone) < 11:
+        raise HTTPException(400, "מספר טלפון לא תקין")
+    text = (body.text or "").strip()
+    if not text:
+        raise HTTPException(400, "הודעה ריקה")
+    try:
+        r = wa.send_reply(phone, text)
+        if r.get("sent"):
+            return {"sent": True, "via": "text", "phone": phone}
+    except wa.WaError as e:
+        # חסימות מכוונות (test/ping) נשארות שגיאה; כשל קריאת שיחה → ננסה תבנית
+        if "test/ping" in str(e):
+            raise HTTPException(400, str(e))
+        logger.info("send-guaranteed: direct path failed (%s) — using template", e)
+    except Exception as e:  # noqa: BLE001
+        logger.info("send-guaranteed: direct path error (%s) — using template", e)
+    r = _wa_guard(wa.send_template, phone, body.name or "לקוח/ה יקר/ה", text)
+    return {"sent": True, "via": "template", "phone": phone}
+
+
 class WaCharge(BaseModel):
     order_id: int
     card_number: str
