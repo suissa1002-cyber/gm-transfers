@@ -359,6 +359,8 @@
   .wa-canned-item{display:flex;gap:8px;align-items:center;padding:7px 8px;border-radius:8px;border-bottom:1px solid var(--line)}
   .wa-canned-item:hover{background:var(--card2)}
   .wa-canned-item .del{cursor:pointer;color:var(--muted)} .wa-canned-item .del:hover{color:#dc2626}
+  .wa-claude{border-color:rgba(217,119,87,.55)!important}
+  .wa-claude:hover{background:rgba(217,119,87,.1)!important}
   .wa-body{display:flex;flex:1;min-height:0;position:relative}
   .wa-main{flex:1;display:flex;flex-direction:column;min-width:0}
   .wa-panel{width:300px;flex:none;border-inline-start:1px solid var(--line);overflow-y:auto;padding:13px;font-size:13.5px}
@@ -2188,9 +2190,9 @@ function waThreadHTML(){
         <div class="wa-send" style="position:relative">
           <div id="waCannedPop" class="wa-canned" style="display:none"></div>
           <div id="waTplPop" class="wa-canned" style="display:none"></div>
-          <button class="btn-ghost" onclick="waToggleUri()" title="✨ אורי — סוכן ה-AI (טיוטות, מלאי, מחירים)" style="border-color:#8b5cf6;color:#8b5cf6">✨</button>
-          <button class="btn-ghost" onclick="waToggleCanned()" title="תשובות מוכנות">⚡</button>
-          <button class="btn-ghost" onclick="waToggleTpl()" title="שליחת תבנית מאושרת (עוקפת חלון 24ש׳)" ${w.in_window?'':'style="border-color:#dc2626;color:#dc2626"'}>📋</button>
+          <div id="waQuickPop" class="wa-canned" style="display:none;width:230px"></div>
+          <button class="btn-ghost wa-claude" onclick="waToggleUri()" title="אורי — סוכן ה-AI (טיוטות, מלאי, מחירים)">${CLAUDE_ICON}</button>
+          <button class="btn-ghost" onclick="waToggleQuick()" title="תשובות מוכנות / תבניות" ${w.in_window?'':'style="border-color:#dc2626"'}>⚡</button>
           <button class="btn-ghost" onclick="document.getElementById('waFile').click()" title="צרף קובץ" ${w.in_window?'':'disabled style="opacity:.4"'}>📎</button>
           <input type="file" id="waFile" style="display:none" onchange="waSendFile(this)">
           <textarea id="waText" placeholder="${w.in_window?'הקלד תשובה…':'מחוץ לחלון — שלח תבנית 📋 או טקסט שיעטף ב-new_message'}"
@@ -2441,6 +2443,28 @@ function waBubble(m){
   const mark=m.kind==='template'?`<div class="wa-mark">📋 תבנית · <span style="direction:ltr">${escW(m.tpl||'')}</span></div>`
             :m.kind==='interactive'?'<div class="wa-mark">🤖 בוט</div>':'';
   return `<div class="wa-b ${m.direction==='in'?'wa-in':'wa-out'}">${mark}${media}${escW(txt)}<div class="wa-t">${m.ts?fmtTime(new Date(m.ts*1000).toISOString()):''}</div></div>`;
+}
+// אייקון Claude (הניצוץ הכתום) — מזהה את אורי
+const CLAUDE_ICON=`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D97757" stroke-width="3.2" stroke-linecap="round" style="display:block">
+  <line x1="12" y1="2.5" x2="12" y2="8"/><line x1="12" y1="16" x2="12" y2="21.5"/>
+  <line x1="2.5" y1="12" x2="8" y2="12"/><line x1="16" y1="12" x2="21.5" y2="12"/>
+  <line x1="5.3" y1="5.3" x2="9.1" y2="9.1"/><line x1="14.9" y1="14.9" x2="18.7" y2="18.7"/>
+  <line x1="5.3" y1="18.7" x2="9.1" y2="14.9"/><line x1="14.9" y1="9.1" x2="18.7" y2="5.3"/></svg>`;
+// ── ⚡ כפתור מאוחד: בחירה בין תשובות מוכנות לתבניות ──
+function waToggleQuick(){
+  const pop=document.getElementById('waQuickPop'); if(!pop) return;
+  ['waCannedPop','waTplPop'].forEach(id=>{ const p=document.getElementById(id); if(p) p.style.display='none'; });
+  if(pop.style.display!=='none'){ pop.style.display='none'; return; }
+  pop.innerHTML=`
+    <div class="wa-canned-item" onclick="document.getElementById('waQuickPop').style.display='none';waToggleCanned()" style="cursor:pointer">
+      <span style="flex:1"><b>⚡ תשובות מוכנות</b>
+        <div class="muted" style="font-size:11.5px">קונקטופ + GreenOS — נכנס לתיבה</div></span>
+    </div>
+    <div class="wa-canned-item" onclick="document.getElementById('waQuickPop').style.display='none';waToggleTpl()" style="cursor:pointer">
+      <span style="flex:1"><b>📋 תבניות מאושרות</b>
+        <div class="muted" style="font-size:11.5px">שליחה גם מחוץ לחלון 24ש׳</div></span>
+    </div>`;
+  pop.style.display='block';
 }
 // ── 📎 שליחת קובץ + ⚡ תשובות מוכנות ──
 async function waSendFile(inp){
