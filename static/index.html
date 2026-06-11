@@ -393,8 +393,9 @@
               background:var(--card);box-shadow:0 6px 18px rgba(0,0,0,.07)}
   .wa-uri-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex:none;
                padding-bottom:6px;border-bottom:1px solid var(--line)}
-  .wa-uri-msgs{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:7px}
+  .wa-uri-msgs{flex:1;min-height:0;min-width:0;overflow-y:auto;display:flex;flex-direction:column;gap:7px}
   .wa-uri-msgs>:first-child{margin-top:auto}
+  .wa-uri-box textarea{min-width:0}
   .wa-uri-q{align-self:flex-end;background:rgba(139,92,246,.13);border:1px solid rgba(139,92,246,.35);
             border-radius:12px;padding:7px 11px;font-size:13px;max-width:92%;white-space:pre-wrap}
   .wa-uri-a{align-self:flex-start;background:var(--card2);border:1px solid var(--line);
@@ -424,7 +425,10 @@
     .wa-send .btn-ghost{padding:7px 8px;flex:none}
     .wa-send .btn-primary{padding:9px 11px;flex:none}
     .wa-send textarea{font-size:16px}   /* מונע זום אוטומטי ב-iOS */
-    .wa-uri-box{min-height:300px;max-height:62vh}
+    /* פאנל אורי במובייל: ממלא את כל השכבה, בלי חלל ריק; פונט 16 נגד זום iOS */
+    .wa-panel-uri{padding:8px}
+    .wa-uri-box{margin-top:0;height:100%;min-height:0;max-height:none}
+    .wa-uri-box textarea{font-size:16px!important}
     .scan-layout{grid-template-columns:1fr}
     .scan-side{position:static}
     header{padding:10px 12px;gap:8px;flex-wrap:nowrap} .wrap{padding:14px}
