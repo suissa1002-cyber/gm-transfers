@@ -82,6 +82,8 @@ def list_conversations(limit: int = 200, include_archived: bool = False):
                                "offset": 0, "limit": limit})
             rows = resp.get("data", []) if isinstance(resp, dict) else []
             _inbox_cache.update(at=now, rows=rows)
+    import db
+    stars = db.wa_stars()
     out = []
     for r in rows:
         if str(r.get("channel")) != "5":  # WhatsApp בלבד
@@ -93,14 +95,16 @@ def list_conversations(limit: int = 200, include_archived: bool = False):
             continue
         ts_ms = int(r.get("timestamp") or 0)
         last_read = int(r.get("last_read_page") or 0)
+        phone = r.get("ms_id")
         out.append({
-            "phone": r.get("ms_id"),
-            "name": r.get("full_name") or r.get("first_name") or r.get("ms_id"),
+            "phone": phone,
+            "name": r.get("full_name") or r.get("first_name") or phone,
             "last_msg": (r.get("last_msg") or "")[:120],
             "ts": ts_ms // 1000,
             "archived": archived,
             "live_chat": str(r.get("live_chat", "0")) == "1",
             "unread": bool(ts_ms and last_read and ts_ms / 1000 > last_read + 2),
+            "star": phone in stars,
             "pic": r.get("profile_pic") or "",
         })
     out.sort(key=lambda c: c["ts"], reverse=True)
@@ -172,6 +176,85 @@ def send_template(phone: str, name: str, body: str):
 
 
 # ── פעולות שיחה ─────────────────────────────────────────────────────
+
+# ── כרטיס פונה: ConnectOp + הזמנות אתר + מטא שלנו ──────────────────
+
+_tags_cache = {"at": 0.0, "tags": None}
+
+
+def account_tags():
+    """רשימת התגים של החשבון (81+), cache 10 דקות."""
+    now = time.time()
+    if _tags_cache["tags"] is None or now - _tags_cache["at"] > 600:
+        _tags_cache["tags"] = _pub().get_tags()
+        _tags_cache["at"] = now
+    return _tags_cache["tags"]
+
+
+def _wc_orders_by_phone(phone: str, limit: int = 5):
+    """הזמנות WooCommerce לפי טלפון (פורמט בינלאומי תואם ישירות ל-ConnectOp)."""
+    import os
+    import requests as rq
+    base = os.getenv("WC_STORE_URL", "").rstrip("/")
+    auth = (os.getenv("WC_CONSUMER_KEY", ""), os.getenv("WC_CONSUMER_SECRET", ""))
+    if not base or not auth[0]:
+        return None  # WC לא מוגדר — הפאנל פשוט לא יציג הזמנות
+    try:
+        r = rq.get(f"{base}/wp-json/wc/v3/orders",
+                   params={"search": str(phone), "per_page": limit},
+                   auth=auth, timeout=25)
+        if not r.ok:
+            return None
+        return [{
+            "id": o.get("id"),
+            "status": o.get("status"),
+            "total": o.get("total"),
+            "currency": o.get("currency_symbol") or "₪",
+            "date": (o.get("date_created") or "")[:16].replace("T", " "),
+            "items": [i.get("name") for i in (o.get("line_items") or [])][:4],
+            "admin_url": f"{base}/wp-admin/post.php?post={o.get('id')}&action=edit",
+        } for o in r.json()]
+    except Exception as e:  # noqa: BLE001
+        logger.warning("wc orders lookup failed: %s", e)
+        return None
+
+
+def contact_card(phone: str):
+    """כל פרטי הפונה במקום אחד: ConnectOp + תגיות + note + הזמנות אתר + מטא שלנו."""
+    import db
+    card = {"phone": phone}
+    try:
+        c = _pub()._req("GET", f"/contacts/{phone}")
+        card["contact"] = {k: c.get(k) for k in
+                           ("full_name", "first_name", "last_name", "email",
+                            "subscribed_date", "live_chat", "blocked", "wa_user_id")}
+    except Exception as e:  # noqa: BLE001
+        card["contact"] = None
+        logger.warning("contact fetch failed: %s", e)
+    try:
+        card["tags"] = _pub()._req("GET", f"/contacts/{phone}/tags") or []
+    except Exception:  # noqa: BLE001
+        card["tags"] = []
+    try:
+        cfs = _pub()._req("GET", f"/contacts/{phone}/custom_fields") or []
+        card["note_cf"] = next((f.get("value") for f in cfs if f.get("name") == "note"), "")
+        card["custom_fields"] = [f for f in cfs if f.get("name") != "note"]
+    except Exception:  # noqa: BLE001
+        card["note_cf"] = ""
+        card["custom_fields"] = []
+    card["orders"] = _wc_orders_by_phone(phone)
+    card["notes"] = db.wa_notes_list(phone)
+    card["star"] = phone in db.wa_stars()
+    return card
+
+
+def set_tag(phone: str, tag_id, add: bool = True):
+    if add:
+        _pub().add_tag(phone, tag_id)
+    else:
+        _pub().remove_tag(phone, tag_id)
+    return {"ok": True}
+
 
 def archive(phone: str, archived: bool = True):
     _dash_call(_dash().archive_conversation, phone, archive=archived)

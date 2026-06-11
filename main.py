@@ -1283,6 +1283,60 @@ def wa_human(body: WaFlag, x_admin_key: Optional[str] = Header(None)):
     return _wa_guard(wa.set_human, body.phone, body.value)
 
 
+class WaTag(BaseModel):
+    phone: str
+    tag_id: str
+    add: bool = True
+
+
+class WaNote(BaseModel):
+    phone: str
+    text: str
+    author: str = ""
+
+
+@app.get("/api/admin/wa/contact/{phone}")
+def wa_contact(phone: str, x_admin_key: Optional[str] = Header(None)):
+    """כרטיס פונה: פרטי ConnectOp + תגיות + הזמנות אתר + הערות/מעקב שלנו."""
+    _require_admin(x_admin_key)
+    import wa
+    return _wa_guard(wa.contact_card, phone)
+
+
+@app.get("/api/admin/wa/tags")
+def wa_tags(x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    import wa
+    return {"tags": _wa_guard(wa.account_tags)}
+
+
+@app.post("/api/admin/wa/tag")
+def wa_tag(body: WaTag, x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    import wa
+    return _wa_guard(wa.set_tag, body.phone, body.tag_id, body.add)
+
+
+@app.post("/api/admin/wa/note")
+def wa_note_add(body: WaNote, x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    nid = db.wa_note_add(body.phone, body.text.strip(), body.author)
+    return {"ok": True, "id": nid}
+
+
+@app.delete("/api/admin/wa/note/{nid}")
+def wa_note_del(nid: int, x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    return {"deleted": db.wa_note_delete(nid)}
+
+
+@app.post("/api/admin/wa/star")
+def wa_star(body: WaFlag, x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    db.wa_star_set(body.phone, body.value)
+    return {"ok": True}
+
+
 # ──────────────────────────────────────────────────────────────
 # Frontend (SPA)
 # ──────────────────────────────────────────────────────────────

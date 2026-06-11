@@ -294,6 +294,23 @@ _SCHEMA = [
         created_at  TEXT
     )
     """.format(pk=_PK),
+    # 💬 וואטסאפ: שכבת מטא משלנו מעל ConnectOp (מעקב/הערות) — "מתקדם יותר מקונקטופ"
+    """
+    CREATE TABLE IF NOT EXISTS wa_meta (
+        phone       TEXT PRIMARY KEY,
+        star        INTEGER DEFAULT 0
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS wa_notes (
+        id          {pk},
+        phone       TEXT,
+        text        TEXT,
+        author      TEXT,
+        created_at  TEXT
+    )
+    """.format(pk=_PK),
+    "CREATE INDEX IF NOT EXISTS idx_wa_notes_phone ON wa_notes(phone)",
     "CREATE INDEX IF NOT EXISTS idx_misroutes_serial ON misroutes(serial)",
     "CREATE INDEX IF NOT EXISTS idx_misroutes_status ON misroutes(status)",
     "CREATE INDEX IF NOT EXISTS idx_transfers_to ON transfers(to_branch_id, status)",
@@ -1182,6 +1199,57 @@ def sales_state_set(k: str, v: str):
             INSERT INTO sales_ingest_state (k, v) VALUES (?, ?)
             ON CONFLICT(k) DO UPDATE SET v=excluded.v
         """), (k, str(v)))
+
+
+# ── 💬 וואטסאפ: מטא משלנו (מעקב/הערות) ──
+def wa_star_set(phone: str, star: bool):
+    with _conn() as c:
+        c.cursor().execute(_q("""
+            INSERT INTO wa_meta (phone, star) VALUES (?, ?)
+            ON CONFLICT(phone) DO UPDATE SET star=excluded.star
+        """), (phone, 1 if star else 0))
+
+
+def wa_stars() -> dict:
+    """{phone: 1} לכל השיחות המסומנות במעקב."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT phone, star FROM wa_meta WHERE star = 1"))
+        return {r["phone"]: 1 for r in cur.fetchall()}
+
+
+def wa_note_add(phone: str, text: str, author: str = "") -> int:
+    with _conn() as c:
+        cur = c.cursor()
+        vals = (phone, text, author, now_iso())
+        if _USE_PG:
+            cur.execute(_q("""
+                INSERT INTO wa_notes (phone, text, author, created_at)
+                VALUES (?, ?, ?, ?) RETURNING id
+            """), vals)
+            return cur.fetchone()["id"]
+        cur.execute(_q("""
+            INSERT INTO wa_notes (phone, text, author, created_at)
+            VALUES (?, ?, ?, ?)
+        """), vals)
+        return cur.lastrowid
+
+
+def wa_notes_list(phone: str) -> list:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""
+            SELECT id, text, author, created_at FROM wa_notes
+            WHERE phone = ? ORDER BY id DESC
+        """), (phone,))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def wa_note_delete(nid: int) -> bool:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("DELETE FROM wa_notes WHERE id = ?"), (nid,))
+        return cur.rowcount > 0
 
 
 def sales_docids_since(since_prefix: str) -> set:

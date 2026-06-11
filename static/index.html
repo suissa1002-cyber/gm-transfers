@@ -328,7 +328,26 @@
   .wa-win.ok{background:rgba(34,197,94,.15);color:#16a34a}
   .wa-win.no{background:rgba(239,68,68,.13);color:#dc2626}
   .wa-back{display:none}
+  .wa-badge{position:absolute;top:-6px;inset-inline-end:-6px;background:#dc2626;color:#fff;font-size:11px;
+            font-weight:800;min-width:18px;height:18px;line-height:18px;border-radius:999px;padding:0 5px;text-align:center}
+  .wa-body{display:flex;flex:1;min-height:0;position:relative}
+  .wa-main{flex:1;display:flex;flex-direction:column;min-width:0}
+  .wa-panel{width:300px;flex:none;border-inline-start:1px solid var(--line);overflow-y:auto;padding:13px;font-size:13.5px}
+  .wa-panel h4{margin:14px 0 7px;font-size:12.5px;color:var(--muted);letter-spacing:.3px}
+  .wa-panel h4:first-child{margin-top:0}
+  .wa-chip{display:inline-flex;align-items:center;gap:5px;background:var(--card2);border:1px solid var(--line);
+           border-radius:999px;padding:3px 10px;font-size:12.5px;margin:0 0 5px 5px}
+  .wa-chip b{cursor:pointer;color:var(--muted)}
+  .wa-chip b:hover{color:#dc2626}
+  .wa-order{display:block;border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-bottom:7px;
+            text-decoration:none;color:var(--txt);background:var(--card2)}
+  .wa-order:hover{border-color:var(--blue)}
+  .wa-order .st{font-size:11px;font-weight:700;padding:1px 7px;border-radius:999px;background:rgba(37,99,235,.12);color:var(--blue)}
+  .wa-note{border:1px solid var(--line);border-radius:10px;padding:7px 10px;margin-bottom:6px;background:var(--card2)}
+  .wa-note .by{font-size:11px;color:var(--muted);margin-top:3px;display:flex;justify-content:space-between}
+  .wa-note .del{cursor:pointer;color:var(--muted)} .wa-note .del:hover{color:#dc2626}
   @media (max-width:760px){
+    .wa-panel{position:absolute;inset:0;background:var(--card);z-index:6;width:auto}
     .wa-layout{grid-template-columns:1fr}
     .wa-layout.thread-open .wa-list{display:none}
     .wa-layout:not(.thread-open) .wa-thread{display:none}
@@ -373,6 +392,7 @@
     <div class="brand">🟢 GreenOS</div>
   </div>
   <div class="right" id="hdr" style="display:none">
+    <button class="btn-ghost" id="waBtn" style="display:none;position:relative" onclick="openWaTab()">💬<span class="hlbl"> וואטסאפ</span><span id="waBadge" class="wa-badge" style="display:none"></span></button>
     <button class="btn-ghost" id="adminBtn" style="display:none" onclick="toggleAdmin()">🛠️<span class="hlbl"> ניהול</span></button>
     <span class="hlbl">סניף: </span><b id="branchName"></b>
     <button class="btn-ghost" onclick="changeBranch()" title="החלף סניף">🔁<span class="hlbl"> החלף סניף</span></button>
@@ -1022,6 +1042,7 @@ function render(){
   document.getElementById('branchName').textContent=S.branchName;
   document.getElementById('adminBtn').style.display =
     (Number(S.branchId)===S.cfg.admin_branch_id)?'inline-block':'none';
+  document.getElementById('waBtn').style.display = isAdminPC?'inline-block':'none';
   if(S.view==='embed') return renderEmbed(app);
   if(S.view==='tasks') return S.tasksData?renderTasks():loadTasks(true);
   if(S.view==='sentinel') return S.sentinelData?renderSentinel():loadSentinel(true);
@@ -1978,7 +1999,7 @@ function escW(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,
 async function loadWa(spinner){
   if(spinner) showLoading('טוען שיחות וואטסאפ…');
   try{ const d=await api('/api/admin/wa/conversations?archived='+(S.waArchived?1:0));
-       S.waConvs=d.conversations||[]; S.waErr=''; }
+       S.waConvs=d.conversations||[]; S.waErr=''; updateWaBadge(S.waConvs); }
   catch(e){ S.waConvs=S.waConvs||[]; S.waErr=e.status===502?'שגיאת ConnectOp (טוקן?)':'שגיאת תקשורת'; }
   if(spinner) hideLoading();
   if(S.view==='admin' && S.adminTab==='wa') renderWa();
@@ -1992,14 +2013,35 @@ function waFiltered(){
 function waConvRow(c){
   const active=S.waPhone===c.phone?'active':'';
   return `<div class="wa-conv ${active}" onclick="openWaConv('${escW(c.phone)}')">
-    ${c.unread?'<span class="wa-dot"></span>':''}
+    ${waIsUnread(c)?'<span class="wa-dot"></span>':''}
     <div style="min-width:0;flex:1">
-      <div class="nm">${escW(c.name)} ${c.live_chat?'<span title="מצב אנושי — הבוט מושתק">👤</span>':''}</div>
+      <div class="nm">${c.star?'⭐ ':''}${escW(c.name)} ${c.live_chat?'<span title="מצב אנושי — הבוט מושתק">👤</span>':''}</div>
       <div class="lm">${escW(c.last_msg)||'<i>—</i>'}</div>
     </div>
     <div class="meta muted" style="font-size:11px">${c.ts?fmtTime(new Date(c.ts*1000).toISOString()):''}</div>
   </div>`;
 }
+// ── מעקב "נקרא" מקומי: ConnectOp לא יודע שקראנו ב-GreenOS, אז משלבים את
+//    הסמן שלהם (last_read_page) עם חותמת "נצפה כאן" ששמורה בדפדפן ──
+function waSeen(){ if(!S._waSeen){ try{ S._waSeen=JSON.parse(localStorage.getItem('tr_wa_seen')||'{}'); }catch(e){ S._waSeen={}; } } return S._waSeen; }
+function waMarkSeen(phone, ts){ const s=waSeen(); if((s[phone]||0)<ts){ s[phone]=ts; localStorage.setItem('tr_wa_seen', JSON.stringify(s)); updateWaBadge(S.waConvs||[]); } }
+function waIsUnread(c){ return !!(c.unread && c.ts>(waSeen()[c.phone]||0)); }
+function updateWaBadge(convs){
+  const n=(convs||[]).filter(waIsUnread).length;
+  const el=document.getElementById('waBadge');
+  if(el){ el.style.display=n?'block':'none'; el.textContent=n>9?'9+':n; }
+  if(S._waBadgePrev!==undefined && n>S._waBadgePrev){
+    const title='💬 הודעת וואטסאפ חדשה';
+    if(window.Notification && Notification.permission==='granted'){
+      try{ const ntf=new Notification(title,{body:'נכנסה הודעה חדשה ב-GreenOS', tag:'gm-wa', renotify:true});
+        ntf.onclick=()=>{ window.focus(); openWaTab(); ntf.close(); };
+        setTimeout(()=>{ try{ntf.close();}catch(e){} }, 12000); }catch(e){}
+    }
+    alarm(); flashTitle(title);
+  }
+  S._waBadgePrev=n;
+}
+function openWaTab(){ S.view='admin'; setAdminTab('wa'); }
 function renderWa(){
   const app=document.getElementById('app');
   const rows=waFiltered();
@@ -2036,35 +2078,145 @@ function waThreadHTML(){
       <span class="muted" style="direction:ltr;font-size:12px">+${escW(S.waPhone)}</span>
       ${winChip}
       <span style="margin-inline-start:auto;display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn-ghost" onclick="waToggleStar()" title="מעקב">${conv.star?'⭐':'☆'}</button>
+        <button class="btn-ghost" onclick="waTogglePanel()" title="פרטי פונה">👤 פרטים</button>
         <a class="btn-ghost" target="_blank" href="https://newapp.connectop.co.il/en/inbox?acc=1428408&id=${escW(S.waPhone)}" title="פתח ב-ConnectOp">🌐</a>
         <button class="btn-ghost" onclick="waHuman(${conv.live_chat?'false':'true'})" title="מתג אנושי/בוט">${conv.live_chat?'🤖 החזר לבוט':'👤 סמן אנושי'}</button>
         <button class="btn-ghost" onclick="waArchive(${conv.archived?'false':'true'})">${conv.archived?'⤴️ החזר מארכיון':'🗄️ ארכב'}</button>
       </span>
     </div>
-    <div class="wa-msgs" id="waMsgs">
-      ${msgs.map(m=>`<div class="wa-b ${m.direction==='in'?'wa-in':'wa-out'}">${escW(m.text.trim())}<div class="wa-t">${m.ts?fmtTime(new Date(m.ts*1000).toISOString()):''}</div></div>`).join('')||'<div class="empty">אין הודעות טקסט בשיחה</div>'}
-    </div>
-    <div class="wa-send">
-      <textarea id="waText" placeholder="${w.in_window?'הקלד תשובה…':'מחוץ לחלון — יישלח כתבנית new_message (שורה אחת)'}"
-                onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendWaMsg();}"></textarea>
-      <button class="btn-primary" id="waSendBtn" onclick="sendWaMsg()">שלח</button>
+    <div class="wa-body">
+      <div class="wa-main">
+        <div class="wa-msgs" id="waMsgs">
+          ${msgs.map(m=>`<div class="wa-b ${m.direction==='in'?'wa-in':'wa-out'}">${escW(m.text.trim())}<div class="wa-t">${m.ts?fmtTime(new Date(m.ts*1000).toISOString()):''}</div></div>`).join('')||'<div class="empty">אין הודעות טקסט בשיחה</div>'}
+        </div>
+        <div class="wa-send">
+          <textarea id="waText" placeholder="${w.in_window?'הקלד תשובה…':'מחוץ לחלון — יישלח כתבנית new_message (שורה אחת)'}"
+                    onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendWaMsg();}"></textarea>
+          <button class="btn-primary" id="waSendBtn" onclick="sendWaMsg()">שלח</button>
+        </div>
+      </div>
+      ${S.waPanel?`<div class="wa-panel" id="waPanelBox">${waPanelHTML()}</div>`:''}
     </div>`;
+}
+// ── פאנל פרטי פונה: ConnectOp + הזמנות אתר + תגיות + הערות (שלנו) ──
+const WA_STATUS={pending:'ממתין',processing:'בטיפול',completed:'הושלם',cancelled:'בוטל',refunded:'זוכה',failed:'נכשל','on-hold':'בהמתנה'};
+function waTogglePanel(){ S.waPanel=!S.waPanel; renderWaThread(); if(S.waPanel) loadWaContact(); }
+function waPanelHTML(){
+  const c=S.waContact;
+  if(!c || c.phone!==S.waPhone) return '<div class="empty">טוען פרטים…</div>';
+  const ct=c.contact||{};
+  const ordersHTML = c.orders===null ? '<div class="muted">חיבור אתר לא זמין</div>'
+    : !(c.orders||[]).length ? '<div class="muted">אין הזמנות לטלפון זה</div>'
+    : c.orders.map(o=>`<a class="wa-order" target="_blank" href="${escW(o.admin_url)}">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <b>#${o.id}</b><span class="st">${WA_STATUS[o.status]||o.status}</span>
+        </div>
+        <div class="muted" style="font-size:12px">${escW((o.items||[]).join(', ').slice(0,70))}</div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-top:3px">
+          <span>${o.currency}${o.total}</span><span class="muted">${escW(o.date)}</span>
+        </div></a>`).join('');
+  const tagOpts=(S.waTags||[]).filter(t=>!(c.tags||[]).some(x=>String(x.id)===String(t.id)))
+    .map(t=>`<option value="${t.id}">${escW(t.name)}</option>`).join('');
+  return `
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <b style="font-size:15px">${escW(ct.full_name||'')}</b>
+      <button class="btn-ghost" onclick="waTogglePanel()">✕</button>
+    </div>
+    <div class="muted" style="direction:ltr;text-align:end">+${escW(S.waPhone)}</div>
+    ${ct.email?`<div class="muted">📧 ${escW(ct.email)}</div>`:''}
+    ${ct.subscribed_date?`<div class="muted" style="font-size:12px">לקוח מאז ${escW(String(ct.subscribed_date).slice(0,10))}</div>`:''}
+    ${c.note_cf?`<h4>📌 NOTE (קונקטופ)</h4><div class="wa-note">${escW(c.note_cf)}</div>`:''}
+    <h4>🛒 הזמנות באתר</h4>${ordersHTML}
+    <h4>🏷️ תגיות</h4>
+    <div>${(c.tags||[]).map(t=>`<span class="wa-chip">${escW(t.name)} <b onclick="waDelTag('${t.id}')" title="הסר">✕</b></span>`).join('')||'<span class="muted">אין תגיות</span>'}</div>
+    <div style="display:flex;gap:6px;margin-top:7px">
+      <select id="waTagSel" style="flex:1">${tagOpts?'<option value="">הוסף תג…</option>'+tagOpts:'<option value="">אין תגים פנויים</option>'}</select>
+      <button class="btn-ghost" onclick="waAddTag()">➕</button>
+    </div>
+    <h4>📝 הערות (GreenOS)</h4>
+    ${(c.notes||[]).map(n=>`<div class="wa-note">${escW(n.text)}
+        <div class="by"><span>${escW(n.author||'')} · ${fmtTime(n.created_at)}</span><span class="del" onclick="waDelNote(${n.id})">🗑</span></div></div>`).join('')||'<div class="muted">אין הערות</div>'}
+    <div style="display:flex;gap:6px;margin-top:7px">
+      <input id="waNoteText" placeholder="הערה חדשה…" style="flex:1"
+             onkeydown="if(event.key==='Enter')waAddNote()">
+      <button class="btn-ghost" onclick="waAddNote()">➕</button>
+    </div>
+    <h4>⚙️ פעולות</h4>
+    <button class="btn-ghost" onclick="waExport()" style="width:100%">⬇️ ייצוא שיחה לקובץ</button>`;
+}
+async function loadWaContact(){
+  const phone=S.waPhone; if(!phone) return;
+  if(!S.waTags){ try{ S.waTags=(await api('/api/admin/wa/tags')).tags||[]; }catch(e){ S.waTags=[]; } }
+  try{ const c=await api('/api/admin/wa/contact/'+encodeURIComponent(phone));
+       if(S.waPhone===phone){ S.waContact=c; const p=document.getElementById('waPanelBox'); if(p) p.innerHTML=waPanelHTML(); } }
+  catch(e){ toast('טעינת פרטי פונה נכשלה',false); }
+}
+async function waAddTag(){
+  const sel=document.getElementById('waTagSel'); const id=sel&&sel.value; if(!id) return;
+  try{ await api('/api/admin/wa/tag',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({phone:S.waPhone,tag_id:id,add:true})});
+       toast('תג נוסף ✓',true); loadWaContact(); }
+  catch(e){ toast('הוספת תג נכשלה',false); }
+}
+async function waDelTag(id){
+  try{ await api('/api/admin/wa/tag',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({phone:S.waPhone,tag_id:String(id),add:false})});
+       toast('תג הוסר',true); loadWaContact(); }
+  catch(e){ toast('הסרת תג נכשלה',false); }
+}
+async function waAddNote(){
+  const inp=document.getElementById('waNoteText'); const text=(inp&&inp.value||'').trim(); if(!text) return;
+  try{ await api('/api/admin/wa/note',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({phone:S.waPhone,text,author:localStorage.getItem('tr_employee')||''})});
+       toast('הערה נשמרה ✓',true); loadWaContact(); }
+  catch(e){ toast('שמירת הערה נכשלה',false); }
+}
+async function waDelNote(id){
+  try{ await api('/api/admin/wa/note/'+id,{method:'DELETE'}); loadWaContact(); }
+  catch(e){ toast('מחיקה נכשלה',false); }
+}
+async function waToggleStar(){
+  const conv=(S.waConvs||[]).find(c=>c.phone===S.waPhone); if(!conv) return;
+  const v=!conv.star;
+  try{ await api('/api/admin/wa/star',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({phone:S.waPhone,value:v})});
+       conv.star=v; toast(v?'סומן למעקב ⭐':'הוסר מעקב',true); renderWaThread();
+       const pane=document.getElementById('waListPane');
+       if(pane) pane.innerHTML=waFiltered().map(waConvRow).join('');
+       if(S.waContact) S.waContact.star=v; }
+  catch(e){ toast('הפעולה נכשלה',false); }
+}
+function waExport(){
+  const t=S.waThread; if(!t) return;
+  const conv=(S.waConvs||[]).find(c=>c.phone===S.waPhone)||{name:S.waPhone};
+  const lines=(t.messages||[]).filter(m=>m.text).map(m=>
+    `[${m.ts?new Date(m.ts*1000).toLocaleString('he-IL'):''}] ${m.direction==='in'?(conv.name||'לקוח'):'גרין מובייל'}: ${m.text.trim()}`);
+  const blob=new Blob(['﻿'+lines.join('\n')],{type:'text/plain;charset=utf-8'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download=`whatsapp_${S.waPhone}_${new Date().toISOString().slice(0,10)}.txt`;
+  a.click(); URL.revokeObjectURL(a.href);
 }
 function waScrollBottom(){ const el=document.getElementById('waMsgs'); if(el) el.scrollTop=el.scrollHeight; }
 function renderWaThread(){ const p=document.getElementById('waThreadPane'); if(p){ p.innerHTML=waThreadHTML(); waScrollBottom(); } }
 async function openWaConv(phone){
-  S.waPhone=phone; S.waThread=null;
+  S.waPhone=phone; S.waThread=null; S.waContact=null;
   const lay=document.getElementById('waLayout'); if(lay) lay.classList.add('thread-open');
   // עדכון סימון active ברשימה בלי לרנדר הכל (שומר פוקוס/גלילה)
   document.querySelectorAll('.wa-conv').forEach(el=>el.classList.remove('active'));
   renderWaThread();
+  const conv=(S.waConvs||[]).find(c=>c.phone===phone);
+  if(conv) waMarkSeen(phone, conv.ts||Math.floor(Date.now()/1000));
   await loadWaThread(false);
+  if(S.waPanel) loadWaContact();
 }
 async function loadWaThread(silent){
   if(!S.waPhone) return;
   const phone=S.waPhone;
   try{ const t=await api('/api/admin/wa/thread/'+encodeURIComponent(phone));
-       if(S.waPhone===phone){ S.waThread=t; renderWaThread(); } }
+       if(S.waPhone===phone){ S.waThread=t; renderWaThread();
+         const last=Math.max(0,...(t.messages||[]).map(m=>m.ts||0));
+         if(last) waMarkSeen(phone,last); } }
   catch(e){ if(!silent) toast('טעינת שיחה נכשלה',false); }
 }
 async function sendWaMsg(){
@@ -2114,7 +2266,7 @@ function waPollTick(){
 }
 async function loadWaSilent(){
   try{ const d=await api('/api/admin/wa/conversations?archived='+(S.waArchived?1:0));
-       S.waConvs=d.conversations||[]; S.waErr='';
+       S.waConvs=d.conversations||[]; S.waErr=''; updateWaBadge(S.waConvs);
        const pane=document.getElementById('waListPane');
        const search=document.getElementById('waSearch');
        if(pane && !(search && document.activeElement===search))
@@ -2780,6 +2932,12 @@ async function adminOpen(opId){
 function startNotifPoll(){ clearInterval(S.notifTimer);
   S.notifTimer=setInterval(async()=>{
     if(!S.branchId) return;
+    // 💬 התראות וואטסאפ — רק במחשב הניהול (סניף אתר + סיסמה), גם כשלא בטאב
+    const isAdminPC=S.cfg&&Number(S.branchId)===S.cfg.admin_branch_id&&(!S.cfg.admin_required||S.adminKey);
+    if(isAdminPC && !(S.view==='admin'&&S.adminTab==='wa')){   // בטאב עצמו loadWaSilent כבר מטפל
+      try{ const d=await api('/api/admin/wa/conversations');
+           S.waConvs=d.conversations||[]; updateWaBadge(S.waConvs); }catch(e){}
+    }
     let list; try{ list=await api('/api/transfers?branch_id='+S.branchId); }catch(e){ return; }
     detectNewTransfers(list);
     let bc; try{ bc=await api('/api/broadcast?branch_id='+S.branchId); }catch(e){ return; }
