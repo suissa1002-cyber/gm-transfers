@@ -1949,7 +1949,15 @@ async function loadLiveCatalog(spinner){
   if(spinner) hideLoading();
   if((S.view==='admin'&&S.adminTab==='live')||(S.view==='board'&&S.branchTab==='live')) renderLive();
 }
-function setLsQuery(v){ S.lsQuery=v; S.lsSerialHits=null; S._refocusLs=true; renderLive(); }
+function setLsQuery(v){
+  S.lsQuery=v; S.lsSerialHits=null;
+  // אם השדה כבר קיים — מעדכנים רק את התוצאות (שלא תתאפס מקלדת iOS).
+  // ניקוי דרך כפתור ה-✕ (v ריק) — מאפס גם את ערך השדה.
+  if(document.getElementById('lsSearch')){
+    if(v==='') document.getElementById('lsSearch').value='';
+    lsUpdateResults();
+  } else { S._refocusLs=true; renderLive(); }
+}
 function setLsKind(v){ S.lsKind=v; renderLive(); }
 function setLsCategory(v){ S.lsCategory=v; renderLive(); }
 function setLsMfr(v){ S.lsMfr=v; renderLive(); }
@@ -2010,7 +2018,7 @@ function lsMaybeSerial(q){
       if((S.lsQuery||'').trim()!==q) return;
       const m=(d&&d.matches)||[];
       if(JSON.stringify(m)!==JSON.stringify(S.lsSerialHits||[])){
-        S.lsSerialHits=m; S._refocusLs=true; renderLive();
+        S.lsSerialHits=m; lsUpdateResults();   // עדכון תוצאות בלבד — לא לגעת בשדה
       }
     }catch(e){}
   },300);
@@ -2256,33 +2264,10 @@ function renderWcQuick(){
 function renderLive(){
   const app=document.getElementById('app');
   const cat=S.lsCat||[];
-  const items=lsFiltered();
   const act=cat.filter(i=>i.active);
   const cats=[...new Set(act.map(i=>i.category).filter(Boolean))].sort();
   const mfrs=[...new Set(act.map(i=>brandOf(i.name)).filter(Boolean))].sort();
   const opt=(v,sel,lbl)=>`<option value="${v}" ${String(sel)===String(v)?'selected':''}>${lbl}</option>`;
-  const shown=(items||[]).slice(0,LS_SHOW_CAP);
-  const liveCount=Math.min(shown.length,LS_LIVE_CAP);
-  let body='';
-  if(!cat.length)
-    body=`<div class="empty">⏳ קטלוג החיפוש עוד לא נבנה — נסה שוב בעוד ~דקה<br><button class="btn-ghost" style="margin-top:10px" onclick="loadLiveCatalog(true)">טען שוב</button></div>`;
-  else if(items===null)
-    body=`<div class="empty">🔎 הקלד שם מוצר / מק״ט / ברקוד / סריאל — הרשימה מצטמצמת תוך כדי הקלדה</div>`;
-  else if(!items.length){
-    const isNum=/^\d{3,}$/.test(fixHebrewLayout((S.lsQuery||'').trim()));
-    body=`<div class="empty">${isNum?'מחפש לפי מספר סידורי…':'לא נמצאו מוצרים מתאימים'}</div>`;
-  } else {
-    const isMobile=window.matchMedia('(max-width:760px)').matches;
-    const capNote=items.length>LS_LIVE_CAP?`<div class="muted" style="margin-bottom:8px;font-size:13px">⚡ מלאי חי מוצג ל-${liveCount} הראשונים — צמצם את החיפוש לתצוגה חיה מלאה</div>`:'';
-    const overNote=items.length>LS_SHOW_CAP?`<div class="muted" style="margin-top:8px">מציג ${LS_SHOW_CAP} מתוך ${items.length} — צמצם את החיפוש</div>`:'';
-    body=isMobile
-      ?`${capNote}<div class="ls-cards">${shown.map((it,i)=>lsCard(it,i<LS_LIVE_CAP)).join('')}</div>${overNote}`
-      :`${capNote}<table class="admin"><thead><tr>
-      <th>מק״ט</th><th>מוצר</th><th>סוג</th><th>קטגוריה</th>
-      ${(S.branchList||[]).map(b=>`<th style="text-align:center">${b.name}</th>`).join('')}
-      <th style="text-align:center">אתר</th><th>עדכון</th>
-    </tr></thead><tbody>${shown.map((it,i)=>lsRow(it,i<LS_LIVE_CAP)).join('')}</tbody></table>${overNote}`;
-  }
   const lsHeader=(S.view==='admin')
     ? `<h1 class="title">🛠️ ניהול אופרציה</h1>${adminTabsHTML()}`
     : branchTabsHTML();
@@ -2307,10 +2292,46 @@ function renderLive(){
         <option value="">קטגוריה — הכל</option>${cats.map(s=>opt(s,S.lsCategory,s)).join('')}
       </select>
       <label class="ls-check"><input type="checkbox" ${S.lsStock?'checked':''} onchange="setLsStock(this.checked)"><span>רק עם מלאי</span></label>
-      <span class="muted" style="margin-inline-start:auto;font-size:13px">${items?`מציג ${shown.length} מתוך ${items.length}`:''}</span>
+      <span class="muted" id="lsCount" style="margin-inline-start:auto;font-size:13px"></span>
     </div>
-    ${body}`;
+    <div id="lsResults"></div>`;
+  lsUpdateResults();
   if(S._refocusLs){ const el=document.getElementById('lsSearch'); if(el){ el.focus(); const v=el.value; el.value=''; el.value=v; } S._refocusLs=false; }
+}
+// עדכון רק של אזור התוצאות — בלי לגעת בשדה החיפוש (כדי שמקלדת iOS לא תתאפס בכל הקלדה)
+function lsUpdateResults(){
+  const box=document.getElementById('lsResults'); if(!box) return;
+  const cat=S.lsCat||[];
+  const items=lsFiltered();
+  const shown=(items||[]).slice(0,LS_SHOW_CAP);
+  const liveCount=Math.min(shown.length,LS_LIVE_CAP);
+  let body='';
+  if(!cat.length)
+    body=`<div class="empty">⏳ קטלוג החיפוש עוד לא נבנה — נסה שוב בעוד ~דקה<br><button class="btn-ghost" style="margin-top:10px" onclick="loadLiveCatalog(true)">טען שוב</button></div>`;
+  else if(items===null)
+    body=`<div class="empty">🔎 הקלד שם מוצר / מק״ט / ברקוד / סריאל — הרשימה מצטמצמת תוך כדי הקלדה</div>`;
+  else if(!items.length){
+    const isNum=/^\d{3,}$/.test(fixHebrewLayout((S.lsQuery||'').trim()));
+    body=`<div class="empty">${isNum?'מחפש לפי מספר סידורי…':'לא נמצאו מוצרים מתאימים'}</div>`;
+  } else {
+    const isMobile=window.matchMedia('(max-width:760px)').matches;
+    const capNote=items.length>LS_LIVE_CAP?`<div class="muted" style="margin-bottom:8px;font-size:13px">⚡ מלאי חי מוצג ל-${liveCount} הראשונים — צמצם את החיפוש לתצוגה חיה מלאה</div>`:'';
+    const overNote=items.length>LS_SHOW_CAP?`<div class="muted" style="margin-top:8px">מציג ${LS_SHOW_CAP} מתוך ${items.length} — צמצם את החיפוש</div>`:'';
+    body=isMobile
+      ?`${capNote}<div class="ls-cards">${shown.map((it,i)=>lsCard(it,i<LS_LIVE_CAP)).join('')}</div>${overNote}`
+      :`${capNote}<table class="admin"><thead><tr>
+      <th>מק״ט</th><th>מוצר</th><th>סוג</th><th>קטגוריה</th>
+      ${(S.branchList||[]).map(b=>`<th style="text-align:center">${b.name}</th>`).join('')}
+      <th style="text-align:center">אתר</th><th>עדכון</th>
+    </tr></thead><tbody>${shown.map((it,i)=>lsRow(it,i<LS_LIVE_CAP)).join('')}</tbody></table>${overNote}`;
+  }
+  box.innerHTML=body;
+  const cnt=document.getElementById('lsCount'); if(cnt) cnt.textContent=items?`מציג ${shown.length} מתוך ${items.length}`:'';
+  // עדכון כפתור הניקוי לפי המצב (בלי לבנות מחדש את ה-input)
+  const wrap=document.querySelector('.ls-searchwrap');
+  if(wrap){ let x=wrap.querySelector('.ls-clear');
+    if(S.lsQuery&&!x){ x=document.createElement('button'); x.className='ls-clear'; x.title='נקה חיפוש'; x.textContent='✕'; x.onclick=()=>setLsQuery(''); wrap.appendChild(x); }
+    else if(!S.lsQuery&&x){ x.remove(); } }
   if(items&&shown.length) lsScheduleLive(shown.slice(0,LS_LIVE_CAP));
   lsMaybeSerial((S.lsQuery||'').trim());
 }
