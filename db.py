@@ -24,15 +24,26 @@ def _norm_serial(s) -> str:
     return re.sub(r"[^A-Za-z0-9]", "", str(s or "")).upper()
 
 
-def _serial_loose_eq(a, b) -> bool:
-    """התאמה גמישה בין סריאל סרוק למאוחסן — מנורמל זהה, או שאחד סיומת/קידומת
-    של השני (כשהחלק המשותף ארוך מספיק, ≥8, כדי למנוע התאמות שווא)."""
-    na, nb = _norm_serial(a), _norm_serial(b)
-    if not na or not nb:
+def _serial_tokens(s) -> list:
+    return [_norm_serial(t) for t in re.split(r"[^A-Za-z0-9]+", str(s or "")) if _norm_serial(t)]
+
+
+def _serial_loose_eq(scanned, stored) -> bool:
+    """התאמה דטרמיניסטית בין סריאל סרוק למאוחסן. בטוחה — לא יוצרת התאמות שווא:
+    הברקוד הפיזי לרוב מקודד את אותם מקטעים בסדר הפוך מ-NewOrder
+    (למשל '35785/AGAAJF2SU03507' ↔ הברקוד 'AGAAJF2SU03507/35785')."""
+    ns, nt = _norm_serial(scanned), _norm_serial(stored)
+    if not ns or not nt:
         return False
-    if na == nb:
+    if ns == nt:                                   # מנורמל זהה (לוכסן/מקף/רווח)
         return True
-    short, lng = (na, nb) if len(na) <= len(nb) else (nb, na)
+    st = _serial_tokens(stored)
+    sc = _serial_tokens(scanned)
+    if len(st) >= 2 and sorted(st) == sorted(sc):  # אותם מקטעים, סדר הפוך (עם מפריד)
+        return True
+    if len(st) == 2 and ns in (st[0] + st[1], st[1] + st[0]):  # היפוך בלי מפריד
+        return True
+    short, lng = (ns, nt) if len(ns) <= len(nt) else (nt, ns)   # סיומת/קידומת (≥8)
     return len(short) >= 8 and (lng.endswith(short) or lng.startswith(short))
 
 _USE_PG = bool(cfg.DATABASE_URL)

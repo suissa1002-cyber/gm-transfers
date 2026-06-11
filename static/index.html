@@ -1079,7 +1079,7 @@ async function renderBoard(app, silent){
   const lastHtml = needEmp ? '' : (ls
     ? (ls.ok
        ? `<div class="lastscan ${okCls}">✓ ${ls.name||'נקלט'} <span class="sub">· פעולה ${ls.op} (${ls.prog})</span> ${methodTag(ls.method)}</div>`
-       : `<div class="lastscan err">✗ ${ls.message}${ls.name?` <span class="sub">· ${ls.name}</span>`:''}${ls.code?` <span class="sub">· ${ls.code}</span>`:''}</div>`)
+       : `<div class="lastscan err">✗ ${ls.message}${ls.name?` <span class="sub">· ${ls.name}</span>`:''}${ls.code?` <span class="sub" style="unicode-bidi:isolate;direction:ltr;font-family:monospace">· ${ls.code}</span>`:''}</div>`)
     : `<div class="lastscan idle">המכשיר האחרון שתסרוק יוצג כאן</div>`);
   app.innerHTML=`
     ${branchTabsHTML()}
