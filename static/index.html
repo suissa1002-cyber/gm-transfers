@@ -745,8 +745,8 @@ function closeCamera(){
 // ── Ops Hub: תפריט בורגר + הטמעת אפליקציות הסוכנים (App-Shell) ──
 // כל אפליקציה ממשיכה לרוץ עצמאית; כאן רק מטמיעים אותה ב-iframe. לא נוגעים בכלום.
 const HUB_APPS=[
-  {key:'invoices',   icon:'🧾', title:'ניהול חשבוניות (איציק)',      url:'https://invoice-manager-tfqj.onrender.com/'},
-  {key:'stockwatch', icon:'🔔', title:'תזכורות מלאי — Stock Watcher', url:'https://uri-stock-watcher.onrender.com/'},
+  {key:'invoices',   icon:'🧾', title:'ניהול חשבוניות (איציק)',      url:'/embed/inv',  embed:true},
+  {key:'stockwatch', icon:'🔔', title:'תזכורות מלאי — Stock Watcher', url:'/embed/sw',   embed:true},
   {key:'checks',     icon:'🏦', title:'ניהול צ׳קים',                  url:'/checks'},
 ];
 function renderDrawer(){
@@ -807,12 +807,18 @@ function hubGo(view){
   }
   S.view='board'; S.embedApp=null; render();
 }
-function hubOpen(key){
+async function hubOpen(key){
   const a=HUB_APPS.find(x=>x.key===key); if(!a) return;
   if(!ensureAdmin(()=>hubOpen(key))) return;
   toggleDrawer(false);
-  // צ'קים מתארח אצלנו (אותו origin) — ניווט מלא מובנה, לא iframe
+  // צ'קים מתארח אצלנו (אותו origin) — ניווט מלא מובנה
   if(key==='checks'){ window.location.href=a.url; return; }
+  // אפליקציות מוטמעות native דרך reverse-proxy — פותחים session ואז ניווט מלא
+  if(a.embed){
+    showLoading('פותח אפליקציה…');
+    try{ await api('/api/embed/session',{method:'POST'}); }catch(e){}
+    window.location.href=a.url; return;
+  }
   S.view='embed'; S.embedApp=a; render();
 }
 // ── Ops Hub: משימות סוכנים (native, מול Monday דרך proxy) ──

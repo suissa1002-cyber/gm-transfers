@@ -934,6 +934,46 @@ def admin_sentinel(x_admin_key: Optional[str] = Header(None)):
     return {"available": True, "stale": stale, "report": rep}
 
 
+# ── GreenOS: הטמעת אפליקציות native (reverse proxy, לא iframe) ──────
+# גישה דרך cookie חתום שנקבע אחרי אימות אדמין/מכשיר (ניווט דפדפן לא נושא הדרים).
+from fastapi import Response as _Resp  # noqa: E402
+
+
+def _embed_cookie_val() -> str:
+    secret = os.getenv("SENTINEL_KEY", "") or cfg.ADMIN_PASSWORD or "gm"
+    return _hmac.new(secret.encode(), b"embed", hashlib.sha256).hexdigest()[:24]
+
+
+@app.post("/api/embed/session")
+def embed_session(x_admin_key: Optional[str] = Header(None),
+                  x_device_token: Optional[str] = Header(None)):
+    """פותח session להטמעות — אדמין או מכשיר מאושר. מחזיר cookie."""
+    _require_admin_or_device(x_admin_key, x_device_token)
+    resp = JSONResponse({"ok": True})
+    resp.set_cookie("gos_embed", _embed_cookie_val(), max_age=43200,
+                    httponly=True, samesite="lax")
+    return resp
+
+
+@app.api_route("/embed/{key}", methods=["GET", "POST", "PATCH", "DELETE"])
+@app.api_route("/embed/{key}/{path:path}", methods=["GET", "POST", "PATCH", "DELETE"])
+async def embed_proxy_route(key: str, request: Request, path: str = ""):
+    import embed_proxy
+    if not embed_proxy.app_for(key):
+        raise HTTPException(404, "unknown embed")
+    if request.cookies.get("gos_embed") != _embed_cookie_val():
+        from fastapi.responses import HTMLResponse as _H
+        return _H('<!doctype html><html dir="rtl"><body style="font-family:system-ui;text-align:center;padding-top:80px">'
+                  '<h2>🔒 גישה דרך GreenOS בלבד</h2><p><a href="/">חזרה ל-GreenOS</a></p></body></html>',
+                  status_code=401)
+    body = await request.body()
+    status, content, ct, headers = embed_proxy.proxy(
+        key, path, request.method, str(request.url.query),
+        body, request.headers.get("content-type", ""))
+    return _Resp(content=content, status_code=status, media_type=ct or None,
+                 headers={k: v for k, v in headers.items() if k.lower() not in ("content-type",)})
+
+
 # ── Ops Hub: דף ניהול צ'קים (מתארח אצלנו, proxy במקום טוקן חשוף) ───
 @app.get("/checks")
 def checks_page():
