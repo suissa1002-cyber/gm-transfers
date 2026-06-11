@@ -1540,7 +1540,7 @@ function renderRebalance(){
   const totalCount=(d.items||[]).length;
   const last=d.last_scan?('סריקה אחרונה: '+fmtTime(d.last_scan)):'טרם נסרק';
   app.innerHTML=`
-    <h1 class="title">🛠️ ניהול אופרציה</h1>
+    <h1 class="title" style="display:flex;align-items:center;gap:8px">${ico('wrench',19)} ניהול אופרציה</h1>
     ${adminTabsHTML()}
     <div class="muted" style="margin-bottom:10px;font-size:13px">פריטים שבסניף אחד יש 0 ובאחר ≥2 — מומלץ לאזן (אתר לא נכלל).</div>
     <div class="rebal-bar">
@@ -1650,26 +1650,26 @@ function renderPlan(){
   let html='';
   Object.keys(groups).forEach(fb=>{ const g=groups[fb]; const fn=g[0].from_name;
     html+=`<div class="plan-group">
-      <div class="plan-head"><span class="ttl"><b>📦 מסניף ${fn}</b> · ${g.length} פריטים</span>
+      <div class="plan-head"><span class="ttl"><b style="display:inline-flex;align-items:center;gap:6px">${ico('pkg',15)} מסניף ${fn}</b> · ${g.length} פריטים</span>
         <div class="plan-actions">
-          <button class="pa-accent" onclick="openTransferRequestPage(${fb})">🖼️ פתח לצילום</button>
-          <button class="pa-accent" onclick="broadcastBranch(${fb})">📡 שדר לסניף</button>
+          <button class="pa-accent" onclick="openTransferRequestPage(${fb})" style="display:inline-flex;align-items:center;gap:5px">${ico('image',14)} פתח לצילום</button>
+          <button class="pa-accent" onclick="broadcastBranch(${fb})" style="display:inline-flex;align-items:center;gap:5px">${ico('radio',14)} שדר לסניף</button>
           <span class="pa-sep"></span>
-          <button onclick="exportPlanCSV(${fb})">📄 CSV</button>
-          <button class="pa-danger" onclick="clearPlan(${fb})">🗑️ נקה</button>
+          <button onclick="exportPlanCSV(${fb})" style="display:inline-flex;align-items:center;gap:5px">${ico('download',14)} CSV</button>
+          <button class="pa-danger" onclick="clearPlan(${fb})" style="display:inline-flex;align-items:center;gap:5px">${ico('trash',14)} נקה</button>
         </div></div>
       <table class="admin"><thead><tr><th>מק״ט</th><th>מוצר</th><th>כמות</th><th>לסניף</th><th>נוצר ע״י</th><th></th></tr></thead><tbody>
       ${g.map(l=>`<tr><td style="font-family:monospace;direction:ltr;text-align:right">${l.product_id}</td><td>${l.name}</td>
         <td><b>${l.qty}</b></td><td>${l.to_name}</td><td class="muted" style="font-size:12px">${_esc(l.created_by||'—')}</td><td><button class="btn-ghost" onclick="deletePlanLine(${l.id})">✕</button></td></tr>`).join('')}
       </tbody></table></div>`;
   });
-  app.innerHTML=`<h1 class="title">🛠️ ניהול אופרציה</h1>${adminTabsHTML()}
+  app.innerHTML=`<h1 class="title" style="display:flex;align-items:center;gap:8px">${ico('wrench',19)} ניהול אופרציה</h1>${adminTabsHTML()}
     <div class="rebal-bar"><span class="muted">${lines.length} שורות בבקשה</span>
       <span style="margin-inline-start:auto"></span>
-      ${lines.length?`<button class="btn-ghost" onclick="exportPlanCSV()">📄 ייצא הכל</button>
-      <button class="btn-ghost" onclick="clearPlan()">🗑️ נקה הכל</button>`:''}
+      ${lines.length?`<button class="btn-ghost" onclick="exportPlanCSV()" style="display:inline-flex;align-items:center;gap:5px">${ico('download',14)} ייצא הכל</button>
+      <button class="btn-ghost" onclick="clearPlan()" style="display:inline-flex;align-items:center;gap:5px">${ico('trash',14)} נקה הכל</button>`:''}
     </div>
-    ${lines.length?html:'<div class="empty">אין בקשות העברה. הוסף מטאב "⚖️ איזון מלאי" עם הכפתור ➕ לבקשה.</div>'}`;
+    ${lines.length?html:'<div class="empty">אין בקשות העברה. הוסף מטאב "איזון מלאי" עם הכפתור ➕ לבקשה.</div>'}`;
 }
 async function deletePlanLine(id){ showLoading(); try{ await api('/api/admin/plan/'+id,{method:'DELETE'}); }catch(e){} await loadPlan(false); hideLoading(); }
 async function clearPlan(fromBranch){
@@ -1831,7 +1831,7 @@ function renderReco(){
   const mfrs=[...new Set((d.items||[]).map(i=>brandOf(i.name)).filter(Boolean))].sort();
   const dataNote = sum.docs ? `מאגר מכירות: ${sum.docs} חשבוניות · ${(sum.min_date||'').slice(0,10)}…${(sum.max_date||'').slice(0,10)}` : 'מאגר מכירות ריק — לחץ "אסוף מכירות"';
   const opt=(v,sel,lbl)=>`<option value="${v}" ${String(sel)===String(v)?'selected':''}>${lbl}</option>`;
-  app.innerHTML=`<h1 class="title">🛠️ ניהול אופרציה</h1>${adminTabsHTML()}
+  app.innerHTML=`<h1 class="title" style="display:flex;align-items:center;gap:8px">${ico('wrench',19)} ניהול אופרציה</h1>${adminTabsHTML()}
     <div class="muted" style="margin-bottom:10px;font-size:13px">מוצרים שנמכרו בתקופה ואוזלים במלאי — עם כמות הזמנה מומלצת. ${dataNote}.</div>
     <div class="rebal-bar">
       <input id="recoSearch" placeholder="🔎 חיפוש מוצר / מק״ט / ברקוד" value="${(S.recoSearch||'').replace(/"/g,'&quot;')}" oninput="setRecoSearch(this.value)">
@@ -1942,13 +1942,13 @@ function renderOrder(){
     <td>${l.supplier||'—'}</td><td class="muted">${l.category||'—'}</td>
     <td style="font-weight:800;text-align:center">${l.qty}</td>
     <td><button class="btn-ghost" onclick="deleteOrderLine(${l.id})">✕</button></td></tr>`).join('');
-  app.innerHTML=`<h1 class="title">🛠️ ניהול אופרציה</h1>${adminTabsHTML()}
+  app.innerHTML=`<h1 class="title" style="display:flex;align-items:center;gap:8px">${ico('wrench',19)} ניהול אופרציה</h1>${adminTabsHTML()}
     <div class="plan-head" style="margin-bottom:14px">
       <span class="ttl"><b>🛒 טיוטת הזמנה</b> · ${lines.length} פריטים · ${totalQty} יח׳</span>
       <div class="plan-actions">
-        <button class="pa-accent" onclick="openOrderRequestPage()">🖼️ פתח לצילום</button>
-        <button onclick="exportOrderCSV()">📄 CSV</button>
-        <button class="pa-danger" onclick="clearOrder()">🗑️ נקה הכל</button>
+        <button class="pa-accent" onclick="openOrderRequestPage()" style="display:inline-flex;align-items:center;gap:5px">${ico('image',14)} פתח לצילום</button>
+        <button onclick="exportOrderCSV()" style="display:inline-flex;align-items:center;gap:5px">${ico('download',14)} CSV</button>
+        <button class="pa-danger" onclick="clearOrder()" style="display:inline-flex;align-items:center;gap:5px">${ico('trash',14)} נקה הכל</button>
       </div>
     </div>
     <div class="rebal-bar">
@@ -2044,7 +2044,7 @@ function renderRemovals(){
   const opt=(v,sel,lbl)=>`<option value="${v}" ${String(sel)===String(v)?'selected':''}>${lbl}</option>`;
   const rangeActive=!!(S.removalsFrom&&S.removalsTo);
   const note=sm.ops?`מאגר הורדות: ${sm.ops} פעולות · ${(sm.min_date||'').slice(0,10)}…${(sm.max_date||'').slice(0,10)}`:'מאגר ריק — לחץ "אסוף הורדות"';
-  app.innerHTML=`<h1 class="title">🛠️ ניהול אופרציה</h1>${adminTabsHTML()}
+  app.innerHTML=`<h1 class="title" style="display:flex;align-items:center;gap:8px">${ico('wrench',19)} ניהול אופרציה</h1>${adminTabsHTML()}
     <div class="muted" style="margin-bottom:10px;font-size:13px">הורדות מלאי בסניף <b>מרלוג</b> (חצי-קופה) — נספרות כמכירות בהמלצות ההזמנה. ${note}.</div>
     <div class="rebal-bar">
       <input id="removalsSearch" placeholder="🔎 חיפוש מוצר / מק״ט / סריאל / עובד / מס׳ פעולה" value="${(S.removalsSearch||'').replace(/"/g,'&quot;')}" oninput="setRemovalsSearch(this.value)">
@@ -2544,6 +2544,8 @@ const _IPATHS={
   receipt:'<path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><line x1="8" y1="8" x2="16" y2="8"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="16" x2="13" y2="16"/>',
   bank:'<line x1="3" y1="22" x2="21" y2="22"/><line x1="6" y1="18" x2="6" y2="11"/><line x1="10" y1="18" x2="10" y2="11"/><line x1="14" y1="18" x2="14" y2="11"/><line x1="18" y1="18" x2="18" y2="11"/><polygon points="12 2 20 7 4 7"/>',
   inbox:'<polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>',
+  trash:'<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+  radio:'<circle cx="12" cy="12" r="2"/><path d="M4.93 19.07a10 10 0 0 1 0-14.14"/><path d="M7.76 16.24a6 6 0 0 1 0-8.49"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>',
 };
 function ico(name, size, fill){
   return `<svg width="${size||17}" height="${size||17}" viewBox="0 0 24 24" fill="${fill?'currentColor':'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block">${_IPATHS[name]||''}</svg>`;
@@ -3224,7 +3226,7 @@ function renderLive(){
   const mfrs=[...new Set(act.map(i=>brandOf(i.name)).filter(Boolean))].sort();
   const opt=(v,sel,lbl)=>`<option value="${v}" ${String(sel)===String(v)?'selected':''}>${lbl}</option>`;
   const lsHeader=(S.view==='admin')
-    ? `<h1 class="title">🛠️ ניהול אופרציה</h1>${adminTabsHTML()}`
+    ? `<h1 class="title" style="display:flex;align-items:center;gap:8px">${ico('wrench',19)} ניהול אופרציה</h1>${adminTabsHTML()}`
     : branchTabsHTML();
   app.innerHTML=`${lsHeader}
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap">
