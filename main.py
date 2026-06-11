@@ -602,10 +602,14 @@ def admin_live_stock(pid: str, serials: int = 0, fresh: int = 0,
     except Exception as e:  # noqa: BLE001
         logger.warning("live stock failed for %s: %s", pid, e)
         raise HTTPException(502, "לא ניתן לקרוא מהקופה כרגע")
+    bstat = db.product_branch_status(pid)
     out = {
         "product_id": str(pid),
         "fetched_at": datetime.now().isoformat(timespec="seconds"),
-        "branches": [{"id": b, "name": cfg.branch_name(b), "qty": stock.get(b, 0) or 0}
+        "branches": [{"id": b, "name": cfg.branch_name(b), "qty": stock.get(b, 0) or 0,
+                      "dyn_kind": (bstat.get(b) or {}).get("kind"),
+                      "dyn_to": cfg.branch_name((bstat.get(b) or {}).get("to_branch")) if bstat.get(b) else "",
+                      "dyn_n": (bstat.get(b) or {}).get("n", 0)}
                      for b in cfg.BRANCHES],
     }
     if serials:

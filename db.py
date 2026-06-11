@@ -637,6 +637,29 @@ def serial_dynamic_status(serials: list) -> dict:
     return out
 
 
+def product_branch_status(product_id: str) -> dict:
+    """לכל סניף שמחזיק יחידה של המוצר שמשוריינת/בהעברה — {branch_id: {kind, to_branch, n}}.
+    נגזר מ-transfer_plan (משוריין) ו-transfer_items פתוחים (בהעברה). transit גובר."""
+    pid = str(product_id)
+    out = {}
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""SELECT from_branch AS fb, to_branch AS tb, COUNT(*) AS n
+                          FROM transfer_plan WHERE product_id = ? GROUP BY from_branch, to_branch"""), (pid,))
+        for r in cur.fetchall():
+            if r["fb"] is not None:
+                out[int(r["fb"])] = {"kind": "reserved", "to_branch": r["tb"], "n": r["n"]}
+        cur.execute(_q("""SELECT t.from_branch_id AS fb, t.to_branch_id AS tb, COUNT(*) AS n
+                          FROM transfer_items i JOIN transfers t ON t.op_id = i.op_id
+                          WHERE i.product_id = ? AND i.received = 0
+                            AND t.status IN ('in_transit','partial')
+                          GROUP BY t.from_branch_id, t.to_branch_id"""), (pid,))
+        for r in cur.fetchall():
+            if r["fb"] is not None:
+                out[int(r["fb"])] = {"kind": "transit", "to_branch": r["tb"], "n": r["n"]}
+    return out
+
+
 def serial_index_count() -> int:
     with _conn() as c:
         cur = c.cursor()

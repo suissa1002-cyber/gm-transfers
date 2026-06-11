@@ -2024,6 +2024,15 @@ function lsMaybeSerial(q){
   },300);
 }
 function fmtClock(iso){ if(!iso) return ''; const d=new Date(iso); return isNaN(d)?'':d.toLocaleTimeString('he-IL'); }
+// קוביית סניף עם יחידה משוריינת/בהעברה — צביעה + tooltip
+function lsResvAttr(bo){
+  if(!bo||!bo.dyn_kind) return {style:'', title:'', dot:''};
+  const transit=bo.dyn_kind==='transit';
+  const col=transit?'#f5a524':'#2563eb';   // כתום=בהעברה, כחול=משוריין
+  const label=(transit?'בהעברה ל':'משוריין ל')+(bo.dyn_to||'?')+(bo.dyn_n>1?` (${bo.dyn_n})`:'');
+  return {style:`;background:${col}22;border-radius:8px`, title:`title="${label}"`,
+          dot:` <span style="color:${col}">${transit?'🚚':'📡'}</span>`};
+}
 function serDynBadge(hits){
   const h=(hits||[]).find(x=>x.dyn_kind);
   if(!h) return '';
@@ -2040,8 +2049,9 @@ function lsRow(it,live){
   const fresh=c&&!c.err&&Date.now()-c.at<LS_TTL_MS;
   const bcells=(S.branchList||[]).map(b=>{
     if(!live) return `<td class="ls-wait" style="text-align:center">—</td>`;
-    if(fresh){ const q=((c.data.branches||[]).find(x=>String(x.id)===String(b.id))||{}).qty||0;
-      return `<td id="lsb-${pid}-${b.id}" style="text-align:center" class="${q>0?'ls-has':(q<0?'ls-neg':'ls-zero')}">${q}</td>`; }
+    if(fresh){ const bo=(c.data.branches||[]).find(x=>String(x.id)===String(b.id))||{};
+      const q=bo.qty||0; const r=lsResvAttr(bo);
+      return `<td id="lsb-${pid}-${b.id}" style="text-align:center${r.style}" ${r.title} class="${q>0?'ls-has':(q<0?'ls-neg':'ls-zero')}">${q}${r.dot}</td>`; }
     return `<td id="lsb-${pid}-${b.id}" style="text-align:center" class="ls-wait">⏳</td>`;
   }).join('');
   const tcell=live?(fresh?('🟢 '+fmtClock(c.data.fetched_at)):(c&&c.err?'שגיאת קופה':'…')):'צמצם לתצוגה חיה';
@@ -2065,9 +2075,11 @@ function lsCard(it,live){
   const c=S.lsLive[pid], fresh=c&&!c.err&&Date.now()-c.at<LS_TTL_MS;
   const chips=(S.branchList||[]).map(b=>{
     let inner=`<b id="lsb-${pid}-${b.id}" class="ls-wait">${live?'⏳':'—'}</b>`;
-    if(live&&fresh){ const q=((c.data.branches||[]).find(x=>String(x.id)===String(b.id))||{}).qty||0;
-      inner=`<b id="lsb-${pid}-${b.id}" class="${q>0?'ls-has':(q<0?'ls-neg':'ls-zero')}">${q}</b>`; }
-    return `<span class="ls-bq">${b.name} ${inner}</span>`;
+    let resv={style:'',title:'',dot:''};
+    if(live&&fresh){ const bo=(c.data.branches||[]).find(x=>String(x.id)===String(b.id))||{};
+      const q=bo.qty||0; resv=lsResvAttr(bo);
+      inner=`<b id="lsb-${pid}-${b.id}" class="${q>0?'ls-has':(q<0?'ls-neg':'ls-zero')}">${q}${resv.dot}</b>`; }
+    return `<span class="ls-bq" ${resv.title} style="${resv.style.replace(/^;/,'')}">${b.name} ${inner}</span>`;
   }).join('');
   const tmeta=live?(fresh?('🟢 '+fmtClock(c.data.fetched_at)):(c&&c.err?'🔁 מנסה שוב…':'⏳ קורא מהקופה…')):'';
   return `<div class="ls-card" onclick='openLiveDetail(${JSON.stringify(pid)})'>
@@ -2125,9 +2137,13 @@ function lsPaint(pid){
   const c=S.lsLive[pid]; if(!c) return;
   (S.branchList||[]).forEach(b=>{
     const el=document.getElementById('lsb-'+pid+'-'+b.id); if(!el) return;
-    if(c.err){ el.textContent='⚠️'; el.className='ls-wait'; return; }
-    const q=((c.data.branches||[]).find(x=>String(x.id)===String(b.id))||{}).qty||0;
-    el.textContent=q; el.className=q>0?'ls-has':(q<0?'ls-neg':'ls-zero');
+    if(c.err){ el.textContent='⚠️'; el.className='ls-wait'; el.removeAttribute('title'); return; }
+    const bo=(c.data.branches||[]).find(x=>String(x.id)===String(b.id))||{};
+    const q=bo.qty||0; const r=lsResvAttr(bo);
+    el.innerHTML=q+r.dot; el.className=q>0?'ls-has':(q<0?'ls-neg':'ls-zero');
+    el.style.background=r.style?r.style.replace(/^;background:/,'').split(';')[0]:'';
+    el.style.borderRadius=r.style?'8px':'';
+    if(r.title){ el.title=r.title.replace(/^title="|"$/g,''); } else el.removeAttribute('title');
   });
   const t=document.getElementById('lst-'+pid);
   if(t) t.textContent=c.err?'🔁 מנסה שוב…':('🟢 '+fmtClock(c.data.fetched_at));
