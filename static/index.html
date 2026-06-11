@@ -351,9 +351,12 @@
     .wa-layout{grid-template-columns:1fr}
     .wa-layout.thread-open .wa-list{display:none}
     .wa-layout:not(.thread-open) .wa-thread{display:none}
-    .wa-thread{height:calc(100vh - 230px)}
+    .wa-thread{height:calc(100vh - 195px)}
     .wa-back{display:inline-block}
     .wa-b{max-width:88%}
+    .wa-bar-hidden{display:none!important}
+    .wa-head{gap:6px;padding:9px 10px}
+    .wa-head .btn-ghost{padding:6px 9px;font-size:13px;display:inline-flex;align-items:center}
     .scan-layout{grid-template-columns:1fr}
     .scan-side{position:static}
     header{padding:10px 12px;gap:8px;flex-wrap:nowrap} .wrap{padding:14px}
@@ -2045,8 +2048,9 @@ function openWaTab(){ S.view='admin'; setAdminTab('wa'); }
 function renderWa(){
   const app=document.getElementById('app');
   const rows=waFiltered();
+  const mobileThread=S.waPhone&&window.innerWidth<=760;
   app.innerHTML=`<h1 class="title">🛠️ ניהול אופרציה</h1>${adminTabsHTML()}
-    <div class="rebal-bar">
+    <div class="rebal-bar ${mobileThread?'wa-bar-hidden':''}" id="waBar">
       <input id="waSearch" placeholder="🔎 חיפוש שם / טלפון / הודעה" value="${escW(S.waSearch||'')}"
              oninput="S.waSearch=this.value;S._refocusWa=true;renderWa()">
       <label class="ls-check"><input type="checkbox" ${S.waArchived?'checked':''}
@@ -2073,7 +2077,7 @@ function waThreadHTML(){
   const msgs=(t.messages||[]).filter(m=>m.text);
   return `
     <div class="wa-head">
-      <button class="btn-ghost wa-back" onclick="S.waPhone='';S.waThread=null;renderWa()">⬅</button>
+      <button class="btn-ghost wa-back" onclick="S.waPhone='';S.waThread=null;S.waPanel=false;renderWa()">⬅</button>
       <b>${escW(conv.name)}</b>
       <span class="muted" style="direction:ltr;font-size:12px">+${escW(S.waPhone)}</span>
       ${winChip}
@@ -2202,6 +2206,7 @@ function renderWaThread(){ const p=document.getElementById('waThreadPane'); if(p
 async function openWaConv(phone){
   S.waPhone=phone; S.waThread=null; S.waContact=null;
   const lay=document.getElementById('waLayout'); if(lay) lay.classList.add('thread-open');
+  const bar=document.getElementById('waBar'); if(bar&&window.innerWidth<=760) bar.classList.add('wa-bar-hidden');
   // עדכון סימון active ברשימה בלי לרנדר הכל (שומר פוקוס/גלילה)
   document.querySelectorAll('.wa-conv').forEach(el=>el.classList.remove('active'));
   renderWaThread();
