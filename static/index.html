@@ -1939,7 +1939,9 @@ async function runRemovalsIngest(){
 }
 
 // ── 🔎 מלאי חי — חיפוש דינמי (קטלוג מקומי) + מלאי בזמן אמת מהקופה ──
-const LS_SHOW_CAP=50, LS_LIVE_CAP=LS_SHOW_CAP, LS_TTL_MS=30000, LS_CHUNK=8;
+// LS_LIVE_CAP נמוך כדי לא להציף את הטוקן המשותף כשכמה סניפים פעילים יחד —
+// נטענים חי רק המוצרים הראשונים; צמצום החיפוש טוען את השאר חי.
+const LS_SHOW_CAP=50, LS_LIVE_CAP=16, LS_TTL_MS=90000, LS_CHUNK=6;
 async function loadLiveCatalog(spinner){
   if(spinner) showLoading('טוען קטלוג חיפוש…');
   try{ const d=await api('/api/admin/live-search/catalog'); S.lsCat=d.items||[]; S.lsCatAt=d.updated_at; }
@@ -2126,7 +2128,7 @@ async function openWcQuick(pid){
   const it=(S.lsCat||[]).find(x=>String(x.product_id)===String(pid));
   showLoading('קורא מהאתר…');
   let d=null;
-  try{ d=await api('/api/admin/wc-link/'+encodeURIComponent(pid)+'?pos=1&fallback=1&fresh=1&name='+encodeURIComponent((it&&it.name)||''),null,30000); }catch(e){}
+  try{ d=await api('/api/admin/wc-link/'+encodeURIComponent(pid)+'?pos=1&fallback=1&name='+encodeURIComponent((it&&it.name)||''),null,30000); }catch(e){}
   hideLoading();
   if(!d||d.available===false){ toast('חיבור האתר לא מוגדר בשרת',false); return; }
   // עדכון האייקון בשורה לפי הנתון הטרי (חיבור חדש נדלק מיד)

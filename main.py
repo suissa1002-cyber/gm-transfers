@@ -575,7 +575,9 @@ def admin_live_serial(q: str, x_admin_key: Optional[str] = Header(None), x_devic
 
 # micro-cache קצרצר כדי לרכך לחיצות כפולות/כמה מסכי ניהול במקביל — עדיין "חי" לכל דבר
 _live_stock_cache: dict = {}
-_LIVE_STOCK_TTL_SEC = 20
+# cache משותף לכל הסניפים — עם כמה סניפים פעילים, ערך גבוה יותר חוסך הצפת
+# הטוקן המשותף (100/דקה). 90ש' מספיק טרי למענה ללקוח על "יש במלאי?".
+_LIVE_STOCK_TTL_SEC = 90
 
 
 @app.get("/api/admin/live-stock/{pid}")
@@ -634,6 +636,8 @@ def admin_live_stock(pid: str, serials: int = 0, fresh: int = 0,
 # מק"ט בקופה == SKU באתר. found=וריאציה/מוצר מחובר. creds מ-.env (WC_*); בלעדיהם — האייקון מוסתר.
 _wc_cache: dict = {}
 _WC_TTL_SEC = 900
+_wc_full_cache: dict = {}   # תשובת חלונית מלאה (pos+variants) — cache קצר משותף
+_WC_FULL_TTL_SEC = 180
 
 
 def _wc_creds():
@@ -657,6 +661,13 @@ def admin_wc_link(sku: str, pos: int = 0, fallback: int = 0, fresh: int = 0,
     import time as _time
     import requests as _rq
     base, k, s = creds
+    # cache של התשובה המלאה (כולל מחיר קופה + וריאציות) — חוסך את קריאות
+    # ה-NewOrder/WooCommerce הכבדות בפתיחות חוזרות מכמה סניפים. ~3 דק'.
+    _full_key = (sku, bool(pos), bool(fallback))
+    if not fresh:
+        fhit = _wc_full_cache.get(_full_key)
+        if fhit and (_time.time() - fhit[0]) < _WC_FULL_TTL_SEC:
+            return dict(fhit[1])
     hit = None if fresh else _wc_cache.get(sku)
     if hit and (_time.time() - hit[0]) < _WC_TTL_SEC:
         out = dict(hit[1])
@@ -737,6 +748,7 @@ def admin_wc_link(sku: str, pos: int = 0, fallback: int = 0, fresh: int = 0,
                                        "switch_attrs": switch_attrs, "options": cands}
         except Exception as e:  # noqa: BLE001
             logger.warning("wc sibling variations failed for %s: %s", sku, e)
+    _wc_full_cache[_full_key] = (_time.time(), dict(out))
     return out
 
 
