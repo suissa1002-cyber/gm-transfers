@@ -229,6 +229,18 @@ def _require_admin(x_admin_key: Optional[str] = Header(None)):
         raise HTTPException(401, "admin auth required")
 
 
+def _actor_name(x_admin_key, x_device_token) -> str:
+    """מי ביצע את הפעולה — לקונסולה או למכשיר סניף מאושר (לתיעוד בבקשות העברה)."""
+    if cfg.ADMIN_PASSWORD and (x_admin_key or "") == cfg.ADMIN_PASSWORD:
+        return "קונסולת ניהול"
+    d = db.device_get(x_device_token or "") if x_device_token else None
+    if d:
+        nm = (d.get("name") or "").strip()
+        bh = (d.get("branch_hint") or "").strip()
+        return f"{nm} ({bh})" if nm and bh else (nm or bh or "מכשיר מאושר")
+    return ""
+
+
 def _require_admin_or_device(x_admin_key, x_device_token):
     """גישה למנהל (סיסמה) או למכשיר סניף מאושר — לפיצ'רים שפתוחים לסניפים
     (מלאי חי, בקשת משיכה). הניהול המלא נשאר בסיסמה בלבד."""
@@ -485,7 +497,8 @@ def admin_plan(x_admin_key: Optional[str] = Header(None)):
 @app.post("/api/admin/plan")
 def admin_plan_add(body: PlanAdd, x_admin_key: Optional[str] = Header(None), x_device_token: Optional[str] = Header(None)):
     _require_admin_or_device(x_admin_key, x_device_token)
-    ids = db.plan_add([l.model_dump() for l in body.lines])
+    ids = db.plan_add([l.model_dump() for l in body.lines],
+                      created_by=_actor_name(x_admin_key, x_device_token))
     return {"added": len(ids), "ids": ids}
 
 
@@ -498,7 +511,8 @@ class PlanReplace(BaseModel):
 def admin_plan_replace(body: PlanReplace, x_admin_key: Optional[str] = Header(None)):
     """מחליף את שורות התוכנית למוצר (עריכה/הסרה). lines ריק = הסרת הבקשה."""
     _require_admin(x_admin_key)
-    return {"count": db.plan_replace_product(body.product_id, [l.model_dump() for l in body.lines])}
+    return {"count": db.plan_replace_product(body.product_id, [l.model_dump() for l in body.lines],
+                                             created_by=_actor_name(x_admin_key, None))}
 
 
 @app.delete("/api/admin/plan/{pid}")

@@ -376,6 +376,7 @@ def _migrate():
         # bcast = מצב שידור למסך הסניף (0=לא שודר, 1=פעיל/מוצג, 2=נסגר ע"י הסניף)
         ("transfer_plan",  "serial", "TEXT"),
         ("transfer_plan",  "bcast", "INTEGER"),
+        ("transfer_plan",  "created_by", "TEXT"),
     ]
     for table, col, typ in cols:
         try:
@@ -994,32 +995,33 @@ def rebalance_list() -> list:
         return out
 
 
-def plan_add(lines: list) -> list:
+def plan_add(lines: list, created_by: str = "") -> list:
     """מוסיף שורות לתוכנית ההעברות. line: {product_id,name,from_branch,to_branch,qty,serial?}.
-    מחזיר את ה-ids של השורות שנוספו (לשידור ממוקד)."""
+    created_by — מי יצר (קונסולה/מכשיר סניף). מחזיר את ה-ids של השורות שנוספו."""
     ids = []
     with _conn() as c:
         cur = c.cursor()
         for ln in lines:
             vals = (str(ln.get("product_id") or ""), ln.get("name") or "",
                     int(ln.get("from_branch")), int(ln.get("to_branch")),
-                    int(ln.get("qty") or 1), (ln.get("serial") or "").strip(), now_iso())
+                    int(ln.get("qty") or 1), (ln.get("serial") or "").strip(),
+                    created_by or "", now_iso())
             if _USE_PG:
                 cur.execute(_q("""
-                    INSERT INTO transfer_plan (product_id, name, from_branch, to_branch, qty, serial, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id
+                    INSERT INTO transfer_plan (product_id, name, from_branch, to_branch, qty, serial, created_by, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id
                 """), vals)
                 ids.append(cur.fetchone()["id"])
             else:
                 cur.execute(_q("""
-                    INSERT INTO transfer_plan (product_id, name, from_branch, to_branch, qty, serial, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO transfer_plan (product_id, name, from_branch, to_branch, qty, serial, created_by, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """), vals)
                 ids.append(cur.lastrowid)
     return ids
 
 
-def plan_replace_product(product_id, lines: list) -> int:
+def plan_replace_product(product_id, lines: list, created_by: str = "") -> int:
     """מחליף את כל שורות התוכנית למוצר אחד (מחיקה + הוספה). lines ריק = הסרת הבקשה."""
     pid = str(product_id)
     with _conn() as c:
@@ -1027,10 +1029,11 @@ def plan_replace_product(product_id, lines: list) -> int:
         cur.execute(_q("DELETE FROM transfer_plan WHERE product_id = ?"), (pid,))
         for ln in lines:
             cur.execute(_q("""
-                INSERT INTO transfer_plan (product_id, name, from_branch, to_branch, qty, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO transfer_plan (product_id, name, from_branch, to_branch, qty, created_by, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
             """), (pid, ln.get("name") or "", int(ln.get("from_branch")),
-                   int(ln.get("to_branch")), int(ln.get("qty") or 1), now_iso()))
+                   int(ln.get("to_branch")), int(ln.get("qty") or 1),
+                   created_by or "", now_iso()))
         return len(lines)
 
 
