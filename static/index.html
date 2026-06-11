@@ -2031,10 +2031,10 @@ function lsRow(it,live){
   const c=S.lsLive[pid];
   const fresh=c&&!c.err&&Date.now()-c.at<LS_TTL_MS;
   const bcells=(S.branchList||[]).map(b=>{
-    if(!live) return `<td class="ls-wait">—</td>`;
+    if(!live) return `<td class="ls-wait" style="text-align:center">—</td>`;
     if(fresh){ const q=((c.data.branches||[]).find(x=>String(x.id)===String(b.id))||{}).qty||0;
-      return `<td id="lsb-${pid}-${b.id}" class="${q>0?'ls-has':(q<0?'ls-neg':'ls-zero')}">${q}</td>`; }
-    return `<td id="lsb-${pid}-${b.id}" class="ls-wait">⏳</td>`;
+      return `<td id="lsb-${pid}-${b.id}" style="text-align:center" class="${q>0?'ls-has':(q<0?'ls-neg':'ls-zero')}">${q}</td>`; }
+    return `<td id="lsb-${pid}-${b.id}" style="text-align:center" class="ls-wait">⏳</td>`;
   }).join('');
   const tcell=live?(fresh?('🟢 '+fmtClock(c.data.fetched_at)):(c&&c.err?'שגיאת קופה':'…')):'צמצם לתצוגה חיה';
   return `<tr class="ls-row" onclick='openLiveDetail(${JSON.stringify(pid)})'>
