@@ -301,7 +301,40 @@
   .dr-foot{margin-top:auto;padding:12px 16px;border-top:1px solid var(--line);color:var(--muted);font-size:11px}
   .embed-bar{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
   .embed-frame{width:100%;height:calc(100vh - 185px);border:1px solid var(--line);border-radius:14px;background:#fff}
+  /* 💬 וואטסאפ */
+  .wa-layout{display:grid;grid-template-columns:330px 1fr;gap:14px;align-items:start}
+  .wa-list{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow-y:auto;
+           max-height:calc(100vh - 270px);min-height:200px}
+  .wa-conv{display:flex;gap:10px;padding:11px 13px;border-bottom:1px solid var(--line);cursor:pointer;align-items:center}
+  .wa-conv:hover{background:var(--card2)}
+  .wa-conv.active{background:rgba(37,99,235,.08)}
+  .wa-conv .nm{font-weight:700;font-size:14px}
+  .wa-conv .lm{color:var(--muted);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .wa-conv .meta{margin-inline-start:auto;text-align:left;flex:none}
+  .wa-dot{width:9px;height:9px;border-radius:50%;background:var(--blue);flex:none}
+  .wa-thread{background:var(--card);border:1px solid var(--line);border-radius:14px;display:flex;
+             flex-direction:column;height:calc(100vh - 270px);min-height:340px}
+  .wa-head{display:flex;align-items:center;gap:9px;padding:10px 14px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .wa-msgs{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:8px}
+  .wa-b{max-width:75%;padding:9px 12px;border-radius:14px;font-size:14px;white-space:pre-wrap;
+        word-break:break-word;line-height:1.45}
+  .wa-in{align-self:flex-start;background:var(--card2);border:1px solid var(--line);border-start-start-radius:4px}
+  .wa-out{align-self:flex-end;background:rgba(34,197,94,.13);border:1px solid rgba(34,197,94,.32);border-start-end-radius:4px}
+  .wa-t{font-size:10.5px;color:var(--muted);margin-top:4px}
+  .wa-send{display:flex;gap:8px;padding:10px;border-top:1px solid var(--line);align-items:flex-end}
+  .wa-send textarea{flex:1;resize:none;min-height:44px;max-height:130px;padding:10px 12px;border-radius:11px;
+                    border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:14px;font-family:inherit}
+  .wa-win{font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;flex:none}
+  .wa-win.ok{background:rgba(34,197,94,.15);color:#16a34a}
+  .wa-win.no{background:rgba(239,68,68,.13);color:#dc2626}
+  .wa-back{display:none}
   @media (max-width:760px){
+    .wa-layout{grid-template-columns:1fr}
+    .wa-layout.thread-open .wa-list{display:none}
+    .wa-layout:not(.thread-open) .wa-thread{display:none}
+    .wa-thread{height:calc(100vh - 230px)}
+    .wa-back{display:inline-block}
+    .wa-b{max-width:88%}
     .scan-layout{grid-template-columns:1fr}
     .scan-side{position:static}
     header{padding:10px 12px;gap:8px;flex-wrap:nowrap} .wrap{padding:14px}
@@ -1292,10 +1325,11 @@ function adminTabsHTML(){
   const pc=S.planCount?` (${S.planCount})`:'';
   const oc=S.orderCount?` (${S.orderCount})`:'';
   const a=t=>S.adminTab===t?'active':'';
-  const base=['rebalance','plan','reco','order','removals','live'].includes(S.adminTab)?'':'active';
+  const base=['rebalance','plan','reco','order','removals','live','wa'].includes(S.adminTab)?'':'active';
   return `<div class="tabs">
     <button class="${base}" onclick="setAdminTab('transfers')">📋 העברות</button>
     <button class="${a('live')}" onclick="setAdminTab('live')">🔎 מלאי חי</button>
+    <button class="${a('wa')}" onclick="setAdminTab('wa')">💬 וואטסאפ</button>
     <div class="tabgroup">
       <button class="${a('rebalance')}" onclick="setAdminTab('rebalance')">⚖️ איזון מלאי</button>
       <button class="${a('plan')}" onclick="setAdminTab('plan')">📝 בקשות העברה${pc}</button>
@@ -1315,6 +1349,7 @@ function setAdminTab(tab){
   else if(tab==='reco'){ if(!S.recoData) loadReco(true); else renderReco(); }
   else if(tab==='order'){ loadOrder(true); }
   else if(tab==='removals'){ if(!S.removalsData) loadRemovals(true); else renderRemovals(); }
+  else if(tab==='wa'){ if(!S.waConvs) loadWa(true); else renderWa(); }
   else renderAdmin();
 }
 async function loadPlan(spinner){
@@ -1938,6 +1973,155 @@ async function runRemovalsIngest(){
   setTimeout(()=>{ loadRemovals(false); hideLoading(); toast('איסוף הורדות רץ ברקע — יתעדכן בקרוב',true); }, 2500);
 }
 
+// ── 💬 וואטסאפ (ConnectOp) — inbox + שיחה + מענה עם אכיפת חלון 24ש בצד שרת ──
+function escW(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+async function loadWa(spinner){
+  if(spinner) showLoading('טוען שיחות וואטסאפ…');
+  try{ const d=await api('/api/admin/wa/conversations?archived='+(S.waArchived?1:0));
+       S.waConvs=d.conversations||[]; S.waErr=''; }
+  catch(e){ S.waConvs=S.waConvs||[]; S.waErr=e.status===502?'שגיאת ConnectOp (טוקן?)':'שגיאת תקשורת'; }
+  if(spinner) hideLoading();
+  if(S.view==='admin' && S.adminTab==='wa') renderWa();
+}
+function waFiltered(){
+  let rows=(S.waConvs||[]);
+  const q=(S.waSearch||'').trim().toLowerCase();
+  if(q) rows=rows.filter(c=>((c.name||'')+' '+(c.phone||'')+' '+(c.last_msg||'')).toLowerCase().includes(q));
+  return rows;
+}
+function waConvRow(c){
+  const active=S.waPhone===c.phone?'active':'';
+  return `<div class="wa-conv ${active}" onclick="openWaConv('${escW(c.phone)}')">
+    ${c.unread?'<span class="wa-dot"></span>':''}
+    <div style="min-width:0;flex:1">
+      <div class="nm">${escW(c.name)} ${c.live_chat?'<span title="מצב אנושי — הבוט מושתק">👤</span>':''}</div>
+      <div class="lm">${escW(c.last_msg)||'<i>—</i>'}</div>
+    </div>
+    <div class="meta muted" style="font-size:11px">${c.ts?fmtTime(new Date(c.ts*1000).toISOString()):''}</div>
+  </div>`;
+}
+function renderWa(){
+  const app=document.getElementById('app');
+  const rows=waFiltered();
+  app.innerHTML=`<h1 class="title">🛠️ ניהול אופרציה</h1>${adminTabsHTML()}
+    <div class="rebal-bar">
+      <input id="waSearch" placeholder="🔎 חיפוש שם / טלפון / הודעה" value="${escW(S.waSearch||'')}"
+             oninput="S.waSearch=this.value;S._refocusWa=true;renderWa()">
+      <label class="ls-check"><input type="checkbox" ${S.waArchived?'checked':''}
+             onchange="S.waArchived=this.checked?1:0;loadWa(true)"> כולל ארכיון</label>
+      <button class="btn-ghost" onclick="loadWa(true)">🔄 רענן</button>
+      <span class="muted" style="margin-inline-start:auto">${rows.length} שיחות${S.waErr?' · <b style="color:#dc2626">'+S.waErr+'</b>':''}</span>
+    </div>
+    <div class="wa-layout ${S.waPhone?'thread-open':''}" id="waLayout">
+      <div class="wa-list" id="waListPane">${rows.map(waConvRow).join('')||'<div class="empty">אין שיחות</div>'}</div>
+      <div class="wa-thread" id="waThreadPane">${waThreadHTML()}</div>
+    </div>`;
+  if(S._refocusWa){ const el=document.getElementById('waSearch'); if(el){ el.focus(); const v=el.value; el.value=''; el.value=v; } S._refocusWa=false; }
+  waScrollBottom();
+}
+function waThreadHTML(){
+  if(!S.waPhone) return '<div class="empty" style="margin:auto">בחר שיחה מהרשימה 💬</div>';
+  const t=S.waThread;
+  const conv=(S.waConvs||[]).find(c=>c.phone===S.waPhone)||{name:S.waPhone};
+  if(!t || t.phone!==S.waPhone) return '<div class="empty" style="margin:auto">טוען שיחה…</div>';
+  const w=t.window||{};
+  const winChip=w.in_window
+    ?`<span class="wa-win ok">🟢 חלון פתוח · נותרו ${w.hours_left} ש׳</span>`
+    :`<span class="wa-win no">🔴 מחוץ לחלון 24ש׳ — שליחה כתבנית</span>`;
+  const msgs=(t.messages||[]).filter(m=>m.text);
+  return `
+    <div class="wa-head">
+      <button class="btn-ghost wa-back" onclick="S.waPhone='';S.waThread=null;renderWa()">⬅</button>
+      <b>${escW(conv.name)}</b>
+      <span class="muted" style="direction:ltr;font-size:12px">+${escW(S.waPhone)}</span>
+      ${winChip}
+      <span style="margin-inline-start:auto;display:flex;gap:6px;flex-wrap:wrap">
+        <a class="btn-ghost" target="_blank" href="https://newapp.connectop.co.il/en/inbox?acc=1428408&id=${escW(S.waPhone)}" title="פתח ב-ConnectOp">🌐</a>
+        <button class="btn-ghost" onclick="waHuman(${conv.live_chat?'false':'true'})" title="מתג אנושי/בוט">${conv.live_chat?'🤖 החזר לבוט':'👤 סמן אנושי'}</button>
+        <button class="btn-ghost" onclick="waArchive(${conv.archived?'false':'true'})">${conv.archived?'⤴️ החזר מארכיון':'🗄️ ארכב'}</button>
+      </span>
+    </div>
+    <div class="wa-msgs" id="waMsgs">
+      ${msgs.map(m=>`<div class="wa-b ${m.direction==='in'?'wa-in':'wa-out'}">${escW(m.text.trim())}<div class="wa-t">${m.ts?fmtTime(new Date(m.ts*1000).toISOString()):''}</div></div>`).join('')||'<div class="empty">אין הודעות טקסט בשיחה</div>'}
+    </div>
+    <div class="wa-send">
+      <textarea id="waText" placeholder="${w.in_window?'הקלד תשובה…':'מחוץ לחלון — יישלח כתבנית new_message (שורה אחת)'}"
+                onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendWaMsg();}"></textarea>
+      <button class="btn-primary" id="waSendBtn" onclick="sendWaMsg()">שלח</button>
+    </div>`;
+}
+function waScrollBottom(){ const el=document.getElementById('waMsgs'); if(el) el.scrollTop=el.scrollHeight; }
+function renderWaThread(){ const p=document.getElementById('waThreadPane'); if(p){ p.innerHTML=waThreadHTML(); waScrollBottom(); } }
+async function openWaConv(phone){
+  S.waPhone=phone; S.waThread=null;
+  const lay=document.getElementById('waLayout'); if(lay) lay.classList.add('thread-open');
+  // עדכון סימון active ברשימה בלי לרנדר הכל (שומר פוקוס/גלילה)
+  document.querySelectorAll('.wa-conv').forEach(el=>el.classList.remove('active'));
+  renderWaThread();
+  await loadWaThread(false);
+}
+async function loadWaThread(silent){
+  if(!S.waPhone) return;
+  const phone=S.waPhone;
+  try{ const t=await api('/api/admin/wa/thread/'+encodeURIComponent(phone));
+       if(S.waPhone===phone){ S.waThread=t; renderWaThread(); } }
+  catch(e){ if(!silent) toast('טעינת שיחה נכשלה',false); }
+}
+async function sendWaMsg(){
+  const ta=document.getElementById('waText'); if(!ta) return;
+  const text=(ta.value||'').trim(); if(!text) return;
+  const btn=document.getElementById('waSendBtn'); if(btn) btn.disabled=true;
+  try{
+    const r=await api('/api/admin/wa/send',{method:'POST',headers:{'Content-Type':'application/json'},
+                       body:JSON.stringify({phone:S.waPhone,text})});
+    if(r.needs_template){
+      if(confirm('השיחה מחוץ לחלון 24 השעות — טקסט חופשי לא יימסר אצל הלקוח.\n\nלשלוח כתבנית מאושרת (new_message)? ההודעה תקופל לשורה אחת.')){
+        const conv=(S.waConvs||[]).find(c=>c.phone===S.waPhone)||{};
+        await api('/api/admin/wa/send-template',{method:'POST',headers:{'Content-Type':'application/json'},
+                   body:JSON.stringify({phone:S.waPhone,name:(conv.name||'').split(' ')[0],body:text})});
+        toast('נשלח כתבנית ✓',true); ta.value='';
+        setTimeout(()=>loadWaThread(true),1200);
+      }
+    } else {
+      toast('נשלח ✓',true); ta.value='';
+      setTimeout(()=>loadWaThread(true),1200);
+    }
+  }catch(e){ toast('שליחה נכשלה — '+(e.status===502?'שגיאת ConnectOp':'תקלה'),false); }
+  if(btn) btn.disabled=false;
+}
+async function waArchive(arch){
+  try{ await api('/api/admin/wa/archive',{method:'POST',headers:{'Content-Type':'application/json'},
+                  body:JSON.stringify({phone:S.waPhone,value:arch})});
+       toast(arch?'הועבר לארכיון':'הוחזר מהארכיון',true);
+       if(arch){ S.waPhone=''; S.waThread=null; }
+       await loadWa(false); }
+  catch(e){ toast('הפעולה נכשלה',false); }
+}
+async function waHuman(enable){
+  if(!confirm((enable?'לסמן את השיחה כ"אנושי" (משתיק את הבוט)?':'להחזיר את השיחה לבוט?')+
+      '\n\n⚠️ אם דשבורד ConnectOp פתוח אצלך בדפדפן במקביל — המתג עלול לשבש את התצוגה שם (באג ידוע שלהם). כאן הכל ימשיך לעבוד.')) return;
+  try{ await api('/api/admin/wa/human',{method:'POST',headers:{'Content-Type':'application/json'},
+                  body:JSON.stringify({phone:S.waPhone,value:enable})});
+       toast(enable?'סומן אנושי 👤':'הוחזר לבוט 🤖',true);
+       await loadWa(false); renderWaThread(); }
+  catch(e){ toast('הפעולה נכשלה',false); }
+}
+function waPollTick(){
+  // רענון שקט: רשימה תמיד; שיחה פתוחה — רק אם לא מקלידים תשובה כרגע
+  loadWaSilent();
+  const ta=document.getElementById('waText');
+  if(S.waPhone && !(ta && (document.activeElement===ta && ta.value))) loadWaThread(true);
+}
+async function loadWaSilent(){
+  try{ const d=await api('/api/admin/wa/conversations?archived='+(S.waArchived?1:0));
+       S.waConvs=d.conversations||[]; S.waErr='';
+       const pane=document.getElementById('waListPane');
+       const search=document.getElementById('waSearch');
+       if(pane && !(search && document.activeElement===search))
+         pane.innerHTML=waFiltered().map(waConvRow).join('')||'<div class="empty">אין שיחות</div>';
+  }catch(e){}
+}
+
 // ── 🔎 מלאי חי — חיפוש דינמי (קטלוג מקומי) + מלאי בזמן אמת מהקופה ──
 // LS_LIVE_CAP נמוך כדי לא להציף את הטוקן המשותף כשכמה סניפים פעילים יחד —
 // נטענים חי רק המוצרים הראשונים; צמצום החיפוש טוען את השאר חי.
@@ -2494,6 +2678,7 @@ async function lsSendTransfer(){
 
 function renderAdmin(){
   if(S.adminTab==='live') return S.lsCat?renderLive():loadLiveCatalog(true);
+  if(S.adminTab==='wa') return S.waConvs?renderWa():loadWa(true);
   if(S.adminTab==='rebalance') return S.rebalanceData?renderRebalance():loadRebalance(true);
   if(S.adminTab==='plan') return S.planData?renderPlan():loadPlan(true);
   if(S.adminTab==='reco') return S.recoData?renderReco():loadReco(true);
@@ -2611,6 +2796,7 @@ function startPoll(){ clearInterval(S.pollTimer);
       if(bs && document.activeElement===bs && bs.value) return;
       renderBoard(a, true);
     } else if(S.view==='admin'){
+      if(S.adminTab==='wa'){ waPollTick(); return; }   // וואטסאפ: רענון שקט של רשימה+שיחה
       if(['rebalance','reco','order','removals','live'].includes(S.adminTab)) return;   // נתונים מחושבים/עריכה/חיפוש חי — לא מרעננים אוטומטית
       const ae=document.activeElement;   // אל תרענן תוך כדי שימוש בסינון
       if(ae && ae.closest && ae.closest('.filters')) return;

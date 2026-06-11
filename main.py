@@ -1211,6 +1211,79 @@ def admin_order_clear(x_admin_key: Optional[str] = Header(None)):
 
 
 # ──────────────────────────────────────────────────────────────
+# 💬 WhatsApp (ConnectOp) — טאב הוואטסאפ של GreenOS. אדמין בלבד.
+# ──────────────────────────────────────────────────────────────
+class WaSend(BaseModel):
+    phone: str
+    text: str
+
+
+class WaTemplate(BaseModel):
+    phone: str
+    name: str = ""
+    body: str
+
+
+class WaFlag(BaseModel):
+    phone: str
+    value: bool = True
+
+
+def _wa_guard(fn, *args, **kwargs):
+    import wa
+    try:
+        return fn(*args, **kwargs)
+    except wa.WaError as e:
+        raise HTTPException(502, str(e))
+
+
+@app.get("/api/admin/wa/conversations")
+def wa_conversations(archived: int = 0, x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    import wa
+    return {"conversations": _wa_guard(wa.list_conversations,
+                                       include_archived=bool(archived))}
+
+
+@app.get("/api/admin/wa/thread/{phone}")
+def wa_thread(phone: str, limit: int = 60, x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    import wa
+    return _wa_guard(wa.get_thread, phone, limit=min(limit, 200))
+
+
+@app.post("/api/admin/wa/send")
+def wa_send(body: WaSend, x_admin_key: Optional[str] = Header(None)):
+    """מענה אנושי; אם מחוץ לחלון 24ש — מחזיר needs_template (לא שולח)."""
+    _require_admin(x_admin_key)
+    import wa
+    return _wa_guard(wa.send_reply, body.phone, body.text)
+
+
+@app.post("/api/admin/wa/send-template")
+def wa_send_template(body: WaTemplate, x_admin_key: Optional[str] = Header(None)):
+    """שליחה מחוץ לחלון: template מאושר new_message (שם, גוף בשורה אחת)."""
+    _require_admin(x_admin_key)
+    import wa
+    return _wa_guard(wa.send_template, body.phone, body.name, body.body)
+
+
+@app.post("/api/admin/wa/archive")
+def wa_archive(body: WaFlag, x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    import wa
+    return _wa_guard(wa.archive, body.phone, body.value)
+
+
+@app.post("/api/admin/wa/human")
+def wa_human(body: WaFlag, x_admin_key: Optional[str] = Header(None)):
+    """מתג אנושי/בוט. ⚠️ עלול לשבור את ה-UI של ConnectOp אם פתוח במקביל."""
+    _require_admin(x_admin_key)
+    import wa
+    return _wa_guard(wa.set_human, body.phone, body.value)
+
+
+# ──────────────────────────────────────────────────────────────
 # Frontend (SPA)
 # ──────────────────────────────────────────────────────────────
 if os.path.isdir(_static_dir):
