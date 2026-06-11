@@ -374,6 +374,14 @@
   .wa-claude{border-color:rgba(217,119,87,.55)!important}
   .wa-claude:hover{background:rgba(217,119,87,.1)!important}
   .wa-star-on{color:#eab308}
+  .wa-stk{border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-bottom:6px;cursor:pointer;background:var(--card2)}
+  .wa-stk:hover{border-color:var(--blue)}
+  .wa-stk.open{border-color:var(--blue)}
+  .wa-stk-chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
+  .wa-stk-chip{font-size:12px;padding:3px 9px;border-radius:999px;border:1px solid var(--line)}
+  .wa-stk-chip.ls-has{background:rgba(34,197,94,.14);color:#16a34a;font-weight:700}
+  .wa-stk-chip.ls-zero{color:var(--muted)}
+  .wa-stk-chip.ls-neg{background:rgba(239,68,68,.12);color:#dc2626}
   /* ➕ כפתור פעולות מאוחד — מוצג רק במובייל (בדסקטופ האייקונים המלאים) */
   .wa-plus{display:none;width:42px;height:42px;border-radius:50%!important;font-size:21px;
            align-items:center;justify-content:center;padding:0!important;flex:none;line-height:1}
@@ -2221,6 +2229,7 @@ function waThreadHTML(){
       ${winChip}
       <span style="margin-inline-start:auto;display:flex;gap:6px;flex-wrap:wrap">
         <button class="btn-ghost wa-ico ${conv.star?'wa-star-on':''}" onclick="waToggleStar()" title="${conv.star?'הסר מעקב':'סמן למעקב'}">${ico('star',17,conv.star)}</button>
+        <button class="btn-ghost wa-ico ${S.waPanel&&S.waPanelMode==='stock'?'wa-human-on':''}" onclick="waToggleStock()" title="מלאי חי — חיפוש מוצר בלי לעזוב את השיחה">${ico('search')}</button>
         <button class="btn-ghost wa-ico" onclick="waTogglePanel()" title="פרטי פונה (הזמנות/תגיות/הערות)">${ico('info')}</button>
         <a class="btn-ghost wa-ico" target="_blank" href="https://newapp.connectop.co.il/en/inbox?acc=1428408&id=${escW(S.waPhone)}" title="פתח ב-ConnectOp">${ico('globe')}</a>
         <button class="btn-ghost wa-ico ${conv.live_chat?'wa-human-on':''}" onclick="waHuman(${conv.live_chat?'false':'true'})"
@@ -2252,8 +2261,89 @@ function waThreadHTML(){
           <button class="btn-primary" id="waSendBtn" onclick="sendWaMsg()">שלח</button>
         </div>
       </div>
-      ${S.waPanel?`<div class="wa-panel ${S.waPanelMode==='uri'?'wa-panel-uri':''}" id="waPanelBox">${S.waPanelMode==='uri'?waUriHTML():waPanelHTML()}</div>`:''}
+      ${S.waPanel?`<div class="wa-panel ${S.waPanelMode==='uri'?'wa-panel-uri':''}" id="waPanelBox">${S.waPanelMode==='uri'?waUriHTML():S.waPanelMode==='stock'?waStockHTML():waPanelHTML()}</div>`:''}
     </div>`;
+}
+// ── 🔎 מלאי חי בתוך הוואטסאפ: חיפוש + שבבי סניפים + חלונית אתר, בלי לעזוב את השיחה ──
+function waToggleStock(){
+  if(S.waPanel && S.waPanelMode==='stock'){ S.waPanel=false; renderWaThread(); return; }
+  S.waPanel=true; S.waPanelMode='stock';
+  renderWaThread();
+  if(!S.lsCat) loadLiveCatalog(false).then(()=>waStockPaint());
+  setTimeout(()=>{ const i=document.getElementById('waStockQ'); if(i) i.focus(); },150);
+}
+function waStockHTML(){
+  return `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <b style="font-size:14px;display:inline-flex;align-items:center;gap:6px">${ico('search',15)} מלאי חי</b>
+      <button class="btn-ghost" onclick="S.waPanel=false;renderWaThread()">✕</button>
+    </div>
+    <input id="waStockQ" placeholder="מוצר / מק״ט / ברקוד…" value="${escW(S.waStockQ||'')}"
+           oninput="S.waStockQ=this.value;clearTimeout(window._wsT);window._wsT=setTimeout(waStockPaint,250)"
+           style="width:100%;padding:9px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:16px;margin-bottom:8px">
+    <div id="waStockRes">${S.lsCat?'':'<div class="muted" style="font-size:12px">טוען קטלוג…</div>'}</div>`;
+}
+function waStockMatches(q){
+  q=(q||'').trim().toLowerCase(); if(q.length<2) return [];
+  const toks=q.split(/\s+/);
+  const fx=fixHebrewLayout(q).toLowerCase(); const ftoks=fx.split(/\s+/);
+  const out=[];
+  for(const it of (S.lsCat||[])){
+    const blob=((it.name||'')+' '+(it.product_id||'')+' '+(it.barcode||'')).toLowerCase();
+    if(!(toks.every(t=>blob.includes(t))||ftoks.every(t=>blob.includes(t)))) continue;
+    let sc=Math.min(Number(it.stock)||0,5);
+    if(String(it.product_id)===q||String(it.barcode||'')===q) sc+=100;
+    if((it.name||'').toLowerCase().includes(q)) sc+=20;
+    out.push({it,sc});
+  }
+  return out.sort((a,b)=>b.sc-a.sc).slice(0,8).map(x=>x.it);
+}
+function waStockPaint(){
+  const box=document.getElementById('waStockRes'); if(!box) return;
+  const q=(S.waStockQ||'').trim();
+  if(!S.lsCat){ box.innerHTML='<div class="muted" style="font-size:12px">טוען קטלוג…</div>'; return; }
+  if(q.length<2){ box.innerHTML='<div class="muted" style="font-size:12px">הקלד 2+ תווים — שם מוצר, מק״ט או ברקוד.<br>לחיצה על תוצאה = מלאי חי מהקופה + חלונית האתר.</div>'; return; }
+  const rows=waStockMatches(q);
+  if(!rows.length){ box.innerHTML='<div class="muted" style="font-size:12px">לא נמצא בקטלוג</div>'; return; }
+  box.innerHTML=rows.map(it=>{
+    const pid=String(it.product_id);
+    const open=S.waStockPid===pid;
+    return `<div class="wa-stk ${open?'open':''}" onclick="waStockPick('${pid}')">
+      <div style="display:flex;align-items:center;gap:7px">
+        <span style="flex:1;min-width:0"><b style="font-size:13px">${escW(it.name)}</b>
+          <div class="muted" style="font-size:11px;direction:ltr;text-align:end">${escW(pid)}</div></span>
+        <button class="btn-ghost wa-ico" style="width:32px;height:30px" title="חלונית האתר (מחירים/וריאציות)"
+                onclick="event.stopPropagation();openWcQuick('${pid}')">${ico('globe',14)}</button>
+      </div>
+      ${open?`<div class="wa-stk-chips" id="waStkChips">${waStockChipsHTML(pid)}</div>`:''}
+    </div>`;
+  }).join('');
+}
+function waStockChipsHTML(pid){
+  const c=(S.lsLive||{})[String(pid)];
+  if(!c) return '<span class="muted" style="font-size:12px">⏳ קורא מהקופה…</span>';
+  if(c.err) return '<span class="muted" style="font-size:12px">שגיאת קופה — נסה שוב</span>';
+  const brs=(c.data&&c.data.branches)||[];
+  return (S.branchList||[]).map(b=>{
+    const bo=brs.find(x=>String(x.id)===String(b.id))||{};
+    const q=bo.qty||0;
+    const cls=q>0?'ls-has':(q<0?'ls-neg':'ls-zero');
+    return `<span class="wa-stk-chip ${cls}">${escW(b.name)}: <b>${q}</b></span>`;
+  }).join('');
+}
+async function waStockPick(pid){
+  pid=String(pid);
+  S.waStockPid=(S.waStockPid===pid)?null:pid;
+  waStockPaint();
+  if(S.waStockPid!==pid) return;
+  S.lsLive=S.lsLive||{};
+  const cached=S.lsLive[pid];
+  if(!(cached&&!cached.err&&Date.now()-cached.at<90000)){
+    try{ const d=await api('/api/admin/live-stock/'+encodeURIComponent(pid),null,45000);
+         S.lsLive[pid]={at:Date.now(),data:d}; }
+    catch(e){ S.lsLive[pid]={at:Date.now(),err:true}; }
+  }
+  if(S.waStockPid===pid){ const el=document.getElementById('waStkChips'); if(el) el.innerHTML=waStockChipsHTML(pid); }
 }
 // ── פאנל פרטי פונה: ConnectOp + הזמנות אתר + תגיות + הערות (שלנו) ──
 const WA_STATUS={pending:'ממתין',processing:'בטיפול',completed:'הושלם',cancelled:'בוטל',refunded:'זוכה',failed:'נכשל','on-hold':'בהמתנה'};
@@ -2790,9 +2880,10 @@ function renderWaThread(){
   const p=document.getElementById('waThreadPane'); if(!p) return;
   // שימור הקלדה ופוקוס בשדות (waText / waUriInput) — הרינדור מהפולינג מחק אותם
   const keep={};
-  ['waText','waUriInput'].forEach(id=>{ const el=document.getElementById(id);
+  ['waText','waUriInput','waStockQ'].forEach(id=>{ const el=document.getElementById(id);
     if(el) keep[id]={v:el.value, f:document.activeElement===el, s:el.selectionStart}; });
   p.innerHTML=waThreadHTML(); waScrollBottom();
+  if(S.waPanel&&S.waPanelMode==='stock') waStockPaint();   // התוצאות נצבעות מחדש אחרי רינדור
   for(const [id,k] of Object.entries(keep)){
     const el=document.getElementById(id); if(!el) continue;
     if(k.v) el.value=k.v;
