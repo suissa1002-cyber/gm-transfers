@@ -323,6 +323,12 @@
           padding:0!important;font-size:16px;line-height:1;text-decoration:none}
   .wa-human-on{border-color:#16a34a!important;background:rgba(34,197,94,.12)!important}
   .wa-msgs{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:8px}
+  /* במסך רחב: עמודת שיחה ממורכזת (כמו WhatsApp Web) — שני הצדדים נשמרים אבל לא נזרקים לקצוות */
+  @media (min-width:761px){
+    .wa-msgs{max-width:880px;width:100%;margin-inline:auto;padding:14px 20px}
+    .wa-send{max-width:920px;width:100%;margin-inline:auto}
+    .wa-b{max-width:68%}
+  }
   .wa-b{max-width:75%;padding:9px 12px;border-radius:14px;font-size:14px;white-space:pre-wrap;
         word-break:break-word;line-height:1.45}
   .wa-in{align-self:flex-start;background:var(--card2);border:1px solid var(--line);border-start-start-radius:4px}
