@@ -2078,6 +2078,12 @@ async function runRemovalsIngest(){
 
 // ── 💬 וואטסאפ (ConnectOp) — inbox + שיחה + מענה עם אכיפת חלון 24ש בצד שרת ──
 function escW(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+// Enter שולח רק במחשב (מקלדת פיזית); במובייל Enter = שורה חדשה, שולחים בכפתור — כמו וואטסאפ
+function waEnterSend(ev, fn){
+  if(ev.key==='Enter' && !ev.shiftKey && !window.matchMedia('(pointer: coarse)').matches){
+    ev.preventDefault(); fn();
+  }
+}
 async function loadWa(spinner){
   if(spinner) showLoading('טוען שיחות וואטסאפ…');
   try{ const d=await api('/api/admin/wa/conversations?archived='+(S.waArchived?1:0));
@@ -2231,7 +2237,7 @@ function waThreadHTML(){
           <input type="file" id="waFileAny" style="display:none" onchange="waSendFile(this)">
           <textarea id="waText" placeholder="${w.in_window?'הקלד תשובה… (אפשר גם להדביק תמונה)':'מחוץ לחלון — שלח תבנית 📋 או טקסט שיעטף ב-new_message'}"
                     onpaste="waPaste(event)"
-                    onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendWaMsg();}"></textarea>
+                    onkeydown="waEnterSend(event,sendWaMsg)"></textarea>
           <button class="btn-primary" id="waSendBtn" onclick="sendWaMsg()">שלח</button>
         </div>
       </div>
@@ -2270,7 +2276,7 @@ function waUriHTML(){
       </div>
       <div style="display:flex;gap:6px;margin-top:8px;flex:none">
         <textarea id="waUriInput" placeholder="בקשה לאורי…" style="flex:1;resize:none;min-height:38px;max-height:80px;padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:13.5px;font-family:inherit"
-                  onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();waUriAsk();}"></textarea>
+                  onkeydown="waEnterSend(event,waUriAsk)"></textarea>
         <button class="btn-primary" id="waUriSend" onclick="waUriAsk()" style="padding:8px 12px">שלח</button>
       </div>
     </div>`;
