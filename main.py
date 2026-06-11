@@ -1313,6 +1313,14 @@ def wa_contact(phone: str, x_admin_key: Optional[str] = Header(None)):
     return _wa_guard(wa.contact_card, phone)
 
 
+@app.get("/api/admin/wa/search")
+def wa_search(q: str = "", x_admin_key: Optional[str] = Header(None)):
+    """חיפוש בכל אנשי הקשר (שם/טלפון/אימייל) — מעבר ל-200 השיחות האחרונות."""
+    _require_admin(x_admin_key)
+    import wa
+    return {"conversations": _wa_guard(wa.search_conversations, q)}
+
+
 @app.get("/api/admin/wa/media/{phone}")
 def wa_media(phone: str, x_admin_key: Optional[str] = Header(None)):
     """גלריית מדיה מרוכזת מהשיחה (לפאנל פרטי פונה)."""

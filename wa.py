@@ -350,6 +350,48 @@ def send_wa_template(phone: str, template_id: str, params=None, language: str = 
     return {"sent": True, "via": f"template:{template_id}", "resp": resp}
 
 
+def search_conversations(q: str, limit: int = 50):
+    """חיפוש צד-שרת בכל אנשי הקשר (לא רק 200 השיחות האחרונות) — לפי שם/טלפון/אימייל,
+    באותו מנגנון cdts של ה-UI של ConnectOp. ⚠️ בלי saveFilter — שליחתו שוברת את הדשבורד!"""
+    q = (q or "").strip()
+    if not q:
+        return []
+    digits = re.sub(r"[\s\-+()]", "", q)
+    if digits.isdigit():
+        cdt = {"atrb_name": "phone", "oprt": "6", "value1": [digits], "value2": None, "order": 1}
+        if len(digits) > 8:
+            cdt["checkContactId"] = True
+    elif "@" in q:
+        cdt = {"atrb_name": "email", "oprt": "6", "value1": [q], "value2": None, "order": 1}
+    else:
+        cdt = {"atrb_name": "user_name", "oprt": "6", "value1": [q], "value2": None, "order": 1}
+    r = _dash_call(_dash()._post_user_php,
+                   {"op": "conversations", "op1": "get", "offset": 0,
+                    "limit": limit, "cdts": [cdt]})
+    rows = r.get("data", []) if isinstance(r, dict) else []
+    import db
+    stars = db.wa_stars()
+    out = []
+    for c in rows:
+        if str(c.get("channel")) != "5" or str(c.get("blocked", "0")) == "1":
+            continue
+        ts_ms = int(c.get("timestamp") or 0)
+        phone = c.get("ms_id")
+        out.append({
+            "phone": phone,
+            "name": c.get("full_name") or c.get("first_name") or phone,
+            "last_msg": (c.get("last_msg") or "")[:120],
+            "ts": ts_ms // 1000,
+            "archived": str(c.get("archived", "0")) == "1",
+            "live_chat": str(c.get("live_chat", "0")) == "1",
+            "unread": False,
+            "star": phone in stars,
+            "pic": c.get("profile_pic") or "",
+        })
+    out.sort(key=lambda c: c["ts"], reverse=True)
+    return out
+
+
 def media_list(phone: str, limit: int = 200):
     """כל המדיה מהשיחה (תמונות/וידאו/קבצים), חדש→ישן — לגלריה בפאנל הפרטים."""
     msgs = _dash_call(_dash().get_conversation, phone, limit=limit)

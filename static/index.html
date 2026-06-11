@@ -2067,13 +2067,46 @@ function waConvRow(c){
     <div class="meta muted" style="font-size:11px">${c.ts?fmtTime(new Date(c.ts*1000).toISOString()):''}</div>
   </div>`;
 }
+// רשימת השיחות: מקומי (200 אחרונות) + תוצאות חיפוש-שרת מכל אנשי הקשר
+function waListHTML(rows){
+  let html=rows.map(waConvRow).join('');
+  const q=(S.waSearch||'').trim();
+  const srv=S.waSrvResults;
+  if(q.length>=2 && srv && srv.q===q){
+    const localPhones=new Set(rows.map(c=>c.phone));
+    const extra=(srv.rows||[]).filter(c=>!localPhones.has(c.phone));
+    if(extra.length)
+      html+=`<div class="muted" style="padding:7px 12px;font-size:11.5px;border-top:1px solid var(--line)">🌐 מכל אנשי הקשר (${extra.length})</div>`
+           +extra.map(waConvRow).join('');
+    else if(!rows.length)
+      html+='<div class="muted" style="padding:7px 12px;font-size:11.5px">לא נמצא גם בחיפוש כלל אנשי הקשר</div>';
+  } else if(q.length>=2 && (!srv||srv.q!==q)){
+    html+='<div class="muted" style="padding:7px 12px;font-size:11.5px">🌐 מחפש בכל אנשי הקשר…</div>';
+  }
+  return html||'<div class="empty">אין שיחות</div>';
+}
+let _waSrvTimer=null;
+function waServerSearch(){
+  const q=(S.waSearch||'').trim();
+  clearTimeout(_waSrvTimer);
+  if(q.length<2){ S.waSrvResults=null; return; }
+  _waSrvTimer=setTimeout(async()=>{
+    try{ const r=await api('/api/admin/wa/search?q='+encodeURIComponent(q));
+         if((S.waSearch||'').trim()===q){
+           S.waSrvResults={q, rows:r.conversations||[]};
+           const pane=document.getElementById('waListPane');
+           if(pane) pane.innerHTML=waListHTML(waFiltered());
+         } }catch(e){}
+  },450);
+}
 // ── מעקב "נקרא" מקומי: ConnectOp לא יודע שקראנו ב-GreenOS, אז משלבים את
 //    הסמן שלהם (last_read_page) עם חותמת "נצפה כאן" ששמורה בדפדפן ──
 function waSeen(){ if(!S._waSeen){ try{ S._waSeen=JSON.parse(localStorage.getItem('tr_wa_seen')||'{}'); }catch(e){ S._waSeen={}; } } return S._waSeen; }
 function waMarkSeen(phone, ts){ const s=waSeen(); if((s[phone]||0)<ts){ s[phone]=ts; localStorage.setItem('tr_wa_seen', JSON.stringify(s)); updateWaBadge(S.waConvs||[]); } }
 function waIsUnread(c){ return !!(c.unread && c.ts>(waSeen()[c.phone]||0)); }
 function updateWaBadge(convs){
-  const n=(convs||[]).filter(waIsUnread).length;
+  // ארכיון לא נספר — אחרת סימון "כולל ארכיון" מקפיץ את הבאדג' על שיחות ישנות
+  const n=(convs||[]).filter(c=>!c.archived&&waIsUnread(c)).length;
   const el=document.getElementById('waBadge');
   if(el){ el.style.display=n?'block':'none'; el.textContent=n>9?'9+':n; }
   if(S._waBadgePrev!==undefined && n>S._waBadgePrev){
@@ -2102,13 +2135,13 @@ function renderWa(){
       <div class="wa-list" id="waListWrap">
         <div class="wa-listbar ${mobileThread?'wa-bar-hidden':''}" id="waBar">
           <input id="waSearch" placeholder="🔎 חיפוש שם / טלפון / הודעה" value="${escW(S.waSearch||'')}"
-                 oninput="S.waSearch=this.value;S._refocusWa=true;renderWa()">
+                 oninput="S.waSearch=this.value;S._refocusWa=true;waServerSearch();renderWa()">
           <button class="btn-ghost" onclick="loadWa(true)" title="רענן">🔄</button>
           <button class="btn-ghost" id="waPushBtn" onclick="waEnablePush()" title="התראות במכשיר הזה">🔔</button>
           <label class="ls-check" title="כולל ארכיון"><input type="checkbox" ${S.waArchived?'checked':''}
                  onchange="S.waArchived=this.checked?1:0;loadWa(true)"> ארכיון</label>
         </div>
-        <div id="waListPane">${rows.map(waConvRow).join('')||'<div class="empty">אין שיחות</div>'}</div>
+        <div id="waListPane">${waListHTML(rows)}</div>
       </div>
       <div class="wa-thread" id="waThreadPane">${waThreadHTML()}</div>
     </div>`;
@@ -2279,7 +2312,7 @@ async function waToggleStar(){
         body:JSON.stringify({phone:S.waPhone,value:v})});
        conv.star=v; toast(v?'סומן למעקב ⭐':'הוסר מעקב',true); renderWaThread();
        const pane=document.getElementById('waListPane');
-       if(pane) pane.innerHTML=waFiltered().map(waConvRow).join('');
+       if(pane) pane.innerHTML=waListHTML(waFiltered());
        if(S.waContact) S.waContact.star=v; }
   catch(e){ toast('הפעולה נכשלה',false); }
 }
@@ -2477,6 +2510,11 @@ async function waPushTest(){
 function waScrollBottom(){ const el=document.getElementById('waMsgs'); if(el) el.scrollTop=el.scrollHeight; }
 function renderWaThread(){ const p=document.getElementById('waThreadPane'); if(p){ p.innerHTML=waThreadHTML(); waScrollBottom(); } }
 async function openWaConv(phone){
+  // שיחה שנפתחה מתוצאת חיפוש-שרת ולא קיימת ברשימה המקומית — מצרפים אותה
+  if(!(S.waConvs||[]).some(c=>c.phone===phone)){
+    const r=((S.waSrvResults||{}).rows||[]).find(c=>c.phone===phone);
+    if(r){ S.waConvs=S.waConvs||[]; S.waConvs.unshift(r); }
+  }
   S.waPhone=phone; S.waThread=null; S.waContact=null;
   const lay=document.getElementById('waLayout'); if(lay) lay.classList.add('thread-open');
   const bar=document.getElementById('waBar'); if(bar&&window.innerWidth<=760) bar.classList.add('wa-bar-hidden');
@@ -2548,7 +2586,7 @@ async function loadWaSilent(){
        const pane=document.getElementById('waListPane');
        const search=document.getElementById('waSearch');
        if(pane && !(search && document.activeElement===search))
-         pane.innerHTML=waFiltered().map(waConvRow).join('')||'<div class="empty">אין שיחות</div>';
+         pane.innerHTML=waListHTML(waFiltered());
   }catch(e){}
 }
 
