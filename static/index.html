@@ -374,6 +374,9 @@
   .wa-claude{border-color:rgba(217,119,87,.55)!important}
   .wa-claude:hover{background:rgba(217,119,87,.1)!important}
   .wa-star-on{color:#eab308}
+  .wa-ord{background:var(--card);border-radius:16px;padding:14px;width:430px;max-width:94vw;max-height:92vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+  .wa-ord-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px}
+  .wa-ord-grid input{padding:8px 10px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:13.5px;min-width:0}
   .wa-stk{border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-bottom:6px;cursor:pointer;background:var(--card2)}
   .wa-stk:hover{border-color:var(--blue)}
   .wa-stk.open{border-color:var(--blue)}
@@ -2264,6 +2267,127 @@ function waThreadHTML(){
       ${S.waPanel?`<div class="wa-panel ${S.waPanelMode==='uri'?'wa-panel-uri':''}" id="waPanelBox">${S.waPanelMode==='uri'?waUriHTML():S.waPanelMode==='stock'?waStockHTML():waPanelHTML()}</div>`:''}
     </div>`;
 }
+// ── 🛒 צור הזמנה חיה: וריאציה → פרטי לקוח → הזמנת WooCommerce → קישור תשלום PayPlus ──
+function waOrderClose(){ const m=document.getElementById('waOrderModal'); if(m) m.remove(); }
+async function waOrderOpen(pid){
+  showLoading('קורא מהאתר…');
+  let d=null;
+  try{ d=await api('/api/admin/wc-link/'+encodeURIComponent(pid)+'?pos=1&fresh=1',null,45000); }catch(e){}
+  hideLoading();
+  if(!d||!d.found||!d.id){ toast('המק״ט לא מחובר לאתר — אי אפשר ליצור הזמנה',false); return; }
+  const conv=(S.waConvs||[]).find(c=>c.phone===S.waPhone)||{};
+  const nameParts=(conv.name||'').split(' ');
+  S.waOrd={
+    base:d, sel:{id:d.id, price:Number(d.price)||0, label:(d.attributes||[]).map(a=>a.option).join(' · '), permalink:d.permalink},
+    qty:1, ship:'pickup',
+    cust:{first_name:nameParts[0]||'', last_name:nameParts.slice(1).join(' ')||'', phone:'+'+(S.waPhone||''), email:'', address_1:'', city:''}
+  };
+  waOrderRender();
+}
+function waOrdShipOpts(){
+  const total=(S.waOrd.sel.price||0)*S.waOrd.qty;
+  return [
+    {k:'pickup',  t:'איסוף עצמי',            cost:0},
+    {k:'regular', t:'משלוח רגיל (1-6 ימי עסקים)', cost: total>=500?0:29},
+    {k:'express', t:'משלוח אקספרס (היום)',    cost:89},
+  ];
+}
+function waOrderRender(){
+  waOrderClose();
+  const o=S.waOrd; if(!o) return;
+  const d=o.base;
+  const ships=waOrdShipOpts();
+  const shipCost=(ships.find(x=>x.k===o.ship)||{}).cost||0;
+  const total=(o.sel.price||0)*o.qty+shipCost;
+  const fmt=v=>'₪'+Number(v||0).toLocaleString('he-IL');
+  // כפתורי וריאציות-אחיות (אם יש)
+  let varsHtml='';
+  if(d.variants&&d.variants.options&&d.variants.options.length>1){
+    varsHtml='<div style="margin:8px 0 4px"><b style="font-size:12.5px">בחר וריאציה:</b></div>'+
+      d.variants.options.map(c=>{
+        const lbl=Object.values(c.attrs||{}).join(' · ')||'בסיס';
+        const act=String(c.id)===String(o.sel.id);
+        return `<button class="btn-ghost" style="margin:0 0 6px 6px;${act?'border-color:#16a34a;color:#16a34a;font-weight:700':''}"
+          onclick='waOrdPick(${JSON.stringify({id:c.id,price:Number(c.price)||0,label:lbl,permalink:c.permalink||""}).replace(/'/g,"&#39;")})'>${escW(lbl)} · ${fmt(c.price)}</button>`;
+      }).join('');
+  }
+  const div=document.createElement('div');
+  div.id='waOrderModal'; div.className='wa-lb'; div.style.cursor='default';
+  div.innerHTML=`<div class="wa-ord" onclick="event.stopPropagation()">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <b style="font-size:15px;display:inline-flex;align-items:center;gap:7px">${ico('cart',16)} הזמנה חדשה</b>
+      <button class="btn-ghost" onclick="waOrderClose()">✕</button>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:9px">
+      ${d.image?`<img src="${escW(d.image)}" style="width:54px;height:54px;object-fit:contain;border-radius:8px;background:#fff">`:''}
+      <div style="min-width:0;flex:1"><b style="font-size:13px">${escW(d.name)}</b>
+        <div class="muted" style="font-size:12px">${escW(o.sel.label||'')} · <b>${fmt(o.sel.price)}</b></div></div>
+      <input type="number" min="1" value="${o.qty}" style="width:54px;padding:6px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--txt)"
+             onchange="S.waOrd.qty=Math.max(1,Number(this.value)||1);waOrderRender()">
+    </div>
+    ${varsHtml}
+    <div class="wa-ord-grid">
+      <input id="woFn" placeholder="שם פרטי" value="${escW(o.cust.first_name)}">
+      <input id="woLn" placeholder="שם משפחה" value="${escW(o.cust.last_name)}">
+      <input id="woPh" placeholder="טלפון" value="${escW(o.cust.phone)}" style="direction:ltr">
+      <input id="woEm" placeholder="אימייל (לחשבונית/קבלה)" value="${escW(o.cust.email)}" style="direction:ltr">
+      <input id="woAd" placeholder="כתובת (רחוב ומספר)" value="${escW(o.cust.address_1)}">
+      <input id="woCt" placeholder="עיר" value="${escW(o.cust.city)}">
+    </div>
+    <div style="margin:8px 0 4px"><b style="font-size:12.5px">משלוח:</b></div>
+    ${ships.map(sh=>`<label style="display:flex;align-items:center;gap:7px;font-size:13px;margin-bottom:4px">
+      <input type="radio" name="woShip" ${o.ship===sh.k?'checked':''} onchange="S.waOrd.ship='${sh.k}';waOrderSaveInputs();waOrderRender()">
+      ${escW(sh.t)} — <b>${sh.cost?fmt(sh.cost):'חינם'}</b></label>`).join('')}
+    <textarea id="woNote" placeholder="הערה להזמנה (אופציונלי)" style="width:100%;min-height:40px;margin-top:6px;padding:8px 10px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:13px;font-family:inherit">${escW(o.note||'')}</textarea>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px">
+      <b style="font-size:16px">סה״כ: ${fmt(total)}</b>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="btn-primary" style="flex:1" onclick="waOrderSubmit('link')">${'צור הזמנה + קישור תשלום'}</button>
+      <button class="btn-ghost" style="flex:1" onclick="waOrderSubmit('none')">צור הזמנה בלבד</button>
+    </div>
+    <div class="muted" style="font-size:11px;margin-top:6px">קישור תשלום = דף סליקה PayPlus שנשלח ללקוח בצ׳אט. "הזמנה בלבד" — לחיוב טלפוני/אחר.</div>
+  </div>`;
+  div.onclick=waOrderClose;
+  document.body.appendChild(div);
+}
+function waOrdPick(sel){ waOrderSaveInputs(); S.waOrd.sel=sel; waOrderRender(); }
+function waOrderSaveInputs(){
+  const o=S.waOrd; if(!o) return;
+  const g=id=>{const el=document.getElementById(id);return el?el.value:undefined;};
+  ['first_name|woFn','last_name|woLn','phone|woPh','email|woEm','address_1|woAd','city|woCt'].forEach(p=>{
+    const [k,id]=p.split('|'); const v=g(id); if(v!==undefined) o.cust[k]=v; });
+  const n=g('woNote'); if(n!==undefined) o.note=n;
+}
+async function waOrderSubmit(payment){
+  waOrderSaveInputs();
+  const o=S.waOrd; if(!o) return;
+  if(!(o.cust.first_name||'').trim()){ toast('חסר שם פרטי',false); return; }
+  const ships=waOrdShipOpts(); const sh=ships.find(x=>x.k===o.ship)||ships[0];
+  const d=o.base;
+  const isVar=d.type==='variation'||o.sel.id!==d.parent_id;
+  const item= d.type==='variation'
+    ? {product_id:d.parent_id, variation_id:o.sel.id, quantity:o.qty}
+    : {product_id:o.sel.id, quantity:o.qty};
+  showLoading('יוצר הזמנה…');
+  try{
+    const r=await api('/api/admin/wa/order/create',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({phone:S.waPhone, customer:o.cust, items:[item],
+        shipping_title: o.ship==='pickup'?'איסוף עצמי':sh.t, shipping_total: sh.cost,
+        note:o.note||'', payment})},90000);
+    hideLoading(); waOrderClose();
+    S.waOrdDone=r;
+    const msg = r.pay_link
+      ? `היי${o.cust.first_name?' '+o.cust.first_name:''}, הקמנו לך הזמנה מס׳ ${r.number} על סך ${r.currency}${Number(r.total).toLocaleString('he-IL')}.\nלתשלום מאובטח: ${r.pay_link}\nתודה, גרין מובייל 💚`
+      : `הזמנה מס׳ ${r.number} נפתחה על סך ${r.currency}${Number(r.total).toLocaleString('he-IL')}.`;
+    const ta=document.getElementById('waText'); if(ta){ ta.value=msg; ta.focus(); }
+    toast('הזמנה #'+r.number+' נוצרה ✓ — ההודעה בתיבה, ערוך ושלח',true);
+    window.open(r.admin_url,'_blank');
+  }catch(e){
+    hideLoading();
+    toast('יצירת הזמנה נכשלה — '+(e.status===400?'PayPlus לא מוגדר עדיין':'בדוק נתונים'),false);
+  }
+}
 // ── 🔎 מלאי חי בתוך הוואטסאפ: חיפוש + שבבי סניפים + חלונית אתר, בלי לעזוב את השיחה ──
 function waToggleStock(){
   if(S.waPanel && S.waPanelMode==='stock'){ S.waPanel=false; renderWaThread(); return; }
@@ -2314,6 +2438,8 @@ function waStockPaint(){
           <div class="muted" style="font-size:11px;direction:ltr;text-align:end">${escW(pid)}</div></span>
         <button class="btn-ghost wa-ico" style="width:32px;height:30px" title="חלונית האתר (מחירים/וריאציות)"
                 onclick="event.stopPropagation();openWcQuick('${pid}')">${ico('globe',14)}</button>
+        <button class="btn-ghost wa-ico" style="width:32px;height:30px;border-color:#16a34a;color:#16a34a" title="צור הזמנה ללקוח"
+                onclick="event.stopPropagation();waOrderOpen('${pid}')">${ico('cart',14)}</button>
       </div>
       ${open?`<div class="wa-stk-chips" id="waStkChips">${waStockChipsHTML(pid)}</div>`:''}
     </div>`;

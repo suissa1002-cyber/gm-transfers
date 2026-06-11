@@ -748,7 +748,7 @@ def admin_wc_link(sku: str, pos: int = 0, fallback: int = 0, fresh: int = 0,
             img = (p.get("image") or (p.get("images") or [{}])[0] or {})
             out.update({
                 "found": True, "type": p.get("type"), "name": p.get("name"),
-                "parent_id": p.get("parent_id"),
+                "id": p.get("id"), "parent_id": p.get("parent_id"),
                 "price": p.get("price"), "regular_price": p.get("regular_price"),
                 "sale_price": p.get("sale_price"), "permalink": p.get("permalink"),
                 "image": (img or {}).get("src", ""),
@@ -796,7 +796,7 @@ def admin_wc_link(sku: str, pos: int = 0, fallback: int = 0, fresh: int = 0,
                     if any(va.get(n) != val for n, val in ident.items()):
                         continue
                     vimg = (v.get("image") or {})
-                    cands.append({"sku": v.get("sku") or "", "price": v.get("price"),
+                    cands.append({"id": v.get("id"), "sku": v.get("sku") or "", "price": v.get("price"),
                                   "regular_price": v.get("regular_price"), "sale_price": v.get("sale_price"),
                                   "permalink": v.get("permalink"), "image": vimg.get("src", ""),
                                   "attrs": {n: va.get(n) for n in va if n not in ident and va.get(n)}})
@@ -1539,6 +1539,140 @@ def bridge_note(body: BridgeNote, x_bridge_key: Optional[str] = Header(None)):
     _require_bridge(x_bridge_key)
     nid = db.wa_note_add(body.phone, body.text.strip()[:400], "אורי ✨")
     return {"ok": True, "id": nid}
+
+
+# ── 🛒 הזמנה חיה מתוך הוואטסאפ: WooCommerce order + קישור תשלום PayPlus ──
+PAYPLUS_BASE = "https://restapi.payplus.co.il/api/v1.0"
+_PP_UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+          "(KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36")
+
+
+def _payplus_headers():
+    return {"api-key": os.getenv("PAYPLUS_API_KEY", ""),
+            "secret-key": os.getenv("PAYPLUS_SECRET_KEY", ""),
+            "Content-Type": "application/json", "User-Agent": _PP_UA}
+
+
+def _payplus_link(amount: float, order_number: str, customer: dict) -> str:
+    """יוצר קישור דף תשלום PayPlus עבור ההזמנה. דורש env PAYPLUS_PAGE_UID."""
+    import requests as _rq
+    page_uid = os.getenv("PAYPLUS_PAGE_UID", "").strip()
+    if not (page_uid and os.getenv("PAYPLUS_API_KEY")):
+        raise HTTPException(400, "PayPlus עוד לא מוגדר (PAYPLUS_PAGE_UID חסר)")
+    body = {
+        "payment_page_uid": page_uid,
+        "charge_method": 1,                      # חיוב מיידי
+        "amount": round(float(amount), 2),
+        "currency_code": "ILS",
+        "sendEmailApproval": True,
+        "send_failure_callback": False,
+        "more_info": f"GreenOS order {order_number}",
+        "customer": {
+            "customer_name": (customer.get("name") or "").strip()[:60] or "לקוח",
+            "email": customer.get("email") or "",
+            "phone": customer.get("phone") or "",
+        },
+    }
+    r = _rq.post(f"{PAYPLUS_BASE}/PaymentPages/generateLink",
+                 headers=_payplus_headers(), json=body, timeout=40)
+    try:
+        j = r.json()
+    except Exception:  # noqa: BLE001
+        j = {}
+    link = ((j.get("data") or {}).get("payment_page_link")
+            or (j.get("data") or {}).get("link") or "")
+    if r.status_code != 200 or not link:
+        logger.warning("payplus link failed %s: %s", r.status_code, r.text[:300])
+        raise HTTPException(502, f"PayPlus דחה את הבקשה ({r.status_code}): {str(j)[:150]}")
+    return link
+
+
+class WaOrderItem(BaseModel):
+    product_id: int                 # parent (או המוצר עצמו אם simple)
+    variation_id: int = 0
+    quantity: int = 1
+
+
+class WaOrderCustomer(BaseModel):
+    first_name: str = ""
+    last_name: str = ""
+    phone: str = ""
+    email: str = ""
+    address_1: str = ""
+    city: str = ""
+
+
+class WaOrderCreate(BaseModel):
+    phone: str                      # טלפון השיחה (לתיעוד)
+    customer: WaOrderCustomer
+    items: list[WaOrderItem]
+    shipping_title: str = ""
+    shipping_total: float = 0
+    note: str = ""
+    payment: str = "none"           # none | link
+
+
+@app.post("/api/admin/wa/order/create")
+def wa_order_create(body: WaOrderCreate, x_admin_key: Optional[str] = Header(None)):
+    """יוצר הזמנת WooCommerce חיה (סטטוס pending) ואופציונלית קישור תשלום PayPlus."""
+    _require_admin(x_admin_key)
+    import requests as _rq
+    creds = _wc_creds()
+    if not creds:
+        raise HTTPException(502, "חיבור WooCommerce לא מוגדר")
+    base, k, s = creds
+    if not body.items:
+        raise HTTPException(400, "אין פריטים")
+    line_items = []
+    for it in body.items:
+        li = {"product_id": int(it.product_id), "quantity": max(1, int(it.quantity))}
+        if it.variation_id:
+            li["variation_id"] = int(it.variation_id)
+        line_items.append(li)
+    cust = body.customer
+    billing = {"first_name": cust.first_name, "last_name": cust.last_name,
+               "phone": cust.phone or body.phone, "country": "IL"}
+    # WC דוחה email/כתובת ריקים (400) — מוסיפים רק אם מולאו
+    if (cust.email or "").strip():
+        billing["email"] = cust.email.strip()
+    if (cust.address_1 or "").strip():
+        billing["address_1"] = cust.address_1.strip()
+    if (cust.city or "").strip():
+        billing["city"] = cust.city.strip()
+    payload = {
+        "status": "pending",
+        "billing": billing,
+        "shipping": {k2: billing.get(k2, "") for k2 in ("first_name", "last_name", "address_1", "city", "country")},
+        "line_items": line_items,
+        "customer_note": body.note or "",
+        "meta_data": [{"key": "greenos_source", "value": "whatsapp"},
+                      {"key": "greenos_wa_phone", "value": body.phone}],
+    }
+    if body.shipping_total or body.shipping_title:
+        payload["shipping_lines"] = [{"method_id": "flat_rate",
+                                      "method_title": body.shipping_title or "משלוח",
+                                      "total": str(body.shipping_total or 0)}]
+    r = _rq.post(f"{base}/wp-json/wc/v3/orders", json=payload, auth=(k, s), timeout=45)
+    if r.status_code not in (200, 201):
+        logger.warning("wc order create failed %s: %s", r.status_code, r.text[:300])
+        raise HTTPException(502, f"יצירת הזמנה נכשלה ({r.status_code})")
+    o = r.json()
+    out = {"order_id": o.get("id"), "number": o.get("number"),
+           "total": o.get("total"), "currency": o.get("currency_symbol") or "₪",
+           "admin_url": f"{base}/wp-admin/post.php?post={o.get('id')}&action=edit",
+           "pay_link": ""}
+    if body.payment == "link":
+        link = _payplus_link(float(o.get("total") or 0), str(o.get("number")), {
+            "name": f"{cust.first_name} {cust.last_name}".strip(),
+            "email": cust.email, "phone": cust.phone or body.phone})
+        out["pay_link"] = link
+        try:  # שומרים את הקישור על ההזמנה
+            _rq.put(f"{base}/wp-json/wc/v3/orders/{o['id']}",
+                    json={"meta_data": [{"key": "greenos_payplus_link", "value": link}]},
+                    auth=(k, s), timeout=30)
+        except Exception:  # noqa: BLE001
+            pass
+    return out
 
 
 # ── Web Push (PWA) — התראות וואטסאפ כשהאפליקציה סגורה ──
