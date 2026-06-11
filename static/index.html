@@ -2267,6 +2267,8 @@ function waThreadHTML(){
       ${S.waPanel?`<div class="wa-panel ${S.waPanelMode==='uri'?'wa-panel-uri':''}" id="waPanelBox">${S.waPanelMode==='uri'?waUriHTML():S.waPanelMode==='stock'?waStockHTML():waPanelHTML()}</div>`:''}
     </div>`;
 }
+// כפתור הזמנה זמין רק במחשב הניהול (סניף אתר + סיסמה) — כמו הוואטסאפ
+function isAdminCtx(){ return S.cfg&&Number(S.branchId)===S.cfg.admin_branch_id&&(!S.cfg.admin_required||S.adminKey); }
 // ── 🛒 צור הזמנה חיה: וריאציה → פרטי לקוח → הזמנת WooCommerce → קישור תשלום PayPlus ──
 function waOrderClose(){ const m=document.getElementById('waOrderModal'); if(m) m.remove(); }
 async function waOrderOpen(pid){
@@ -2275,12 +2277,14 @@ async function waOrderOpen(pid){
   try{ d=await api('/api/admin/wc-link/'+encodeURIComponent(pid)+'?pos=1&fresh=1',null,45000); }catch(e){}
   hideLoading();
   if(!d||!d.found||!d.id){ toast('המק״ט לא מחובר לאתר — אי אפשר ליצור הזמנה',false); return; }
-  const conv=(S.waConvs||[]).find(c=>c.phone===S.waPhone)||{};
+  const inWa=(S.view==='admin'&&S.adminTab==='wa'&&S.waPhone);
+  const conv=inWa?((S.waConvs||[]).find(c=>c.phone===S.waPhone)||{}):{};
   const nameParts=(conv.name||'').split(' ');
   S.waOrd={
     base:d, sel:{id:d.id, price:Number(d.price)||0, label:(d.attributes||[]).map(a=>a.option).join(' · '), permalink:d.permalink},
-    qty:1, ship:'pickup',
-    cust:{first_name:nameParts[0]||'', last_name:nameParts.slice(1).join(' ')||'', phone:'+'+(S.waPhone||''), email:'', address_1:'', city:''}
+    qty:1, ship:'pickup', shipSame:true,
+    cust:{first_name:nameParts[0]||'', last_name:nameParts.slice(1).join(' ')||'', company:'', phone:inWa?('+'+S.waPhone):'', email:'', address_1:'', city:''},
+    shipTo:{first_name:'',last_name:'',address_1:'',city:''}
   };
   waOrderRender();
 }
@@ -2329,11 +2333,22 @@ function waOrderRender(){
     <div class="wa-ord-grid">
       <input id="woFn" placeholder="שם פרטי" value="${escW(o.cust.first_name)}">
       <input id="woLn" placeholder="שם משפחה" value="${escW(o.cust.last_name)}">
+      <input id="woCo" placeholder="שם חברה (לחשבונית עסקית)" value="${escW(o.cust.company||'')}" style="grid-column:1/-1">
       <input id="woPh" placeholder="טלפון" value="${escW(o.cust.phone)}" style="direction:ltr">
       <input id="woEm" placeholder="אימייל (לחשבונית/קבלה)" value="${escW(o.cust.email)}" style="direction:ltr">
-      <input id="woAd" placeholder="כתובת (רחוב ומספר)" value="${escW(o.cust.address_1)}">
+      <input id="woAd" placeholder="כתובת חיוב (רחוב ומספר)" value="${escW(o.cust.address_1)}">
       <input id="woCt" placeholder="עיר" value="${escW(o.cust.city)}">
     </div>
+    <label style="display:flex;align-items:center;gap:7px;font-size:13px;margin-top:8px">
+      <input type="checkbox" ${o.shipSame?'checked':''} onchange="waOrderSaveInputs();S.waOrd.shipSame=this.checked;waOrderRender()">
+      כתובת למשלוח זהה לכתובת החיוב
+    </label>
+    ${o.shipSame?'':`<div class="wa-ord-grid" style="margin-top:6px;border:1px dashed var(--line);border-radius:10px;padding:8px">
+      <input id="woSFn" placeholder="שם פרטי (מקבל המשלוח)" value="${escW(o.shipTo.first_name)}">
+      <input id="woSLn" placeholder="שם משפחה" value="${escW(o.shipTo.last_name)}">
+      <input id="woSAd" placeholder="כתובת למשלוח (רחוב ומספר)" value="${escW(o.shipTo.address_1)}">
+      <input id="woSCt" placeholder="עיר" value="${escW(o.shipTo.city)}">
+    </div>`}
     <div style="margin:8px 0 4px"><b style="font-size:12.5px">משלוח:</b></div>
     ${ships.map(sh=>`<label style="display:flex;align-items:center;gap:7px;font-size:13px;margin-bottom:4px">
       <input type="radio" name="woShip" ${o.ship===sh.k?'checked':''} onchange="S.waOrd.ship='${sh.k}';waOrderSaveInputs();waOrderRender()">
@@ -2355,8 +2370,10 @@ function waOrdPick(sel){ waOrderSaveInputs(); S.waOrd.sel=sel; waOrderRender(); 
 function waOrderSaveInputs(){
   const o=S.waOrd; if(!o) return;
   const g=id=>{const el=document.getElementById(id);return el?el.value:undefined;};
-  ['first_name|woFn','last_name|woLn','phone|woPh','email|woEm','address_1|woAd','city|woCt'].forEach(p=>{
+  ['first_name|woFn','last_name|woLn','company|woCo','phone|woPh','email|woEm','address_1|woAd','city|woCt'].forEach(p=>{
     const [k,id]=p.split('|'); const v=g(id); if(v!==undefined) o.cust[k]=v; });
+  ['first_name|woSFn','last_name|woSLn','address_1|woSAd','city|woSCt'].forEach(p=>{
+    const [k,id]=p.split('|'); const v=g(id); if(v!==undefined) o.shipTo[k]=v; });
   const n=g('woNote'); if(n!==undefined) o.note=n;
 }
 async function waOrderSubmit(payment){
@@ -2372,7 +2389,8 @@ async function waOrderSubmit(payment){
   showLoading('יוצר הזמנה…');
   try{
     const r=await api('/api/admin/wa/order/create',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({phone:S.waPhone, customer:o.cust, items:[item],
+      body:JSON.stringify({phone:S.waPhone||'', customer:o.cust, items:[item],
+        ship_same:o.shipSame!==false, ship_to:o.shipTo,
         shipping_title: o.ship==='pickup'?'איסוף עצמי':sh.t, shipping_total: sh.cost,
         note:o.note||'', payment})},90000);
     hideLoading(); waOrderClose();
@@ -2380,8 +2398,12 @@ async function waOrderSubmit(payment){
     const msg = r.pay_link
       ? `היי${o.cust.first_name?' '+o.cust.first_name:''}, הקמנו לך הזמנה מס׳ ${r.number} על סך ${r.currency}${Number(r.total).toLocaleString('he-IL')}.\nלתשלום מאובטח: ${r.pay_link}\nתודה, גרין מובייל 💚`
       : `הזמנה מס׳ ${r.number} נפתחה על סך ${r.currency}${Number(r.total).toLocaleString('he-IL')}.`;
-    const ta=document.getElementById('waText'); if(ta){ ta.value=msg; ta.focus(); }
-    toast('הזמנה #'+r.number+' נוצרה ✓ — ההודעה בתיבה, ערוך ושלח',true);
+    const ta=document.getElementById('waText');
+    if(ta){ ta.value=msg; ta.focus(); toast('הזמנה #'+r.number+' נוצרה ✓ — ההודעה בתיבה, ערוך ושלח',true); }
+    else {
+      toast('הזמנה #'+r.number+' נוצרה ✓',true);
+      if(r.pay_link && navigator.clipboard){ try{ navigator.clipboard.writeText(r.pay_link); toast('קישור התשלום הועתק 📋',true);}catch(e){} }
+    }
     window.open(r.admin_url,'_blank');
   }catch(e){
     hideLoading();
@@ -3222,7 +3244,7 @@ function lsRow(it,live){
     <td class="muted">${it.category||'—'}</td>
     ${bcells}
     <td style="text-align:center"><span id="lsw-${pid}" class="ls-wc ${S.lsWcOff?'':(S.lsWc[pid]?(S.lsWc[pid].data&&S.lsWc[pid].data.found?'lit':'dim'):'wait')}" style="${S.lsWcOff?'display:none':''}"
-      onclick="event.stopPropagation();openWcQuick('${pid}')" title="צפייה במוצר באתר">🌐</span></td>
+      onclick="event.stopPropagation();openWcQuick('${pid}')" title="צפייה במוצר באתר">🌐</span>${isAdminCtx()?`<span class="ls-wc lit" style="margin-inline-start:6px;color:#16a34a" onclick="event.stopPropagation();waOrderOpen('${pid}')" title="צור הזמנה ללקוח">🛒</span>`:''}</td>
     <td id="lst-${pid}" class="muted" style="font-size:11px;white-space:nowrap">${tcell}</td>
   </tr>`;
 }
@@ -3247,6 +3269,7 @@ function lsCard(it,live){
       <span>${it.kind==='serial'?'📱':'🏷️'}</span>
       <span id="lsw-${pid}" class="ls-wc ${S.lsWcOff?'':(S.lsWc[pid]?(S.lsWc[pid].data&&S.lsWc[pid].data.found?'lit':'dim'):'wait')}" style="${S.lsWcOff?'display:none':''}"
         onclick="event.stopPropagation();openWcQuick('${pid}')" title="צפייה במוצר באתר">🌐</span>
+      ${isAdminCtx()?`<span class="ls-wc lit" style="color:#16a34a" onclick="event.stopPropagation();waOrderOpen('${pid}')" title="צור הזמנה ללקוח">🛒</span>`:''}
     </div>
     <div class="ls-card-sub">מק״ט <span style="direction:ltr;unicode-bidi:embed;font-family:monospace">${pid}</span>${it.category?(' · '+it.category):''}</div>
     <div class="ls-card-branches">${chips}</div>

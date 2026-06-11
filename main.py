@@ -1596,15 +1596,25 @@ class WaOrderItem(BaseModel):
 class WaOrderCustomer(BaseModel):
     first_name: str = ""
     last_name: str = ""
+    company: str = ""
     phone: str = ""
     email: str = ""
     address_1: str = ""
     city: str = ""
 
 
+class WaOrderShipTo(BaseModel):
+    first_name: str = ""
+    last_name: str = ""
+    address_1: str = ""
+    city: str = ""
+
+
 class WaOrderCreate(BaseModel):
-    phone: str                      # טלפון השיחה (לתיעוד)
+    phone: str = ""                 # טלפון השיחה (ריק כשמגיעים ממלאי חי/טלפוני)
     customer: WaOrderCustomer
+    ship_same: bool = True          # כתובת משלוח = כתובת חיוב
+    ship_to: WaOrderShipTo = WaOrderShipTo()
     items: list[WaOrderItem]
     shipping_title: str = ""
     shipping_total: float = 0
@@ -1639,10 +1649,17 @@ def wa_order_create(body: WaOrderCreate, x_admin_key: Optional[str] = Header(Non
         billing["address_1"] = cust.address_1.strip()
     if (cust.city or "").strip():
         billing["city"] = cust.city.strip()
+    if (cust.company or "").strip():
+        billing["company"] = cust.company.strip()   # חשבונית על חברה
     payload = {
         "status": "pending",
         "billing": billing,
-        "shipping": {k2: billing.get(k2, "") for k2 in ("first_name", "last_name", "address_1", "city", "country")},
+        "shipping": ({k2: billing.get(k2, "") for k2 in ("first_name", "last_name", "company", "address_1", "city", "country")}
+                     if body.ship_same else
+                     {"first_name": body.ship_to.first_name or cust.first_name,
+                      "last_name": body.ship_to.last_name or cust.last_name,
+                      "address_1": body.ship_to.address_1, "city": body.ship_to.city,
+                      "country": "IL"}),
         "line_items": line_items,
         "customer_note": body.note or "",
         "meta_data": [{"key": "greenos_source", "value": "whatsapp"},
