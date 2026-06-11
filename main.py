@@ -1431,6 +1431,75 @@ def wa_canned_del(cid: int, x_admin_key: Optional[str] = Header(None)):
     return {"deleted": db.wa_canned_delete(cid)}
 
 
+# ── ✨ אורי בתוך הוואטסאפ — תור משימות לגשר על המק של אסי (חיוב Max, לא API) ──
+URI_BRIDGE_KEY = os.getenv("URI_BRIDGE_KEY", "")
+
+
+def _require_bridge(x_bridge_key: Optional[str]):
+    if not URI_BRIDGE_KEY or (x_bridge_key or "") != URI_BRIDGE_KEY:
+        raise HTTPException(401, "bridge key required")
+
+
+class UriAsk(BaseModel):
+    phone: str
+    question: str
+
+
+class UriAnswer(BaseModel):
+    id: int
+    answer: str
+    status: str = "done"
+
+
+@app.post("/api/admin/wa/uri/ask")
+def uri_ask(body: UriAsk, x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    q = body.question.strip()
+    if not q:
+        raise HTTPException(400, "empty question")
+    jid = db.uri_job_add(body.phone, q)
+    return {"id": jid}
+
+
+@app.get("/api/admin/wa/uri/job/{jid}")
+def uri_job(jid: int, x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    j = db.uri_job_get(jid)
+    if not j:
+        raise HTTPException(404, "job not found")
+    return {"status": j["status"], "answer": j.get("answer")}
+
+
+@app.get("/api/admin/wa/uri/status")
+def uri_status(x_admin_key: Optional[str] = Header(None)):
+    """האם הגשר על המק חי (heartbeat מ-2 הדקות האחרונות)."""
+    _require_admin(x_admin_key)
+    last = db.sales_state_get("uri_bridge_ping")
+    alive = False
+    if last:
+        try:
+            t = datetime.fromisoformat(str(last))
+            alive = (datetime.now(t.tzinfo) - t).total_seconds() < 120
+        except Exception:  # noqa: BLE001
+            pass
+    return {"alive": alive, "last_ping": last}
+
+
+@app.get("/api/uri-bridge/jobs")
+def bridge_jobs(x_bridge_key: Optional[str] = Header(None)):
+    _require_bridge(x_bridge_key)
+    db.sales_state_set("uri_bridge_ping", db.now_iso())
+    db.uri_jobs_requeue_stuck()
+    return {"jobs": db.uri_jobs_pending()}
+
+
+@app.post("/api/uri-bridge/answer")
+def bridge_answer(body: UriAnswer, x_bridge_key: Optional[str] = Header(None)):
+    _require_bridge(x_bridge_key)
+    db.uri_job_answer(body.id, body.answer, body.status)
+    return {"ok": True}
+
+
 # ── Web Push (PWA) — התראות וואטסאפ כשהאפליקציה סגורה ──
 class WaPushSub(BaseModel):
     sub: dict

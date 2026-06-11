@@ -320,6 +320,18 @@ _SCHEMA = [
         created_at  TEXT
     )
     """.format(pk=_PK),
+    # תור משימות לסוכן אורי (claude על המק של אסי, חיוב Max — לא API)
+    """
+    CREATE TABLE IF NOT EXISTS uri_jobs (
+        id          {pk},
+        phone       TEXT,
+        question    TEXT,
+        status      TEXT DEFAULT 'pending',
+        answer      TEXT,
+        created_at  TEXT,
+        answered_at TEXT
+    )
+    """.format(pk=_PK),
     # מנויי Web Push (PWA באייפון/דסקטופ) להתראות וואטסאפ
     """
     CREATE TABLE IF NOT EXISTS wa_push_subs (
@@ -1290,6 +1302,62 @@ def wa_canned_delete(cid: int) -> bool:
         cur = c.cursor()
         cur.execute(_q("DELETE FROM wa_canned WHERE id = ?"), (cid,))
         return cur.rowcount > 0
+
+
+# ── תור אורי ──
+def uri_job_add(phone: str, question: str) -> int:
+    with _conn() as c:
+        cur = c.cursor()
+        vals = (phone, question, now_iso())
+        if _USE_PG:
+            cur.execute(_q("""
+                INSERT INTO uri_jobs (phone, question, created_at)
+                VALUES (?, ?, ?) RETURNING id"""), vals)
+            return cur.fetchone()["id"]
+        cur.execute(_q("""
+            INSERT INTO uri_jobs (phone, question, created_at) VALUES (?, ?, ?)"""), vals)
+        return cur.lastrowid
+
+
+def uri_job_get(jid: int):
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM uri_jobs WHERE id = ?"), (jid,))
+        r = cur.fetchone()
+        return dict(r) if r else None
+
+
+def uri_jobs_pending(mark_running: bool = True) -> list:
+    """משימות ממתינות לגשר; מסומנות running כדי שלא יימשכו פעמיים."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""
+            SELECT id, phone, question FROM uri_jobs
+            WHERE status = 'pending' ORDER BY id LIMIT 5"""))
+        jobs = [dict(r) for r in cur.fetchall()]
+        if mark_running and jobs:
+            ids = tuple(j["id"] for j in jobs)
+            cur.execute(_q(
+                f"UPDATE uri_jobs SET status='running' WHERE id IN ({','.join('?'*len(ids))})"),
+                ids)
+    return jobs
+
+
+def uri_job_answer(jid: int, answer: str, status: str = "done"):
+    with _conn() as c:
+        c.cursor().execute(_q("""
+            UPDATE uri_jobs SET answer = ?, status = ?, answered_at = ? WHERE id = ?"""),
+            (answer, status, now_iso(), jid))
+
+
+def uri_jobs_requeue_stuck(minutes: int = 10):
+    """משימות שנתקעו ב-running (הגשר נפל באמצע) — חוזרות לתור."""
+    cutoff = (datetime.now(timezone.utc).astimezone()
+              - timedelta(minutes=minutes)).isoformat(timespec="seconds")
+    with _conn() as c:
+        c.cursor().execute(_q("""
+            UPDATE uri_jobs SET status='pending'
+            WHERE status='running' AND created_at < ?"""), (cutoff,))
 
 
 def wa_push_sub_add(endpoint: str, sub_json: str, ua: str = ""):

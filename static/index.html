@@ -380,6 +380,13 @@
          align-items:center;justify-content:center;cursor:zoom-out}
   .wa-lb img{max-width:94vw;max-height:94vh;border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,.5)}
   .wa-lb-x{position:fixed;top:16px;inset-inline-end:20px;color:#fff;font-size:26px;cursor:pointer;opacity:.8}
+  .wa-uri-msgs{max-height:calc(100vh - 360px);overflow-y:auto;display:flex;flex-direction:column;gap:7px}
+  .wa-uri-q{align-self:flex-end;background:rgba(139,92,246,.13);border:1px solid rgba(139,92,246,.35);
+            border-radius:12px;padding:7px 11px;font-size:13px;max-width:92%;white-space:pre-wrap}
+  .wa-uri-a{align-self:flex-start;background:var(--card2);border:1px solid var(--line);
+            border-radius:12px;padding:8px 11px;font-size:13px;max-width:96%;white-space:pre-wrap;line-height:1.45}
+  .wa-uri-wait{color:var(--muted);animation:pulse 1.6s infinite}
+  @keyframes pulse{0%,100%{opacity:.55}50%{opacity:1}}
   .wa-sec{cursor:pointer;user-select:none;display:flex;align-items:center;gap:5px}
   .wa-sec:hover{color:var(--txt)}
   .wa-sec .arr{font-size:10px;width:12px;flex:none}
@@ -2181,6 +2188,7 @@ function waThreadHTML(){
         <div class="wa-send" style="position:relative">
           <div id="waCannedPop" class="wa-canned" style="display:none"></div>
           <div id="waTplPop" class="wa-canned" style="display:none"></div>
+          <button class="btn-ghost" onclick="waToggleUri()" title="✨ אורי — סוכן ה-AI (טיוטות, מלאי, מחירים)" style="border-color:#8b5cf6;color:#8b5cf6">✨</button>
           <button class="btn-ghost" onclick="waToggleCanned()" title="תשובות מוכנות">⚡</button>
           <button class="btn-ghost" onclick="waToggleTpl()" title="שליחת תבנית מאושרת (עוקפת חלון 24ש׳)" ${w.in_window?'':'style="border-color:#dc2626;color:#dc2626"'}>📋</button>
           <button class="btn-ghost" onclick="document.getElementById('waFile').click()" title="צרף קובץ" ${w.in_window?'':'disabled style="opacity:.4"'}>📎</button>
@@ -2190,12 +2198,97 @@ function waThreadHTML(){
           <button class="btn-primary" id="waSendBtn" onclick="sendWaMsg()">שלח</button>
         </div>
       </div>
-      ${S.waPanel?`<div class="wa-panel" id="waPanelBox">${waPanelHTML()}</div>`:''}
+      ${S.waPanel?`<div class="wa-panel" id="waPanelBox">${S.waPanelMode==='uri'?waUriHTML():waPanelHTML()}</div>`:''}
     </div>`;
 }
 // ── פאנל פרטי פונה: ConnectOp + הזמנות אתר + תגיות + הערות (שלנו) ──
 const WA_STATUS={pending:'ממתין',processing:'בטיפול',completed:'הושלם',cancelled:'בוטל',refunded:'זוכה',failed:'נכשל','on-hold':'בהמתנה'};
-function waTogglePanel(){ S.waPanel=!S.waPanel; renderWaThread(); if(S.waPanel) loadWaContact(); }
+function waTogglePanel(){
+  if(S.waPanel && S.waPanelMode!=='info'){ S.waPanelMode='info'; renderWaThread(); loadWaContact(); return; }
+  S.waPanel=!S.waPanel; S.waPanelMode='info';
+  renderWaThread(); if(S.waPanel) loadWaContact();
+}
+// ── ✨ אורי — צ'אט עם הסוכן לצד השיחה (רץ על המק של אסי, חיוב Max) ──
+function waToggleUri(){
+  if(S.waPanel && S.waPanelMode==='uri'){ S.waPanel=false; renderWaThread(); return; }
+  S.waPanel=true; S.waPanelMode='uri';
+  renderWaThread(); waUriCheckBridge();
+  setTimeout(()=>{ const i=document.getElementById('waUriInput'); if(i) i.focus(); },150);
+}
+function waUriChat(){ S.waUriChats=S.waUriChats||{}; return S.waUriChats[S.waPhone]=S.waUriChats[S.waPhone]||[]; }
+function waUriHTML(){
+  const chat=waUriChat();
+  const alive=S.waUriAlive;
+  const dot=alive===null||alive===undefined?'⚪':alive?'🟢':'🔴';
+  const note=alive===false?'<div class="wa-note" style="border-color:#dc2626">⚠️ הגשר במק של אסי לא מחובר כרגע — הבקשות ימתינו בתור עד שיתחבר</div>':'';
+  return `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <b style="font-size:14px">✨ אורי <span style="font-size:11px" title="${alive?'הגשר מחובר':'הגשר לא מחובר'}">${dot}</span></b>
+      <button class="btn-ghost" onclick="S.waPanel=false;renderWaThread()">✕</button>
+    </div>
+    ${note}
+    <div id="waUriMsgs" class="wa-uri-msgs">
+      ${chat.length?chat.map(waUriMsgHTML).join(''):'<div class="muted" style="font-size:12.5px;padding:6px">שאל את אורי על השיחה הזו — מלאי, מחירים, ניסוח תשובה ללקוח…<br><br>למשל: "בדוק אם יש במלאי ונסח תשובה"</div>'}
+    </div>
+    <div style="display:flex;gap:6px;margin-top:8px">
+      <textarea id="waUriInput" placeholder="בקשה לאורי…" style="flex:1;resize:none;min-height:40px;max-height:90px;padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:13.5px;font-family:inherit"
+                onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();waUriAsk();}"></textarea>
+      <button class="btn-primary" id="waUriSend" onclick="waUriAsk()" style="padding:8px 12px">שלח</button>
+    </div>`;
+}
+function waUriMsgHTML(m,idx){
+  if(m.role==='user')
+    return `<div class="wa-uri-q">${escW(m.text)}</div>`;
+  if(m.status==='pending')
+    return `<div class="wa-uri-a wa-uri-wait">⏳ אורי עובד על זה…</div>`;
+  if(m.status==='error')
+    return `<div class="wa-uri-a" style="border-color:#dc2626">❌ ${escW(m.text||'שגיאה')}</div>`;
+  return `<div class="wa-uri-a">${escW(m.text)}
+    <div style="display:flex;gap:6px;margin-top:7px">
+      <button class="btn-ghost" style="padding:4px 9px;font-size:12px" onclick="waUriToReply(${idx})">📥 לתיבת המענה</button>
+      <button class="btn-ghost" style="padding:4px 9px;font-size:12px" onclick="navigator.clipboard.writeText(S.waUriChats[S.waPhone][${idx}].text);toast('הועתק ✓',true)">📋</button>
+    </div></div>`;
+}
+function waUriPaint(){
+  const p=document.getElementById('waPanelBox');
+  if(p && S.waPanelMode==='uri'){ p.innerHTML=waUriHTML();
+    const m=document.getElementById('waUriMsgs'); if(m) m.scrollTop=m.scrollHeight; }
+}
+async function waUriCheckBridge(){
+  try{ const r=await api('/api/admin/wa/uri/status'); S.waUriAlive=r.alive; }
+  catch(e){ S.waUriAlive=null; }
+  waUriPaint();
+}
+async function waUriAsk(){
+  const inp=document.getElementById('waUriInput');
+  const q=(inp&&inp.value||'').trim(); if(!q||!S.waPhone) return;
+  const chat=waUriChat();
+  chat.push({role:'user', text:q});
+  const aMsg={role:'uri', status:'pending', text:''};
+  chat.push(aMsg);
+  if(inp) inp.value='';
+  waUriPaint();
+  try{
+    const r=await api('/api/admin/wa/uri/ask',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({phone:S.waPhone, question:q})});
+    waUriPoll(r.id, aMsg);
+  }catch(e){ aMsg.status='error'; aMsg.text='שליחת הבקשה נכשלה'; waUriPaint(); }
+}
+async function waUriPoll(jid, msg, tries){
+  tries=tries||0;
+  if(tries>100){ msg.status='error'; msg.text='תם הזמן (5 דק׳) — ייתכן שהגשר במק כבוי'; waUriPaint(); return; }
+  try{
+    const r=await api('/api/admin/wa/uri/job/'+jid);
+    if(r.status==='done'){ msg.status='done'; msg.text=r.answer||''; waUriPaint(); return; }
+    if(r.status==='error'){ msg.status='error'; msg.text=r.answer||'שגיאה אצל אורי'; waUriPaint(); return; }
+  }catch(e){}
+  setTimeout(()=>waUriPoll(jid,msg,tries+1),3000);
+}
+function waUriToReply(idx){
+  const m=(waUriChat()||[])[idx]; if(!m) return;
+  const ta=document.getElementById('waText');
+  if(ta){ ta.value=m.text; ta.focus(); toast('הטיוטה בתיבה — ערוך ושלח',true); }
+}
 // סקשן מתקפל בפאנל: ברירת מחדל סגור (הזמנות פתוח), מצב נשמר לסשן
 function waSec(key,title,body,count){
   S.waSecOpen=S.waSecOpen||{orders:true};
