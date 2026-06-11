@@ -606,6 +606,37 @@ def serial_search(q: str, limit: int = 20) -> list:
         return [dict(r) for r in cur.fetchall()]
 
 
+def serial_dynamic_status(serials: list) -> dict:
+    """סטטוס דינמי לכל סריאל לפי ה-DB שלנו (בלי NewOrder):
+      transit  — יחידה בהעברה פתוחה שטרם נקלטה (→ סניף יעד)
+      reserved — יחידה בבקשת העברה משודרת (→ סניף יעד)
+    מחזיר {serial: {kind, to_branch}}; סריאל ללא רשומה לא יופיע (=זמין)."""
+    serials = [str(s) for s in serials if s]
+    if not serials:
+        return {}
+    ph = ",".join("?" * len(serials))
+    out = {}
+    with _conn() as c:
+        cur = c.cursor()
+        # בהעברה פתוחה (טרם נקלט: received=0) — הסטטוס החזק יותר, נכתב אחרון
+        cur.execute(_q(f"""
+            SELECT i.serial AS serial, t.to_branch_id AS to_branch
+            FROM transfer_items i JOIN transfers t ON t.op_id = i.op_id
+            WHERE i.serial IN ({ph}) AND i.received = 0
+              AND t.status IN ('in_transit','partial')
+        """), tuple(serials))
+        transit = {str(r["serial"]): r["to_branch"] for r in cur.fetchall()}
+        # משוריין בבקשת העברה
+        cur.execute(_q(f"""
+            SELECT serial, to_branch FROM transfer_plan WHERE serial IN ({ph})
+        """), tuple(serials))
+        for r in cur.fetchall():
+            out[str(r["serial"])] = {"kind": "reserved", "to_branch": r["to_branch"]}
+        for sn, tb in transit.items():
+            out[sn] = {"kind": "transit", "to_branch": tb}   # גובר על reserved
+    return out
+
+
 def serial_index_count() -> int:
     with _conn() as c:
         cur = c.cursor()

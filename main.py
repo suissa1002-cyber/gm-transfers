@@ -570,6 +570,12 @@ def admin_live_serial(q: str, x_admin_key: Optional[str] = Header(None), x_devic
     """איתור מוצרים לפי מספר סידורי — גם חלקי (מאינדקס סריאל→מוצר; אין ל-NewOrder חיפוש הפוך)."""
     _require_admin_or_device(x_admin_key, x_device_token)
     matches = db.serial_search((q or "").strip(), limit=50)
+    # סטטוס דינמי (בהעברה/משוריין) — מוצג גם בחיפוש לפי סריאל, מבחוץ
+    dyn = db.serial_dynamic_status([m["serial"] for m in matches])
+    for m in matches:
+        d = dyn.get(str(m["serial"]))
+        m["dyn_kind"] = (d or {}).get("kind")
+        m["dyn_branch"] = cfg.branch_name((d or {}).get("to_branch")) if d else ""
     return {"found": bool(matches), "matches": matches}
 
 
@@ -611,6 +617,7 @@ def admin_live_stock(pid: str, serials: int = 0, fresh: int = 0,
         if raw is None:
             out["serials_error"] = True
         else:
+            dyn = db.serial_dynamic_status([s.get("serial") for s in raw])
             ser = []
             for s in raw:
                 try:
@@ -619,6 +626,7 @@ def admin_live_stock(pid: str, serials: int = 0, fresh: int = 0,
                     bid = None
                 sup = s.get("supplier") or {}
                 war = s.get("warranty") or {}
+                d = dyn.get(str(s.get("serial")))
                 ser.append({
                     "serial": s.get("serial"), "status": s.get("status"),
                     "branch_id": bid, "branch_name": cfg.branch_name(bid) if bid else "",
@@ -626,6 +634,8 @@ def admin_live_stock(pid: str, serials: int = 0, fresh: int = 0,
                     "supplier": (sup.get("name") or "").strip() if isinstance(sup, dict) else "",
                     "warranty": (war.get("name") or "").strip() if isinstance(war, dict) else "",
                     "warranty_months": war.get("duration") if isinstance(war, dict) else None,
+                    "dyn_kind": (d or {}).get("kind"),
+                    "dyn_branch": cfg.branch_name((d or {}).get("to_branch")) if d else "",
                 })
             out["serials"] = ser
     _live_stock_cache[key] = (_time.time(), out)

@@ -2016,11 +2016,18 @@ function lsMaybeSerial(q){
   },300);
 }
 function fmtClock(iso){ if(!iso) return ''; const d=new Date(iso); return isNaN(d)?'':d.toLocaleTimeString('he-IL'); }
+function serDynBadge(hits){
+  const h=(hits||[]).find(x=>x.dyn_kind);
+  if(!h) return '';
+  if(h.dyn_kind==='transit') return ` <span class="mtag warn">🚚 בהעברה ל${h.dyn_branch||'?'}</span>`;
+  if(h.dyn_kind==='reserved') return ` <span class="mtag" style="background:rgba(37,99,235,.15);color:var(--blue)">📡 משוריין ל${h.dyn_branch||'?'}</span>`;
+  return '';
+}
 function lsRow(it,live){
   const pid=String(it.product_id);
   const hits=(S.lsSerialHits||[]).filter(h=>String(h.product_id)===pid);
   const serBadge=hits.length
-    ?` <span class="mtag ok" style="direction:ltr">${hits[0].serial}${hits.length>1?' +'+(hits.length-1):''}</span>`:'';
+    ?` <span class="mtag ok" style="direction:ltr">${hits[0].serial}${hits.length>1?' +'+(hits.length-1):''}</span>${serDynBadge(hits)}`:'';
   const c=S.lsLive[pid];
   const fresh=c&&!c.err&&Date.now()-c.at<LS_TTL_MS;
   const bcells=(S.branchList||[]).map(b=>{
@@ -2046,7 +2053,7 @@ function lsRow(it,live){
 function lsCard(it,live){
   const pid=String(it.product_id);
   const hits=(S.lsSerialHits||[]).filter(h=>String(h.product_id)===pid);
-  const serBadge=hits.length?` <span class="mtag ok" style="direction:ltr">${hits[0].serial}${hits.length>1?' +'+(hits.length-1):''}</span>`:'';
+  const serBadge=hits.length?` <span class="mtag ok" style="direction:ltr">${hits[0].serial}${hits.length>1?' +'+(hits.length-1):''}</span>${serDynBadge(hits)}`:'';
   const c=S.lsLive[pid], fresh=c&&!c.err&&Date.now()-c.at<LS_TTL_MS;
   const chips=(S.branchList||[]).map(b=>{
     let inner=`<b id="lsb-${pid}-${b.id}" class="ls-wait">${live?'⏳':'—'}</b>`;
@@ -2307,6 +2314,13 @@ function renderLive(){
   if(items&&shown.length) lsScheduleLive(shown.slice(0,LS_LIVE_CAP));
   lsMaybeSerial((S.lsQuery||'').trim());
 }
+// סטטוס דינמי לסריאל: בהעברה / משוריין (מ-DB שלנו) — גובר על "זמין"
+function dynStatusHtml(s){
+  if(!s||!s.dyn_kind) return '';
+  if(s.dyn_kind==='transit') return `<span style="color:var(--amber);font-weight:800">🚚 בהעברה ל${s.dyn_branch||'?'}</span>`;
+  if(s.dyn_kind==='reserved') return `<span style="color:var(--blue);font-weight:800">📡 משוריין ל${s.dyn_branch||'?'}</span>`;
+  return '';
+}
 async function openLiveDetail(pid){
   const it=(S.lsCat||[]).find(x=>String(x.product_id)===String(pid)); if(!it) return;
   showLoading('קורא מלאי חי מהקופה…');
@@ -2350,7 +2364,7 @@ function renderLiveDetail(){
       serHtml=`<div style="font-weight:700;margin-bottom:6px">יחידות בקופה (${d.serials.length})</div>
       <table class="serials"><thead><tr><th>סריאל</th><th>סניף</th><th>נקלט</th><th>ספק</th><th>אחריות</th><th>סטטוס</th></tr></thead><tbody>
       ${sorted.map((s,i)=>{
-        const st=s.status===1?'<span style="color:var(--green);font-weight:700">זמין</span>':('סטטוס '+s.status);
+        const st=dynStatusHtml(s) || (s.status===1?'<span style="color:var(--green);font-weight:700">זמין</span>':('סטטוס '+s.status));
         const dt=s.insert_date?new Date(s.insert_date):null;
         const ds=dt&&!isNaN(dt)?dt.toLocaleDateString('he-IL'):'';
         const war=(s.warranty||'—')+(s.warranty_months?(' · '+Math.round(s.warranty_months)+' ח׳'):'');
