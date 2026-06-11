@@ -125,6 +125,28 @@ def _window_state(msgs):
             "last_inbound_ts": last_in}
 
 
+_MEDIA_TYPES = ("image", "video", "audio", "document", "file", "sticker")
+
+
+def _extract_media(content):
+    """חילוץ מדיה מבלוקי תוכן: [{'type','url','caption'}]. מבנה אמיתי (אומת):
+    {"type":"image","image":{"link":"https://cdnj1.com/..."}} — ה-CDN פומבי."""
+    out = []
+    if not isinstance(content, list):
+        return out
+    for b in content:
+        if not isinstance(b, dict) or b.get("type") not in _MEDIA_TYPES:
+            continue
+        inner = b.get(b["type"]) or {}
+        if not isinstance(inner, dict):
+            continue
+        url = inner.get("link") or inner.get("url") or ""
+        if url:
+            out.append({"type": b["type"], "url": url,
+                        "caption": inner.get("caption") or ""})
+    return out
+
+
 def get_thread(phone: str, limit: int = 60):
     """שיחה מפוענחת (ישן→חדש) + מצב חלון 24ש."""
     msgs = _dash_call(_dash().get_conversation, phone, limit=limit)
@@ -133,6 +155,7 @@ def get_thread(phone: str, limit: int = 60):
         "id": m.get("id"),
         "direction": m.get("direction"),
         "text": m.get("text") or "",
+        "media": _extract_media(m.get("content")),
         "ts": m.get("ts") or 0,
         "sent_by": m.get("sent_by"),
     } for m in msgs]

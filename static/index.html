@@ -321,6 +321,9 @@
   .wa-in{align-self:flex-start;background:var(--card2);border:1px solid var(--line);border-start-start-radius:4px}
   .wa-out{align-self:flex-end;background:rgba(34,197,94,.13);border:1px solid rgba(34,197,94,.32);border-start-end-radius:4px}
   .wa-t{font-size:10.5px;color:var(--muted);margin-top:4px}
+  .wa-img{max-width:250px;max-height:260px;border-radius:10px;display:block;margin-bottom:4px;cursor:zoom-in}
+  .wa-doc{display:inline-block;background:var(--bg);border:1px solid var(--line);border-radius:9px;
+          padding:6px 10px;margin-bottom:4px;text-decoration:none;color:var(--txt);font-size:13px}
   .wa-send{display:flex;gap:8px;padding:10px;border-top:1px solid var(--line);align-items:flex-end}
   .wa-send textarea{flex:1;resize:none;min-height:44px;max-height:130px;padding:10px 12px;border-radius:11px;
                     border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:14px;font-family:inherit}
@@ -2074,7 +2077,7 @@ function waThreadHTML(){
   const winChip=w.in_window
     ?`<span class="wa-win ok">🟢 חלון פתוח · נותרו ${w.hours_left} ש׳</span>`
     :`<span class="wa-win no">🔴 מחוץ לחלון 24ש׳ — שליחה כתבנית</span>`;
-  const msgs=(t.messages||[]).filter(m=>m.text);
+  const msgs=(t.messages||[]).filter(m=>m.text||(m.media&&m.media.length));
   return `
     <div class="wa-head">
       <button class="btn-ghost wa-back" onclick="S.waPhone='';S.waThread=null;S.waPanel=false;renderWa()">⬅</button>
@@ -2092,7 +2095,7 @@ function waThreadHTML(){
     <div class="wa-body">
       <div class="wa-main">
         <div class="wa-msgs" id="waMsgs">
-          ${msgs.map(m=>`<div class="wa-b ${m.direction==='in'?'wa-in':'wa-out'}">${escW(m.text.trim())}<div class="wa-t">${m.ts?fmtTime(new Date(m.ts*1000).toISOString()):''}</div></div>`).join('')||'<div class="empty">אין הודעות טקסט בשיחה</div>'}
+          ${msgs.map(waBubble).join('')||'<div class="empty">אין הודעות בשיחה</div>'}
         </div>
         <div class="wa-send">
           <textarea id="waText" placeholder="${w.in_window?'הקלד תשובה…':'מחוץ לחלון — יישלח כתבנית new_message (שורה אחת)'}"
@@ -2200,6 +2203,19 @@ function waExport(){
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
   a.download=`whatsapp_${S.waPhone}_${new Date().toISOString().slice(0,10)}.txt`;
   a.click(); URL.revokeObjectURL(a.href);
+}
+function waBubble(m){
+  const media=(m.media||[]).map(x=>{
+    if(x.type==='image'||x.type==='sticker')
+      return `<a href="${escW(x.url)}" target="_blank" title="פתח בגודל מלא"><img class="wa-img" src="${escW(x.url)}" loading="lazy" onload="waScrollBottom()"></a>`;
+    if(x.type==='video') return `<video class="wa-img" src="${escW(x.url)}" controls preload="metadata"></video>`;
+    if(x.type==='audio') return `<audio src="${escW(x.url)}" controls style="max-width:100%"></audio>`;
+    return `<a href="${escW(x.url)}" target="_blank" class="wa-doc">📎 ${escW(x.caption||'קובץ מצורף')}</a>`;
+  }).join('');
+  // כשיש מדיה — מסתירים את ה-placeholder הטקסטואלי ([image] וכו'), משאירים caption אמיתי
+  let txt=(m.text||'').trim();
+  if(media) txt=txt.replace(/\[(image|video|audio|document|file|sticker)[^\]]*\]/g,'').trim();
+  return `<div class="wa-b ${m.direction==='in'?'wa-in':'wa-out'}">${media}${escW(txt)}<div class="wa-t">${m.ts?fmtTime(new Date(m.ts*1000).toISOString()):''}</div></div>`;
 }
 function waScrollBottom(){ const el=document.getElementById('waMsgs'); if(el) el.scrollTop=el.scrollHeight; }
 function renderWaThread(){ const p=document.getElementById('waThreadPane'); if(p){ p.innerHTML=waThreadHTML(); waScrollBottom(); } }
