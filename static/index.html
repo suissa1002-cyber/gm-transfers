@@ -319,6 +319,8 @@
   .wa-thread{background:var(--card);border:1px solid var(--line);border-radius:14px;display:flex;
              flex-direction:column;height:calc(100vh - 270px);min-height:340px}
   .wa-head{display:flex;align-items:center;gap:9px;padding:10px 14px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .wa-ico{display:inline-flex;align-items:center;justify-content:center;width:36px;height:34px;
+          padding:0!important;font-size:16px;line-height:1;text-decoration:none}
   .wa-msgs{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:8px}
   .wa-b{max-width:75%;padding:9px 12px;border-radius:14px;font-size:14px;white-space:pre-wrap;
         word-break:break-word;line-height:1.45}
@@ -2119,11 +2121,11 @@ function waThreadHTML(){
       <span class="muted" style="direction:ltr;font-size:12px">+${escW(S.waPhone)}</span>
       ${winChip}
       <span style="margin-inline-start:auto;display:flex;gap:6px;flex-wrap:wrap">
-        <button class="btn-ghost" onclick="waToggleStar()" title="מעקב">${conv.star?'⭐':'☆'}</button>
-        <button class="btn-ghost" onclick="waTogglePanel()" title="פרטי פונה">👤 פרטים</button>
-        <a class="btn-ghost" target="_blank" href="https://newapp.connectop.co.il/en/inbox?acc=1428408&id=${escW(S.waPhone)}" title="פתח ב-ConnectOp">🌐</a>
-        <button class="btn-ghost" onclick="waHuman(${conv.live_chat?'false':'true'})" title="מתג אנושי/בוט">${conv.live_chat?'🤖 החזר לבוט':'👤 סמן אנושי'}</button>
-        <button class="btn-ghost" onclick="waArchive(${conv.archived?'false':'true'})">${conv.archived?'⤴️ החזר מארכיון':'🗄️ ארכב'}</button>
+        <button class="btn-ghost wa-ico" onclick="waToggleStar()" title="${conv.star?'הסר מעקב':'סמן למעקב'}">${conv.star?'⭐':'☆'}</button>
+        <button class="btn-ghost wa-ico" onclick="waTogglePanel()" title="פרטי פונה (הזמנות/תגיות/הערות)">ℹ️</button>
+        <a class="btn-ghost wa-ico" target="_blank" href="https://newapp.connectop.co.il/en/inbox?acc=1428408&id=${escW(S.waPhone)}" title="פתח ב-ConnectOp">🌐</a>
+        <button class="btn-ghost wa-ico" onclick="waHuman(${conv.live_chat?'false':'true'})" title="${conv.live_chat?'מצב אנושי פעיל — לחץ להחזרה לבוט':'לחץ להשתקת הבוט (סימון אנושי)'}">${conv.live_chat?'🤖':'👤'}</button>
+        <button class="btn-ghost wa-ico" onclick="waArchive(${conv.archived?'false':'true'})" title="${conv.archived?'החזר מארכיון':'העבר לארכיון'}">${conv.archived?'⤴️':'🗄️'}</button>
       </span>
     </div>
     <div class="wa-body">
