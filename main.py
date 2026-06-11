@@ -586,30 +586,46 @@ _live_stock_cache: dict = {}
 _LIVE_STOCK_TTL_SEC = 90
 
 
+def _apply_dynamic(out: dict, pid: str) -> dict:
+    """מזריק שכבת שריון/העברה (מ-DB שלנו) על תשובה — תמיד טרי, גם מ-cache.
+    כך אישור קליטה/ביטול בקשה מתבטא מיד ולא תקוע ב-cache של הקופה."""
+    bstat = db.product_branch_status(pid)
+    for b in out.get("branches", []):
+        st = bstat.get(b["id"])
+        b["dyn_kind"] = (st or {}).get("kind")
+        b["dyn_to"] = cfg.branch_name(st["to_branch"]) if st else ""
+        b["dyn_n"] = (st or {}).get("n", 0)
+    if "serials" in out and out["serials"]:
+        dyn = db.serial_dynamic_status([s.get("serial") for s in out["serials"]])
+        for s in out["serials"]:
+            d = dyn.get(str(s.get("serial")))
+            s["dyn_kind"] = (d or {}).get("kind")
+            s["dyn_branch"] = cfg.branch_name(d["to_branch"]) if d else ""
+    return out
+
+
 @app.get("/api/admin/live-stock/{pid}")
 def admin_live_stock(pid: str, serials: int = 0, fresh: int = 0,
                      x_admin_key: Optional[str] = Header(None), x_device_token: Optional[str] = Header(None)):
-    """מלאי חי לפי סניף ישירות מהקופה, ואופציונלית גם היחידות הסריאליות (ספק+אחריות)."""
+    """מלאי חי לפי סניף ישירות מהקופה, ואופציונלית גם היחידות הסריאליות (ספק+אחריות).
+    נתוני הקופה ב-cache (90ש'), אבל שכבת השריון/העברה תמיד מחושבת טרי."""
     _require_admin_or_device(x_admin_key, x_device_token)
     import time as _time
+    import copy as _copy
     key = (str(pid), bool(serials))
     hit = _live_stock_cache.get(key)
     if hit and not fresh and (_time.time() - hit[0]) < _LIVE_STOCK_TTL_SEC:
-        return hit[1]
+        return _apply_dynamic(_copy.deepcopy(hit[1]), pid)
     no = poller.client()
     try:
         stock = no.get_product_stock(pid)
     except Exception as e:  # noqa: BLE001
         logger.warning("live stock failed for %s: %s", pid, e)
         raise HTTPException(502, "לא ניתן לקרוא מהקופה כרגע")
-    bstat = db.product_branch_status(pid)
     out = {
         "product_id": str(pid),
         "fetched_at": datetime.now().isoformat(timespec="seconds"),
-        "branches": [{"id": b, "name": cfg.branch_name(b), "qty": stock.get(b, 0) or 0,
-                      "dyn_kind": (bstat.get(b) or {}).get("kind"),
-                      "dyn_to": cfg.branch_name((bstat.get(b) or {}).get("to_branch")) if bstat.get(b) else "",
-                      "dyn_n": (bstat.get(b) or {}).get("n", 0)}
+        "branches": [{"id": b, "name": cfg.branch_name(b), "qty": stock.get(b, 0) or 0}
                      for b in cfg.BRANCHES],
     }
     if serials:
@@ -621,7 +637,6 @@ def admin_live_stock(pid: str, serials: int = 0, fresh: int = 0,
         if raw is None:
             out["serials_error"] = True
         else:
-            dyn = db.serial_dynamic_status([s.get("serial") for s in raw])
             ser = []
             for s in raw:
                 try:
@@ -630,7 +645,6 @@ def admin_live_stock(pid: str, serials: int = 0, fresh: int = 0,
                     bid = None
                 sup = s.get("supplier") or {}
                 war = s.get("warranty") or {}
-                d = dyn.get(str(s.get("serial")))
                 ser.append({
                     "serial": s.get("serial"), "status": s.get("status"),
                     "branch_id": bid, "branch_name": cfg.branch_name(bid) if bid else "",
@@ -638,12 +652,10 @@ def admin_live_stock(pid: str, serials: int = 0, fresh: int = 0,
                     "supplier": (sup.get("name") or "").strip() if isinstance(sup, dict) else "",
                     "warranty": (war.get("name") or "").strip() if isinstance(war, dict) else "",
                     "warranty_months": war.get("duration") if isinstance(war, dict) else None,
-                    "dyn_kind": (d or {}).get("kind"),
-                    "dyn_branch": cfg.branch_name((d or {}).get("to_branch")) if d else "",
                 })
             out["serials"] = ser
-    _live_stock_cache[key] = (_time.time(), out)
-    return out
+    _live_stock_cache[key] = (_time.time(), out)   # ה-cache שומר נתוני קופה בלבד
+    return _apply_dynamic(_copy.deepcopy(out), pid)
 
 
 # ── חיבור לאתר (WooCommerce) — אייקון "אתר" בטאב מלאי חי ──────────
