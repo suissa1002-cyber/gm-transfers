@@ -41,6 +41,12 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 # צ'אט הסלמה למנהלים (ברירת מחדל: ה-chat של אסי, כמו monday_tasks)
 TELEGRAM_MANAGERS_CHAT_ID = os.getenv("TELEGRAM_MANAGERS_CHAT_ID",
                                       os.getenv("TELEGRAM_TASKS_CHAT_ID", "448181407"))
+# ── ConnectOp (ChatRace) — טוקן הדשבורד לקריאת שיחות וואטסאפ ──
+# cookie מהתחברות Google ל-newapp.connectop.co.il; פג כל ~10-22 ימים.
+# token_watch.py מנטר תפוגה ומתריע בטלגרם. מקומית מגיע מה-.env המשותף; ב-Render — env var.
+CHATRACE_DASHBOARD_TOKEN = os.getenv("CHATRACE_DASHBOARD_TOKEN", "")
+CHATRACE_ACCOUNT_ID = os.getenv("CHATRACE_DASHBOARD_ACCOUNT_ID", "1428408")
+
 # מיפוי סניף→chat_id של קבוצת/נציג הסניף (JSON ב-env, אופציונלי). למשל: {"2": "-100..."}
 import json as _json
 _branch_chats = os.getenv("TELEGRAM_BRANCH_CHATS", "").strip()

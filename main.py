@@ -118,6 +118,14 @@ def _removals_backfill_job(days: int = 90):
         logger.warning("removals_backfill failed: %s", e)
 
 
+def _token_watch_job():
+    try:
+        import token_watch
+        token_watch.check()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("token_watch failed: %s", e)
+
+
 def _is_stale(iso_ts, hours: float) -> bool:
     """האם חותמת זמן ISO ישנה מ-X שעות (או חסרה/לא תקינה)."""
     if not iso_ts:
@@ -181,6 +189,11 @@ def _startup():
                           run_date=datetime.now() + timedelta(seconds=150))
     else:
         logger.info("catalog fresh — skipping initial refresh")
+    # ניטור טוקן ConnectOp: בדיקה יומית 09:30 + בדיקת boot (לוג בלבד כשהכל תקין)
+    scheduler.add_job(_token_watch_job, "cron", id="token_watch",
+                      hour=9, minute=30, max_instances=1)
+    scheduler.add_job(_token_watch_job, "date", id="token_watch_initial",
+                      run_date=datetime.now() + timedelta(seconds=45))
     scheduler.start()
     # סבב ראשוני סינכרוני קצר כדי שהלוח לא יהיה ריק בהפעלה
     try:
