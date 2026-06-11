@@ -20,21 +20,11 @@ _TEXT = ("text/html", "application/javascript", "text/javascript",
 _HOP = {"content-encoding", "content-length", "transfer-encoding", "connection",
         "keep-alive", "set-cookie", "strict-transport-security"}
 
-TITLES = {"inv": "🧾 ניהול חשבוניות", "sw": "🔔 תזכורות מלאי"}
-
-
-def topbar(key):
-    """סרגל GreenOS עליון מובנה — כדי שהאפליקציה תרגיש חלק מ-GreenOS, לא קופסה."""
-    title = TITLES.get(key, "")
-    return (
-        '<div id="gos-bar" style="position:sticky;top:0;z-index:99999;display:flex;align-items:center;'
-        'gap:12px;background:#1f2440;color:#fff;padding:10px 16px;font-family:system-ui;'
-        'box-shadow:0 2px 10px rgba(0,0,0,.18)">'
-        '<a href="/" style="color:#fff;text-decoration:none;font-weight:800;display:flex;align-items:center;gap:6px">'
-        '<span style="font-size:18px">⬅</span><span>🟢 GreenOS</span></a>'
-        f'<span style="opacity:.6">/</span><span style="font-weight:600">{title}</span>'
-        '</div>'
-    )
+BACK_BTN = (
+    '<a href="/" style="position:fixed;bottom:16px;inset-inline-start:16px;z-index:99999;'
+    'background:#1f2440;color:#fff;text-decoration:none;padding:10px 16px;border-radius:12px;'
+    'font-weight:700;box-shadow:0 6px 20px rgba(0,0,0,.25);font-family:system-ui">⬅ GreenOS</a>'
+)
 
 # תיקוני מובייל מוזרקים ל-<head> של כל אפליקציה מוטמעת (בלי לגעת ב-repo שלה)
 MOBILE_CSS = {
@@ -73,10 +63,9 @@ def _rewrite(text: str, key: str, is_html: bool) -> str:
             text = text.replace("</head>", vp + css + "</head>", 1)
         elif "<body" in text:
             text = re.sub(r"(<body[^>]*>)", r"\1" + vp + css, text, count=1)
-        # סרגל GreenOS מוזרק מיד אחרי <body> — האפליקציה נראית כחלק מ-GreenOS
-        bar = topbar(key)
-        if re.search(r"<body[^>]*>", text):
-            text = re.sub(r"(<body[^>]*>)", r"\1" + bar, text, count=1)
+        # כפתור חזרה צף ל-GreenOS (לא סרגל כהה)
+        if "</body>" in text:
+            text = text.replace("</body>", BACK_BTN + "</body>", 1)
     return text
 
 
