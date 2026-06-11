@@ -382,7 +382,9 @@
          align-items:center;justify-content:center;cursor:zoom-out}
   .wa-lb img{max-width:94vw;max-height:94vh;border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,.5)}
   .wa-lb-x{position:fixed;top:16px;inset-inline-end:20px;color:#fff;font-size:26px;cursor:pointer;opacity:.8}
-  .wa-uri-msgs{max-height:calc(100vh - 360px);overflow-y:auto;display:flex;flex-direction:column;gap:7px}
+  .wa-panel-uri{display:flex;flex-direction:column;min-height:0}
+  .wa-uri-msgs{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:7px}
+  .wa-uri-msgs>:first-child{margin-top:auto}
   .wa-uri-q{align-self:flex-end;background:rgba(139,92,246,.13);border:1px solid rgba(139,92,246,.35);
             border-radius:12px;padding:7px 11px;font-size:13px;max-width:92%;white-space:pre-wrap}
   .wa-uri-a{align-self:flex-start;background:var(--card2);border:1px solid var(--line);
@@ -2200,7 +2202,7 @@ function waThreadHTML(){
           <button class="btn-primary" id="waSendBtn" onclick="sendWaMsg()">שלח</button>
         </div>
       </div>
-      ${S.waPanel?`<div class="wa-panel" id="waPanelBox">${S.waPanelMode==='uri'?waUriHTML():waPanelHTML()}</div>`:''}
+      ${S.waPanel?`<div class="wa-panel ${S.waPanelMode==='uri'?'wa-panel-uri':''}" id="waPanelBox">${S.waPanelMode==='uri'?waUriHTML():waPanelHTML()}</div>`:''}
     </div>`;
 }
 // ── פאנל פרטי פונה: ConnectOp + הזמנות אתר + תגיות + הערות (שלנו) ──
@@ -2253,8 +2255,14 @@ function waUriMsgHTML(m,idx){
 }
 function waUriPaint(){
   const p=document.getElementById('waPanelBox');
-  if(p && S.waPanelMode==='uri'){ p.innerHTML=waUriHTML();
-    const m=document.getElementById('waUriMsgs'); if(m) m.scrollTop=m.scrollHeight; }
+  if(!(p && S.waPanelMode==='uri')) return;
+  const inp=document.getElementById('waUriInput');
+  const keep=inp?{v:inp.value, f:document.activeElement===inp, s:inp.selectionStart}:null;
+  p.innerHTML=waUriHTML();
+  const m=document.getElementById('waUriMsgs'); if(m) m.scrollTop=m.scrollHeight;
+  if(keep){ const el=document.getElementById('waUriInput');
+    if(el){ if(keep.v) el.value=keep.v;
+      if(keep.f){ el.focus(); try{ el.selectionStart=el.selectionEnd=keep.s; }catch(e){} } } }
 }
 async function waUriCheckBridge(){
   try{ const r=await api('/api/admin/wa/uri/status'); S.waUriAlive=r.alive; }
@@ -2625,7 +2633,19 @@ async function waPushTest(){
   catch(e){ toast('שליחת בדיקה נכשלה',false); }
 }
 function waScrollBottom(){ const el=document.getElementById('waMsgs'); if(el) el.scrollTop=el.scrollHeight; }
-function renderWaThread(){ const p=document.getElementById('waThreadPane'); if(p){ p.innerHTML=waThreadHTML(); waScrollBottom(); } }
+function renderWaThread(){
+  const p=document.getElementById('waThreadPane'); if(!p) return;
+  // שימור הקלדה ופוקוס בשדות (waText / waUriInput) — הרינדור מהפולינג מחק אותם
+  const keep={};
+  ['waText','waUriInput'].forEach(id=>{ const el=document.getElementById(id);
+    if(el) keep[id]={v:el.value, f:document.activeElement===el, s:el.selectionStart}; });
+  p.innerHTML=waThreadHTML(); waScrollBottom();
+  for(const [id,k] of Object.entries(keep)){
+    const el=document.getElementById(id); if(!el) continue;
+    if(k.v) el.value=k.v;
+    if(k.f){ el.focus(); try{ el.selectionStart=el.selectionEnd=k.s; }catch(e){} }
+  }
+}
 async function openWaConv(phone){
   // שיחה שנפתחה מתוצאת חיפוש-שרת ולא קיימת ברשימה המקומית — מצרפים אותה
   if(!(S.waConvs||[]).some(c=>c.phone===phone)){
