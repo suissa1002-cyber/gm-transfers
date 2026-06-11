@@ -375,6 +375,13 @@
   .wa-note .by{font-size:11px;color:var(--muted);margin-top:3px;display:flex;justify-content:space-between}
   .wa-gal{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}
   .wa-gal img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;border:1px solid var(--line);cursor:zoom-in}
+  .wa-lb{position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:120;display:flex;
+         align-items:center;justify-content:center;cursor:zoom-out}
+  .wa-lb img{max-width:94vw;max-height:94vh;border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+  .wa-lb-x{position:fixed;top:16px;inset-inline-end:20px;color:#fff;font-size:26px;cursor:pointer;opacity:.8}
+  .wa-sec{cursor:pointer;user-select:none;display:flex;align-items:center;gap:5px}
+  .wa-sec:hover{color:var(--txt)}
+  .wa-sec .arr{font-size:10px;width:12px;flex:none}
   .wa-note .del{cursor:pointer;color:var(--muted)} .wa-note .del:hover{color:#dc2626}
   @media (max-width:760px){
     .wa-panel{position:absolute;inset:0;background:var(--card);z-index:6;width:auto}
@@ -2154,6 +2161,17 @@ function waThreadHTML(){
 // ── פאנל פרטי פונה: ConnectOp + הזמנות אתר + תגיות + הערות (שלנו) ──
 const WA_STATUS={pending:'ממתין',processing:'בטיפול',completed:'הושלם',cancelled:'בוטל',refunded:'זוכה',failed:'נכשל','on-hold':'בהמתנה'};
 function waTogglePanel(){ S.waPanel=!S.waPanel; renderWaThread(); if(S.waPanel) loadWaContact(); }
+// סקשן מתקפל בפאנל: ברירת מחדל סגור (הזמנות פתוח), מצב נשמר לסשן
+function waSec(key,title,body,count){
+  S.waSecOpen=S.waSecOpen||{orders:true};
+  const open=!!S.waSecOpen[key];
+  return `<h4 class="wa-sec" onclick="waToggleSec('${key}')"><span class="arr">${open?'▾':'◂'}</span> ${title}${count!==undefined?` <span class="muted">(${count})</span>`:''}</h4>
+    <div class="wa-secbody" style="display:${open?'block':'none'}">${body}</div>`;
+}
+function waToggleSec(k){
+  S.waSecOpen=S.waSecOpen||{orders:true}; S.waSecOpen[k]=!S.waSecOpen[k];
+  const p=document.getElementById('waPanelBox'); if(p) p.innerHTML=waPanelHTML();
+}
 function waPanelHTML(){
   const c=S.waContact;
   if(!c || c.phone!==S.waPhone) return '<div class="empty">טוען פרטים…</div>';
@@ -2170,6 +2188,21 @@ function waPanelHTML(){
         </div></a>`).join('');
   const tagOpts=(S.waTags||[]).filter(t=>!(c.tags||[]).some(x=>String(x.id)===String(t.id)))
     .map(t=>`<option value="${t.id}">${escW(t.name)}</option>`).join('');
+  const tagsBody=`
+    <div>${(c.tags||[]).map(t=>`<span class="wa-chip">${escW(t.name)} <b onclick="waDelTag('${t.id}')" title="הסר">✕</b></span>`).join('')||'<span class="muted">אין תגיות</span>'}</div>
+    <div style="display:flex;gap:6px;margin-top:7px">
+      <select id="waTagSel" style="flex:1">${tagOpts?'<option value="">הוסף תג…</option>'+tagOpts:'<option value="">אין תגים פנויים</option>'}</select>
+      <button class="btn-ghost" onclick="waAddTag()">➕</button>
+    </div>`;
+  const notesBody=`
+    ${(c.notes||[]).map(n=>`<div class="wa-note">${escW(n.text)}
+        <div class="by"><span>${escW(n.author||'')} · ${fmtTime(n.created_at)}</span><span class="del" onclick="waDelNote(${n.id})">🗑</span></div></div>`).join('')||'<div class="muted">אין הערות</div>'}
+    <div style="display:flex;gap:6px;margin-top:7px">
+      <input id="waNoteText" placeholder="הערה חדשה…" style="flex:1"
+             onkeydown="if(event.key==='Enter')waAddNote()">
+      <button class="btn-ghost" onclick="waAddNote()">➕</button>
+    </div>`;
+  const mediaCount=S.waMedia&&S.waMedia.phone===S.waPhone?S.waMedia.items.length:undefined;
   return `
     <div style="display:flex;justify-content:space-between;align-items:center">
       <b style="font-size:15px">${escW(ct.full_name||'')}</b>
@@ -2178,24 +2211,11 @@ function waPanelHTML(){
     <div class="muted" style="direction:ltr;text-align:end">+${escW(S.waPhone)}</div>
     ${ct.email?`<div class="muted">📧 ${escW(ct.email)}</div>`:''}
     ${ct.subscribed_date?`<div class="muted" style="font-size:12px">לקוח מאז ${escW(String(ct.subscribed_date).slice(0,10))}</div>`:''}
-    ${c.note_cf?`<h4>📌 NOTE (קונקטופ)</h4><div class="wa-note">${escW(c.note_cf)}</div>`:''}
-    <h4>🛒 הזמנות באתר</h4>${ordersHTML}
-    <h4>🏷️ תגיות</h4>
-    <div>${(c.tags||[]).map(t=>`<span class="wa-chip">${escW(t.name)} <b onclick="waDelTag('${t.id}')" title="הסר">✕</b></span>`).join('')||'<span class="muted">אין תגיות</span>'}</div>
-    <div style="display:flex;gap:6px;margin-top:7px">
-      <select id="waTagSel" style="flex:1">${tagOpts?'<option value="">הוסף תג…</option>'+tagOpts:'<option value="">אין תגים פנויים</option>'}</select>
-      <button class="btn-ghost" onclick="waAddTag()">➕</button>
-    </div>
-    <h4>📝 הערות (GreenOS)</h4>
-    ${(c.notes||[]).map(n=>`<div class="wa-note">${escW(n.text)}
-        <div class="by"><span>${escW(n.author||'')} · ${fmtTime(n.created_at)}</span><span class="del" onclick="waDelNote(${n.id})">🗑</span></div></div>`).join('')||'<div class="muted">אין הערות</div>'}
-    <div style="display:flex;gap:6px;margin-top:7px">
-      <input id="waNoteText" placeholder="הערה חדשה…" style="flex:1"
-             onkeydown="if(event.key==='Enter')waAddNote()">
-      <button class="btn-ghost" onclick="waAddNote()">➕</button>
-    </div>
-    <h4>🖼️ מדיה וקבצים${S.waMedia&&S.waMedia.phone===S.waPhone?` (${S.waMedia.items.length})`:''}</h4>
-    <div id="waMediaBox">${waMediaHTML()}</div>
+    ${c.note_cf?waSec('notecf','📌 NOTE (קונקטופ)',`<div class="wa-note">${escW(c.note_cf)}</div>`):''}
+    ${waSec('orders','🛒 הזמנות באתר',ordersHTML,(c.orders||[]).length)}
+    ${waSec('tags','🏷️ תגיות',tagsBody,(c.tags||[]).length)}
+    ${waSec('notes','📝 הערות (GreenOS)',notesBody,(c.notes||[]).length)}
+    ${waSec('media','🖼️ מדיה וקבצים',`<div id="waMediaBox">${waMediaHTML()}</div>`,mediaCount)}
     <h4>⚙️ פעולות</h4>
     <button class="btn-ghost" onclick="waExport()" style="width:100%">⬇️ ייצוא שיחה לקובץ</button>`;
 }
@@ -2207,7 +2227,7 @@ function waMediaHTML(){
   const imgs=items.filter(x=>x.type==='image'||x.type==='sticker');
   const other=items.filter(x=>x.type!=='image'&&x.type!=='sticker');
   return `
-    ${imgs.length?`<div class="wa-gal">${imgs.map(x=>`<a href="${escW(x.url)}" target="_blank" title="${x.ts?fmtTime(new Date(x.ts*1000).toISOString()):''}"><img src="${escW(x.url)}" loading="lazy"></a>`).join('')}</div>`:''}
+    ${imgs.length?`<div class="wa-gal">${imgs.map(x=>`<img src="${escW(x.url)}" loading="lazy" onclick="waLightbox('${escW(x.url)}')" title="${x.ts?fmtTime(new Date(x.ts*1000).toISOString()):''}">`).join('')}</div>`:''}
     ${other.map(x=>`<a class="wa-doc" style="display:block;margin-top:5px" href="${escW(x.url)}" target="_blank">
       ${x.type==='video'?'🎬':x.type==='audio'?'🎵':'📎'} ${escW(x.caption||x.type)} <span class="muted" style="font-size:11px">${x.ts?fmtTime(new Date(x.ts*1000).toISOString()):''}</span></a>`).join('')}`;
 }
@@ -2271,10 +2291,18 @@ function waExport(){
   a.download=`whatsapp_${S.waPhone}_${new Date().toISOString().slice(0,10)}.txt`;
   a.click(); URL.revokeObjectURL(a.href);
 }
+function waLightbox(url){
+  const d=document.createElement('div'); d.className='wa-lb';
+  d.onclick=()=>d.remove();
+  d.innerHTML=`<img src="${escW(url)}"><span class="wa-lb-x">✕</span>`;
+  const esc=e=>{ if(e.key==='Escape'){ d.remove(); document.removeEventListener('keydown',esc); } };
+  document.addEventListener('keydown',esc);
+  document.body.appendChild(d);
+}
 function waBubble(m){
   const media=(m.media||[]).map(x=>{
     if(x.type==='image'||x.type==='sticker')
-      return `<a href="${escW(x.url)}" target="_blank" title="פתח בגודל מלא"><img class="wa-img" src="${escW(x.url)}" loading="lazy" onload="waScrollBottom()"></a>`;
+      return `<img class="wa-img" src="${escW(x.url)}" loading="lazy" onload="waScrollBottom()" onclick="waLightbox('${escW(x.url)}')" title="הגדל">`;
     if(x.type==='video') return `<video class="wa-img" src="${escW(x.url)}" controls preload="metadata"></video>`;
     if(x.type==='audio') return `<audio src="${escW(x.url)}" controls style="max-width:100%"></audio>`;
     return `<a href="${escW(x.url)}" target="_blank" class="wa-doc">📎 ${escW(x.caption||'קובץ מצורף')}</a>`;
