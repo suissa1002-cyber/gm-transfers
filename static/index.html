@@ -327,6 +327,7 @@
   .wa-in{align-self:flex-start;background:var(--card2);border:1px solid var(--line);border-start-start-radius:4px}
   .wa-out{align-self:flex-end;background:rgba(34,197,94,.13);border:1px solid rgba(34,197,94,.32);border-start-end-radius:4px}
   .wa-t{font-size:10.5px;color:var(--muted);margin-top:4px}
+  .wa-mark{font-size:10.5px;color:var(--muted);font-weight:700;margin-bottom:3px}
   .wa-img{max-width:250px;max-height:260px;border-radius:10px;display:block;margin-bottom:4px;cursor:zoom-in}
   .wa-doc{display:inline-block;background:var(--bg);border:1px solid var(--line);border-radius:9px;
           padding:6px 10px;margin-bottom:4px;text-decoration:none;color:var(--txt);font-size:13px}
@@ -2257,7 +2258,9 @@ function waBubble(m){
   // כשיש מדיה — מסתירים את ה-placeholder הטקסטואלי ([image] וכו'), משאירים caption אמיתי
   let txt=(m.text||'').trim();
   if(media) txt=txt.replace(/\[(image|video|audio|document|file|sticker)[^\]]*\]/g,'').trim();
-  return `<div class="wa-b ${m.direction==='in'?'wa-in':'wa-out'}">${media}${escW(txt)}<div class="wa-t">${m.ts?fmtTime(new Date(m.ts*1000).toISOString()):''}</div></div>`;
+  const mark=m.kind==='template'?`<div class="wa-mark">📋 תבנית · <span style="direction:ltr">${escW(m.tpl||'')}</span></div>`
+            :m.kind==='interactive'?'<div class="wa-mark">🤖 בוט</div>':'';
+  return `<div class="wa-b ${m.direction==='in'?'wa-in':'wa-out'}">${mark}${media}${escW(txt)}<div class="wa-t">${m.ts?fmtTime(new Date(m.ts*1000).toISOString()):''}</div></div>`;
 }
 // ── 📎 שליחת קובץ + ⚡ תשובות מוכנות ──
 async function waSendFile(inp){

@@ -147,18 +147,60 @@ def _extract_media(content):
     return out
 
 
+def _render_template_block(b):
+    """מרנדר בלוק template להודעה שהלקוח באמת קיבל: גוף התבנית המאושרת
+    עם הפרמטרים שמולאו (שניהם זמינים — הפרמטרים בבלוק, הגוף ב-wa_templates)."""
+    tpl = (b.get("template") or {})
+    name = tpl.get("name") or ""
+    params = []
+    for comp in tpl.get("components", []):
+        if isinstance(comp, dict) and comp.get("type") == "body":
+            params = [p.get("text", "") for p in comp.get("parameters", [])
+                      if isinstance(p, dict) and p.get("type") == "text"]
+    body = ""
+    try:
+        t = next((t for t in wa_templates() if t["id"] == name), None)
+        body = (t or {}).get("body") or ""
+    except Exception:  # noqa: BLE001
+        body = ""
+    if not body:
+        return f"[template:{name}]", name
+    for i, p in enumerate(params, 1):
+        body = body.replace("{{%d}}" % i, str(p))
+    return body, name
+
+
 def get_thread(phone: str, limit: int = 60):
     """שיחה מפוענחת (ישן→חדש) + מצב חלון 24ש."""
     msgs = _dash_call(_dash().get_conversation, phone, limit=limit)
     msgs = list(reversed(msgs))  # הדשבורד מחזיר חדש→ישן
-    slim = [{
-        "id": m.get("id"),
-        "direction": m.get("direction"),
-        "text": m.get("text") or "",
-        "media": _extract_media(m.get("content")),
-        "ts": m.get("ts") or 0,
-        "sent_by": m.get("sent_by"),
-    } for m in msgs]
+    slim = []
+    for m in msgs:
+        text = m.get("text") or ""
+        kind = tpl_name = None
+        content = m.get("content")
+        if isinstance(content, list):
+            for b in content:
+                if not isinstance(b, dict):
+                    continue
+                if b.get("type") == "template":
+                    text, tpl_name = _render_template_block(b)
+                    kind = "template"
+                    break
+                if b.get("type") == "interactive":
+                    kind = "interactive"
+        if kind == "interactive":
+            text = text.replace("[interactive]", "", 1).strip()
+        slim.append({
+            "id": m.get("id"),
+            "direction": m.get("direction"),
+            "text": text,
+            "kind": kind,
+            "tpl": tpl_name,
+            "media": _extract_media(content),
+            "ts": m.get("ts") or 0,
+            "sent_by": m.get("sent_by"),
+        })
     return {"phone": phone, "messages": slim, "window": _window_state(slim)}
 
 
