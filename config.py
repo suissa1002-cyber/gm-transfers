@@ -57,7 +57,7 @@ ADMIN_BRANCH_ID = 5  # "אתר" = קונסולת הניהול
 
 # ── כללי ──
 TZ = os.getenv("TZ", "Asia/Jerusalem")
-APP_TITLE = "Green Mobile — קליטת העברות"
+APP_TITLE = "GreenOS — Green Mobile"
 # כתובת ציבורית של האפליקציה (ל-deep links בהתראות). ב-Render: ה-URL של השירות.
 APP_BASE_URL = os.getenv("APP_BASE_URL", "").rstrip("/")
 

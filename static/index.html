@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Green Mobile — קליטת העברות</title>
+<title>GreenOS — Green Mobile</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='88'%3E📦%3C/text%3E%3C/svg%3E">
 <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='52' font-size='62' text-anchor='middle' dominant-baseline='central'%3E📦%3C/text%3E%3C/svg%3E">
 <style>
@@ -337,7 +337,7 @@
 <header>
   <div style="display:flex;align-items:center;gap:12px">
     <button class="burger" id="burgerBtn" style="display:none" onclick="toggleDrawer(true)" title="תפריט ניהול אופרציה">☰</button>
-    <div class="brand">📦 קליטת העברות</div>
+    <div class="brand">🟢 GreenOS</div>
   </div>
   <div class="right" id="hdr" style="display:none">
     <button class="btn-ghost" id="adminBtn" style="display:none" onclick="toggleAdmin()">🛠️<span class="hlbl"> ניהול</span></button>
@@ -754,7 +754,7 @@ function renderDrawer(){
   const act=(v)=>S.view===v?'active':'';
   const lock=(S.cfg.admin_required&&!S.adminKey)?' 🔒':'';
   d.innerHTML=`
-    <div class="dr-head"><span>🛠️ מרכז ניהול אופרציה</span><button class="dr-x" onclick="toggleDrawer(false)">✕</button></div>
+    <div class="dr-head"><span>🟢 GreenOS — ניהול אופרציה</span><button class="dr-x" onclick="toggleDrawer(false)">✕</button></div>
     <div class="dr-sec">קליטת העברות</div>
     <div class="dr-item ${S.view==='board'||S.view==='scan'?'active':''}" onclick="hubGo('board')"><span>📦</span><span>לוח קליטה</span></div>
     <div class="dr-item ${act('admin')}" onclick="hubGo('admin')"><span>🛠️</span><span>קונסולת ניהול${lock}</span></div>
@@ -767,7 +767,7 @@ function renderDrawer(){
         <span>${a.icon}</span><span>${a.title}${lock}</span>
         <a class="dr-ext" href="${a.url}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="פתח בחלון נפרד">↗</a>
       </div>`).join('')}
-    <div class="dr-foot">Green Mobile · Ops Hub</div>`;
+    <div class="dr-foot">Green Mobile · GreenOS</div>`;
 }
 let _hubWarmed=false;
 function toggleDrawer(open){
