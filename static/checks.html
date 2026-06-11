@@ -1879,10 +1879,18 @@
         }
 
         // Fetch data from Monday.com API
+        // מצב בעלים: קישור עם ?k= שומר מפתח צ'קים ייעודי (גישה לצ'קים בלבד)
+        (function(){
+            const u=new URL(location.href);
+            const k=u.searchParams.get('k');
+            if(k){ localStorage.setItem('tr_checks_key',k); localStorage.setItem('checks_owner','1');
+                   u.searchParams.delete('k'); history.replaceState(null,'',u.pathname); }
+        })();
         function gmKey(force){
+            if(localStorage.getItem('tr_checks_key')&&!force) return localStorage.getItem('tr_checks_key');
             let k=localStorage.getItem('tr_admin_key');
-            if(!k||force){ k=prompt('🔐 סיסמת ניהול Green Mobile:')||'';
-                if(k) localStorage.setItem('tr_admin_key',k); }
+            if(!k||force){ k=prompt('🔐 סיסמת גישה:')||'';
+                if(k) localStorage.setItem('tr_checks_key',k); }
             return k;
         }
         async function fetchFromMonday(query, _retry) {
@@ -1892,12 +1900,13 @@
                 headers: {
                     'Content-Type': 'application/json',
                     'X-Admin-Key': localStorage.getItem('tr_admin_key')||'',
+                    'X-Checks-Key': localStorage.getItem('tr_checks_key')||'',
                     'API-Version': '2024-10'
                 },
                 body: JSON.stringify({ query })
             });
             if (response.status === 401 && !_retry) {
-                localStorage.removeItem('tr_admin_key');
+                localStorage.removeItem('tr_checks_key');
                 gmKey(true);
                 return fetchFromMonday(query, true);
             }
@@ -2795,6 +2804,7 @@
             loadData();
         }, 5 * 60 * 1000);
     </script>
-<a href="/" style="position:fixed;bottom:18px;inset-inline-start:18px;z-index:9999;background:#1f2440;color:#fff;text-decoration:none;padding:10px 16px;border-radius:12px;font-weight:700;box-shadow:0 6px 20px rgba(0,0,0,.25);font-family:inherit">⬅ GreenOS</a>
+<a href="/" id="gmHubBtn" style="position:fixed;bottom:18px;inset-inline-start:18px;z-index:9999;background:#1f2440;color:#fff;text-decoration:none;padding:10px 16px;border-radius:12px;font-weight:700;box-shadow:0 6px 20px rgba(0,0,0,.25);font-family:inherit">⬅ GreenOS</a>
+<script>if(localStorage.getItem('checks_owner')==='1'){var b=document.getElementById('gmHubBtn');if(b)b.style.display='none';}</script>
 </body>
 </html>

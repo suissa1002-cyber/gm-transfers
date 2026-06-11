@@ -944,9 +944,15 @@ def checks_page():
 
 
 @app.post("/api/checks/gql")
-async def checks_gql(request: Request, x_admin_key: Optional[str] = Header(None)):
-    """GraphQL passthrough לבורד הצ'קים — אדמין בלבד; הטוקן נשאר בשרת."""
-    _require_admin(x_admin_key)
+async def checks_gql(request: Request, x_admin_key: Optional[str] = Header(None),
+                     x_checks_key: Optional[str] = Header(None)):
+    """GraphQL passthrough לבורד הצ'קים — אדמין, או מפתח צ'קים ייעודי (לבעלים,
+    גישה לצ'קים בלבד בלי שום כניסה ל-GreenOS)."""
+    checks_pw = os.getenv("CHECKS_PASSWORD", "").strip()
+    admin_ok = (not cfg.ADMIN_PASSWORD) or (x_admin_key or "") == cfg.ADMIN_PASSWORD
+    checks_ok = bool(checks_pw) and (x_checks_key or "") == checks_pw
+    if not (admin_ok or checks_ok):
+        raise HTTPException(401, "checks auth required")
     import monday_proxy
     if not monday_proxy.available():
         raise HTTPException(400, "MONDAY_API_TOKEN לא מוגדר")
