@@ -1500,6 +1500,33 @@ def bridge_answer(body: UriAnswer, x_bridge_key: Optional[str] = Header(None)):
     return {"ok": True}
 
 
+@app.get("/api/uri-bridge/context/{phone}")
+def bridge_context(phone: str, x_bridge_key: Optional[str] = Header(None)):
+    """הקשר מוכן לאורי: הערות GreenOS (הזיכרון המצטבר על הלקוח) + הזמנות אתר —
+    מוזרק ל-prompt כדי לחסוך סבבי בדיקות (מהירות) ולשמר למידה."""
+    _require_bridge(x_bridge_key)
+    import wa
+    try:
+        orders = wa._wc_orders_by_phone(phone) or []
+    except Exception:  # noqa: BLE001
+        orders = []
+    return {"notes": db.wa_notes_list(phone), "orders": orders,
+            "star": phone in db.wa_stars()}
+
+
+class BridgeNote(BaseModel):
+    phone: str
+    text: str
+
+
+@app.post("/api/uri-bridge/note")
+def bridge_note(body: BridgeNote, x_bridge_key: Optional[str] = Header(None)):
+    """אורי לומד: שומר תובנה על הלקוח כהערה ב-GreenOS (מופיעה בפאנל ℹ️)."""
+    _require_bridge(x_bridge_key)
+    nid = db.wa_note_add(body.phone, body.text.strip()[:400], "אורי ✨")
+    return {"ok": True, "id": nid}
+
+
 # ── Web Push (PWA) — התראות וואטסאפ כשהאפליקציה סגורה ──
 class WaPushSub(BaseModel):
     sub: dict
