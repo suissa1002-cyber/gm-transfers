@@ -1148,7 +1148,7 @@ function render(){
 function branchTabsHTML(){
   const live=S.branchTab==='live';
   return `<div class="tabs">
-    <button class="${live?'':'active'}" onclick="setBranchTab('board')">📥 קליטת העברות</button>
+    <button class="${live?'':'active'}" onclick="setBranchTab('board')">${ico('inbox',15)} קליטת העברות</button>
     <button class="${live?'active':''}" onclick="setBranchTab('live')">🔎 מלאי חי</button>
   </div>`;
 }
@@ -1196,7 +1196,7 @@ async function renderBoard(app, silent){
   // קולד-סטארט (Render Free נרדם): הבקשה נכשלה כי השרת מתעורר — מציגים חיווי ומנסים שוב מהר
   if(loadErr && S.view==='board'){
     S._wakeTries=(S._wakeTries||0)+1;
-    app.innerHTML=`<h1 class="title">📥 קליטת מכשירים נכנסים</h1>
+    app.innerHTML=`<h1 class="title" style="display:flex;align-items:center;gap:8px">${ico('inbox',19)} קליטת מכשירים נכנסים</h1>
       <div class="empty" style="padding-top:50px">⏳ מתחבר לשרת…<br>
       <span class="muted" style="font-size:14px">בכניסה ראשונה זה לוקח עד דקה (השרת מתעורר). מתחבר אוטומטית${S._wakeTries>1?` · ניסיון ${S._wakeTries}`:''}.</span></div>`;
     clearTimeout(S._wakeT);
@@ -1229,7 +1229,7 @@ async function renderBoard(app, silent){
     : `<div class="lastscan idle">המכשיר האחרון שתסרוק יוצג כאן</div>`);
   app.innerHTML=`
     ${branchTabsHTML()}
-    <h1 class="title">📥 קליטת מכשירים נכנסים</h1>
+    <h1 class="title" style="display:flex;align-items:center;gap:8px">${ico('inbox',19)} קליטת מכשירים נכנסים</h1>
     <div style="text-align:center">${notifBtn}</div>
     ${bcHtml}
     <div class="panel board-scan">
@@ -2301,7 +2301,7 @@ function waUriMsgHTML(m,idx){
     return `<div class="wa-uri-a" style="border-color:#dc2626">❌ ${escW(m.text||'שגיאה')}</div>`;
   return `<div class="wa-uri-a">${escW(m.text)}
     <div style="display:flex;gap:6px;margin-top:7px">
-      <button class="btn-ghost" style="padding:4px 9px;font-size:12px" onclick="waUriToReply(${idx})">📥 לתיבת המענה</button>
+      <button class="btn-ghost" style="padding:4px 9px;font-size:12px;display:inline-flex;align-items:center;gap:5px" onclick="waUriToReply(${idx})">${ico('download',13)} לתיבת המענה</button>
       <button class="btn-ghost" style="padding:4px 9px;font-size:12px" onclick="navigator.clipboard.writeText(S.waUriChats[S.waPhone][${idx}].text);toast('הועתק ✓',true)">📋</button>
     </div></div>`;
 }
@@ -2543,6 +2543,7 @@ const _IPATHS={
   shield:'<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
   receipt:'<path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><line x1="8" y1="8" x2="16" y2="8"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="16" x2="13" y2="16"/>',
   bank:'<line x1="3" y1="22" x2="21" y2="22"/><line x1="6" y1="18" x2="6" y2="11"/><line x1="10" y1="18" x2="10" y2="11"/><line x1="14" y1="18" x2="14" y2="11"/><line x1="18" y1="18" x2="18" y2="11"/><polygon points="12 2 20 7 4 7"/>',
+  inbox:'<polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>',
 };
 function ico(name, size, fill){
   return `<svg width="${size||17}" height="${size||17}" viewBox="0 0 24 24" fill="${fill?'currentColor':'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block">${_IPATHS[name]||''}</svg>`;
@@ -2665,7 +2666,7 @@ function waPaintCanned(){
     </div>
     <input id="waCannedQ" placeholder="🔎 סינון…" value="${escW(S.waCannedQ||'')}" oninput="S.waCannedQ=this.value;waPaintCanned();document.getElementById('waCannedQ').focus()"
            style="width:100%;margin-bottom:6px;padding:6px 9px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--txt)">
-    ${cop.length?`<div class="muted" style="font-size:11px;margin:4px 0">📥 מקונקטופ (${cop.length})</div>`+cop.map(c=>waCannedRow(c,'cop')).join(''):''}
+    ${cop.length?`<div class="muted" style="font-size:11px;margin:4px 0">מקונקטופ (${cop.length})</div>`+cop.map(c=>waCannedRow(c,'cop')).join(''):''}
     ${ours.length?`<div class="muted" style="font-size:11px;margin:6px 0 4px">🟢 GreenOS (${ours.length})</div>`+ours.map(c=>waCannedRow(c,'gm')).join(''):''}
     ${!cop.length&&!ours.length?'<div class="muted" style="padding:6px">אין תוצאות</div>':''}`;
 }
