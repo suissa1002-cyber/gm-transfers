@@ -337,14 +337,8 @@
   .wa-quote{border-inline-start:3px solid #16a34a;background:rgba(0,0,0,.06);border-radius:8px;
             padding:5px 9px;margin-bottom:6px;font-size:12px;color:var(--muted);
             overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
-  /* כפתור ↩ להשבה — אייקון נקי שצף מחוץ לבועה, בלי רקע (לא נוגע בבועה) */
-  .wa-rep{position:absolute;top:50%;transform:translateY(-50%);cursor:pointer;font-size:16px;
-          color:var(--muted);opacity:0;transition:opacity .15s;line-height:1;padding:4px}
-  .wa-in .wa-rep{inset-inline-end:-28px}
-  .wa-out .wa-rep{inset-inline-start:-28px}
-  .wa-b:hover .wa-rep{opacity:.85}
-  .wa-rep:hover{color:var(--txt)}
-  @media (pointer:coarse){ .wa-rep{opacity:.5} }
+  /* reply בלחיצה ארוכה: במובייל מנטרלים את תפריט המגע של הדפדפן על הבועות */
+  @media (pointer:coarse){ .wa-b{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none} }
   .wa-replybar{display:flex;align-items:center;gap:8px;max-width:920px;width:100%;margin-inline:auto;
                padding:7px 12px;border-top:1px solid var(--line);background:var(--card2);
                font-size:12.5px;color:var(--muted)}
@@ -3287,8 +3281,36 @@ function waBubble(m){
             :m.kind==='interactive'?'<div class="wa-mark">🤖 בוט</div>':'';
   // ציטוט (reply): הודעה שמגיבה להודעה ספציפית — מציגים את הקטע המצוטט בראש הבועה
   const quote=m.reply_to?`<div class="wa-quote" ${m.reply_preview?'':'style="opacity:.6"'}>${escW(m.reply_preview||'הודעה קודמת')}</div>`:'';
-  const replyBtn=m.id?`<span class="wa-rep" title="השב להודעה זו (reply)" onclick='waReplySet(${JSON.stringify(String(m.id))},${JSON.stringify(String((m.text||"").slice(0,90)))})'>↩</span>`:'';
-  return `<div class="wa-b ${m.direction==='in'?'wa-in':'wa-out'}">${replyBtn}${mark}${quote}${media}${escW(txt)}<div class="wa-t">${m.ts?fmtTime(new Date(m.ts*1000).toISOString()):''}</div></div>`;
+  // לחיצה ארוכה (מובייל) / קליק ימני (דסקטופ) על הבועה ← תפריט השב/העתק
+  const press=m.id?` data-mid="${escW(String(m.id))}" data-prev="${escW(String((m.text||'').slice(0,90)))}" data-full="${escW(String(m.text||''))}"
+    onpointerdown="waBubPress(event,this)" onpointerup="waBubRelease()" onpointercancel="waBubRelease()"
+    onpointermove="waBubMove(event)" oncontextmenu="waBubCtx(event,this)"`:'';
+  return `<div class="wa-b ${m.direction==='in'?'wa-in':'wa-out'}"${press}>${mark}${quote}${media}${escW(txt)}<div class="wa-t">${m.ts?fmtTime(new Date(m.ts*1000).toISOString()):''}</div></div>`;
+}
+let _bubT=null,_bubXY=null;
+function waBubPress(e,el){
+  waBubRelease(); _bubXY=[e.clientX,e.clientY];
+  _bubT=setTimeout(()=>{ _bubT=null; waReplyMenu(e.clientX,e.clientY,el.dataset.mid,el.dataset.prev,el.dataset.full); },450);
+}
+function waBubMove(e){ if(_bubT&&_bubXY&&(Math.abs(e.clientX-_bubXY[0])>8||Math.abs(e.clientY-_bubXY[1])>8)) waBubRelease(); }
+function waBubRelease(){ if(_bubT){ clearTimeout(_bubT); _bubT=null; } }
+function waBubCtx(e,el){ e.preventDefault(); waReplyMenu(e.clientX,e.clientY,el.dataset.mid,el.dataset.prev,el.dataset.full); }
+function waReplyMenu(x,y,mid,prev,full){
+  const old=document.getElementById('waBubMenu'); if(old) old.remove();
+  const wrap=document.createElement('div');
+  wrap.id='waBubMenu';
+  wrap.style.cssText='position:fixed;inset:0;z-index:130';
+  wrap.onclick=()=>wrap.remove();
+  const mx=Math.min(Math.max(10,x-70),window.innerWidth-160);
+  const my=Math.min(Math.max(10,y-90),window.innerHeight-110);
+  wrap.innerHTML=`<div style="position:fixed;left:${mx}px;top:${my}px;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 34px rgba(0,0,0,.3);overflow:hidden;min-width:150px" onclick="event.stopPropagation()">
+    <div style="padding:11px 15px;cursor:pointer;font-size:14px;display:flex;align-items:center;gap:9px" onmouseover="this.style.background='var(--card2)'" onmouseout="this.style.background=''"
+         onclick="document.getElementById('waBubMenu').remove();waReplySet('${escW(mid||'')}','${escW(prev||'')}')">↩ השב להודעה</div>
+    <div style="padding:11px 15px;cursor:pointer;font-size:14px;display:flex;align-items:center;gap:9px;border-top:1px solid var(--line)" onmouseover="this.style.background='var(--card2)'" onmouseout="this.style.background=''"
+         onclick="navigator.clipboard.writeText(this.parentElement.dataset.full||'');document.getElementById('waBubMenu').remove();toast('הועתק ✓',true)">📋 העתק</div>
+  </div>`;
+  wrap.firstElementChild.dataset.full=full||prev||'';
+  document.body.appendChild(wrap);
 }
 function waReplySet(id,preview){
   S.waReplyTo={id, preview};
