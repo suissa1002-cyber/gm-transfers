@@ -1905,6 +1905,132 @@ async def payplus_ipn(request: Request):
     return {"ok": ok, "order": int(order_id)}
 
 
+# ── טאב הזמנות: חלון מלא להזמנות WooCommerce (קריאה/עריכה דרך REST של האתר) ──
+# הנתונים יושבים ב-WC בלבד — אנחנו פרוקסי דק, עמוד-עמוד, בלי אחסון אצלנו.
+
+@app.get("/api/admin/orders")
+def admin_orders_list(page: int = 1, status: str = "", search: str = "",
+                      x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    import requests as _rq
+    creds = _wc_creds()
+    if not creds:
+        raise HTTPException(502, "חיבור WooCommerce לא מוגדר")
+    base, k, s = creds
+    params = {"per_page": 25, "page": max(1, page), "orderby": "date", "order": "desc"}
+    if status.strip():
+        params["status"] = status.strip()
+    if search.strip():
+        q = search.strip()
+        # טלפון — מחפשים לפי הליבה בלי קידומת (תופס 05X וגם 972X)
+        digits = "".join(ch for ch in q if ch.isdigit())
+        if digits and len(digits) >= 7 and len(digits) >= len(q) - 3:
+            import re as _re
+            q = _re.sub(r"^(?:972|0)", "", digits)
+        params["search"] = q
+    r = _rq.get(f"{base}/wp-json/wc/v3/orders", params=params, auth=(k, s), timeout=45)
+    if not r.ok:
+        raise HTTPException(502, f"קריאת הזמנות נכשלה ({r.status_code})")
+    out = []
+    for o in r.json():
+        meta = {m.get("key"): m.get("value") for m in (o.get("meta_data") or [])}
+        items = o.get("line_items") or []
+        out.append({
+            "id": o.get("id"), "number": o.get("number"), "status": o.get("status"),
+            "date": o.get("date_created"), "total": o.get("total"),
+            "currency": o.get("currency_symbol") or "₪",
+            "name": f"{o['billing'].get('first_name','')} {o['billing'].get('last_name','')}".strip(),
+            "phone": o["billing"].get("phone") or "",
+            "city": o["billing"].get("city") or "",
+            "items_n": sum(int(li.get("quantity") or 1) for li in items),
+            "items": ", ".join((li.get("name") or "")[:40] for li in items[:3]),
+            "payment": o.get("payment_method_title") or "",
+            "shipping": ", ".join((sl.get("method_title") or "") for sl in (o.get("shipping_lines") or [])),
+            "greenos": bool(meta.get("greenos_source")),
+            "cargo": bool(meta.get("cslfw_shipping")),
+        })
+    return {"orders": out, "page": page,
+            "pages": int(r.headers.get("X-WP-TotalPages") or 1),
+            "total": int(r.headers.get("X-WP-Total") or len(out))}
+
+
+@app.get("/api/admin/orders/{oid}")
+def admin_order_detail(oid: int, x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    import requests as _rq
+    base, k, s = _wc_creds()
+    r = _rq.get(f"{base}/wp-json/wc/v3/orders/{oid}", auth=(k, s), timeout=45)
+    if not r.ok:
+        raise HTTPException(404, "הזמנה לא נמצאה")
+    o = r.json()
+    meta = {m.get("key"): m.get("value") for m in (o.get("meta_data") or [])}
+    notes = []
+    try:
+        rn = _rq.get(f"{base}/wp-json/wc/v3/orders/{oid}/notes", auth=(k, s), timeout=30)
+        if rn.ok:
+            notes = [{"note": n.get("note"), "date": n.get("date_created"),
+                      "customer": bool(n.get("customer_note")), "author": n.get("author") or ""}
+                     for n in rn.json()[:15]]
+    except Exception:  # noqa: BLE001
+        pass
+    return {
+        "id": o.get("id"), "number": o.get("number"), "status": o.get("status"),
+        "date": o.get("date_created"), "date_paid": o.get("date_paid"),
+        "total": o.get("total"), "shipping_total": o.get("shipping_total"),
+        "discount": o.get("discount_total"), "currency": o.get("currency_symbol") or "₪",
+        "payment": o.get("payment_method_title") or "", "tx": o.get("transaction_id") or "",
+        "billing": o.get("billing") or {}, "shipping": o.get("shipping") or {},
+        "customer_note": o.get("customer_note") or "",
+        "items": [{"name": li.get("name"), "qty": li.get("quantity"),
+                   "total": li.get("total"), "sku": li.get("sku") or ""}
+                  for li in (o.get("line_items") or [])],
+        "shipping_lines": [sl.get("method_title") for sl in (o.get("shipping_lines") or [])],
+        "greenos": {kk: vv for kk, vv in meta.items() if str(kk).startswith("greenos")},
+        "cargo": meta.get("cslfw_shipping") or None,
+        "notes": notes,
+        "admin_url": f"{base}/wp-admin/post.php?post={oid}&action=edit",
+    }
+
+
+class OrderStatusIn(BaseModel):
+    status: str
+
+
+@app.post("/api/admin/orders/{oid}/status")
+def admin_order_status(oid: int, body: OrderStatusIn, x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    import requests as _rq
+    allowed = {"pending", "processing", "on-hold", "completed", "cancelled", "refunded", "failed"}
+    if body.status not in allowed:
+        raise HTTPException(400, "סטטוס לא מוכר")
+    base, k, s = _wc_creds()
+    r = _rq.put(f"{base}/wp-json/wc/v3/orders/{oid}", json={"status": body.status},
+                auth=(k, s), timeout=45)
+    if not r.ok:
+        raise HTTPException(502, f"עדכון הסטטוס נכשל ({r.status_code})")
+    return {"ok": True, "status": r.json().get("status")}
+
+
+class OrderNoteIn(BaseModel):
+    note: str
+    customer_note: bool = False
+
+
+@app.post("/api/admin/orders/{oid}/note")
+def admin_order_note(oid: int, body: OrderNoteIn, x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    import requests as _rq
+    if not (body.note or "").strip():
+        raise HTTPException(400, "הערה ריקה")
+    base, k, s = _wc_creds()
+    r = _rq.post(f"{base}/wp-json/wc/v3/orders/{oid}/notes",
+                 json={"note": body.note.strip(), "customer_note": bool(body.customer_note)},
+                 auth=(k, s), timeout=30)
+    if not r.ok:
+        raise HTTPException(502, "הוספת ההערה נכשלה")
+    return {"ok": True}
+
+
 # ── תשלום כללי (ללא הזמנת WC): קישור PayPlus חופשי מהמגירה ──
 class PayQuick(BaseModel):
     desc: str

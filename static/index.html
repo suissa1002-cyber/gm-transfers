@@ -338,6 +338,10 @@
   .wa-quote{border-inline-start:3px solid #16a34a;background:rgba(0,0,0,.06);border-radius:8px;
             padding:5px 9px;margin-bottom:6px;font-size:12px;color:var(--muted);
             overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+  /* טאב הזמנות: תג סטטוס בסגנון WC + מעבר טבלה/כרטיסים לפי רוחב */
+  .ord-st{display:inline-block;padding:3px 11px;border-radius:999px;border:1px solid;font-size:12px;font-weight:700;white-space:nowrap}
+  .wco-cards{display:none}
+  @media (max-width:760px){ .wco-table{display:none} .wco-cards{display:block} }
   /* reply בלחיצה ארוכה: במובייל מנטרלים את תפריט המגע של הדפדפן על הבועות */
   @media (pointer:coarse){ .wa-b{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none} }
   .wa-replybar{display:flex;align-items:center;gap:8px;max-width:920px;width:100%;margin-inline:auto;
@@ -1540,6 +1544,7 @@ function adminTabsHTML(){
     <button class="${base}" onclick="setAdminTab('transfers')">${ico('pkg',15)} העברות</button>
     <button class="${a('live')}" onclick="setAdminTab('live')">${ico('search',15)} מלאי חי</button>
     <button class="${a('wa')}" onclick="setAdminTab('wa')">${ico('chat',15)} וואטסאפ</button>
+    <button class="${a('wcorders')}" onclick="setAdminTab('wcorders')">${ico('receipt',15)} הזמנות</button>
     <div class="tabgroup">
       <button class="${a('rebalance')}" onclick="setAdminTab('rebalance')">${ico('scale',15)} איזון מלאי</button>
       <button class="${a('plan')}" onclick="setAdminTab('plan')">${ico('pencil',15)} בקשות העברה${pc}</button>
@@ -1560,6 +1565,7 @@ function setAdminTab(tab){
   else if(tab==='reco'){ if(!S.recoData) loadReco(true); else renderReco(); }
   else if(tab==='order'){ loadOrder(true); }
   else if(tab==='removals'){ if(!S.removalsData) loadRemovals(true); else renderRemovals(); }
+  else if(tab==='wcorders'){ renderWcOrders(); }
   else if(tab==='wa'){ if(!S.waConvs) loadWa(true); else renderWa(); }
   else renderAdmin();
 }
@@ -4275,6 +4281,155 @@ async function lsSendTransfer(){
   renderLiveDetail();
 }
 
+// ── 🧾 טאב הזמנות: חלון מלא להזמנות האתר (קריאה/עריכה דרך WC REST, בלי אחסון אצלנו) ──
+const WC_ST_COLORS={pending:'#b45309',processing:'#15803d','on-hold':'#b45309',completed:'#1d4ed8',
+                    cancelled:'#6b7280',refunded:'#6b7280',failed:'#b91c1c'};
+function ordTag(st){
+  const c=WC_ST_COLORS[st]||'#6b7280';
+  return `<span class="ord-st" style="color:${c};border-color:${c}55;background:${c}14">${WA_STATUS[st]||st}</span>`;
+}
+function renderWcOrders(){
+  const app=document.getElementById('app');
+  S.wco=S.wco||{page:1,status:'',q:'',rows:null,pages:1,total:0,loading:false};
+  const W=S.wco;
+  const chips=[['','הכל'],['processing','בטיפול'],['pending','ממתין'],['on-hold','בהמתנה'],
+               ['completed','הושלם'],['cancelled','בוטל'],['refunded','זוכה']]
+    .map(([k,t])=>`<button class="btn-ghost" style="padding:6px 12px;font-size:13px${W.status===k?';border-color:#16a34a;color:#16a34a;font-weight:700':''}"
+      onclick="S.wco.status='${k}';S.wco.page=1;loadWcOrders()">${t}</button>`).join('');
+  app.innerHTML=`
+    <h1 class="title" style="display:flex;align-items:center;gap:8px">${ico('wrench',19)} ניהול אופרציה</h1>${adminTabsHTML()}
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+      <input id="wcoQ" placeholder="חיפוש — שם / טלפון / מס׳ הזמנה / אימייל" value="${escW(W.q)}"
+             style="flex:1;min-width:200px;padding:9px 12px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--txt);font-size:14px"
+             oninput="clearTimeout(S._wcoT);S._wcoT=setTimeout(()=>{S.wco.q=this.value;S.wco.page=1;loadWcOrders()},450)" onkeydown="if(event.key==='Enter'){S.wco.q=this.value;S.wco.page=1;loadWcOrders()}">
+      <button class="btn-ghost wa-ico" onclick="loadWcOrders()" title="רענן">${ico('refresh',15)}</button>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">${chips}</div>
+    <div id="wcoList">${W.rows===null?'<div class="empty">טוען הזמנות…</div>':wcoListHTML()}</div>`;
+  if(W.rows===null) loadWcOrders();
+}
+async function loadWcOrders(){
+  const W=S.wco; W.loading=true;
+  const box=document.getElementById('wcoList');
+  if(box&&W.rows===null) box.innerHTML='<div class="empty">טוען הזמנות…</div>';
+  try{
+    const r=await api('/api/admin/orders?page='+W.page+'&status='+encodeURIComponent(W.status)+'&search='+encodeURIComponent(W.q),null,60000);
+    W.rows=r.orders; W.pages=r.pages; W.total=r.total;
+  }catch(e){ W.rows=[]; toast('טעינת הזמנות נכשלה',false); }
+  W.loading=false;
+  const b2=document.getElementById('wcoList'); if(b2) b2.innerHTML=wcoListHTML();
+}
+function wcoListHTML(){
+  const W=S.wco;
+  if(!(W.rows||[]).length) return '<div class="empty">אין הזמנות תואמות</div>';
+  const fmtD=d=>{ const x=new Date(d); return isNaN(x)?'':x.toLocaleDateString('he-IL')+' '+x.toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'}); };
+  const rows=W.rows.map(o=>`
+    <tr class="ls-row" onclick="openWcOrder(${o.id})">
+      <td><b>#${o.number}</b>${o.greenos?' <span title="נוצרה ב-GreenOS" style="color:#16a34a">●</span>':''}</td>
+      <td class="muted" style="font-size:12px;white-space:nowrap">${fmtD(o.date)}</td>
+      <td><b>${escW(o.name||'—')}</b><div class="muted" style="font-size:11.5px;direction:ltr;text-align:end">${escW(o.phone||'')}</div></td>
+      <td class="muted" style="font-size:12px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(o.items||'')}${o.items_n>1?` <b>(${o.items_n})</b>`:''}</td>
+      <td style="white-space:nowrap"><b>${o.currency}${Number(o.total).toLocaleString('he-IL')}</b></td>
+      <td>${ordTag(o.status)}</td>
+      <td class="muted" style="font-size:11.5px">${escW(o.shipping||'')}${o.cargo?' 🚚':''}</td>
+    </tr>`).join('');
+  const cards=W.rows.map(o=>`
+    <div class="ls-card" onclick="openWcOrder(${o.id})">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <b>#${o.number} · ${escW(o.name||'—')}</b>${ordTag(o.status)}
+      </div>
+      <div class="muted" style="font-size:12px;margin-top:3px">${escW(o.items||'')}</div>
+      <div style="display:flex;justify-content:space-between;margin-top:5px;font-size:13px">
+        <b>${o.currency}${Number(o.total).toLocaleString('he-IL')}</b>
+        <span class="muted" style="font-size:11.5px">${fmtD(o.date)}</span>
+      </div>
+    </div>`).join('');
+  const pager=W.pages>1?`<div style="display:flex;gap:8px;align-items:center;justify-content:center;margin-top:12px">
+    <button class="btn-ghost" ${W.page>=W.pages?'disabled':''} onclick="S.wco.page++;loadWcOrders()">הבא ←</button>
+    <span class="muted" style="font-size:13px">עמוד ${W.page} מתוך ${W.pages} · ${W.total} הזמנות</span>
+    <button class="btn-ghost" ${W.page<=1?'disabled':''} onclick="S.wco.page--;loadWcOrders()">→ הקודם</button>
+  </div>`:'';
+  return `<div class="wco-table"><table class="serials" style="width:100%"><thead>
+    <tr><th>#</th><th>תאריך</th><th>לקוח</th><th>פריטים</th><th>סה״כ</th><th>סטטוס</th><th>משלוח</th></tr>
+    </thead><tbody>${rows}</tbody></table></div>
+    <div class="wco-cards">${cards}</div>${pager}`;
+}
+async function openWcOrder(oid){
+  showLoading('טוען הזמנה…');
+  let d=null;
+  try{ d=await api('/api/admin/orders/'+oid,null,60000); }catch(e){}
+  hideLoading();
+  if(!d){ toast('טעינת ההזמנה נכשלה',false); return; }
+  S._wcoD=d;
+  paintWcOrder();
+}
+function paintWcOrder(){
+  const d=S._wcoD; if(!d) return;
+  const fmt=v=>'₪'+Number(v||0).toLocaleString('he-IL');
+  const fmtD=x=>{ const t=new Date(x); return isNaN(t)?'':t.toLocaleDateString('he-IL')+' '+t.toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'}); };
+  const b=d.billing||{}, sh=d.shipping||{};
+  const phoneIntl=String(b.phone||'').replace(/\D/g,'').replace(/^0/,'972');
+  const gm=d.greenos||{};
+  const stOpts=['pending','processing','on-hold','completed','cancelled','refunded','failed']
+    .map(s=>`<option value="${s}" ${d.status===s?'selected':''}>${WA_STATUS[s]||s}</option>`).join('');
+  document.getElementById('modalRoot').innerHTML=`<div class="overlay" onclick="closeModal()"><div class="modal" style="max-width:620px;text-align:right;max-height:90vh;overflow:auto" onclick="event.stopPropagation()">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+      <b style="font-size:17px">הזמנה #${d.number}</b>
+      <span style="display:flex;gap:7px;align-items:center">${ordTag(d.status)}
+        <button class="dr-x" onclick="closeModal()">✕</button></span>
+    </div>
+    <div class="muted" style="font-size:12px;margin:2px 0 10px">${fmtD(d.date)}${d.date_paid?` · שולם ${fmtD(d.date_paid)}`:''}${d.payment?` · ${escW(d.payment)}`:''}${d.tx?` · עסקה <span style="direction:ltr;font-family:monospace">${escW(String(d.tx).slice(0,18))}</span>`:''}</div>
+    <div style="background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:10px">
+      <b>${escW((b.first_name||'')+' '+(b.last_name||''))}</b>${b.company?` · ${escW(b.company)}`:''}
+      <div class="muted" style="font-size:12.5px;direction:ltr;text-align:end">${escW(b.phone||'')}${b.email?` · ${escW(b.email)}`:''}</div>
+      ${(b.address_1||b.city)?`<div class="muted" style="font-size:12.5px">חיוב: ${escW(b.address_1||'')} ${escW(b.city||'')}</div>`:''}
+      ${(sh.address_1||sh.city)?`<div class="muted" style="font-size:12.5px">משלוח: ${escW(sh.address_1||'')} ${escW(sh.city||'')}</div>`:''}
+      ${(d.shipping_lines||[]).length?`<div class="muted" style="font-size:12.5px">🚚 ${escW(d.shipping_lines.join(', '))}</div>`:''}
+      ${phoneIntl.length>10?`<button class="btn-ghost" style="margin-top:6px;padding:4px 10px;font-size:12px" onclick="closeModal();setAdminTab('wa');setTimeout(()=>openWaConv('${phoneIntl}'),600)">${ico('chat',13)} פתח שיחה בוואטסאפ</button>`:''}
+    </div>
+    ${(d.items||[]).map(it=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:7px 4px;border-bottom:1px solid var(--line);font-size:13.5px">
+      <span style="flex:1;min-width:0">${escW(it.name)}${it.sku?` <span class="muted" style="font-size:11px;direction:ltr;font-family:monospace">${escW(it.sku)}</span>`:''} ×${it.qty}</span>
+      <b style="white-space:nowrap">${fmt(it.total)}</b></div>`).join('')}
+    <div style="display:flex;justify-content:space-between;padding:9px 4px;font-size:14.5px">
+      <span>${Number(d.shipping_total)>0?`משלוח ${fmt(d.shipping_total)} · `:''}<b>סה״כ</b></span><b style="font-size:16px">${fmt(d.total)}</b>
+    </div>
+    ${gm.greenos_payplus_link&&d.status==='pending'?`<div style="display:flex;gap:6px;margin:4px 0">
+      <input readonly value="${escW(gm.greenos_payplus_link)}" onclick="this.select()" style="flex:1;min-width:0;direction:ltr;font-size:11px;padding:6px 9px;border-radius:8px;border:1px solid var(--line);background:var(--card2);color:var(--txt)">
+      <button class="btn-ghost" onclick="navigator.clipboard.writeText('${escW(gm.greenos_payplus_link)}');toast('קישור התשלום הועתק',true)">${ico('clip',14)}</button></div>`:''}
+    ${d.customer_note?`<div class="wa-note" style="margin-top:8px">📝 ${escW(d.customer_note)}</div>`:''}
+    ${(d.notes||[]).length?`<details style="margin-top:8px"><summary class="muted" style="cursor:pointer;font-size:13px">הערות הזמנה (${d.notes.length})</summary>
+      ${d.notes.map(n=>`<div class="wa-note" style="margin-top:5px;font-size:12px">${escW(n.note)}<div class="by"><span>${fmtD(n.date)}${n.customer?' · נשלח ללקוח':''}</span></div></div>`).join('')}</details>`:''}
+    <div style="display:flex;gap:7px;margin-top:12px;align-items:center;flex-wrap:wrap">
+      <select id="wcoSt" style="padding:8px 10px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--txt)">${stOpts}</select>
+      <button class="btn-primary" style="padding:8px 14px" onclick="wcoSetStatus(${d.id})">עדכן סטטוס</button>
+      <a class="btn-ghost" style="text-decoration:none;padding:8px 12px" target="_blank" href="${escW(d.admin_url)}">פתח ב-WC ↗</a>
+      <button class="btn-ghost" style="padding:8px 12px;opacity:.5" title="בקרוב — תווית משלוח Cargo" disabled>🚚 תווית Cargo</button>
+    </div>
+    <div style="display:flex;gap:6px;margin-top:8px">
+      <input id="wcoNote" placeholder="הוסף הערה פנימית להזמנה…" style="flex:1;min-width:0;padding:8px 10px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:13px"
+             onkeydown="if(event.key==='Enter')wcoAddNote(${d.id})">
+      <button class="btn-ghost" onclick="wcoAddNote(${d.id})">➕</button>
+    </div>
+  </div></div>`;
+}
+async function wcoSetStatus(oid){
+  const st=(document.getElementById('wcoSt')||{}).value; if(!st) return;
+  showLoading('מעדכן סטטוס…');
+  try{
+    await api('/api/admin/orders/'+oid+'/status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:st})},45000);
+    toast('הסטטוס עודכן ✓',true);
+    closeModal(); loadWcOrders();
+  }catch(e){ toast('עדכון הסטטוס נכשל',false); }
+  hideLoading();
+}
+async function wcoAddNote(oid){
+  const el=document.getElementById('wcoNote'); const note=(el&&el.value||'').trim(); if(!note) return;
+  try{
+    await api('/api/admin/orders/'+oid+'/note',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({note})},30000);
+    toast('ההערה נוספה ✓',true); if(el) el.value='';
+    openWcOrder(oid);
+  }catch(e){ toast('הוספת ההערה נכשלה',false); }
+}
 function renderAdmin(){
   if(S.adminTab==='live') return S.lsCat?renderLive():loadLiveCatalog(true);
   if(S.adminTab==='wa') return S.waConvs?renderWa():loadWa(true);
@@ -4283,6 +4438,7 @@ function renderAdmin(){
   if(S.adminTab==='reco') return S.recoData?renderReco():loadReco(true);
   if(S.adminTab==='order') return S.orderData?renderOrder():loadOrder(true);
   if(S.adminTab==='removals') return S.removalsData?renderRemovals():loadRemovals(true);
+  if(S.adminTab==='wcorders') return renderWcOrders();
   const app=document.getElementById('app');
   const f=S.adminFilters;
   const data=S.adminData||{summary:{},transfers:[],misroutes:[]};
