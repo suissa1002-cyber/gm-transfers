@@ -1903,6 +1903,7 @@ async def payplus_ipn(request: Request):
         logger.warning("payplus ipn: no order mapping for pru %s (more_info=%s)", pru, f.get("more_info"))
         return {"ok": False, "order": None}
     if not str(order_id).isdigit():   # קישור כללי (standalone) — אין הזמנת WC לעדכן
+        db.pay_link_mark_paid(pru, f.get("tx"), f.get("approval"), f.get("four_digits"), f.get("brand"))
         logger.info("payplus ipn: standalone payment confirmed (pru %s, tx %s)", pru, f.get("tx"))
         return {"ok": True, "order": None, "standalone": True}
     ok = _pp_mark_paid(int(order_id), f)
@@ -2215,6 +2216,7 @@ def pay_standalone(body: PayQuick, x_admin_key: Optional[str] = Header(None)):
                        {"name": body.name, "phone": body.phone, "email": body.email},
                        payments=body.installments)
     db.sales_state_set(f"payplus_pru:{pp['pru']}", "standalone")
+    db.pay_link_add(pp["pru"], desc, float(body.amount), body.name, body.phone)
     return {"pay_link": pp["link"], "pru": pp["pru"],
             "amount": float(body.amount), "desc": desc}
 
@@ -2227,8 +2229,16 @@ def pay_standalone_status(pru: str, x_admin_key: Optional[str] = Header(None)):
     if not v:
         return {"paid": False}
     f = _pp_tx_fields(v)
+    db.pay_link_mark_paid(pru, f.get("tx"), f.get("approval"), f.get("four_digits"), f.get("brand"))
     return {"paid": True, "tx": f.get("tx"), "approval": f.get("approval"),
             "four_digits": f.get("four_digits"), "brand": f.get("brand")}
+
+
+@app.get("/api/admin/pay/links")
+def pay_links(q: str = "", x_admin_key: Optional[str] = Header(None)):
+    """קונסולת התשלומים המהירים — קישורים ידניים עם סטטוס/אישור/4 ספרות וחיפוש."""
+    _require_admin(x_admin_key)
+    return {"links": db.pay_links_list(q)}
 
 
 # ── /pay: עמוד נחיתה ציבורי לכפתור התשלום הקבוע בתבנית הוואטסאפ ──

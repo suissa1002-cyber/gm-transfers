@@ -320,6 +320,24 @@ _SCHEMA = [
         created_at  TEXT
     )
     """.format(pk=_PK),
+    # קישורי תשלום מהירים (ללא הזמנת WC) — קונסולת מעקב: סטטוס, אישור, 4 ספרות
+    """
+    CREATE TABLE IF NOT EXISTS pay_links (
+        id          {pk},
+        pru         TEXT,
+        descr       TEXT,
+        amount      REAL,
+        name        TEXT,
+        phone       TEXT,
+        status      TEXT DEFAULT 'pending',
+        tx          TEXT,
+        approval    TEXT,
+        four_digits TEXT,
+        brand       TEXT,
+        created_at  TEXT,
+        paid_at     TEXT
+    )
+    """.format(pk=_PK),
     # יומן צל להודעות שנשלחו ישירות דרך Meta Cloud API (תבניות כפתור, reply) —
     # הן לא מופיעות בשיחה של ConnectOp, אז נשמרות כאן וממוזגות לתצוגת השיחה
     """
@@ -1307,6 +1325,37 @@ def wa_canned_list() -> list:
     with _conn() as c:
         cur = c.cursor()
         cur.execute(_q("SELECT id, title, text FROM wa_canned ORDER BY title"))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def pay_link_add(pru, descr, amount, name, phone):
+    with _conn() as c:
+        c.cursor().execute(_q("""
+            INSERT INTO pay_links (pru, descr, amount, name, phone, status, created_at)
+            VALUES (?, ?, ?, ?, ?, 'pending', ?)
+        """), (pru or "", descr or "", float(amount or 0), name or "", phone or "", now_iso()))
+
+
+def pay_link_mark_paid(pru, tx="", approval="", four_digits="", brand=""):
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""
+            UPDATE pay_links SET status='paid', tx=?, approval=?, four_digits=?, brand=?, paid_at=?
+            WHERE pru = ? AND status != 'paid'
+        """), (tx or "", approval or "", four_digits or "", brand or "", now_iso(), pru or ""))
+        return bool(cur.rowcount)
+
+
+def pay_links_list(q="", limit=60) -> list:
+    with _conn() as c:
+        cur = c.cursor()
+        if (q or "").strip():
+            like = f"%{q.strip()}%"
+            cur.execute(_q("""SELECT * FROM pay_links
+                WHERE descr LIKE ? OR name LIKE ? OR phone LIKE ? OR approval LIKE ? OR four_digits LIKE ?
+                ORDER BY id DESC LIMIT ?"""), (like, like, like, like, like, int(limit)))
+        else:
+            cur.execute(_q("SELECT * FROM pay_links ORDER BY id DESC LIMIT ?"), (int(limit),))
         return [dict(r) for r in cur.fetchall()]
 
 

@@ -4326,6 +4326,7 @@ function renderWcOrders(){
              style="flex:1;min-width:200px;padding:9px 12px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--txt);font-size:14px"
              oninput="clearTimeout(S._wcoT);S._wcoT=setTimeout(()=>{S.wco.q=this.value;S.wco.page=1;loadWcOrders()},450)" onkeydown="if(event.key==='Enter'){S.wco.q=this.value;S.wco.page=1;loadWcOrders()}">
       <button class="btn-ghost wa-ico" onclick="wcoCalToggle()" title="סינון לפי טווח תאריכים" style="position:relative${(W.after||W.before)?';border-color:#16a34a;color:#16a34a':''}">${ico('calendar',15)}</button>
+      <button class="btn-ghost wa-ico" onclick="payLinksOpen()" title="תשלומים מהירים — קישורים ידניים">${ico('zap',15)}</button>
       <button class="btn-ghost wa-ico" onclick="loadWcOrders()" title="רענן">${ico('refresh',15)}</button>
     </div>
     ${(W.after||W.before)?`<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:13px">
@@ -4427,7 +4428,7 @@ function wcoListHTML(){
       <div class="muted" style="font-size:12px;margin-top:3px">${escW(o.items||'')}</div>
       <div style="display:flex;justify-content:space-between;margin-top:5px;font-size:13px">
         <b>${o.currency}${Number(o.total).toLocaleString('he-IL')}</b>
-        <span class="muted" style="font-size:11.5px">${fmtD(o.date)}</span>
+        <span class="muted" style="font-size:11.5px;direction:ltr">${(x=>isNaN(x)?'':x.toLocaleDateString('en-GB',{day:'numeric',month:'short'}))(new Date(o.date))}</span>
       </div>
     </div>`).join('');
   const pager=W.pages>1?`<div style="display:flex;gap:8px;align-items:center;justify-content:center;margin-top:12px">
@@ -4439,6 +4440,38 @@ function wcoListHTML(){
     <tr><th>#</th><th>תאריך</th><th>לקוח</th><th>פריטים</th><th>סה״כ</th><th>סטטוס</th></tr>
     </thead><tbody>${rows}</tbody></table></div>
     <div class="wco-cards">${cards}</div>${pager}`;
+}
+async function payLinksOpen(q){
+  showLoading('טוען תשלומים מהירים…');
+  let d=null;
+  try{ d=await api('/api/admin/pay/links?q='+encodeURIComponent(q||''),null,45000); }catch(e){}
+  hideLoading();
+  if(!d){ toast('הטעינה נכשלה',false); return; }
+  const fmtD=x=>{ const t=new Date(x); return isNaN(t)?'':t.toLocaleDateString('he-IL')+' '+t.toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'}); };
+  const rows=(d.links||[]).map(l=>`
+    <div style="border:1px solid var(--line);border-radius:12px;padding:10px 13px;margin-top:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <b style="font-size:13.5px;flex:1;min-width:0">${escW(l.descr||'—')} · ₪${Number(l.amount).toLocaleString('he-IL')}</b>
+        ${l.status==='paid'
+          ?'<span class="ord-st" style="color:#15803d;border-color:#15803d55;background:#15803d14">שולם</span>'
+          :'<span class="ord-st" style="color:#b45309;border-color:#b4530955;background:#b4530914">ממתין</span>'}
+      </div>
+      <div class="muted" style="font-size:12px;margin-top:3px">${escW(l.name||'')}${l.phone?` · <span style="direction:ltr;unicode-bidi:embed">${escW(l.phone)}</span>`:''} · ${fmtD(l.created_at)}</div>
+      ${l.status==='paid'?`<div class="muted" style="font-size:12px;margin-top:3px">אישור <b style="direction:ltr;unicode-bidi:embed">${escW(l.approval||'—')}</b>${l.four_digits?` · כרטיס <b style="direction:ltr;unicode-bidi:embed">****${escW(l.four_digits)}</b>`:''}${l.brand?` (${escW(l.brand)})`:''}</div>`
+       :`<div style="display:flex;gap:6px;margin-top:6px">
+          <button class="btn-ghost" style="padding:4px 10px;font-size:12px" onclick="navigator.clipboard.writeText('https://payments.payplus.co.il/${escW(l.pru)}');toast('הקישור הועתק',true)">${ico('clip',13)} העתק קישור</button>
+        </div>`}
+    </div>`).join('');
+  document.getElementById('modalRoot').innerHTML=`<div class="overlay" onclick="closeModal()"><div class="modal" style="max-width:560px;text-align:right;max-height:88vh;overflow:auto" onclick="event.stopPropagation()">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <b style="font-size:16px">⚡ תשלומים מהירים</b>
+      <button class="dr-x" onclick="closeModal()">✕</button>
+    </div>
+    <input placeholder="חיפוש — תיאור / שם / טלפון / אישור / 4 ספרות" value="${escW(q||'')}"
+      style="width:100%;box-sizing:border-box;padding:9px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:14px"
+      onkeydown="if(event.key==='Enter')payLinksOpen(this.value)">
+    ${rows||'<div class="empty">אין תשלומים מהירים עדיין</div>'}
+  </div></div>`;
 }
 async function openWcOrder(oid){
   showLoading('טוען הזמנה…');
