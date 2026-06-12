@@ -4205,10 +4205,19 @@ function renderLiveDetail(){
         <span>יחידות בקופה (${view.length}${D.filterBranch!=null?(' מתוך '+d.serials.length):''})</span>
         ${D.filterBranch!=null?`<span class="muted" style="font-size:12.5px;font-weight:400">מציג רק את <b>${lsBranchName(D.filterBranch)}</b></span>
         <button class="btn-ghost" style="padding:3px 10px;font-size:12px" onclick="lsDetailFilter(${D.filterBranch})">הצג הכל</button>`:''}</div>
+      ${(()=>{S._lsBd={}; S._lsBdUsed={}; (d.branches||[]).forEach(b=>{ if(b.dyn_kind&&!['transit'].includes('')) S._lsBd[String(b.id)]=b; }); return '';})()}
       ${view.length?'':'<div class="muted" style="margin:6px 0 10px">אין יחידות זמינות בסניף הזה</div>'}
       <table class="serials"><thead><tr><th>סריאל</th><th>סניף</th><th>נקלט</th><th>ספק</th><th>אחריות</th><th>סטטוס</th></tr></thead><tbody>
       ${view.map((s,i)=>{
-        const st=dynStatusHtml(s) || (s.status===1?'<span style="color:var(--green);font-weight:700">זמין</span>':('סטטוס '+s.status));
+        let st=dynStatusHtml(s);
+        if(!st && s.status===1){
+          const bd=(S._lsBd||{})[String(s.branch_id)];
+          const used=(S._lsBdUsed[String(s.branch_id)]=S._lsBdUsed[String(s.branch_id)]||{n:0});
+          if(bd && used.n<Number(bd.dyn_n||0)){
+            used.n++;
+            st=`<span style="color:var(--blue);font-weight:700;display:inline-flex;align-items:center;gap:4px" title="בקשת העברה פתוחה מהסניף (${bd.dyn_n} יח׳) — הסניף בוחר את היחידה בפועל">${ico(bd.dyn_kind==='transit'?'truck':'radio',12)} ${bd.dyn_kind==='transit'?'בהעברה':'משוריין'} ל${bd.dyn_to||'?'}</span>`;
+          } else st='<span style="color:var(--green);font-weight:700">זמין</span>';
+        } else if(!st) st='סטטוס '+s.status;
         const dt=s.insert_date?new Date(s.insert_date):null;
         const ds=dt&&!isNaN(dt)?dt.toLocaleDateString('he-IL'):'';
         const war=(s.warranty||'—')+(s.warranty_months?(' · '+Math.round(s.warranty_months)+' ח׳'):'');
