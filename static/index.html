@@ -2494,12 +2494,22 @@ function waOrdDoneOpen(r,o){
       <input id="odLink" readonly value="${escW(r.pay_link)}" onclick="this.select()" style="flex:1;min-width:0;direction:ltr;font-size:11.5px;padding:7px 9px;border-radius:9px;border:1px solid var(--line);background:var(--card2);color:var(--txt)">
       <button class="btn-ghost" title="העתק קישור" onclick="navigator.clipboard.writeText(document.getElementById('odLink').value);toast('קישור התשלום הועתק',true)">${ico('clip',15)}</button>
     </div>`:''}
-    <textarea id="odMsg" style="width:100%;min-height:96px;padding:9px 11px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:13px;font-family:inherit">${escW(msg)}</textarea>
+    ${r.pay_mode==='button'?`
+    <div style="background:#e7f6ec;border:1px solid #b7e2c5;border-radius:12px 12px 4px 12px;padding:11px 13px;color:#1f2937">
+      <div style="font-size:13px;line-height:1.5;white-space:pre-wrap">היי ${escW(o.cust.first_name||'לקוח/ה יקר/ה')},
+הקמנו לך הזמנה מס׳ ${r.number} בגרין מובייל על סך ₪${total}.
+לתשלום מאובטח לחצו על הכפתור למטה 👇
+תודה, גרין מובייל 💚</div>
+      <div style="border-top:1px solid #b7e2c5;margin-top:9px;padding-top:8px;text-align:center;color:#16a34a;font-weight:700;font-size:13.5px">${ico('cart',14)} לתשלום מאובטח</div>
+    </div>
+    <div class="muted" style="font-size:11px;margin-top:5px">כך תיראה ההודעה אצל הלקוח — הכפתור מוביל ישירות לדף התשלום שלו (נשלח דרך Meta, עובד תמיד).</div>
+    <textarea id="odMsg" style="display:none">${escW(msg)}</textarea>`
+    :`<textarea id="odMsg" style="width:100%;min-height:96px;padding:9px 11px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:13px;font-family:inherit">${escW(msg)}</textarea>`}
     <div style="display:flex;gap:6px;margin-top:8px">
       <input id="odPhone" placeholder="טלפון" inputmode="tel" value="${escW(phone)}" style="width:135px;min-width:0;direction:ltr;padding:8px 10px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:13px">
-      <button class="btn-primary" id="odSend" style="flex:1" onclick="waOrdDoneSend()">שלח בוואטסאפ ללקוח</button>
+      <button class="btn-primary" id="odSend" style="flex:1" onclick="waOrdDoneSend()">${r.pay_mode==='button'?'שלח עם כפתור תשלום':'שלח בוואטסאפ ללקוח'}</button>
     </div>
-    <div class="muted" style="font-size:11px;margin-top:5px">נשלח תמיד: עם כפתור תשלום לחיץ (תבנית payment_link); אם התבנית עוד לא מאושרת — הודעה רגילה / תבנית new_message לפי חלון 24ש׳.</div>
+    ${r.pay_mode==='button'?'':`<div class="muted" style="font-size:11px;margin-top:5px">נשלח תמיד: בתוך חלון 24ש׳ — הודעה רגילה; מחוצה לו — תבנית new_message מאושרת.</div>`}
     <div style="display:flex;gap:8px;margin-top:10px">
       <button class="btn-ghost" style="flex:1" onclick="window.open('${r.admin_url}','_blank')">פתח הזמנה ב-WC</button>
       <button class="btn-ghost" style="flex:1" onclick="waOrdDoneClose()">סגור</button>

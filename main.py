@@ -2000,6 +2000,9 @@ def wa_order_create(body: WaOrderCreate, x_admin_key: Optional[str] = Header(Non
             payments=body.installments)
         out["pay_link"] = pp["link"]
         out["pru"] = pp["pru"]
+        import wa as _wa
+        # איך תישלח ההודעה ללקוח: button = תבנית payment_link עם כפתור (Meta ישיר)
+        out["pay_mode"] = "button" if (_wa.meta_direct_ready() or _wa.pay_template_ready()) else "text"
         try:  # מיפוי pru→order ל-IPN + שמירת הקישור על ההזמנה
             db.sales_state_set(f"payplus_pru:{pp['pru']}", str(o["id"]))
             _rq.put(f"{base}/wp-json/wc/v3/orders/{o['id']}",
