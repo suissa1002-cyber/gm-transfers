@@ -36,7 +36,8 @@ def subscribe(sub: dict, ua: str = ""):
     return {"ok": True, "devices": len(db.wa_push_subs())}
 
 
-def send_to_all(title: str, body: str, url: str = "/?wa=1", phone: str = "") -> int:
+def send_to_all(title: str, body: str, url: str = "/?wa=1", phone: str = "",
+                badge: int = 0) -> int:
     """שולח push לכל המכשירים הרשומים; מוחק מנויים מתים (404/410)."""
     if not VAPID_PRIVATE:
         logger.warning("VAPID keys not configured — skipping push")
@@ -46,8 +47,8 @@ def send_to_all(title: str, body: str, url: str = "/?wa=1", phone: str = "") -> 
     except ImportError:
         logger.error("pywebpush not installed")
         return 0
-    payload = json.dumps({"title": title, "body": body, "url": url, "phone": phone},
-                         ensure_ascii=False)
+    payload = json.dumps({"title": title, "body": body, "url": url, "phone": phone,
+                          "badge": int(badge or 0)}, ensure_ascii=False)
     sent = 0
     for s in db.wa_push_subs():
         try:
@@ -103,8 +104,10 @@ def poll_and_push():
             continue
         last = fresh_in[-1]
         body = (last.get("text") or "").strip() or "📷 מדיה"
+        unread = sum(1 for x in convs if x.get("unread"))   # למונה על אייקון האפליקציה
         n = send_to_all(f"💬 {c['name']}", body[:140],
-                        url=f"/?wa=1&phone={c['phone']}", phone=str(c["phone"]))
+                        url=f"/?wa=1&phone={c['phone']}", phone=str(c["phone"]),
+                        badge=max(1, unread))
         logger.info("wa push: %s -> %d devices", c["phone"], n)
         time.sleep(0.3)
     db.sales_state_set(_STATE_KEY, json.dumps(new_state))

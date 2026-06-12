@@ -23,6 +23,10 @@ function idbSetPending(val) {
 self.addEventListener('push', (e) => {
   let d = {};
   try { d = e.data ? e.data.json() : {}; } catch (err) { d = { title: 'GreenOS', body: e.data && e.data.text() }; }
+  // מונה אדום על אייקון האפליקציה (iOS 16.4+ ב-PWA מותקן)
+  if (typeof d.badge === 'number' && d.badge > 0 && self.navigator && self.navigator.setAppBadge) {
+    try { self.navigator.setAppBadge(d.badge); } catch (err) {}
+  }
   e.waitUntil(self.registration.showNotification(d.title || 'GreenOS 💬', {
     body: d.body || '',
     icon: '/static/icon-192.png',

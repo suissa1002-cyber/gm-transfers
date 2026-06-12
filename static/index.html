@@ -4468,7 +4468,9 @@ async function navPendingApply(){
   openWaTab();
   if(ph) waConvWhenReady(ph);
 }
-document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible') navPendingApply(); });
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible'){ navPendingApply(); waBadgeClear(); } });
+// ניקוי המונה האדום מאייקון האפליקציה כשנכנסים (iOS PWA)
+function waBadgeClear(){ try{ if(navigator.clearAppBadge) navigator.clearAppBadge().catch(()=>{}); }catch(e){} }
 
 // ── init ──
 // שומר פוקוס על שדה הסריקה — אבל לא גונב בחירת טקסט (העתקת ברקוד/סריאל) או קליק על פריט
@@ -4483,7 +4485,7 @@ async function bootApp(){
   try{ render(); }catch(e){ hideLoading(); }
   applyTheme();
   waSWReady();   // רישום service worker (PWA/push) — לא חוסם
-  if(S.branchId){ startPoll(); startNotifPoll(); handleDeepLink(); navPendingApply(); }
+  if(S.branchId){ startPoll(); startNotifPoll(); handleDeepLink(); navPendingApply(); waBadgeClear(); }
 }
 (async()=>{
   loadState(); applyTheme();
