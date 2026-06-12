@@ -2056,10 +2056,40 @@ def wa_order_paystatus(order_id: int, x_admin_key: Optional[str] = Header(None))
             "brand": meta.get("greenos_payplus_brand") or ""}
 
 
+def _wc_pos_anchor(base: str, k: str, s: str) -> int:
+    """מוצר עוגן מוסתר (sku GM-POS-ITEM, פרטי) לשורות של פריטי קופה שאינם באתר.
+    נוצר חד-פעמית; ה-id נשמר ב-kv. נוצר בפועל 12/06/2026 — id 46880."""
+    v = db.sales_state_get("wc_pos_anchor")
+    if v and str(v).isdigit():
+        return int(v)
+    import requests as _rq
+    pid = None
+    try:
+        r = _rq.get(f"{base}/wp-json/wc/v3/products", params={"sku": "GM-POS-ITEM"},
+                    auth=(k, s), timeout=30)
+        if r.ok and r.json():
+            pid = r.json()[0].get("id")
+        if not pid:
+            r = _rq.post(f"{base}/wp-json/wc/v3/products", auth=(k, s), timeout=40, json={
+                "name": "פריט קופה (GreenOS)", "type": "simple", "sku": "GM-POS-ITEM",
+                "regular_price": "0", "catalog_visibility": "hidden", "status": "private",
+                "description": "מוצר עוגן טכני לשורות הזמנה של פריטי קופה שאינם באתר."})
+            pid = r.json().get("id") if r.ok else None
+    except Exception as e:  # noqa: BLE001
+        logger.warning("pos anchor lookup failed: %s", e)
+    if not pid:
+        raise HTTPException(502, "מוצר העוגן לפריטי קופה לא זמין")
+    db.sales_state_set("wc_pos_anchor", str(pid))
+    return int(pid)
+
+
 class WaOrderItem(BaseModel):
-    product_id: int                 # parent (או המוצר עצמו אם simple)
+    product_id: int = 0             # parent (או המוצר עצמו אם simple); 0 = פריט קופה שאינו באתר
     variation_id: int = 0
     quantity: int = 1
+    price: float = -1               # מחיר ליחידה — חובה לפריט שאינו באתר; דריסה לפריט רגיל
+    name: str = ""                  # שם לשורה מותאמת (פריט קופה בלבד)
+    sku: str = ""                   # מק"ט קופה — נשמר על השורה
 
 
 class WaOrderCustomer(BaseModel):
@@ -2105,9 +2135,24 @@ def wa_order_create(body: WaOrderCreate, x_admin_key: Optional[str] = Header(Non
         raise HTTPException(400, "אין פריטים")
     line_items = []
     for it in body.items:
-        li = {"product_id": int(it.product_id), "quantity": max(1, int(it.quantity))}
-        if it.variation_id:
-            li["variation_id"] = int(it.variation_id)
+        qty = max(1, int(it.quantity))
+        if it.product_id:
+            li = {"product_id": int(it.product_id), "quantity": qty}
+            if it.variation_id:
+                li["variation_id"] = int(it.variation_id)
+            if it.price is not None and float(it.price) >= 0:
+                tot = round(float(it.price) * qty, 2)   # דריסת מחיר ידנית מהטופס
+                li["subtotal"] = str(tot)
+                li["total"] = str(tot)
+        else:
+            # פריט קופה שאינו מחובר לאתר — שורה על מוצר העוגן עם שם ומחיר דרוסים
+            # (WC דורש הפניית מוצר בכל שורה — woocommerce_rest_required_product_reference)
+            if not (it.price and float(it.price) > 0):
+                raise HTTPException(400, f"חסר מחיר לפריט '{it.name or it.sku}'")
+            tot = round(float(it.price) * qty, 2)
+            nm = (it.name or "פריט קופה")[:100] + (f' (מק"ט {it.sku})' if it.sku else "")
+            li = {"product_id": _wc_pos_anchor(base, k, s), "quantity": qty,
+                  "name": nm, "subtotal": str(tot), "total": str(tot)}
         line_items.append(li)
     cust = body.customer
     billing = {"first_name": cust.first_name, "last_name": cust.last_name,

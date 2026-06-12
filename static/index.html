@@ -2371,14 +2371,17 @@ async function waOrderOpen(pid){
   const nameParts=(conv.name||'').split(' ');
   S.waOrd={
     base:d, sel:{id:d.id, price:Number(d.price)||0, label:(d.attributes||[]).map(a=>a.option).join(' · '), permalink:d.permalink},
-    qty:1, ship:'pickup', shipSame:true,
+    qty:1, extras:[], ship:'pickup', shipSame:true,
     cust:{first_name:nameParts[0]||'', last_name:nameParts.slice(1).join(' ')||'', company:'', phone:inWa?('+'+S.waPhone):'', email:'', address_1:'', city:''},
     shipTo:{first_name:'',last_name:'',address_1:'',city:''}
   };
   waOrderRender();
 }
+function waOrdExtrasTotal(){
+  return (S.waOrd&&S.waOrd.extras||[]).reduce((a,x)=>a+(Number(x.price)||0)*(Number(x.qty)||1),0);
+}
 function waOrdShipOpts(){
-  const total=(S.waOrd.sel.price||0)*S.waOrd.qty;
+  const total=(S.waOrd.sel.price||0)*S.waOrd.qty+waOrdExtrasTotal();
   return [
     {k:'pickup',  t:'איסוף עצמי',            cost:0},
     {k:'regular', t:'משלוח רגיל (1-6 ימי עסקים)', cost: total>=500?0:29},
@@ -2391,7 +2394,7 @@ function waOrderRender(){
   const d=o.base;
   const ships=waOrdShipOpts();
   const shipCost=(ships.find(x=>x.k===o.ship)||{}).cost||0;
-  const total=(o.sel.price||0)*o.qty+shipCost;
+  const total=(o.sel.price||0)*o.qty+waOrdExtrasTotal()+shipCost;
   const fmt=v=>'₪'+Number(v||0).toLocaleString('he-IL');
   // כפתורי וריאציות-אחיות (אם יש)
   let varsHtml='';
@@ -2428,6 +2431,7 @@ function waOrderRender(){
              onchange="S.waOrd.qty=Math.max(1,Number(this.value)||1);waOrderRender()">
     </div>
     ${varsHtml}
+    ${waOrdExtrasHTML(fmt)}
     <div class="wa-ord-grid">
       <input id="woFn" placeholder="שם פרטי" value="${escW(o.cust.first_name)}">
       <input id="woLn" placeholder="שם משפחה" value="${escW(o.cust.last_name)}">
@@ -2470,6 +2474,84 @@ function waOrderRender(){
   document.body.appendChild(div);
 }
 function waOrdPick(sel){ waOrderSaveInputs(); S.waOrd.sel=sel; waOrderRender(); }
+// ── פריטים נוספים בהזמנה: חיפוש בקטלוג הקופה והוספה (גם פריטים שלא באתר) ──
+function waOrdExtrasHTML(fmt){
+  const o=S.waOrd; if(!o) return '';
+  const rows=(o.extras||[]).map((x,i)=>`
+    <div style="display:flex;align-items:center;gap:6px;margin-top:6px;background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:6px 8px">
+      <span style="flex:1;min-width:0"><b style="font-size:12.5px">${escW(x.name)}</b>${x.found?'':' <span class="mtag warn">לא באתר</span>'}
+        <div class="muted" style="font-size:10.5px;direction:ltr;text-align:end;font-family:monospace">${escW(x.sku)}</div></span>
+      <input value="${x.price}" inputmode="decimal" title="מחיר ליחידה" style="width:72px;padding:6px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--txt);text-align:center"
+             onchange="waOrdExtraSet(${i},'price',this.value)">
+      <input type="number" min="1" value="${x.qty}" title="כמות" style="width:50px;padding:6px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--txt);text-align:center"
+             onchange="waOrdExtraSet(${i},'qty',this.value)">
+      <button class="btn-ghost" style="padding:4px 8px" onclick="waOrdExtraDel(${i})">✕</button>
+    </div>`).join('');
+  return `<div style="margin:8px 0 4px">
+    ${rows}
+    ${S.waOrdAddOpen?`
+      <div style="margin-top:7px">
+        <input id="woAddQ" placeholder="חיפוש פריט בקופה — שם / מק״ט / ברקוד" value="${escW(S.waOrdAddQ||'')}"
+               style="width:100%;padding:8px 10px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:13px"
+               oninput="S.waOrdAddQ=this.value;waOrdAddPaint()">
+        <div id="woAddRes" style="max-height:170px;overflow-y:auto;margin-top:5px"></div>
+      </div>`
+    :`<button class="btn-ghost" style="width:100%;margin-top:7px;border-style:dashed" onclick="waOrdAddToggle()">＋ הוסף פריט נוסף (חיפוש בקופה)</button>`}
+  </div>`;
+}
+function waOrdAddToggle(){
+  waOrderSaveInputs();
+  S.waOrdAddOpen=true; S.waOrdAddQ='';
+  if(!S.lsCat) loadLiveCatalog(false).then(()=>waOrdAddPaint());
+  waOrderRender();
+  setTimeout(()=>{ const e=document.getElementById('woAddQ'); if(e) e.focus(); },120);
+}
+function waOrdAddPaint(){
+  const box=document.getElementById('woAddRes'); if(!box) return;
+  const q=(S.waOrdAddQ||'').trim();
+  if(!S.lsCat){ box.innerHTML='<div class="muted" style="font-size:12px;padding:4px">טוען קטלוג…</div>'; return; }
+  if(q.length<2){ box.innerHTML='<div class="muted" style="font-size:12px;padding:4px">הקלד 2+ תווים</div>'; return; }
+  const ql=q.toLowerCase();
+  const hits=(S.lsCat||[]).filter(it=>it.active!==false&&(
+      String(it.name||'').toLowerCase().includes(ql)||
+      String(it.product_id||'').includes(q)||
+      String(it.barcode||'').includes(q))).slice(0,8);
+  box.innerHTML=hits.length?hits.map(it=>`
+    <div style="display:flex;align-items:center;gap:7px;padding:6px 8px;border:1px solid var(--line);border-radius:9px;margin-top:4px;cursor:pointer;background:var(--card2)"
+         onclick="waOrdExtraPick('${escW(String(it.product_id))}')">
+      <span style="flex:1;min-width:0;font-size:12.5px"><b>${escW(it.name)}</b>
+        <span class="muted" style="font-size:10.5px;direction:ltr;font-family:monospace"> ${escW(String(it.product_id))}</span></span>
+      <span style="color:#16a34a;font-weight:700">＋</span>
+    </div>`).join(''):'<div class="muted" style="font-size:12px;padding:4px">לא נמצא בקטלוג</div>';
+}
+async function waOrdExtraPick(pid){
+  waOrderSaveInputs();
+  showLoading('קורא פרטי פריט…');
+  let d=null;
+  try{ d=await api('/api/admin/wc-link/'+encodeURIComponent(pid)+'?pos=1&fallback=1',null,45000); }catch(e){}
+  hideLoading();
+  const cat=(S.lsCat||[]).find(x=>String(x.product_id)===String(pid))||{};
+  const found=!!(d&&d.found&&d.id);
+  const price=found?(Number(d.price)||0):(d&&d.pos_price!=null&&Number(d.pos_price)>1?Number(d.pos_price):0);
+  (S.waOrd.extras=S.waOrd.extras||[]).push({
+    sku:String(pid), name:(found?d.name:cat.name)||String(pid), price:price, qty:1, found:found,
+    wc_id:found?(d.type==='variation'?d.parent_id:d.id):0,
+    variation_id:(found&&d.type==='variation')?d.id:0});
+  S.waOrdAddOpen=false; S.waOrdAddQ='';
+  waOrderRender();
+  if(!price) toast('לא נמצא מחיר לפריט — הזן מחיר ידנית בשורה',false);
+}
+function waOrdExtraSet(i,k,v){
+  waOrderSaveInputs();
+  const x=(S.waOrd.extras||[])[i]; if(!x) return;
+  x[k]=(k==='qty')?Math.max(1,Number(v)||1):Math.max(0,Number(v)||0);
+  waOrderRender();
+}
+function waOrdExtraDel(i){
+  waOrderSaveInputs();
+  (S.waOrd.extras||[]).splice(i,1);
+  waOrderRender();
+}
 // ── 💳 חיוב טלפוני: הקלדת כרטיס וחיוב ישיר דרך PayPlus (בלי מעבר חיצוני) ──
 function waChargeOpen(order, installments){
   const div=document.createElement('div');
@@ -2748,10 +2830,15 @@ async function waOrderSubmit(payment){
   const item= d.type==='variation'
     ? {product_id:d.parent_id, variation_id:o.sel.id, quantity:o.qty}
     : {product_id:o.sel.id, quantity:o.qty};
+  // פריטים נוספים: מחוברים לאתר → לפי מזהה; פריטי קופה בלבד → שורה מותאמת עם מחיר
+  const extras=(o.extras||[]).map(x=>({product_id:x.wc_id||0, variation_id:x.variation_id||0,
+    quantity:Number(x.qty)||1, price:Number(x.price)||0, name:x.name||'', sku:x.sku||''}));
+  const noPrice=extras.find(x=>!x.product_id && !(x.price>0));
+  if(noPrice){ toast('חסר מחיר לפריט "'+(noPrice.name||noPrice.sku)+'" — הזן מחיר בשורה',false); return; }
   showLoading('יוצר הזמנה…');
   try{
     const r=await api('/api/admin/wa/order/create',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({phone:S.waPhone||'', customer:o.cust, items:[item],
+      body:JSON.stringify({phone:S.waPhone||'', customer:o.cust, items:[item,...extras],
         ship_same:o.shipSame!==false, ship_to:o.shipTo,
         shipping_title: o.ship==='pickup'?'איסוף עצמי':sh.t, shipping_total: sh.cost,
         note:o.note||'', payment, installments:o.installments||1})},90000);
