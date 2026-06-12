@@ -1941,6 +1941,18 @@ def admin_orders_list(page: int = 1, status: str = "", search: str = "",
     r = _rq.get(f"{base}/wp-json/wc/v3/orders", params=params, auth=(k, s), timeout=45)
     if not r.ok:
         raise HTTPException(502, f"קריאת הזמנות נכשלה ({r.status_code})")
+    # אילו הזמנות עם בקשת העברה משודרת (אוטו) — לפי created_by בתוכנית ההעברות
+    import re as _re
+    bcast_map = {}
+    try:
+        for ln in db.plan_list():
+            m2 = _re.search(r"הזמנת אתר #(\d+)", ln.get("created_by") or "")
+            if m2:
+                st = "live" if int(ln.get("bcast") or 0) == 1 else "closed"
+                if bcast_map.get(m2.group(1)) != "live":
+                    bcast_map[m2.group(1)] = st
+    except Exception:  # noqa: BLE001
+        pass
     out = []
     for o in r.json():
         meta = {m.get("key"): m.get("value") for m in (o.get("meta_data") or [])}
@@ -1949,6 +1961,7 @@ def admin_orders_list(page: int = 1, status: str = "", search: str = "",
             "src": _order_source(meta),
             "ship_tag": _ship_tag(o, meta),
             "img": ((items[0].get("image") or {}).get("src") or "") if items else "",
+            "bcast": bcast_map.get(str(o.get("number"))),
             "id": o.get("id"), "number": o.get("number"), "status": o.get("status"),
             "date": o.get("date_created"), "total": o.get("total"),
             "currency": o.get("currency_symbol") or "₪",
