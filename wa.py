@@ -220,6 +220,28 @@ def get_thread(phone: str, limit: int = 60):
 
 # ── שליחה ────────────────────────────────────────────────────────────
 
+_human_auto_cache: dict = {}
+
+
+def _auto_human(phone: str):
+    """אחרי מענה אנושי (שלנו או טיוטה של אורי שנשלחה) — מסמנים את השיחה כ'אנושי'
+    כדי שהבוט יפסיק לענות ללקוח (בקשת אסי 12/06: "אחרי שאני עונה ממשיך לקבל בוט").
+    cache 30 דק' — לא חוזרים על ה-toggle בכל הודעה. כשל כאן לעולם לא מפיל שליחה.
+    ⚠️ ה-toggle שולח עדכון WebSocket שעלול לשבור UI של ConnectOp אם פתוח במקביל
+    (לקח 03/06) — התקבל במודע: GreenOS הוא ממשק העבודה; רענון מתקן אצלם."""
+    now = time.time()
+    if now - _human_auto_cache.get(phone, 0) < 1800:
+        return
+    try:
+        _dash_call(_dash().set_human_mode, phone, enable=True)
+        _human_auto_cache[phone] = now
+        with _lock:
+            _inbox_cache["rows"] = None
+        logger.info("wa auto human-mode -> %s", phone)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("auto human-mode failed for %s: %s", phone, e)
+
+
 def send_reply(phone: str, text: str):
     """
     מענה אנושי. אוכף חלון 24ש בצד שרת:
@@ -234,6 +256,7 @@ def send_reply(phone: str, text: str):
     win = _window_state(get_thread(phone, limit=60)["messages"])
     if not win["in_window"]:
         return {"sent": False, "needs_template": True, "window": win}
+    _auto_human(phone)   # קודם מסמנים אנושי — שהבוט לא יקפוץ על ההודעה הבאה של הלקוח
     resp = _pub().send_text_as_human(phone, text)
     logger.info("wa send text -> %s (%d chars)", phone, len(text))
     return {"sent": True, "via": "text", "window": win, "resp": resp}
@@ -250,6 +273,7 @@ def send_template(phone: str, name: str, body: str):
         raise WaError("גוף הודעה ריק")
     resp = _dash_call(_dash().send_whatsapp_template,
                       phone, "new_message", [name or "לקוח/ה יקר/ה", body])
+    _auto_human(phone)
     logger.info("wa send template new_message -> %s", phone)
     return {"sent": True, "via": "template", "resp": resp}
 
@@ -292,6 +316,7 @@ def send_media(phone: str, filename: str, content: bytes, mime: str, caption: st
     if not url:
         raise WaError("ConnectOp לא החזיר כתובת קובץ")
     send_kind = "document" if kind == "file" else kind
+    _auto_human(phone)
     resp = _pub().send_file(phone, url, caption=caption, file_type=send_kind)
     logger.info("wa send %s -> %s (%s)", send_kind, phone, safe)
     return {"sent": True, "via": send_kind, "url": url, "resp": resp}
@@ -349,6 +374,7 @@ def send_wa_template(phone: str, template_id: str, params=None, language: str = 
         raise WaError(f"התבנית דורשת {tpl['params']} פרמטרים, התקבלו {len(params)}")
     resp = _dash_call(_dash().send_whatsapp_template,
                       phone, template_id, params, language=tpl.get("language") or language)
+    _auto_human(phone)
     logger.info("wa send template %s -> %s", template_id, phone)
     return {"sent": True, "via": f"template:{template_id}", "resp": resp}
 
@@ -411,6 +437,7 @@ def send_pay_template_direct(phone: str, name: str, order_number: str, total: st
         logger.warning("meta direct send failed %s: %s", r.status_code, str(j)[:300])
         raise WaError(f"Meta דחתה את השליחה: {err}")
     mid = (j["messages"][0] or {}).get("id", "")
+    _auto_human(phone)
     logger.info("wa meta-direct pay-template -> %s (order %s, mid %s)", phone, order_number, mid)
     return {"sent": True, "via": "meta-direct", "message_id": mid}
 
@@ -436,6 +463,7 @@ def send_pay_template(phone: str, name: str, order_number: str, total: str, pru:
                       phone, PAY_TEMPLATE_ID,
                       [name or "לקוח/ה יקר/ה", str(order_number), str(total)],
                       language=tpl.get("language") or "he")
+    _auto_human(phone)
     logger.info("wa send pay-template -> %s (order %s)", phone, order_number)
     return {"sent": True, "via": f"template:{PAY_TEMPLATE_ID}", "resp": resp}
 
