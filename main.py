@@ -2176,7 +2176,9 @@ if os.path.isdir(_static_dir):
 def index():
     idx = os.path.join(_static_dir, "index.html")
     if os.path.exists(idx):
-        return FileResponse(idx)
+        # no-cache: ה-PWA באייפון נוטה להגיש HTML ישן מה-cache — מאלץ revalidation
+        # בכל פתיחה (ETag → 304 כשאין שינוי, זול). בלי זה דיפלויים לא מגיעים לטלפון.
+        return FileResponse(idx, headers={"Cache-Control": "no-cache"})
     return JSONResponse({"app": cfg.APP_TITLE, "note": "frontend not built yet"})
 
 
