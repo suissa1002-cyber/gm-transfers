@@ -2202,10 +2202,11 @@ def wa_send_guaranteed(body: WaSendSure, x_admin_key: Optional[str] = Header(Non
         # המסלול המועדף: Meta ישיר — תבנית עם הקישור האישי בכפתור.
         # עם מס׳ הזמנה → payment_link; תשלום כללי (מהמגירה) → payment_general.
         try:
-            if body.order_number:
-                wa.send_pay_template_direct(phone, body.name, body.order_number, body.total, body.pru)
-            else:
-                wa.send_general_pay_direct(phone, body.name, body.total, body.desc, body.pru)
+            # גם תשלום כללי (מהמגירה) יוצא בתבנית payment_link — הוראת אסי 12/06:
+            # התיאור נכנס בפרמטר של מס׳ ההזמנה ("הזמנה מס׳ {desc}")
+            wa.send_pay_template_direct(phone, body.name,
+                                        body.order_number or (body.desc or "כללי"),
+                                        body.total, body.pru)
             return {"sent": True, "via": "pay-template", "phone": phone}
         except wa.WaError as e:
             logger.warning("meta-direct pay send failed (%s) — falling back", e)
