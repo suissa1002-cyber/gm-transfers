@@ -338,6 +338,12 @@
   .wa-quote{border-inline-start:3px solid #16a34a;background:rgba(0,0,0,.06);border-radius:8px;
             padding:5px 9px;margin-bottom:6px;font-size:12px;color:var(--muted);
             overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+  /* יומן טווח תאריכים בטאב ההזמנות */
+  .wco-day{padding:7px 0;border:0;background:transparent;color:var(--txt);border-radius:8px;cursor:pointer;font-size:13px;font-family:inherit}
+  .wco-day:hover{background:var(--card2)}
+  .wco-day.sel{background:#16a34a;color:#fff;font-weight:700}
+  .wco-day.rng{background:rgba(34,197,94,.15)}
+  .wco-day.today{outline:1.5px solid var(--line)}
   /* טאב הזמנות: תג סטטוס בסגנון WC + מעבר טבלה/כרטיסים לפי רוחב */
   .ord-st{display:inline-block;padding:3px 11px;border-radius:999px;border:1px solid;font-size:12px;font-weight:700;white-space:nowrap}
   .wco-cards{display:none}
@@ -1207,20 +1213,23 @@ function render(){
   if(S.view==='admin') return S.adminData?renderAdmin():loadAdmin(true);
   if(S.view==='scan')  return renderScan(app);
   if(S.branchTab==='live') return S.lsCat?renderLive():loadLiveCatalog(true);
+  if(S.branchTab==='wcorders'&&isAdminCtx()) return renderWcOrders();
   return renderBoard(app);
 }
 
-// ── טאבים בעמוד הסניף: קליטה / מלאי חי ──
+// ── טאבים בעמוד הסניף: קליטה / מלאי חי (+ הזמנות בסניף אתר) ──
 function branchTabsHTML(){
-  const live=S.branchTab==='live';
+  const t=S.branchTab;
   return `<div class="tabs">
-    <button class="${live?'':'active'}" onclick="setBranchTab('board')">${ico('inbox',15)} קליטת העברות</button>
-    <button class="${live?'active':''}" onclick="setBranchTab('live')">🔎 מלאי חי</button>
+    <button class="${(!t||t==='board')?'active':''}" onclick="setBranchTab('board')">${ico('inbox',15)} קליטת העברות</button>
+    <button class="${t==='live'?'active':''}" onclick="setBranchTab('live')">🔎 מלאי חי</button>
+    ${isAdminCtx()?`<button class="${t==='wcorders'?'active':''}" onclick="setBranchTab('wcorders')">${ico('receipt',15)} הזמנות</button>`:''}
   </div>`;
 }
 function setBranchTab(t){
   S.branchTab=t;
   if(t==='live'){ if(!S.lsCat) loadLiveCatalog(true); else renderLive(); }
+  else if(t==='wcorders'){ renderWcOrders(); }
   else render();
 }
 
@@ -3361,6 +3370,7 @@ const _IPATHS={
   scale:'<path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="M7 21h10"/><path d="M12 3v18"/><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"/>',
   pkg:'<line x1="16.5" y1="9.4" x2="7.5" y2="4.21"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>',
   search:'<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
+  calendar:'<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
   trendDown:'<polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/>',
   wrench:'<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>',
   repeat:'<polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>',
@@ -4296,30 +4306,96 @@ function ordTag(st){
 }
 function renderWcOrders(){
   const app=document.getElementById('app');
-  S.wco=S.wco||{page:1,status:'',q:'',rows:null,pages:1,total:0,loading:false};
+  S.wco=S.wco||{page:1,status:'',q:'',after:'',before:'',rows:null,pages:1,total:0,loading:false};
   const W=S.wco;
   const chips=[['','הכל'],['processing','בטיפול'],['pending','ממתין'],['on-hold','בהמתנה'],
                ['completed','הושלם'],['cancelled','בוטל'],['refunded','זוכה']]
     .map(([k,t])=>`<button class="btn-ghost" style="padding:6px 12px;font-size:13px${W.status===k?';border-color:#16a34a;color:#16a34a;font-weight:700':''}"
       onclick="S.wco.status='${k}';S.wco.page=1;loadWcOrders()">${t}</button>`).join('');
+  // נפתח גם מקונסולת הניהול וגם מלוח הקליטה של סניף אתר — כותרת לפי ההקשר
+  const wcoHeader=(S.view==='admin')
+    ? `<h1 class="title" style="display:flex;align-items:center;gap:8px">${ico('wrench',19)} ניהול אופרציה</h1>${adminTabsHTML()}`
+    : branchTabsHTML();
   app.innerHTML=`
-    <h1 class="title" style="display:flex;align-items:center;gap:8px">${ico('wrench',19)} ניהול אופרציה</h1>${adminTabsHTML()}
+    ${wcoHeader}
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
       <input id="wcoQ" placeholder="חיפוש — שם / טלפון / מס׳ הזמנה / אימייל" value="${escW(W.q)}"
              style="flex:1;min-width:200px;padding:9px 12px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--txt);font-size:14px"
              oninput="clearTimeout(S._wcoT);S._wcoT=setTimeout(()=>{S.wco.q=this.value;S.wco.page=1;loadWcOrders()},450)" onkeydown="if(event.key==='Enter'){S.wco.q=this.value;S.wco.page=1;loadWcOrders()}">
+      <button class="btn-ghost wa-ico" onclick="wcoCalToggle()" title="סינון לפי טווח תאריכים" style="position:relative${(W.after||W.before)?';border-color:#16a34a;color:#16a34a':''}">${ico('calendar',15)}</button>
       <button class="btn-ghost wa-ico" onclick="loadWcOrders()" title="רענן">${ico('refresh',15)}</button>
     </div>
+    ${(W.after||W.before)?`<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:13px">
+      <span class="ord-st" style="color:#16a34a;border-color:#16a34a55;background:#16a34a14">📅 ${escW(wcoFmtD(W.after))} — ${escW(wcoFmtD(W.before||W.after))}</span>
+      <button class="btn-ghost" style="padding:3px 10px;font-size:12px" onclick="S.wco.after='';S.wco.before='';S.wco.page=1;loadWcOrders();renderWcOrders()">✕ נקה טווח</button>
+    </div>`:''}
+    <div id="wcoCal" style="display:none;position:relative"></div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">${chips}</div>
     <div id="wcoList">${W.rows===null?'<div class="empty">טוען הזמנות…</div>':wcoListHTML()}</div>`;
   if(W.rows===null) loadWcOrders();
+}
+function wcoFmtD(d){ if(!d) return ''; const x=new Date(d+'T00:00:00'); return isNaN(x)?d:x.toLocaleDateString('he-IL'); }
+// ── יומן טווח: לחיצה ראשונה = מ-תאריך, שנייה = עד-תאריך (אותו יום = יום בודד) ──
+function wcoCalToggle(){
+  const el=document.getElementById('wcoCal'); if(!el) return;
+  if(el.style.display!=='none'){ el.style.display='none'; return; }
+  const W=S.wco;
+  W.calMonth=W.calMonth||new Date().toISOString().slice(0,7);   // YYYY-MM
+  W.calPick=null;
+  el.style.display='block';
+  wcoCalPaint();
+}
+function wcoCalPaint(){
+  const el=document.getElementById('wcoCal'); if(!el) return;
+  const W=S.wco;
+  const [y,m]=W.calMonth.split('-').map(Number);
+  const first=new Date(y,m-1,1), days=new Date(y,m,0).getDate();
+  const pad=(first.getDay())%7;                  // ראשון=0 — השבוע העברי
+  const today=new Date().toISOString().slice(0,10);
+  const dstr=d=>`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+  const inRange=ds=>W.after&&W.before&&ds>=W.after&&ds<=W.before;
+  let cells='';
+  for(let i=0;i<pad;i++) cells+='<span></span>';
+  for(let d=1;d<=days;d++){
+    const ds=dstr(d);
+    const sel=(W.calPick===ds)||(W.after===ds&&!W.calPick)||(W.before===ds&&!W.calPick);
+    cells+=`<button class="wco-day ${sel?'sel':''} ${inRange(ds)&&!W.calPick?'rng':''} ${ds===today?'today':''}"
+      onclick="wcoCalPick('${ds}')">${d}</button>`;
+  }
+  const mName=new Date(y,m-1,1).toLocaleDateString('he-IL',{month:'long',year:'numeric'});
+  el.innerHTML=`<div style="position:absolute;top:0;inset-inline-start:0;z-index:60;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.25);padding:12px;width:286px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <button class="btn-ghost" style="padding:3px 10px" onclick="wcoCalNav(1)">‹</button>
+      <b style="font-size:14px">${mName}</b>
+      <button class="btn-ghost" style="padding:3px 10px" onclick="wcoCalNav(-1)">›</button>
+    </div>
+    <div class="muted" style="display:grid;grid-template-columns:repeat(7,1fr);text-align:center;font-size:11px;margin-bottom:4px">
+      <span>א</span><span>ב</span><span>ג</span><span>ד</span><span>ה</span><span>ו</span><span>ש</span></div>
+    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px">${cells}</div>
+    <div class="muted" style="font-size:11px;margin-top:8px;text-align:center">${W.calPick?'בחר עד-תאריך (אותו יום = יום בודד)':'בחר מ-תאריך'}</div>
+  </div>`;
+}
+function wcoCalNav(dir){
+  const W=S.wco; const [y,m]=W.calMonth.split('-').map(Number);
+  const nd=new Date(y, m-1+dir, 1);
+  W.calMonth=`${nd.getFullYear()}-${String(nd.getMonth()+1).padStart(2,'0')}`;
+  wcoCalPaint();
+}
+function wcoCalPick(ds){
+  const W=S.wco;
+  if(!W.calPick){ W.calPick=ds; wcoCalPaint(); return; }
+  let a=W.calPick, b=ds;
+  if(b<a){ const t=a; a=b; b=t; }
+  W.after=a; W.before=b; W.calPick=null; W.page=1;
+  loadWcOrders(); renderWcOrders();
 }
 async function loadWcOrders(){
   const W=S.wco; W.loading=true;
   const box=document.getElementById('wcoList');
   if(box&&W.rows===null) box.innerHTML='<div class="empty">טוען הזמנות…</div>';
   try{
-    const r=await api('/api/admin/orders?page='+W.page+'&status='+encodeURIComponent(W.status)+'&search='+encodeURIComponent(W.q),null,60000);
+    const r=await api('/api/admin/orders?page='+W.page+'&status='+encodeURIComponent(W.status)+'&search='+encodeURIComponent(W.q)
+      +'&after='+encodeURIComponent(W.after||'')+'&before='+encodeURIComponent(W.before||''),null,60000);
     W.rows=r.orders; W.pages=r.pages; W.total=r.total;
   }catch(e){ W.rows=[]; toast('טעינת הזמנות נכשלה',false); }
   W.loading=false;
