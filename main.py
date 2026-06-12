@@ -1946,6 +1946,7 @@ def admin_orders_list(page: int = 1, status: str = "", search: str = "",
         items = o.get("line_items") or []
         out.append({
             "src": _order_source(meta),
+            "ship_tag": _ship_tag(o),
             "id": o.get("id"), "number": o.get("number"), "status": o.get("status"),
             "date": o.get("date_created"), "total": o.get("total"),
             "currency": o.get("currency_symbol") or "₪",
@@ -1961,7 +1962,43 @@ def admin_orders_list(page: int = 1, status: str = "", search: str = "",
         })
     return {"orders": out, "page": page,
             "pages": int(r.headers.get("X-WP-TotalPages") or 1),
-            "total": int(r.headers.get("X-WP-Total") or len(out))}
+            "total": int(r.headers.get("X-WP-Total") or len(out)),
+            "statuses": _wc_statuses(base, k, s)}
+
+
+_wc_statuses_cache = {"at": 0.0, "map": {}}
+
+
+def _wc_statuses(base, k, s) -> dict:
+    """מפת הסטטוסים האמיתית של האתר (כולל מותאמים: shipping-stage וכו'), cache שעה."""
+    import time as _t
+    import requests as _rq
+    if _wc_statuses_cache["map"] and _t.time() - _wc_statuses_cache["at"] < 3600:
+        return _wc_statuses_cache["map"]
+    try:
+        r = _rq.get(f"{base}/wp-json/wc/v3/reports/orders/totals", auth=(k, s), timeout=30)
+        if r.ok:
+            _wc_statuses_cache["map"] = {st["slug"]: st["name"] for st in r.json()}
+            _wc_statuses_cache["at"] = _t.time()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("statuses fetch failed: %s", e)
+    return _wc_statuses_cache["map"]
+
+
+def _ship_tag(o: dict) -> str:
+    """תג משלוח קצר לכרטיסייה: איסוף עצמי / נק׳ מסירה ת״א / אקספרס / משלוח / דיגיטלי."""
+    titles = " ".join((sl.get("method_title") or "") for sl in (o.get("shipping_lines") or []))
+    if o.get("status") == "tlv-pickup" or "נקודת מסירה" in titles:
+        return "📦 נק׳ מסירה ת״א"
+    if "איסוף" in titles:
+        return "📍 איסוף עצמי"
+    if "אותו היום" in titles or "אקספרס" in titles:
+        return "⚡ אקספרס"
+    if "דיגיטל" in titles:
+        return "📧 דיגיטלי"
+    if "משלוח" in titles:
+        return "🚚 משלוח"
+    return ""
 
 
 def _order_source(meta: dict) -> str:
@@ -2020,6 +2057,7 @@ def admin_order_detail(oid: int, x_admin_key: Optional[str] = Header(None)):
     }
     return {
         "src": _order_source(meta),
+        "ship_tag": _ship_tag(o),
         "pay": pay if any(pay.values()) else None,
         "id": o.get("id"), "number": o.get("number"), "status": o.get("status"),
         "date": o.get("date_created"), "date_paid": o.get("date_paid"),
@@ -2056,6 +2094,24 @@ def admin_order_status(oid: int, body: OrderStatusIn, x_admin_key: Optional[str]
     if not r.ok:
         raise HTTPException(502, f"עדכון הסטטוס נכשל ({r.status_code})")
     return {"ok": True, "status": r.json().get("status")}
+
+
+@app.delete("/api/admin/orders/{oid}")
+def admin_order_trash(oid: int, x_admin_key: Optional[str] = Header(None)):
+    """העברת הזמנה לפח (לא מחיקה סופית) — מותר רק על בוטלו/נכשל/הוחזר."""
+    _require_admin(x_admin_key)
+    import requests as _rq
+    base, k, s = _wc_creds()
+    cur = _rq.get(f"{base}/wp-json/wc/v3/orders/{oid}", auth=(k, s), timeout=30)
+    if not cur.ok:
+        raise HTTPException(404, "הזמנה לא נמצאה")
+    st = cur.json().get("status")
+    if st not in ("cancelled", "failed", "refunded"):
+        raise HTTPException(400, f"לפח אפשר להעביר רק הזמנות שבוטלו/נכשלו (הסטטוס: {st})")
+    r = _rq.delete(f"{base}/wp-json/wc/v3/orders/{oid}", auth=(k, s), timeout=30)  # בלי force = פח
+    if not r.ok:
+        raise HTTPException(502, "ההעברה לפח נכשלה")
+    return {"ok": True}
 
 
 class OrderNoteIn(BaseModel):

@@ -4299,16 +4299,19 @@ async function lsSendTransfer(){
 
 // ── 🧾 טאב הזמנות: חלון מלא להזמנות האתר (קריאה/עריכה דרך WC REST, בלי אחסון אצלנו) ──
 const WC_ST_COLORS={pending:'#b45309',processing:'#15803d','on-hold':'#b45309',completed:'#1d4ed8',
-                    cancelled:'#6b7280',refunded:'#6b7280',failed:'#b91c1c'};
+                    cancelled:'#6b7280',refunded:'#6b7280',failed:'#b91c1c',
+                    'shipping-stage':'#7c3aed','order-ready':'#0d9488','tlv-pickup':'#0369a1','delivered':'#1d4ed8'};
+function ordStName(st){ return (S.wcoStatuses||{})[st]||WA_STATUS[st]||st; }
 function ordTag(st){
   const c=WC_ST_COLORS[st]||'#6b7280';
-  return `<span class="ord-st" style="color:${c};border-color:${c}55;background:${c}14">${WA_STATUS[st]||st}</span>`;
+  return `<span class="ord-st" style="color:${c};border-color:${c}55;background:${c}14">${escW(ordStName(st))}</span>`;
 }
 function renderWcOrders(){
   const app=document.getElementById('app');
   S.wco=S.wco||{page:1,status:'',q:'',after:'',before:'',rows:null,pages:1,total:0,loading:false};
   const W=S.wco;
   const chips=[['','הכל'],['processing','בטיפול'],['pending','ממתין'],['on-hold','בהמתנה'],
+               ['shipping-stage','בהפצה'],['order-ready','מוכנה'],['tlv-pickup','נק׳ ת״א'],
                ['completed','הושלם'],['cancelled','בוטל'],['refunded','זוכה']]
     .map(([k,t])=>`<button class="btn-ghost" style="padding:6px 12px;font-size:13px${W.status===k?';border-color:#16a34a;color:#16a34a;font-weight:700':''}"
       onclick="S.wco.status='${k}';S.wco.page=1;loadWcOrders()">${t}</button>`).join('');
@@ -4397,6 +4400,7 @@ async function loadWcOrders(){
     const r=await api('/api/admin/orders?page='+W.page+'&status='+encodeURIComponent(W.status)+'&search='+encodeURIComponent(W.q)
       +'&after='+encodeURIComponent(W.after||'')+'&before='+encodeURIComponent(W.before||''),null,60000);
     W.rows=r.orders; W.pages=r.pages; W.total=r.total;
+    if(r.statuses) S.wcoStatuses=r.statuses;
   }catch(e){ W.rows=[]; toast('טעינת הזמנות נכשלה',false); }
   W.loading=false;
   const b2=document.getElementById('wcoList'); if(b2) b2.innerHTML=wcoListHTML();
@@ -4413,7 +4417,7 @@ function wcoListHTML(){
       <td class="muted" style="font-size:12px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(o.items||'')}${o.items_n>1?` <b>(${o.items_n})</b>`:''}</td>
       <td style="white-space:nowrap"><b>${o.currency}${Number(o.total).toLocaleString('he-IL')}</b></td>
       <td>${ordTag(o.status)}</td>
-      <td class="muted" style="font-size:11.5px">${escW(o.shipping||'')}${o.cargo?' 🚚':''}</td>
+      <td style="font-size:11.5px">${o.ship_tag?`<span class="ord-st" style="color:#374151;border-color:#37415133;background:#37415108">${escW(o.ship_tag)}</span>`:''}${o.cargo?' 🚚':''}</td>
     </tr>`).join('');
   const cards=W.rows.map(o=>`
     <div class="ls-card" onclick="openWcOrder(${o.id})">
@@ -4421,6 +4425,7 @@ function wcoListHTML(){
         <b>#${o.number} · ${escW(o.name||'—')}</b>${ordTag(o.status)}
       </div>
       <div class="muted" style="font-size:12px;margin-top:3px">${escW(o.items||'')}</div>
+      ${o.ship_tag?`<div style="margin-top:4px"><span class="ord-st" style="color:#374151;border-color:#37415133;background:#37415108;font-size:11px">${escW(o.ship_tag)}</span></div>`:''}
       <div style="display:flex;justify-content:space-between;margin-top:5px;font-size:13px">
         <b>${o.currency}${Number(o.total).toLocaleString('he-IL')}</b>
         <span class="muted" style="font-size:11.5px">${o.src?`<b style="color:#16a34a">${escW(o.src)}</b> · `:''}${fmtD(o.date)}</span>
@@ -4452,12 +4457,13 @@ function paintWcOrder(){
   const b=d.billing||{}, sh=d.shipping||{};
   const phoneIntl=String(b.phone||'').replace(/\D/g,'').replace(/^0/,'972');
   const gm=d.greenos||{};
-  const stOpts=['pending','processing','on-hold','completed','cancelled','refunded','failed']
-    .map(s=>`<option value="${s}" ${d.status===s?'selected':''}>${WA_STATUS[s]||s}</option>`).join('');
+  const stKeys=Object.keys(S.wcoStatuses||{}).filter(s=>!['checkout-draft','recsubc'].includes(s));
+  const stOpts=(stKeys.length?stKeys:['pending','processing','on-hold','completed','cancelled','refunded','failed'])
+    .map(s=>`<option value="${s}" ${d.status===s?'selected':''}>${escW(ordStName(s))}</option>`).join('');
   document.getElementById('modalRoot').innerHTML=`<div class="overlay" onclick="closeModal()"><div class="modal" style="max-width:640px;text-align:right;max-height:90vh;overflow:auto;padding:30px 30px 26px;line-height:1.55" onclick="event.stopPropagation()">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
       <b style="font-size:17px">הזמנה #${d.number}</b>
-      <span style="display:flex;gap:7px;align-items:center">${d.src?`<span class="ord-st" style="color:#16a34a;border-color:#16a34a55;background:#16a34a14">${escW(d.src)}</span>`:''}${ordTag(d.status)}
+      <span style="display:flex;gap:7px;align-items:center">${d.ship_tag?`<span class="ord-st" style="color:#374151;border-color:#37415133;background:#37415108">${escW(d.ship_tag)}</span>`:''}${d.src?`<span class="ord-st" style="color:#16a34a;border-color:#16a34a55;background:#16a34a14">${escW(d.src)}</span>`:''}${ordTag(d.status)}
         <button class="dr-x" onclick="closeModal()">✕</button></span>
     </div>
     <div class="muted" style="font-size:12.5px;margin:6px 0 18px">${fmtD(d.date)}${d.date_paid?` · שולם ${fmtD(d.date_paid)}`:''}${d.payment?` · ${escW(d.payment)}`:''}${d.tx?` · עסקה <span style="direction:ltr;font-family:monospace">${escW(String(d.tx).slice(0,18))}</span>`:''}</div>
@@ -4494,6 +4500,7 @@ function paintWcOrder(){
       <button class="btn-primary" style="padding:8px 14px" onclick="wcoSetStatus(${d.id})">עדכן סטטוס</button>
       <a class="btn-ghost" style="text-decoration:none;padding:8px 12px" target="_blank" href="${escW(d.admin_url)}">פתח ב-WC ↗</a>
       <button class="btn-ghost" style="padding:8px 12px;opacity:.5" title="בקרוב — תווית משלוח Cargo" disabled>🚚 תווית Cargo</button>
+      ${['cancelled','failed','refunded'].includes(d.status)?`<button class="btn-ghost" style="padding:8px 12px;border-color:#b91c1c;color:#b91c1c" onclick="wcoTrash(${d.id})">🗑 העבר לפח</button>`:''}
     </div>
     <div style="display:flex;gap:8px;margin-top:12px">
       <input id="wcoNote" placeholder="הוסף הערה פנימית להזמנה…" style="flex:1;min-width:0;padding:8px 10px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:13px"
@@ -4501,6 +4508,18 @@ function paintWcOrder(){
       <button class="btn-ghost" onclick="wcoAddNote(${d.id})">➕</button>
     </div>
   </div></div>`;
+}
+async function wcoTrash(oid){
+  // אישור כפול — מחיקה לפח (שחזור אפשרי מתוך WC, אבל לא מכאן)
+  if(!confirm('להעביר את ההזמנה לפח?')) return;
+  if(!confirm('אישור נוסף: ההזמנה תוסר מהרשימות. להמשיך?')) return;
+  showLoading('מעביר לפח…');
+  try{
+    await api('/api/admin/orders/'+oid,{method:'DELETE'},45000);
+    toast('ההזמנה הועברה לפח ✓',true);
+    closeModal(); loadWcOrders();
+  }catch(e){ toast(e.status===400?'אפשר להעביר לפח רק הזמנות שבוטלו/נכשלו':'ההעברה לפח נכשלה',false); }
+  hideLoading();
 }
 async function wcoSetStatus(oid){
   const st=(document.getElementById('wcoSt')||{}).value; if(!st) return;
