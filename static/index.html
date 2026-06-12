@@ -4633,14 +4633,14 @@ function startNotifPoll(){ clearInterval(S.notifTimer);
 function startPoll(){ clearInterval(S.pollTimer);
   S.pollTimer=setInterval(()=>{ const a=document.getElementById('app');
     if(S.view==='board'){
-      if(S.branchTab==='live') return;   // טאב מלאי חי — אין רענון לוח שידרוס את החיפוש
+      if(S.branchTab==='live'||S.branchTab==='wcorders') return;   // טאבים עם חיפוש/עריכה — אין רענון לוח שידרוס
       // לא מרעננים תוך כדי הקלדה/סריקה פעילה כדי לא לשבש
       const bs=document.getElementById('boardScan');
       if(bs && document.activeElement===bs && bs.value) return;
       renderBoard(a, true);
     } else if(S.view==='admin'){
       if(S.adminTab==='wa'){ waPollTick(); return; }   // וואטסאפ: רענון שקט של רשימה+שיחה
-      if(['rebalance','reco','order','removals','live'].includes(S.adminTab)) return;   // נתונים מחושבים/עריכה/חיפוש חי — לא מרעננים אוטומטית
+      if(['rebalance','reco','order','removals','live','wcorders'].includes(S.adminTab)) return;   // נתונים מחושבים/עריכה/חיפוש חי — לא מרעננים אוטומטית
       const ae=document.activeElement;   // אל תרענן תוך כדי שימוש בסינון
       if(ae && ae.closest && ae.closest('.filters')) return;
       loadAdmin(false);   // רענון שקט ברקע
