@@ -2426,6 +2426,7 @@ function waOrdDoneOpen(r,o){
   const old=document.getElementById('waOrdDoneModal'); if(old) old.remove();
   S.waOrdDoneName=(o.cust.first_name||'').trim();
   const total=Number(r.total).toLocaleString('he-IL');
+  S.waOrdDoneCtx={order_number:String(r.number||''), total:'₪'+total, pru:r.pru||''};
   const msg=r.pay_link
     ? `היי${o.cust.first_name?' '+o.cust.first_name:''}, הקמנו לך הזמנה מס׳ ${r.number} על סך ${r.currency}${total}.\nלתשלום מאובטח: ${r.pay_link}\nתודה, גרין מובייל 💚`
     : `הזמנה מס׳ ${r.number} נפתחה על סך ${r.currency}${total}.`;
@@ -2446,7 +2447,7 @@ function waOrdDoneOpen(r,o){
       <input id="odPhone" placeholder="טלפון" inputmode="tel" value="${escW(phone)}" style="width:135px;min-width:0;direction:ltr;padding:8px 10px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:13px">
       <button class="btn-primary" id="odSend" style="flex:1" onclick="waOrdDoneSend()">שלח בוואטסאפ ללקוח</button>
     </div>
-    <div class="muted" style="font-size:11px;margin-top:5px">נשלח תמיד: בתוך חלון 24ש׳ — הודעה רגילה; מחוצה לו — תבנית מאושרת Meta (new_message).</div>
+    <div class="muted" style="font-size:11px;margin-top:5px">נשלח תמיד: עם כפתור תשלום לחיץ (תבנית payment_link); אם התבנית עוד לא מאושרת — הודעה רגילה / תבנית new_message לפי חלון 24ש׳.</div>
     <div style="display:flex;gap:8px;margin-top:10px">
       <button class="btn-ghost" style="flex:1" onclick="window.open('${r.admin_url}','_blank')">פתח הזמנה ב-WC</button>
       <button class="btn-ghost" style="flex:1" onclick="document.getElementById('waOrdDoneModal').remove()">סגור</button>
@@ -2462,9 +2463,12 @@ async function waOrdDoneSend(){
   if(!text){ toast('ההודעה ריקה',false); return; }
   const btn=document.getElementById('odSend'); if(btn){ btn.disabled=true; btn.textContent='שולח…'; }
   try{
+    const ctx=S.waOrdDoneCtx||{};
     const r=await api('/api/admin/wa/send-guaranteed',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({phone, text, name:S.waOrdDoneName||''})},60000);
-    toast(r.via==='template'?'נשלח ✓ כתבנית מאושרת (מחוץ לחלון 24ש׳)':'נשלח ✓ בוואטסאפ',true);
+      body:JSON.stringify({phone, text, name:S.waOrdDoneName||'',
+        order_number:ctx.order_number||'', total:ctx.total||'', pru:ctx.pru||''})},60000);
+    toast(r.via==='pay-template'?'נשלח ✓ עם כפתור תשלום לחיץ':
+         r.via==='template'?'נשלח ✓ כתבנית מאושרת (מחוץ לחלון 24ש׳)':'נשלח ✓ בוואטסאפ',true);
     if(btn) btn.textContent='נשלח ✓';
   }catch(e){
     if(btn){ btn.disabled=false; btn.textContent='נסה שוב'; }

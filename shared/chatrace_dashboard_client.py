@@ -311,6 +311,7 @@ class ChatRaceDashboardClient:
         language: str = "he",
         namespace: str = "",
         channel: int = 5,
+        button_parameters: Optional[List[str]] = None,
     ) -> Dict:
         """
         Send a pre-approved WhatsApp template message. Works at ANY time —
@@ -324,6 +325,9 @@ class ChatRaceDashboardClient:
           language:      Template language code ("he", "en", etc).
           namespace:     Optional WABA template namespace. Empty string in most cases.
           channel:       5 = WhatsApp (default), other ints map to other channels.
+          button_parameters: Values for dynamic-URL button params ({{1}} suffix in
+                         the button URL), one per button, by button index. Shape
+                         mirrors the body "pers" with an added "index" field.
 
         Returns the parsed response dict from the server.
         """
@@ -341,6 +345,11 @@ class ChatRaceDashboardClient:
                 "header": None,
             },
         }
+        if button_parameters:
+            data["components"]["buttons"] = {"pers": [
+                {"label": "{{1}}", "value": str(v), "index": i}
+                for i, v in enumerate(button_parameters)
+            ]}
         if namespace:
             data["namespace"] = namespace
         payload = {

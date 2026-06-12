@@ -353,6 +353,37 @@ def send_wa_template(phone: str, template_id: str, params=None, language: str = 
     return {"sent": True, "via": f"template:{template_id}", "resp": resp}
 
 
+PAY_TEMPLATE_ID = "payment_link"   # תבנית מאושרת-Meta עם כפתור URL דינמי לדף PayPlus
+
+
+def pay_template_ready() -> bool:
+    """האם תבנית התשלום כבר מאושרת ומסונכרנת ב-ConnectOp?"""
+    try:
+        return any(t["id"] == PAY_TEMPLATE_ID for t in wa_templates())
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def send_pay_template(phone: str, name: str, order_number: str, total: str, pru: str):
+    """
+    שליחת קישור תשלום כתבנית payment_link: גוף [שם, מס׳ הזמנה, סכום] +
+    כפתור "לתשלום מאובטח" שה-URL שלו הוא https://payments.payplus.co.il/{pru}.
+    הכפתור לחיץ אצל כל לקוח, תמיד — גם מחוץ לחלון 24ש׳ וגם בלי אינטראקציה קודמת.
+    """
+    if not pru:
+        raise WaError("חסר מזהה דף תשלום (pru)")
+    tpl = next((t for t in wa_templates() if t["id"] == PAY_TEMPLATE_ID), None)
+    if tpl is None:
+        raise WaError(f"תבנית {PAY_TEMPLATE_ID} עוד לא סונכרנה מ-Meta")
+    resp = _dash_call(_dash().send_whatsapp_template,
+                      phone, PAY_TEMPLATE_ID,
+                      [name or "לקוח/ה יקר/ה", str(order_number), str(total)],
+                      language=tpl.get("language") or "he",
+                      button_parameters=[pru])
+    logger.info("wa send pay-template -> %s (order %s)", phone, order_number)
+    return {"sent": True, "via": f"template:{PAY_TEMPLATE_ID}", "resp": resp}
+
+
 def search_conversations(q: str, limit: int = 50):
     """חיפוש צד-שרת בכל אנשי הקשר (לא רק 200 השיחות האחרונות) — לפי שם/טלפון/אימייל,
     באותו מנגנון cdts של ה-UI של ConnectOp. ⚠️ בלי saveFilter — שליחתו שוברת את הדשבורד!"""

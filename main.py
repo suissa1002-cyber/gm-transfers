@@ -1897,13 +1897,18 @@ def wa_order_create(body: WaOrderCreate, x_admin_key: Optional[str] = Header(Non
 class WaSendSure(BaseModel):
     phone: str
     text: str
-    name: str = ""          # שם פרטי — לפנייה בתבנית new_message
+    name: str = ""          # שם פרטי — לפנייה בתבנית new_message / payment_link
+    # הקשר תשלום (אופציונלי): כשמלא ותבנית payment_link מאושרת — נשלחת תבנית
+    # עם כפתור URL לחיץ במקום טקסט (פתרון לקישור לא-לחיץ אצל לקוחות חדשים)
+    order_number: str = ""
+    total: str = ""
+    pru: str = ""
 
 
 @app.post("/api/admin/wa/send-guaranteed")
 def wa_send_guaranteed(body: WaSendSure, x_admin_key: Optional[str] = Header(None)):
-    """שליחה מובטחת בוואטסאפ: בתוך חלון 24ש׳ → הודעה רגילה; מחוץ לחלון
-    (או איש קשר שמעולם לא כתב לנו) → תבנית new_message המאושרת של Meta — עוברת תמיד."""
+    """שליחה מובטחת בוואטסאפ: קישור תשלום → תבנית payment_link עם כפתור (אם מאושרת);
+    אחרת בתוך חלון 24ש׳ → הודעה רגילה; מחוץ לחלון → תבנית new_message. עוברת תמיד."""
     _require_admin(x_admin_key)
     import re as _re
     import wa
@@ -1915,6 +1920,12 @@ def wa_send_guaranteed(body: WaSendSure, x_admin_key: Optional[str] = Header(Non
     text = (body.text or "").strip()
     if not text:
         raise HTTPException(400, "הודעה ריקה")
+    if body.pru and wa.pay_template_ready():
+        try:
+            wa.send_pay_template(phone, body.name, body.order_number, body.total, body.pru)
+            return {"sent": True, "via": "pay-template", "phone": phone}
+        except wa.WaError as e:
+            logger.warning("pay-template send failed (%s) — falling back", e)
     try:
         r = wa.send_reply(phone, text)
         if r.get("sent"):
