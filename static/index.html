@@ -4317,6 +4317,12 @@ async function lsSendTransfer(){
 const WC_ST_COLORS={pending:'#b45309',processing:'#15803d','on-hold':'#b45309',completed:'#1d4ed8',
                     cancelled:'#6b7280',refunded:'#6b7280',failed:'#b91c1c',
                     'shipping-stage':'#7c3aed','order-ready':'#0d9488','tlv-pickup':'#0369a1','delivered':'#1d4ed8'};
+function shipTagHTML(t,size){
+  if(!t) return '';
+  const [k,label]=String(t).includes('|')?String(t).split('|'):['truck',t];
+  const icon={tlv:'pkg',pickup:'pin',express:'zap'}[k]||'truck';
+  return `<span style="display:inline-flex;align-items:center;gap:4px;white-space:nowrap">${ico(icon,size||12)} ${escW(label)}</span>`;
+}
 function ordStName(st){ return (S.wcoStatuses||{})[st]||WA_STATUS[st]||st; }
 function ordTag(st){
   const c=WC_ST_COLORS[st]||'#6b7280';
@@ -4346,7 +4352,7 @@ function renderWcOrders(){
       <button class="btn-ghost wa-ico" onclick="loadWcOrders()" title="רענן">${ico('refresh',15)}</button>
     </div>
     ${(W.after||W.before)?`<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:13px">
-      <span class="ord-st" style="color:#16a34a;border-color:#16a34a55;background:#16a34a14">📅 ${escW(wcoFmtD(W.after))} — ${escW(wcoFmtD(W.before||W.after))}</span>
+      <span class="ord-st" style="color:#16a34a;border-color:#16a34a55;background:#16a34a14;display:inline-flex;align-items:center;gap:5px">${ico('calendar',12)} ${escW(wcoFmtD(W.after))} — ${escW(wcoFmtD(W.before||W.after))}</span>
       <button class="btn-ghost" style="padding:3px 10px;font-size:12px" onclick="S.wco.after='';S.wco.before='';S.wco.page=1;loadWcOrders();renderWcOrders()">✕ נקה טווח</button>
     </div>`:''}
     <div id="wcoCal" style="display:none;position:relative"></div>
@@ -4429,7 +4435,7 @@ function wcoListHTML(){
   const rows=W.rows.map(o=>`
     <tr class="ls-row" onclick="openWcOrder(${o.id})">
       <td><b>#${o.number}</b>${o.greenos?' <span title="נוצרה ב-GreenOS" style="color:#16a34a">●</span>':''}</td>
-      <td class="muted" style="font-size:12px;white-space:nowrap">${fmtD(o.date)}${o.ship_tag?`<div style="font-size:10.5px;margin-top:2px">${escW(o.ship_tag)}</div>`:''}</td>
+      <td class="muted" style="font-size:12px;white-space:nowrap">${fmtD(o.date)}${o.ship_tag?`<div style="font-size:10.5px;margin-top:2px">${shipTagHTML(o.ship_tag,11)}</div>`:''}</td>
       <td><b>${escW(o.name||'—')}</b><div class="muted" style="font-size:11.5px;direction:ltr;text-align:end">${escW(o.phone||'')}</div></td>
       <td style="max-width:280px"><div style="display:flex;align-items:center;gap:8px">
         ${o.img?`<img src="${escW(o.img)}" loading="lazy" style="width:34px;height:34px;object-fit:contain;border-radius:7px;background:#fff;border:1px solid var(--line);flex:none">`:''}
@@ -4446,7 +4452,7 @@ function wcoListHTML(){
       <div class="muted" style="font-size:12px;margin-top:3px">${escW(o.items||'')}</div>
       <div style="display:flex;justify-content:space-between;margin-top:5px;font-size:13px">
         <b>${o.currency}${Number(o.total).toLocaleString('he-IL')}</b>
-        <span class="muted" style="font-size:11.5px"><span style="direction:ltr;unicode-bidi:embed">${(x=>isNaN(x)?'':x.toLocaleDateString('en-GB',{day:'numeric',month:'short'}))(new Date(o.date))}</span>${o.ship_tag?` · ${escW(o.ship_tag)}`:''}</span>
+        <span class="muted" style="font-size:11.5px"><span style="direction:ltr;unicode-bidi:embed">${(x=>isNaN(x)?'':x.toLocaleDateString('en-GB',{day:'numeric',month:'short'}))(new Date(o.date))}</span>${o.ship_tag?` · ${shipTagHTML(o.ship_tag,11)}`:''}</span>
       </div>
     </div>`).join('');
   const pager=W.pages>1?`<div style="display:flex;gap:8px;align-items:center;justify-content:center;margin-top:12px">
@@ -4482,7 +4488,7 @@ async function payLinksOpen(q){
     </div>`).join('');
   document.getElementById('modalRoot').innerHTML=`<div class="overlay" onclick="closeModal()"><div class="modal" style="max-width:560px;text-align:right;max-height:88vh;overflow:auto" onclick="event.stopPropagation()">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-      <b style="font-size:16px">⚡ תשלומים מהירים</b>
+      <b style="font-size:16px;display:inline-flex;align-items:center;gap:7px">${ico('zap',16)} תשלומים מהירים</b>
       <button class="dr-x" onclick="closeModal()">✕</button>
     </div>
     <input placeholder="חיפוש — תיאור / שם / טלפון / אישור / 4 ספרות" value="${escW(q||'')}"
@@ -4513,7 +4519,7 @@ function paintWcOrder(){
   document.getElementById('modalRoot').innerHTML=`<div class="overlay" onclick="closeModal()"><div class="modal" style="max-width:640px;text-align:right;max-height:90vh;overflow:auto;padding:30px 30px 26px;line-height:1.55" onclick="event.stopPropagation()">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
       <b style="font-size:17px">הזמנה #${d.number}</b>
-      <span style="display:flex;gap:7px;align-items:center">${d.ship_tag?`<span class="ord-st" style="color:#374151;border-color:#37415133;background:#37415108">${escW(d.ship_tag)}</span>`:''}${d.src?`<span class="ord-st" style="color:#16a34a;border-color:#16a34a55;background:#16a34a14">${escW(d.src)}</span>`:''}${ordTag(d.status)}
+      <span style="display:flex;gap:7px;align-items:center">${d.ship_tag?`<span class="ord-st" style="color:#374151;border-color:#37415133;background:#37415108">${shipTagHTML(d.ship_tag,12)}</span>`:''}${d.src?`<span class="ord-st" style="color:#16a34a;border-color:#16a34a55;background:#16a34a14">${escW(d.src)}</span>`:''}${ordTag(d.status)}
         <button class="dr-x" onclick="closeModal()">✕</button></span>
     </div>
     <div class="muted" style="font-size:12.5px;margin:6px 0 18px">${fmtD(d.date)}${d.date_paid?` · שולם ${fmtD(d.date_paid)}`:''}${d.payment?` · ${escW(d.payment)}`:''}${d.tx?` · עסקה <span style="direction:ltr;font-family:monospace">${escW(String(d.tx).slice(0,18))}</span>`:''}</div>
@@ -4522,7 +4528,7 @@ function paintWcOrder(){
       <div class="muted" style="font-size:12.5px;direction:ltr;text-align:end">${escW(b.phone||'')}${b.email?` · ${escW(b.email)}`:''}</div>
       ${(b.address_1||b.city)?`<div class="muted" style="font-size:12.5px">חיוב: ${escW(b.address_1||'')} ${escW(b.city||'')}</div>`:''}
       ${(sh.address_1||sh.city)?`<div class="muted" style="font-size:12.5px">משלוח: ${escW(sh.address_1||'')} ${escW(sh.city||'')}</div>`:''}
-      ${(d.shipping_lines||[]).length?`<div class="muted" style="font-size:12.5px">🚚 ${escW(d.shipping_lines.join(', '))}</div>`:''}
+      ${(d.shipping_lines||[]).length?`<div class="muted" style="font-size:12.5px;display:flex;align-items:center;gap:5px">${ico('truck',13)} ${escW(d.shipping_lines.join(', '))}</div>`:''}
       ${phoneIntl.length>10?`<button class="btn-ghost" style="margin-top:6px;padding:4px 10px;font-size:12px" onclick="closeModal();setAdminTab('wa');setTimeout(()=>openWaConv('${phoneIntl}'),600)">${ico('chat',13)} פתח שיחה בוואטסאפ</button>`:''}
     </div>
     ${(d.items||[]).map(it=>`<div style="display:flex;justify-content:space-between;gap:10px;padding:11px 6px;border-bottom:1px solid var(--line);font-size:13.5px;align-items:flex-start">
@@ -4544,16 +4550,16 @@ function paintWcOrder(){
     ${gm.greenos_payplus_link&&d.status==='pending'?`<div style="display:flex;gap:6px;margin:4px 0">
       <input readonly value="${escW(gm.greenos_payplus_link)}" onclick="this.select()" style="flex:1;min-width:0;direction:ltr;font-size:11px;padding:6px 9px;border-radius:8px;border:1px solid var(--line);background:var(--card2);color:var(--txt)">
       <button class="btn-ghost" onclick="navigator.clipboard.writeText('${escW(gm.greenos_payplus_link)}');toast('קישור התשלום הועתק',true)">${ico('clip',14)}</button></div>`:''}
-    ${d.customer_note?`<div class="wa-note" style="margin-top:8px">📝 ${escW(d.customer_note)}</div>`:''}
+    ${d.customer_note?`<div class="wa-note" style="margin-top:8px;display:flex;align-items:flex-start;gap:6px">${ico('pencil',13)} <span>${escW(d.customer_note)}</span></div>`:''}
     ${(d.notes||[]).length?`<details style="margin-top:8px"><summary class="muted" style="cursor:pointer;font-size:13px">הערות הזמנה (${d.notes.length})</summary>
       ${d.notes.map(n=>`<div class="wa-note" style="margin-top:5px;font-size:12px">${escW(n.note)}<div class="by"><span>${fmtD(n.date)}${n.customer?' · נשלח ללקוח':''}</span></div></div>`).join('')}</details>`:''}
     <div style="display:flex;gap:9px;margin-top:20px;align-items:center;flex-wrap:wrap">
       <select id="wcoSt" style="padding:8px 10px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--txt)">${stOpts}</select>
       <button class="btn-primary" style="padding:8px 14px" onclick="wcoSetStatus(${d.id})">עדכן סטטוס</button>
       <a class="btn-ghost" style="text-decoration:none;padding:8px 12px" target="_blank" href="${escW(d.admin_url)}">פתח ב-WC ↗</a>
-      ${d.cargo?`<button class="btn-ghost" style="padding:8px 12px;border-color:#0369a1;color:#0369a1" onclick="wcoCargoLabel(${d.id})">🚚 תווית Cargo</button>`
-        :`<button class="btn-ghost" style="padding:8px 12px;border-color:#0369a1;color:#0369a1" onclick="wcoCargoCreate(${d.id},${(d.ship_tag||'').includes('נק')?'true':'false'})">🚚 צור משלוח Cargo</button>`}
-      ${['cancelled','failed','refunded'].includes(d.status)?`<button class="btn-ghost" style="padding:8px 12px;border-color:#b91c1c;color:#b91c1c" onclick="wcoTrash(${d.id})">🗑 העבר לפח</button>`:''}
+      ${d.cargo?`<button class="btn-ghost" style="padding:8px 12px;border-color:#0369a1;color:#0369a1;display:inline-flex;align-items:center;gap:6px" onclick="wcoCargoLabel(${d.id})">${ico('truck',14)} תווית Cargo</button>`
+        :`<button class="btn-ghost" style="padding:8px 12px;border-color:#0369a1;color:#0369a1;display:inline-flex;align-items:center;gap:6px" onclick="wcoCargoCreate(${d.id},${(d.ship_tag||'').includes('tlv')?'true':'false'})">${ico('truck',14)} צור משלוח Cargo</button>`}
+      ${['cancelled','failed','refunded'].includes(d.status)?`<button class="btn-ghost" style="padding:8px 12px;border-color:#b91c1c;color:#b91c1c;display:inline-flex;align-items:center;gap:6px" onclick="wcoTrash(${d.id})">${ico('trash',14)} העבר לפח</button>`:''}
     </div>
     <div style="display:flex;gap:8px;margin-top:12px">
       <input id="wcoNote" placeholder="הוסף הערה פנימית להזמנה…" style="flex:1;min-width:0;padding:8px 10px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:13px"

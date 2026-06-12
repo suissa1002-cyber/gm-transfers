@@ -1993,12 +1993,12 @@ def _ship_tag(o: dict, meta: dict = None) -> str:
     meta = meta or {}
     titles = " ".join((sl.get("method_title") or "") for sl in (o.get("shipping_lines") or []))
     if o.get("status") == "tlv-pickup" or "נקודת מסירה" in titles:
-        return "📦 נק׳ מסירה ת״א"
+        return "tlv|נק׳ מסירה ת״א"
     if "איסוף" in titles:
         br = str(meta.get("_gm_pickup_branch") or "").split(" - ")[0].replace("סניף", "").strip()
-        return f"📍 איסוף · {br}" if br else "📍 איסוף עצמי"
+        return f"pickup|איסוף · {br}" if br else "pickup|איסוף עצמי"
     if "אותו היום" in titles or "אקספרס" in titles:
-        return "⚡ אקספרס"
+        return "express|אקספרס"
     return ""
 
 
