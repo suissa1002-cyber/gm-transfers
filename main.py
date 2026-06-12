@@ -1945,6 +1945,7 @@ def admin_orders_list(page: int = 1, status: str = "", search: str = "",
         meta = {m.get("key"): m.get("value") for m in (o.get("meta_data") or [])}
         items = o.get("line_items") or []
         out.append({
+            "src": _order_source(meta),
             "id": o.get("id"), "number": o.get("number"), "status": o.get("status"),
             "date": o.get("date_created"), "total": o.get("total"),
             "currency": o.get("currency_symbol") or "₪",
@@ -1961,6 +1962,31 @@ def admin_orders_list(page: int = 1, status: str = "", search: str = "",
     return {"orders": out, "page": page,
             "pages": int(r.headers.get("X-WP-TotalPages") or 1),
             "total": int(r.headers.get("X-WP-Total") or len(out))}
+
+
+def _order_source(meta: dict) -> str:
+    """תג מקור ההזמנה — מ-Order Attribution של WC (גוגל אורגני/Ads/זאפ/ישיר/GreenOS)."""
+    if meta.get("greenos_source"):
+        return "GreenOS"
+    st = (meta.get("_wc_order_attribution_source_type") or "").lower()
+    src = (meta.get("_wc_order_attribution_utm_source") or "").lower()
+    med = (meta.get("_wc_order_attribution_utm_medium") or "").lower()
+    if "google" in src:
+        return "Google Ads" if med in ("cpc", "ppc", "paid") else "Google אורגני"
+    if src:
+        return src.replace("www.", "")
+    if st == "typein":
+        return "ישיר"
+    if st == "admin":
+        return "ידני (אדמין)"
+    if st == "referral":
+        ref = (meta.get("_wc_order_attribution_referrer") or "")
+        try:
+            from urllib.parse import urlparse
+            return urlparse(ref).netloc.replace("www.", "") or "הפניה"
+        except Exception:  # noqa: BLE001
+            return "הפניה"
+    return st or ""
 
 
 @app.get("/api/admin/orders/{oid}")
@@ -1982,7 +2008,19 @@ def admin_order_detail(oid: int, x_admin_key: Optional[str] = Header(None)):
                      for n in rn.json()[:15]]
     except Exception:  # noqa: BLE001
         pass
+    # פרטי תשלום PayPlus — מהתוסף באתר (payplus_*) עם נסיגה ל-meta של GreenOS
+    pay = {
+        "approval": meta.get("payplus_approval_num") or meta.get("greenos_payplus_approval") or "",
+        "four_digits": meta.get("payplus_four_digits") or meta.get("greenos_payplus_4digits") or "",
+        "payments": meta.get("payplus_number_of_payments") or meta.get("greenos_payplus_payments") or "",
+        "brand": meta.get("payplus_brand_name") or meta.get("greenos_payplus_brand") or "",
+        "method": meta.get("payplus_method") or "",
+        "clearing": meta.get("payplus_clearing_name") or "",
+        "status_desc": meta.get("payplus_status_description") or "",
+    }
     return {
+        "src": _order_source(meta),
+        "pay": pay if any(pay.values()) else None,
         "id": o.get("id"), "number": o.get("number"), "status": o.get("status"),
         "date": o.get("date_created"), "date_paid": o.get("date_paid"),
         "total": o.get("total"), "shipping_total": o.get("shipping_total"),

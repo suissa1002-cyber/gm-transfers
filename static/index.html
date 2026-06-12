@@ -4408,7 +4408,7 @@ function wcoListHTML(){
   const rows=W.rows.map(o=>`
     <tr class="ls-row" onclick="openWcOrder(${o.id})">
       <td><b>#${o.number}</b>${o.greenos?' <span title="נוצרה ב-GreenOS" style="color:#16a34a">●</span>':''}</td>
-      <td class="muted" style="font-size:12px;white-space:nowrap">${fmtD(o.date)}</td>
+      <td class="muted" style="font-size:12px;white-space:nowrap">${fmtD(o.date)}${o.src?`<div style="font-size:10.5px;color:#16a34a;font-weight:700">${escW(o.src)}</div>`:''}</td>
       <td><b>${escW(o.name||'—')}</b><div class="muted" style="font-size:11.5px;direction:ltr;text-align:end">${escW(o.phone||'')}</div></td>
       <td class="muted" style="font-size:12px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(o.items||'')}${o.items_n>1?` <b>(${o.items_n})</b>`:''}</td>
       <td style="white-space:nowrap"><b>${o.currency}${Number(o.total).toLocaleString('he-IL')}</b></td>
@@ -4423,7 +4423,7 @@ function wcoListHTML(){
       <div class="muted" style="font-size:12px;margin-top:3px">${escW(o.items||'')}</div>
       <div style="display:flex;justify-content:space-between;margin-top:5px;font-size:13px">
         <b>${o.currency}${Number(o.total).toLocaleString('he-IL')}</b>
-        <span class="muted" style="font-size:11.5px">${fmtD(o.date)}</span>
+        <span class="muted" style="font-size:11.5px">${o.src?`<b style="color:#16a34a">${escW(o.src)}</b> · `:''}${fmtD(o.date)}</span>
       </div>
     </div>`).join('');
   const pager=W.pages>1?`<div style="display:flex;gap:8px;align-items:center;justify-content:center;margin-top:12px">
@@ -4457,7 +4457,7 @@ function paintWcOrder(){
   document.getElementById('modalRoot').innerHTML=`<div class="overlay" onclick="closeModal()"><div class="modal" style="max-width:640px;text-align:right;max-height:90vh;overflow:auto;padding:30px 30px 26px;line-height:1.55" onclick="event.stopPropagation()">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
       <b style="font-size:17px">הזמנה #${d.number}</b>
-      <span style="display:flex;gap:7px;align-items:center">${ordTag(d.status)}
+      <span style="display:flex;gap:7px;align-items:center">${d.src?`<span class="ord-st" style="color:#16a34a;border-color:#16a34a55;background:#16a34a14">${escW(d.src)}</span>`:''}${ordTag(d.status)}
         <button class="dr-x" onclick="closeModal()">✕</button></span>
     </div>
     <div class="muted" style="font-size:12.5px;margin:6px 0 18px">${fmtD(d.date)}${d.date_paid?` · שולם ${fmtD(d.date_paid)}`:''}${d.payment?` · ${escW(d.payment)}`:''}${d.tx?` · עסקה <span style="direction:ltr;font-family:monospace">${escW(String(d.tx).slice(0,18))}</span>`:''}</div>
@@ -4475,6 +4475,14 @@ function paintWcOrder(){
     <div style="display:flex;justify-content:space-between;padding:14px 6px 6px;font-size:15px">
       <span>${Number(d.shipping_total)>0?`משלוח ${fmt(d.shipping_total)} · `:''}<b>סה״כ</b></span><b style="font-size:16px">${fmt(d.total)}</b>
     </div>
+    ${d.pay?`<div style="background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:11px 14px;margin:8px 0;font-size:13px;display:flex;flex-wrap:wrap;gap:6px 18px">
+      ${d.pay.approval?`<span>אישור: <b style="direction:ltr;unicode-bidi:embed">${escW(d.pay.approval)}</b></span>`:''}
+      ${d.pay.four_digits?`<span>כרטיס: <b style="direction:ltr;unicode-bidi:embed">****${escW(d.pay.four_digits)}</b>${d.pay.brand?` (${escW(d.pay.brand)})`:''}</span>`:''}
+      ${d.pay.payments?`<span>תשלומים: <b>${escW(String(d.pay.payments))}</b></span>`:''}
+      ${d.pay.method&&d.pay.method!=='credit-card'?`<span>אמצעי: <b>${escW(d.pay.method)}</b></span>`:''}
+      ${d.pay.clearing?`<span>סולק: <b>${escW(d.pay.clearing)}</b></span>`:''}
+      ${d.pay.status_desc?`<span class="muted">${escW(d.pay.status_desc)}</span>`:''}
+    </div>`:''}
     ${gm.greenos_payplus_link&&d.status==='pending'?`<div style="display:flex;gap:6px;margin:4px 0">
       <input readonly value="${escW(gm.greenos_payplus_link)}" onclick="this.select()" style="flex:1;min-width:0;direction:ltr;font-size:11px;padding:6px 9px;border-radius:8px;border:1px solid var(--line);background:var(--card2);color:var(--txt)">
       <button class="btn-ghost" onclick="navigator.clipboard.writeText('${escW(gm.greenos_payplus_link)}');toast('קישור התשלום הועתק',true)">${ico('clip',14)}</button></div>`:''}
