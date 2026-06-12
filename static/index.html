@@ -2479,8 +2479,11 @@ function waOrdExtrasHTML(fmt){
   const o=S.waOrd; if(!o) return '';
   const rows=(o.extras||[]).map((x,i)=>`
     <div style="display:flex;align-items:center;gap:6px;margin-top:6px;background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:6px 8px">
-      <span style="flex:1;min-width:0"><b style="font-size:12.5px">${escW(x.name)}</b>${x.found?'':' <span class="mtag warn">לא באתר</span>'}
-        <div class="muted" style="font-size:10.5px;direction:ltr;text-align:end;font-family:monospace">${escW(x.sku)}</div></span>
+      ${x.free
+        ?`<input value="${escW(x.name)}" placeholder="תיאור הפריט (חופשי)" style="flex:1;min-width:0;padding:6px 8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:12.5px"
+                 onchange="waOrdExtraSet(${i},'name',this.value)">`
+        :`<span style="flex:1;min-width:0"><b style="font-size:12.5px">${escW(x.name)}</b>${x.found?'':' <span class="mtag warn">לא באתר</span>'}
+        <div class="muted" style="font-size:10.5px;direction:ltr;text-align:end;font-family:monospace">${escW(x.sku)}</div></span>`}
       <input value="${x.price}" inputmode="decimal" title="מחיר ליחידה" style="width:72px;padding:6px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--txt);text-align:center"
              onchange="waOrdExtraSet(${i},'price',this.value)">
       <input type="number" min="1" value="${x.qty}" title="כמות" style="width:50px;padding:6px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--txt);text-align:center"
@@ -2496,8 +2499,19 @@ function waOrdExtrasHTML(fmt){
                oninput="S.waOrdAddQ=this.value;waOrdAddPaint()">
         <div id="woAddRes" style="max-height:170px;overflow-y:auto;margin-top:5px"></div>
       </div>`
-    :`<button class="btn-ghost" style="width:100%;margin-top:7px;border-style:dashed" onclick="waOrdAddToggle()">＋ הוסף פריט נוסף (חיפוש בקופה)</button>`}
+    :`<div style="display:flex;gap:7px;margin-top:7px">
+        <button class="btn-ghost" style="flex:1;border-style:dashed" onclick="waOrdAddToggle()">＋ פריט מהקופה</button>
+        <button class="btn-ghost" style="flex:1;border-style:dashed" onclick="waOrdExtraFree()">✏️ פריט חופשי</button>
+      </div>`}
   </div>`;
+}
+function waOrdExtraFree(){
+  // פריט בטקסט חופשי: תיאור + סכום ידניים (תיקון, שירות, פריט שאין בקטלוג)
+  waOrderSaveInputs();
+  (S.waOrd.extras=S.waOrd.extras||[]).push({sku:'', name:'', price:0, qty:1, found:false, wc_id:0, variation_id:0, free:true});
+  waOrderRender();
+  setTimeout(()=>{ const ins=document.querySelectorAll('#waOrderModal input[placeholder^="תיאור הפריט"]');
+    const e=ins[ins.length-1]; if(e) e.focus(); },120);
 }
 function waOrdAddToggle(){
   waOrderSaveInputs();
@@ -2544,7 +2558,7 @@ async function waOrdExtraPick(pid){
 function waOrdExtraSet(i,k,v){
   waOrderSaveInputs();
   const x=(S.waOrd.extras||[])[i]; if(!x) return;
-  x[k]=(k==='qty')?Math.max(1,Number(v)||1):Math.max(0,Number(v)||0);
+  x[k]=(k==='name')?String(v):(k==='qty')?Math.max(1,Number(v)||1):Math.max(0,Number(v)||0);
   waOrderRender();
 }
 function waOrdExtraDel(i){
@@ -2833,6 +2847,8 @@ async function waOrderSubmit(payment){
   // פריטים נוספים: מחוברים לאתר → לפי מזהה; פריטי קופה בלבד → שורה מותאמת עם מחיר
   const extras=(o.extras||[]).map(x=>({product_id:x.wc_id||0, variation_id:x.variation_id||0,
     quantity:Number(x.qty)||1, price:Number(x.price)||0, name:x.name||'', sku:x.sku||''}));
+  const noName=extras.find(x=>!x.product_id && !(x.name||'').trim());
+  if(noName){ toast('חסר תיאור לפריט החופשי — הזן תיאור בשורה',false); return; }
   const noPrice=extras.find(x=>!x.product_id && !(x.price>0));
   if(noPrice){ toast('חסר מחיר לפריט "'+(noPrice.name||noPrice.sku)+'" — הזן מחיר בשורה',false); return; }
   showLoading('יוצר הזמנה…');
