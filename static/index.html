@@ -338,6 +338,13 @@
   .wa-quote{border-inline-start:3px solid #16a34a;background:rgba(0,0,0,.06);border-radius:8px;
             padding:5px 9px;margin-bottom:6px;font-size:12px;color:var(--muted);
             overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+  /* מובייל: כל מודאל נעול לרוחב המסך — בלי גלישה אופקית (עמודי פרטי הזמנה זזו הצידה) */
+  @media (max-width:760px){
+    .modal{max-width:calc(100vw - 20px)!important;width:calc(100vw - 20px);box-sizing:border-box;
+           padding:20px 16px!important;overflow-x:hidden}
+    .modal b, .modal span, .modal div{word-break:break-word}
+    .overlay{padding:10px;box-sizing:border-box}
+  }
   /* יומן טווח תאריכים בטאב ההזמנות */
   .wco-day{padding:7px 0;border:0;background:transparent;color:var(--txt);border-radius:8px;cursor:pointer;font-size:13px;font-family:inherit}
   .wco-day:hover{background:var(--card2)}
