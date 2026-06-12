@@ -4429,7 +4429,7 @@ function wcoListHTML(){
   const rows=W.rows.map(o=>`
     <tr class="ls-row" onclick="openWcOrder(${o.id})">
       <td><b>#${o.number}</b>${o.greenos?' <span title="נוצרה ב-GreenOS" style="color:#16a34a">●</span>':''}</td>
-      <td class="muted" style="font-size:12px;white-space:nowrap">${fmtD(o.date)}</td>
+      <td class="muted" style="font-size:12px;white-space:nowrap">${fmtD(o.date)}${o.ship_tag?`<div style="font-size:10.5px;margin-top:2px">${escW(o.ship_tag)}</div>`:''}</td>
       <td><b>${escW(o.name||'—')}</b><div class="muted" style="font-size:11.5px;direction:ltr;text-align:end">${escW(o.phone||'')}</div></td>
       <td style="max-width:280px"><div style="display:flex;align-items:center;gap:8px">
         ${o.img?`<img src="${escW(o.img)}" loading="lazy" style="width:34px;height:34px;object-fit:contain;border-radius:7px;background:#fff;border:1px solid var(--line);flex:none">`:''}
@@ -4446,7 +4446,7 @@ function wcoListHTML(){
       <div class="muted" style="font-size:12px;margin-top:3px">${escW(o.items||'')}</div>
       <div style="display:flex;justify-content:space-between;margin-top:5px;font-size:13px">
         <b>${o.currency}${Number(o.total).toLocaleString('he-IL')}</b>
-        <span class="muted" style="font-size:11.5px;direction:ltr">${(x=>isNaN(x)?'':x.toLocaleDateString('en-GB',{day:'numeric',month:'short'}))(new Date(o.date))}</span>
+        <span class="muted" style="font-size:11.5px"><span style="direction:ltr;unicode-bidi:embed">${(x=>isNaN(x)?'':x.toLocaleDateString('en-GB',{day:'numeric',month:'short'}))(new Date(o.date))}</span>${o.ship_tag?` · ${escW(o.ship_tag)}`:''}</span>
       </div>
     </div>`).join('');
   const pager=W.pages>1?`<div style="display:flex;gap:8px;align-items:center;justify-content:center;margin-top:12px">

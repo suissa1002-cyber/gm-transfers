@@ -1947,7 +1947,7 @@ def admin_orders_list(page: int = 1, status: str = "", search: str = "",
         items = o.get("line_items") or []
         out.append({
             "src": _order_source(meta),
-            "ship_tag": _ship_tag(o),
+            "ship_tag": _ship_tag(o, meta),
             "img": ((items[0].get("image") or {}).get("src") or "") if items else "",
             "id": o.get("id"), "number": o.get("number"), "status": o.get("status"),
             "date": o.get("date_created"), "total": o.get("total"),
@@ -1956,7 +1956,7 @@ def admin_orders_list(page: int = 1, status: str = "", search: str = "",
             "phone": o["billing"].get("phone") or "",
             "city": o["billing"].get("city") or "",
             "items_n": sum(int(li.get("quantity") or 1) for li in items),
-            "items": ", ".join((li.get("name") or "")[:40] + ((" (" + " · ".join(x["v"] for x in _li_attrs(li)[:3]) + ")") if _li_attrs(li) else "") for li in items[:3]),
+            "items": ", ".join((li.get("name") or "")[:40] for li in items[:3]),
             "payment": o.get("payment_method_title") or "",
             "shipping": ", ".join((sl.get("method_title") or "") for sl in (o.get("shipping_lines") or [])),
             "greenos": bool(meta.get("greenos_source")),
@@ -1987,19 +1987,18 @@ def _wc_statuses(base, k, s) -> dict:
     return _wc_statuses_cache["map"]
 
 
-def _ship_tag(o: dict) -> str:
-    """תג משלוח קצר לכרטיסייה: איסוף עצמי / נק׳ מסירה ת״א / אקספרס / משלוח / דיגיטלי."""
+def _ship_tag(o: dict, meta: dict = None) -> str:
+    """תג עדין לתצוגה חיצונית — רק כשזה מעניין: אקספרס / נק׳ מסירה ת״א / איסוף
+    (כולל הסניף שנבחר, מהסניפט שלנו ב-meta ‏_gm_pickup_branch). משלוח רגיל = בלי תג."""
+    meta = meta or {}
     titles = " ".join((sl.get("method_title") or "") for sl in (o.get("shipping_lines") or []))
     if o.get("status") == "tlv-pickup" or "נקודת מסירה" in titles:
         return "📦 נק׳ מסירה ת״א"
     if "איסוף" in titles:
-        return "📍 איסוף עצמי"
+        br = str(meta.get("_gm_pickup_branch") or "").split(" - ")[0].replace("סניף", "").strip()
+        return f"📍 איסוף · {br}" if br else "📍 איסוף עצמי"
     if "אותו היום" in titles or "אקספרס" in titles:
         return "⚡ אקספרס"
-    if "דיגיטל" in titles:
-        return "📧 דיגיטלי"
-    if "משלוח" in titles:
-        return "🚚 משלוח"
     return ""
 
 
@@ -2075,7 +2074,7 @@ def admin_order_detail(oid: int, x_admin_key: Optional[str] = Header(None)):
     }
     return {
         "src": _order_source(meta),
-        "ship_tag": _ship_tag(o),
+        "ship_tag": _ship_tag(o, meta),
         "pay": pay if any(pay.values()) else None,
         "id": o.get("id"), "number": o.get("number"), "status": o.get("status"),
         "date": o.get("date_created"), "date_paid": o.get("date_paid"),
