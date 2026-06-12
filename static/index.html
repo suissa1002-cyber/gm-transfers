@@ -4498,7 +4498,8 @@ function paintWcOrder(){
       <select id="wcoSt" style="padding:8px 10px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--txt)">${stOpts}</select>
       <button class="btn-primary" style="padding:8px 14px" onclick="wcoSetStatus(${d.id})">עדכן סטטוס</button>
       <a class="btn-ghost" style="text-decoration:none;padding:8px 12px" target="_blank" href="${escW(d.admin_url)}">פתח ב-WC ↗</a>
-      <button class="btn-ghost" style="padding:8px 12px;opacity:.5" title="בקרוב — תווית משלוח Cargo" disabled>🚚 תווית Cargo</button>
+      ${d.cargo?`<button class="btn-ghost" style="padding:8px 12px;border-color:#0369a1;color:#0369a1" onclick="wcoCargoLabel(${d.id})">🚚 תווית Cargo</button>`
+        :`<button class="btn-ghost" style="padding:8px 12px;border-color:#0369a1;color:#0369a1" onclick="wcoCargoCreate(${d.id},${(d.ship_tag||'').includes('נק')?'true':'false'})">🚚 צור משלוח Cargo</button>`}
       ${['cancelled','failed','refunded'].includes(d.status)?`<button class="btn-ghost" style="padding:8px 12px;border-color:#b91c1c;color:#b91c1c" onclick="wcoTrash(${d.id})">🗑 העבר לפח</button>`:''}
     </div>
     <div style="display:flex;gap:8px;margin-top:12px">
@@ -4507,6 +4508,27 @@ function paintWcOrder(){
       <button class="btn-ghost" onclick="wcoAddNote(${d.id})">➕</button>
     </div>
   </div></div>`;
+}
+async function wcoCargoCreate(oid,pickup){
+  if(!confirm('ליצור משלוח Cargo להזמנה זו'+(pickup?' (נקודת איסוף)':'')+'?')) return;
+  showLoading('יוצר משלוח ב-Cargo…');
+  try{
+    const r=await api('/api/admin/orders/'+oid+'/cargo',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({pickup:!!pickup})},120000);
+    toast(r.existing?'כבר קיים משלוח להזמנה ✓':'המשלוח נוצר ב-Cargo ✓',true);
+    if(r.pdf) window.open(r.pdf,'_blank');
+    openWcOrder(oid);
+  }catch(e){ toast('יצירת המשלוח נכשלה — ודא שתוסף הגשר מותקן',false); }
+  hideLoading();
+}
+async function wcoCargoLabel(oid){
+  showLoading('מביא תווית…');
+  try{
+    const r=await api('/api/admin/orders/'+oid+'/cargo-label',null,60000);
+    if(r.pdf) window.open(r.pdf,'_blank');
+    else toast('אין תווית זמינה',false);
+  }catch(e){ toast('התווית לא זמינה',false); }
+  hideLoading();
 }
 async function wcoTrash(oid){
   // אישור כפול — מחיקה לפח (שחזור אפשרי מתוך WC, אבל לא מכאן)
