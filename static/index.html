@@ -2816,7 +2816,17 @@ function waToggleUri(){
   if(S.waPanel && S.waPanelMode==='uri'){ S.waPanel=false; renderWaThread(); return; }
   S.waPanel=true; S.waPanelMode='uri';
   renderWaThread(); waUriCheckBridge();
+  waUriWarmup();
   setTimeout(()=>{ const i=document.getElementById('waUriInput'); if(i) i.focus(); },150);
+}
+function waUriWarmup(){
+  // ברגע שהפאנל נפתח — הגשר טוען את ההקשר ברקע; השאלה האמיתית תרוץ על סשן חם (מהיר)
+  const ph=S.waPhone; if(!ph) return;
+  S.waUriWarm=S.waUriWarm||{};
+  if(Date.now()-(S.waUriWarm[ph]||0)<25*60*1000) return;
+  S.waUriWarm[ph]=Date.now();
+  api('/api/admin/wa/uri/ask',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({phone:ph, question:'[WARMUP]'})}).catch(()=>{ S.waUriWarm[ph]=0; });
 }
 function waUriChat(){ S.waUriChats=S.waUriChats||{}; return S.waUriChats[S.waPhone]=S.waUriChats[S.waPhone]||[]; }
 function waUriHTML(){
@@ -2848,6 +2858,19 @@ function waUriMsgHTML(m,idx){
     return `<div class="wa-uri-a wa-uri-wait">⏳ אורי עובד על זה…</div>`;
   if(m.status==='error')
     return `<div class="wa-uri-a" style="border-color:#dc2626">❌ ${escW(m.text||'שגיאה')}</div>`;
+  if(m.sys)
+    return `<div class="wa-uri-a" style="border-color:rgba(34,197,94,.45);color:#16a34a;font-weight:700">${escW(m.text)}</div>`;
+  if(m.draft)
+    return `<div class="wa-uri-a">
+      ${m.text?`<div class="muted" style="font-size:12px;margin-bottom:7px">${escW(m.text)}</div>`:''}
+      <div style="background:rgba(34,197,94,.13);border:1px solid rgba(34,197,94,.32);border-radius:12px;padding:9px 11px;white-space:pre-wrap;font-size:13px">${escW(m.draft)}</div>
+      <div style="display:flex;gap:6px;margin-top:7px;flex-wrap:wrap">
+        <button class="btn-primary" style="padding:5px 13px;font-size:12.5px" onclick="waUriSendDraft(${idx})">📤 שלח ללקוח</button>
+        <button class="btn-ghost" style="padding:4px 9px;font-size:12px;display:inline-flex;align-items:center;gap:5px" onclick="waUriToReply(${idx})">${ico('download',13)} לתיבה לעריכה</button>
+        <button class="btn-ghost" style="padding:4px 9px;font-size:12px" onclick="navigator.clipboard.writeText((S.waUriChats[S.waPhone][${idx}].draft)||'');toast('הועתק ✓',true)">📋</button>
+      </div>
+      <div class="muted" style="font-size:10.5px;margin-top:4px">או כתוב "שלח" לשליחה · "תתקן …" לגרסה חדשה</div>
+    </div>`;
   return `<div class="wa-uri-a">${escW(m.text)}
     <div style="display:flex;gap:6px;margin-top:7px">
       <button class="btn-ghost" style="padding:4px 9px;font-size:12px;display:inline-flex;align-items:center;gap:5px" onclick="waUriToReply(${idx})">${ico('download',13)} לתיבת המענה</button>
@@ -2874,6 +2897,11 @@ async function waUriAsk(){
   const inp=document.getElementById('waUriInput');
   const q=(inp&&inp.value||'').trim(); if(!q||!S.waPhone) return;
   const chat=waUriChat();
+  // "שלח" וחברותיה — שליחה מיידית של הטיוטה האחרונה, בלי סיבוב נוסף אצל אורי
+  if(/^(שלח|תשלח|שגר|אשר|מאשר|אשר ושלח|שלח עכשיו|שלח ללקוח)[.!]*$/.test(q)){
+    const d=[...chat].reverse().find(m=>m.role==='uri'&&m.draft);
+    if(d){ if(inp) inp.value=''; chat.push({role:'user', text:q}); waUriPaint(); waUriSendDraftText(d.draft); return; }
+  }
   chat.push({role:'user', text:q});
   const aMsg={role:'uri', status:'pending', text:''};
   chat.push(aMsg);
@@ -2890,7 +2918,13 @@ async function waUriPoll(jid, msg, tries){
   if(tries>170){ msg.status='error'; msg.text='תם הזמן (8 דק׳) — ייתכן שהגשר במק כבוי'; waUriPaint(); return; }
   try{
     const r=await api('/api/admin/wa/uri/job/'+jid);
-    if(r.status==='done'){ msg.status='done'; msg.text=r.answer||''; waUriPaint(); return; }
+    if(r.status==='done'){
+      let t=r.answer||'';
+      const dm=t.match(/\[DRAFT\]\s*([\s\S]*?)\s*\[\/DRAFT\]/);
+      if(dm){ msg.draft=dm[1].trim(); msg.text=t.replace(dm[0],'').trim(); }
+      else msg.text=t;
+      msg.status='done'; waUriPaint(); return;
+    }
     if(r.status==='error'){ msg.status='error'; msg.text=r.answer||'שגיאה אצל אורי'; waUriPaint(); return; }
   }catch(e){}
   setTimeout(()=>waUriPoll(jid,msg,tries+1),3000);
@@ -2898,7 +2932,29 @@ async function waUriPoll(jid, msg, tries){
 function waUriToReply(idx){
   const m=(waUriChat()||[])[idx]; if(!m) return;
   const ta=document.getElementById('waText');
-  if(ta){ ta.value=m.text; ta.focus(); toast('הטיוטה בתיבה — ערוך ושלח',true); }
+  if(ta){ ta.value=m.draft||m.text; ta.focus(); toast('הטיוטה בתיבה — ערוך ושלח',true); }
+}
+async function waUriSendDraft(idx){
+  const m=(waUriChat()||[])[idx]; if(m) waUriSendDraftText(m.draft||m.text);
+}
+async function waUriSendDraftText(text){
+  // שליחת טיוטת אורי ללקוח — ישירות, בלי סיבוב נוסף מול המודל (מיידי)
+  if(!text||!S.waPhone) return;
+  const chat=waUriChat();
+  const st={role:'uri', status:'pending', text:''};
+  chat.push(st); waUriPaint();
+  try{
+    const r=await api('/api/admin/wa/send',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({phone:S.waPhone, text})});
+    if(r.needs_template){
+      const conv=(S.waConvs||[]).find(c=>c.phone===S.waPhone)||{};
+      await api('/api/admin/wa/send-template',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({phone:S.waPhone, name:(conv.name||'').split(' ')[0], body:text})});
+      st.status='done'; st.sys=true; st.text='✓ נשלח ללקוח כתבנית (מחוץ לחלון 24ש׳)';
+    } else { st.status='done'; st.sys=true; st.text='✓ נשלח ללקוח'; }
+    setTimeout(()=>loadWaThread(true),1200);
+  }catch(e){ st.status='error'; st.text='השליחה נכשלה — '+(e.status===502?'שגיאת ConnectOp':'תקלה'); }
+  waUriPaint();
 }
 // סקשן מתקפל בפאנל: ברירת מחדל סגור (הזמנות פתוח), מצב נשמר לסשן
 function waSec(key,title,body,count){
