@@ -2114,6 +2114,66 @@ def admin_order_trash(oid: int, x_admin_key: Optional[str] = Header(None)):
     return {"ok": True}
 
 
+def _wp_app_auth():
+    """Basic Auth של WP Application Password — לקריאות גשר ה-Cargo (gm-cargo/v1)."""
+    u, p = os.getenv("WP_USERNAME", ""), os.getenv("WP_APP_PASSWORD", "")
+    if not (u and p):
+        raise HTTPException(502, "חיבור WP (App Password) לא מוגדר")
+    return (u, p)
+
+
+class CargoCreateIn(BaseModel):
+    pickup: bool = False        # נק׳ איסוף (shipping_type=2)
+    double: bool = False        # משלוח כפול
+
+
+@app.post("/api/admin/orders/{oid}/cargo")
+def admin_order_cargo(oid: int, body: CargoCreateIn, x_admin_key: Optional[str] = Header(None)):
+    """יצירת משלוח Cargo להזמנה — דרך תוסף הגשר באתר (מפעיל את תוסף Cargo הרשמי)."""
+    _require_admin(x_admin_key)
+    import requests as _rq
+    base, _, _ = _wc_creds()
+    auth = _wp_app_auth()
+    r = _rq.post(f"{base}/wp-json/gm-cargo/v1/create",
+                 json={"order_id": oid,
+                       "shipping_type": 2 if body.pickup else 1,
+                       "double_delivery": 2 if body.double else 1},
+                 auth=auth, headers={"User-Agent": _PP_UA}, timeout=90)
+    try:
+        j = r.json()
+    except Exception:  # noqa: BLE001
+        j = {}
+    if not r.ok or not j.get("ok"):
+        msg = (j.get("message") or j.get("code") or f"שגיאה {r.status_code}")
+        logger.warning("cargo create failed for %s: %s %s", oid, r.status_code, str(j)[:300])
+        raise HTTPException(502, f"יצירת המשלוח נכשלה: {msg}")
+    out = {"ok": True, "existing": j.get("existing"), "shipments": j.get("shipments") or j.get("shipment")}
+    try:  # תווית — מנסים מיד; אם נכשל מחזירים בלי, אפשר לבקש שוב
+        rl = _rq.get(f"{base}/wp-json/gm-cargo/v1/label/{oid}", auth=auth,
+                     headers={"User-Agent": _PP_UA}, timeout=60)
+        if rl.ok and rl.json().get("ok"):
+            out["pdf"] = rl.json().get("pdf")
+    except Exception:  # noqa: BLE001
+        pass
+    return out
+
+
+@app.get("/api/admin/orders/{oid}/cargo-label")
+def admin_order_cargo_label(oid: int, x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    import requests as _rq
+    base, _, _ = _wc_creds()
+    r = _rq.get(f"{base}/wp-json/gm-cargo/v1/label/{oid}", auth=_wp_app_auth(),
+                headers={"User-Agent": _PP_UA}, timeout=60)
+    try:
+        j = r.json()
+    except Exception:  # noqa: BLE001
+        j = {}
+    if not r.ok or not j.get("ok"):
+        raise HTTPException(502, "התווית לא זמינה — ודא שקיים משלוח להזמנה")
+    return {"ok": True, "pdf": j.get("pdf")}
+
+
 class OrderNoteIn(BaseModel):
     note: str
     customer_note: bool = False
