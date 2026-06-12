@@ -456,6 +456,9 @@
     .wa-send .btn-primary{padding:10px 14px;flex:none;border-radius:999px}
     .wa-send textarea{min-height:42px;border-radius:999px;padding:10px 15px}
     .wa-send textarea{font-size:16px}   /* מונע זום אוטומטי ב-iOS */
+    /* כל שדות המודאלים (הזמנה/תשלום מהיר/סיכום) — 16px נגד זום iOS, וכפתורים שנשברים יפה */
+    .wa-ord input,.wa-ord textarea,.wa-ord select{font-size:16px!important}
+    .wa-ord .btn-primary,.wa-ord .btn-ghost{font-size:13.5px}
     /* פאנל אורי במובייל: ממלא את כל השכבה, בלי חלל ריק; פונט 16 נגד זום iOS */
     .wa-panel-uri{padding:8px}
     .wa-uri-box{margin-top:0;height:100%;min-height:0;max-height:none}
@@ -2370,10 +2373,10 @@ function waOrderRender(){
           ${[1,2,3,4,5,6,7,8,9,10,11,12].map(n=>`<option value="${n}" ${(o.installments||1)===n?'selected':''}>${n===1?'ללא':n}</option>`).join('')}
         </select></label>
     </div>
-    <div style="display:flex;gap:8px;margin-top:10px">
-      <button class="btn-primary" style="flex:1" onclick="waOrderSubmit('link')">הזמנה + קישור תשלום</button>
-      <button class="btn-ghost" style="flex:1;border-color:#16a34a;color:#16a34a" onclick="waOrderSubmit('charge')" title="דף הסליקה נפתח אצלך — מקלידים את כרטיס הלקוח (3D Secure)">💳 חיוב טלפוני</button>
-      <button class="btn-ghost" style="flex:1" onclick="waOrderSubmit('none')">הזמנה בלבד</button>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px">
+      <button class="btn-primary" style="flex:1;min-width:150px" onclick="waOrderSubmit('link')">הזמנה + קישור תשלום</button>
+      <button class="btn-ghost" style="flex:1;min-width:120px;border-color:#16a34a;color:#16a34a" onclick="waOrderSubmit('charge')" title="דף הסליקה נפתח אצלך — מקלידים את כרטיס הלקוח (3D Secure)">💳 חיוב טלפוני</button>
+      <button class="btn-ghost" style="flex:1;min-width:110px" onclick="waOrderSubmit('none')">הזמנה בלבד</button>
     </div>
     <div class="muted" style="font-size:11px;margin-top:6px">קישור = דף סליקה שנשלח ללקוח · חיוב טלפוני = הקלדת כרטיס כאן · "בלבד" = ללא חיוב כעת.</div>
   </div>`;
