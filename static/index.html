@@ -375,6 +375,12 @@
   .wa-claude:hover{background:rgba(217,119,87,.1)!important}
   .wa-star-on{color:#eab308}
   .wa-ord{background:var(--card);border-radius:16px;padding:14px;width:430px;max-width:94vw;max-height:92vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+  @media(min-width:1000px){ .wa-ord{width:520px;padding:18px} }
+  /* side-by-side: טופס הזמנה לצד השיחה בוואטסאפ (דסקטופ) — השיחה נשארת חיה להעתקת פרטים */
+  @media(min-width:1000px){
+    .wa-side{background:transparent;pointer-events:none}
+    .wa-side .wa-ord{pointer-events:auto;position:fixed;left:14px;top:60px;max-height:calc(100vh - 76px);border:1px solid var(--line);box-shadow:0 16px 60px rgba(0,0,0,.45)}
+  }
   .wa-ord-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px}
   .wa-ord-grid input{padding:8px 10px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:13.5px;min-width:0}
   .wa-stk{border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-bottom:6px;cursor:pointer;background:var(--card2)}
@@ -913,6 +919,8 @@ function renderDrawer(){
     <div class="dr-sec">קליטת העברות</div>
     <div class="dr-item ${S.view==='board'||S.view==='scan'?'active':''}" onclick="hubGo('board')"><span>${ico('pkg',16)}</span><span>לוח קליטה</span></div>
     <div class="dr-item ${act('admin')}" onclick="hubGo('admin')"><span>${ico('wrench',16)}</span><span>קונסולת ניהול${lock}</span></div>
+    <div class="dr-sec">מכירות</div>
+    <div class="dr-item" onclick="toggleDrawer(false);if(ensureAdmin(payQuickOpen))payQuickOpen()"><span>${ico('receipt',16)}</span><span>קישור תשלום מהיר${lock}</span></div>
     <div class="dr-sec">Hub</div>
     <div class="dr-item ${S.view==='tasks'?'active':''}" onclick="hubGo('tasks')"><span>${ico('list',16)}</span><span>משימות סוכנים${lock}</span></div>
     <div class="dr-item ${S.view==='sentinel'?'active':''}" onclick="hubGo('sentinel')"><span>${ico('shield',16)}</span><span>סטטוס Sentinel${lock}</span></div>
@@ -2316,7 +2324,8 @@ function waOrderRender(){
       }).join('');
   }
   const div=document.createElement('div');
-  div.id='waOrderModal'; div.className='wa-lb'; div.style.cursor='default';
+  // בוואטסאפ (דסקטופ) — הטופס נצמד לצד והשיחה נשארת חיה להעתקת פרטי הלקוח
+  div.id='waOrderModal'; div.className='wa-lb'+(document.body.classList.contains('wa-mode')?' wa-side':''); div.style.cursor='default';
   div.innerHTML=`<div class="wa-ord" onclick="event.stopPropagation()">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
       <b style="font-size:15px;display:inline-flex;align-items:center;gap:7px">${ico('cart',16)} הזמנה חדשה</b>
@@ -2358,7 +2367,7 @@ function waOrderRender(){
       <b style="font-size:16px">סה״כ: ${fmt(total)}</b>
       <label style="display:flex;align-items:center;gap:6px;font-size:13px">תשלומים:
         <select onchange="S.waOrd.installments=Number(this.value)" style="padding:6px 9px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--txt)">
-          ${[1,3,6,12].map(n=>`<option value="${n}" ${(o.installments||1)===n?'selected':''}>${n===1?'ללא':n}</option>`).join('')}
+          ${[1,2,3,4,5,6,7,8,9,10,11,12].map(n=>`<option value="${n}" ${(o.installments||1)===n?'selected':''}>${n===1?'ללא':n}</option>`).join('')}
         </select></label>
     </div>
     <div style="display:flex;gap:8px;margin-top:10px">
@@ -2391,7 +2400,7 @@ function waChargeOpen(order, installments){
       <input id="wcCvv" placeholder="CVV" inputmode="numeric" autocomplete="off" style="direction:ltr">
       <input id="wcId" placeholder="ת.ז. בעל הכרטיס" inputmode="numeric" autocomplete="off" style="direction:ltr">
       <select id="wcPay" style="padding:8px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--txt)">
-        ${[1,3,6,12].map(n=>`<option value="${n}" ${n===(installments||1)?'selected':''}>${n===1?'תשלום אחד':n+' תשלומים'}</option>`).join('')}
+        ${[1,2,3,4,5,6,7,8,9,10,11,12].map(n=>`<option value="${n}" ${n===(installments||1)?'selected':''}>${n===1?'תשלום אחד':n+' תשלומים'}</option>`).join('')}
       </select>
     </div>
     <button class="btn-primary" id="wcGo" style="width:100%;margin-top:12px" onclick="waChargeSubmit(${order.order_id})">חייב ${fmt(order.total)}</button>
@@ -2432,7 +2441,7 @@ function waOrdDoneOpen(r,o){
     : `הזמנה מס׳ ${r.number} נפתחה על סך ${r.currency}${total}.`;
   const phone=(o.cust.phone||S.waPhone||'');
   const div=document.createElement('div');
-  div.id='waOrdDoneModal'; div.className='wa-lb'; div.style.cursor='default';
+  div.id='waOrdDoneModal'; div.className='wa-lb'+(document.body.classList.contains('wa-mode')?' wa-side':''); div.style.cursor='default';
   div.innerHTML=`<div class="wa-ord" onclick="event.stopPropagation()">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
       <b style="font-size:15px">הזמנה #${r.number} נוצרה ✓ · ₪${total}</b>
@@ -2475,6 +2484,89 @@ async function waOrdDoneSend(){
     toast('השליחה נכשלה — בדוק את המספר',false);
   }
 }
+// ── 💵 קישור תשלום מהיר (מהמגירה): פריט כללי, בלי הזמנת WooCommerce ──
+function payQuickOpen(){
+  const old=document.getElementById('payQuickModal'); if(old) old.remove();
+  const div=document.createElement('div');
+  div.id='payQuickModal'; div.className='wa-lb'; div.style.cursor='default';
+  div.innerHTML=`<div class="wa-ord" onclick="event.stopPropagation()">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <b style="font-size:15px">קישור תשלום מהיר</b>
+      <button class="btn-ghost" onclick="document.getElementById('payQuickModal').remove()">✕</button>
+    </div>
+    <div class="wa-ord-grid">
+      <input id="pqDesc" placeholder="פריט / תיאור (חובה)" style="grid-column:1/-1">
+      <input id="pqAmount" placeholder="סכום ₪ (חובה)" inputmode="decimal" style="direction:ltr">
+      <select id="pqPay" style="padding:8px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--txt)">
+        ${[1,2,3,4,5,6,7,8,9,10,11,12].map(n=>`<option value="${n}">${n===1?'תשלום אחד':n+' תשלומים'}</option>`).join('')}
+      </select>
+      <input id="pqName" placeholder="שם הלקוח">
+      <input id="pqPhone" placeholder="טלפון" inputmode="tel" style="direction:ltr">
+      <input id="pqEmail" placeholder="אימייל (אופציונלי)" inputmode="email" style="grid-column:1/-1;direction:ltr">
+    </div>
+    <button class="btn-primary" id="pqGo" style="width:100%;margin-top:12px" onclick="payQuickGo()">צור קישור תשלום</button>
+    <div class="muted" style="font-size:11px;margin-top:6px">נוצר קישור PayPlus ללא הזמנה באתר — לחיוב טלפוני, שירות, או מכירה כללית.</div>
+  </div>`;
+  div.onclick=()=>div.remove();
+  document.body.appendChild(div);
+  setTimeout(()=>{const e=document.getElementById('pqDesc'); if(e) e.focus();},100);
+}
+async function payQuickGo(){
+  const g=id=>((document.getElementById(id)||{}).value||'').trim();
+  const desc=g('pqDesc'), amount=Number(g('pqAmount'))||0;
+  if(!desc){ toast('חסר תיאור פריט',false); return; }
+  if(amount<=0){ toast('סכום לא תקין',false); return; }
+  const btn=document.getElementById('pqGo'); if(btn){ btn.disabled=true; btn.textContent='יוצר…'; }
+  try{
+    const r=await api('/api/admin/pay/standalone',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({desc, amount, name:g('pqName'), phone:g('pqPhone'), email:g('pqEmail'),
+                           installments:Number(g('pqPay'))||1})},60000);
+    document.getElementById('payQuickModal').remove();
+    payQuickDone(r, g('pqName'), g('pqPhone'));
+  }catch(e){
+    if(btn){ btn.disabled=false; btn.textContent='נסה שוב'; }
+    toast('יצירת הקישור נכשלה — '+(e.status===400?'בדוק תיאור וסכום':'PayPlus לא זמין'),false);
+  }
+}
+function payQuickDone(r, name, phone){
+  const fmt='₪'+Number(r.amount).toLocaleString('he-IL');
+  const msg=`היי${name?' '+name:''}, קישור לתשלום מאובטח על סך ${fmt} עבור ${r.desc}:\n${r.pay_link}\nתודה, גרין מובייל 💚`;
+  const div=document.createElement('div');
+  div.id='payQuickDoneModal'; div.className='wa-lb'; div.style.cursor='default';
+  div.innerHTML=`<div class="wa-ord" onclick="event.stopPropagation()">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <b style="font-size:15px">קישור נוצר ✓ · ${fmt} · ${escW(r.desc)}</b>
+      <button class="btn-ghost" onclick="document.getElementById('payQuickDoneModal').remove()">✕</button>
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:8px">
+      <input id="pqdLink" readonly value="${escW(r.pay_link)}" onclick="this.select()" style="flex:1;min-width:0;direction:ltr;font-size:11.5px;padding:7px 9px;border-radius:9px;border:1px solid var(--line);background:var(--card2);color:var(--txt)">
+      <button class="btn-ghost" title="העתק קישור" onclick="navigator.clipboard.writeText(document.getElementById('pqdLink').value);toast('הקישור הועתק',true)">${ico('clip',15)}</button>
+    </div>
+    <textarea id="pqdMsg" style="width:100%;min-height:88px;padding:9px 11px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:13px;font-family:inherit">${escW(msg)}</textarea>
+    <div style="display:flex;gap:6px;margin-top:8px">
+      <input id="pqdPhone" placeholder="טלפון" inputmode="tel" value="${escW(phone||'')}" style="width:135px;min-width:0;direction:ltr;padding:8px 10px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:13px">
+      <button class="btn-primary" id="pqdSend" style="flex:1" onclick="payQuickSend('${escW(name||'')}')">שלח בוואטסאפ</button>
+    </div>
+    <button class="btn-ghost" style="width:100%;margin-top:8px;border-color:#16a34a;color:#16a34a" onclick="document.getElementById('payQuickDoneModal').remove();waPayOpen({number:'${escW(r.desc)}', total:${Number(r.amount)}, pay_link:'${escW(r.pay_link)}', order_id:0, pru:'${escW(r.pru)}'})">💳 חיוב טלפוני כאן</button>
+  </div>`;
+  div.onclick=()=>div.remove();
+  document.body.appendChild(div);
+}
+async function payQuickSend(name){
+  const phone=((document.getElementById('pqdPhone')||{}).value||'').trim();
+  const text=((document.getElementById('pqdMsg')||{}).value||'').trim();
+  if(!phone){ toast('חסר מספר טלפון',false); return; }
+  const btn=document.getElementById('pqdSend'); if(btn){ btn.disabled=true; btn.textContent='שולח…'; }
+  try{
+    const r=await api('/api/admin/wa/send-guaranteed',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({phone, text, name})},60000);
+    toast(r.via==='template'?'נשלח ✓ כתבנית מאושרת':'נשלח ✓ בוואטסאפ',true);
+    if(btn) btn.textContent='נשלח ✓';
+  }catch(e){
+    if(btn){ btn.disabled=false; btn.textContent='נסה שוב'; }
+    toast('השליחה נכשלה — בדוק את המספר',false);
+  }
+}
 // ── 💳 תשלום בתוך GreenOS: דף PayPlus ב-iframe + עדכון הזמנה אוטומטי בסיום ──
 function waPayOpen(r){
   const old=document.getElementById('waPayModal'); if(old) old.remove();
@@ -2493,13 +2585,15 @@ function waPayOpen(r){
   document.body.appendChild(div);
   S.waPayOrder=r;
   // polling fallback — גם אם הודעת הסיום מה-iframe לא תגיע, נתפוס את התשלום מהשרת
+  // (הזמנת WC → paystatus; קישור כללי ללא הזמנה → status לפי pru)
+  const stUrl=r.order_id?('/api/admin/wa/order/paystatus/'+r.order_id):('/api/admin/pay/status/'+r.pru);
   let n=0;
   if(S.waPayPoll) clearInterval(S.waPayPoll);
   S.waPayPoll=setInterval(async()=>{
     n++;
     if(n>150||!document.getElementById('waPayModal')){ clearInterval(S.waPayPoll); S.waPayPoll=null; return; }
     try{
-      const st=await api('/api/admin/wa/order/paystatus/'+r.order_id);
+      const st=await api(stUrl);
       if(st.paid) waPaySuccess(st);
     }catch(e){}
   },6000);
@@ -2514,7 +2608,7 @@ function waPaySuccess(st){
   if(S.waPayPoll){ clearInterval(S.waPayPoll); S.waPayPoll=null; }
   const r=S.waPayOrder||{}; S.waPayOrder=null;
   const m=document.getElementById('waPayModal'); if(m) m.remove();
-  toast('התשלום אושר ✓ הזמנה #'+(r.number||'')+' עברה לטיפול'+(st&&st.approval?' · אישור '+st.approval:''),true);
+  toast('התשלום אושר ✓ '+(r.order_id?('הזמנה #'+(r.number||'')+' עברה לטיפול'):(r.number||''))+(st&&st.approval?' · אישור '+st.approval:''),true);
   const ta=document.getElementById('waText');
   if(ta&&S.waPhone){ ta.value='התשלום התקבל בהצלחה ✓ ההזמנה שלך בטיפול. תודה שקנית בגרין מובייל 💚'; ta.focus(); }
 }
@@ -2525,7 +2619,7 @@ window.addEventListener('message',async ev=>{
   const stat=document.getElementById('waPayStat');
   if(d.ok){
     if(stat) stat.textContent='מאמת תשלום…';
-    try{ const st=await api('/api/admin/wa/order/paystatus/'+r.order_id); if(st.paid){ waPaySuccess(st); return; } }catch(e){}
+    try{ const st=await api(r.order_id?('/api/admin/wa/order/paystatus/'+r.order_id):('/api/admin/pay/status/'+r.pru)); if(st.paid){ waPaySuccess(st); return; } }catch(e){}
     // ה-IPN לפעמים מגיע שניות אחרי המעבר לעמוד הסיום — ה-polling ישלים את העדכון
     if(stat) stat.textContent='התשלום התקבל — מעדכן הזמנה…';
   } else if(stat){ stat.textContent='התשלום לא הושלם — אפשר לנסות שוב'; stat.style.color='#dc2626'; }
@@ -3406,7 +3500,7 @@ function lsRow(it,live){
     <td class="muted">${it.category||'—'}</td>
     ${bcells}
     <td style="text-align:center"><span id="lsw-${pid}" class="ls-wc ${S.lsWcOff?'':(S.lsWc[pid]?(S.lsWc[pid].data&&S.lsWc[pid].data.found?'lit':'dim'):'wait')}" style="${S.lsWcOff?'display:none':''}"
-      onclick="event.stopPropagation();openWcQuick('${pid}')" title="צפייה במוצר באתר">🌐</span>${isAdminCtx()?`<span class="ls-wc lit" style="margin-inline-start:6px;color:#16a34a" onclick="event.stopPropagation();waOrderOpen('${pid}')" title="צור הזמנה ללקוח">🛒</span>`:''}</td>
+      onclick="event.stopPropagation();openWcQuick('${pid}')" title="צפייה במוצר באתר">${ico('globe',15)}</span>${isAdminCtx()?`<span class="ls-wc lit" style="margin-inline-start:6px;color:#16a34a" onclick="event.stopPropagation();waOrderOpen('${pid}')" title="צור הזמנה ללקוח">${ico('cart',15)}</span>`:''}</td>
     <td id="lst-${pid}" class="muted" style="font-size:11px;white-space:nowrap">${tcell}</td>
   </tr>`;
 }
@@ -3614,7 +3708,10 @@ function renderWcQuick(){
     ${switches}
     <div style="text-align:center;margin:10px 0 4px">${priceHtml}</div>
     <div style="text-align:center;margin-bottom:14px">${cmp}</div>
-    <a class="btn-primary" style="display:block;text-align:center;text-decoration:none;padding:13px;border-radius:12px${comboMissing?';opacity:.4;pointer-events:none':''}" href="${cur.permalink}" target="_blank" rel="noopener">לעמוד המלא באתר ↗</a>`;
+    <div style="display:flex;gap:8px">
+      <a class="btn-primary" style="flex:1;display:flex;align-items:center;justify-content:center;text-decoration:none;padding:13px;border-radius:12px${comboMissing?';opacity:.4;pointer-events:none':''}" href="${cur.permalink}" target="_blank" rel="noopener">לעמוד המלא באתר ↗</a>
+      ${isAdminCtx()?`<button class="btn-ghost" style="display:flex;align-items:center;gap:6px;border-color:#16a34a;color:#16a34a;padding:13px 16px;border-radius:12px" onclick='closeModal();waOrderOpen(${JSON.stringify(String(pid))})' title="צור הזמנה ללקוח">${ico('cart',16)} הזמנה</button>`:''}
+    </div>`;
   document.getElementById('modalRoot').innerHTML=`<div class="overlay"><div class="modal" style="max-width:430px;text-align:right;position:relative;max-height:88vh;overflow:auto">
     <button class="dr-x" style="position:absolute;top:10px;inset-inline-start:10px" onclick="closeModal()">✕</button>
     ${body}

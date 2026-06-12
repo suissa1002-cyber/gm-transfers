@@ -1,0 +1,124 @@
+"""
+שידור אוטומטי של בקשות העברה לאתר — מהזמנות אתר (WooCommerce).
+
+הרעיון (אסי, 12/06/2026): כל הזמנה ששולמה באתר ובה פריט שמחובר לקופה
+(SKU == מק"ט NewOrder) — אם לסניף האתר (5) אין מלאי זמין, נוצרת אוטומטית
+שורת תוכנית העברה מהסניף שמחזיק מלאי ומשודרת מיד למסך שלו.
+עדיפות מקור: סטאר (2) ראשון, אחר כך שאר חנויות אשדוד.
+
+מכוסות גם ההזמנות שנוצרות מ-GreenOS (מלאי חי / וואטסאפ) — גם הן הזמנות WC.
+טריגר: scheduler כל 5 דק' + ריצה מיידית אחרי אישור תשלום (IPN).
+
+ריצה ראשונה מסמנת את ההזמנות הקיימות כ"נראו" בלי לשדר — כדי לא להציף
+את הסניפים בבקשות על הזמנות שכבר טופלו.
+"""
+import logging
+import os
+from datetime import datetime
+
+import requests
+
+import config as cfg
+import db
+import poller
+import alerts
+
+logger = logging.getLogger("auto_transfer")
+
+SITE_BRANCH = 5
+PREF_SOURCE = [2, 1, 3, 4]          # סטאר ראשון — הוראת אסי; אח"כ שאר הסניפים
+# processing = שולם. אפשר להרחיב ב-env, מופרד בפסיקים (למשל "processing,on-hold")
+STATUSES = [s.strip() for s in os.getenv("AUTO_TR_STATUSES", "processing").split(",") if s.strip()]
+
+
+def _wc_creds():
+    base = os.getenv("WC_STORE_URL", "").rstrip("/")
+    k = os.getenv("WC_CONSUMER_KEY", "")
+    s = os.getenv("WC_CONSUMER_SECRET", "")
+    return (base, k, s) if (base and k and s) else None
+
+
+def _fetch_recent_orders():
+    creds = _wc_creds()
+    if not creds:
+        return []
+    base, k, s = creds
+    out = []
+    for status in STATUSES:
+        try:
+            r = requests.get(f"{base}/wp-json/wc/v3/orders",
+                             params={"status": status, "per_page": 30,
+                                     "orderby": "date", "order": "desc"},
+                             auth=(k, s), timeout=40)
+            if r.ok:
+                out.extend(r.json())
+        except requests.RequestException as e:
+            logger.warning("orders fetch failed (%s): %s", status, e)
+    return out
+
+
+def _handle_order(o: dict, catalog: dict) -> list:
+    """בודק שורות הזמנה ומשדר בקשות העברה לפי הצורך. מחזיר את מה ששודר."""
+    no = poller.client()
+    created = []
+    for li in o.get("line_items", []):
+        sku = str(li.get("sku") or "").strip()
+        qty = max(1, int(li.get("quantity") or 1))
+        if not sku or sku not in catalog:
+            continue                       # פריט שלא מחובר לקופה — לא ענייננו
+        try:
+            stock = no.get_product_stock(sku)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("stock read failed for %s: %s", sku, e)
+            continue
+        if (stock.get(SITE_BRANCH) or 0) >= qty:
+            continue                       # לאתר יש מלאי — אין צורך בהעברה
+        src = next((b for b in PREF_SOURCE if (stock.get(b) or 0) >= qty), None)
+        if src is None:                    # אין סניף עם כל הכמות — מספיק שיש משהו
+            src = next((b for b in PREF_SOURCE if (stock.get(b) or 0) > 0), None)
+        if src is None:
+            logger.info("order %s: no source stock for %s", o.get("number"), sku)
+            continue
+        name = (catalog.get(sku) or {}).get("name") or li.get("name") or sku
+        ids = db.plan_add([{"product_id": sku, "name": name,
+                            "from_branch": src, "to_branch": SITE_BRANCH, "qty": qty}],
+                          created_by=f"אוטו · הזמנת אתר #{o.get('number')}")
+        db.plan_mark_broadcast(src, ids)
+        created.append({"sku": sku, "name": name, "src": src, "qty": qty})
+        logger.info("order %s: broadcast transfer %s x%s from branch %s -> site",
+                    o.get("number"), sku, qty, src)
+    return created
+
+
+def scan_orders():
+    """הג'וב הראשי — סורק הזמנות אחרונות ומשדר העברות לחדשות בלבד."""
+    orders = _fetch_recent_orders()
+    if not orders:
+        return
+    if db.sales_state_get("auto_tr_init") is None:
+        # ריצה ראשונה: לסמן הכל כקיים, בלי לשדר (ההזמנות האלה כבר טופלו ידנית)
+        for o in orders:
+            db.sales_state_set(f"auto_tr_seen:{o['id']}", "init")
+        db.sales_state_set("auto_tr_init", datetime.now().isoformat(timespec="seconds"))
+        logger.info("auto_transfer initialized — %d existing orders marked seen", len(orders))
+        return
+    catalog = db.catalog_load()
+    if not catalog:
+        return
+    for o in reversed(orders):             # ישן → חדש
+        oid = o.get("id")
+        if not oid or db.sales_state_get(f"auto_tr_seen:{oid}"):
+            continue
+        db.sales_state_set(f"auto_tr_seen:{oid}", datetime.now().isoformat(timespec="seconds"))
+        created = _handle_order(o, catalog)
+        if created:
+            lines = "\n".join(f"• {c['name']} ×{c['qty']} — מ{cfg.branch_name(c['src'])}"
+                              for c in created)
+            alerts._send(os.getenv("TELEGRAM_ADMIN_CHAT", "448181407"),
+                         f"📦 <b>שודרה בקשת העברה אוטומטית לאתר</b>\n"
+                         f"הזמנה <b>#{o.get('number')}</b>:\n{lines}")
+            for c in created:              # גם לצ'אט של סניף המקור, אם מוגדר
+                chat = alerts._branch_chat(c["src"])
+                if chat:
+                    alerts._send(chat, f"📦 בקשת העברה חדשה לאתר: {c['name']} ×{c['qty']}\n"
+                                       f"(הזמנת אתר #{o.get('number')} — שודר אוטומטית)")

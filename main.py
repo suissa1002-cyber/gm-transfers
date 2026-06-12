@@ -110,6 +110,14 @@ def _removals_ingest_job():
         logger.warning("removals_ingest failed: %s", e)
 
 
+def _auto_transfer_job():
+    try:
+        import auto_transfer
+        auto_transfer.scan_orders()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("auto_transfer failed: %s", e)
+
+
 def _removals_backfill_job(days: int = 90):
     try:
         import removals_ingest
@@ -192,6 +200,8 @@ def _startup():
         logger.info("removals ingest fresh — skipping initial run")
     # קטלוג מוצרים ל-DB: רענון כל 6 שעות. ריצה ראשונית רק אם הקטלוג ישן (נשמר ב-DB).
     scheduler.add_job(_catalog_refresh_job, "interval", hours=6, id="catalog_refresh", max_instances=1)
+    # שידור אוטומטי של בקשות העברה לאתר על הזמנות אתר ששולמו
+    scheduler.add_job(_auto_transfer_job, "interval", minutes=5, id="auto_transfer", max_instances=1)
     if _is_stale(db.catalog_meta().get("updated_at"), hours=6):
         scheduler.add_job(_catalog_refresh_job, "date", id="catalog_initial",
                           run_date=datetime.now() + timedelta(seconds=150))
@@ -1684,6 +1694,11 @@ def _pp_mark_paid(order_id: int, f: dict) -> bool:
             except Exception:  # noqa: BLE001
                 pass
             logger.info("order %s marked paid (tx %s)", order_id, f.get("tx"))
+            try:  # שולם → סריקת העברה-לאתר מיידית, בלי לחכות לג'וב של 5 הדק'
+                scheduler.add_job(_auto_transfer_job, "date",
+                                  id=f"auto_tr_now_{order_id}", replace_existing=True)
+            except Exception:  # noqa: BLE001
+                pass
             return True
         logger.warning("order paid-update failed %s: %s", r.status_code, r.text[:200])
     except Exception as e:  # noqa: BLE001
@@ -1722,8 +1737,48 @@ async def payplus_ipn(request: Request):
     if not order_id:
         logger.warning("payplus ipn: no order mapping for pru %s (more_info=%s)", pru, f.get("more_info"))
         return {"ok": False, "order": None}
+    if not str(order_id).isdigit():   # קישור כללי (standalone) — אין הזמנת WC לעדכן
+        logger.info("payplus ipn: standalone payment confirmed (pru %s, tx %s)", pru, f.get("tx"))
+        return {"ok": True, "order": None, "standalone": True}
     ok = _pp_mark_paid(int(order_id), f)
     return {"ok": ok, "order": int(order_id)}
+
+
+# ── תשלום כללי (ללא הזמנת WC): קישור PayPlus חופשי מהמגירה ──
+class PayQuick(BaseModel):
+    desc: str
+    amount: float
+    name: str = ""
+    phone: str = ""
+    email: str = ""
+    installments: int = 1
+
+
+@app.post("/api/admin/pay/standalone")
+def pay_standalone(body: PayQuick, x_admin_key: Optional[str] = Header(None)):
+    """קישור תשלום PayPlus לפריט/שירות כללי — בלי הזמנת WooCommerce."""
+    _require_admin(x_admin_key)
+    desc = (body.desc or "").strip()
+    if not desc or float(body.amount or 0) <= 0:
+        raise HTTPException(400, "חסר תיאור או סכום")
+    pp = _payplus_link(float(body.amount), f"כללי: {desc[:40]}",
+                       {"name": body.name, "phone": body.phone, "email": body.email},
+                       payments=body.installments)
+    db.sales_state_set(f"payplus_pru:{pp['pru']}", "standalone")
+    return {"pay_link": pp["link"], "pru": pp["pru"],
+            "amount": float(body.amount), "desc": desc}
+
+
+@app.get("/api/admin/pay/status/{pru}")
+def pay_standalone_status(pru: str, x_admin_key: Optional[str] = Header(None)):
+    """מצב תשלום של קישור כללי — polling מה-frontend בזמן שה-iframe פתוח."""
+    _require_admin(x_admin_key)
+    v = _payplus_ipn_check(pru)
+    if not v:
+        return {"paid": False}
+    f = _pp_tx_fields(v)
+    return {"paid": True, "tx": f.get("tx"), "approval": f.get("approval"),
+            "four_digits": f.get("four_digits"), "brand": f.get("brand")}
 
 
 # ── /pay: עמוד נחיתה ציבורי לכפתור התשלום הקבוע בתבנית הוואטסאפ ──
