@@ -388,6 +388,17 @@
     body.wa-sbs .wa-msgs{max-width:none;margin-inline:0;padding:14px 16px}
     body.wa-sbs .wa-send{max-width:none;margin-inline:0}
   }
+  /* מזעור טופס ההזמנה במובייל (סגנון טיוטות Mail ב-iOS): פס בתחתית מעל תיבת המענה,
+     השיחה חוזרת לשליטה מלאה, הקשה על הפס מרימה את הטופס עם כל מה שמולא */
+  .wo-minbar{display:none}
+  .wo-minbtn{display:none}
+  @media(max-width:999px){ .wo-minbtn{display:inline-flex} }
+  .wa-lb.wa-min{background:transparent!important;backdrop-filter:none;pointer-events:none;align-items:flex-end;padding:0}
+  .wa-min .wa-ord{pointer-events:auto;flex:1;width:auto;max-width:none;margin:0 10px 84px;padding:0;overflow:hidden;
+                  border:1px solid var(--line);box-shadow:0 10px 34px rgba(0,0,0,.35)}
+  .wa-min .wa-ord > *{display:none!important}
+  .wa-min .wa-ord .wo-minbar{display:flex!important;align-items:center;justify-content:space-between;gap:10px;
+                             padding:13px 15px;font-weight:700;font-size:13.5px;cursor:pointer}
   .wa-ord-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px}
   .wa-ord-grid input{padding:8px 10px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:13.5px;min-width:0}
   .wa-stk{border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-bottom:6px;cursor:pointer;background:var(--card2)}
@@ -2292,6 +2303,12 @@ function waOrderClose(){
   const m=document.getElementById('waOrderModal'); if(m) m.remove();
   if(!document.getElementById('waOrdDoneModal')) document.body.classList.remove('wa-sbs');
 }
+function waOrderMinToggle(min){
+  // מובייל: הטופס יורד לפס בתחתית (כמו טיוטה ב-Mail) — השיחה חוזרת לשליטה; הקשה מרימה
+  const m=document.getElementById('waOrderModal'); if(!m) return;
+  waOrderSaveInputs();
+  m.classList.toggle('wa-min', !!min);
+}
 function waOrdDoneClose(){
   const m=document.getElementById('waOrdDoneModal'); if(m) m.remove();
   if(!document.getElementById('waOrderModal')) document.body.classList.remove('wa-sbs');
@@ -2345,9 +2362,16 @@ function waOrderRender(){
   div.id='waOrderModal'; div.className='wa-lb'+(document.body.classList.contains('wa-mode')?' wa-side':''); div.style.cursor='default';
   document.body.classList.toggle('wa-sbs', document.body.classList.contains('wa-mode'));
   div.innerHTML=`<div class="wa-ord" onclick="event.stopPropagation()">
+    <div class="wo-minbar" onclick="waOrderMinToggle(false)">
+      <span style="display:inline-flex;align-items:center;gap:8px">${ico('cart',15)} הזמנה בהכנה${d.name?` · ${escW(String(d.name).slice(0,28))}`:''}</span>
+      <span style="color:var(--muted)">הקש להמשך ▲</span>
+    </div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
       <b style="font-size:15px;display:inline-flex;align-items:center;gap:7px">${ico('cart',16)} הזמנה חדשה</b>
-      <button class="btn-ghost" onclick="waOrderClose()">✕</button>
+      <span style="display:inline-flex;gap:6px">
+        <button class="btn-ghost wo-minbtn" onclick="waOrderMinToggle(true)" title="מזער — חזרה לשיחה לקיחת פרטים">▼</button>
+        <button class="btn-ghost" onclick="waOrderClose()">✕</button>
+      </span>
     </div>
     <div style="display:flex;gap:10px;align-items:center;background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:9px">
       ${d.image?`<img src="${escW(d.image)}" style="width:54px;height:54px;object-fit:contain;border-radius:8px;background:#fff">`:''}
@@ -3543,8 +3567,8 @@ function lsCard(it,live){
       <span class="ls-card-name"><b>${it.name}</b>${it.active?'':' <span class="mtag warn">לא פעיל</span>'}${serBadge}</span>
       <span>${it.kind==='serial'?'📱':'🏷️'}</span>
       <span id="lsw-${pid}" class="ls-wc ${S.lsWcOff?'':(S.lsWc[pid]?(S.lsWc[pid].data&&S.lsWc[pid].data.found?'lit':'dim'):'wait')}" style="${S.lsWcOff?'display:none':''}"
-        onclick="event.stopPropagation();openWcQuick('${pid}')" title="צפייה במוצר באתר">🌐</span>
-      ${isAdminCtx()?`<span class="ls-wc lit" style="color:#16a34a" onclick="event.stopPropagation();waOrderOpen('${pid}')" title="צור הזמנה ללקוח">🛒</span>`:''}
+        onclick="event.stopPropagation();openWcQuick('${pid}')" title="צפייה במוצר באתר">${ico('globe',15)}</span>
+      ${isAdminCtx()?`<span class="ls-wc lit" style="color:#16a34a" onclick="event.stopPropagation();waOrderOpen('${pid}')" title="צור הזמנה ללקוח">${ico('cart',15)}</span>`:''}
     </div>
     <div class="ls-card-sub">מק״ט <span style="direction:ltr;unicode-bidi:embed;font-family:monospace">${pid}</span>${it.category?(' · '+it.category):''}</div>
     <div class="ls-card-branches">${chips}</div>
