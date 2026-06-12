@@ -337,12 +337,15 @@
   .wa-quote{border-inline-start:3px solid #16a34a;background:rgba(0,0,0,.06);border-radius:8px;
             padding:5px 9px;margin-bottom:6px;font-size:12px;color:var(--muted);
             overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
-  /* כפתור ↩ להשבה על הודעה — מופיע בריחוף (דסקטופ) / עדין תמיד (מובייל) */
-  .wa-rep{position:absolute;top:4px;inset-inline-end:6px;cursor:pointer;font-size:13px;
-          color:var(--muted);opacity:0;transition:opacity .15s;padding:2px 5px;border-radius:6px}
-  .wa-b:hover .wa-rep{opacity:.85}
-  .wa-rep:hover{background:rgba(0,0,0,.08)}
-  @media (pointer:coarse){ .wa-rep{opacity:.45} }
+  /* כפתור ↩ להשבה — צף מחוץ לבועה לכיוון מרכז השיחה (לא דורס את הטקסט) */
+  .wa-rep{position:absolute;top:50%;transform:translateY(-50%);cursor:pointer;font-size:14px;
+          color:var(--muted);opacity:0;transition:opacity .15s;padding:3px 7px;border-radius:999px;
+          background:var(--card2);border:1px solid var(--line);line-height:1}
+  .wa-in .wa-rep{inset-inline-end:-34px}
+  .wa-out .wa-rep{inset-inline-start:-34px}
+  .wa-b:hover .wa-rep{opacity:.9}
+  .wa-rep:hover{background:var(--card);color:var(--txt)}
+  @media (pointer:coarse){ .wa-rep{opacity:.5} }
   .wa-replybar{display:flex;align-items:center;gap:8px;max-width:920px;width:100%;margin-inline:auto;
                padding:7px 12px;border-top:1px solid var(--line);background:var(--card2);
                font-size:12.5px;color:var(--muted)}
