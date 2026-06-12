@@ -4412,23 +4412,22 @@ function wcoListHTML(){
   const rows=W.rows.map(o=>`
     <tr class="ls-row" onclick="openWcOrder(${o.id})">
       <td><b>#${o.number}</b>${o.greenos?' <span title="נוצרה ב-GreenOS" style="color:#16a34a">●</span>':''}</td>
-      <td class="muted" style="font-size:12px;white-space:nowrap">${fmtD(o.date)}${o.src?`<div style="font-size:10.5px;color:#16a34a;font-weight:700">${escW(o.src)}</div>`:''}</td>
+      <td class="muted" style="font-size:12px;white-space:nowrap">${fmtD(o.date)}${o.src?`<div class="muted" style="font-size:10.5px">${escW(o.src)}</div>`:''}</td>
       <td><b>${escW(o.name||'—')}</b><div class="muted" style="font-size:11.5px;direction:ltr;text-align:end">${escW(o.phone||'')}</div></td>
       <td class="muted" style="font-size:12px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(o.items||'')}${o.items_n>1?` <b>(${o.items_n})</b>`:''}</td>
       <td style="white-space:nowrap"><b>${o.currency}${Number(o.total).toLocaleString('he-IL')}</b></td>
       <td>${ordTag(o.status)}</td>
-      <td style="font-size:11.5px">${o.ship_tag?`<span class="ord-st" style="color:#374151;border-color:#37415133;background:#37415108">${escW(o.ship_tag)}</span>`:''}${o.cargo?' 🚚':''}</td>
+      <td class="muted" style="font-size:11.5px;white-space:nowrap">${escW(o.ship_tag||'')}</td>
     </tr>`).join('');
   const cards=W.rows.map(o=>`
     <div class="ls-card" onclick="openWcOrder(${o.id})">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
         <b>#${o.number} · ${escW(o.name||'—')}</b>${ordTag(o.status)}
       </div>
-      <div class="muted" style="font-size:12px;margin-top:3px">${escW(o.items||'')}</div>
-      ${o.ship_tag?`<div style="margin-top:4px"><span class="ord-st" style="color:#374151;border-color:#37415133;background:#37415108;font-size:11px">${escW(o.ship_tag)}</span></div>`:''}
+      <div class="muted" style="font-size:12px;margin-top:3px">${escW(o.items||'')}${o.ship_tag?` · ${escW(o.ship_tag)}`:''}</div>
       <div style="display:flex;justify-content:space-between;margin-top:5px;font-size:13px">
         <b>${o.currency}${Number(o.total).toLocaleString('he-IL')}</b>
-        <span class="muted" style="font-size:11.5px">${o.src?`<b style="color:#16a34a">${escW(o.src)}</b> · `:''}${fmtD(o.date)}</span>
+        <span class="muted" style="font-size:11.5px">${o.src?`${escW(o.src)} · `:''}${fmtD(o.date)}</span>
       </div>
     </div>`).join('');
   const pager=W.pages>1?`<div style="display:flex;gap:8px;align-items:center;justify-content:center;margin-top:12px">
