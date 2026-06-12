@@ -779,8 +779,15 @@ function closeModal(){ document.getElementById('modalRoot').innerHTML=''; }
 
 // ── ניהול פוקוס לשדה הסריקה (סורק = מקלדת) ──
 function focusScan(){
+  // לא גונבים פוקוס כשמודאל/חלון פתוח או כשהמשתמש מקליד בשדה אחר
+  // (טפסי הזמנה/תשלום, iframe של PayPlus, תיבת וואטסאפ) — הרענון התקופתי קרא
+  // לכאן כל 15ש׳ והעיף את הסמן באמצע הקלדה
+  if(document.querySelector('.overlay,.wa-lb')) return;
   const el=document.getElementById('boardScan')||document.getElementById('scanInput')||document.getElementById('empInput');
-  if(el){ try{ el.focus(); }catch(e){} }
+  if(!el) return;
+  const a=document.activeElement;
+  if(a && a!==el && (a.tagName==='INPUT'||a.tagName==='TEXTAREA'||a.tagName==='SELECT'||a.tagName==='IFRAME')) return;
+  try{ el.focus(); }catch(e){}
 }
 
 // ── תיקון פריסת מקלדת: סריקה במקלדת עברית הופכת אותיות לטיניות לעבריות. נמיר חזרה. ──
