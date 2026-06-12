@@ -635,16 +635,19 @@ def account_tags():
 
 
 def _wc_orders_by_phone(phone: str, limit: int = 5):
-    """הזמנות WooCommerce לפי טלפון (פורמט בינלאומי תואם ישירות ל-ConnectOp)."""
+    """הזמנות WooCommerce לפי טלפון. ⚠️ הזמנות מהאתר נשמרות בפורמט מקומי (05X)
+    והוואטסאפ בבינלאומי (972X) — לכן מחפשים לפי הליבה בלי קידומת ("546290097"),
+    שתופסת את שני הפורמטים (חיפוש WC הוא substring). אומת 12/06/2026 על הזמנה 46883."""
     import os
     import requests as rq
     base = os.getenv("WC_STORE_URL", "").rstrip("/")
     auth = (os.getenv("WC_CONSUMER_KEY", ""), os.getenv("WC_CONSUMER_SECRET", ""))
     if not base or not auth[0]:
         return None  # WC לא מוגדר — הפאנל פשוט לא יציג הזמנות
+    core = re.sub(r"^(?:972|0)", "", re.sub(r"\D", "", str(phone)))
     try:
         r = rq.get(f"{base}/wp-json/wc/v3/orders",
-                   params={"search": str(phone), "per_page": limit},
+                   params={"search": core or str(phone), "per_page": limit},
                    auth=auth, timeout=25)
         if not r.ok:
             return None
