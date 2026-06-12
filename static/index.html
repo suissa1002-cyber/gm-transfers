@@ -378,7 +378,7 @@
   @media(min-width:1000px){ .wa-ord{width:520px;padding:18px} }
   /* side-by-side: טופס הזמנה לצד השיחה בוואטסאפ (דסקטופ) — השיחה נשארת חיה להעתקת פרטים */
   @media(min-width:1000px){
-    .wa-side{background:transparent;pointer-events:none}
+    .wa-lb.wa-side{background:transparent!important;backdrop-filter:none;pointer-events:none;cursor:default}
     .wa-side .wa-ord{pointer-events:auto;position:fixed;left:14px;top:60px;max-height:calc(100vh - 76px);border:1px solid var(--line);box-shadow:0 16px 60px rgba(0,0,0,.45)}
     /* כשהטופס פתוח — כל אזור השיחה (כולל פאנל מלאי) זז ימינה ורשימת השיחות מתקפלת,
        כך שהטופס בשטח משלו והשיחה נשארת שמישה להעתקה ולהקלדה במקביל */
