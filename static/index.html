@@ -1761,9 +1761,15 @@ function renderPlan(){
           <button onclick="exportPlanCSV(${fb})" style="display:inline-flex;align-items:center;gap:5px">${ico('download',14)} CSV</button>
           <button class="pa-danger" onclick="clearPlan(${fb})" style="display:inline-flex;align-items:center;gap:5px">${ico('trash',14)} נקה</button>
         </div></div>
-      <table class="admin"><thead><tr><th>מק״ט</th><th>מוצר</th><th>כמות</th><th>לסניף</th><th>נוצר ע״י</th><th></th></tr></thead><tbody>
-      ${g.map(l=>`<tr><td style="font-family:monospace;direction:ltr;text-align:right">${l.product_id}</td><td>${l.name}</td>
-        <td><b>${l.qty}</b></td><td>${l.to_name}</td><td class="muted" style="font-size:12px">${_esc(l.created_by||'—')}</td><td><button class="btn-ghost" onclick="deletePlanLine(${l.id})">✕</button></td></tr>`).join('')}
+      <table class="admin"><thead><tr><th>מק״ט</th><th>מוצר</th><th>כמות</th><th>לסניף</th><th>שידור</th><th>נוצר ע״י</th><th></th></tr></thead><tbody>
+      ${g.map(l=>{
+        const auto=(l.created_by||'').startsWith('אוטו');
+        const bc=Number(l.bcast||0);
+        const tag=bc===1?`<span class="ord-st" style="color:#15803d;border-color:#15803d55;background:#15803d14">📡 משודר${auto?' · אוטומטי':''}</span>`
+                :bc===2?`<span class="ord-st" style="color:#6b7280;border-color:#6b728055;background:#6b728014" title="הסניף סגר את חלון השידור — הבקשה עדיין פתוחה">נסגר בסניף</span>`
+                :`<span class="ord-st" style="color:#b45309;border-color:#b4530955;background:#b4530914">ממתין לשידור</span>`;
+        return `<tr><td style="font-family:monospace;direction:ltr;text-align:right">${l.product_id}</td><td>${l.name}</td>
+        <td><b>${l.qty}</b></td><td>${l.to_name}</td><td>${tag}</td><td class="muted" style="font-size:12px">${_esc(l.created_by||'—')}</td><td><button class="btn-ghost" onclick="deletePlanLine(${l.id})">✕</button></td></tr>`;}).join('')}
       </tbody></table></div>`;
   });
   app.innerHTML=`<h1 class="title" style="display:flex;align-items:center;gap:8px">${ico('wrench',19)} ניהול אופרציה</h1>${adminTabsHTML()}

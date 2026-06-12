@@ -1741,7 +1741,11 @@ def _payplus_link(amount: float, order_number: str, customer: dict, payments: in
         "send_failure_callback": False,
         "more_info": f"GreenOS order {order_number}",
         "more_info_2": "GreenOS",
+        # אכיפת 3D Secure על כל עסקה (קישור/חיוב טלפוני) — הוראת אסי 12/06.
+        # הערה: גם כשה-3DS רץ, המנפיק רשאי לאשר frictionless (בלי קוד SMS) בסכומים קטנים.
+        "secure3d": {"activate": True},
         "payments": max(1, int(payments or 1)),
+        "payments_selected": max(1, int(payments or 1)),   # התשלומים שנבחרו בטופס — מסומנים מראש בדף
         # חזרה אלינו בסיום (נטען בתוך iframe ב-GreenOS) + callback שרת-לשרת
         "refURL_success": f"{base_url}/pay-done?ok=1",
         "refURL_failure": f"{base_url}/pay-done?ok=0",
