@@ -380,9 +380,13 @@
   @media(min-width:1000px){
     .wa-side{background:transparent;pointer-events:none}
     .wa-side .wa-ord{pointer-events:auto;position:fixed;left:14px;top:60px;max-height:calc(100vh - 76px);border:1px solid var(--line);box-shadow:0 16px 60px rgba(0,0,0,.45)}
-    /* כשהטופס פתוח — עמודת השיחה (הודעות + תיבת מענה) זזה ימינה ומפנה לו מקום אמיתי */
-    body.wa-sbs .wa-msgs{max-width:none;margin:0;margin-left:560px;padding:14px 16px}
-    body.wa-sbs .wa-send{max-width:none;margin:0;margin-left:560px}
+    /* כשהטופס פתוח — כל אזור השיחה (כולל פאנל מלאי) זז ימינה ורשימת השיחות מתקפלת,
+       כך שהטופס בשטח משלו והשיחה נשארת שמישה להעתקה ולהקלדה במקביל */
+    body.wa-sbs .wa-body{margin-left:545px}
+    body.wa-sbs .wa-layout{grid-template-columns:1fr}
+    body.wa-sbs .wa-list{display:none}
+    body.wa-sbs .wa-msgs{max-width:none;margin-inline:0;padding:14px 16px}
+    body.wa-sbs .wa-send{max-width:none;margin-inline:0}
   }
   .wa-ord-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px}
   .wa-ord-grid input{padding:8px 10px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:13.5px;min-width:0}
