@@ -2785,7 +2785,9 @@ function waStockChipsHTML(pid){
     const bo=brs.find(x=>String(x.id)===String(b.id))||{};
     const q=bo.qty||0;
     const cls=q>0?'ls-has':(q<0?'ls-neg':'ls-zero');
-    return `<span class="wa-stk-chip ${cls}">${escW(b.name)}: <b>${q}</b></span>`;
+    // לחיצה על סניף — חלון הפירוט עם הסריאלים+אחריות של הסניף הזה (כמו במלאי חי)
+    return `<span class="wa-stk-chip ${cls}" style="cursor:pointer" title="פירוט ${escW(b.name)} — סריאלים ואחריות"
+      onclick="event.stopPropagation();openLiveDetail('${escW(String(pid))}',${b.id})">${escW(b.name)}: <b>${q}</b></span>`;
   }).join('');
 }
 async function waStockPick(pid){
