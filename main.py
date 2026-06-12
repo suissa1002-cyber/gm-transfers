@@ -1948,6 +1948,7 @@ def admin_orders_list(page: int = 1, status: str = "", search: str = "",
         out.append({
             "src": _order_source(meta),
             "ship_tag": _ship_tag(o),
+            "img": ((items[0].get("image") or {}).get("src") or "") if items else "",
             "id": o.get("id"), "number": o.get("number"), "status": o.get("status"),
             "date": o.get("date_created"), "total": o.get("total"),
             "currency": o.get("currency_symbol") or "₪",
@@ -2085,6 +2086,7 @@ def admin_order_detail(oid: int, x_admin_key: Optional[str] = Header(None)):
         "customer_note": o.get("customer_note") or "",
         "items": [{"name": li.get("name"), "qty": li.get("quantity"),
                    "total": li.get("total"), "sku": li.get("sku") or "",
+                   "img": (li.get("image") or {}).get("src") or "",
                    "attrs": _li_attrs(li)}
                   for li in (o.get("line_items") or [])],
         "shipping_lines": [sl.get("method_title") for sl in (o.get("shipping_lines") or [])],

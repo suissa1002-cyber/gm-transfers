@@ -4431,7 +4431,9 @@ function wcoListHTML(){
       <td><b>#${o.number}</b>${o.greenos?' <span title="נוצרה ב-GreenOS" style="color:#16a34a">●</span>':''}</td>
       <td class="muted" style="font-size:12px;white-space:nowrap">${fmtD(o.date)}</td>
       <td><b>${escW(o.name||'—')}</b><div class="muted" style="font-size:11.5px;direction:ltr;text-align:end">${escW(o.phone||'')}</div></td>
-      <td class="muted" style="font-size:12px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(o.items||'')}${o.items_n>1?` <b>(${o.items_n})</b>`:''}</td>
+      <td style="max-width:280px"><div style="display:flex;align-items:center;gap:8px">
+        ${o.img?`<img src="${escW(o.img)}" loading="lazy" style="width:34px;height:34px;object-fit:contain;border-radius:7px;background:#fff;border:1px solid var(--line);flex:none">`:''}
+        <span class="muted" style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(o.items||'')}${o.items_n>1?` <b>(${o.items_n})</b>`:''}</span></div></td>
       <td style="white-space:nowrap"><b>${o.currency}${Number(o.total).toLocaleString('he-IL')}</b></td>
       <td>${ordTag(o.status)}</td>
       
@@ -4523,7 +4525,8 @@ function paintWcOrder(){
       ${(d.shipping_lines||[]).length?`<div class="muted" style="font-size:12.5px">🚚 ${escW(d.shipping_lines.join(', '))}</div>`:''}
       ${phoneIntl.length>10?`<button class="btn-ghost" style="margin-top:6px;padding:4px 10px;font-size:12px" onclick="closeModal();setAdminTab('wa');setTimeout(()=>openWaConv('${phoneIntl}'),600)">${ico('chat',13)} פתח שיחה בוואטסאפ</button>`:''}
     </div>
-    ${(d.items||[]).map(it=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:11px 6px;border-bottom:1px solid var(--line);font-size:13.5px">
+    ${(d.items||[]).map(it=>`<div style="display:flex;justify-content:space-between;gap:10px;padding:11px 6px;border-bottom:1px solid var(--line);font-size:13.5px;align-items:flex-start">
+      ${it.img?`<img src="${escW(it.img)}" loading="lazy" style="width:46px;height:46px;object-fit:contain;border-radius:9px;background:#fff;border:1px solid var(--line);flex:none">`:''}
       <span style="flex:1;min-width:0">${escW(it.name)}${it.sku?` <span class="muted" style="font-size:11px;direction:ltr;font-family:monospace">${escW(it.sku)}</span>`:''} ×${it.qty}
         ${(it.attrs||[]).length?`<div class="muted" style="font-size:12px;margin-top:3px">${it.attrs.map(x=>`${escW(x.k)}: <b>${escW(x.v)}</b>`).join(' · ')}</div>`:''}</span>
       <b style="white-space:nowrap">${fmt(it.total)}</b></div>`).join('')}
