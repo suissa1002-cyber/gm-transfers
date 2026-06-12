@@ -4524,7 +4524,8 @@ function paintWcOrder(){
       ${phoneIntl.length>10?`<button class="btn-ghost" style="margin-top:6px;padding:4px 10px;font-size:12px" onclick="closeModal();setAdminTab('wa');setTimeout(()=>openWaConv('${phoneIntl}'),600)">${ico('chat',13)} פתח שיחה בוואטסאפ</button>`:''}
     </div>
     ${(d.items||[]).map(it=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:11px 6px;border-bottom:1px solid var(--line);font-size:13.5px">
-      <span style="flex:1;min-width:0">${escW(it.name)}${it.sku?` <span class="muted" style="font-size:11px;direction:ltr;font-family:monospace">${escW(it.sku)}</span>`:''} ×${it.qty}</span>
+      <span style="flex:1;min-width:0">${escW(it.name)}${it.sku?` <span class="muted" style="font-size:11px;direction:ltr;font-family:monospace">${escW(it.sku)}</span>`:''} ×${it.qty}
+        ${(it.attrs||[]).length?`<div class="muted" style="font-size:12px;margin-top:3px">${it.attrs.map(x=>`${escW(x.k)}: <b>${escW(x.v)}</b>`).join(' · ')}</div>`:''}</span>
       <b style="white-space:nowrap">${fmt(it.total)}</b></div>`).join('')}
     <div style="display:flex;justify-content:space-between;padding:14px 6px 6px;font-size:15px">
       <span>${Number(d.shipping_total)>0?`משלוח ${fmt(d.shipping_total)} · `:''}<b>סה״כ</b></span><b style="font-size:16px">${fmt(d.total)}</b>

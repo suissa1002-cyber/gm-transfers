@@ -1955,7 +1955,7 @@ def admin_orders_list(page: int = 1, status: str = "", search: str = "",
             "phone": o["billing"].get("phone") or "",
             "city": o["billing"].get("city") or "",
             "items_n": sum(int(li.get("quantity") or 1) for li in items),
-            "items": ", ".join((li.get("name") or "")[:40] for li in items[:3]),
+            "items": ", ".join((li.get("name") or "")[:40] + ((" (" + " · ".join(x["v"] for x in _li_attrs(li)[:3]) + ")") if _li_attrs(li) else "") for li in items[:3]),
             "payment": o.get("payment_method_title") or "",
             "shipping": ", ".join((sl.get("method_title") or "") for sl in (o.get("shipping_lines") or [])),
             "greenos": bool(meta.get("greenos_source")),
@@ -2000,6 +2000,22 @@ def _ship_tag(o: dict) -> str:
     if "משלוח" in titles:
         return "🚚 משלוח"
     return ""
+
+
+def _li_attrs(li: dict) -> list:
+    """מאפייני הוריאציה משורת ההזמנה (צבע/נפח/קישוריות...) — בלי מפתחות פנימיים."""
+    out = []
+    for m in (li.get("meta_data") or []):
+        k = str(m.get("display_key") or m.get("key") or "")
+        v = m.get("display_value") if m.get("display_value") is not None else m.get("value")
+        if k.startswith("_") or not isinstance(v, (str, int, float)):
+            continue
+        vs = str(v).strip()
+        if vs and len(vs) <= 50:
+            out.append({"k": k.replace("בחירת ", ""), "v": vs})
+        if len(out) >= 6:
+            break
+    return out
 
 
 def _order_source(meta: dict) -> str:
@@ -2068,7 +2084,8 @@ def admin_order_detail(oid: int, x_admin_key: Optional[str] = Header(None)):
         "billing": o.get("billing") or {}, "shipping": o.get("shipping") or {},
         "customer_note": o.get("customer_note") or "",
         "items": [{"name": li.get("name"), "qty": li.get("quantity"),
-                   "total": li.get("total"), "sku": li.get("sku") or ""}
+                   "total": li.get("total"), "sku": li.get("sku") or "",
+                   "attrs": _li_attrs(li)}
                   for li in (o.get("line_items") or [])],
         "shipping_lines": [sl.get("method_title") for sl in (o.get("shipping_lines") or [])],
         "greenos": {kk: vv for kk, vv in meta.items() if str(kk).startswith("greenos")},
