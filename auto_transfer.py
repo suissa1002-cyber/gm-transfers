@@ -80,9 +80,27 @@ def _handle_order(o: dict, catalog: dict) -> list:
             logger.info("order %s: no source stock for %s", o.get("number"), sku)
             continue
         name = (catalog.get(sku) or {}).get("name") or li.get("name") or sku
-        ids = db.plan_add([{"product_id": sku, "name": name,
-                            "from_branch": src, "to_branch": SITE_BRANCH, "qty": qty}],
-                          created_by=f"אוטו · הזמנת אתר #{o.get('number')}")
+        # מוצר סריאלי: מצמידים יחידות ספציפיות (הוותיקות) — כמו בבקשה ידנית.
+        # כך היחידה מוצגת "משוריין לאתר" במלאי חי, וקליטתה סוגרת את הבקשה אוטומטית.
+        lines = []
+        if (catalog.get(sku) or {}).get("kind") == "serial":
+            try:
+                raw = no.get_product_serials(sku) or []
+                units = [u for u in raw
+                         if str(u.get("branchId")) == str(src) and int(u.get("status") or 0) == 1]
+                units.sort(key=lambda u: str(u.get("insertDate") or ""))
+                for u in units[:qty]:
+                    if u.get("serial"):
+                        lines.append({"product_id": sku, "name": f"{name} — סריאל {u['serial']}",
+                                      "from_branch": src, "to_branch": SITE_BRANCH,
+                                      "qty": 1, "serial": str(u["serial"])})
+            except Exception as e:  # noqa: BLE001
+                logger.warning("serial pick failed for %s: %s", sku, e)
+        rem = qty - len(lines)
+        if rem > 0:
+            lines.append({"product_id": sku, "name": name,
+                          "from_branch": src, "to_branch": SITE_BRANCH, "qty": rem})
+        ids = db.plan_add(lines, created_by=f"אוטו · הזמנת אתר #{o.get('number')}")
         db.plan_mark_broadcast(src, ids)
         created.append({"sku": sku, "name": name, "src": src, "qty": qty})
         logger.info("order %s: broadcast transfer %s x%s from branch %s -> site",
