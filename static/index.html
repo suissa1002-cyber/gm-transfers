@@ -4454,14 +4454,14 @@ function paintWcOrder(){
   const gm=d.greenos||{};
   const stOpts=['pending','processing','on-hold','completed','cancelled','refunded','failed']
     .map(s=>`<option value="${s}" ${d.status===s?'selected':''}>${WA_STATUS[s]||s}</option>`).join('');
-  document.getElementById('modalRoot').innerHTML=`<div class="overlay" onclick="closeModal()"><div class="modal" style="max-width:620px;text-align:right;max-height:90vh;overflow:auto" onclick="event.stopPropagation()">
+  document.getElementById('modalRoot').innerHTML=`<div class="overlay" onclick="closeModal()"><div class="modal" style="max-width:640px;text-align:right;max-height:90vh;overflow:auto;padding:30px 30px 26px;line-height:1.55" onclick="event.stopPropagation()">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
       <b style="font-size:17px">הזמנה #${d.number}</b>
       <span style="display:flex;gap:7px;align-items:center">${ordTag(d.status)}
         <button class="dr-x" onclick="closeModal()">✕</button></span>
     </div>
-    <div class="muted" style="font-size:12px;margin:2px 0 10px">${fmtD(d.date)}${d.date_paid?` · שולם ${fmtD(d.date_paid)}`:''}${d.payment?` · ${escW(d.payment)}`:''}${d.tx?` · עסקה <span style="direction:ltr;font-family:monospace">${escW(String(d.tx).slice(0,18))}</span>`:''}</div>
-    <div style="background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:10px">
+    <div class="muted" style="font-size:12.5px;margin:6px 0 18px">${fmtD(d.date)}${d.date_paid?` · שולם ${fmtD(d.date_paid)}`:''}${d.payment?` · ${escW(d.payment)}`:''}${d.tx?` · עסקה <span style="direction:ltr;font-family:monospace">${escW(String(d.tx).slice(0,18))}</span>`:''}</div>
+    <div style="background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:15px 17px;margin-bottom:16px;display:flex;flex-direction:column;gap:4px">
       <b>${escW((b.first_name||'')+' '+(b.last_name||''))}</b>${b.company?` · ${escW(b.company)}`:''}
       <div class="muted" style="font-size:12.5px;direction:ltr;text-align:end">${escW(b.phone||'')}${b.email?` · ${escW(b.email)}`:''}</div>
       ${(b.address_1||b.city)?`<div class="muted" style="font-size:12.5px">חיוב: ${escW(b.address_1||'')} ${escW(b.city||'')}</div>`:''}
@@ -4469,10 +4469,10 @@ function paintWcOrder(){
       ${(d.shipping_lines||[]).length?`<div class="muted" style="font-size:12.5px">🚚 ${escW(d.shipping_lines.join(', '))}</div>`:''}
       ${phoneIntl.length>10?`<button class="btn-ghost" style="margin-top:6px;padding:4px 10px;font-size:12px" onclick="closeModal();setAdminTab('wa');setTimeout(()=>openWaConv('${phoneIntl}'),600)">${ico('chat',13)} פתח שיחה בוואטסאפ</button>`:''}
     </div>
-    ${(d.items||[]).map(it=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:7px 4px;border-bottom:1px solid var(--line);font-size:13.5px">
+    ${(d.items||[]).map(it=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:11px 6px;border-bottom:1px solid var(--line);font-size:13.5px">
       <span style="flex:1;min-width:0">${escW(it.name)}${it.sku?` <span class="muted" style="font-size:11px;direction:ltr;font-family:monospace">${escW(it.sku)}</span>`:''} ×${it.qty}</span>
       <b style="white-space:nowrap">${fmt(it.total)}</b></div>`).join('')}
-    <div style="display:flex;justify-content:space-between;padding:9px 4px;font-size:14.5px">
+    <div style="display:flex;justify-content:space-between;padding:14px 6px 6px;font-size:15px">
       <span>${Number(d.shipping_total)>0?`משלוח ${fmt(d.shipping_total)} · `:''}<b>סה״כ</b></span><b style="font-size:16px">${fmt(d.total)}</b>
     </div>
     ${gm.greenos_payplus_link&&d.status==='pending'?`<div style="display:flex;gap:6px;margin:4px 0">
@@ -4481,13 +4481,13 @@ function paintWcOrder(){
     ${d.customer_note?`<div class="wa-note" style="margin-top:8px">📝 ${escW(d.customer_note)}</div>`:''}
     ${(d.notes||[]).length?`<details style="margin-top:8px"><summary class="muted" style="cursor:pointer;font-size:13px">הערות הזמנה (${d.notes.length})</summary>
       ${d.notes.map(n=>`<div class="wa-note" style="margin-top:5px;font-size:12px">${escW(n.note)}<div class="by"><span>${fmtD(n.date)}${n.customer?' · נשלח ללקוח':''}</span></div></div>`).join('')}</details>`:''}
-    <div style="display:flex;gap:7px;margin-top:12px;align-items:center;flex-wrap:wrap">
+    <div style="display:flex;gap:9px;margin-top:20px;align-items:center;flex-wrap:wrap">
       <select id="wcoSt" style="padding:8px 10px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--txt)">${stOpts}</select>
       <button class="btn-primary" style="padding:8px 14px" onclick="wcoSetStatus(${d.id})">עדכן סטטוס</button>
       <a class="btn-ghost" style="text-decoration:none;padding:8px 12px" target="_blank" href="${escW(d.admin_url)}">פתח ב-WC ↗</a>
       <button class="btn-ghost" style="padding:8px 12px;opacity:.5" title="בקרוב — תווית משלוח Cargo" disabled>🚚 תווית Cargo</button>
     </div>
-    <div style="display:flex;gap:6px;margin-top:8px">
+    <div style="display:flex;gap:8px;margin-top:12px">
       <input id="wcoNote" placeholder="הוסף הערה פנימית להזמנה…" style="flex:1;min-width:0;padding:8px 10px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:13px"
              onkeydown="if(event.key==='Enter')wcoAddNote(${d.id})">
       <button class="btn-ghost" onclick="wcoAddNote(${d.id})">➕</button>
