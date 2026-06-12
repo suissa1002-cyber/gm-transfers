@@ -205,6 +205,15 @@ def get_thread(phone: str, limit: int = 60):
                     kind = "interactive"
         if kind == "interactive":
             text = text.replace("[interactive]", "", 1).strip()
+        # reply של הלקוח להודעה שלנו: בלוקים נכנסים נושאים context עם ה-wamid המצוטט
+        reply_to = None
+        if isinstance(content, list):
+            for b in content:
+                if isinstance(b, dict):
+                    c = b.get("context")
+                    if isinstance(c, dict) and (c.get("id") or c.get("message_id")):
+                        reply_to = c.get("id") or c.get("message_id")
+                        break
         slim.append({
             "id": m.get("id"),
             "direction": m.get("direction"),
@@ -214,7 +223,27 @@ def get_thread(phone: str, limit: int = 60):
             "media": _extract_media(content),
             "ts": m.get("ts") or 0,
             "sent_by": m.get("sent_by"),
+            "reply_to": reply_to,
         })
+    # מיזוג יומן הצל: הודעות שנשלחו ישירות דרך Meta (תבניות כפתור, replies) —
+    # ConnectOp לא מציג אותן, אז הן נשמרות אצלנו וממוזגות לציר הזמן
+    import db
+    seen = {m["id"] for m in slim if m.get("id")}
+    for sh in db.wa_shadow_list(phone):
+        if sh.get("wamid") in seen:
+            continue
+        slim.append({
+            "id": sh.get("wamid"), "direction": "out", "text": sh.get("text") or "",
+            "kind": "shadow", "tpl": None, "media": [], "ts": sh.get("ts") or 0,
+            "sent_by": "greenos", "reply_to": sh.get("reply_to") or None,
+            "reply_preview": sh.get("reply_preview") or "",
+        })
+    slim.sort(key=lambda m: m.get("ts") or 0)
+    # תצוגת הציטוט: ממפים wamid → קטע טקסט מההודעה המצוטטת
+    by_id = {m["id"]: (m.get("text") or "") for m in slim if m.get("id")}
+    for m in slim:
+        if m.get("reply_to") and not m.get("reply_preview"):
+            m["reply_preview"] = (by_id.get(m["reply_to"]) or "")[:90]
     return {"phone": phone, "messages": slim, "window": _window_state(slim)}
 
 
@@ -431,24 +460,83 @@ def _meta_send_template(phone: str, template: str, body_params: list, button_par
 META_GENERAL_TEMPLATE = "payment_general"
 
 
+def _tpl_body_filled(template_id: str, params: list) -> str:
+    """גוף התבנית עם הפרמטרים — לרישום ביומן הצל (תצוגת השיחה)."""
+    try:
+        t = next((t for t in wa_templates() if t["id"] == template_id), None)
+        body = (t or {}).get("body") or ""
+        for i, p in enumerate(params, 1):
+            body = body.replace("{{%d}}" % i, str(p))
+        return body or f"[תבנית {template_id}]"
+    except Exception:  # noqa: BLE001
+        return f"[תבנית {template_id}]"
+
+
+def _shadow(phone: str, wamid: str, text: str, reply_to: str = "", reply_preview: str = ""):
+    try:
+        import db
+        db.wa_shadow_add(phone, wamid, text, reply_to, reply_preview, ts=int(time.time()))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("shadow log failed: %s", e)
+
+
 def send_pay_template_direct(phone: str, name: str, order_number: str, total: str, pru: str):
     """payment_link דרך Meta: גוף [שם, מס׳ הזמנה, סכום] + הקישור האישי בכפתור."""
     if not pru:
         raise WaError("חסר מזהה דף תשלום (pru)")
-    mid = _meta_send_template(phone, META_PAY_TEMPLATE,
-                              [(name or "לקוח/ה יקר/ה")[:60], str(order_number), str(total)],
-                              [pru])
+    params = [(name or "לקוח/ה יקר/ה")[:60], str(order_number), str(total)]
+    mid = _meta_send_template(phone, META_PAY_TEMPLATE, params, [pru])
+    _shadow(phone, mid, _tpl_body_filled(META_PAY_TEMPLATE, params) + "\n[🔘 לתשלום מאובטח]")
     logger.info("wa meta-direct pay-template -> %s (order %s, mid %s)", phone, order_number, mid)
     return {"sent": True, "via": "meta-direct", "message_id": mid}
+
+
+def send_reply_quoted(phone: str, text: str, reply_to: str, reply_preview: str = ""):
+    """
+    מענה עם ציטוט (reply) להודעה ספציפית — דרך Meta Cloud API עם context.
+    ConnectOp לא תומך בזה; ההודעה נרשמת ביומן הצל כדי להופיע בשיחה.
+    """
+    import os
+    import requests as rq
+    text = (text or "").strip()
+    if not text:
+        raise WaError("הודעה ריקה")
+    if re.search(r"\btest\b|\bping\b", text, re.IGNORECASE):
+        raise WaError("ההודעה מכילה test/ping — חסום")
+    if not meta_direct_ready():
+        raise WaError("חיבור Meta ישיר לא מוגדר")
+    win = _window_state(get_thread(phone, limit=60)["messages"])
+    if not win["in_window"]:
+        return {"sent": False, "needs_template": True, "window": win}
+    payload = {"messaging_product": "whatsapp", "to": str(phone),
+               "context": {"message_id": reply_to},
+               "type": "text", "text": {"body": text}}
+    r = rq.post(f"{META_GRAPH}/{os.getenv('META_WA_PHONE_ID').strip()}/messages",
+                headers={"Authorization": f"Bearer {os.getenv('META_WA_TOKEN').strip()}",
+                         "Content-Type": "application/json"},
+                json=payload, timeout=40)
+    try:
+        j = r.json()
+    except Exception:  # noqa: BLE001
+        j = {}
+    if r.status_code != 200 or not (j.get("messages") or []):
+        err = ((j.get("error") or {}).get("message")) or str(j)[:150]
+        logger.warning("meta reply send failed %s: %s", r.status_code, str(j)[:300])
+        raise WaError(f"שליחת ה-reply נכשלה: {err}")
+    mid = (j["messages"][0] or {}).get("id", "")
+    _auto_human(phone)
+    _shadow(phone, mid, text, reply_to=reply_to, reply_preview=reply_preview)
+    logger.info("wa meta-direct reply -> %s (quoting %s)", phone, (reply_to or "")[:30])
+    return {"sent": True, "via": "meta-reply", "window": win, "message_id": mid}
 
 
 def send_general_pay_direct(phone: str, name: str, total: str, desc: str, pru: str):
     """payment_general דרך Meta — תשלום כללי בלי הזמנה: [שם, סכום, תיאור] + כפתור."""
     if not pru:
         raise WaError("חסר מזהה דף תשלום (pru)")
-    mid = _meta_send_template(phone, META_GENERAL_TEMPLATE,
-                              [(name or "לקוח/ה יקר/ה")[:60], str(total), (desc or "התשלום")[:60]],
-                              [pru])
+    params = [(name or "לקוח/ה יקר/ה")[:60], str(total), (desc or "התשלום")[:60]]
+    mid = _meta_send_template(phone, META_GENERAL_TEMPLATE, params, [pru])
+    _shadow(phone, mid, _tpl_body_filled(META_GENERAL_TEMPLATE, params) + "\n[🔘 לתשלום מאובטח]")
     logger.info("wa meta-direct general-pay -> %s (%s, mid %s)", phone, desc, mid)
     return {"sent": True, "via": "meta-direct", "message_id": mid}
 

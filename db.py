@@ -320,6 +320,21 @@ _SCHEMA = [
         created_at  TEXT
     )
     """.format(pk=_PK),
+    # יומן צל להודעות שנשלחו ישירות דרך Meta Cloud API (תבניות כפתור, reply) —
+    # הן לא מופיעות בשיחה של ConnectOp, אז נשמרות כאן וממוזגות לתצוגת השיחה
+    """
+    CREATE TABLE IF NOT EXISTS wa_shadow (
+        id            {pk},
+        phone         TEXT,
+        wamid         TEXT,
+        text          TEXT,
+        reply_to      TEXT,
+        reply_preview TEXT,
+        ts            BIGINT,
+        created_at    TEXT
+    )
+    """.format(pk=_PK),
+    "CREATE INDEX IF NOT EXISTS idx_wa_shadow_phone ON wa_shadow(phone)",
     # תור משימות לסוכן אורי (claude על המק של אסי, חיוב Max — לא API)
     """
     CREATE TABLE IF NOT EXISTS uri_jobs (
@@ -1292,6 +1307,24 @@ def wa_canned_list() -> list:
     with _conn() as c:
         cur = c.cursor()
         cur.execute(_q("SELECT id, title, text FROM wa_canned ORDER BY title"))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def wa_shadow_add(phone: str, wamid: str, text: str, reply_to: str = "",
+                  reply_preview: str = "", ts: int = 0):
+    with _conn() as c:
+        c.cursor().execute(_q("""
+            INSERT INTO wa_shadow (phone, wamid, text, reply_to, reply_preview, ts, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """), (str(phone), wamid or "", text or "", reply_to or "",
+               (reply_preview or "")[:120], int(ts or 0), now_iso()))
+
+
+def wa_shadow_list(phone: str, limit: int = 80) -> list:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""SELECT wamid, text, reply_to, reply_preview, ts FROM wa_shadow
+                          WHERE phone = ? ORDER BY ts DESC LIMIT ?"""), (str(phone), int(limit)))
         return [dict(r) for r in cur.fetchall()]
 
 

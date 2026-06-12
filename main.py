@@ -1405,6 +1405,8 @@ def admin_order_clear(x_admin_key: Optional[str] = Header(None)):
 class WaSend(BaseModel):
     phone: str
     text: str
+    reply_to: str = ""       # wamid של הודעה לציטוט (reply) — נשלח דרך Meta ישיר
+    reply_preview: str = ""
 
 
 class WaTemplate(BaseModel):
@@ -1443,9 +1445,13 @@ def wa_thread(phone: str, limit: int = 60, x_admin_key: Optional[str] = Header(N
 
 @app.post("/api/admin/wa/send")
 def wa_send(body: WaSend, x_admin_key: Optional[str] = Header(None)):
-    """מענה אנושי; אם מחוץ לחלון 24ש — מחזיר needs_template (לא שולח)."""
+    """מענה אנושי; אם מחוץ לחלון 24ש — מחזיר needs_template (לא שולח).
+    עם reply_to — מענה מצוטט (reply אמיתי) דרך Meta ישיר."""
     _require_admin(x_admin_key)
     import wa
+    if body.reply_to and wa.meta_direct_ready():
+        return _wa_guard(wa.send_reply_quoted, body.phone, body.text,
+                         body.reply_to, body.reply_preview)
     return _wa_guard(wa.send_reply, body.phone, body.text)
 
 
