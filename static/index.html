@@ -666,6 +666,8 @@ function loadState(){
   S.theme=localStorage.getItem('tr_theme')||'light';
 }
 function changeBranch(){
+  // זוכרים את הסניף הקודם — מעבר לסניף אחר במכשיר סניפי דורש אישור מנהל
+  S.prevBranchId=S.branchId; S.prevBranchName=S.branchName;
   ['tr_branch_id','tr_branch_name'].forEach(k=>localStorage.removeItem(k));
   S.branchId=null;S.view='board';render();
 }
@@ -683,7 +685,10 @@ async function api(path,opts,ms){
   const r=await fetchT(path,opts,ms||30000);
   if(!r.ok){
     // המכשיר כבר לא מאושר (בוטל/נמחק) — חזרה למסך הבקשה
-    if(r.status===401){ try{ const j=await r.clone().json(); if(j&&j.code==='device'){ deviceBlockedFlow(); } }catch(e){} }
+    if(r.status===401){ try{ const j=await r.clone().json();
+      if(j&&j.code==='device'){ deviceBlockedFlow(); }
+      else if(j&&j.code==='branch-locked'){ toast('המכשיר נעול לסניף אחר — החלפת סניף דורשת אישור מנהל',false); }
+    }catch(e){} }
     const e=new Error('http '+r.status); e.status=r.status; throw e;
   }
   return r.json();
@@ -1220,7 +1225,9 @@ function pickBranch(id,name){
         finishPick(id,name); }});
   }
   // נעילת סניף: מכשיר סניפי שמחליף סניף קיים — דורש אישור מנהל בטלגרם
-  if(!S.adminKey && S.branchId && String(S.branchId)!==String(id)){
+  // (כולל דרך "החלף סניף" שמאפס קודם — הסניף הקודם נשמר ב-prevBranchId)
+  const cur=S.branchId||S.prevBranchId;
+  if(!S.adminKey && cur && String(cur)!==String(id)){
     return requestBranchChange(id,name);
   }
   finishPick(id,name);
