@@ -4263,6 +4263,33 @@ if('serviceWorker' in navigator){
     if(d.phone) waConvWhenReady(String(d.phone));
   });
 }
+// iOS מתעלם לעיתים מ-URL בהתראה — ה-SW שומר את היעד ב-IndexedDB ואנחנו קוראים אותו
+// בעלייה ובכל חזרה לפוקוס (כיסוי לאפליקציה סגורה/ברקע כאחד)
+function navPendingTake(){
+  return new Promise((res)=>{
+    try{
+      const r=indexedDB.open('gm-nav',1);
+      r.onupgradeneeded=()=>r.result.createObjectStore('kv');
+      r.onsuccess=()=>{
+        try{
+          const tx=r.result.transaction('kv','readwrite');
+          const st=tx.objectStore('kv');
+          const g=st.get('pending');
+          g.onsuccess=()=>{ const v=g.result; st.delete('pending'); res(v||null); };
+          g.onerror=()=>res(null);
+        }catch(e){ res(null); }
+      };
+      r.onerror=()=>res(null);
+    }catch(e){ res(null); }
+  });
+}
+async function navPendingApply(){
+  const p=await navPendingTake();
+  if(p && p.phone && Date.now()-(p.at||0)<10*60*1000 && S.branchId){
+    openWaTab(); waConvWhenReady(String(p.phone));
+  }
+}
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible') navPendingApply(); });
 
 // ── init ──
 // שומר פוקוס על שדה הסריקה — אבל לא גונב בחירת טקסט (העתקת ברקוד/סריאל) או קליק על פריט
@@ -4277,7 +4304,7 @@ async function bootApp(){
   try{ render(); }catch(e){ hideLoading(); }
   applyTheme();
   waSWReady();   // רישום service worker (PWA/push) — לא חוסם
-  if(S.branchId){ startPoll(); startNotifPoll(); handleDeepLink(); }
+  if(S.branchId){ startPoll(); startNotifPoll(); handleDeepLink(); navPendingApply(); }
 }
 (async()=>{
   loadState(); applyTheme();
