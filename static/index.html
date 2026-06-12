@@ -380,6 +380,9 @@
   @media(min-width:1000px){
     .wa-side{background:transparent;pointer-events:none}
     .wa-side .wa-ord{pointer-events:auto;position:fixed;left:14px;top:60px;max-height:calc(100vh - 76px);border:1px solid var(--line);box-shadow:0 16px 60px rgba(0,0,0,.45)}
+    /* כשהטופס פתוח — עמודת השיחה (הודעות + תיבת מענה) זזה ימינה ומפנה לו מקום אמיתי */
+    body.wa-sbs .wa-msgs{max-width:none;margin:0;margin-left:560px;padding:14px 16px}
+    body.wa-sbs .wa-send{max-width:none;margin:0;margin-left:560px}
   }
   .wa-ord-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px}
   .wa-ord-grid input{padding:8px 10px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:13.5px;min-width:0}
@@ -2281,7 +2284,14 @@ function waThreadHTML(){
 // כפתור הזמנה זמין רק במחשב הניהול (סניף אתר + סיסמה) — כמו הוואטסאפ
 function isAdminCtx(){ return S.cfg&&Number(S.branchId)===S.cfg.admin_branch_id&&(!S.cfg.admin_required||S.adminKey); }
 // ── 🛒 צור הזמנה חיה: וריאציה → פרטי לקוח → הזמנת WooCommerce → קישור תשלום PayPlus ──
-function waOrderClose(){ const m=document.getElementById('waOrderModal'); if(m) m.remove(); }
+function waOrderClose(){
+  const m=document.getElementById('waOrderModal'); if(m) m.remove();
+  if(!document.getElementById('waOrdDoneModal')) document.body.classList.remove('wa-sbs');
+}
+function waOrdDoneClose(){
+  const m=document.getElementById('waOrdDoneModal'); if(m) m.remove();
+  if(!document.getElementById('waOrderModal')) document.body.classList.remove('wa-sbs');
+}
 async function waOrderOpen(pid){
   showLoading('קורא מהאתר…');
   let d=null;
@@ -2329,6 +2339,7 @@ function waOrderRender(){
   const div=document.createElement('div');
   // בוואטסאפ (דסקטופ) — הטופס נצמד לצד והשיחה נשארת חיה להעתקת פרטי הלקוח
   div.id='waOrderModal'; div.className='wa-lb'+(document.body.classList.contains('wa-mode')?' wa-side':''); div.style.cursor='default';
+  document.body.classList.toggle('wa-sbs', document.body.classList.contains('wa-mode'));
   div.innerHTML=`<div class="wa-ord" onclick="event.stopPropagation()">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
       <b style="font-size:15px;display:inline-flex;align-items:center;gap:7px">${ico('cart',16)} הזמנה חדשה</b>
@@ -2445,10 +2456,11 @@ function waOrdDoneOpen(r,o){
   const phone=(o.cust.phone||S.waPhone||'');
   const div=document.createElement('div');
   div.id='waOrdDoneModal'; div.className='wa-lb'+(document.body.classList.contains('wa-mode')?' wa-side':''); div.style.cursor='default';
+  document.body.classList.toggle('wa-sbs', document.body.classList.contains('wa-mode'));
   div.innerHTML=`<div class="wa-ord" onclick="event.stopPropagation()">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
       <b style="font-size:15px">הזמנה #${r.number} נוצרה ✓ · ₪${total}</b>
-      <button class="btn-ghost" onclick="document.getElementById('waOrdDoneModal').remove()">✕</button>
+      <button class="btn-ghost" onclick="waOrdDoneClose()">✕</button>
     </div>
     ${r.pay_link?`<div style="display:flex;gap:6px;margin-bottom:8px">
       <input id="odLink" readonly value="${escW(r.pay_link)}" onclick="this.select()" style="flex:1;min-width:0;direction:ltr;font-size:11.5px;padding:7px 9px;border-radius:9px;border:1px solid var(--line);background:var(--card2);color:var(--txt)">
@@ -2462,10 +2474,10 @@ function waOrdDoneOpen(r,o){
     <div class="muted" style="font-size:11px;margin-top:5px">נשלח תמיד: עם כפתור תשלום לחיץ (תבנית payment_link); אם התבנית עוד לא מאושרת — הודעה רגילה / תבנית new_message לפי חלון 24ש׳.</div>
     <div style="display:flex;gap:8px;margin-top:10px">
       <button class="btn-ghost" style="flex:1" onclick="window.open('${r.admin_url}','_blank')">פתח הזמנה ב-WC</button>
-      <button class="btn-ghost" style="flex:1" onclick="document.getElementById('waOrdDoneModal').remove()">סגור</button>
+      <button class="btn-ghost" style="flex:1" onclick="waOrdDoneClose()">סגור</button>
     </div>
   </div>`;
-  div.onclick=()=>div.remove();
+  div.onclick=waOrdDoneClose;
   document.body.appendChild(div);
 }
 async function waOrdDoneSend(){
