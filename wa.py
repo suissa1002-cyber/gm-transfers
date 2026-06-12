@@ -353,7 +353,10 @@ def send_wa_template(phone: str, template_id: str, params=None, language: str = 
     return {"sent": True, "via": f"template:{template_id}", "resp": resp}
 
 
-PAY_TEMPLATE_ID = "payment_link"   # תבנית מאושרת-Meta עם כפתור URL דינמי לדף PayPlus
+# תבנית התשלום: כפתור URL **קבוע** ל-{APP}/pay (הלקוח מקליד שם את מס׳ ההזמנה).
+# ⚠️ נבדק אמפירית 12/06/2026: ConnectOp בולעים בשקט תבניות עם כפתור URL *דינמי*
+# (פרמטר {{1}} בכתובת) — בכל צורת payload; כפתורים קבועים/Quick-Reply עוברים.
+PAY_TEMPLATE_ID = "payment_request"
 
 
 def pay_template_ready() -> bool:
@@ -364,22 +367,19 @@ def pay_template_ready() -> bool:
         return False
 
 
-def send_pay_template(phone: str, name: str, order_number: str, total: str, pru: str):
+def send_pay_template(phone: str, name: str, order_number: str, total: str, pru: str = ""):
     """
-    שליחת קישור תשלום כתבנית payment_link: גוף [שם, מס׳ הזמנה, סכום] +
-    כפתור "לתשלום מאובטח" שה-URL שלו הוא https://payments.payplus.co.il/{pru}.
-    הכפתור לחיץ אצל כל לקוח, תמיד — גם מחוץ לחלון 24ש׳ וגם בלי אינטראקציה קודמת.
+    שליחת בקשת תשלום כתבנית payment_request: גוף [שם, מס׳ הזמנה, סכום] +
+    כפתור קבוע "לתשלום מאובטח" → /pay, שם הלקוח מקליד את מס׳ ההזמנה ומועבר
+    ל-PayPlus. הכפתור לחיץ אצל כל לקוח, תמיד — גם בלי אינטראקציה קודמת.
     """
-    if not pru:
-        raise WaError("חסר מזהה דף תשלום (pru)")
     tpl = next((t for t in wa_templates() if t["id"] == PAY_TEMPLATE_ID), None)
     if tpl is None:
         raise WaError(f"תבנית {PAY_TEMPLATE_ID} עוד לא סונכרנה מ-Meta")
     resp = _dash_call(_dash().send_whatsapp_template,
                       phone, PAY_TEMPLATE_ID,
                       [name or "לקוח/ה יקר/ה", str(order_number), str(total)],
-                      language=tpl.get("language") or "he",
-                      button_parameters=[pru])
+                      language=tpl.get("language") or "he")
     logger.info("wa send pay-template -> %s (order %s)", phone, order_number)
     return {"sent": True, "via": f"template:{PAY_TEMPLATE_ID}", "resp": resp}
 

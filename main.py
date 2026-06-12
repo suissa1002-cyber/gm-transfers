@@ -1726,6 +1726,70 @@ async def payplus_ipn(request: Request):
     return {"ok": ok, "order": int(order_id)}
 
 
+# ── /pay: עמוד נחיתה ציבורי לכפתור התשלום הקבוע בתבנית הוואטסאפ ──
+# ConnectOp לא מעבירים פרמטר כפתור דינמי, לכן הכפתור בתבנית מוביל לכאן —
+# הלקוח מקליד את מספר ההזמנה (שמופיע בגוף ההודעה) ומועבר לדף PayPlus שלו.
+_PAY_HITS: dict = {}   # rate-limit פשוט בזיכרון: ip -> [timestamps]
+
+
+def _pay_rate_ok(ip: str) -> bool:
+    import time as _t
+    now = _t.time()
+    hits = [t for t in _PAY_HITS.get(ip, []) if now - t < 60]
+    hits.append(now)
+    _PAY_HITS[ip] = hits
+    if len(_PAY_HITS) > 2000:
+        _PAY_HITS.clear()
+    return len(hits) <= 10
+
+
+@app.get("/pay")
+def pay_landing(err: str = ""):
+    from fastapi.responses import HTMLResponse
+    msg = ('<div style="color:#dc2626;font-size:13.5px;margin-bottom:10px">'
+           'לא נמצאה הזמנה פתוחה עם המספר הזה — בדקו את המספר או דברו איתנו בוואטסאפ</div>') if err else ""
+    return HTMLResponse(f"""<!doctype html><html dir="rtl" lang="he"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>תשלום מאובטח — גרין מובייל</title></head>
+<body style="margin:0;font-family:-apple-system,Segoe UI,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#f0f4f1">
+<form method="get" action="/pay/go" style="background:#fff;border-radius:18px;padding:30px 26px;box-shadow:0 8px 30px rgba(0,0,0,.10);text-align:center;width:min(340px,88vw)">
+  <div style="font-size:34px">💚</div>
+  <h2 style="margin:8px 0 4px;color:#1f2937;font-size:20px">תשלום מאובטח</h2>
+  <div style="color:#6b7280;font-size:13.5px;margin-bottom:16px">הקלידו את מספר ההזמנה שקיבלתם בהודעה</div>
+  {msg}
+  <input name="order" inputmode="numeric" pattern="[0-9]*" required autofocus placeholder="מספר הזמנה"
+    style="width:100%;box-sizing:border-box;text-align:center;font-size:22px;letter-spacing:2px;padding:12px;border-radius:12px;border:1.5px solid #d1d5db;outline-color:#16a34a">
+  <button type="submit" style="width:100%;margin-top:12px;padding:13px;border:0;border-radius:12px;background:#16a34a;color:#fff;font-size:16px;font-weight:600;cursor:pointer">המשך לתשלום 💳</button>
+  <div style="color:#9ca3af;font-size:11px;margin-top:12px">התשלום מתבצע בדף מאובטח של PayPlus · גרין מובייל</div>
+</form></body></html>""")
+
+
+@app.get("/pay/go")
+def pay_go(order: str = "", request: Request = None):
+    """מאתר את קישור PayPlus של ההזמנה ומעביר אליו. רק הזמנות GreenOS פתוחות."""
+    import requests as _rq
+    from fastapi.responses import RedirectResponse
+    ip = _client_ip(request) if request else ""
+    if not _pay_rate_ok(ip):
+        raise HTTPException(429, "יותר מדי ניסיונות — נסו שוב בעוד דקה")
+    oid = "".join(ch for ch in (order or "") if ch.isdigit())
+    creds = _wc_creds()
+    if not (oid and creds):
+        return RedirectResponse("/pay?err=1", status_code=302)
+    base, k, s = creds
+    try:
+        r = _rq.get(f"{base}/wp-json/wc/v3/orders/{oid}", auth=(k, s), timeout=25)
+        if r.ok:
+            o = r.json()
+            meta = {m.get("key"): m.get("value") for m in (o.get("meta_data") or [])}
+            link = meta.get("greenos_payplus_link") or ""
+            # רק הזמנות שלנו שעדיין ממתינות לתשלום — בלי לחשוף דפי תשלום של אחרים
+            if link and meta.get("greenos_source") and o.get("status") == "pending":
+                return RedirectResponse(link, status_code=302)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("pay lookup failed for %s: %s", oid, e)
+    return RedirectResponse("/pay?err=1", status_code=302)
+
+
 @app.get("/pay-done")
 def pay_done(ok: str = "1"):
     """עמוד הנחיתה בסיום תשלום — נטען בתוך ה-iframe ב-GreenOS ומאותת להורה."""
