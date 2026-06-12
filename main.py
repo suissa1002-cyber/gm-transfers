@@ -391,13 +391,14 @@ def admin_broadcast(body: BroadcastIn, x_admin_key: Optional[str] = Header(None)
     """משדר בקשות העברה למסך הקליטה של סניף המקור (תצוגה בלבד)."""
     d = _caller_device(x_admin_key, x_device_token)
     if d is not None:
-        # נעילת סניף: מכשיר משדר רק בקשות שהיעד שלהן הוא הסניף שלו
+        # נעילת סניף: מכשיר משדר רק בקשות שמערבות את הסניף שלו (אל/מ).
+        # בין שני סניפים אחרים — רק דרך זרימת האישור (plan-action).
         own = _device_branch(d)
         rows = {ln["id"]: ln for ln in db.plan_list()}
         for lid in (body.line_ids or []):
             ln = rows.get(int(lid))
-            if not ln or str(ln.get("to_branch")) != own:
-                raise HTTPException(403, "מכשיר סניפי משדר רק בקשות אל הסניף שלו")
+            if not ln or (str(ln.get("to_branch")) != own and str(ln.get("from_branch")) != own):
+                raise HTTPException(403, "העברה בין סניפים אחרים — דרך אישור מנהל")
         if not body.line_ids:
             raise HTTPException(403, "שידור כללי — דרך מנהל בלבד")
     n = db.plan_mark_broadcast(body.branch_id, body.line_ids)
@@ -539,18 +540,60 @@ def admin_plan(x_admin_key: Optional[str] = Header(None)):
 def admin_plan_add(body: PlanAdd, x_admin_key: Optional[str] = Header(None), x_device_token: Optional[str] = Header(None)):
     d = _caller_device(x_admin_key, x_device_token)
     if d is not None:
-        # נעילת סניף: מכשיר סניפי מושך מלאי רק *אל* הסניף שלו — לא בין סניפים אחרים
+        # נעילת סניף: העברות שמערבות את הסניף של המכשיר — חופשי.
+        # העברה בין שני סניפים *אחרים* — נשלחת לאישור מנהל בטלגרם ומשודרת עם האישור.
         own = _device_branch(d)
         if not own:
             raise HTTPException(403, "המכשיר לא משויך לסניף — פנה למנהל")
-        for l in body.lines:
-            if str(l.to_branch) != own:
-                raise HTTPException(403, "מכשיר סניפי יכול לבקש העברה רק אל הסניף שלו")
-            if str(l.from_branch) == own:
-                raise HTTPException(403, "העברה מהסניף שלך לסניף אחר — דרך מנהל בלבד")
+        foreign = [l for l in body.lines
+                   if str(l.to_branch) != own and str(l.from_branch) != own]
+        if foreign:
+            import uuid
+            rid = uuid.uuid4().hex[:12]
+            db.sales_state_set(f"plnreq:{rid}", json_mod.dumps({
+                "status": "pending", "device": d.get("name") or "",
+                "lines": [l.model_dump() for l in body.lines],
+                "at": datetime.now().isoformat(timespec="seconds")}))
+            base = (cfg.APP_BASE_URL or "https://gm-transfers.onrender.com").rstrip("/")
+            ok_url = f"{base}/plan-action?req={rid}&action=approve&sig={_sig(rid, 'plnreq:approve')}"
+            no_url = f"{base}/plan-action?req={rid}&action=deny&sig={_sig(rid, 'plnreq:deny')}"
+            desc = "\n".join(f"• {l.name or l.product_id} ×{l.qty} — "
+                             f"{cfg.branch_name(l.from_branch)} ← {cfg.branch_name(l.to_branch)}"
+                             for l in body.lines)
+            _tg_admin(f"🔁 <b>בקשת העברה בין סניפים — דרוש אישור</b>\n"
+                      f"🖥️ מבקש: <b>{d.get('name') or '?'}</b> (סניף {cfg.branch_name(own)})\n{desc}\nלאשר?",
+                      buttons=[{"text": "✅ אשר ושדר", "url": ok_url},
+                               {"text": "❌ דחה", "url": no_url}])
+            return {"added": 0, "ids": [], "pending": True, "req": rid}
     ids = db.plan_add([l.model_dump() for l in body.lines],
                       created_by=_actor_name(x_admin_key, x_device_token))
     return {"added": len(ids), "ids": ids}
+
+
+@app.get("/plan-action")
+def plan_action(req: str, action: str, sig: str):
+    """אישור/דחייה של בקשת העברה בין-סניפית מהטלגרם — באישור: נוספת ומשודרת מיד."""
+    if action not in ("approve", "deny") or not _hmac.compare_digest(sig, _sig(req, f"plnreq:{action}")):
+        raise HTTPException(403, "bad signature")
+    raw = db.sales_state_get(f"plnreq:{req}")
+    if not raw:
+        raise HTTPException(404, "request not found")
+    data = json_mod.loads(raw)
+    if data.get("status") == "pending" and action == "approve":
+        ids = db.plan_add(data["lines"], created_by=f"באישור מנהל · {data.get('device') or ''}")
+        for fb in {int(l["from_branch"]) for l in data["lines"]}:
+            db.plan_mark_broadcast(fb, [i for i, l in zip(ids, data["lines"])
+                                        if int(l["from_branch"]) == fb])
+    data["status"] = "approved" if action == "approve" else "denied"
+    db.sales_state_set(f"plnreq:{req}", json_mod.dumps(data))
+    msg = "✅ הבקשה אושרה ושודרה לסניף המקור" if action == "approve" else "❌ הבקשה נדחתה"
+    from fastapi.responses import HTMLResponse
+    return HTMLResponse(f"""<!doctype html><html dir="rtl"><head><meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1"></head>
+      <body style="font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:90vh;background:#f4f6f8">
+      <div style="background:#fff;border-radius:16px;padding:34px 40px;box-shadow:0 8px 30px rgba(0,0,0,.12);text-align:center">
+      <div style="font-size:44px">{'✅' if action=='approve' else '❌'}</div>
+      <h2 style="margin:10px 0 4px">{msg}</h2></div></body></html>""")
 
 
 class PlanReplace(BaseModel):

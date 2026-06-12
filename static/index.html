@@ -4052,21 +4052,8 @@ function lsQtyTransfer(bid,avail){
 }
 function lsTransferDialog(cfg){
   S._lsTransfer=cfg;
-  // נעילת סניף: מכשיר סניפי (ללא סיסמת מנהל) מושך מלאי רק *אל* הסניף שלו
-  const locked=!S.adminKey;
-  if(locked && Number(cfg.from)===Number(S.branchId)){
-    document.getElementById('modalRoot').innerHTML=`<div class="overlay"><div class="modal" style="max-width:400px;text-align:center">
-      <div style="font-size:36px">🔒</div>
-      <h3 style="margin:8px 0 6px">העברה מהסניף שלך — דרך מנהל</h3>
-      <div class="muted" style="margin-bottom:14px">מהסניף שלך אפשר רק לקבל בקשות. העברת מלאי החוצה מבוצעת ע"י המנהל.</div>
-      <button class="btn-ghost" style="width:100%" onclick="renderLiveDetail()">סגור</button>
-    </div></div>`;
-    return;
-  }
-  const opts=locked
-    ? `<option value="${S.branchId}">${escW(S.branchName||'הסניף שלי')}</option>`
-    : (S.branchList||[]).filter(b=>Number(b.id)!==Number(cfg.from))
-        .map(b=>`<option value="${b.id}">${b.name}</option>`).join('');
+  const opts=(S.branchList||[]).filter(b=>Number(b.id)!==Number(cfg.from))
+    .map(b=>`<option value="${b.id}">${b.name}</option>`).join('');
   document.getElementById('modalRoot').innerHTML=`<div class="overlay"><div class="modal" style="max-width:460px;text-align:right">
     <h3 style="text-align:center;display:flex;align-items:center;justify-content:center;gap:7px">${ico('radio',16)} ${cfg.title}</h3>
     <div style="text-align:center;font-weight:700">${cfg.sub}</div>
@@ -4093,10 +4080,15 @@ async function lsSendTransfer(){
   showLoading('שולח בקשה…');
   try{
     const r=await api('/api/admin/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({lines:[line]})});
-    // שידור ממוקד — רק השורות שנוספו עכשיו (מצטרפות לטייל של אותו יעד אם כבר קיים)
-    await api('/api/admin/broadcast',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({branch_id:Number(cfg.from), line_ids:(r&&r.ids)||null})});
-    toast('הבקשה שודרה לסניף '+lsBranchName(cfg.from),true);
+    if(r&&r.pending){
+      // העברה בין שני סניפים אחרים — נשלחה לאישור מנהל בטלגרם ותשודר אוטומטית עם האישור
+      toast('הבקשה נשלחה לאישור מנהל 📲 — תשודר אוטומטית כשתאושר',true);
+    } else {
+      // שידור ממוקד — רק השורות שנוספו עכשיו (מצטרפות לטייל של אותו יעד אם כבר קיים)
+      await api('/api/admin/broadcast',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({branch_id:Number(cfg.from), line_ids:(r&&r.ids)||null})});
+      toast('הבקשה שודרה לסניף '+lsBranchName(cfg.from),true);
+    }
   }catch(e){ toast('שגיאה בשליחת הבקשה',false); }
   hideLoading();
   S._lsTransfer=null;
