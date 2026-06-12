@@ -2616,13 +2616,14 @@ async function payQuickGo(){
   const desc=g('pqDesc'), amount=Number(g('pqAmount'))||0;
   if(!desc){ toast('חסר תיאור פריט',false); return; }
   if(amount<=0){ toast('סכום לא תקין',false); return; }
+  const nm=g('pqName'), ph=g('pqPhone');   // נקרא לפני סגירת החלון — אחרת השדות כבר לא קיימים
   const btn=document.getElementById('pqGo'); if(btn){ btn.disabled=true; btn.textContent='יוצר…'; }
   try{
     const r=await api('/api/admin/pay/standalone',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({desc, amount, name:g('pqName'), phone:g('pqPhone'), email:g('pqEmail'),
+      body:JSON.stringify({desc, amount, name:nm, phone:ph, email:g('pqEmail'),
                            installments:Number(g('pqPay'))||1})},60000);
     document.getElementById('payQuickModal').remove();
-    payQuickDone(r, g('pqName'), g('pqPhone'));
+    payQuickDone(r, nm, ph);
   }catch(e){
     if(btn){ btn.disabled=false; btn.textContent='נסה שוב'; }
     toast('יצירת הקישור נכשלה — '+(e.status===400?'בדוק תיאור וסכום':'PayPlus לא זמין'),false);
@@ -2630,6 +2631,7 @@ async function payQuickGo(){
 }
 function payQuickDone(r, name, phone){
   const fmt='₪'+Number(r.amount).toLocaleString('he-IL');
+  S.payQuickCtx={pru:r.pru||'', total:fmt, desc:r.desc||''};
   const msg=`היי${name?' '+name:''}, קישור לתשלום מאובטח על סך ${fmt} עבור ${r.desc}:\n${r.pay_link}\nתודה, גרין מובייל 💚`;
   const div=document.createElement('div');
   div.id='payQuickDoneModal'; div.className='wa-lb'; div.style.cursor='default';
@@ -2658,9 +2660,11 @@ async function payQuickSend(name){
   if(!phone){ toast('חסר מספר טלפון',false); return; }
   const btn=document.getElementById('pqdSend'); if(btn){ btn.disabled=true; btn.textContent='שולח…'; }
   try{
+    const ctx=S.payQuickCtx||{};
     const r=await api('/api/admin/wa/send-guaranteed',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({phone, text, name})},60000);
-    toast(r.via==='template'?'נשלח ✓ כתבנית מאושרת':'נשלח ✓ בוואטסאפ',true);
+      body:JSON.stringify({phone, text, name, pru:ctx.pru||'', total:ctx.total||'', desc:ctx.desc||''})},60000);
+    toast(r.via==='pay-template'?'נשלח ✓ עם כפתור תשלום לחיץ':
+         r.via==='template'?'נשלח ✓ כתבנית מאושרת':'נשלח ✓ בוואטסאפ',true);
     if(btn) btn.textContent='נשלח ✓';
   }catch(e){
     if(btn){ btn.disabled=false; btn.textContent='נסה שוב'; }

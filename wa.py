@@ -395,35 +395,21 @@ def meta_direct_ready() -> bool:
     return bool(os.getenv("META_WA_TOKEN", "").strip() and os.getenv("META_WA_PHONE_ID", "").strip())
 
 
-def send_pay_template_direct(phone: str, name: str, order_number: str, total: str, pru: str):
-    """
-    שליחת payment_link ישירות דרך Meta Cloud API — עוקף את ConnectOp.
-    הכפתור מקבל את ה-pru כסיומת דינמית: payments.payplus.co.il/{pru}.
-    """
+def _meta_send_template(phone: str, template: str, body_params: list, button_params: list):
+    """שליחת תבנית ישירות דרך Meta Cloud API — עוקף את ConnectOp (שלא מסוגל
+    להעביר כפתורי URL דינמיים). מחזיר message_id."""
     import os
     import requests as rq
-    if not pru:
-        raise WaError("חסר מזהה דף תשלום (pru)")
     if not meta_direct_ready():
         raise WaError("חיבור Meta ישיר לא מוגדר (META_WA_TOKEN / META_WA_PHONE_ID)")
-    payload = {
-        "messaging_product": "whatsapp",
-        "to": str(phone),
-        "type": "template",
-        "template": {
-            "name": META_PAY_TEMPLATE,
-            "language": {"code": "he"},
-            "components": [
-                {"type": "body", "parameters": [
-                    {"type": "text", "text": (name or "לקוח/ה יקר/ה")[:60]},
-                    {"type": "text", "text": str(order_number)},
-                    {"type": "text", "text": str(total)},
-                ]},
-                {"type": "button", "sub_type": "url", "index": "0",
-                 "parameters": [{"type": "text", "text": pru}]},
-            ],
-        },
-    }
+    components = [{"type": "body",
+                   "parameters": [{"type": "text", "text": str(p)[:120]} for p in body_params]}]
+    if button_params:
+        components.append({"type": "button", "sub_type": "url", "index": "0",
+                           "parameters": [{"type": "text", "text": str(button_params[0])}]})
+    payload = {"messaging_product": "whatsapp", "to": str(phone), "type": "template",
+               "template": {"name": template, "language": {"code": "he"},
+                            "components": components}}
     r = rq.post(f"{META_GRAPH}/{os.getenv('META_WA_PHONE_ID').strip()}/messages",
                 headers={"Authorization": f"Bearer {os.getenv('META_WA_TOKEN').strip()}",
                          "Content-Type": "application/json"},
@@ -434,11 +420,36 @@ def send_pay_template_direct(phone: str, name: str, order_number: str, total: st
         j = {}
     if r.status_code != 200 or not (j.get("messages") or []):
         err = ((j.get("error") or {}).get("message")) or str(j)[:150]
-        logger.warning("meta direct send failed %s: %s", r.status_code, str(j)[:300])
+        logger.warning("meta direct send failed %s (%s): %s", r.status_code, template, str(j)[:300])
         raise WaError(f"Meta דחתה את השליחה: {err}")
     mid = (j["messages"][0] or {}).get("id", "")
     _auto_human(phone)
+    return mid
+
+
+# תבנית לתשלום כללי (ללא הזמנה): "קישור לתשלום על סך {{2}} עבור {{3}}" + כפתור
+META_GENERAL_TEMPLATE = "payment_general"
+
+
+def send_pay_template_direct(phone: str, name: str, order_number: str, total: str, pru: str):
+    """payment_link דרך Meta: גוף [שם, מס׳ הזמנה, סכום] + הקישור האישי בכפתור."""
+    if not pru:
+        raise WaError("חסר מזהה דף תשלום (pru)")
+    mid = _meta_send_template(phone, META_PAY_TEMPLATE,
+                              [(name or "לקוח/ה יקר/ה")[:60], str(order_number), str(total)],
+                              [pru])
     logger.info("wa meta-direct pay-template -> %s (order %s, mid %s)", phone, order_number, mid)
+    return {"sent": True, "via": "meta-direct", "message_id": mid}
+
+
+def send_general_pay_direct(phone: str, name: str, total: str, desc: str, pru: str):
+    """payment_general דרך Meta — תשלום כללי בלי הזמנה: [שם, סכום, תיאור] + כפתור."""
+    if not pru:
+        raise WaError("חסר מזהה דף תשלום (pru)")
+    mid = _meta_send_template(phone, META_GENERAL_TEMPLATE,
+                              [(name or "לקוח/ה יקר/ה")[:60], str(total), (desc or "התשלום")[:60]],
+                              [pru])
+    logger.info("wa meta-direct general-pay -> %s (%s, mid %s)", phone, desc, mid)
     return {"sent": True, "via": "meta-direct", "message_id": mid}
 
 

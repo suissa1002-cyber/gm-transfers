@@ -2180,6 +2180,7 @@ class WaSendSure(BaseModel):
     order_number: str = ""
     total: str = ""
     pru: str = ""
+    desc: str = ""          # תשלום כללי (ללא הזמנה) — תיאור הפריט לתבנית payment_general
 
 
 @app.post("/api/admin/wa/send-guaranteed")
@@ -2198,9 +2199,13 @@ def wa_send_guaranteed(body: WaSendSure, x_admin_key: Optional[str] = Header(Non
     if not text:
         raise HTTPException(400, "הודעה ריקה")
     if body.pru and wa.meta_direct_ready():
-        # המסלול המועדף: Meta ישיר — תבנית payment_link עם הקישור האישי בכפתור
+        # המסלול המועדף: Meta ישיר — תבנית עם הקישור האישי בכפתור.
+        # עם מס׳ הזמנה → payment_link; תשלום כללי (מהמגירה) → payment_general.
         try:
-            wa.send_pay_template_direct(phone, body.name, body.order_number, body.total, body.pru)
+            if body.order_number:
+                wa.send_pay_template_direct(phone, body.name, body.order_number, body.total, body.pru)
+            else:
+                wa.send_general_pay_direct(phone, body.name, body.total, body.desc, body.pru)
             return {"sent": True, "via": "pay-template", "phone": phone}
         except wa.WaError as e:
             logger.warning("meta-direct pay send failed (%s) — falling back", e)
