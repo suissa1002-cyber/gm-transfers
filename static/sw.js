@@ -11,18 +11,25 @@ self.addEventListener('push', (e) => {
     badge: '/static/icon-192.png',
     dir: 'rtl',
     lang: 'he',
-    tag: 'gm-wa',
+    tag: 'gm-wa-' + (d.phone || 'all'),   // tag פר-שיחה — התראות משיחות שונות לא דורסות זו את זו
     renotify: true,
-    data: { url: d.url || '/?wa=1' },
+    data: { url: d.url || '/?wa=1', phone: d.phone || '' },
   }));
 });
 
 self.addEventListener('notificationclick', (e) => {
   e.notification.close();
-  const url = (e.notification.data && e.notification.data.url) || '/?wa=1';
+  const data = e.notification.data || {};
+  const url = data.url || '/?wa=1';
   e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
     for (const c of list) {
-      if ('focus' in c) { c.navigate(url); return c.focus(); }
+      if ('focus' in c) {
+        // אפליקציה פתוחה: פוקוס + הודעה פנימית → נפתחת השיחה בלי reload (כמו וואטסאפ)
+        c.focus();
+        try { c.postMessage({ type: 'open-wa', phone: data.phone || '', url: url }); }
+        catch (err) { if (c.navigate) c.navigate(url); }
+        return;
+      }
     }
     return self.clients.openWindow(url);
   }));

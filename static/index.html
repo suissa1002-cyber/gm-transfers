@@ -4192,6 +4192,12 @@ function startPoll(){ clearInterval(S.pollTimer);
   },15000); }
 
 // ── deep-link ?op= / ?wa=1&phone= ──
+function waConvWhenReady(ph, tries){
+  // פתיחת שיחה ברגע שהרשימה נטענה — בלי תלות במהירות העלייה (פתיחה קרה של PWA)
+  tries=tries||0;
+  if((S.waConvs||[]).length||tries>30){ try{ openWaConv(ph); }catch(e){} return; }
+  setTimeout(()=>waConvWhenReady(ph,tries+1), 400);
+}
 async function handleDeepLink(){
   const q=new URLSearchParams(location.search);
   const op=q.get('op');
@@ -4199,8 +4205,18 @@ async function handleDeepLink(){
   if(q.get('wa')==='1' && S.branchId){
     openWaTab();
     const ph=q.get('phone');
-    if(ph) setTimeout(()=>openWaConv(ph), 1200);
+    if(ph) waConvWhenReady(ph);
   }
+}
+// לחיצה על התראת push כשהאפליקציה כבר פתוחה — ה-SW שולח הודעה במקום reload
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.addEventListener('message', (e)=>{
+    const d=e.data||{};
+    if(d.type!=='open-wa') return;
+    if(!S.branchId) return;
+    openWaTab();
+    if(d.phone) waConvWhenReady(String(d.phone));
+  });
 }
 
 // ── init ──
