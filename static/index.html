@@ -4254,13 +4254,19 @@ async function handleDeepLink(){
   }
 }
 // לחיצה על התראת push כשהאפליקציה כבר פתוחה — ה-SW שולח הודעה במקום reload
+function navPhoneOf(d){
+  // טלפון מהנתונים, או חילוץ מה-URL (התראות מגרסה ישנה נושאות אותו רק שם)
+  if(d&&d.phone) return String(d.phone);
+  try{ return new URLSearchParams(String(d&&d.url||'').split('?')[1]||'').get('phone')||''; }catch(e){ return ''; }
+}
 if('serviceWorker' in navigator){
   navigator.serviceWorker.addEventListener('message', (e)=>{
     const d=e.data||{};
     if(d.type!=='open-wa') return;
     if(!S.branchId) return;
     openWaTab();
-    if(d.phone) waConvWhenReady(String(d.phone));
+    const ph=navPhoneOf(d);
+    if(ph) waConvWhenReady(ph);
   });
 }
 // iOS מתעלם לעיתים מ-URL בהתראה — ה-SW שומר את היעד ב-IndexedDB ואנחנו קוראים אותו
@@ -4285,9 +4291,10 @@ function navPendingTake(){
 }
 async function navPendingApply(){
   const p=await navPendingTake();
-  if(p && p.phone && Date.now()-(p.at||0)<10*60*1000 && S.branchId){
-    openWaTab(); waConvWhenReady(String(p.phone));
-  }
+  if(!p || !S.branchId || Date.now()-(p.at||0)>10*60*1000) return;
+  const ph=navPhoneOf(p);
+  openWaTab();
+  if(ph) waConvWhenReady(ph);
 }
 document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible') navPendingApply(); });
 
