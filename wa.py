@@ -353,10 +353,66 @@ def send_wa_template(phone: str, template_id: str, params=None, language: str = 
     return {"sent": True, "via": f"template:{template_id}", "resp": resp}
 
 
-# תבנית התשלום: כפתור URL **קבוע** ל-{APP}/pay (הלקוח מקליד שם את מס׳ ההזמנה).
-# ⚠️ נבדק אמפירית 12/06/2026: ConnectOp בולעים בשקט תבניות עם כפתור URL *דינמי*
-# (פרמטר {{1}} בכתובת) — בכל צורת payload; כפתורים קבועים/Quick-Reply עוברים.
+# ── שליחת תבנית תשלום ──
+# המסלול המועדף: Meta Cloud API ישיר (תבנית payment_link עם כפתור URL דינמי —
+# הקישור האישי של הלקוח בכפתור). דורש env: META_WA_TOKEN + META_WA_PHONE_ID.
+# ⚠️ דרך ConnectOp זה בלתי אפשרי — נבדק אמפירית 12/06/2026: הם בולעים בשקט
+# תבניות עם כפתור URL *דינמי* בכל צורת payload (קבוע/Quick-Reply כן עוברים).
+# Fallback: תבנית payment_request (כפתור קבוע → /pay) דרך ConnectOp, אם תיווצר.
+META_GRAPH = "https://graph.facebook.com/v23.0"
+META_PAY_TEMPLATE = "payment_link"
 PAY_TEMPLATE_ID = "payment_request"
+
+
+def meta_direct_ready() -> bool:
+    import os
+    return bool(os.getenv("META_WA_TOKEN", "").strip() and os.getenv("META_WA_PHONE_ID", "").strip())
+
+
+def send_pay_template_direct(phone: str, name: str, order_number: str, total: str, pru: str):
+    """
+    שליחת payment_link ישירות דרך Meta Cloud API — עוקף את ConnectOp.
+    הכפתור מקבל את ה-pru כסיומת דינמית: payments.payplus.co.il/{pru}.
+    """
+    import os
+    import requests as rq
+    if not pru:
+        raise WaError("חסר מזהה דף תשלום (pru)")
+    if not meta_direct_ready():
+        raise WaError("חיבור Meta ישיר לא מוגדר (META_WA_TOKEN / META_WA_PHONE_ID)")
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": str(phone),
+        "type": "template",
+        "template": {
+            "name": META_PAY_TEMPLATE,
+            "language": {"code": "he"},
+            "components": [
+                {"type": "body", "parameters": [
+                    {"type": "text", "text": (name or "לקוח/ה יקר/ה")[:60]},
+                    {"type": "text", "text": str(order_number)},
+                    {"type": "text", "text": str(total)},
+                ]},
+                {"type": "button", "sub_type": "url", "index": "0",
+                 "parameters": [{"type": "text", "text": pru}]},
+            ],
+        },
+    }
+    r = rq.post(f"{META_GRAPH}/{os.getenv('META_WA_PHONE_ID').strip()}/messages",
+                headers={"Authorization": f"Bearer {os.getenv('META_WA_TOKEN').strip()}",
+                         "Content-Type": "application/json"},
+                json=payload, timeout=40)
+    try:
+        j = r.json()
+    except Exception:  # noqa: BLE001
+        j = {}
+    if r.status_code != 200 or not (j.get("messages") or []):
+        err = ((j.get("error") or {}).get("message")) or str(j)[:150]
+        logger.warning("meta direct send failed %s: %s", r.status_code, str(j)[:300])
+        raise WaError(f"Meta דחתה את השליחה: {err}")
+    mid = (j["messages"][0] or {}).get("id", "")
+    logger.info("wa meta-direct pay-template -> %s (order %s, mid %s)", phone, order_number, mid)
+    return {"sent": True, "via": "meta-direct", "message_id": mid}
 
 
 def pay_template_ready() -> bool:

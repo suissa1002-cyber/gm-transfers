@@ -1984,6 +1984,13 @@ def wa_send_guaranteed(body: WaSendSure, x_admin_key: Optional[str] = Header(Non
     text = (body.text or "").strip()
     if not text:
         raise HTTPException(400, "הודעה ריקה")
+    if body.pru and wa.meta_direct_ready():
+        # המסלול המועדף: Meta ישיר — תבנית payment_link עם הקישור האישי בכפתור
+        try:
+            wa.send_pay_template_direct(phone, body.name, body.order_number, body.total, body.pru)
+            return {"sent": True, "via": "pay-template", "phone": phone}
+        except wa.WaError as e:
+            logger.warning("meta-direct pay send failed (%s) — falling back", e)
     if body.pru and wa.pay_template_ready():
         try:
             wa.send_pay_template(phone, body.name, body.order_number, body.total, body.pru)
