@@ -1219,7 +1219,40 @@ function pickBranch(id,name){
         S.adminKey=pw; localStorage.setItem('tr_admin_key',pw);
         finishPick(id,name); }});
   }
+  // נעילת סניף: מכשיר סניפי שמחליף סניף קיים — דורש אישור מנהל בטלגרם
+  if(!S.adminKey && S.branchId && String(S.branchId)!==String(id)){
+    return requestBranchChange(id,name);
+  }
   finishPick(id,name);
+}
+async function requestBranchChange(id,name){
+  showLoading('שולח בקשת אישור למנהל…');
+  let st='';
+  try{
+    const r=await fetchT('/api/device/branch-change',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({token:S.deviceToken, to_branch:String(id)})},20000);
+    st=(await r.json()).status;
+  }catch(e){}
+  hideLoading();
+  if(st==='approved'){ finishPick(id,name); return; }
+  if(st!=='pending'){ toast('שליחת הבקשה נכשלה — נסה שוב',false); return; }
+  document.getElementById('modalRoot').innerHTML=`<div class="overlay"><div class="modal" style="max-width:380px;text-align:center">
+    <div style="font-size:38px">🔁</div>
+    <h3 style="margin:8px 0 4px">בקשת מעבר ל${escW(name)}</h3>
+    <div class="muted" id="brchgStat" style="margin-bottom:14px">נשלחה בקשה למנהל בטלגרם — ממתין לאישור…</div>
+    <button class="btn-ghost" style="width:100%" onclick="closeModal();S._brchgStop=1">ביטול המתנה</button>
+  </div></div>`;
+  S._brchgStop=0;
+  for(let i=0;i<75;i++){           // עד 5 דקות
+    await new Promise(r=>setTimeout(r,4000));
+    if(S._brchgStop) return;
+    try{
+      const r=await (await fetchT('/api/device/branch-status?token='+encodeURIComponent(S.deviceToken),{},15000)).json();
+      if(r.status==='approved' && String(r.to)===String(id)){ closeModal(); toast('המעבר אושר ✓',true); finishPick(id,name); return; }
+      if(r.status==='denied'){ closeModal(); toast('המנהל דחה את הבקשה',false); return; }
+    }catch(e){}
+  }
+  const el=document.getElementById('brchgStat'); if(el) el.textContent='לא התקבל אישור — נסה שוב מאוחר יותר';
 }
 function finishPick(id,name){
   localStorage.setItem('tr_branch_id',id); localStorage.setItem('tr_branch_name',name);
@@ -4019,8 +4052,21 @@ function lsQtyTransfer(bid,avail){
 }
 function lsTransferDialog(cfg){
   S._lsTransfer=cfg;
-  const opts=(S.branchList||[]).filter(b=>Number(b.id)!==Number(cfg.from))
-    .map(b=>`<option value="${b.id}">${b.name}</option>`).join('');
+  // נעילת סניף: מכשיר סניפי (ללא סיסמת מנהל) מושך מלאי רק *אל* הסניף שלו
+  const locked=!S.adminKey;
+  if(locked && Number(cfg.from)===Number(S.branchId)){
+    document.getElementById('modalRoot').innerHTML=`<div class="overlay"><div class="modal" style="max-width:400px;text-align:center">
+      <div style="font-size:36px">🔒</div>
+      <h3 style="margin:8px 0 6px">העברה מהסניף שלך — דרך מנהל</h3>
+      <div class="muted" style="margin-bottom:14px">מהסניף שלך אפשר רק לקבל בקשות. העברת מלאי החוצה מבוצעת ע"י המנהל.</div>
+      <button class="btn-ghost" style="width:100%" onclick="renderLiveDetail()">סגור</button>
+    </div></div>`;
+    return;
+  }
+  const opts=locked
+    ? `<option value="${S.branchId}">${escW(S.branchName||'הסניף שלי')}</option>`
+    : (S.branchList||[]).filter(b=>Number(b.id)!==Number(cfg.from))
+        .map(b=>`<option value="${b.id}">${b.name}</option>`).join('');
   document.getElementById('modalRoot').innerHTML=`<div class="overlay"><div class="modal" style="max-width:460px;text-align:right">
     <h3 style="text-align:center;display:flex;align-items:center;justify-content:center;gap:7px">${ico('radio',16)} ${cfg.title}</h3>
     <div style="text-align:center;font-weight:700">${cfg.sub}</div>

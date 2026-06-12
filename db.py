@@ -377,6 +377,8 @@ def _migrate():
         ("transfer_plan",  "serial", "TEXT"),
         ("transfer_plan",  "bcast", "INTEGER"),
         ("transfer_plan",  "created_by", "TEXT"),
+        # נעילת סניף: הסניף המאושר של המכשיר — שינוי רק באישור מנהל (טלגרם)
+        ("devices",        "branch_locked", "TEXT"),
     ]
     for table, col, typ in cols:
         try:
@@ -1620,6 +1622,15 @@ def device_set_status(token: str, status: str) -> bool:
         cur.execute(_q("""UPDATE devices SET status = ?, approved_at = ?
                           WHERE token = ?"""),
                     (status, now_iso() if status == "approved" else None, str(token)))
+        return bool(cur.rowcount)
+
+
+def device_set_locked(token: str, branch_id) -> bool:
+    """קובע את הסניף הנעול של המכשיר (אימוץ ראשוני או אחרי אישור מנהל)."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("UPDATE devices SET branch_locked = ? WHERE token = ?"),
+                    (str(branch_id), str(token)))
         return bool(cur.rowcount)
 
 

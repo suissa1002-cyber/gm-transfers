@@ -4,6 +4,7 @@ Transfers app — FastAPI backend.
 """
 
 import os
+import json as json_mod
 import logging
 from typing import Optional
 from datetime import datetime, timedelta
@@ -262,6 +263,26 @@ def _require_admin_or_device(x_admin_key, x_device_token):
     raise HTTPException(401, "admin or approved device required")
 
 
+def _caller_device(x_admin_key, x_device_token):
+    """כמו _require_admin_or_device, אבל מחזיר זהות: None=מנהל, dict=מכשיר סניפי."""
+    if not cfg.ADMIN_PASSWORD or (x_admin_key or "") == cfg.ADMIN_PASSWORD:
+        return None
+    d = db.device_get(x_device_token or "") if x_device_token else None
+    if d and d.get("status") == "approved":
+        return d
+    raise HTTPException(401, "admin or approved device required")
+
+
+def _device_branch(d) -> str:
+    """הסניף הנעול של מכשיר. מכשיר ותיק בלי נעילה — מאמץ חד-פעמית את הסניף שנרשם."""
+    locked = (d.get("branch_locked") or "").strip()
+    if not locked:
+        locked = (d.get("branch_hint") or "").strip()
+        if locked:
+            db.device_set_locked(d["token"], locked)
+    return locked
+
+
 @app.get("/health")
 def health():
     return {"ok": True, "stats": db.stats()}
@@ -368,7 +389,17 @@ class BroadcastIn(BaseModel):
 @app.post("/api/admin/broadcast")
 def admin_broadcast(body: BroadcastIn, x_admin_key: Optional[str] = Header(None), x_device_token: Optional[str] = Header(None)):
     """משדר בקשות העברה למסך הקליטה של סניף המקור (תצוגה בלבד)."""
-    _require_admin_or_device(x_admin_key, x_device_token)
+    d = _caller_device(x_admin_key, x_device_token)
+    if d is not None:
+        # נעילת סניף: מכשיר משדר רק בקשות שהיעד שלהן הוא הסניף שלו
+        own = _device_branch(d)
+        rows = {ln["id"]: ln for ln in db.plan_list()}
+        for lid in (body.line_ids or []):
+            ln = rows.get(int(lid))
+            if not ln or str(ln.get("to_branch")) != own:
+                raise HTTPException(403, "מכשיר סניפי משדר רק בקשות אל הסניף שלו")
+        if not body.line_ids:
+            raise HTTPException(403, "שידור כללי — דרך מנהל בלבד")
     n = db.plan_mark_broadcast(body.branch_id, body.line_ids)
     return {"ok": True, "lines": n}
 
@@ -506,7 +537,17 @@ def admin_plan(x_admin_key: Optional[str] = Header(None)):
 
 @app.post("/api/admin/plan")
 def admin_plan_add(body: PlanAdd, x_admin_key: Optional[str] = Header(None), x_device_token: Optional[str] = Header(None)):
-    _require_admin_or_device(x_admin_key, x_device_token)
+    d = _caller_device(x_admin_key, x_device_token)
+    if d is not None:
+        # נעילת סניף: מכשיר סניפי מושך מלאי רק *אל* הסניף שלו — לא בין סניפים אחרים
+        own = _device_branch(d)
+        if not own:
+            raise HTTPException(403, "המכשיר לא משויך לסניף — פנה למנהל")
+        for l in body.lines:
+            if str(l.to_branch) != own:
+                raise HTTPException(403, "מכשיר סניפי יכול לבקש העברה רק אל הסניף שלו")
+            if str(l.from_branch) == own:
+                raise HTTPException(403, "העברה מהסניף שלך לסניף אחר — דרך מנהל בלבד")
     ids = db.plan_add([l.model_dump() for l in body.lines],
                       created_by=_actor_name(x_admin_key, x_device_token))
     return {"added": len(ids), "ids": ids}
@@ -886,8 +927,15 @@ async def _device_gate(request, call_next):
             d = db.device_get(tok) if tok else None
             if not d or d.get("status") != "approved":
                 return JSONResponse({"detail": "device not approved", "code": "device"}, status_code=401)
+            # נעילת סניף: מכשיר מאושר עובד רק מול הסניף הנעול שלו
+            bid = request.query_params.get("branch_id")
+            if bid:
+                locked = _device_branch(d)
+                if locked and str(bid) != locked:
+                    return JSONResponse({"detail": "המכשיר נעול לסניף אחר — החלפת סניף דורשת אישור מנהל",
+                                         "code": "branch-locked"}, status_code=401)
             try:
-                db.device_touch(tok, request.query_params.get("branch_id"))
+                db.device_touch(tok, bid)
             except Exception:  # noqa: BLE001
                 pass
     return await call_next(request)
@@ -939,6 +987,70 @@ def device_register(body: DeviceRegIn, request: Request):
 def device_status(token: str):
     d = db.device_get(token)
     return {"status": (d or {}).get("status", "unknown")}
+
+
+# ── נעילת סניף: החלפת סניף במכשיר סניפי דורשת אישור מנהל בטלגרם ──
+class BranchChangeIn(BaseModel):
+    token: str
+    to_branch: str
+
+
+@app.post("/api/device/branch-change")
+def device_branch_change(body: BranchChangeIn, request: Request):
+    d = db.device_get((body.token or "").strip())
+    if not d or d.get("status") != "approved":
+        raise HTTPException(401, "מכשיר לא מאושר")
+    to = str(body.to_branch or "").strip()
+    if to not in {str(b) for b in cfg.BRANCHES}:
+        raise HTTPException(400, "סניף לא מוכר")
+    if _device_branch(d) == to:
+        return {"status": "approved"}
+    db.sales_state_set(f"brchg:{d['token']}", json_mod.dumps(
+        {"to": to, "status": "pending", "at": datetime.now().isoformat(timespec="seconds")}))
+    base = (cfg.APP_BASE_URL or "https://gm-transfers.onrender.com").rstrip("/")
+    ok_url = f"{base}/branch-action?token={d['token']}&to={to}&action=approve&sig={_sig(d['token'], f'brchg:{to}:approve')}"
+    no_url = f"{base}/branch-action?token={d['token']}&to={to}&action=deny&sig={_sig(d['token'], f'brchg:{to}:deny')}"
+    _tg_admin(f"🔁 <b>בקשת החלפת סניף</b>\n"
+              f"🖥️ מכשיר: <b>{d.get('name') or '?'}</b> · {_ua_human(d.get('ua') or '')}\n"
+              f"מסניף <b>{cfg.branch_name(_device_branch(d)) or '?'}</b> ← לסניף <b>{cfg.branch_name(to)}</b>\n"
+              f"לאשר?",
+              buttons=[{"text": "✅ אשר", "url": ok_url},
+                       {"text": "❌ דחה", "url": no_url}])
+    return {"status": "pending"}
+
+
+@app.get("/api/device/branch-status")
+def device_branch_status(token: str):
+    raw = db.sales_state_get(f"brchg:{token}")
+    if not raw:
+        return {"status": "none"}
+    return json_mod.loads(raw)
+
+
+@app.get("/branch-action")
+def branch_action(token: str, to: str, action: str, sig: str):
+    """קישור האישור/דחייה מהטלגרם — חתום HMAC, נפתח בדפדפן של אסי."""
+    if action not in ("approve", "deny") or not _hmac.compare_digest(sig, _sig(token, f"brchg:{to}:{action}")):
+        raise HTTPException(403, "bad signature")
+    d = db.device_get(token)
+    if not d:
+        raise HTTPException(404, "device not found")
+    if action == "approve":
+        db.device_set_locked(token, to)
+    db.sales_state_set(f"brchg:{token}", json_mod.dumps(
+        {"to": to, "status": "approved" if action == "approve" else "denied",
+         "at": datetime.now().isoformat(timespec="seconds")}))
+    msg = (f"✅ המכשיר הועבר לסניף {cfg.branch_name(to)}" if action == "approve"
+           else "❌ הבקשה נדחתה — המכשיר נשאר בסניף הנוכחי")
+    from fastapi.responses import HTMLResponse
+    return HTMLResponse(f"""<!doctype html><html dir="rtl"><head><meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1"></head>
+      <body style="font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:90vh;background:#f4f6f8">
+      <div style="background:#fff;border-radius:16px;padding:34px 40px;box-shadow:0 8px 30px rgba(0,0,0,.12);text-align:center">
+      <div style="font-size:44px">{'✅' if action=='approve' else '❌'}</div>
+      <h2 style="margin:10px 0 4px">{msg}</h2>
+      <div style="color:#777">{(d.get('name') or '')} · {_ua_human(d.get('ua') or '')}</div>
+      </div></body></html>""")
 
 
 @app.get("/device-action")
