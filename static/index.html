@@ -2426,7 +2426,10 @@ function waOrderRender(){
     <div style="display:flex;gap:10px;align-items:center;background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:9px">
       ${d.image?`<img src="${escW(d.image)}" style="width:54px;height:54px;object-fit:contain;border-radius:8px;background:#fff">`:''}
       <div style="min-width:0;flex:1"><b style="font-size:13px">${escW(d.name)}</b>
-        <div class="muted" style="font-size:12px">${escW(o.sel.label||'')} · <b>${fmt(o.sel.price)}</b></div></div>
+        <div class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px;flex-wrap:wrap">${escW(o.sel.label||'')} ·
+          <span style="display:inline-flex;align-items:center;gap:3px">₪<input value="${o.sel.price}" inputmode="decimal" title="מחיר ליחידה — ניתן לעריכה (סוכם עם הלקוח)"
+            style="width:74px;padding:4px 6px;border-radius:7px;border:1px solid var(--line);background:var(--bg);color:var(--txt);text-align:center;font-weight:700"
+            onchange="waOrderSaveInputs();S.waOrd.sel.price=Math.max(0,Number(this.value)||0);waOrderRender()"></span></div></div>
       <input type="number" min="1" value="${o.qty}" style="width:54px;padding:6px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--txt)"
              onchange="S.waOrd.qty=Math.max(1,Number(this.value)||1);waOrderRender()">
     </div>
@@ -2837,13 +2840,15 @@ async function waOrderSubmit(payment){
   waOrderSaveInputs();
   const o=S.waOrd; if(!o) return;
   if(!(o.cust.first_name||'').trim()){ toast('חסר שם פרטי',false); return; }
+  if(!(Number(o.sel.price)>0)){ toast('מחיר הפריט הראשי לא תקין — בדוק את שדה המחיר',false); return; }
   const wantCharge=(payment==='charge'); if(wantCharge) payment='link';
   const ships=waOrdShipOpts(); const sh=ships.find(x=>x.k===o.ship)||ships[0];
   const d=o.base;
   const isVar=d.type==='variation'||o.sel.id!==d.parent_id;
+  // המחיר שבטופס נשלח תמיד כדריסה — מאפשר מחיר שסוכם עם הלקוח (למשל 4,900 במקום 4,950)
   const item= d.type==='variation'
-    ? {product_id:d.parent_id, variation_id:o.sel.id, quantity:o.qty}
-    : {product_id:o.sel.id, quantity:o.qty};
+    ? {product_id:d.parent_id, variation_id:o.sel.id, quantity:o.qty, price:Number(o.sel.price)||0}
+    : {product_id:o.sel.id, quantity:o.qty, price:Number(o.sel.price)||0};
   // פריטים נוספים: מחוברים לאתר → לפי מזהה; פריטי קופה בלבד → שורה מותאמת עם מחיר
   const extras=(o.extras||[]).map(x=>({product_id:x.wc_id||0, variation_id:x.variation_id||0,
     quantity:Number(x.qty)||1, price:Number(x.price)||0, name:x.name||'', sku:x.sku||''}));
