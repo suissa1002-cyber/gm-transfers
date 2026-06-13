@@ -1936,7 +1936,8 @@ def admin_orders_latest(x_admin_key: Optional[str] = Header(None)):
     try:
         r = _rq.get(f"{base}/wp-json/wc/v3/orders",
                     params={"per_page": 8, "orderby": "date", "order": "desc",
-                            "status": ["processing", "pending", "on-hold"]},
+                            # ⚠️ status כמחרוזת-פסיקים — WC לא קורא נכון status חוזר (status=a&status=b)
+                            "status": "processing,pending,on-hold"},
                     auth=(k, s), timeout=30)
         if not r.ok:
             return {"orders": []}

@@ -116,7 +116,8 @@ def poll_and_push():
 
 
 # ── 🎉 push על הזמנות חדשות מהאתר (כשהאפליקציה סגורה) ──
-_ORDERS_STATE_KEY = "orders_push_state"
+# v2: אופס בסיס נקי אחרי תיקון פילטר ה-status (המצב הישן החזיק מזהי on-hold ממרץ)
+_ORDERS_STATE_KEY = "orders_push_state_v2"
 
 
 def _wc_orders_latest():
@@ -129,7 +130,8 @@ def _wc_orders_latest():
     try:
         r = requests.get(f"{base}/wp-json/wc/v3/orders",
                          params={"per_page": 10, "orderby": "date", "order": "desc",
-                                 "status": ["processing", "pending", "on-hold"]},
+                                 # ⚠️ status כמחרוזת-פסיקים — WC לא קורא נכון status חוזר (status=a&status=b)
+                                 "status": "processing,pending,on-hold"},
                          auth=(k, s), timeout=30)
         return r.json() if r.ok else []
     except Exception as e:  # noqa: BLE001
