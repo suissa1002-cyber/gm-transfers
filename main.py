@@ -1952,7 +1952,8 @@ def admin_orders_latest(x_admin_key: Optional[str] = Header(None)):
                     "items_n": sum(int(li.get("quantity") or 1) for li in items),
                     "total": o.get("total"), "status": o.get("status"),
                     "date": o.get("date_created")})
-    return {"orders": out}
+    # ⚠️ no-store — אסור לקאש (אחרת זיהוי "הזמנה חדשה" מקבל תגובה ישנה מה-edge)
+    return JSONResponse({"orders": out}, headers={"Cache-Control": "no-store, max-age=0"})
 
 
 @app.get("/api/admin/orders")

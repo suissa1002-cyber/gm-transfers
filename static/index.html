@@ -4856,9 +4856,9 @@ function startNotifPoll(){ clearInterval(S.notifTimer);
       try{ const d=await api('/api/admin/wa/conversations');
            S.waConvs=d.conversations||[]; updateWaBadge(S.waConvs); }catch(e){}
     }
-    // 🎉 הזמנות חדשות מהאתר — רק במחשב הניהול
+    // 🎉 הזמנות חדשות מהאתר — רק במחשב הניהול (cache-buster נגד קאש edge)
     if(isAdminPC){
-      try{ const od=await api('/api/admin/orders/latest'); detectNewOrders(od.orders||[]); }catch(e){}
+      try{ const od=await api('/api/admin/orders/latest?t='+Date.now()); detectNewOrders(od.orders||[]); }catch(e){}
     }
     let list; try{ list=await api('/api/transfers?branch_id='+S.branchId); }catch(e){ return; }
     detectNewTransfers(list);
