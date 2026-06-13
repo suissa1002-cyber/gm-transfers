@@ -1936,8 +1936,8 @@ def admin_orders_latest(x_admin_key: Optional[str] = Header(None)):
     try:
         r = _rq.get(f"{base}/wp-json/wc/v3/orders",
                     params={"per_page": 8, "orderby": "date", "order": "desc",
-                            # ⚠️ status כמחרוזת-פסיקים — WC לא קורא נכון status חוזר (status=a&status=b)
-                            "status": "processing,pending,on-hold"},
+                            # רק processing = שולם בפועל; ממתין-לתשלום לא מתריע (הוראת אסי 13/06)
+                            "status": "processing"},
                     auth=(k, s), timeout=30)
         if not r.ok:
             return {"orders": []}
@@ -2142,9 +2142,32 @@ def admin_order_detail(oid: int, x_admin_key: Optional[str] = Header(None)):
         "clearing": meta.get("payplus_clearing_name") or "",
         "status_desc": meta.get("payplus_status_description") or "",
     }
+    # בקשת העברה משודרת לאתר עבור ההזמנה (לאיזה סניף + מצב) — להצגה במובייל (אין tooltip)
+    bcast = None
+    try:
+        import re as _re2
+        onum = str(o.get("number"))
+        for ln in db.plan_list():
+            m2 = _re2.search(r"הזמנת אתר #(\d+)", ln.get("created_by") or "")
+            if m2 and m2.group(1) == onum:
+                st = "live" if int(ln.get("bcast") or 0) == 1 else "closed"
+                if (bcast is None) or (bcast.get("status") != "live"):
+                    bcast = {"status": st, "branch": cfg.branch_name(ln.get("from_branch"))}
+    except Exception:  # noqa: BLE001
+        pass
+    oos = False
+    try:
+        import json as _json2
+        raw = db.sales_state_get("order_oos_list")
+        oos = any(str(x.get("number")) == str(o.get("number"))
+                  for x in (_json2.loads(raw) if raw else []))
+    except Exception:  # noqa: BLE001
+        pass
     return {
         "src": _order_source(meta),
         "ship_tag": _ship_tag(o, meta),
+        "bcast": bcast,
+        "oos": oos,
         "pay": pay if any(pay.values()) else None,
         "id": o.get("id"), "number": o.get("number"), "status": o.get("status"),
         "date": o.get("date_created"), "date_paid": o.get("date_paid"),

@@ -23,24 +23,29 @@ function idbSetPending(val) {
 self.addEventListener('push', (e) => {
   let d = {};
   try { d = e.data ? e.data.json() : {}; } catch (err) { d = { title: 'GreenOS', body: e.data && e.data.text() }; }
-  // מונה אדום על אייקון האפליקציה (iOS 16.4+ ב-PWA מותקן)
-  if (typeof d.badge === 'number' && d.badge > 0 && self.navigator && self.navigator.setAppBadge) {
-    try { self.navigator.setAppBadge(d.badge); } catch (err) {}
-  }
-  // tag: הזמנה → פר-מספר-הזמנה; וואטסאפ → פר-שיחה (התראות שונות לא דורסות זו את זו)
-  const tag = (d.kind === 'order')
-    ? ('gm-' + (d.tag || 'order'))
-    : ('gm-wa-' + (d.phone || 'all'));
-  e.waitUntil(self.registration.showNotification(d.title || 'GreenOS 💬', {
-    body: d.body || '',
-    icon: '/static/icon-192.png',
-    badge: '/static/icon-192.png',
-    dir: 'rtl',
-    lang: 'he',
-    tag: tag,
-    renotify: true,
-    data: { url: d.url || '/?wa=1', phone: d.phone || '', kind: d.kind || 'wa' },
-  }));
+  e.waitUntil((async () => {
+    // מונה אדום על אייקון האפליקציה (iOS 16.4+ ב-PWA מותקן)
+    if (typeof d.badge === 'number' && d.badge > 0 && self.navigator && self.navigator.setAppBadge) {
+      try { self.navigator.setAppBadge(d.badge); } catch (err) {}
+    }
+    // דדופ: אם יש חלון אפליקציה גלוי — הערוץ הפנימי כבר התריע (צליל+טוסט), לא מציגים push כפול
+    const cl = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    if (cl.some((c) => c.visibilityState === 'visible' || c.focused === true)) return;
+    // tag: הזמנה → פר-מספר-הזמנה; וואטסאפ → פר-שיחה (התראות שונות לא דורסות זו את זו)
+    const tag = (d.kind === 'order')
+      ? ('gm-' + (d.tag || 'order'))
+      : ('gm-wa-' + (d.phone || 'all'));
+    return self.registration.showNotification(d.title || 'GreenOS 💬', {
+      body: d.body || '',
+      icon: '/static/icon-192.png',
+      badge: '/static/icon-192.png',
+      dir: 'rtl',
+      lang: 'he',
+      tag: tag,
+      renotify: true,
+      data: { url: d.url || '/?wa=1', phone: d.phone || '', kind: d.kind || 'wa' },
+    });
+  })());
 });
 
 self.addEventListener('notificationclick', (e) => {
