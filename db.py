@@ -1488,6 +1488,29 @@ def wa_msg_count() -> int:
         return cur.fetchone()["n"]
 
 
+def wa_contact_get(phone: str):
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM wa_contact WHERE phone = ?"), (str(phone),))
+        r = cur.fetchone()
+        return dict(r) if r else None
+
+
+def wa_conversations(limit: int = 300) -> list:
+    """רשימת שיחות מהחנות שלנו (איש קשר + הודעה אחרונה) — לקריאת inbox עצמאית."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""
+            SELECT c.phone, c.name, c.last_in_ts, c.last_msg_ts, c.live_chat, c.archived,
+                   (SELECT m.text FROM wa_msg m WHERE m.phone = c.phone
+                    ORDER BY m.ts DESC LIMIT 1) AS last_msg
+            FROM wa_contact c
+            WHERE c.last_msg_ts IS NOT NULL
+            ORDER BY c.last_msg_ts DESC LIMIT ?
+        """), (int(limit),))
+        return [dict(r) for r in cur.fetchall()]
+
+
 def wa_bf_done_set(phone: str):
     with _conn() as c:
         c.cursor().execute(_q("""INSERT INTO wa_backfill_done (phone, done_at) VALUES (?, ?)

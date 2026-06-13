@@ -269,6 +269,57 @@ def get_thread(phone: str, limit: int = 60):
             "entry_product": entry_product}
 
 
+# ── קריאה מהחנות העצמאית שלנו (שלב 3 — ניתוק קונקטופ) ──
+def get_thread_native(phone: str, limit: int = 80):
+    """שיחה מ-wa_msg (החנות שלנו) — בלי לקרוא מקונקטופ. אותו פורמט כמו get_thread."""
+    import db
+    rows = db.wa_msg_thread(phone, limit=limit)
+    slim = []
+    for m in rows:
+        media = []
+        murl = m.get("media_url")
+        if murl:
+            mt = (m.get("media_mime") or "").split("/")[0] or m.get("type") or "file"
+            media = [{"type": mt, "url": murl, "caption": ""}]
+        text = _strip_entry_marker(m.get("text") or "") if "_strip_entry_marker" in globals() else (m.get("text") or "")
+        slim.append({
+            "id": m.get("wamid"), "direction": m.get("direction"),
+            "text": text, "kind": m.get("type"), "tpl": None, "media": media,
+            "ts": m.get("ts") or 0,
+            "sent_by": "greenos" if m.get("direction") == "out" else None,
+            "reply_to": m.get("reply_to") or None, "status": m.get("status"),
+        })
+    by_id = {x["id"]: (x.get("text") or "") for x in slim if x.get("id")}
+    for x in slim:
+        if x.get("reply_to") and not x.get("reply_preview"):
+            x["reply_preview"] = (by_id.get(x["reply_to"]) or "")[:90]
+    entry = None
+    for x in slim:
+        if x.get("direction") == "in":
+            ep = _parse_entry_product(x.get("text") or "")
+            if ep:
+                entry = ep
+    return {"phone": phone, "messages": slim, "window": _window_state(slim),
+            "entry_product": entry, "source": "native"}
+
+
+def list_conversations_native(limit: int = 300):
+    """רשימת שיחות מ-wa_contact (החנות שלנו) — אותו פורמט כמו list_conversations."""
+    import db
+    stars = db.wa_stars()
+    out = []
+    for r in db.wa_conversations(limit):
+        ph = r.get("phone")
+        out.append({
+            "phone": ph, "name": r.get("name") or ph,
+            "last_msg": (r.get("last_msg") or "")[:120],
+            "ts": int(r.get("last_msg_ts") or 0),
+            "archived": bool(r.get("archived")), "live_chat": bool(r.get("live_chat")),
+            "unread": False, "star": ph in stars, "pic": "",
+        })
+    return out
+
+
 # ── שליחה ────────────────────────────────────────────────────────────
 
 _human_auto_cache: dict = {}

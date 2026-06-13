@@ -363,6 +363,21 @@ def wa_backfill_stop(x_admin_key: Optional[str] = Header(None)):
     return {"stopping": True}
 
 
+# ── קריאה עצמאית (שלב 3) — endpoints בדיקה מול החנות שלנו, בלי לגעת בקריאה החיה ──
+@app.get("/api/admin/wa/conversations-native")
+def wa_conversations_native(x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    import wa
+    return {"conversations": wa.list_conversations_native()}
+
+
+@app.get("/api/admin/wa/thread-native/{phone}")
+def wa_thread_native(phone: str, limit: int = 80, x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    import wa
+    return wa.get_thread_native(phone, limit=limit)
+
+
 @app.get("/api/config")
 def app_config():
     """דגלים ל-frontend: האם הניהול דורש סיסמה."""
