@@ -143,6 +143,14 @@ def _wa_push_job():
         logger.warning("wa_push failed: %s", e)
 
 
+def _orders_push_job():
+    try:
+        import wa_push
+        wa_push.poll_and_push_orders()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("orders_push failed: %s", e)
+
+
 def _is_stale(iso_ts, hours: float) -> bool:
     """האם חותמת זמן ISO ישנה מ-X שעות (או חסרה/לא תקינה)."""
     if not iso_ts:
@@ -210,6 +218,8 @@ def _startup():
         logger.info("catalog fresh — skipping initial refresh")
     # Web Push וואטסאפ: זיהוי הודעות נכנסות כל 60ש (מדלג כשאין מכשירים רשומים)
     scheduler.add_job(_wa_push_job, "interval", seconds=60, id="wa_push", max_instances=1)
+    # Web Push הזמנות חדשות: 🎉 push על הזמנת אתר חדשה כל 60ש (גם כשהאפליקציה סגורה)
+    scheduler.add_job(_orders_push_job, "interval", seconds=60, id="orders_push", max_instances=1)
     # ניטור טוקן ConnectOp: בדיקה יומית 09:30 + בדיקת boot (לוג בלבד כשהכל תקין)
     scheduler.add_job(_token_watch_job, "cron", id="token_watch",
                       hour=9, minute=30, max_instances=1)

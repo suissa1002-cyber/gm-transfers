@@ -27,15 +27,19 @@ self.addEventListener('push', (e) => {
   if (typeof d.badge === 'number' && d.badge > 0 && self.navigator && self.navigator.setAppBadge) {
     try { self.navigator.setAppBadge(d.badge); } catch (err) {}
   }
+  // tag: הזמנה → פר-מספר-הזמנה; וואטסאפ → פר-שיחה (התראות שונות לא דורסות זו את זו)
+  const tag = (d.kind === 'order')
+    ? ('gm-' + (d.tag || 'order'))
+    : ('gm-wa-' + (d.phone || 'all'));
   e.waitUntil(self.registration.showNotification(d.title || 'GreenOS 💬', {
     body: d.body || '',
     icon: '/static/icon-192.png',
     badge: '/static/icon-192.png',
     dir: 'rtl',
     lang: 'he',
-    tag: 'gm-wa-' + (d.phone || 'all'),   // tag פר-שיחה — התראות משיחות שונות לא דורסות זו את זו
+    tag: tag,
     renotify: true,
-    data: { url: d.url || '/?wa=1', phone: d.phone || '' },
+    data: { url: d.url || '/?wa=1', phone: d.phone || '', kind: d.kind || 'wa' },
   }));
 });
 
@@ -46,11 +50,12 @@ self.addEventListener('notificationclick', (e) => {
   e.waitUntil((async () => {
     await idbSetPending({ phone: data.phone || '', url: url, at: Date.now() });
     const list = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const msgType = (data.kind === 'order') ? 'open-orders' : 'open-wa';
     for (const c of list) {
       if ('focus' in c) {
-        // אפליקציה פתוחה: פוקוס + הודעה פנימית → נפתחת השיחה בלי reload (כמו וואטסאפ)
+        // אפליקציה פתוחה: פוקוס + הודעה פנימית → נפתח היעד בלי reload (שיחה / טאב הזמנות)
         c.focus();
-        try { c.postMessage({ type: 'open-wa', phone: data.phone || '', url: url }); } catch (err) {}
+        try { c.postMessage({ type: msgType, phone: data.phone || '', url: url }); } catch (err) {}
         return;
       }
     }

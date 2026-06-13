@@ -4900,6 +4900,7 @@ async function handleDeepLink(){
     const ph=q.get('phone');
     if(ph) waConvWhenReady(ph);
   }
+  if(q.get('orders')==='1' && S.branchId){ try{ openOrdersTab(); }catch(e){} }
 }
 // לחיצה על התראת push כשהאפליקציה כבר פתוחה — ה-SW שולח הודעה במקום reload
 function navPhoneOf(d){
@@ -4910,8 +4911,9 @@ function navPhoneOf(d){
 if('serviceWorker' in navigator){
   navigator.serviceWorker.addEventListener('message', (e)=>{
     const d=e.data||{};
-    if(d.type!=='open-wa') return;
     if(!S.branchId) return;
+    if(d.type==='open-orders'){ try{ openOrdersTab(); }catch(e){} return; }
+    if(d.type!=='open-wa') return;
     openWaTab();
     const ph=navPhoneOf(d);
     if(ph) waConvWhenReady(ph);
@@ -4940,6 +4942,8 @@ function navPendingTake(){
 async function navPendingApply(){
   const p=await navPendingTake();
   if(!p || !S.branchId || Date.now()-(p.at||0)>10*60*1000) return;
+  // התראת הזמנה (url עם orders=1) → טאב ההזמנות; אחרת — שיחת וואטסאפ
+  if(String(p.url||'').indexOf('orders=1')>=0){ try{ openOrdersTab(); }catch(e){} return; }
   const ph=navPhoneOf(p);
   openWaTab();
   if(ph) waConvWhenReady(ph);

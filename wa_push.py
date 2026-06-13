@@ -37,8 +37,9 @@ def subscribe(sub: dict, ua: str = ""):
 
 
 def send_to_all(title: str, body: str, url: str = "/?wa=1", phone: str = "",
-                badge: int = 0) -> int:
-    """שולח push לכל המכשירים הרשומים; מוחק מנויים מתים (404/410)."""
+                badge: int = 0, kind: str = "wa", tag: str = "") -> int:
+    """שולח push לכל המכשירים הרשומים; מוחק מנויים מתים (404/410).
+    kind: 'wa' (וואטסאפ) או 'order' (הזמנה חדשה) — קובע יעד פתיחה ו-tag בצד הלקוח."""
     if not VAPID_PRIVATE:
         logger.warning("VAPID keys not configured — skipping push")
         return 0
@@ -48,7 +49,8 @@ def send_to_all(title: str, body: str, url: str = "/?wa=1", phone: str = "",
         logger.error("pywebpush not installed")
         return 0
     payload = json.dumps({"title": title, "body": body, "url": url, "phone": phone,
-                          "badge": int(badge or 0)}, ensure_ascii=False)
+                          "badge": int(badge or 0), "kind": kind, "tag": tag},
+                         ensure_ascii=False)
     sent = 0
     for s in db.wa_push_subs():
         try:
@@ -111,3 +113,57 @@ def poll_and_push():
         logger.info("wa push: %s -> %d devices", c["phone"], n)
         time.sleep(0.3)
     db.sales_state_set(_STATE_KEY, json.dumps(new_state))
+
+
+# ── 🎉 push על הזמנות חדשות מהאתר (כשהאפליקציה סגורה) ──
+_ORDERS_STATE_KEY = "orders_push_state"
+
+
+def _wc_orders_latest():
+    import requests
+    base = os.getenv("WC_STORE_URL", "").rstrip("/")
+    k = os.getenv("WC_CONSUMER_KEY", "")
+    s = os.getenv("WC_CONSUMER_SECRET", "")
+    if not (base and k and s):
+        return []
+    try:
+        r = requests.get(f"{base}/wp-json/wc/v3/orders",
+                         params={"per_page": 10, "orderby": "date", "order": "desc",
+                                 "status": ["processing", "pending", "on-hold"]},
+                         auth=(k, s), timeout=30)
+        return r.json() if r.ok else []
+    except Exception as e:  # noqa: BLE001
+        logger.warning("orders push: fetch failed: %s", e)
+        return []
+
+
+def poll_and_push_orders():
+    """ג'וב מתוזמן: מזהה הזמנות אתר חדשות ושולח push '🎉 הזמנה חדשה'."""
+    if not db.wa_push_subs():
+        return  # אין מכשירים רשומים — לא שורפים קריאות
+    orders = _wc_orders_latest()
+    if not orders:
+        return
+    ids = [str(o.get("id")) for o in orders]
+    raw = db.sales_state_get(_ORDERS_STATE_KEY)
+    seen = set(json.loads(raw)) if raw else None
+    if seen is None:
+        # ריצה ראשונה — בסיס בלבד, בלי התראות רטרואקטיביות
+        db.sales_state_set(_ORDERS_STATE_KEY, json.dumps(ids))
+        return
+    fresh = [o for o in orders if str(o.get("id")) not in seen]
+    # מצב מעודכן: איחוד מזהים, מוגבל ל-200 האחרונים
+    db.sales_state_set(_ORDERS_STATE_KEY,
+                       json.dumps(list(dict.fromkeys(ids + list(seen)))[:200]))
+    if not fresh:
+        return
+    for o in reversed(fresh):                       # ישן → חדש
+        items = o.get("line_items") or []
+        nm = (items[0].get("name") or "הזמנה") if items else "הזמנה"
+        n_items = sum(int(li.get("quantity") or 1) for li in items)
+        num = o.get("number")
+        body = f"#{num} · {nm[:50]}" + (f" ({n_items})" if n_items > 1 else "")
+        n = send_to_all("🎉 נכנסה הזמנה חדשה!", body, url="/?orders=1",
+                        badge=len(fresh), kind="order", tag=f"order-{num}")
+        logger.info("order push: #%s -> %d devices", num, n)
+        time.sleep(0.3)
