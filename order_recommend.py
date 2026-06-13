@@ -47,6 +47,7 @@ def refresh_catalog_to_db() -> dict:
                 "kind": "serial" if isser else ("barcode" if bc else "other"),
                 "barcode": bc,
                 "active": bool(p.get("isActive")),
+                "is_stock": bool(p.get("isStock")),   # False = דיגיטלי/לא-מנוהל-מלאי (גיפט קארד/קוד)
             })
         if rows:
             db.catalog_replace(rows)

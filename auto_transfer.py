@@ -102,7 +102,10 @@ def _handle_order(o: dict, catalog: dict) -> list:
         qty = max(1, int(li.get("quantity") or 1))
         if not sku or sku not in catalog:
             continue                       # פריט שלא מחובר לקופה — לא ענייננו
-        name = (catalog.get(sku) or {}).get("name") or li.get("name") or sku
+        cat_it = catalog.get(sku) or {}
+        if cat_it.get("is_stock") is False:
+            continue                       # מוצר דיגיטלי/לא-מנוהל-מלאי (גיפט קארד/קוד) — אין שידור/OOS
+        name = cat_it.get("name") or li.get("name") or sku
         try:
             stock = no.get_product_stock(sku)
         except Exception as e:  # noqa: BLE001

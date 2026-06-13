@@ -4591,7 +4591,7 @@ function wcoListHTML(){
   const cards=W.rows.map(o=>`
     <div class="ls-card" onclick="openWcOrder(${o.id})">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-        <b>#${o.number} · ${escW(o.name||'—')}</b><div style="display:inline-flex;align-items:center;gap:6px;flex:none">${ordTag(o.status)}${o.bcast?`<span title="בקשת העברה שודרה ל${o.bcast.branch||'סניף'}${o.bcast.status==='live'?' — ממתינה לביצוע':' — נסגרה במסך הסניף (טרם בוצעה)'}" style="color:${o.bcast.status==='live'?'#15803d':'var(--muted)'};display:inline-flex;vertical-align:-2px">${ico('radio',15)}</span>`:''}${o.oos?`<span title="המוצר חסר במלאי בכל הסניפים — יש להשיג מהספק" style="color:#dc2626;display:inline-flex;vertical-align:-2px">${ico('pkgx',15)}</span>`:''}</div>
+        <b>#${o.number} · ${escW(o.name||'—')}</b><div style="display:inline-flex;align-items:center;gap:6px;flex:none">${o.oos?`<span title="המוצר חסר במלאי בכל הסניפים — יש להשיג מהספק" style="color:#dc2626;display:inline-flex;vertical-align:-2px">${ico('pkgx',15)}</span>`:''}${o.bcast?`<span title="בקשת העברה שודרה ל${o.bcast.branch||'סניף'}${o.bcast.status==='live'?' — ממתינה לביצוע':' — נסגרה במסך הסניף (טרם בוצעה)'}" style="color:${o.bcast.status==='live'?'#15803d':'var(--muted)'};display:inline-flex;vertical-align:-2px">${ico('radio',15)}</span>`:''}${ordTag(o.status)}</div>
       </div>
       <div class="muted" style="font-size:12px;margin-top:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.35">${escW(o.items||'')}</div>
       <div style="display:flex;justify-content:space-between;margin-top:5px;font-size:13px">

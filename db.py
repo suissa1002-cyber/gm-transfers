@@ -278,6 +278,7 @@ _SCHEMA = [
         kind        TEXT,
         barcode     TEXT,
         active      INTEGER,
+        is_stock    INTEGER,
         updated_at  TEXT
     )
     """,
@@ -412,6 +413,8 @@ def _migrate():
         ("transfer_plan",  "created_by", "TEXT"),
         # נעילת סניף: הסניף המאושר של המכשיר — שינוי רק באישור מנהל (טלגרם)
         ("devices",        "branch_locked", "TEXT"),
+        # is_stock=0 → מוצר דיגיטלי/לא-מנוהל-מלאי (גיפט קארד/קוד) — מדלגים על שידור/OOS
+        ("catalog",        "is_stock", "INTEGER"),
     ]
     for table, col, typ in cols:
         try:
@@ -1648,11 +1651,12 @@ def catalog_replace(rows: list):
         cur.execute("DELETE FROM catalog")
         for r in rows:
             cur.execute(_q("""
-                INSERT INTO catalog (product_id, name, stock, supplier, category, kind, barcode, active, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO catalog (product_id, name, stock, supplier, category, kind, barcode, active, is_stock, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """), (str(r.get("product_id")), r.get("name") or "", float(r.get("stock") or 0),
                    r.get("supplier") or "", r.get("category") or "", r.get("kind") or "",
-                   r.get("barcode") or "", 1 if r.get("active") else 0, ts))
+                   r.get("barcode") or "", 1 if r.get("active") else 0,
+                   1 if r.get("is_stock", True) else 0, ts))
 
 
 def catalog_load() -> dict:
@@ -1667,6 +1671,8 @@ def catalog_load() -> dict:
                 "name": d["name"], "stock": d["stock"], "supplier": d["supplier"],
                 "category": d["category"], "kind": d["kind"], "barcode": d["barcode"],
                 "active": bool(d["active"]),
+                # ברירת מחדל True לרשומות ישנות שעוד לא רועננו עם העמודה
+                "is_stock": bool(d["is_stock"]) if d.get("is_stock") is not None else True,
             }
         return out
 
