@@ -2580,26 +2580,40 @@ function waOrdAddPaint(){
   const q=(S.waOrdAddQ||'').trim();
   if(!S.lsCat){ box.innerHTML='<div class="muted" style="font-size:12px;padding:4px">טוען קטלוג…</div>'; return; }
   if(q.length<2){ box.innerHTML='<div class="muted" style="font-size:12px;padding:4px">הקלד 2+ תווים</div>'; return; }
+  // חיפוש חכם זהה למלאי החי: טוקנים (לא תלוי סדר) + נפילה לפריסת מקלדת עברית + מיון לפי רלוונטיות
+  const toks=q.toLowerCase().split(/\s+/).filter(Boolean);
+  const toks2=fixHebrewLayout(q).toLowerCase().split(/\s+/).filter(Boolean);
+  const alt=toks2.join(' ')!==toks.join(' ');
+  let hits=(S.lsCat||[]).filter(it=>{
+    if(it.active===false) return false;
+    const blob=((it.name||'')+' '+(it.product_id||'')+' '+(it.barcode||'')).toLowerCase();
+    return toks.every(t=>blob.includes(t))||(alt&&toks2.every(t=>blob.includes(t)));
+  });
   const ql=q.toLowerCase();
-  const hits=(S.lsCat||[]).filter(it=>it.active!==false&&(
-      String(it.name||'').toLowerCase().includes(ql)||
-      String(it.product_id||'').includes(q)||
-      String(it.barcode||'').includes(q))).slice(0,8);
-  box.innerHTML=hits.length?hits.map(it=>`
-    <div style="display:flex;align-items:center;gap:7px;padding:6px 8px;border:1px solid var(--line);border-radius:9px;margin-top:4px;cursor:pointer;background:var(--card2)"
-         onclick="waOrdExtraPick('${escW(String(it.product_id))}')">
+  hits.sort((a,b)=>{
+    const score=x=>{ if(String(x.product_id)===q||String(x.barcode)===q) return 0;
+      const n=String(x.name||'').toLowerCase(); if(n.includes(ql)) return 1; return 2; };
+    return score(a)-score(b)||((b.stock||0)-(a.stock||0))||String(a.name).localeCompare(String(b.name),'he');
+  });
+  hits=hits.slice(0,10);
+  const busy=S.waOrdAddBusy;
+  box.innerHTML=hits.length?hits.map(it=>{
+    const isBusy=busy&&String(busy)===String(it.product_id);
+    return `<div style="display:flex;align-items:center;gap:7px;padding:6px 8px;border:1px solid var(--line);border-radius:9px;margin-top:4px;background:var(--card2);${busy?'opacity:.6;pointer-events:none':'cursor:pointer'}"
+         ${busy?'':`onclick="waOrdExtraPick('${escW(String(it.product_id))}')"`}>
       <span style="flex:1;min-width:0;font-size:12.5px"><b>${escW(it.name)}</b>
         <span class="muted" style="font-size:10.5px;direction:ltr;font-family:monospace"> ${escW(String(it.product_id))}</span></span>
-      <span style="color:#16a34a;font-weight:700">＋</span>
-    </div>`).join(''):'<div class="muted" style="font-size:12px;padding:4px">לא נמצא בקטלוג</div>';
+      ${isBusy?'<span class="wa-uri-wait" style="font-size:11.5px">מוסיף…</span>':'<span style="color:#16a34a;font-weight:700">＋</span>'}
+    </div>`;}).join(''):'<div class="muted" style="font-size:12px;padding:4px">לא נמצא בקטלוג</div>';
 }
 async function waOrdExtraPick(pid){
+  if(S.waOrdAddBusy) return;            // כבר בטעינה — מונע לחיצה כפולה
   waOrderSaveInputs();
   const cat=(S.lsCat||[]).find(x=>String(x.product_id)===String(pid))||{};
-  showLoading('קורא פרטי פריט…');
+  S.waOrdAddBusy=String(pid); waOrdAddPaint();   // חיווי inline על השורה (ה-overlay הגלובלי מוסתר מאחורי המודאל)
   let d=null;
   try{ d=await api('/api/admin/wc-link/'+encodeURIComponent(pid)+'?pos=1&fallback=1&name='+encodeURIComponent(cat.name||''),null,45000); }catch(e){}
-  hideLoading();
+  S.waOrdAddBusy=null;
   const found=!!(d&&d.found&&d.id);
   let price=found?(Number(d.price)||0):(d&&d.pos_price!=null&&Number(d.pos_price)>1?Number(d.pos_price):0);
   // הקופה כבר קובעת צבע+נפח (variants.fixed). המשתמש בוחר רק את שאר המאפיינים (switch_attrs: SIM, אחריות).
