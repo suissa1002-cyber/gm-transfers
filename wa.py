@@ -185,26 +185,19 @@ def _render_template_block(b):
 
 
 # ── זיהוי "פנה מעמוד מוצר" מתוך השורה הגלויה שכפתור ה-WhatsApp (Chaty) ממלא מראש ──
-# פורמט הסניפט: "שלום, אני מתעניין/ת לגבי: <שם המוצר>\n<URL>". כאן מחלצים את המוצר
-# האחרון שעליו פנה הלקוח כדי להציגו בכרטיסיית הפרטים (דינמי — מתעדכן לכל פנייה חדשה).
-_RE_INTEREST = re.compile(r"לגבי:\s*([^\n\r]+)")
-_RE_PROD_URL = re.compile(r"https?://[^\s]*?/product/[^\s]+")
+# פורמט הסניפט: "שלום, אני מתעניין/ת לגבי המוצר: <שם המוצר>" (גלוי, נקי, בלי קישור).
+# מחלצים את המוצר האחרון שעליו פנה הלקוח להצגה בכרטיסיית הפרטים (דינמי).
+_RE_INTEREST = re.compile(r"לגבי המוצר:\s*([^\n\r]+)")
 
 
 def _parse_entry_product(text: str):
-    if not text or "לגבי:" not in text:
+    if not text or "לגבי המוצר:" not in text:
         return None
     m = _RE_INTEREST.search(text)
     if not m:
         return None
     name = m.group(1).strip()
-    if name.startswith("http"):          # אין שם — רק קישור באותה שורה
-        name = ""
-    um = _RE_PROD_URL.search(text)
-    url = um.group(0) if um else ""
-    if not name and not url:
-        return None
-    return {"name": name[:120], "url": url}
+    return {"name": name[:140], "url": ""} if name else None
 
 
 def get_thread(phone: str, limit: int = 60):
