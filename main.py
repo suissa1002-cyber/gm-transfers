@@ -329,7 +329,29 @@ async def wa_webhook_recv(request: Request):
 def wa_store_stats(x_admin_key: Optional[str] = Header(None)):
     """כמה הודעות כבר נאספו בחנות העצמאית — לניטור שלב הקבלה."""
     _require_admin(x_admin_key)
-    return {"messages": db.wa_msg_count()}
+    import wa_backfill
+    return {"messages": db.wa_msg_count(), "backfill": wa_backfill.progress()}
+
+
+def _wa_backfill_job():
+    try:
+        import wa_backfill
+        wa_backfill.run()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("wa_backfill failed: %s", e)
+
+
+@app.post("/api/admin/wa/backfill")
+def wa_backfill_start(x_admin_key: Optional[str] = Header(None)):
+    """מתחיל שאיבת היסטוריית שיחות מ-ChatRace לחנות העצמאית (ג'וב רקע)."""
+    _require_admin(x_admin_key)
+    import wa_backfill
+    p = wa_backfill.progress()
+    if p.get("running"):
+        return {"already_running": True, "progress": p}
+    scheduler.add_job(_wa_backfill_job, "date", id="wa_backfill", max_instances=1,
+                      replace_existing=True)
+    return {"started": True}
 
 
 @app.get("/api/config")
