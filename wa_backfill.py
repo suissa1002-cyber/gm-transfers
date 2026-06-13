@@ -58,14 +58,39 @@ def progress() -> dict:
     return json.loads(raw) if raw else {"running": False, "done": 0, "convs": 0, "msgs": 0}
 
 
+def _list_all_conversations(batch: int = 100, max_total: int = 20000) -> list:
+    """מונה את כל השיחות דרך pagination ישיר מול הדשבורד (offset), בלי cache ובלי
+    limit ענק (שהדשבורד דוחה). מסנן ל-WhatsApp (channel 5). [{phone,name,archived}]."""
+    out, seen, off = [], set(), 0
+    while len(out) < max_total:
+        try:
+            resp = wa._dash_call(wa._dash()._post_user_php,
+                                 {"op": "conversations", "op1": "get", "offset": off, "limit": batch})
+        except Exception as e:  # noqa: BLE001
+            logger.warning("backfill: conv page off=%d failed: %s", off, e)
+            break
+        rows = resp.get("data", []) if isinstance(resp, dict) else []
+        if not rows:
+            break
+        for r in rows:
+            if str(r.get("channel")) != "5":
+                continue
+            ph = r.get("ms_id")
+            if not ph or ph in seen:
+                continue
+            seen.add(ph)
+            out.append({"phone": ph,
+                        "name": r.get("full_name") or r.get("first_name") or ph,
+                        "archived": str(r.get("archived", "0")) == "1"})
+        if len(rows) < batch:
+            break
+        off += batch
+    return out
+
+
 def run(per_conv_max: int = 1500) -> dict:
     """שואב את כל השיחות (כולל מארכיון) וכל ההודעות שלהן לחנות. אידמפוטנטי."""
-    try:
-        convs = wa.list_conversations(limit=4000, include_archived=True)
-    except Exception as e:  # noqa: BLE001
-        logger.warning("backfill: list conversations failed: %s", e)
-        _set_progress({"running": False, "error": str(e)[:120]})
-        return {"error": str(e)}
+    convs = _list_all_conversations()
     total_c = len(convs)
     done_c = total_m = 0
     _set_progress({"running": True, "convs": total_c, "done": 0, "msgs": 0})
