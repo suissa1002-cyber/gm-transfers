@@ -184,13 +184,68 @@ def _render_template_block(b):
     return body, name
 
 
+# ── סמן עמוד-מוצר בלתי-נראה (Chaty) — מקודד את product_id בתווי zero-width ──
+# המרה: U+2063 = סנטינל התחלה/סוף · U+200B = ביט 0 · U+200C = ביט 1.
+# מוזרק באתר בעמוד מוצר (סניפט), בלתי-נראה ללקוח; כאן מפענחים ומציגים את המוצר.
+_ENTRY_SEP = chr(0x2063)   # INVISIBLE SEPARATOR — סנטינל התחלה/סוף
+_ENTRY_0 = chr(0x200B)     # ZERO WIDTH SPACE — ביט 0
+_ENTRY_1 = chr(0x200C)     # ZERO WIDTH NON-JOINER — ביט 1
+_ENTRY_RE = re.compile(_ENTRY_SEP + "([" + _ENTRY_0 + _ENTRY_1 + "]+)" + _ENTRY_SEP)
+
+
+def _decode_entry_pid(text: str):
+    if not text:
+        return None
+    m = _ENTRY_RE.search(text)
+    if not m:
+        return None
+    bits = "".join("1" if ch == _ENTRY_1 else "0" for ch in m.group(1))
+    try:
+        pid = int(bits, 2)
+        return pid if 0 < pid < 10_000_000 else None
+    except ValueError:
+        return None
+
+
+def _strip_entry_marker(text: str) -> str:
+    return _ENTRY_RE.sub("", text) if text else text
+
+
+_entry_prod_cache: dict = {}
+
+
+def _wc_product_brief(pid: int):
+    if pid in _entry_prod_cache:
+        return _entry_prod_cache[pid]
+    import os
+    import requests as rq
+    base = os.getenv("WC_STORE_URL", "").rstrip("/")
+    auth = (os.getenv("WC_CONSUMER_KEY", ""), os.getenv("WC_CONSUMER_SECRET", ""))
+    if not base or not auth[0]:
+        return None
+    brief = None
+    try:
+        r = rq.get(f"{base}/wp-json/wc/v3/products/{pid}", auth=auth, timeout=20)
+        if r.ok:
+            o = r.json()
+            brief = {"id": pid, "name": o.get("name"), "url": o.get("permalink")}
+    except Exception as e:  # noqa: BLE001
+        logger.warning("entry product lookup failed: %s", e)
+    _entry_prod_cache[pid] = brief
+    return brief
+
+
 def get_thread(phone: str, limit: int = 60):
     """שיחה מפוענחת (ישן→חדש) + מצב חלון 24ש."""
     msgs = _dash_call(_dash().get_conversation, phone, limit=limit)
     msgs = list(reversed(msgs))  # הדשבורד מחזיר חדש→ישן
     slim = []
+    entry_pid = None
     for m in msgs:
         text = m.get("text") or ""
+        if m.get("direction") == "in" and entry_pid is None:
+            entry_pid = _decode_entry_pid(text)   # סמן עמוד-מוצר מההודעה הראשונה הנכנסת שמכילה אותו
+        text = _strip_entry_marker(text)          # הסרת הסמן הבלתי-נראה מהתצוגה
         kind = tpl_name = None
         content = m.get("content")
         if isinstance(content, list):
@@ -244,7 +299,9 @@ def get_thread(phone: str, limit: int = 60):
     for m in slim:
         if m.get("reply_to") and not m.get("reply_preview"):
             m["reply_preview"] = (by_id.get(m["reply_to"]) or "")[:90]
-    return {"phone": phone, "messages": slim, "window": _window_state(slim)}
+    entry_product = _wc_product_brief(entry_pid) if entry_pid else None
+    return {"phone": phone, "messages": slim, "window": _window_state(slim),
+            "entry_product": entry_product}
 
 
 # ── שליחה ────────────────────────────────────────────────────────────

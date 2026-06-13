@@ -3331,6 +3331,10 @@ function waPanelHTML(){
     <div class="muted" style="direction:ltr;text-align:end">+${escW(S.waPhone)}</div>
     ${ct.email?`<div class="muted" style="display:flex;align-items:center;gap:5px;justify-content:flex-end">${escW(ct.email)} ${ico('mail',13)}</div>`:''}
     ${ct.subscribed_date?`<div class="muted" style="font-size:12px">לקוח מאז ${escW(String(ct.subscribed_date).slice(0,10))}</div>`:''}
+    ${(S.waThread&&S.waThread.entry_product)?`<a class="wa-order" target="_blank" href="${escW(S.waThread.entry_product.url||'#')}" style="display:block;border:1px solid #16a34a55;background:#16a34a12;border-radius:11px;padding:9px 11px;margin:9px 0;text-decoration:none">
+      <div style="display:flex;align-items:center;gap:6px;color:#15803d;font-weight:800;font-size:12px">${ico('pkg',14)} פתח/ה צ׳אט מעמוד מוצר</div>
+      <div style="font-size:13px;margin-top:3px;color:var(--txt)">${escW(S.waThread.entry_product.name||'')}</div>
+    </a>`:''}
     ${c.note_cf?waSec('notecf',ico('pin',14)+' NOTE (קונקטופ)',`<div class="wa-note">${escW(c.note_cf)}</div>`):''}
     ${waSec('orders',ico('cart',14)+' הזמנות באתר',ordersHTML,(c.orders||[]).length)}
     ${waSec('tags',ico('tag',14)+' תגיות',tagsBody,(c.tags||[]).length)}
