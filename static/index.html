@@ -2972,10 +2972,8 @@ function waStockPaint(){
       <div style="display:flex;align-items:center;gap:7px">
         <span style="flex:1;min-width:0"><b style="font-size:13px">${escW(it.name)}</b>
           <div class="muted" style="font-size:11px;direction:ltr;text-align:end">${escW(pid)}</div></span>
-        <button class="btn-ghost wa-ico" style="width:32px;height:30px" title="חלונית האתר (מחירים/וריאציות)"
+        <button class="btn-ghost wa-ico" style="width:32px;height:30px" title="חלונית האתר (מחירים/וריאציות/הזמנה)"
                 onclick="event.stopPropagation();openWcQuick('${pid}')">${ico('globe',14)}</button>
-        <button class="btn-ghost wa-ico" style="width:32px;height:30px;border-color:#16a34a;color:#16a34a" title="צור הזמנה ללקוח"
-                onclick="event.stopPropagation();waOrderOpen('${pid}')">${ico('cart',14)}</button>
       </div>
       ${open?`<div class="wa-stk-chips" id="waStkChips">${waStockChipsHTML(pid)}</div>`:''}
     </div>`;
@@ -3857,7 +3855,7 @@ function lsRow(it,live){
     <td class="muted">${it.category||'—'}</td>
     ${bcells}
     <td style="text-align:center"><span id="lsw-${pid}" class="ls-wc ${S.lsWcOff?'':(S.lsWc[pid]?(S.lsWc[pid].data&&S.lsWc[pid].data.found?'lit':'dim'):'wait')}" style="${S.lsWcOff?'display:none':''}"
-      onclick="event.stopPropagation();openWcQuick('${pid}')" title="צפייה במוצר באתר">${ico('globe',15)}</span>${isAdminCtx()?`<span class="ls-wc lit" style="margin-inline-start:6px;color:#16a34a" onclick="event.stopPropagation();waOrderOpen('${pid}')" title="צור הזמנה ללקוח">${ico('cart',15)}</span>`:''}</td>
+      onclick="event.stopPropagation();openWcQuick('${pid}')" title="צפייה במוצר באתר + הזמנה">${ico('globe',15)}</span></td>
     <td id="lst-${pid}" class="muted" style="font-size:11px;white-space:nowrap">${tcell}</td>
   </tr>`;
 }
@@ -3881,8 +3879,7 @@ function lsCard(it,live){
       <span class="ls-card-name"><b>${it.name}</b>${it.active?'':' <span class="mtag warn">לא פעיל</span>'}${serBadge}</span>
       <span>${it.kind==='serial'?'📱':'🏷️'}</span>
       <span id="lsw-${pid}" class="ls-wc ${S.lsWcOff?'':(S.lsWc[pid]?(S.lsWc[pid].data&&S.lsWc[pid].data.found?'lit':'dim'):'wait')}" style="${S.lsWcOff?'display:none':''}"
-        onclick="event.stopPropagation();openWcQuick('${pid}')" title="צפייה במוצר באתר">${ico('globe',15)}</span>
-      ${isAdminCtx()?`<span class="ls-wc lit" style="color:#16a34a" onclick="event.stopPropagation();waOrderOpen('${pid}')" title="צור הזמנה ללקוח">${ico('cart',15)}</span>`:''}
+        onclick="event.stopPropagation();openWcQuick('${pid}')" title="צפייה במוצר באתר + הזמנה">${ico('globe',15)}</span>
     </div>
     <div class="ls-card-sub">מק״ט <span style="direction:ltr;unicode-bidi:embed;font-family:monospace">${pid}</span>${it.category?(' · '+it.category):''}</div>
     <div class="ls-card-branches">${chips}</div>
