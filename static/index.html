@@ -378,7 +378,7 @@
   .wa-badge{position:absolute;top:-6px;inset-inline-end:-6px;background:#dc2626;color:#fff;font-size:11px;
             font-weight:800;min-width:18px;height:18px;line-height:18px;border-radius:999px;padding:0 5px;text-align:center}
   /* באדג' ירוק לספירת הזמנות חדשות על אייקון ההזמנות (להבדיל מהאדום של וואטסאפ) */
-  .gm-obadge{position:absolute;top:-7px;inset-inline-end:-7px;background:#16a34a;color:#fff;font-size:10.5px;
+  .gm-obadge{position:absolute;top:-6px;inset-inline-end:-6px;background:#16a34a;color:#fff;font-size:10.5px;
              font-weight:800;min-width:17px;height:17px;line-height:17px;border-radius:999px;padding:0 4px;
              text-align:center;box-shadow:0 0 0 2px var(--card)}
   /* מצב מסך-מלא לוואטסאפ: בלי כותרת/טאבים, סרגל עליון נקי (רק 💬 + בורגר),
@@ -528,7 +528,7 @@
     /* כותרת + טאבים: שורה אחת נגללת במקום 4 שורות */
     h1.title{font-size:17px;margin:0 0 10px}
     .tabs{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;gap:7px;
-          margin:0 -14px 12px;padding:0 14px 6px;scrollbar-width:none}
+          margin:-9px -14px 12px;padding:9px 14px 6px;scrollbar-width:none}   /* padding-top לבאדג' שלא ייחתך */
     .tabs::-webkit-scrollbar{display:none}
     .tabs>button,.tabgroup button{padding:8px 13px;font-size:13px;white-space:nowrap;flex:none}
     .tabgroup{flex:none}
@@ -3518,6 +3518,7 @@ const _IPATHS={
   trash:'<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
   radio:'<circle cx="12" cy="12" r="2"/><path d="M4.93 19.07a10 10 0 0 1 0-14.14"/><path d="M7.76 16.24a6 6 0 0 1 0-8.49"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>',
   truck:'<rect x="1" y="3" width="15" height="13" rx="1"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>',
+  pkgx:'<path d="M21 10V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0"/><path d="m7.5 4.27 9 5.15"/><polyline points="3.29 7 12 12 20.71 7"/><line x1="12" y1="22" x2="12" y2="12"/><path d="m17 13 5 5"/><path d="m22 13-5 5"/>',
 };
 function ico(name, size, fill){
   return `<svg width="${size||17}" height="${size||17}" viewBox="0 0 24 24" fill="${fill?'currentColor':'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block">${_IPATHS[name]||''}</svg>`;
@@ -4567,13 +4568,13 @@ function wcoListHTML(){
         ${o.img?`<img src="${escW(o.img)}" loading="lazy" style="width:34px;height:34px;object-fit:contain;border-radius:7px;background:#fff;border:1px solid var(--line);flex:none">`:''}
         <span class="muted" style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(o.items||'')}${o.items_n>1?` <b>(${o.items_n})</b>`:''}</span></div></td>
       <td style="white-space:nowrap"><b>${o.currency}${Number(o.total).toLocaleString('he-IL')}</b></td>
-      <td><div style="display:inline-flex;align-items:center;gap:6px">${o.bcast?`<span title="בקשת העברה שודרה ל${o.bcast.branch||'סניף'}${o.bcast.status==='live'?' — ממתינה לביצוע':' — נסגרה במסך הסניף (טרם בוצעה)'}" style="color:${o.bcast.status==='live'?'#15803d':'var(--muted)'};display:inline-flex;vertical-align:-2px">${ico('radio',16)}</span> `:''}${ordTag(o.status)}</div></td>
+      <td><div style="display:inline-flex;align-items:center;gap:6px">${o.oos?`<span title="המוצר חסר במלאי בכל הסניפים — יש להשיג מהספק" style="color:#dc2626;display:inline-flex;vertical-align:-2px">${ico('pkgx',16)}</span> `:''}${o.bcast?`<span title="בקשת העברה שודרה ל${o.bcast.branch||'סניף'}${o.bcast.status==='live'?' — ממתינה לביצוע':' — נסגרה במסך הסניף (טרם בוצעה)'}" style="color:${o.bcast.status==='live'?'#15803d':'var(--muted)'};display:inline-flex;vertical-align:-2px">${ico('radio',16)}</span> `:''}${ordTag(o.status)}</div></td>
 
     </tr>`).join('');
   const cards=W.rows.map(o=>`
     <div class="ls-card" onclick="openWcOrder(${o.id})">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-        <b>#${o.number} · ${escW(o.name||'—')}</b><div style="display:inline-flex;align-items:center;gap:6px;flex:none">${o.bcast?`<span title="בקשת העברה שודרה ל${o.bcast.branch||'סניף'}${o.bcast.status==='live'?' — ממתינה לביצוע':' — נסגרה במסך הסניף (טרם בוצעה)'}" style="color:${o.bcast.status==='live'?'#15803d':'var(--muted)'};display:inline-flex;vertical-align:-2px">${ico('radio',15)}</span> `:''}${ordTag(o.status)}</div>
+        <b>#${o.number} · ${escW(o.name||'—')}</b><div style="display:inline-flex;align-items:center;gap:6px;flex:none">${o.oos?`<span title="המוצר חסר במלאי בכל הסניפים — יש להשיג מהספק" style="color:#dc2626;display:inline-flex;vertical-align:-2px">${ico('pkgx',15)}</span> `:''}${o.bcast?`<span title="בקשת העברה שודרה ל${o.bcast.branch||'סניף'}${o.bcast.status==='live'?' — ממתינה לביצוע':' — נסגרה במסך הסניף (טרם בוצעה)'}" style="color:${o.bcast.status==='live'?'#15803d':'var(--muted)'};display:inline-flex;vertical-align:-2px">${ico('radio',15)}</span> `:''}${ordTag(o.status)}</div>
       </div>
       <div class="muted" style="font-size:12px;margin-top:3px">${escW(o.items||'')}</div>
       <div style="display:flex;justify-content:space-between;margin-top:5px;font-size:13px">

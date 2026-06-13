@@ -2000,6 +2000,15 @@ def admin_orders_list(page: int = 1, status: str = "", search: str = "",
                     bcast_map[onum] = {"status": st, "branch": branch}
     except Exception:  # noqa: BLE001
         pass
+    # הזמנות שסומנו 'חסר בכל הסניפים' (auto_transfer) — להצגת אייקון OOS
+    oos_set = set()
+    try:
+        import json as _json
+        raw = db.sales_state_get("order_oos_list")
+        for x in (_json.loads(raw) if raw else []):
+            oos_set.add(str(x.get("number")))
+    except Exception:  # noqa: BLE001
+        pass
     out = []
     for o in r.json():
         meta = {m.get("key"): m.get("value") for m in (o.get("meta_data") or [])}
@@ -2009,6 +2018,7 @@ def admin_orders_list(page: int = 1, status: str = "", search: str = "",
             "ship_tag": _ship_tag(o, meta),
             "img": ((items[0].get("image") or {}).get("src") or "") if items else "",
             "bcast": bcast_map.get(str(o.get("number"))),
+            "oos": str(o.get("number")) in oos_set,
             "id": o.get("id"), "number": o.get("number"), "status": o.get("status"),
             "date": o.get("date_created"), "total": o.get("total"),
             "currency": o.get("currency_symbol") or "₪",
