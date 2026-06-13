@@ -71,30 +71,51 @@ def _mark_oos(number, name):
         logger.warning("oos mark failed for %s: %s", number, e)
 
 
+def _pickup_branch(o: dict) -> int:
+    """סניף האיסוף שנבחר בהזמנת איסוף עצמי (מ-meta _gm_pickup_branch). None אם לא איסוף."""
+    titles = " ".join((sl.get("method_title") or "") for sl in (o.get("shipping_lines") or []))
+    if "איסוף" not in titles:
+        return None
+    meta = {m.get("key"): m.get("value") for m in (o.get("meta_data") or [])}
+    raw = str(meta.get("_gm_pickup_branch") or "").split(" - ")[0].replace("סניף", "").strip()
+    if not raw:
+        return None
+    for bid, nm in cfg.BRANCHES.items():
+        if bid != SITE_BRANCH and (nm == raw or raw in nm or nm in raw):
+            return bid
+    return None
+
+
 def _handle_order(o: dict, catalog: dict) -> list:
-    """בודק שורות הזמנה ומשדר בקשות העברה לפי הצורך. מחזיר את מה ששודר."""
+    """בודק שורות הזמנה ומשדר בקשות העברה לפי הצורך. מחזיר את מה ששודר.
+
+    ⚠️ מלאי האתר (סניף 5) תמיד שמור להזמנות קודמות שבקליטה — לא נחשב זמין להזמנה חדשה.
+    לכן כל הזמנה מקבלת יחידה ייעודית שמשודרת מסניף אמיתי → אתר. בהזמנת איסוף עצמי
+    מעדיפים את סניף האיסוף כמקור (אם יש לו מלאי) כדי לחסוך שינוע."""
     no = poller.client()
+    pickup_b = _pickup_branch(o)
+    # סדר מקור: בהזמנת איסוף — סניף האיסוף ראשון; אחר כך סטאר/אשדוד כרגיל
+    src_pref = ([pickup_b] + [b for b in PREF_SOURCE if b != pickup_b]) if pickup_b else PREF_SOURCE
     created = []
     for li in o.get("line_items", []):
         sku = str(li.get("sku") or "").strip()
         qty = max(1, int(li.get("quantity") or 1))
         if not sku or sku not in catalog:
             continue                       # פריט שלא מחובר לקופה — לא ענייננו
+        name = (catalog.get(sku) or {}).get("name") or li.get("name") or sku
         try:
             stock = no.get_product_stock(sku)
         except Exception as e:  # noqa: BLE001
             logger.warning("stock read failed for %s: %s", sku, e)
             continue
-        if (stock.get(SITE_BRANCH) or 0) >= qty:
-            continue                       # לאתר יש מלאי — אין צורך בהעברה
-        src = next((b for b in PREF_SOURCE if (stock.get(b) or 0) >= qty), None)
+        # מלאי האתר לא נחשב — תמיד מביאים יחידה מסניף אמיתי (לפי src_pref)
+        src = next((b for b in src_pref if (stock.get(b) or 0) >= qty), None)
         if src is None:                    # אין סניף עם כל הכמות — מספיק שיש משהו
-            src = next((b for b in PREF_SOURCE if (stock.get(b) or 0) > 0), None)
+            src = next((b for b in src_pref if (stock.get(b) or 0) > 0), None)
         if src is None:
             logger.info("order %s: no source stock for %s", o.get("number"), sku)
             _mark_oos(o.get("number"), name)   # חסר בכל הסניפים — סימון לאייקון בטאב ההזמנות
             continue
-        name = (catalog.get(sku) or {}).get("name") or li.get("name") or sku
         # מוצר סריאלי: מצמידים יחידות ספציפיות (הוותיקות) — כמו בבקשה ידנית.
         # כך היחידה מוצגת "משוריין לאתר" במלאי חי, וקליטתה סוגרת את הבקשה אוטומטית.
         lines = []
