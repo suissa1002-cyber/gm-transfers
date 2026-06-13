@@ -712,7 +712,19 @@ function detectNewOrders(list){
     S.newOrdersCount=(S.newOrdersCount||0)+fresh.length;
     updateOrderBadge();
     notifyNewOrder(fresh);
+    maybeRefreshOrdersList();   // אם צופים בטאב ההזמנות — לרענן כדי שההזמנה תופיע מיד
   }
+}
+// רענון רשימת ההזמנות כשנכנסת הזמנה חדשה — רק אם צופים בטאב, בעמוד 1, בלי חיפוש/יומן/מודאל פתוח
+function maybeRefreshOrdersList(){
+  const onOrders=(S.view==='admin'&&S.adminTab==='wcorders')||(S.view==='board'&&S.branchTab==='wcorders');
+  if(!onOrders || !S.wco) return;
+  if((S.wco.page||1)>1 || (S.wco.q||'').trim()) return;          // לא לדרוס דפדוף/חיפוש פעיל
+  const ae=document.activeElement;
+  if(ae && ae.id==='wcoQ') return;                               // מקליד בחיפוש
+  if(document.querySelector('.overlay, .wa-lb, .wco-cal')) return; // מודאל/יומן פתוח
+  S.newOrdersCount=0; updateOrderBadge();                         // צופים ברשימה — ההזמנה תוצג, אין צורך בספירה
+  loadWcOrders();
 }
 function updateOrderBadge(){
   const n=S.newOrdersCount||0;
