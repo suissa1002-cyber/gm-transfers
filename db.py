@@ -354,6 +354,43 @@ _SCHEMA = [
     )
     """.format(pk=_PK),
     "CREATE INDEX IF NOT EXISTS idx_wa_shadow_phone ON wa_shadow(phone)",
+    # ── WhatsApp עצמאי (פרויקט ניתוק קונקטופ) — חנות ההודעות שלנו ──
+    # מתמלאת מ-webhook ישיר של מטא. כל הודעה (נכנסת/יוצאת) + מדיה + סטטוס מסירה.
+    """
+    CREATE TABLE IF NOT EXISTS wa_msg (
+        id            {pk},
+        wamid         TEXT,
+        phone         TEXT,
+        direction     TEXT,
+        type          TEXT,
+        text          TEXT,
+        media_id      TEXT,
+        media_mime    TEXT,
+        media_name    TEXT,
+        media_url     TEXT,
+        reply_to      TEXT,
+        ts            BIGINT,
+        status        TEXT,
+        raw           TEXT,
+        created_at    TEXT
+    )
+    """.format(pk=_PK),
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_wa_msg_wamid ON wa_msg(wamid)",
+    "CREATE INDEX IF NOT EXISTS idx_wa_msg_phone_ts ON wa_msg(phone, ts)",
+    # אנשי קשר + מצב חלון 24ש (last_in_ts) + דגלים
+    """
+    CREATE TABLE IF NOT EXISTS wa_contact (
+        phone        TEXT PRIMARY KEY,
+        name         TEXT,
+        wa_id        TEXT,
+        last_in_ts   BIGINT,
+        last_msg_ts  BIGINT,
+        live_chat    INTEGER DEFAULT 0,
+        unread       INTEGER DEFAULT 0,
+        archived     INTEGER DEFAULT 0,
+        updated_at   TEXT
+    )
+    """,
     # תור משימות לסוכן אורי (claude על המק של אסי, חיוב Max — לא API)
     """
     CREATE TABLE IF NOT EXISTS uri_jobs (
@@ -1378,6 +1415,75 @@ def wa_shadow_list(phone: str, limit: int = 80) -> list:
         cur.execute(_q("""SELECT wamid, text, reply_to, reply_preview, ts FROM wa_shadow
                           WHERE phone = ? ORDER BY ts DESC LIMIT ?"""), (str(phone), int(limit)))
         return [dict(r) for r in cur.fetchall()]
+
+
+# ── WhatsApp עצמאי: חנות ההודעות (מ-webhook ישיר של מטא) ──
+def wa_msg_upsert(wamid, phone, direction, mtype, text="", media_id="", media_mime="",
+                  media_name="", media_url="", reply_to="", ts=0, status="", raw="") -> bool:
+    """מוסיף הודעה (אידמפוטנטי לפי wamid — Meta עלול לשלוח שוב). מחזיר True אם חדשה."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""
+            INSERT INTO wa_msg (wamid, phone, direction, type, text, media_id, media_mime,
+                                media_name, media_url, reply_to, ts, status, raw, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(wamid) DO NOTHING
+        """), (wamid or "", str(phone), direction, mtype, text or "", media_id or "",
+               media_mime or "", media_name or "", media_url or "", reply_to or "",
+               int(ts or 0), status or "", (raw or "")[:8000], now_iso()))
+        return bool(getattr(cur, "rowcount", 0))
+
+
+def wa_msg_set_status(wamid: str, status: str):
+    if not wamid:
+        return
+    with _conn() as c:
+        c.cursor().execute(_q("UPDATE wa_msg SET status = ? WHERE wamid = ?"), (status, wamid))
+
+
+def wa_msg_set_media_url(wamid: str, url: str):
+    if not wamid:
+        return
+    with _conn() as c:
+        c.cursor().execute(_q("UPDATE wa_msg SET media_url = ? WHERE wamid = ?"), (url, wamid))
+
+
+def wa_contact_upsert(phone, name=None, wa_id=None, in_ts: int = 0, out_ts: int = 0):
+    """מעדכן/יוצר איש קשר + חותמות זמן (last_in_ts לחלון 24ש, last_msg_ts לכל הודעה)."""
+    msg_ts = int(in_ts or out_ts or 0)
+    with _conn() as c:
+        c.cursor().execute(_q("""
+            INSERT INTO wa_contact (phone, name, wa_id, last_in_ts, last_msg_ts, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(phone) DO UPDATE SET
+                name        = COALESCE(excluded.name, wa_contact.name),
+                wa_id       = COALESCE(excluded.wa_id, wa_contact.wa_id),
+                last_in_ts  = CASE WHEN excluded.last_in_ts  > COALESCE(wa_contact.last_in_ts, 0)
+                                   THEN excluded.last_in_ts  ELSE wa_contact.last_in_ts END,
+                last_msg_ts = CASE WHEN excluded.last_msg_ts > COALESCE(wa_contact.last_msg_ts, 0)
+                                   THEN excluded.last_msg_ts ELSE wa_contact.last_msg_ts END,
+                updated_at  = excluded.updated_at
+        """), (str(phone), name, wa_id, int(in_ts or 0), msg_ts, now_iso()))
+
+
+def wa_msg_thread(phone: str, limit: int = 80) -> list:
+    """הודעות שיחה (ישן→חדש) מהחנות שלנו — לקריאת inbox עצמאית (שלב 3)."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""SELECT wamid, phone, direction, type, text, media_id, media_mime,
+                                 media_name, media_url, reply_to, ts, status
+                          FROM wa_msg WHERE phone = ? ORDER BY ts DESC LIMIT ?"""),
+                    (str(phone), int(limit)))
+        rows = [dict(r) for r in cur.fetchall()]
+        rows.reverse()
+        return rows
+
+
+def wa_msg_count() -> int:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute("SELECT COUNT(*) AS n FROM wa_msg")
+        return cur.fetchone()["n"]
 
 
 def wa_canned_add(title: str, text: str):

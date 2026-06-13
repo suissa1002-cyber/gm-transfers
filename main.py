@@ -10,7 +10,7 @@ from typing import Optional
 from datetime import datetime, timedelta
 
 from fastapi import FastAPI, HTTPException, Header, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -296,6 +296,40 @@ def _device_branch(d) -> str:
 @app.get("/health")
 def health():
     return {"ok": True, "stats": db.stats()}
+
+
+# ── WhatsApp Cloud API webhook (פרויקט ניתוק קונקטופ, שלב 1 — קבלה ישירה ממטא) ──
+# רדום עד שמפנים את override_callback_uri אלינו ב-Meta. ציבורי (מטא קוראת לו);
+# אבטחה דרך verify-token (GET) + חתימת HMAC (POST).
+@app.get("/api/wa/webhook")
+def wa_webhook_verify(request: Request):
+    p = request.query_params
+    expect = os.getenv("META_WEBHOOK_VERIFY_TOKEN", "").strip()
+    if p.get("hub.mode") == "subscribe" and expect and p.get("hub.verify_token") == expect:
+        return PlainTextResponse(p.get("hub.challenge") or "")
+    raise HTTPException(403, "verify failed")
+
+
+@app.post("/api/wa/webhook")
+async def wa_webhook_recv(request: Request):
+    raw = await request.body()
+    import wa_webhook
+    sig = request.headers.get("x-hub-signature-256", "")
+    if not wa_webhook.verify_signature(raw, sig):
+        raise HTTPException(403, "bad signature")
+    try:
+        wa_webhook.process(raw)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("wa webhook process failed: %s", e)
+    wa_webhook.forward_to_connectop(raw, sig)   # העברה לקונקטופ בזמן מעבר
+    return {"ok": True}
+
+
+@app.get("/api/admin/wa/store-stats")
+def wa_store_stats(x_admin_key: Optional[str] = Header(None)):
+    """כמה הודעות כבר נאספו בחנות העצמאית — לניטור שלב הקבלה."""
+    _require_admin(x_admin_key)
+    return {"messages": db.wa_msg_count()}
 
 
 @app.get("/api/config")
