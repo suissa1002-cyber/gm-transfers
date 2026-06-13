@@ -1913,6 +1913,37 @@ async def payplus_ipn(request: Request):
 # ── טאב הזמנות: חלון מלא להזמנות WooCommerce (קריאה/עריכה דרך REST של האתר) ──
 # הנתונים יושבים ב-WC בלבד — אנחנו פרוקסי דק, עמוד-עמוד, בלי אחסון אצלנו.
 
+@app.get("/api/admin/orders/latest")
+def admin_orders_latest(x_admin_key: Optional[str] = Header(None)):
+    """הזמנות אחרונות (קלות משקל) — להתראת 'הזמנה חדשה' ולספירת באדג'.
+    רק סטטוסי כניסה אמיתיים (processing/pending/on-hold) — לא טיוטות checkout-draft."""
+    _require_admin(x_admin_key)
+    import requests as _rq
+    creds = _wc_creds()
+    if not creds:
+        return {"orders": []}
+    base, k, s = creds
+    try:
+        r = _rq.get(f"{base}/wp-json/wc/v3/orders",
+                    params={"per_page": 8, "orderby": "date", "order": "desc",
+                            "status": ["processing", "pending", "on-hold"]},
+                    auth=(k, s), timeout=30)
+        if not r.ok:
+            return {"orders": []}
+    except Exception:  # noqa: BLE001
+        return {"orders": []}
+    out = []
+    for o in r.json():
+        items = o.get("line_items") or []
+        nm = (items[0].get("name") or "") if items else ""
+        out.append({"id": o.get("id"), "number": o.get("number"),
+                    "item": nm[:50],
+                    "items_n": sum(int(li.get("quantity") or 1) for li in items),
+                    "total": o.get("total"), "status": o.get("status"),
+                    "date": o.get("date_created")})
+    return {"orders": out}
+
+
 @app.get("/api/admin/orders")
 def admin_orders_list(page: int = 1, status: str = "", search: str = "",
                       after: str = "", before: str = "",

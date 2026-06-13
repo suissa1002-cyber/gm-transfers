@@ -377,6 +377,10 @@
   .wa-back{display:none}
   .wa-badge{position:absolute;top:-6px;inset-inline-end:-6px;background:#dc2626;color:#fff;font-size:11px;
             font-weight:800;min-width:18px;height:18px;line-height:18px;border-radius:999px;padding:0 5px;text-align:center}
+  /* באדג' ירוק לספירת הזמנות חדשות על אייקון ההזמנות (להבדיל מהאדום של וואטסאפ) */
+  .gm-obadge{position:absolute;top:-7px;inset-inline-end:-7px;background:#16a34a;color:#fff;font-size:10.5px;
+             font-weight:800;min-width:17px;height:17px;line-height:17px;border-radius:999px;padding:0 4px;
+             text-align:center;box-shadow:0 0 0 2px var(--card)}
   /* מצב מסך-מלא לוואטסאפ: בלי כותרת/טאבים, סרגל עליון נקי (רק 💬 + בורגר),
      והחלון נמתח עד ה-header — בלי "חלון בתוך חלון" */
   body.wa-mode #hdr > *:not(#waBtn){display:none!important}
@@ -601,6 +605,32 @@ function beep(ok){ try{
   o.frequency.value=ok?880:220;g.gain.value=0.08;o.start();o.stop(actx.currentTime+(ok?0.12:0.32));
 }catch(e){} }
 function vibrate(ok){ if(navigator.vibrate) navigator.vibrate(ok?40:[60,40,60]); }
+// "ka-ching" — צליל קופה רושמת (פרץ רעש "צ'ה" + שני צלילי פעמון בהירים), כמו התראת מכירה בווקומרס
+function kaching(){
+  try{
+    actx=actx||new (window.AudioContext||window.webkitAudioContext)();
+    if(actx.state==='suspended') actx.resume();
+    const t0=actx.currentTime;
+    // "צ'ה" — פרץ רעש קצר ומסונן (פתיחת המגירה)
+    const buf=actx.createBuffer(1, Math.floor(actx.sampleRate*0.08), actx.sampleRate);
+    const data=buf.getChannelData(0);
+    for(let i=0;i<data.length;i++) data[i]=(Math.random()*2-1)*Math.pow(1-i/data.length,2);
+    const noise=actx.createBufferSource(); noise.buffer=buf;
+    const nf=actx.createBiquadFilter(); nf.type='highpass'; nf.frequency.value=2200;
+    const ng=actx.createGain(); ng.gain.value=0.16;
+    noise.connect(nf); nf.connect(ng); ng.connect(actx.destination); noise.start(t0);
+    // "צ'ינג" — שני צלילי פעמון מתכתיים בהירים
+    [[1318.5,t0+0.05],[1760,t0+0.13]].forEach(([f,t])=>{
+      const o=actx.createOscillator(),g=actx.createGain();
+      o.type='triangle'; o.frequency.value=f;
+      o.connect(g); g.connect(actx.destination);
+      g.gain.setValueAtTime(0.0001,t);
+      g.gain.exponentialRampToValueAtTime(0.22,t+0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001,t+0.55);
+      o.start(t); o.stop(t+0.57);
+    });
+  }catch(e){}
+}
 // אזעקה — צליל בולט שחוזר כמה פעמים (להעברה נכנסת)
 function alarm(){
   try{
@@ -663,6 +693,41 @@ function detectBroadcast(bc){
     }
     alarm(); flashTitle(title);
   }
+}
+// ── 🎉 התראת הזמנה חדשה מהאתר (צליל קופה + באדג' ירוק על אייקון ההזמנות) ──
+function notifyNewOrder(orders){
+  const n=orders.length;
+  const title = n>1 ? `🎉 ${n} הזמנות חדשות נכנסו!` : '🎉 נכנסה הזמנה חדשה!';
+  const body = orders.map(o=>`#${o.number} · ${o.item||'הזמנה'}${o.items_n>1?` (${o.items_n})`:''}`).join('\n');
+  if(window.Notification && Notification.permission==='granted'){
+    try{ const ntf=new Notification(title,{body, tag:'gm-order', renotify:true});
+      ntf.onclick=()=>{ window.focus(); openOrdersTab(); ntf.close(); };
+      setTimeout(()=>{ try{ntf.close();}catch(e){} }, 12000); }catch(e){}
+  }
+  kaching(); flashTitle(title); toast(title+' '+body.split('\n')[0], true);
+}
+function detectNewOrders(list){
+  const ids=(list||[]).map(o=>String(o.id));
+  if(!S.knownOrderIds){ S.knownOrderIds=new Set(ids); return; }   // טעינה ראשונה — בסיס בלי התראה
+  const fresh=(list||[]).filter(o=>!S.knownOrderIds.has(String(o.id)));
+  ids.forEach(i=>S.knownOrderIds.add(i));
+  if(fresh.length){
+    S.newOrdersCount=(S.newOrdersCount||0)+fresh.length;
+    updateOrderBadge();
+    notifyNewOrder(fresh);
+  }
+}
+function updateOrderBadge(){
+  const n=S.newOrdersCount||0;
+  document.querySelectorAll('.gm-obadge').forEach(b=>{
+    if(n>0){ b.textContent=n>99?'99+':String(n); b.style.display=''; }
+    else b.style.display='none';
+  });
+}
+function openOrdersTab(){
+  S.newOrdersCount=0; updateOrderBadge();
+  if(S.view==='admin') setAdminTab('wcorders');
+  else if(typeof isAdminCtx==='function'&&isAdminCtx()) setBranchTab('wcorders');
 }
 function openBroadcast(toBranch){
   const bc=S.broadcast; if(!bc) return;
@@ -1234,11 +1299,12 @@ function branchTabsHTML(){
   return `<div class="tabs">
     <button class="${(!t||t==='board')?'active':''}" onclick="setBranchTab('board')">${ico('inbox',15)} קליטת העברות</button>
     <button class="${t==='live'?'active':''}" onclick="setBranchTab('live')">🔎 מלאי חי</button>
-    ${isAdminCtx()?`<button class="${t==='wcorders'?'active':''}" onclick="setBranchTab('wcorders')">${ico('receipt',15)} הזמנות</button>`:''}
+    ${isAdminCtx()?`<button class="${t==='wcorders'?'active':''}" style="position:relative" onclick="setBranchTab('wcorders')">${ico('receipt',15)} הזמנות<span class="gm-obadge" style="display:${(S.newOrdersCount||0)>0?'':'none'}">${(S.newOrdersCount||0)>99?'99+':(S.newOrdersCount||0)}</span></button>`:''}
   </div>`;
 }
 function setBranchTab(t){
   S.branchTab=t;
+  if(t==='wcorders'){ S.newOrdersCount=0; }   // נכנס לטאב — מאפס את ספירת ההזמנות החדשות
   if(t==='live'){ if(!S.lsCat) loadLiveCatalog(true); else renderLive(); }
   else if(t==='wcorders'){ renderWcOrders(); }
   else render();
@@ -1564,7 +1630,7 @@ function adminTabsHTML(){
     <button class="${base}" onclick="setAdminTab('transfers')">${ico('pkg',15)} העברות</button>
     <button class="${a('live')}" onclick="setAdminTab('live')">${ico('search',15)} מלאי חי</button>
     <button class="${a('wa')}" onclick="setAdminTab('wa')">${ico('chat',15)} וואטסאפ</button>
-    <button class="${a('wcorders')}" onclick="setAdminTab('wcorders')">${ico('receipt',15)} הזמנות</button>
+    <button class="${a('wcorders')}" style="position:relative" onclick="setAdminTab('wcorders')">${ico('receipt',15)} הזמנות<span class="gm-obadge" style="display:${(S.newOrdersCount||0)>0?'':'none'}">${(S.newOrdersCount||0)>99?'99+':(S.newOrdersCount||0)}</span></button>
     <div class="tabgroup">
       <button class="${a('rebalance')}" onclick="setAdminTab('rebalance')">${ico('scale',15)} איזון מלאי</button>
       <button class="${a('plan')}" onclick="setAdminTab('plan')">${ico('pencil',15)} בקשות העברה${pc}</button>
@@ -1578,6 +1644,7 @@ function adminTabsHTML(){
 }
 function setAdminTab(tab){
   S.adminTab=tab;
+  if(tab==='wcorders'){ S.newOrdersCount=0; }   // נכנס לטאב — מאפס את ספירת ההזמנות החדשות
   if(tab!=='wa') document.body.classList.remove('wa-mode');
   if(tab==='live'){ if(!S.lsCat) loadLiveCatalog(true); else renderLive(); }
   else if(tab==='rebalance'){ if(!S.rebalanceData) loadRebalance(true); else renderRebalance(); }
@@ -4788,6 +4855,10 @@ function startNotifPoll(){ clearInterval(S.notifTimer);
     if(isAdminPC && !(S.view==='admin'&&S.adminTab==='wa')){   // בטאב עצמו loadWaSilent כבר מטפל
       try{ const d=await api('/api/admin/wa/conversations');
            S.waConvs=d.conversations||[]; updateWaBadge(S.waConvs); }catch(e){}
+    }
+    // 🎉 הזמנות חדשות מהאתר — רק במחשב הניהול
+    if(isAdminPC){
+      try{ const od=await api('/api/admin/orders/latest'); detectNewOrders(od.orders||[]); }catch(e){}
     }
     let list; try{ list=await api('/api/transfers?branch_id='+S.branchId); }catch(e){ return; }
     detectNewTransfers(list);
