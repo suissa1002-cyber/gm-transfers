@@ -479,9 +479,11 @@
   .wa-uri-msgs>:first-child{margin-top:auto}
   .wa-uri-box textarea{min-width:0}
   .wa-uri-q{align-self:flex-end;background:rgba(139,92,246,.13);border:1px solid rgba(139,92,246,.35);
-            border-radius:12px;padding:7px 11px;font-size:13px;max-width:92%;white-space:pre-wrap}
+            border-radius:12px;padding:7px 11px;font-size:13px;max-width:92%;white-space:pre-wrap;
+            word-break:break-word;overflow-wrap:anywhere}
   .wa-uri-a{align-self:flex-start;background:var(--card2);border:1px solid var(--line);
-            border-radius:12px;padding:8px 11px;font-size:13px;max-width:96%;white-space:pre-wrap;line-height:1.45}
+            border-radius:12px;padding:8px 11px;font-size:13px;max-width:96%;white-space:pre-wrap;line-height:1.45;
+            word-break:break-word;overflow-wrap:anywhere}
   .wa-uri-wait{color:var(--muted);animation:pulse 1.6s infinite}
   @keyframes pulse{0%,100%{opacity:.55}50%{opacity:1}}
   .wa-sec{cursor:pointer;user-select:none;display:flex;align-items:center;gap:5px}
@@ -3200,7 +3202,7 @@ function waUriMsgHTML(m,idx){
   if(m.draft)
     return `<div class="wa-uri-a">
       ${m.text?`<div class="muted" style="font-size:12px;margin-bottom:7px">${escW(m.text)}</div>`:''}
-      <div style="background:rgba(34,197,94,.13);border:1px solid rgba(34,197,94,.32);border-radius:12px;padding:9px 11px;white-space:pre-wrap;font-size:13px">${escW(m.draft)}</div>
+      <div style="background:rgba(34,197,94,.13);border:1px solid rgba(34,197,94,.32);border-radius:12px;padding:9px 11px;white-space:pre-wrap;font-size:13px;word-break:break-word;overflow-wrap:anywhere">${escW(m.draft)}</div>
       <div style="display:flex;gap:6px;margin-top:7px;flex-wrap:wrap">
         <button class="btn-primary" style="padding:5px 13px;font-size:12.5px" onclick="waUriSendDraft(${idx})">📤 שלח ללקוח</button>
         <button class="btn-ghost" style="padding:4px 9px;font-size:12px;display:inline-flex;align-items:center;gap:5px" onclick="waUriToReply(${idx})">${ico('download',13)} לתיבה לעריכה</button>
