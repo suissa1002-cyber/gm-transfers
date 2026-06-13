@@ -321,7 +321,7 @@
   .wa-dot{width:9px;height:9px;border-radius:50%;background:var(--blue);flex:none}
   .wa-thread{background:var(--card);border:1px solid var(--line);border-radius:14px;display:flex;
              flex-direction:column;height:calc(100vh - 270px);min-height:340px}
-  .wa-head{display:flex;align-items:center;gap:9px;padding:10px 14px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .wa-head{display:flex;align-items:center;gap:9px;padding:10px 14px;border-bottom:1px solid var(--line);flex-wrap:wrap;flex:none}
   .wa-ico{display:inline-flex;align-items:center;justify-content:center;width:36px;height:34px;
           padding:0!important;font-size:16px;line-height:1;text-decoration:none}
   .wa-human-on{border-color:#16a34a!important;background:rgba(34,197,94,.12)!important}
@@ -368,7 +368,7 @@
   .wa-doc{display:inline-block;background:var(--bg);border:1px solid var(--line);border-radius:9px;
           padding:6px 10px;margin-bottom:4px;text-decoration:none;color:var(--txt);font-size:13px}
   .wa-layout>*{min-width:0}   /* בלי זה תוכן רחב מותח את הגריד מעבר למסך (מובייל) */
-  .wa-send{display:flex;gap:8px;padding:10px;border-top:1px solid var(--line);align-items:flex-end}
+  .wa-send{display:flex;gap:8px;padding:10px;border-top:1px solid var(--line);align-items:flex-end;flex:none}
   .wa-send textarea{flex:1;min-width:0;resize:none;min-height:44px;max-height:130px;padding:10px 12px;border-radius:11px;
                     border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:14px;font-family:inherit}
   .wa-win{font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;flex:none}
@@ -381,7 +381,11 @@
      והחלון נמתח עד ה-header — בלי "חלון בתוך חלון" */
   body.wa-mode #hdr > *:not(#waBtn){display:none!important}
   body.wa-mode .wrap{padding:0;max-width:none}
-  .wa-full{height:calc(100vh - var(--hdr-h,57px));gap:0}
+  /* מסך-מלא: נועלים את גלילת הדף עצמו כדי שהסרגל העליון (.wa-head) לא ייגרר עם ההודעות.
+     רק אזור ההודעות (.wa-msgs) נגלל פנימית. overscroll-behavior מבטל rubber-band ב-iOS. */
+  body.wa-mode{overflow:hidden;overscroll-behavior:none;height:100%}
+  html:has(body.wa-mode){overflow:hidden;height:100%}
+  .wa-full{height:calc(100vh - var(--hdr-h,57px));height:calc(100dvh - var(--hdr-h,57px));gap:0}
   .wa-full .wa-list{max-height:none;height:100%;display:flex;flex-direction:column;min-height:0;
                     border:0;border-radius:0;border-inline-end:1px solid var(--line)}
   .wa-full #waListPane{flex:1;overflow-y:auto;min-height:0}
@@ -485,13 +489,13 @@
     .wa-layout{grid-template-columns:1fr}
     .wa-layout.thread-open .wa-list{display:none}
     .wa-layout:not(.thread-open) .wa-thread{display:none}
-    .wa-thread{height:calc(100vh - 195px)}
+    .wa-thread{height:calc(100vh - 195px);height:calc(100dvh - 195px)}
     .wa-back{display:inline-block}
     .wa-b{max-width:88%}
     .wa-bar-hidden{display:none!important}
     .wa-head{gap:6px;padding:9px 10px}
     .wa-head .btn-ghost{padding:6px 9px;font-size:13px;display:inline-flex;align-items:center}
-    .wa-full{height:calc(100vh - var(--hdr-h,57px))}
+    .wa-full{height:calc(100vh - var(--hdr-h,57px));height:calc(100dvh - var(--hdr-h,57px))}
     .wa-full .wa-thread{height:100%}
     body.wa-mode .wrap{padding:0}
     /* שורת השליחה במובייל: ➕ אחד במקום שורת אייקונים — נקי וסימטרי */
