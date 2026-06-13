@@ -2527,12 +2527,18 @@ function waOrdPick(sel){ waOrderSaveInputs(); S.waOrd.sel=sel; waOrderRender(); 
 function waOrdExtrasHTML(fmt){
   const o=S.waOrd; if(!o) return '';
   const rows=(o.extras||[]).map((x,i)=>`
-    <div style="display:flex;align-items:center;gap:6px;margin-top:6px;background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:6px 8px">
+    <div style="display:flex;align-items:flex-start;gap:6px;margin-top:6px;background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:6px 8px">
       ${x.free
         ?`<input value="${escW(x.name)}" placeholder="תיאור הפריט (חופשי)" style="flex:1;min-width:0;padding:6px 8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:12.5px"
                  onchange="waOrdExtraSet(${i},'name',this.value)">`
         :`<span style="flex:1;min-width:0"><b style="font-size:12.5px">${escW(x.name)}</b>${x.found?'':' <span class="mtag warn">לא באתר</span>'}
-        <div class="muted" style="font-size:10.5px;direction:ltr;text-align:end;font-family:monospace">${escW(x.sku)}</div></span>`}
+        ${x.fixedLabel?`<span class="muted" style="font-size:11px"> · ${escW(x.fixedLabel)}</span>`:''}
+        <div class="muted" style="font-size:10.5px;direction:ltr;text-align:end;font-family:monospace">${escW(x.sku)}</div>
+        ${(x.variants&&(x.variants.switch_attrs||[]).length)?(x.variants.switch_attrs||[]).map((sa,ai)=>`
+          <div style="margin-top:3px;line-height:1.9"><span class="muted" style="font-size:10px">${escW(sa.name.replace(/^בחירת /,''))}:</span>${(sa.options||[]).map((o,oi)=>{
+            const act=String(x.sel&&x.sel[sa.name]||'')===String(o);
+            return `<button class="btn-ghost" style="padding:2px 7px;font-size:11px;margin-inline-start:4px;${act?'border-color:#16a34a;color:#16a34a;font-weight:700':''}" onclick="waOrdExtraSelAttr(${i},${ai},${oi})">${escW(o)}</button>`;
+          }).join('')}</div>`).join(''):''}</span>`}
       <input value="${x.price}" inputmode="decimal" title="מחיר ליחידה" style="width:72px;padding:6px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--txt);text-align:center"
              onchange="waOrdExtraSet(${i},'price',this.value)">
       <input type="number" min="1" value="${x.qty}" title="כמות" style="width:50px;padding:6px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--txt);text-align:center"
@@ -2589,20 +2595,58 @@ function waOrdAddPaint(){
 }
 async function waOrdExtraPick(pid){
   waOrderSaveInputs();
+  const cat=(S.lsCat||[]).find(x=>String(x.product_id)===String(pid))||{};
   showLoading('קורא פרטי פריט…');
   let d=null;
-  try{ d=await api('/api/admin/wc-link/'+encodeURIComponent(pid)+'?pos=1&fallback=1',null,45000); }catch(e){}
+  try{ d=await api('/api/admin/wc-link/'+encodeURIComponent(pid)+'?pos=1&fallback=1&name='+encodeURIComponent(cat.name||''),null,45000); }catch(e){}
   hideLoading();
-  const cat=(S.lsCat||[]).find(x=>String(x.product_id)===String(pid))||{};
   const found=!!(d&&d.found&&d.id);
-  const price=found?(Number(d.price)||0):(d&&d.pos_price!=null&&Number(d.pos_price)>1?Number(d.pos_price):0);
-  (S.waOrd.extras=S.waOrd.extras||[]).push({
+  let price=found?(Number(d.price)||0):(d&&d.pos_price!=null&&Number(d.pos_price)>1?Number(d.pos_price):0);
+  // הקופה כבר קובעת צבע+נפח (variants.fixed). המשתמש בוחר רק את שאר המאפיינים (switch_attrs: SIM, אחריות).
+  const hasSwitch=found&&d.variants&&(d.variants.switch_attrs||[]).length>0;
+  let variation_id=(found&&d.type==='variation')?d.id:0;
+  let sel={}, fixedLabel='';
+  if(found&&d.variants){
+    const mine={}; (d.attributes||[]).forEach(a=>{ mine[a.name]=a.option; });
+    (d.variants.switch_attrs||[]).forEach(sa=>{ sel[sa.name]=mine[sa.name]||sa.options[0]; });
+    fixedLabel=(d.variants.fixed||[]).map(a=>a.option).filter(Boolean).join(' · ');
+  }
+  const x={
     sku:String(pid), name:(found?d.name:cat.name)||String(pid), price:price, qty:1, found:found,
     wc_id:found?(d.type==='variation'?d.parent_id:d.id):0,
-    variation_id:(found&&d.type==='variation')?d.id:0});
+    variation_id:variation_id, variants:hasSwitch?d.variants:null, sel:sel, fixedLabel:fixedLabel};
+  if(hasSwitch) _waOrdExtraResolve(x);   // מצמיד וריאציה+מחיר לפי הבחירה ההתחלתית
+  (S.waOrd.extras=S.waOrd.extras||[]).push(x);
   S.waOrdAddOpen=false; S.waOrdAddQ='';
   waOrderRender();
-  if(!price) toast('לא נמצא מחיר לפריט — הזן מחיר ידנית בשורה',false);
+  if(hasSwitch) toast('בחר SIM / אחריות בשורת הפריט',true);
+  else if(!price) toast('לא נמצא מחיר לפריט — הזן מחיר ידנית בשורה',false);
+}
+// מצמיד variation_id + מחיר לשורת מוצר נוסף לפי הבחירה הנוכחית של ה-switch_attrs
+function _waOrdExtraResolve(x){
+  if(!x||!x.variants) return;
+  const v=x.variants;
+  const m=(v.options||[]).find(c=>(v.switch_attrs||[]).every(sa=>String(c.attrs[sa.name]||'')===String(x.sel[sa.name]||'')));
+  if(m){ x.variation_id=m.id; x.price=Number(m.price)||x.price; }
+}
+// בחירת ערך למאפיין מתחלף בשורת מוצר נוסף (לפי אינדקסים — בטוח לערכים בעברית; התאמה אוטומטית כמו באתר/preview)
+function waOrdExtraSelAttr(i,ai,oi){
+  waOrderSaveInputs();
+  const x=(S.waOrd.extras||[])[i]; if(!x||!x.variants) return;
+  const v=x.variants; const sa=(v.switch_attrs||[])[ai]; if(!sa) return;
+  const name=sa.name, opt=sa.options[oi]; if(opt==null) return;
+  x.sel[name]=opt;
+  const exact=(v.options||[]).some(c=>(v.switch_attrs||[]).every(sa=>String(c.attrs[sa.name]||'')===String(x.sel[sa.name]||'')));
+  if(!exact){
+    const withClicked=(v.options||[]).filter(c=>String(c.attrs[name]||'')===String(opt));
+    if(withClicked.length){
+      let best=withClicked[0], bestScore=-1;
+      withClicked.forEach(c=>{ const score=(v.switch_attrs||[]).reduce((a,sa)=>a+(String(c.attrs[sa.name]||'')===String(x.sel[sa.name]||'')?1:0),0); if(score>bestScore){ bestScore=score; best=c; } });
+      (v.switch_attrs||[]).forEach(sa=>{ x.sel[sa.name]=best.attrs[sa.name]||''; });
+    }
+  }
+  _waOrdExtraResolve(x);
+  waOrderRender();
 }
 function waOrdExtraSet(i,k,v){
   waOrderSaveInputs();
