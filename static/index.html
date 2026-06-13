@@ -2339,8 +2339,8 @@ function waThreadHTML(){
   if(!t || t.phone!==S.waPhone) return '<div class="empty" style="margin:auto">טוען שיחה…</div>';
   const w=t.window||{};
   const winChip=w.in_window
-    ?`<span class="wa-win ok">🟢 חלון פתוח · נותרו ${w.hours_left} ש׳</span>`
-    :`<span class="wa-win no">🔴 מחוץ לחלון 24ש׳ — שליחה כתבנית</span>`;
+    ?`<span class="wa-win ok" title="חלון 24 השעות פתוח — אפשר לשלוח טקסט חופשי">🟢 חלון פתוח · ${w.hours_left}ש׳</span>`
+    :`<span class="wa-win no" title="מחוץ לחלון 24 השעות — שליחה כתבנית בלבד">🔴 מחוץ ל-24 שעות</span>`;
   const msgs=(t.messages||[]).filter(m=>m.text||(m.media&&m.media.length));
   return `
     <div class="wa-head">
