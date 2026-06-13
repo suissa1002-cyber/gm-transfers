@@ -4672,8 +4672,17 @@ function paintWcOrder(){
     <div style="background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:15px 17px;margin-bottom:16px;display:flex;flex-direction:column;gap:4px">
       <b>${escW((b.first_name||'')+' '+(b.last_name||''))}</b>${b.company?` · ${escW(b.company)}`:''}
       <div class="muted" style="font-size:12.5px;direction:ltr;text-align:end">${escW(b.phone||'')}${b.email?` · ${escW(b.email)}`:''}</div>
-      ${(b.address_1||b.city)?`<div class="muted" style="font-size:12.5px">חיוב: ${escW(b.address_1||'')} ${escW(b.city||'')}</div>`:''}
-      ${(sh.address_1||sh.city)?`<div class="muted" style="font-size:12.5px">משלוח: ${escW(sh.address_1||'')} ${escW(sh.city||'')}</div>`:''}
+      ${(function(){
+        const bAddr=`${(b.address_1||'').trim()} ${(b.city||'').trim()}`.trim();
+        const sAddr=`${(sh.address_1||'').trim()} ${(sh.city||'').trim()}`.trim();
+        const same=sAddr && bAddr && sAddr===bAddr;
+        if(!bAddr && !sAddr) return '';
+        if(same) return `<div class="muted" style="font-size:12.5px">כתובת חיוב ומשלוח: ${escW(bAddr)}</div>`;
+        if(!sAddr) return `<div class="muted" style="font-size:12.5px">כתובת חיוב: ${escW(bAddr)}</div>`;
+        if(!bAddr) return `<div class="muted" style="font-size:12.5px">משלוח: ${escW(sAddr)}</div>`;
+        return `<div class="muted" style="font-size:12.5px">חיוב: ${escW(bAddr)}</div>
+      <div class="muted" style="font-size:12.5px">משלוח: ${escW(sAddr)}</div>`;
+      })()}
       ${(d.shipping_lines||[]).length?`<div class="muted" style="font-size:12.5px;display:flex;align-items:center;gap:5px">${ico('truck',13)} ${escW(d.shipping_lines.join(', '))}</div>`:''}
       ${phoneIntl.length>10?`<button class="btn-ghost" style="margin-top:6px;padding:4px 10px;font-size:12px" onclick="closeModal();setAdminTab('wa');setTimeout(()=>openWaConv('${phoneIntl}'),600)">${ico('chat',13)} פתח שיחה בוואטסאפ</button>`:''}
     </div>
