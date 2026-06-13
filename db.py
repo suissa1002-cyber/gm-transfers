@@ -391,6 +391,8 @@ _SCHEMA = [
         updated_at   TEXT
     )
     """,
+    # מעקב backfill — אילו שיחות כבר נשאבו (resumable: לדלג עליהן בריצה הבאה)
+    "CREATE TABLE IF NOT EXISTS wa_backfill_done (phone TEXT PRIMARY KEY, done_at TEXT)",
     # תור משימות לסוכן אורי (claude על המק של אסי, חיוב Max — לא API)
     """
     CREATE TABLE IF NOT EXISTS uri_jobs (
@@ -1483,6 +1485,26 @@ def wa_msg_count() -> int:
     with _conn() as c:
         cur = c.cursor()
         cur.execute("SELECT COUNT(*) AS n FROM wa_msg")
+        return cur.fetchone()["n"]
+
+
+def wa_bf_done_set(phone: str):
+    with _conn() as c:
+        c.cursor().execute(_q("""INSERT INTO wa_backfill_done (phone, done_at) VALUES (?, ?)
+                                 ON CONFLICT(phone) DO NOTHING"""), (str(phone), now_iso()))
+
+
+def wa_bf_done_all() -> set:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute("SELECT phone FROM wa_backfill_done")
+        return {r["phone"] for r in cur.fetchall()}
+
+
+def wa_bf_done_count() -> int:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute("SELECT COUNT(*) AS n FROM wa_backfill_done")
         return cur.fetchone()["n"]
 
 

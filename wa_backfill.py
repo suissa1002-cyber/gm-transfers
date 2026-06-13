@@ -10,11 +10,31 @@ wa_backfill — שאיבה חד-פעמית של כל היסטוריית השיח
 """
 import json
 import logging
+from datetime import datetime
 
+import config as cfg
 import db
 import wa
 
 logger = logging.getLogger("wa_backfill")
+
+
+def _israel_hour():
+    try:
+        from zoneinfo import ZoneInfo
+        return datetime.now(ZoneInfo(cfg.TZ)).hour
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _in_business_hours() -> bool:
+    """שעות מענה חי 09:00-21:00 שעון ישראל — אז לא משאיבים (לא מתחרים בטוקן החי)."""
+    h = _israel_hour()
+    return h is not None and 9 <= h < 21
+
+
+def _stop_requested() -> bool:
+    return db.sales_state_get("wa_backfill_stop") == "1"
 
 _MEDIA_MIME = {"image": "image/*", "video": "video/*", "audio": "audio/*",
                "document": "application/octet-stream", "sticker": "image/webp"}
@@ -88,19 +108,29 @@ def _list_all_conversations(batch: int = 100, max_total: int = 20000) -> list:
     return out
 
 
-def run(per_conv_max: int = 1500) -> dict:
-    """שואב את כל השיחות (כולל מארכיון) וכל ההודעות שלהן לחנות. אידמפוטנטי."""
+def run(per_conv_max: int = 2000) -> dict:
+    """שואב שיחות שטרם נשאבו (resumable: מדלג על wa_backfill_done). עוצר אוטומטית
+    בשעות מענה (09-21 שעון ישראל) או על דגל עצירה — וממשיך בריצה הבאה (cron לילי)."""
+    if _in_business_hours():
+        logger.info("backfill: business hours — skip")
+        return {"skipped": "business_hours"}
+    db.sales_state_set("wa_backfill_stop", "0")
     convs = _list_all_conversations()
     total_c = len(convs)
-    done_c = total_m = 0
-    _set_progress({"running": True, "convs": total_c, "done": 0, "msgs": 0})
-    logger.info("backfill start: %d conversations", total_c)
+    done = db.wa_bf_done_all()
+    processed = paused = 0
+    _set_progress({"running": True, "convs": total_c, "done": len(done), "msgs": db.wa_msg_count()})
+    logger.info("backfill run: %d total, %d already done", total_c, len(done))
     for c in convs:
         phone = c.get("phone")
-        if not phone:
+        if not phone or phone in done:
             continue
+        if _stop_requested() or _in_business_hours():
+            paused = 1
+            logger.info("backfill: paused (stop=%s / business hours)", _stop_requested())
+            break
         try:
-            msgs = wa._dash_call(wa._dash().get_conversation_full, phone,
+            msgs = wa._dash_call(wa._dash().get_full_conversation, phone,
                                  max_messages=per_conv_max, batch_size=50, sleep_between=0.4)
         except Exception as e:  # noqa: BLE001
             logger.warning("backfill conv %s failed: %s", phone, e)
@@ -111,11 +141,10 @@ def run(per_conv_max: int = 1500) -> dict:
             if not mm["wamid"]:
                 continue
             try:
-                if db.wa_msg_upsert(wamid=mm["wamid"], phone=str(phone), direction=mm["direction"],
-                                    mtype=mm["mtype"], text=mm["text"], media_url=mm["media_url"],
-                                    media_mime=mm["media_mime"], reply_to=mm["reply_to"],
-                                    ts=mm["ts"], status="historic"):
-                    total_m += 1
+                db.wa_msg_upsert(wamid=mm["wamid"], phone=str(phone), direction=mm["direction"],
+                                 mtype=mm["mtype"], text=mm["text"], media_url=mm["media_url"],
+                                 media_mime=mm["media_mime"], reply_to=mm["reply_to"],
+                                 ts=mm["ts"], status="historic")
             except Exception as e:  # noqa: BLE001
                 logger.warning("backfill store failed (%s): %s", mm["wamid"], e)
                 continue
@@ -127,10 +156,17 @@ def run(per_conv_max: int = 1500) -> dict:
                                  in_ts=last_in, out_ts=last_msg)
         except Exception:  # noqa: BLE001
             pass
-        done_c += 1
-        if done_c % 10 == 0:
-            _set_progress({"running": True, "convs": total_c, "done": done_c, "msgs": total_m})
-            logger.info("backfill: %d/%d convs, %d msgs", done_c, total_c, total_m)
-    _set_progress({"running": False, "convs": total_c, "done": done_c, "msgs": total_m})
-    logger.info("backfill done: %d convs, %d msgs", done_c, total_m)
-    return {"convs": done_c, "msgs": total_m}
+        db.wa_bf_done_set(phone)
+        processed += 1
+        if processed % 10 == 0:
+            _set_progress({"running": True, "convs": total_c, "done": db.wa_bf_done_count(),
+                           "msgs": db.wa_msg_count()})
+            logger.info("backfill: +%d this run (%d/%d total), %d msgs",
+                        processed, db.wa_bf_done_count(), total_c, db.wa_msg_count())
+    done_total = db.wa_bf_done_count()
+    finished = (not paused) and done_total >= total_c
+    _set_progress({"running": False, "convs": total_c, "done": done_total,
+                   "msgs": db.wa_msg_count(), "finished": finished, "paused": bool(paused)})
+    logger.info("backfill stop: %d/%d done, %d msgs, finished=%s",
+                done_total, total_c, db.wa_msg_count(), finished)
+    return {"processed": processed, "done": done_total, "total": total_c, "finished": finished}

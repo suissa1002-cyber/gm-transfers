@@ -220,6 +220,10 @@ def _startup():
     scheduler.add_job(_wa_push_job, "interval", seconds=60, id="wa_push", max_instances=1)
     # Web Push הזמנות חדשות: 🎉 push על הזמנת אתר חדשה כל 60ש (גם כשהאפליקציה סגורה)
     scheduler.add_job(_orders_push_job, "interval", seconds=60, id="orders_push", max_instances=1)
+    # backfill היסטוריית וואטסאפ — רץ רק בשעות שקטות (21:00-09:00 IL); resumable.
+    # פייר בכל שעה בחלון; max_instances=1 → ריצה ארוכה אחת ללילה + התאוששות מ-restart.
+    scheduler.add_job(_wa_backfill_job, "cron", hour="21-23,0-8", minute=10,
+                      id="wa_backfill_nightly", max_instances=1, coalesce=True)
     # ניטור טוקן ConnectOp: בדיקה יומית 09:30 + בדיקת boot (לוג בלבד כשהכל תקין)
     scheduler.add_job(_token_watch_job, "cron", id="token_watch",
                       hour=9, minute=30, max_instances=1)
@@ -343,15 +347,20 @@ def _wa_backfill_job():
 
 @app.post("/api/admin/wa/backfill")
 def wa_backfill_start(x_admin_key: Optional[str] = Header(None)):
-    """מתחיל שאיבת היסטוריית שיחות מ-ChatRace לחנות העצמאית (ג'וב רקע)."""
+    """מפעיל ידנית שאיבת היסטוריה (resumable; עוצר לבד בשעות מענה 09-21 IL)."""
     _require_admin(x_admin_key)
-    import wa_backfill
-    p = wa_backfill.progress()
-    if p.get("running"):
-        return {"already_running": True, "progress": p}
-    scheduler.add_job(_wa_backfill_job, "date", id="wa_backfill", max_instances=1,
+    db.sales_state_set("wa_backfill_stop", "0")
+    scheduler.add_job(_wa_backfill_job, "date", id="wa_backfill_manual", max_instances=1,
                       replace_existing=True)
     return {"started": True}
+
+
+@app.post("/api/admin/wa/backfill/stop")
+def wa_backfill_stop(x_admin_key: Optional[str] = Header(None)):
+    """עצירה ידנית — הריצה תיעצר בשיחה הבאה (resumable; ממשיכה בלילה הבא)."""
+    _require_admin(x_admin_key)
+    db.sales_state_set("wa_backfill_stop", "1")
+    return {"stopping": True}
 
 
 @app.get("/api/config")
