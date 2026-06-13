@@ -4434,20 +4434,20 @@ function wcoListHTML(){
   const fmtD=d=>{ const x=new Date(d); return isNaN(x)?'':x.toLocaleDateString('he-IL')+' '+x.toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'}); };
   const rows=W.rows.map(o=>`
     <tr class="ls-row" onclick="openWcOrder(${o.id})">
-      <td><b>#${o.number}</b>${o.greenos?' <span title="נוצרה ב-GreenOS" style="color:#16a34a">●</span>':''}${o.bcast?` <span title="${o.bcast==='live'?'בקשת העברה משודרת לסניף':'בקשת העברה שודרה (נסגרה בסניף)'}" style="color:${o.bcast==='live'?'#15803d':'var(--muted)'};display:inline-flex;vertical-align:-2px">${ico('radio',13)}</span>`:''}</td>
+      <td><b>#${o.number}</b>${o.greenos?' <span title="נוצרה ב-GreenOS" style="color:#16a34a">●</span>':''}</td>
       <td class="muted" style="font-size:12px;white-space:nowrap">${fmtD(o.date)}${o.ship_tag?`<div style="font-size:10.5px;margin-top:2px">${shipTagHTML(o.ship_tag,11)}</div>`:''}</td>
       <td><b>${escW(o.name||'—')}</b><div class="muted" style="font-size:11.5px;direction:ltr;text-align:end">${escW(o.phone||'')}</div></td>
       <td style="max-width:280px"><div style="display:flex;align-items:center;gap:8px">
         ${o.img?`<img src="${escW(o.img)}" loading="lazy" style="width:34px;height:34px;object-fit:contain;border-radius:7px;background:#fff;border:1px solid var(--line);flex:none">`:''}
         <span class="muted" style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(o.items||'')}${o.items_n>1?` <b>(${o.items_n})</b>`:''}</span></div></td>
       <td style="white-space:nowrap"><b>${o.currency}${Number(o.total).toLocaleString('he-IL')}</b></td>
-      <td>${ordTag(o.status)}</td>
-      
+      <td><div style="display:inline-flex;align-items:center;gap:6px">${ordTag(o.status)}${o.bcast?` <span title="בקשת העברה ${o.bcast.status==='live'?'משודרת מ':'שודרה (נסגרה) מ'}${o.bcast.branch||'סניף'}" style="color:${o.bcast.status==='live'?'#15803d':'var(--muted)'};display:inline-flex;vertical-align:-2px">${ico('radio',16)}</span>`:''}</div></td>
+
     </tr>`).join('');
   const cards=W.rows.map(o=>`
     <div class="ls-card" onclick="openWcOrder(${o.id})">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-        <b>#${o.number}${o.bcast?` <span style="color:${o.bcast==='live'?'#15803d':'var(--muted)'};display:inline-flex;vertical-align:-2px">${ico('radio',12)}</span>`:''} · ${escW(o.name||'—')}</b>${ordTag(o.status)}
+        <b>#${o.number} · ${escW(o.name||'—')}</b><div style="display:inline-flex;align-items:center;gap:6px;flex:none">${ordTag(o.status)}${o.bcast?` <span title="בקשת העברה ${o.bcast.status==='live'?'משודרת מ':'שודרה (נסגרה) מ'}${o.bcast.branch||'סניף'}" style="color:${o.bcast.status==='live'?'#15803d':'var(--muted)'};display:inline-flex;vertical-align:-2px">${ico('radio',15)}</span>`:''}</div>
       </div>
       <div class="muted" style="font-size:12px;margin-top:3px">${escW(o.items||'')}</div>
       <div style="display:flex;justify-content:space-between;margin-top:5px;font-size:13px">

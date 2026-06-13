@@ -1949,8 +1949,12 @@ def admin_orders_list(page: int = 1, status: str = "", search: str = "",
             m2 = _re.search(r"הזמנת אתר #(\d+)", ln.get("created_by") or "")
             if m2:
                 st = "live" if int(ln.get("bcast") or 0) == 1 else "closed"
-                if bcast_map.get(m2.group(1)) != "live":
-                    bcast_map[m2.group(1)] = st
+                onum = m2.group(1)
+                branch = cfg.branch_name(ln.get("from_branch"))
+                prev = bcast_map.get(onum)
+                # שורה "live" גוברת על "closed"; שומרים את שם סניף המקור לטולטיפ
+                if not prev or (prev.get("status") != "live"):
+                    bcast_map[onum] = {"status": st, "branch": branch}
     except Exception:  # noqa: BLE001
         pass
     out = []
