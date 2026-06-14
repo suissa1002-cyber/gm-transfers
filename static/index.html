@@ -4526,6 +4526,20 @@ function ordTag(st){
   const c=WC_ST_COLORS[st]||'#6b7280';
   return `<span class="ord-st" style="color:${c};border-color:${c}55;background:${c}14">${escW(ordStName(st))}</span>`;
 }
+// אייקוני סטטוס שיריון/מלאי על שורת הזמנה: שודר / חסר / שודר חלקי (גם שודר וגם חסר) / מק״ט חסר
+function ordFlagIcons(o,sz){
+  let h='';
+  const partial = o.partial || (o.bcast&&o.oos);   // חלק שודר וחלק חסר (דגל יציב או שידור פעיל+חוסר)
+  if(partial){   // שודר חלקי (אמבר)
+    const br = o.bcast ? (o.bcast.branch||'סניף') : '';
+    h+=`<span title="שודר חלקי — חלק מההזמנה שודר${br?' ל'+br:''}, פריט אחר חסר במלאי (להשיג מהספק)" style="color:#d97706;display:inline-flex;vertical-align:-2px">${ico('radio',sz)}</span>`;
+  } else {
+    if(o.bcast) h+=`<span title="בקשת העברה שודרה ל${o.bcast.branch||'סניף'}${o.bcast.status==='live'?' — ממתינה לביצוע':' — נסגרה במסך הסניף (טרם בוצעה)'}" style="color:${o.bcast.status==='live'?'#15803d':'var(--muted)'};display:inline-flex;vertical-align:-2px">${ico('radio',sz)}</span>`;
+    if(o.oos) h+=`<span title="המוצר חסר במלאי בכל הסניפים — יש להשיג מהספק" style="color:#dc2626;display:inline-flex;vertical-align:-2px">${ico('pkgx',sz)}</span>`;
+  }
+  if(o.nosku) h+=`<span title="פריט ללא מק״ט מחובר לקופה — לא ניתן לשריין/לשדר. הוסף מק״ט למוצר ב-WooCommerce" style="color:#d97706;display:inline-flex;vertical-align:-2px">${ico('tag',sz)}</span>`;
+  return h;
+}
 function renderWcOrders(){
   const app=document.getElementById('app');
   S.wco=S.wco||{page:1,status:'',q:'',after:'',before:'',rows:null,pages:1,total:0,loading:false};
@@ -4639,13 +4653,13 @@ function wcoListHTML(){
         ${o.img?`<img src="${escW(o.img)}" loading="lazy" style="width:34px;height:34px;object-fit:contain;border-radius:7px;background:#fff;border:1px solid var(--line);flex:none">`:''}
         <span class="muted" style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(o.items||'')}${o.items_n>1?` <b>(${o.items_n})</b>`:''}</span></div></td>
       <td style="white-space:nowrap"><b>${o.currency}${Number(o.total).toLocaleString('he-IL')}</b></td>
-      <td><div style="display:inline-flex;align-items:center;gap:6px">${ordTag(o.status)}${o.bcast?`<span title="בקשת העברה שודרה ל${o.bcast.branch||'סניף'}${o.bcast.status==='live'?' — ממתינה לביצוע':' — נסגרה במסך הסניף (טרם בוצעה)'}" style="color:${o.bcast.status==='live'?'#15803d':'var(--muted)'};display:inline-flex;vertical-align:-2px">${ico('radio',16)}</span>`:''}${o.oos?`<span title="המוצר חסר במלאי בכל הסניפים — יש להשיג מהספק" style="color:#dc2626;display:inline-flex;vertical-align:-2px">${ico('pkgx',16)}</span>`:''}${o.nosku?`<span title="פריט ללא מק״ט מחובר לקופה — לא ניתן לשריין/לשדר. הוסף מק״ט למוצר ב-WooCommerce" style="color:#d97706;display:inline-flex;vertical-align:-2px">${ico('tag',16)}</span>`:''}</div></td>
+      <td><div style="display:inline-flex;align-items:center;gap:6px">${ordTag(o.status)}${ordFlagIcons(o,16)}</div></td>
 
     </tr>`).join('');
   const cards=W.rows.map(o=>`
     <div class="ls-card" onclick="openWcOrder(${o.id})">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-        <b>#${o.number} · ${escW(o.name||'—')}</b><div style="display:inline-flex;align-items:center;gap:6px;flex:none">${o.oos?`<span title="המוצר חסר במלאי בכל הסניפים — יש להשיג מהספק" style="color:#dc2626;display:inline-flex;vertical-align:-2px">${ico('pkgx',15)}</span>`:''}${o.nosku?`<span title="פריט ללא מק״ט מחובר לקופה — לא ניתן לשריין/לשדר. הוסף מק״ט למוצר ב-WooCommerce" style="color:#d97706;display:inline-flex;vertical-align:-2px">${ico('tag',15)}</span>`:''}${o.bcast?`<span title="בקשת העברה שודרה ל${o.bcast.branch||'סניף'}${o.bcast.status==='live'?' — ממתינה לביצוע':' — נסגרה במסך הסניף (טרם בוצעה)'}" style="color:${o.bcast.status==='live'?'#15803d':'var(--muted)'};display:inline-flex;vertical-align:-2px">${ico('radio',15)}</span>`:''}${ordTag(o.status)}</div>
+        <b>#${o.number} · ${escW(o.name||'—')}</b><div style="display:inline-flex;align-items:center;gap:6px;flex:none">${ordFlagIcons(o,15)}${ordTag(o.status)}</div>
       </div>
       <div class="muted" style="font-size:12px;margin-top:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.35">${escW(o.items||'')}</div>
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:5px;font-size:13px">
@@ -4723,8 +4737,9 @@ function paintWcOrder(){
     <div class="muted" style="font-size:12.5px;margin:6px 0 ${(d.bcast||d.oos||d.nosku)?'10px':'18px'}">${fmtD(d.date)}${d.date_paid?` · שולם ${fmtD(d.date_paid)}`:''}${d.payment?` · ${escW(d.payment)}`:''}${d.tx?` · עסקה <span style="direction:ltr;font-family:monospace">${escW(String(d.tx).slice(0,18))}</span>`:''}</div>
     ${(d.bcast||d.oos||d.nosku)?`<div style="display:flex;flex-wrap:wrap;gap:7px;margin-bottom:16px">
       ${d.nosku?`<span class="ord-st" style="color:#d97706;border-color:#d9770655;background:#d977060f;display:inline-flex;align-items:center;gap:6px">${ico('tag',14)} פריט ללא מק״ט מחובר — הוסף מק״ט למוצר ב-WooCommerce</span>`:''}
-      ${d.oos?`<span class="ord-st" style="color:#dc2626;border-color:#dc262655;background:#dc26260f;display:inline-flex;align-items:center;gap:6px">${ico('pkgx',14)} חסר במלאי בכל הסניפים — להשיג מהספק</span>`:''}
-      ${d.bcast?`<span class="ord-st" style="color:${d.bcast.status==='live'?'#15803d':'var(--muted)'};border-color:${d.bcast.status==='live'?'#15803d':'var(--muted)'}55;background:${d.bcast.status==='live'?'#15803d':'#6b7280'}0f;display:inline-flex;align-items:center;gap:6px">${ico('radio',14)} בקשת העברה שודרה ל${escW(d.bcast.branch||'סניף')}${d.bcast.status==='live'?' — ממתינה לביצוע':' — נסגרה בסניף'}</span>`:''}
+      ${(d.partial || (d.bcast&&d.oos))
+        ? `<span class="ord-st" style="color:#d97706;border-color:#d9770655;background:#d977060f;display:inline-flex;align-items:center;gap:6px">${ico('radio',14)} שודר חלקי — חלק מההזמנה שודר${d.bcast?` ל${escW(d.bcast.branch||'סניף')}`:''}, פריט אחר חסר במלאי (להשיג מהספק)</span>`
+        : `${d.oos?`<span class="ord-st" style="color:#dc2626;border-color:#dc262655;background:#dc26260f;display:inline-flex;align-items:center;gap:6px">${ico('pkgx',14)} חסר במלאי בכל הסניפים — להשיג מהספק</span>`:''}${d.bcast?`<span class="ord-st" style="color:${d.bcast.status==='live'?'#15803d':'var(--muted)'};border-color:${d.bcast.status==='live'?'#15803d':'var(--muted)'}55;background:${d.bcast.status==='live'?'#15803d':'#6b7280'}0f;display:inline-flex;align-items:center;gap:6px">${ico('radio',14)} בקשת העברה שודרה ל${escW(d.bcast.branch||'סניף')}${d.bcast.status==='live'?' — ממתינה לביצוע':' — נסגרה בסניף'}</span>`:''}`}
     </div>`:''}
     <div style="background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:15px 17px;margin-bottom:16px;display:flex;flex-direction:column;gap:4px">
       <b>${escW((b.first_name||'')+' '+(b.last_name||''))}</b>${b.company?` · ${escW(b.company)}`:''}

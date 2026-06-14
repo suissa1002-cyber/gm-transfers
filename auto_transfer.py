@@ -57,15 +57,16 @@ def _fetch_recent_orders():
     return out
 
 
-def _mark_oos(number, name):
-    """מסמן הזמנה כ'חסר בכל הסניפים' — נשמר כרשימת JSON אחת (עד 100 אחרונות)."""
+def _mark_oos(number, name, partial=False):
+    """מסמן הזמנה כחסרה במלאי. partial=True כשחלק מההזמנה כן שודר ("שודר חלקי")
+    וחלק חסר. נשמר כרשימת JSON אחת (עד 100 אחרונות)."""
     import json
     try:
         raw = db.sales_state_get("order_oos_list")
         lst = json.loads(raw) if raw else []
         num = str(number)
         if not any(str(x.get("number")) == num for x in lst):
-            lst.insert(0, {"number": num, "item": name})
+            lst.insert(0, {"number": num, "item": name, "partial": bool(partial)})
             db.sales_state_set("order_oos_list", json.dumps(lst[:100], ensure_ascii=False))
     except Exception as e:  # noqa: BLE001
         logger.warning("oos mark failed for %s: %s", number, e)
@@ -120,6 +121,7 @@ def _handle_order(o: dict, catalog: dict) -> list:
     # סדר מקור: בהזמנת איסוף — סניף האיסוף ראשון; אחר כך סטאר/אשדוד כרגיל
     src_pref = ([pickup_b] + [b for b in PREF_SOURCE if b != pickup_b]) if pickup_b else PREF_SOURCE
     created = []
+    oos_names = []           # פריטים חסרים בכל הסניפים — לזיהוי "שודר חלקי" בסוף
     for li in o.get("line_items", []):
         sku = str(li.get("sku") or "").strip()
         qty = max(1, int(li.get("quantity") or 1))
@@ -145,7 +147,7 @@ def _handle_order(o: dict, catalog: dict) -> list:
             src = next((b for b in src_pref if (stock.get(b) or 0) > 0), None)
         if src is None:
             logger.info("order %s: no source stock for %s", o.get("number"), sku)
-            _mark_oos(o.get("number"), name)   # חסר בכל הסניפים — סימון לאייקון בטאב ההזמנות
+            oos_names.append(name)             # נסמן בסוף (כדי לדעת אם חלקי)
             continue
         # מוצר סריאלי: מצמידים יחידות ספציפיות (הוותיקות) — כמו בבקשה ידנית.
         # כך היחידה מוצגת "משוריין לאתר" במלאי חי, וקליטתה סוגרת את הבקשה אוטומטית.
@@ -172,6 +174,9 @@ def _handle_order(o: dict, catalog: dict) -> list:
         created.append({"sku": sku, "name": name, "src": src, "qty": qty})
         logger.info("order %s: broadcast transfer %s x%s from branch %s -> site",
                     o.get("number"), sku, qty, src)
+    # סימון OOS בסוף — אם חלק מההזמנה כן שודר (created) זה "שודר חלקי" ולא חוסר מלא
+    if oos_names:
+        _mark_oos(o.get("number"), oos_names[0], partial=bool(created))
     return created
 
 

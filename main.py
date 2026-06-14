@@ -2163,12 +2163,15 @@ def admin_orders_list(page: int = 1, status: str = "", search: str = "",
         pass
     # הזמנות שסומנו 'חסר בכל הסניפים' (auto_transfer) — להצגת אייקון OOS
     oos_set = set()
+    partial_set = set()
     unmatched_set = set()
     try:
         import json as _json
         raw = db.sales_state_get("order_oos_list")
         for x in (_json.loads(raw) if raw else []):
             oos_set.add(str(x.get("number")))
+            if x.get("partial"):
+                partial_set.add(str(x.get("number")))
         rawu = db.sales_state_get("order_unmatched_list")
         for x in (_json.loads(rawu) if rawu else []):
             unmatched_set.add(str(x.get("number")))
@@ -2190,6 +2193,7 @@ def admin_orders_list(page: int = 1, status: str = "", search: str = "",
                 (_cat.get(str(li.get("sku") or ""), {}).get("is_stock", True))
                 for li in items if str(li.get("sku") or "") in _cat),
             "nosku": str(o.get("number")) in unmatched_set,   # פריט פיזי ללא מק"ט — טיפול ידני
+            "partial": str(o.get("number")) in partial_set,   # חלק שודר וחלק חסר — שודר חלקי
             "id": o.get("id"), "number": o.get("number"), "status": o.get("status"),
             "date": o.get("date_created"), "total": o.get("total"),
             "currency": o.get("currency_symbol") or "₪",
@@ -2327,12 +2331,16 @@ def admin_order_detail(oid: int, x_admin_key: Optional[str] = Header(None)):
     except Exception:  # noqa: BLE001
         pass
     oos = False
+    partial = False
     nosku = False
     try:
         import json as _json2
         raw = db.sales_state_get("order_oos_list")
-        oos = any(str(x.get("number")) == str(o.get("number"))
-                  for x in (_json2.loads(raw) if raw else []))
+        for x in (_json2.loads(raw) if raw else []):
+            if str(x.get("number")) == str(o.get("number")):
+                oos = True
+                partial = bool(x.get("partial"))
+                break
         rawu = db.sales_state_get("order_unmatched_list")
         nosku = any(str(x.get("number")) == str(o.get("number"))
                     for x in (_json2.loads(rawu) if rawu else []))
@@ -2343,6 +2351,7 @@ def admin_order_detail(oid: int, x_admin_key: Optional[str] = Header(None)):
         "ship_tag": _ship_tag(o, meta),
         "bcast": bcast,
         "oos": oos,
+        "partial": partial,
         "nosku": nosku,
         "pay": pay if any(pay.values()) else None,
         "id": o.get("id"), "number": o.get("number"), "status": o.get("status"),
