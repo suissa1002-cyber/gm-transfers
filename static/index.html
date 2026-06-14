@@ -4549,6 +4549,7 @@ function ordFlagIcons(o,sz){
     if(o.oos) h+=`<span title="המוצר חסר במלאי בכל הסניפים — יש להשיג מהספק" style="color:#dc2626;display:inline-flex;vertical-align:-2px">${ico('pkgx',sz)}</span>`;
   }
   if(o.nosku) h+=`<span title="פריט ללא מק״ט מחובר לקופה — לא ניתן לשריין/לשדר. הוסף מק״ט למוצר ב-WooCommerce" style="color:#d97706;display:inline-flex;vertical-align:-2px">${ico('tag',sz)}</span>`;
+  if(o.return_open) h+=`<span title="נפתחה החזרה (איסוף מהלקוח)" style="display:inline-flex;vertical-align:-2px;font-size:${sz-2}px">↩️</span>`;
   return h;
 }
 // תג סטטוס משלוח חי מ-Cargo (במחסן / הועבר לשליח / בדרך ללקוח / בוצע). הסטטוס גלוי, מספר המעקב בטולטיפ.
@@ -4766,8 +4767,9 @@ function paintWcOrder(){
       <span style="display:flex;gap:7px;align-items:center">${d.ship_tag?`<span class="ord-st" style="color:#374151;border-color:#37415133;background:#37415108">${shipTagHTML(d.ship_tag,12)}</span>`:''}${d.src?`<span class="ord-st" style="color:#16a34a;border-color:#16a34a55;background:#16a34a14">${escW(d.src)}</span>`:''}${ordTag(d.status)}
         <button class="dr-x" onclick="closeModal()">✕</button></span>
     </div>
-    <div class="muted" style="font-size:12.5px;margin:6px 0 ${(d.bcast||d.oos||d.nosku)?'10px':'18px'}">${fmtD(d.date)}${d.date_paid?` · שולם ${fmtD(d.date_paid)}`:''}${d.payment?` · ${escW(d.payment)}`:''}${d.tx?` · עסקה <span style="direction:ltr;font-family:monospace">${escW(String(d.tx).slice(0,18))}</span>`:''}</div>
-    ${(d.bcast||d.oos||d.nosku)?`<div style="display:flex;flex-wrap:wrap;gap:7px;margin-bottom:16px">
+    <div class="muted" style="font-size:12.5px;margin:6px 0 ${(d.bcast||d.oos||d.nosku||d.return_open)?'10px':'18px'}">${fmtD(d.date)}${d.date_paid?` · שולם ${fmtD(d.date_paid)}`:''}${d.payment?` · ${escW(d.payment)}`:''}${d.tx?` · עסקה <span style="direction:ltr;font-family:monospace">${escW(String(d.tx).slice(0,18))}</span>`:''}</div>
+    ${(d.bcast||d.oos||d.nosku||d.return_open)?`<div style="display:flex;flex-wrap:wrap;gap:7px;margin-bottom:16px">
+      ${d.return_open?`<span class="ord-st" style="color:#7c3aed;border-color:#7c3aed55;background:#7c3aed0f;display:inline-flex;align-items:center;gap:6px">↩️ החזרה נפתחה (איסוף מהלקוח)</span>`:''}
       ${d.nosku?`<span class="ord-st" style="color:#d97706;border-color:#d9770655;background:#d977060f;display:inline-flex;align-items:center;gap:6px">${ico('tag',14)} פריט ללא מק״ט מחובר — הוסף מק״ט למוצר ב-WooCommerce</span>`:''}
       ${(d.partial || (d.bcast&&d.oos))
         ? `<span class="ord-st" style="color:#d97706;border-color:#d9770655;background:#d977060f;display:inline-flex;align-items:center;gap:6px">${ico('radio',14)} שודר חלקי — חלק מההזמנה שודר${d.bcast?` ל: ${escW(bcastBranches(d.bcast))}`:''}, פריט אחר חסר במלאי (להשיג מהספק)</span>`
@@ -4822,6 +4824,7 @@ function paintWcOrder(){
       ${d.cargo?`<button class="btn-ghost" style="padding:8px 12px;border-color:#0369a1;color:#0369a1;display:inline-flex;align-items:center;gap:6px" onclick="wcoCargoLabel(${d.id})">${ico('truck',14)} תווית Cargo</button>`
         :`<button class="btn-ghost" style="padding:8px 12px;border-color:#0369a1;color:#0369a1;display:inline-flex;align-items:center;gap:6px" onclick="wcoCargoCreate(${d.id},${(d.ship_tag||'').includes('tlv')?'true':'false'})">${ico('truck',14)} צור משלוח Cargo</button>`}
       <button class="btn-ghost" style="padding:8px 12px;border-color:#15803d;color:#15803d;display:inline-flex;align-items:center;gap:6px" onclick="wcoAutoTransfer(${d.id},${d.bcast?1:0})" title="מריץ את לוגיקת השיריון/השידור להזמנה (אחרי הצמדת/תיקון מק״ט)">${ico('radio',14)} ${d.bcast?'שדר מחדש':'הרץ שיריון/שידור'}</button>
+      <button class="btn-ghost" style="padding:8px 12px;border-color:#7c3aed;color:#7c3aed;display:inline-flex;align-items:center;gap:6px" onclick="wcoOpenReturn(${d.id})" title="פותח החזרה: מתעד בהזמנה + מעתיק פרטי לקוח + פותח דשבורד Cargo לאיסוף">↩️ ${d.return_open?'החזרה (פתוחה)':'פתח החזרה'}</button>
       ${['cancelled','failed','refunded'].includes(d.status)?`<button class="btn-ghost" style="padding:8px 12px;border-color:#b91c1c;color:#b91c1c;display:inline-flex;align-items:center;gap:6px" onclick="wcoTrash(${d.id})">${ico('trash',14)} העבר לפח</button>`:''}
     </div>
     <div style="display:flex;gap:8px;margin-top:12px">
@@ -4866,6 +4869,20 @@ async function wcoAutoTransfer(oid,force){
     else toast('לא נוצר שידור — אין מלאי בסניפים או חסר מק״ט',false);
     loadWcOrders(); openWcOrder(oid);
   }catch(e){ toast('הרצת השידור נכשלה',false); }
+  hideLoading();
+}
+async function wcoOpenReturn(oid){
+  if(!confirm('לפתוח החזרה (איסוף מהלקוח)?\nזה יתעד בהזמנה, יעתיק את פרטי הלקוח, ויפתח את דשבורד Cargo ליצירת האיסוף.')) return;
+  showLoading('פותח החזרה…');
+  try{
+    const r=await api('/api/admin/orders/'+oid+'/return',{method:'POST'},45000);
+    const c=r.customer||{};
+    const txt=[c.name,c.phone,c.address,c.email].filter(Boolean).join(' · ');
+    if(navigator.clipboard&&navigator.clipboard.writeText&&txt){ try{ await navigator.clipboard.writeText(txt); }catch(e){} }
+    toast('↩️ החזרה נפתחה ותועדה ✓ — פרטי הלקוח הועתקו',true);
+    window.open('https://dashboard.cargo.co.il/','_blank');   // יצירת האיסוף בדשבורד Cargo
+    loadWcOrders(); openWcOrder(oid);
+  }catch(e){ toast('פתיחת ההחזרה נכשלה',false); }
   hideLoading();
 }
 async function wcoTrash(oid){

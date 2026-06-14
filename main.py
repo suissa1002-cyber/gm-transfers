@@ -2189,6 +2189,7 @@ def admin_orders_list(page: int = 1, status: str = "", search: str = "",
     oos_set = set()
     partial_set = set()
     unmatched_set = set()
+    return_set = set()
     try:
         import json as _json
         raw = db.sales_state_get("order_oos_list")
@@ -2199,6 +2200,9 @@ def admin_orders_list(page: int = 1, status: str = "", search: str = "",
         rawu = db.sales_state_get("order_unmatched_list")
         for x in (_json.loads(rawu) if rawu else []):
             unmatched_set.add(str(x.get("number")))
+        rawr = db.sales_state_get("order_return_list")
+        for x in (_json.loads(rawr) if rawr else []):
+            return_set.add(str(x.get("number")))
     except Exception:  # noqa: BLE001
         pass
     # מוצרים דיגיטליים (גיפט קארד/קוד, is_stock=False) לא יציגו OOS — סינון בתצוגה
@@ -2218,6 +2222,7 @@ def admin_orders_list(page: int = 1, status: str = "", search: str = "",
                 for li in items if str(li.get("sku") or "") in _cat),
             "nosku": str(o.get("number")) in unmatched_set,   # פריט פיזי ללא מק"ט — טיפול ידני
             "partial": str(o.get("number")) in partial_set,   # חלק שודר וחלק חסר — שודר חלקי
+            "return_open": str(o.get("number")) in return_set,   # נפתחה החזרה (איסוף מהלקוח)
             "id": o.get("id"), "number": o.get("number"), "status": o.get("status"),
             "date": o.get("date_created"), "total": o.get("total"),
             "currency": o.get("currency_symbol") or "₪",
@@ -2403,6 +2408,7 @@ def admin_order_detail(oid: int, x_admin_key: Optional[str] = Header(None)):
     oos = False
     partial = False
     nosku = False
+    return_open = False
     try:
         import json as _json2
         raw = db.sales_state_get("order_oos_list")
@@ -2414,6 +2420,9 @@ def admin_order_detail(oid: int, x_admin_key: Optional[str] = Header(None)):
         rawu = db.sales_state_get("order_unmatched_list")
         nosku = any(str(x.get("number")) == str(o.get("number"))
                     for x in (_json2.loads(rawu) if rawu else []))
+        rawr = db.sales_state_get("order_return_list")
+        return_open = any(str(x.get("number")) == str(o.get("number"))
+                          for x in (_json2.loads(rawr) if rawr else []))
     except Exception:  # noqa: BLE001
         pass
     return {
@@ -2423,6 +2432,7 @@ def admin_order_detail(oid: int, x_admin_key: Optional[str] = Header(None)):
         "oos": oos,
         "partial": partial,
         "nosku": nosku,
+        "return_open": return_open,
         "pay": pay if any(pay.values()) else None,
         "id": o.get("id"), "number": o.get("number"), "status": o.get("status"),
         "date": o.get("date_created"), "date_paid": o.get("date_paid"),
@@ -2443,6 +2453,43 @@ def admin_order_detail(oid: int, x_admin_key: Optional[str] = Header(None)):
         "notes": notes,
         "admin_url": f"{base}/wp-admin/post.php?post={oid}&action=edit",
     }
+
+
+@app.post("/api/admin/orders/{oid}/return")
+def admin_order_return(oid: int, x_admin_key: Optional[str] = Header(None)):
+    """פתיחת החזרה (איסוף מהלקוח חזרה אלינו): מתעד הערה פנימית + מסמן דגל 'החזרה'
+    על ההזמנה, ומחזיר את פרטי הלקוח (שם/טלפון/כתובת) לביצוע האיסוף בדשבורד Cargo.
+    יצירת האיסוף עצמה — בדשבורד Cargo (אופציה ב׳ — ביניים, בלי תלות ב-API)."""
+    _require_admin(x_admin_key)
+    import requests as _rq
+    import json as _json
+    base, k, s = _wc_creds()
+    r = _rq.get(f"{base}/wp-json/wc/v3/orders/{oid}", auth=(k, s), timeout=30)
+    if not r.ok:
+        raise HTTPException(404, "הזמנה לא נמצאה")
+    o = r.json()
+    b = o.get("billing") or {}
+    sh = o.get("shipping") or {}
+    try:   # הערה פנימית
+        _rq.post(f"{base}/wp-json/wc/v3/orders/{oid}/notes", auth=(k, s),
+                 json={"note": "↩️ נפתחה החזרה (איסוף מהלקוח) — דרך GreenOS",
+                       "customer_note": False}, timeout=20)
+    except Exception:  # noqa: BLE001
+        pass
+    try:   # דגל 'החזרה' להצגה בהזמנה
+        raw = db.sales_state_get("order_return_list")
+        lst = _json.loads(raw) if raw else []
+        num = str(o.get("number"))
+        if not any(str(x.get("number")) == num for x in lst):
+            lst.insert(0, {"number": num})
+            db.sales_state_set("order_return_list", _json.dumps(lst[:200], ensure_ascii=False))
+    except Exception:  # noqa: BLE001
+        pass
+    src = sh if (sh.get("address_1") or sh.get("city")) else b
+    addr = ", ".join(x for x in [src.get("address_1"), src.get("city")] if x).strip(", ")
+    return {"ok": True, "customer": {
+        "name": f"{(src.get('first_name') or b.get('first_name') or '')} {(src.get('last_name') or b.get('last_name') or '')}".strip(),
+        "phone": b.get("phone") or "", "address": addr, "email": b.get("email") or ""}}
 
 
 @app.post("/api/admin/orders/{oid}/auto-transfer")
