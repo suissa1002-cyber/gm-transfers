@@ -2378,9 +2378,11 @@ def admin_order_detail(oid: int, x_admin_key: Optional[str] = Header(None)):
 
 
 @app.post("/api/admin/orders/{oid}/auto-transfer")
-def admin_order_auto_transfer(oid: int, x_admin_key: Optional[str] = Header(None)):
-    """מריץ מחדש את auto_transfer על הזמנה בודדת — לשימוש אחרי הצמדת SKU למוצר
-    שהיה מנותק (כמו ה-Sony). משדר/מסמן לפי מלאי. לא יוצר כפילות אם כבר שודר."""
+def admin_order_auto_transfer(oid: int, force: int = 0,
+                              x_admin_key: Optional[str] = Header(None)):
+    """מריץ מחדש את auto_transfer על הזמנה בודדת — לשימוש אחרי הצמדת/תיקון SKU
+    למוצר שהיה מנותק. משדר/מסמן לפי מלאי. force=1: מנקה שידור קיים ומשדר מחדש
+    (לתיקון שיריון של צבע שגוי). בלי force — לא יוצר כפילות אם כבר שודר."""
     _require_admin(x_admin_key)
     import requests as _rq
     import auto_transfer
@@ -2396,11 +2398,19 @@ def admin_order_auto_transfer(oid: int, x_admin_key: Optional[str] = Header(None
     onum = str(o.get("number"))
     existing = [ln for ln in db.plan_list()
                 if _re3.search(rf"הזמנת אתר #{onum}(?!\d)", ln.get("created_by") or "")]
-    if existing:
+    if existing and not force:
         return {"ok": True, "already": True, "lines": len(existing)}
+    cleared = 0
+    if force and existing:
+        for ln in existing:
+            try:
+                db.plan_delete(ln.get("id"))
+                cleared += 1
+            except Exception:  # noqa: BLE001
+                pass
     created = auto_transfer._handle_order(o, catalog)
     db.sales_state_set(f"auto_tr_seen:{o.get('id')}", "rebroadcast")
-    return {"ok": True, "created": created,
+    return {"ok": True, "created": created, "cleared": cleared,
             "items": [li.get("sku") for li in (o.get("line_items") or [])]}
 
 

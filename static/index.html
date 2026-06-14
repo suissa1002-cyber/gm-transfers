@@ -4786,7 +4786,7 @@ function paintWcOrder(){
       <a class="btn-ghost" style="text-decoration:none;padding:8px 12px" target="_blank" href="${escW(d.admin_url)}">פתח ב-WC ↗</a>
       ${d.cargo?`<button class="btn-ghost" style="padding:8px 12px;border-color:#0369a1;color:#0369a1;display:inline-flex;align-items:center;gap:6px" onclick="wcoCargoLabel(${d.id})">${ico('truck',14)} תווית Cargo</button>`
         :`<button class="btn-ghost" style="padding:8px 12px;border-color:#0369a1;color:#0369a1;display:inline-flex;align-items:center;gap:6px" onclick="wcoCargoCreate(${d.id},${(d.ship_tag||'').includes('tlv')?'true':'false'})">${ico('truck',14)} צור משלוח Cargo</button>`}
-      ${!d.bcast?`<button class="btn-ghost" style="padding:8px 12px;border-color:#15803d;color:#15803d;display:inline-flex;align-items:center;gap:6px" onclick="wcoAutoTransfer(${d.id})" title="מריץ מחדש את לוגיקת השיריון/השידור להזמנה (אחרי הצמדת מק״ט)">${ico('radio',14)} הרץ שיריון/שידור</button>`:''}
+      <button class="btn-ghost" style="padding:8px 12px;border-color:#15803d;color:#15803d;display:inline-flex;align-items:center;gap:6px" onclick="wcoAutoTransfer(${d.id},${d.bcast?1:0})" title="מריץ את לוגיקת השיריון/השידור להזמנה (אחרי הצמדת/תיקון מק״ט)">${ico('radio',14)} ${d.bcast?'שדר מחדש':'הרץ שיריון/שידור'}</button>
       ${['cancelled','failed','refunded'].includes(d.status)?`<button class="btn-ghost" style="padding:8px 12px;border-color:#b91c1c;color:#b91c1c;display:inline-flex;align-items:center;gap:6px" onclick="wcoTrash(${d.id})">${ico('trash',14)} העבר לפח</button>`:''}
     </div>
     <div style="display:flex;gap:8px;margin-top:12px">
@@ -4819,15 +4819,16 @@ async function wcoCargoLabel(oid){
   }catch(e){ toast('התווית לא זמינה',false); }
   hideLoading();
 }
-async function wcoAutoTransfer(oid){
+async function wcoAutoTransfer(oid,force){
+  if(force && !confirm('לבטל את השיריון הקיים ולשדר מחדש לפי המק״ט/מלאי הנוכחי?')) return;
   showLoading('מריץ שיריון/שידור…');
   try{
-    const r=await api('/api/admin/orders/'+oid+'/auto-transfer',{method:'POST'},60000);
+    const r=await api('/api/admin/orders/'+oid+'/auto-transfer'+(force?'?force=1':''),{method:'POST'},60000);
+    const bn={1:'גן העיר',2:'סטאר',3:'סיטי',4:'עד הלום',5:'אתר'};
     if(r.already) toast('כבר שודר ✓',true);
-    else if(r.created&&r.created.length){
-      const bn={1:'גן העיר',2:'סטאר',3:'סיטי',4:'עד הלום',5:'אתר'};
-      toast('שודר! '+r.created.map(c=>c.name+' מ'+(bn[c.src]||c.src)).join(' · '),true);
-    } else toast('לא נוצר שידור — אין מלאי בסניפים או חסר מק״ט',false);
+    else if(r.created&&r.created.length)
+      toast((r.cleared?'שודר מחדש! ':'שודר! ')+r.created.map(c=>c.name+' מ'+(bn[c.src]||c.src)).join(' · '),true);
+    else toast('לא נוצר שידור — אין מלאי בסניפים או חסר מק״ט',false);
     loadWcOrders(); openWcOrder(oid);
   }catch(e){ toast('הרצת השידור נכשלה',false); }
   hideLoading();
