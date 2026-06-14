@@ -2456,10 +2456,10 @@ def admin_order_detail(oid: int, x_admin_key: Optional[str] = Header(None)):
 
 
 @app.post("/api/admin/orders/{oid}/return")
-def admin_order_return(oid: int, x_admin_key: Optional[str] = Header(None)):
-    """פתיחת החזרה (איסוף מהלקוח חזרה אלינו): מתעד הערה פנימית + מסמן דגל 'החזרה'
-    על ההזמנה, ומחזיר את פרטי הלקוח (שם/טלפון/כתובת) לביצוע האיסוף בדשבורד Cargo.
-    יצירת האיסוף עצמה — בדשבורד Cargo (אופציה ב׳ — ביניים, בלי תלות ב-API)."""
+def admin_order_return(oid: int, close: int = 0,
+                       x_admin_key: Optional[str] = Header(None)):
+    """פתיחת/סגירת החזרה (איסוף מהלקוח). פתיחה: הערה + דגל 'החזרה' + פרטי לקוח
+    לביצוע בדשבורד Cargo (אופציה ב׳). close=1: מסיר את הדגל ומתעד שנסגרה."""
     _require_admin(x_admin_key)
     import requests as _rq
     import json as _json
@@ -2470,21 +2470,25 @@ def admin_order_return(oid: int, x_admin_key: Optional[str] = Header(None)):
     o = r.json()
     b = o.get("billing") or {}
     sh = o.get("shipping") or {}
-    try:   # הערה פנימית
+    num = str(o.get("number"))
+    note = ("↩️ החזרה נסגרה — דרך GreenOS" if close
+            else "↩️ נפתחה החזרה (איסוף מהלקוח) — דרך GreenOS")
+    try:
         _rq.post(f"{base}/wp-json/wc/v3/orders/{oid}/notes", auth=(k, s),
-                 json={"note": "↩️ נפתחה החזרה (איסוף מהלקוח) — דרך GreenOS",
-                       "customer_note": False}, timeout=20)
+                 json={"note": note, "customer_note": False}, timeout=20)
     except Exception:  # noqa: BLE001
         pass
-    try:   # דגל 'החזרה' להצגה בהזמנה
+    try:   # דגל 'החזרה': הוספה/הסרה
         raw = db.sales_state_get("order_return_list")
         lst = _json.loads(raw) if raw else []
-        num = str(o.get("number"))
-        if not any(str(x.get("number")) == num for x in lst):
+        lst = [x for x in lst if str(x.get("number")) != num]   # תמיד מסירים קודם
+        if not close:
             lst.insert(0, {"number": num})
-            db.sales_state_set("order_return_list", _json.dumps(lst[:200], ensure_ascii=False))
+        db.sales_state_set("order_return_list", _json.dumps(lst[:200], ensure_ascii=False))
     except Exception:  # noqa: BLE001
         pass
+    if close:
+        return {"ok": True, "closed": True}
     src = sh if (sh.get("address_1") or sh.get("city")) else b
     addr = ", ".join(x for x in [src.get("address_1"), src.get("city")] if x).strip(", ")
     return {"ok": True, "customer": {

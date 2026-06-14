@@ -4824,7 +4824,7 @@ function paintWcOrder(){
       ${d.cargo?`<button class="btn-ghost" style="padding:8px 12px;border-color:#0369a1;color:#0369a1;display:inline-flex;align-items:center;gap:6px" onclick="wcoCargoLabel(${d.id})">${ico('truck',14)} תווית Cargo</button>`
         :`<button class="btn-ghost" style="padding:8px 12px;border-color:#0369a1;color:#0369a1;display:inline-flex;align-items:center;gap:6px" onclick="wcoCargoCreate(${d.id},${(d.ship_tag||'').includes('tlv')?'true':'false'})">${ico('truck',14)} צור משלוח Cargo</button>`}
       <button class="btn-ghost" style="padding:8px 12px;border-color:#15803d;color:#15803d;display:inline-flex;align-items:center;gap:6px" onclick="wcoAutoTransfer(${d.id},${d.bcast?1:0})" title="מריץ את לוגיקת השיריון/השידור להזמנה (אחרי הצמדת/תיקון מק״ט)">${ico('radio',14)} ${d.bcast?'שדר מחדש':'הרץ שיריון/שידור'}</button>
-      <button class="btn-ghost" style="padding:8px 12px;border-color:#7c3aed;color:#7c3aed;display:inline-flex;align-items:center;gap:6px" onclick="wcoOpenReturn(${d.id})" title="פותח החזרה: מתעד בהזמנה + מעתיק פרטי לקוח + פותח דשבורד Cargo לאיסוף">↩️ ${d.return_open?'החזרה (פתוחה)':'פתח החזרה'}</button>
+      <button class="btn-ghost" style="padding:8px 12px;border-color:#7c3aed;color:#7c3aed;display:inline-flex;align-items:center;gap:6px" onclick="wcoOpenReturn(${d.id},${d.return_open?1:0})" title="${d.return_open?'סגירת ההחזרה':'פותח החזרה: מתעד בהזמנה + מעתיק פרטי לקוח + פותח דשבורד Cargo לאיסוף'}">↩️ ${d.return_open?'סגור החזרה':'פתח החזרה'}</button>
       ${['cancelled','failed','refunded'].includes(d.status)?`<button class="btn-ghost" style="padding:8px 12px;border-color:#b91c1c;color:#b91c1c;display:inline-flex;align-items:center;gap:6px" onclick="wcoTrash(${d.id})">${ico('trash',14)} העבר לפח</button>`:''}
     </div>
     <div style="display:flex;gap:8px;margin-top:12px">
@@ -4871,7 +4871,15 @@ async function wcoAutoTransfer(oid,force){
   }catch(e){ toast('הרצת השידור נכשלה',false); }
   hideLoading();
 }
-async function wcoOpenReturn(oid){
+async function wcoOpenReturn(oid,isOpen){
+  if(isOpen){
+    if(!confirm('לסגור את ההחזרה? (יוסר הסימון מההזמנה)')) return;
+    showLoading('סוגר החזרה…');
+    try{ await api('/api/admin/orders/'+oid+'/return?close=1',{method:'POST'},45000);
+      toast('החזרה נסגרה ✓',true); loadWcOrders(); openWcOrder(oid);
+    }catch(e){ toast('סגירת ההחזרה נכשלה',false); }
+    hideLoading(); return;
+  }
   if(!confirm('לפתוח החזרה (איסוף מהלקוח)?\nזה יתעד בהזמנה, יעתיק את פרטי הלקוח, ויפתח את דשבורד Cargo ליצירת האיסוף.')) return;
   showLoading('פותח החזרה…');
   try{
