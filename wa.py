@@ -359,17 +359,28 @@ def send_reply(phone: str, text: str):
     if not win["in_window"]:
         return {"sent": False, "needs_template": True, "window": win}
     _auto_human(phone)   # קודם מסמנים אנושי — שהבוט לא יקפוץ על ההודעה הבאה של הלקוח
-    # שלב 4 (ניתוק קונקטופ): מעדיפים שליחה ישירה דרך Meta אם מופעל; אחרת ConnectOp.
-    via = "text"
+    # שלב 4 (ניתוק קונקטופ): אנחנו בעלי המספר — מעדיפים שליחה ישירה דרך Meta
+    # (יציב, עוקף תקלות ConnectOp). אם Meta לא מוגדר/נכשל — נופלים ל-ConnectOp.
+    # שני הכשלים נתפסים ומוצפים כ-WaError (502) עם הסיבה האמיתית, לא "תקלה" גנרי.
+    via = ""
     wamid = ""
-    if os.getenv("WA_SEND_VIA_META", "0") == "1" and meta_direct_ready():
+    errs = []
+    if meta_direct_ready():
         try:
             wamid = _meta_send_text(phone, text)
             via = "text-meta"
         except Exception as e:  # noqa: BLE001
-            logger.warning("meta text send failed (%s) — ConnectOp fallback", e)
-    if not wamid:
-        _pub().send_text_as_human(phone, text)
+            errs.append(f"Meta: {e}")
+            logger.warning("meta text send failed: %s", e)
+    if not via:
+        try:
+            _pub().send_text_as_human(phone, text)
+            via = "text-connectop"
+        except Exception as e:  # noqa: BLE001
+            errs.append(f"ConnectOp: {e}")
+            logger.warning("connectop text send failed: %s", e)
+    if not via:
+        raise WaError("שליחה נכשלה בכל הערוצים — " + " | ".join(errs)[:300])
     _store_outbound(phone, text, wamid=wamid, mtype="text")
     logger.info("wa send text -> %s via %s (%d chars)", phone, via, len(text))
     return {"sent": True, "via": via, "window": win}
