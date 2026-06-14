@@ -359,9 +359,78 @@ def send_reply(phone: str, text: str):
     if not win["in_window"]:
         return {"sent": False, "needs_template": True, "window": win}
     _auto_human(phone)   # קודם מסמנים אנושי — שהבוט לא יקפוץ על ההודעה הבאה של הלקוח
-    resp = _pub().send_text_as_human(phone, text)
-    logger.info("wa send text -> %s (%d chars)", phone, len(text))
-    return {"sent": True, "via": "text", "window": win, "resp": resp}
+    # שלב 4 (ניתוק קונקטופ): מעדיפים שליחה ישירה דרך Meta אם מופעל; אחרת ConnectOp.
+    via = "text"
+    wamid = ""
+    if os.getenv("WA_SEND_VIA_META", "0") == "1" and meta_direct_ready():
+        try:
+            wamid = _meta_send_text(phone, text)
+            via = "text-meta"
+        except Exception as e:  # noqa: BLE001
+            logger.warning("meta text send failed (%s) — ConnectOp fallback", e)
+    if not wamid:
+        _pub().send_text_as_human(phone, text)
+    _store_outbound(phone, text, wamid=wamid, mtype="text")
+    logger.info("wa send text -> %s via %s (%d chars)", phone, via, len(text))
+    return {"sent": True, "via": via, "window": win}
+
+
+def fetch_meta_media(media_id: str):
+    """שלב 2 (מדיה): מוריד מדיה ממטא לפי media_id — קבלת URL זמני ואז הורדת הבייטים
+    (מאומת בטוקן). מחזיר (bytes, mime)."""
+    if not meta_direct_ready():
+        raise WaError("Meta ישיר לא מוגדר")
+    import os as _os
+    import requests as _rq
+    h = {"Authorization": f"Bearer {_os.getenv('META_WA_TOKEN').strip()}"}
+    r1 = _rq.get(f"{META_GRAPH}/{media_id}", headers=h, timeout=30)
+    if not r1.ok:
+        raise WaError(f"media lookup failed ({r1.status_code})")
+    info = r1.json()
+    url = info.get("url")
+    mime = info.get("mime_type") or "application/octet-stream"
+    if not url:
+        raise WaError("no media url")
+    r2 = _rq.get(url, headers=h, timeout=60)
+    if not r2.ok:
+        raise WaError(f"media download failed ({r2.status_code})")
+    return r2.content, mime
+
+
+def _meta_send_text(phone: str, text: str) -> str:
+    """שליחת טקסט חופשי ישירות דרך WhatsApp Cloud API של מטא. מחזיר wamid."""
+    if not meta_direct_ready():
+        raise WaError("Meta ישיר לא מוגדר")
+    import os as _os
+    import requests as _rq
+    r = _rq.post(f"{META_GRAPH}/{_os.getenv('META_WA_PHONE_ID').strip()}/messages",
+                 headers={"Authorization": f"Bearer {_os.getenv('META_WA_TOKEN').strip()}",
+                          "Content-Type": "application/json"},
+                 json={"messaging_product": "whatsapp", "to": phone, "type": "text",
+                       "text": {"body": text}}, timeout=30)
+    if r.status_code not in (200, 201):
+        raise WaError(f"Meta text send failed ({r.status_code}): {r.text[:200]}")
+    return ((r.json().get("messages") or [{}])[0]).get("id", "")
+
+
+def _store_outbound(phone: str, text: str, wamid: str = "", mtype: str = "text",
+                    media_url: str = ""):
+    """שומר הודעה יוצאת בחנות העצמאית (wa_msg) — חובה כי webhook של מטא לא מחזיר
+    את ההודעות שלנו. גם wa_shadow (לתצוגה ב-get_thread בזמן מעבר)."""
+    import db
+    ts = int(time.time())
+    wid = wamid or f"gm-out-{ts}-{abs(hash(text)) % 100000}"
+    try:
+        db.wa_msg_upsert(wamid=wid, phone=str(phone), direction="out", mtype=mtype,
+                         text=text or "", media_url=media_url or "", ts=ts, status="sent")
+        db.wa_contact_upsert(str(phone), out_ts=ts)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("store outbound failed: %s", e)
+    if wamid:
+        try:
+            db.wa_shadow_add(str(phone), wamid, text or "", ts=ts)
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def send_template(phone: str, name: str, body: str):

@@ -331,6 +331,28 @@ async def wa_webhook_recv(request: Request):
     return {"ok": True}
 
 
+@app.get("/api/wa/media")
+def wa_media(wamid: str, x_admin_key: Optional[str] = Header(None)):
+    """שלב 2 (מדיה): היסטורי → redirect ל-CDN של ChatRace; חי (מטא) → הורדה+הזרמה."""
+    _require_admin(x_admin_key)
+    m = db.wa_msg_get(wamid)
+    if not m:
+        raise HTTPException(404, "הודעה לא נמצאה")
+    if m.get("media_url"):
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(m["media_url"])
+    mid = m.get("media_id")
+    if not mid:
+        raise HTTPException(404, "אין מדיה")
+    import wa
+    try:
+        content, mime = wa.fetch_meta_media(mid)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, str(e)[:200])
+    from fastapi.responses import Response
+    return Response(content, media_type=mime)
+
+
 @app.get("/api/admin/wa/store-stats")
 def wa_store_stats(x_admin_key: Optional[str] = Header(None)):
     """כמה הודעות כבר נאספו בחנות העצמאית — לניטור שלב הקבלה."""

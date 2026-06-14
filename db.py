@@ -1508,6 +1508,14 @@ def wa_msg_count() -> int:
         return cur.fetchone()["n"]
 
 
+def wa_msg_get(wamid: str):
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM wa_msg WHERE wamid = ?"), (str(wamid),))
+        r = cur.fetchone()
+        return dict(r) if r else None
+
+
 def wa_contact_get(phone: str):
     with _conn() as c:
         cur = c.cursor()
