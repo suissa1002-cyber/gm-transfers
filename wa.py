@@ -265,6 +265,18 @@ def get_thread(phone: str, limit: int = 60):
     for m in slim:
         if m.get("reply_to") and not m.get("reply_preview"):
             m["reply_preview"] = (by_id.get(m["reply_to"]) or "")[:90]
+    # שכבת סטטוס מסירה/קריאה: ה-webhook של מטא שומר sent/delivered/read ב-wa_msg
+    # (id ההודעה == wamid). מרכיבים על הודעות יוצאות. כרגע מתמלא רק להודעות
+    # שנשלחו דרך Meta ישיר; אחרי cutover — לכל ההודעות.
+    try:
+        st_map = {r.get("wamid"): r.get("status")
+                  for r in db.wa_msg_thread(phone, limit=200) if r.get("status")}
+    except Exception:  # noqa: BLE001
+        st_map = {}
+    if st_map:
+        for m in slim:
+            if m.get("direction") == "out" and st_map.get(m.get("id")):
+                m["status"] = st_map[m["id"]]
     return {"phone": phone, "messages": slim, "window": _window_state(slim),
             "entry_product": entry_product}
 

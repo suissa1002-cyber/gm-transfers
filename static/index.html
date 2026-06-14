@@ -3479,7 +3479,22 @@ function waBubble(m){
   const press=m.id?` data-mid="${escW(String(m.id))}" data-prev="${escW(String((m.text||'').slice(0,90)))}" data-full="${escW(String(m.text||''))}"
     onpointerdown="waBubPress(event,this)" onpointerup="waBubRelease()" onpointercancel="waBubRelease()"
     onpointermove="waBubMove(event)" oncontextmenu="waBubCtx(event,this)"`:'';
-  return `<div class="wa-b ${m.direction==='in'?'wa-in':'wa-out'}"${press}>${mark}${quote}${media}${escW(txt)}<div class="wa-t">${m.ts?fmtTime(new Date(m.ts*1000).toISOString()):''}</div></div>`;
+  return `<div class="wa-b ${m.direction==='in'?'wa-in':'wa-out'}"${press}>${mark}${quote}${media}${escW(txt)}<div class="wa-t">${m.ts?fmtTime(new Date(m.ts*1000).toISOString()):''}${waTicks(m)}</div></div>`;
+}
+// סימוני מסירה/קריאה (וי) על הודעות יוצאות — לפי סטטוס ממטא (sent/delivered/read/failed).
+// ✓ אפור = נשלח · ✓✓ אפור = נמסר · ✓✓ כחול = נקרא · ⚠ אדום = נכשל. בלי סטטוס — כלום.
+function waTicks(m){
+  if(m.direction!=='out') return '';
+  const st=m.status||'';
+  if(st==='failed') return ` <span class="wa-tk" title="נכשל" style="color:#e5484d">⚠</span>`;
+  if(st!=='sent'&&st!=='delivered'&&st!=='read') return '';
+  const col=st==='read'?'#34b7f1':'var(--muted)';
+  const ttl=st==='read'?'נקרא':st==='delivered'?'נמסר':'נשלח';
+  const a=`M1 6 L4 9 L9.6 2.6`, b=`M6 6 L9 9 L16.6 1.8`;
+  const dd=st==='sent'
+    ?`<path d="${a}" fill="none" stroke="${col}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`
+    :`<path d="${a}" fill="none" stroke="${col}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="${b}" fill="none" stroke="${col}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`;
+  return ` <span class="wa-tk" title="${ttl}" style="display:inline-block;vertical-align:-1px"><svg viewBox="0 0 18 12" width="15" height="10">${dd}</svg></span>`;
 }
 let _bubT=null,_bubXY=null;
 function waBubPress(e,el){
