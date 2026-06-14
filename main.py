@@ -2358,14 +2358,19 @@ class OrderStatusIn(BaseModel):
 def admin_order_status(oid: int, body: OrderStatusIn, x_admin_key: Optional[str] = Header(None)):
     _require_admin(x_admin_key)
     import requests as _rq
-    allowed = {"pending", "processing", "on-hold", "completed", "cancelled", "refunded", "failed"}
-    if body.status not in allowed:
-        raise HTTPException(400, "סטטוס לא מוכר")
     base, k, s = _wc_creds()
-    r = _rq.put(f"{base}/wp-json/wc/v3/orders/{oid}", json={"status": body.status},
+    # אימות מול רשימת הסטטוסים האמיתית של האתר (כולל מותאמים: shipping-stage,
+    # order-ready, delivered, send-cargo...) ולא רשימה קשיחה. ליבה כ-fallback.
+    core = {"pending", "processing", "on-hold", "completed", "cancelled", "refunded", "failed"}
+    valid = set(_wc_statuses(base, k, s).keys()) | core
+    st = (body.status or "").strip()
+    st = st[3:] if st.startswith("wc-") else st   # תמיכה גם אם נשלח עם תחילית wc-
+    if st not in valid:
+        raise HTTPException(400, f"סטטוס לא מוכר: {st}")
+    r = _rq.put(f"{base}/wp-json/wc/v3/orders/{oid}", json={"status": st},
                 auth=(k, s), timeout=45)
     if not r.ok:
-        raise HTTPException(502, f"עדכון הסטטוס נכשל ({r.status_code})")
+        raise HTTPException(502, f"עדכון הסטטוס נכשל ({r.status_code}: {r.text[:150]})")
     return {"ok": True, "status": r.json().get("status")}
 
 
@@ -2400,6 +2405,28 @@ class CargoCreateIn(BaseModel):
     double: bool = False        # משלוח כפול
 
 
+def _advance_to_shipping(oid: int):
+    """אחרי הפקת תווית Cargo — מקדם את ההזמנה ל'בשלב הפצה' (shipping-stage),
+    אלא אם היא כבר בסטטוס מתקדם/סופי יותר (לא מורידים אחורה). best-effort:
+    כשל כאן לעולם לא מפיל את הפקת התווית. מחזיר את הסטטוס הסופי (או None)."""
+    try:
+        base, k, s = _wc_creds()
+        import requests as _rq
+        cur = _rq.get(f"{base}/wp-json/wc/v3/orders/{oid}",
+                      params={"_fields": "id,status"}, auth=(k, s), timeout=20)
+        st = (cur.json().get("status") if cur.ok else "") or ""
+        later = {"shipping-stage", "delivered", "completed", "order-ready",
+                 "tlv-pickup", "cancelled", "refunded"}
+        if st in later:
+            return st     # כבר בשלב הזה או מעבר לו — לא נוגעים
+        r = _rq.put(f"{base}/wp-json/wc/v3/orders/{oid}",
+                    json={"status": "shipping-stage"}, auth=(k, s), timeout=30)
+        return (r.json().get("status") if r.ok else st)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("auto shipping-stage failed for %s: %s", oid, e)
+        return None
+
+
 @app.post("/api/admin/orders/{oid}/cargo")
 def admin_order_cargo(oid: int, body: CargoCreateIn, x_admin_key: Optional[str] = Header(None)):
     """יצירת משלוח Cargo להזמנה — דרך תוסף הגשר באתר (מפעיל את תוסף Cargo הרשמי)."""
@@ -2426,6 +2453,7 @@ def admin_order_cargo(oid: int, body: CargoCreateIn, x_admin_key: Optional[str] 
                      headers={"User-Agent": _PP_UA}, timeout=60)
         if rl.ok and rl.json().get("ok"):
             out["pdf"] = rl.json().get("pdf")
+            out["status"] = _advance_to_shipping(oid)   # יש תווית → ההזמנה בשלב הפצה
     except Exception:  # noqa: BLE001
         pass
     return out
@@ -2444,7 +2472,8 @@ def admin_order_cargo_label(oid: int, x_admin_key: Optional[str] = Header(None))
         j = {}
     if not r.ok or not j.get("ok"):
         raise HTTPException(502, "התווית לא זמינה — ודא שקיים משלוח להזמנה")
-    return {"ok": True, "pdf": j.get("pdf")}
+    new_status = _advance_to_shipping(oid)   # הדפסת תווית → ההזמנה בשלב הפצה
+    return {"ok": True, "pdf": j.get("pdf"), "status": new_status}
 
 
 class OrderNoteIn(BaseModel):

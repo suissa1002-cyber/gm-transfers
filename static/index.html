@@ -4756,7 +4756,8 @@ async function wcoCargoCreate(oid,pickup){
       body:JSON.stringify({pickup:!!pickup})},120000);
     toast(r.existing?'כבר קיים משלוח להזמנה ✓':'המשלוח נוצר ב-Cargo ✓',true);
     if(r.pdf) window.open(r.pdf,'_blank');
-    openWcOrder(oid);
+    if(r.status==='shipping-stage') toast('ההזמנה עברה לשלב הפצה ✓',true);
+    loadWcOrders(); openWcOrder(oid);
   }catch(e){ toast('יצירת המשלוח נכשלה — ודא שתוסף הגשר מותקן',false); }
   hideLoading();
 }
@@ -4766,6 +4767,7 @@ async function wcoCargoLabel(oid){
     const r=await api('/api/admin/orders/'+oid+'/cargo-label',null,60000);
     if(r.pdf) window.open(r.pdf,'_blank');
     else toast('אין תווית זמינה',false);
+    if(r.status==='shipping-stage'){ toast('ההזמנה עברה לשלב הפצה ✓',true); loadWcOrders(); openWcOrder(oid); }
   }catch(e){ toast('התווית לא זמינה',false); }
   hideLoading();
 }
