@@ -2242,7 +2242,7 @@ def admin_orders_list(page: int = 1, status: str = "", search: str = "",
             "shipping": ", ".join((sl.get("method_title") or "") for sl in (o.get("shipping_lines") or [])),
             "greenos": bool(meta.get("greenos_source")),
             "cargo": bool(meta.get("cslfw_shipping")),
-            "cargo_status": _cargo_status(meta),   # תג סטטוס משלוח חי מ-Cargo
+            "cargo_status": _cargo_status(meta, (o.get("billing") or {}).get("email") or ""),
         })
     # no-store — אסור לקאש ב-edge: אחרת סימוני שודר/חסר/חלקי מתעדכנים באיחור
     # (אותו לקח כמו /orders/latest — שורת שידור חדשה לא נראתה אחרי רענונים)
@@ -2272,9 +2272,10 @@ def _wc_statuses(base, k, s) -> dict:
     return _wc_statuses_cache["map"]
 
 
-def _cargo_status(meta: dict):
-    """תג סטטוס המשלוח מ-Cargo (meta cslfw_shipping): {tracking, text, num, line}.
-    כמה משלוחים → האחרון לפי created_at. None אם אין משלוח."""
+def _cargo_status(meta: dict, email: str = ""):
+    """תג סטטוס המשלוח מ-Cargo (meta cslfw_shipping): {tracking, text, num, line,
+    track_url}. כמה משלוחים → האחרון לפי created_at. None אם אין משלוח.
+    track_url = דף מעקב Cargo ללקוח (trackingId + אימייל הלקוח), להעתקה/שליחה."""
     cs = (meta or {}).get("cslfw_shipping")
     if not isinstance(cs, dict) or not cs:
         return None
@@ -2284,9 +2285,14 @@ def _cargo_status(meta: dict):
     items.sort(key=lambda x: str(x[1].get("created_at") or ""))
     sid, sh = items[-1]
     st = sh.get("status") or {}
+    from urllib.parse import quote
+    track_url = f"https://dashboard.cargo.co.il/tracking-page?trackingId={quote(str(sid))}"
+    if email:
+        track_url += f"&customerField={quote(str(email))}"
     return {"tracking": str(sid), "text": str(st.get("text") or "").strip(),
             "num": st.get("number"), "line": str(sh.get("line_number") or "").strip(),
-            "driver": str(sh.get("driver_name") or "").strip()}
+            "driver": str(sh.get("driver_name") or "").strip(),
+            "track_url": track_url}
 
 
 def _ship_tag(o: dict, meta: dict = None) -> str:
@@ -2426,7 +2432,7 @@ def admin_order_detail(oid: int, x_admin_key: Optional[str] = Header(None)):
         "shipping_lines": [sl.get("method_title") for sl in (o.get("shipping_lines") or [])],
         "greenos": {kk: vv for kk, vv in meta.items() if str(kk).startswith("greenos")},
         "cargo": meta.get("cslfw_shipping") or None,
-        "cargo_status": _cargo_status(meta),
+        "cargo_status": _cargo_status(meta, (o.get("billing") or {}).get("email") or ""),
         "notes": notes,
         "admin_url": f"{base}/wp-admin/post.php?post={oid}&action=edit",
     }
