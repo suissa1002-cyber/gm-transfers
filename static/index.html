@@ -4880,25 +4880,38 @@ async function wcoOpenReturn(oid,isOpen){
     }catch(e){ toast('סגירת ההחזרה נכשלה',false); }
     hideLoading(); return;
   }
-  if(!confirm('לפתוח החזרה (איסוף מהלקוח)?\nזה יתעד בהזמנה, יעתיק את פרטי הלקוח, ויפתח את דף יצירת המשלוח ב-Cargo.')) return;
-  // 1) בונים את הטקסט מההזמנה שכבר טעונה (סינכרוני, בתוך לחיצת המשתמש)
+  if(!confirm('לפתוח החזרה (איסוף מהלקוח)?\nזה יתעד בהזמנה, יפתח את דף יצירת המשלוח ב-Cargo, ויציג פרטי לקוח להעתקה שדה-שדה.')) return;
+  // פרטי הלקוח מההזמנה הטעונה — כל שדה בנפרד (להדבקה לשדות Cargo)
   const d=S._wcoD||{}, b=d.billing||{}, sh=d.shipping||{};
   const src=(sh.address_1||sh.city)?sh:b;
-  const nm=((src.first_name||b.first_name||'')+' '+(src.last_name||b.last_name||'')).trim();
-  const addr=[src.address_1,src.city].filter(Boolean).join(', ');
-  S._returnTxt=[nm, b.phone, addr, b.email].filter(Boolean).join(' · ');
-  // 2) מעתיקים *קודם* — כשהמסמך עוד בפוקוס (לפני פתיחת חלון שגונב פוקוס, ובתוך הג׳סצ׳ר)
-  let copied=false;
-  try{ if(navigator.clipboard&&navigator.clipboard.writeText&&S._returnTxt){ navigator.clipboard.writeText(S._returnTxt); copied=true; } }catch(e){}
-  // 3) רק עכשיו פותחים את Cargo (עדיין בתוך הג׳סצ׳ר → לא נחסם)
-  const cargoWin=window.open('https://dashboard.cargo.co.il/company/create-shipment/177','_blank');
+  S._retFields={
+    name:((src.first_name||b.first_name||'')+' '+(src.last_name||b.last_name||'')).trim(),
+    phone:b.phone||'', street:(src.address_1||b.address_1||''),
+    city:(src.city||b.city||''), email:b.email||''
+  };
+  const cargoWin=window.open('https://dashboard.cargo.co.il/company/create-shipment/177','_blank');   // gesture → לא נחסם
   showLoading('פותח החזרה…');
-  try{
-    await api('/api/admin/orders/'+oid+'/return',{method:'POST'},45000);   // תיעוד הערה + דגל
-    toast((copied?'פרטי הלקוח הועתקו ✓ · ':'')+'↩️ החזרה נפתחה'+(cargoWin?'':' · חלון Cargo נחסם, פתח ידנית'),true);
-    loadWcOrders(); openWcOrder(oid);
-  }catch(e){ toast('פתיחת ההחזרה נכשלה',false); }
+  try{ await api('/api/admin/orders/'+oid+'/return',{method:'POST'},45000); }catch(e){}   // תיעוד הערה + דגל
   hideLoading();
+  loadWcOrders();
+  showReturnDetails();
+}
+function showReturnDetails(){
+  const f=S._retFields||{};
+  const row=(label,key)=> f[key]?`<div style="display:flex;align-items:center;gap:8px;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--line)">
+      <span style="min-width:0;overflow:hidden;text-overflow:ellipsis"><span class="muted">${label}:</span> <b>${escW(f[key])}</b></span>
+      <button class="btn-ghost" style="padding:5px 11px;flex:none" onclick="retCopy('${key}')">📋 העתק</button></div>`:'';
+  document.getElementById('modalRoot').innerHTML=`<div class="overlay" onclick="closeModal()"><div class="modal" style="max-width:470px;text-align:right;line-height:1.5" onclick="event.stopPropagation()">
+    <h3 style="margin:0 0 4px;display:flex;align-items:center;gap:7px">↩️ פרטי החזרה — להדבקה ב-Cargo</h3>
+    <div class="muted" style="font-size:13px;margin-bottom:10px">ב-Cargo בחר סוג <b>"איסוף (מנמען לבית העסק)"</b>, והעתק כל שדה למקומו 👇</div>
+    ${row('שם','name')}${row('טלפון','phone')}${row('רחוב','street')}${row('עיר','city')}${row('מייל','email')}
+    <button class="btn-primary" style="width:100%;margin-top:14px" onclick="closeModal()">סגור</button>
+  </div></div>`;
+}
+function retCopy(key){
+  const v=(S._retFields||{})[key]||'';
+  if(!v) return;
+  try{ navigator.clipboard.writeText(v); toast('הועתק ✓ — הדבק ב-Cargo',true); }catch(e){ toast('העתקה נכשלה',false); }
 }
 async function wcoTrash(oid){
   // אישור כפול — מחיקה לפח (שחזור אפשרי מתוך WC, אבל לא מכאן)
