@@ -2377,6 +2377,33 @@ def admin_order_detail(oid: int, x_admin_key: Optional[str] = Header(None)):
     }
 
 
+@app.post("/api/admin/orders/{oid}/auto-transfer")
+def admin_order_auto_transfer(oid: int, x_admin_key: Optional[str] = Header(None)):
+    """מריץ מחדש את auto_transfer על הזמנה בודדת — לשימוש אחרי הצמדת SKU למוצר
+    שהיה מנותק (כמו ה-Sony). משדר/מסמן לפי מלאי. לא יוצר כפילות אם כבר שודר."""
+    _require_admin(x_admin_key)
+    import requests as _rq
+    import auto_transfer
+    import re as _re3
+    base, k, s = _wc_creds()
+    r = _rq.get(f"{base}/wp-json/wc/v3/orders/{oid}", auth=(k, s), timeout=45)
+    if not r.ok:
+        raise HTTPException(404, "הזמנה לא נמצאה")
+    o = r.json()
+    catalog = db.catalog_load()
+    if not catalog:
+        raise HTTPException(503, "קטלוג לא טעון — נסה שוב בעוד דקה")
+    onum = str(o.get("number"))
+    existing = [ln for ln in db.plan_list()
+                if _re3.search(rf"הזמנת אתר #{onum}(?!\d)", ln.get("created_by") or "")]
+    if existing:
+        return {"ok": True, "already": True, "lines": len(existing)}
+    created = auto_transfer._handle_order(o, catalog)
+    db.sales_state_set(f"auto_tr_seen:{o.get('id')}", "rebroadcast")
+    return {"ok": True, "created": created,
+            "items": [li.get("sku") for li in (o.get("line_items") or [])]}
+
+
 class OrderStatusIn(BaseModel):
     status: str
 
