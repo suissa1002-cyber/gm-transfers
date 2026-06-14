@@ -4882,7 +4882,7 @@ async function wcoOpenReturn(oid,isOpen){
   }
   if(!confirm('לפתוח החזרה (איסוף מהלקוח)?\nזה יתעד בהזמנה, יעתיק את פרטי הלקוח, ויפתח את דשבורד Cargo ליצירת האיסוף.')) return;
   // ⚠️ לפתוח את Cargo *כאן*, בתוך לחיצת המשתמש ולפני ה-await — אחרת הדפדפן חוסם את ה-popup
-  const cargoWin=window.open('https://dashboard.cargo.co.il/company/177/dashboard','_blank');
+  const cargoWin=window.open('https://dashboard.cargo.co.il/company/create-shipment/177','_blank');   // דף יצירת משלוח — בחר סוג "איסוף (מנמען לבית העסק)" = החזרה
   showLoading('פותח החזרה…');
   try{
     const r=await api('/api/admin/orders/'+oid+'/return',{method:'POST'},45000);
