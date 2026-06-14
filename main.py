@@ -321,13 +321,18 @@ async def wa_webhook_recv(request: Request):
     raw = await request.body()
     import wa_webhook
     sig = request.headers.get("x-hub-signature-256", "")
-    if not wa_webhook.verify_signature(raw, sig):
-        raise HTTPException(403, "bad signature")
-    try:
-        wa_webhook.process(raw)
-    except Exception as e:  # noqa: BLE001
-        logger.warning("wa webhook process failed: %s", e)
-    wa_webhook.forward_to_connectop(raw, sig)   # העברה לקונקטופ בזמן מעבר
+    # בטיחות cutover: מעבירים לקונקטופ עותק זהה (כולל החתימה המקורית) **תמיד**,
+    # לפני ובלי תלות באימות/עיבוד שלנו — כך הבוט שלהם לעולם לא נשבר במעבר.
+    # הם מאמתים את החתימה בעצמם, וזה זהה למה שמטא שולח להם היום.
+    wa_webhook.forward_to_connectop(raw, sig)
+    # העיבוד והשמירה שלנו — רק על חתימה תקפה (מגן על החנות שלנו, לא על קונקטופ).
+    if wa_webhook.verify_signature(raw, sig):
+        try:
+            wa_webhook.process(raw)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("wa webhook process failed: %s", e)
+    else:
+        logger.warning("wa webhook bad signature — הועבר לקונקטופ, דילגנו על שמירה מקומית")
     return {"ok": True}
 
 
