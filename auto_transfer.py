@@ -29,6 +29,10 @@ SITE_BRANCH = 5
 PREF_SOURCE = [2, 1, 3, 4]          # סטאר ראשון — הוראת אסי; אח"כ שאר הסניפים
 # processing = שולם. אפשר להרחיב ב-env, מופרד בפסיקים (למשל "processing,on-hold")
 STATUSES = [s.strip() for s in os.getenv("AUTO_TR_STATUSES", "processing").split(",") if s.strip()]
+# קטגוריות שמשדרים בהן בקשת **כמות** (מק"ט בלבד), בלי סריאל ספציפי — גם אם המוצר
+# מנוהל-סריאל בקופה. אוזניות/שמע = מוצר קטן עם הרבה יחידות זהות; לחפש סריאל ספציפי
+# בסניף זה מטרד מיותר (בקשת אסי 14/06). הסניף לוקח כל יחידה מאותו מק"ט.
+NO_SERIAL_BCAST_CATEGORIES = {"שמע", "אוזניות גיימינג"}
 
 
 def _wc_creds():
@@ -151,8 +155,11 @@ def _handle_order(o: dict, catalog: dict) -> list:
             continue
         # מוצר סריאלי: מצמידים יחידות ספציפיות (הוותיקות) — כמו בבקשה ידנית.
         # כך היחידה מוצגת "משוריין לאתר" במלאי חי, וקליטתה סוגרת את הבקשה אוטומטית.
+        # יוצא דופן: אוזניות/שמע — משדרים לפי כמות בלבד (בלי סריאל ספציפי), כי יש
+        # הרבה יחידות זהות וחיפוש סריאל בסניף מיותר. הקליטה סוגרת לפי כמות/ברקוד.
+        by_qty = (cat_it.get("category") or "") in NO_SERIAL_BCAST_CATEGORIES
         lines = []
-        if (catalog.get(sku) or {}).get("kind") == "serial":
+        if (catalog.get(sku) or {}).get("kind") == "serial" and not by_qty:
             try:
                 raw = no.get_product_serials(sku) or []
                 units = [u for u in raw
