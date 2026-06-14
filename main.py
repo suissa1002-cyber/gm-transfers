@@ -2181,22 +2181,10 @@ def admin_orders_list(page: int = 1, status: str = "", search: str = "",
     r = _rq.get(f"{base}/wp-json/wc/v3/orders", params=params, auth=(k, s), timeout=45)
     if not r.ok:
         raise HTTPException(502, f"קריאת הזמנות נכשלה ({r.status_code})")
-    # אילו הזמנות עם בקשת העברה משודרת (אוטו) — לפי created_by בתוכנית ההעברות
+    # אילו הזמנות עם בקשת העברה משודרת (אוטו) — לפי created_by בתוכנית ההעברות.
+    # מצרפים את **כל** הסניפים+כמויות (הזמנה רב-יחידתית מתפצלת בין סניפים).
     import re as _re
-    bcast_map = {}
-    try:
-        for ln in db.plan_list():
-            m2 = _re.search(r"הזמנת אתר #(\d+)", ln.get("created_by") or "")
-            if m2:
-                st = "live" if int(ln.get("bcast") or 0) == 1 else "closed"
-                onum = m2.group(1)
-                branch = cfg.branch_name(ln.get("from_branch"))
-                prev = bcast_map.get(onum)
-                # שורה "live" גוברת על "closed"; שומרים את שם סניף המקור לטולטיפ
-                if not prev or (prev.get("status") != "live"):
-                    bcast_map[onum] = {"status": st, "branch": branch}
-    except Exception:  # noqa: BLE001
-        pass
+    bcast_map = _build_bcast_map(db.plan_list())
     # הזמנות שסומנו 'חסר בכל הסניפים' (auto_transfer) — להצגת אייקון OOS
     oos_set = set()
     partial_set = set()
@@ -2270,6 +2258,32 @@ def _wc_statuses(base, k, s) -> dict:
     except Exception as e:  # noqa: BLE001
         logger.warning("statuses fetch failed: %s", e)
     return _wc_statuses_cache["map"]
+
+
+def _build_bcast_map(plan_lines):
+    """מס׳ הזמנה → מצב שידור מצרפי לכל הסניפים+כמויות (פיצול רב-יחידתי בין סניפים).
+    {onum: {status: live/closed, branch: <ראשון — תאימות>, branches: [{name,qty,status}]}}"""
+    import re as _re
+    agg = {}
+    for ln in (plan_lines or []):
+        m2 = _re.search(r"הזמנת אתר #(\d+)", ln.get("created_by") or "")
+        if not m2:
+            continue
+        onum = m2.group(1)
+        bname = cfg.branch_name(ln.get("from_branch"))
+        live = int(ln.get("bcast") or 0) == 1
+        be = agg.setdefault(onum, {}).setdefault(bname, {"qty": 0, "live": False})
+        be["qty"] += int(ln.get("qty") or 1)
+        if live:
+            be["live"] = True
+    out = {}
+    for onum, branches in agg.items():
+        blist = [{"name": bn, "qty": v["qty"], "status": "live" if v["live"] else "closed"}
+                 for bn, v in branches.items()]
+        blist.sort(key=lambda b: 0 if b["status"] == "live" else 1)
+        out[onum] = {"status": "live" if any(b["status"] == "live" for b in blist) else "closed",
+                     "branch": blist[0]["name"] if blist else "", "branches": blist}
+    return out
 
 
 def _cargo_status(meta: dict, email: str = ""):
@@ -2380,17 +2394,10 @@ def admin_order_detail(oid: int, x_admin_key: Optional[str] = Header(None)):
         "clearing": meta.get("payplus_clearing_name") or "",
         "status_desc": meta.get("payplus_status_description") or "",
     }
-    # בקשת העברה משודרת לאתר עבור ההזמנה (לאיזה סניף + מצב) — להצגה במובייל (אין tooltip)
+    # בקשת העברה משודרת לאתר — כל הסניפים+כמויות (פיצול רב-יחידתי בין סניפים)
     bcast = None
     try:
-        import re as _re2
-        onum = str(o.get("number"))
-        for ln in db.plan_list():
-            m2 = _re2.search(r"הזמנת אתר #(\d+)", ln.get("created_by") or "")
-            if m2 and m2.group(1) == onum:
-                st = "live" if int(ln.get("bcast") or 0) == 1 else "closed"
-                if (bcast is None) or (bcast.get("status") != "live"):
-                    bcast = {"status": st, "branch": cfg.branch_name(ln.get("from_branch"))}
+        bcast = _build_bcast_map(db.plan_list()).get(str(o.get("number")))
     except Exception:  # noqa: BLE001
         pass
     oos = False

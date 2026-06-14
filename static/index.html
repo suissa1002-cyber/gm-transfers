@@ -4527,14 +4527,20 @@ function ordTag(st){
   return `<span class="ord-st" style="color:${c};border-color:${c}55;background:${c}14">${escW(ordStName(st))}</span>`;
 }
 // אייקוני סטטוס שיריון/מלאי על שורת הזמנה: שודר / חסר / שודר חלקי (גם שודר וגם חסר) / מק״ט חסר
+// פירוט סניפי השידור + כמויות (הזמנה רב-יחידתית מתפצלת בין סניפים): "גן העיר (1) · סיטי (1)"
+function bcastBranches(bc){
+  if(!bc) return '';
+  const bs=(bc.branches&&bc.branches.length)?bc.branches:[{name:bc.branch||'סניף',qty:1}];
+  return bs.map(b=>`${b.name} (${b.qty} יח׳)`).join(' · ');
+}
 function ordFlagIcons(o,sz){
   let h='';
   const partial = o.partial || (o.bcast&&o.oos);   // חלק שודר וחלק חסר (דגל יציב או שידור פעיל+חוסר)
   if(partial){   // שודר חלקי (אמבר)
-    const br = o.bcast ? (o.bcast.branch||'סניף') : '';
-    h+=`<span title="שודר חלקי — חלק מההזמנה שודר${br?' ל'+br:''}, פריט אחר חסר במלאי (להשיג מהספק)" style="color:#d97706;display:inline-flex;vertical-align:-2px">${ico('radio',sz)}</span>`;
+    const br = o.bcast ? bcastBranches(o.bcast) : '';
+    h+=`<span title="שודר חלקי — חלק מההזמנה שודר${br?' ל: '+br:''}, פריט אחר חסר במלאי (להשיג מהספק)" style="color:#d97706;display:inline-flex;vertical-align:-2px">${ico('radio',sz)}</span>`;
   } else {
-    if(o.bcast) h+=`<span title="בקשת העברה שודרה ל${o.bcast.branch||'סניף'}${o.bcast.status==='live'?' — ממתינה לביצוע':' — נסגרה במסך הסניף (טרם בוצעה)'}" style="color:${o.bcast.status==='live'?'#15803d':'var(--muted)'};display:inline-flex;vertical-align:-2px">${ico('radio',sz)}</span>`;
+    if(o.bcast) h+=`<span title="בקשת העברה שודרה ל: ${bcastBranches(o.bcast)}${o.bcast.status==='live'?' — ממתינה לביצוע':' — נסגרה במסך הסניף (טרם בוצעה)'}" style="color:${o.bcast.status==='live'?'#15803d':'var(--muted)'};display:inline-flex;vertical-align:-2px">${ico('radio',sz)}</span>`;
     if(o.oos) h+=`<span title="המוצר חסר במלאי בכל הסניפים — יש להשיג מהספק" style="color:#dc2626;display:inline-flex;vertical-align:-2px">${ico('pkgx',sz)}</span>`;
   }
   if(o.nosku) h+=`<span title="פריט ללא מק״ט מחובר לקופה — לא ניתן לשריין/לשדר. הוסף מק״ט למוצר ב-WooCommerce" style="color:#d97706;display:inline-flex;vertical-align:-2px">${ico('tag',sz)}</span>`;
@@ -4759,8 +4765,8 @@ function paintWcOrder(){
     ${(d.bcast||d.oos||d.nosku)?`<div style="display:flex;flex-wrap:wrap;gap:7px;margin-bottom:16px">
       ${d.nosku?`<span class="ord-st" style="color:#d97706;border-color:#d9770655;background:#d977060f;display:inline-flex;align-items:center;gap:6px">${ico('tag',14)} פריט ללא מק״ט מחובר — הוסף מק״ט למוצר ב-WooCommerce</span>`:''}
       ${(d.partial || (d.bcast&&d.oos))
-        ? `<span class="ord-st" style="color:#d97706;border-color:#d9770655;background:#d977060f;display:inline-flex;align-items:center;gap:6px">${ico('radio',14)} שודר חלקי — חלק מההזמנה שודר${d.bcast?` ל${escW(d.bcast.branch||'סניף')}`:''}, פריט אחר חסר במלאי (להשיג מהספק)</span>`
-        : `${d.oos?`<span class="ord-st" style="color:#dc2626;border-color:#dc262655;background:#dc26260f;display:inline-flex;align-items:center;gap:6px">${ico('pkgx',14)} חסר במלאי בכל הסניפים — להשיג מהספק</span>`:''}${d.bcast?`<span class="ord-st" style="color:${d.bcast.status==='live'?'#15803d':'var(--muted)'};border-color:${d.bcast.status==='live'?'#15803d':'var(--muted)'}55;background:${d.bcast.status==='live'?'#15803d':'#6b7280'}0f;display:inline-flex;align-items:center;gap:6px">${ico('radio',14)} בקשת העברה שודרה ל${escW(d.bcast.branch||'סניף')}${d.bcast.status==='live'?' — ממתינה לביצוע':' — נסגרה בסניף'}</span>`:''}`}
+        ? `<span class="ord-st" style="color:#d97706;border-color:#d9770655;background:#d977060f;display:inline-flex;align-items:center;gap:6px">${ico('radio',14)} שודר חלקי — חלק מההזמנה שודר${d.bcast?` ל: ${escW(bcastBranches(d.bcast))}`:''}, פריט אחר חסר במלאי (להשיג מהספק)</span>`
+        : `${d.oos?`<span class="ord-st" style="color:#dc2626;border-color:#dc262655;background:#dc26260f;display:inline-flex;align-items:center;gap:6px">${ico('pkgx',14)} חסר במלאי בכל הסניפים — להשיג מהספק</span>`:''}${d.bcast?`<span class="ord-st" style="color:${d.bcast.status==='live'?'#15803d':'var(--muted)'};border-color:${d.bcast.status==='live'?'#15803d':'var(--muted)'}55;background:${d.bcast.status==='live'?'#15803d':'#6b7280'}0f;display:inline-flex;align-items:center;gap:6px">${ico('radio',14)} בקשת העברה שודרה ל: ${escW(bcastBranches(d.bcast))}${d.bcast.status==='live'?'':' — נסגרה בסניף'}</span>`:''}`}
     </div>`:''}
     ${d.cargo_status&&d.cargo_status.text?(function(){const cs=d.cargo_status;let col='#6b7280';const t=cs.text;
       if(/בוצע|נמסר|סופק/.test(t))col='#16a34a';else if(/בדרך|ללקוח|שליח|חלוקה/.test(t))col='#2563eb';else if(/מחסן/.test(t))col='#d97706';
