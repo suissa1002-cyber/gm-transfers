@@ -3503,8 +3503,12 @@ function waBubPress(e,el){
 }
 function waBubMove(e){ if(_bubT&&_bubXY&&(Math.abs(e.clientX-_bubXY[0])>8||Math.abs(e.clientY-_bubXY[1])>8)) waBubRelease(); }
 function waBubRelease(){ if(_bubT){ clearTimeout(_bubT); _bubT=null; } }
+let _bubMenuData=null;
 function waBubCtx(e,el){ e.preventDefault(); waReplyMenu(e.clientX,e.clientY,el.dataset.mid,el.dataset.prev,el.dataset.full); }
 function waReplyMenu(x,y,mid,prev,full){
+  // ⚠️ לא להטמיע את טקסט ההודעה ב-onclick inline (גרש/מרכאה/שורה חדשה שוברים את ה-JS
+  // ואז הלחיצה לא מגיבה). שומרים במשתנה והכפתורים קוראים לפונקציה ללא ארגומנטים.
+  _bubMenuData={mid:mid||'', prev:prev||'', full:full||prev||''};
   const old=document.getElementById('waBubMenu'); if(old) old.remove();
   const wrap=document.createElement('div');
   wrap.id='waBubMenu';
@@ -3514,13 +3518,14 @@ function waReplyMenu(x,y,mid,prev,full){
   const my=Math.min(Math.max(10,y-90),window.innerHeight-110);
   wrap.innerHTML=`<div style="position:fixed;left:${mx}px;top:${my}px;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 34px rgba(0,0,0,.3);overflow:hidden;min-width:150px" onclick="event.stopPropagation()">
     <div style="padding:11px 15px;cursor:pointer;font-size:14px;display:flex;align-items:center;gap:9px" onmouseover="this.style.background='var(--card2)'" onmouseout="this.style.background=''"
-         onclick="document.getElementById('waBubMenu').remove();waReplySet('${escW(mid||'')}','${escW(prev||'')}')">↩ השב להודעה</div>
+         onclick="waReplyFromMenu()">↩ השב להודעה</div>
     <div style="padding:11px 15px;cursor:pointer;font-size:14px;display:flex;align-items:center;gap:9px;border-top:1px solid var(--line)" onmouseover="this.style.background='var(--card2)'" onmouseout="this.style.background=''"
-         onclick="navigator.clipboard.writeText(this.parentElement.dataset.full||'');document.getElementById('waBubMenu').remove();toast('הועתק ✓',true)">📋 העתק</div>
+         onclick="waCopyFromMenu()">📋 העתק</div>
   </div>`;
-  wrap.firstElementChild.dataset.full=full||prev||'';
   document.body.appendChild(wrap);
 }
+function waReplyFromMenu(){ const m=document.getElementById('waBubMenu'); if(m) m.remove(); if(_bubMenuData) waReplySet(_bubMenuData.mid,_bubMenuData.prev); }
+function waCopyFromMenu(){ try{ navigator.clipboard.writeText((_bubMenuData&&_bubMenuData.full)||''); }catch(e){} const m=document.getElementById('waBubMenu'); if(m) m.remove(); toast('הועתק ✓',true); }
 function waReplySet(id,preview){
   S.waReplyTo={id, preview};
   renderWaThread();
