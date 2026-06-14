@@ -1132,9 +1132,11 @@ def admin_wc_search(q: str = "", x_admin_key: Optional[str] = Header(None),
     out = []
     try:
         r = _rq.get(base + "/wp-json/wc/v3/products",
-                    params={"search": q, "per_page": 12, "status": "publish",
-                            "orderby": "relevance"}, auth=(k, s), timeout=15)
+                    params={"search": q, "per_page": 12, "status": "publish"},
+                    auth=(k, s), timeout=15)
         prods = r.json() if r.ok else []
+        if not r.ok:
+            logger.warning("wc-search %s -> %s %s", q, r.status_code, r.text[:160])
     except Exception as e:  # noqa: BLE001
         logger.warning("wc-search failed for %s: %s", q, e)
         prods = []
