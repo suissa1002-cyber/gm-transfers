@@ -119,10 +119,28 @@ def _auto_transfer_job():
         logger.warning("auto_transfer failed: %s", e)
 
 
+def _cargo_in_transit(cargo_meta) -> bool:
+    """True אם יש משלוח Cargo שעדיין לא נמסר (בהפצה). אם כל המשלוחים נמסרו — False."""
+    if not cargo_meta:
+        return False
+    if not isinstance(cargo_meta, dict):
+        return True
+    delivered_words = ("נמסר", "סופק", "delivered")
+    any_ship = False
+    for sh in cargo_meta.values():
+        if isinstance(sh, dict):
+            any_ship = True
+            txt = str((sh.get("status") or {}).get("text") or "")
+            if not any(w in txt for w in delivered_words):
+                return True     # יש משלוח שעוד לא נמסר
+    return False if any_ship else True
+
+
 def _cargo_shipping_advance_job():
     """תוויות Cargo שנוצרו מחוץ ל-GreenOS (תוסף Cargo/WP): מקדם הזמנות שיש להן
-    משלוח Cargo (meta cslfw_shipping) ושעדיין בסטטוס מוקדם → 'בהפצה' (shipping-stage).
-    _advance_to_shipping מגן מנסיגה (לא נוגע ב-הושלם/נמסר/בוטל וכו')."""
+    משלוח Cargo שעדיין לא נמסר → 'בהפצה' (shipping-stage). כולל 'הושלם' — אצל
+    Green Mobile זה מצב מוקדם (NewOrder קובע אותו בהנפקת חשבונית), לא סופי.
+    _advance_to_shipping מגן מנסיגה מ-נמסר/מוכנה-לאיסוף/בוטל."""
     try:
         creds = _wc_creds()
         if not creds:
@@ -130,14 +148,14 @@ def _cargo_shipping_advance_job():
         base, k, s = creds
         import requests as _rq
         r = _rq.get(f"{base}/wp-json/wc/v3/orders",
-                    params={"per_page": 40, "orderby": "date", "order": "desc",
-                            "status": "processing,on-hold,send-cargo,order-processing"},
+                    params={"per_page": 50, "orderby": "date", "order": "desc",
+                            "status": "processing,on-hold,send-cargo,order-processing,completed"},
                     auth=(k, s), timeout=40)
         if not r.ok:
             return
         for o in r.json():
             meta = {m.get("key"): m.get("value") for m in (o.get("meta_data") or [])}
-            if not meta.get("cslfw_shipping"):
+            if not _cargo_in_transit(meta.get("cslfw_shipping")):
                 continue
             ns = _advance_to_shipping(o.get("id"))
             if ns == "shipping-stage":
@@ -2509,7 +2527,9 @@ def _advance_to_shipping(oid: int):
         cur = _rq.get(f"{base}/wp-json/wc/v3/orders/{oid}",
                       params={"_fields": "id,status"}, auth=(k, s), timeout=20)
         st = (cur.json().get("status") if cur.ok else "") or ""
-        later = {"shipping-stage", "delivered", "completed", "order-ready",
+        # ⚠️ 'completed' אינו סטטוס סופי אצל Green Mobile — NewOrder קובע אותו
+        # אוטומטית בהנפקת חשבונית (מצב מוקדם). לכן הוא **כן** מתקדם לבהפצה.
+        later = {"shipping-stage", "delivered", "order-ready",
                  "tlv-pickup", "cancelled", "refunded"}
         if st in later:
             return st     # כבר בשלב הזה או מעבר לו — לא נוגעים
