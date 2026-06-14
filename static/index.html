@@ -3846,7 +3846,10 @@ async function loadWaThread(silent){
   if(!S.waPhone) return;
   const phone=S.waPhone;
   try{ const t=await api('/api/admin/wa/thread/'+encodeURIComponent(phone));
-       if(S.waPhone===phone){ S.waThread=t; renderWaThread();
+       if(S.waPhone===phone){ S.waThread=t;
+         // פאנל אורי/מלאי פתוח → עדכון הודעות בלבד (לא דורס הפאנל); אחרת רינדור מלא
+         if(silent && S.waPanel && (S.waPanelMode==='uri'||S.waPanelMode==='stock')) waRefreshMsgsOnly();
+         else renderWaThread();
          const last=Math.max(0,...(t.messages||[]).map(m=>m.ts||0));
          if(last) waMarkSeen(phone,last); } }
   catch(e){ if(!silent) toast('טעינת שיחה נכשלה',false); }
@@ -3894,12 +3897,25 @@ async function waHuman(enable){
   catch(e){ toast('הפעולה נכשלה',false); }
 }
 function waPollTick(){
-  // רענון שקט: רשימה תמיד; שיחה פתוחה — רק אם לא מקלידים תשובה כרגע
+  // רענון שקט: רשימה תמיד; שיחה פתוחה — רק אם לא מקלידים תשובה כרגע.
+  // (גם כשפאנל אורי/מלאי פתוח — loadWaThread מעדכן אז רק את ההודעות, בלי לדרוס הפאנל)
   loadWaSilent();
-  // פאנל אורי / חיפוש מלאי פתוח — המשתמש קורא/עובד בו; רענון השיחה דורס את הגלילה → מדלגים
-  if(S.waPanel && (S.waPanelMode==='uri' || S.waPanelMode==='stock')) return;
   const ta=document.getElementById('waText');
   if(S.waPhone && !(ta && (document.activeElement===ta && ta.value))) loadWaThread(true);
+}
+// עדכון אזור ההודעות בלבד (כשפאנל אורי/מלאי פתוח) — בלי לרנדר מחדש את הפאנל/השדות,
+// עם שימור מיקום גלילה (גלילה לתחתית רק אם המשתמש כבר היה למטה — כמו בוואטסאפ).
+function waRefreshMsgsOnly(){
+  const box=document.getElementById('waMsgs'); if(!box) return;
+  const t=S.waThread; if(!t || t.phone!==S.waPhone) return;
+  const msgs=(t.messages||[]).filter(m=>m.text||(m.media&&m.media.length));
+  const sig=msgs.length+'|'+((msgs[msgs.length-1]||{}).id||'')+'|'+msgs.map(m=>m.status||'').join('');
+  if(box._sig===sig) return;   // אין שינוי — לא מרנדרים (בלי הבהוב/קפיצת גלילה)
+  const nearBottom=box.scrollHeight-box.scrollTop-box.clientHeight<80;
+  const prevH=box.scrollHeight, prevTop=box.scrollTop;
+  box.innerHTML=msgs.map(waBubble).join('')||'<div class="empty">אין הודעות בשיחה</div>';
+  box._sig=sig;
+  if(nearBottom) box.scrollTop=box.scrollHeight; else box.scrollTop=prevTop+(box.scrollHeight-prevH);
 }
 async function loadWaSilent(){
   try{ const d=await api('/api/admin/wa/conversations?archived='+(S.waArchived?1:0));
