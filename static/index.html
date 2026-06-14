@@ -4633,7 +4633,7 @@ async function loadWcOrders(){
   if(box&&W.rows===null) box.innerHTML='<div class="empty">טוען הזמנות…</div>';
   try{
     const r=await api('/api/admin/orders?page='+W.page+'&status='+encodeURIComponent(W.status)+'&search='+encodeURIComponent(W.q)
-      +'&after='+encodeURIComponent(W.after||'')+'&before='+encodeURIComponent(W.before||''),null,60000);
+      +'&after='+encodeURIComponent(W.after||'')+'&before='+encodeURIComponent(W.before||'')+'&_t='+Date.now(),null,60000);
     W.rows=r.orders; W.pages=r.pages; W.total=r.total;
     if(r.statuses) S.wcoStatuses=r.statuses;
   }catch(e){ W.rows=[]; toast('טעינת הזמנות נכשלה',false); }

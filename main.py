@@ -2207,10 +2207,13 @@ def admin_orders_list(page: int = 1, status: str = "", search: str = "",
             "greenos": bool(meta.get("greenos_source")),
             "cargo": bool(meta.get("cslfw_shipping")),
         })
-    return {"orders": out, "page": page,
-            "pages": int(r.headers.get("X-WP-TotalPages") or 1),
-            "total": int(r.headers.get("X-WP-Total") or len(out)),
-            "statuses": _wc_statuses(base, k, s)}
+    # no-store — אסור לקאש ב-edge: אחרת סימוני שודר/חסר/חלקי מתעדכנים באיחור
+    # (אותו לקח כמו /orders/latest — שורת שידור חדשה לא נראתה אחרי רענונים)
+    return JSONResponse({"orders": out, "page": page,
+                         "pages": int(r.headers.get("X-WP-TotalPages") or 1),
+                         "total": int(r.headers.get("X-WP-Total") or len(out)),
+                         "statuses": _wc_statuses(base, k, s)},
+                        headers={"Cache-Control": "no-store, max-age=0"})
 
 
 _wc_statuses_cache = {"at": 0.0, "map": {}}
