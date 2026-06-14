@@ -3878,6 +3878,8 @@ async function waHuman(enable){
 function waPollTick(){
   // רענון שקט: רשימה תמיד; שיחה פתוחה — רק אם לא מקלידים תשובה כרגע
   loadWaSilent();
+  // פאנל אורי / חיפוש מלאי פתוח — המשתמש קורא/עובד בו; רענון השיחה דורס את הגלילה → מדלגים
+  if(S.waPanel && (S.waPanelMode==='uri' || S.waPanelMode==='stock')) return;
   const ta=document.getElementById('waText');
   if(S.waPhone && !(ta && (document.activeElement===ta && ta.value))) loadWaThread(true);
 }
