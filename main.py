@@ -541,6 +541,7 @@ def get_broadcast(branch_id: int):
             ln["from_name"] = cfg.branch_name(ln.get("from_branch"))
             ln["to_name"] = cfg.branch_name(ln.get("to_branch"))
         all_lines.extend(g["lines"])
+    _enrich_color(all_lines)   # שורות הקבוצות הן אותם dict-ים — מועשרות יחד
     return {"active": bool(groups), "groups": groups,
             "broadcast_at": groups[0]["latest"] if groups else None,
             "from_name": cfg.branch_name(branch_id), "lines": all_lines}
@@ -647,6 +648,7 @@ def admin_plan(x_admin_key: Optional[str] = Header(None)):
     for ln in lines:
         ln["from_name"] = cfg.branch_name(ln.get("from_branch"))
         ln["to_name"] = cfg.branch_name(ln.get("to_branch"))
+    _enrich_color(lines)
     return {"lines": lines, "branches": [{"id": b, "name": cfg.branch_name(b)} for b in (1, 2, 3, 4)]}
 
 
@@ -916,6 +918,56 @@ def _wc_creds():
     k = os.getenv("WC_CONSUMER_KEY", "")
     s = os.getenv("WC_CONSUMER_SECRET", "")
     return (u, k, s) if (u and k and s) else None
+
+
+# ── העשרת שורות העברה/שידור בצבע (מ-WooCommerce לפי SKU) ──
+# שם המוצר מהקופה (NewOrder) לא תמיד כולל צבע (למשל אביזרים — "Xbox Wireless
+# Controller" בלי "לבן"). מושכים את הצבע מהווריאציה ב-WooCommerce לפי SKU
+# (מק"ט בקופה == SKU באתר) ומציגים אותו לצד המק"ט, כדי שהסניף ידע מה להעביר.
+_sku_color_cache: dict = {}
+_SKU_COLOR_TTL = 24 * 3600
+
+
+def _variant_color(sku) -> str:
+    """צבע הווריאציה ('בחירת צבע') מ-WooCommerce לפי SKU. '' אם אין/לא וריאציה. cache 24ש."""
+    sku = str(sku or "").strip()
+    if not sku:
+        return ""
+    import time as _t
+    hit = _sku_color_cache.get(sku)
+    if hit and (_t.time() - hit[0]) < _SKU_COLOR_TTL:
+        return hit[1]
+    creds = _wc_creds()
+    if not creds:
+        return ""
+    base, k, s = creds
+    color = ""
+    try:
+        import requests as _rq
+        r = _rq.get(base + "/wp-json/wc/v3/products", params={"sku": sku},
+                    auth=(k, s), timeout=8)
+        arr = r.json() if r.ok else []
+        p = arr[0] if isinstance(arr, list) and arr else None
+        for a in ((p or {}).get("attributes") or []):
+            if a.get("name") == "בחירת צבע" and a.get("option"):
+                color = a.get("option")
+                break
+    except Exception as e:  # noqa: BLE001
+        logger.warning("variant color lookup failed for %s: %s", sku, e)
+        return ""   # לא שומרים כשל ב-cache — ננסה שוב בפעם הבאה
+    _sku_color_cache[sku] = (_t.time(), color)
+    return color
+
+
+def _enrich_color(lines):
+    """מוסיף שדה color לכל שורה (ריק אם אין). לא משנה את השם. fail-soft."""
+    for ln in lines or []:
+        try:
+            if not ln.get("color"):
+                ln["color"] = _variant_color(ln.get("product_id"))
+        except Exception:  # noqa: BLE001
+            ln.setdefault("color", "")
+    return lines
 
 
 @app.get("/api/admin/wc-link/{sku}")
