@@ -378,13 +378,10 @@ def send_reply(phone: str, text: str):
         raise WaError("הודעה ריקה")
     if re.search(r"\btest\b|\bping\b", text, re.IGNORECASE):
         raise WaError("ההודעה מכילה test/ping — חסום (כלל ברזל: בלי ניסויים על לקוחות)")
-    win = _window_state(get_thread(phone, limit=60)["messages"])
-    if not win["in_window"]:
-        return {"sent": False, "needs_template": True, "window": win}
-    _auto_human(phone)   # קודם מסמנים אנושי — שהבוט לא יקפוץ על ההודעה הבאה של הלקוח
-    # שלב 4 (ניתוק קונקטופ): אנחנו בעלי המספר — מעדיפים שליחה ישירה דרך Meta
-    # (יציב, עוקף תקלות ConnectOp). אם Meta לא מוגדר/נכשל — נופלים ל-ConnectOp.
-    # שני הכשלים נתפסים ומוצפים כ-WaError (502) עם הסיבה האמיתית, לא "תקלה" גנרי.
+    _auto_human(phone)   # מסמנים אנושי (cache 30ד') — שהבוט לא יקפוץ על ההודעה הבאה
+    # ⚡ ביצועים: לא שולפים את כל השיחה מראש לבדיקת חלון 24ש (קריאת רשת איטית בכל
+    # שליחה). שולחים ישירות דרך Meta; רק אם נכשל — בודקים חלון: מחוץ ל-24ש →
+    # needs_template, אחרת ConnectOp fallback. אנחנו בעלי המספר (Meta ראשי, יציב).
     via = ""
     wamid = ""
     errs = []
@@ -395,6 +392,12 @@ def send_reply(phone: str, text: str):
         except Exception as e:  # noqa: BLE001
             errs.append(f"Meta: {e}")
             logger.warning("meta text send failed: %s", e)
+            try:   # כשל — אולי מחוץ לחלון 24ש. בודקים עכשיו בלבד (מקרה נדיר).
+                win = _window_state(get_thread(phone, limit=60)["messages"])
+            except Exception:  # noqa: BLE001
+                win = None
+            if win is not None and not win["in_window"]:
+                return {"sent": False, "needs_template": True, "window": win}
     if not via:
         try:
             _pub().send_text_as_human(phone, text)
@@ -406,7 +409,7 @@ def send_reply(phone: str, text: str):
         raise WaError("שליחה נכשלה בכל הערוצים — " + " | ".join(errs)[:300])
     _store_outbound(phone, text, wamid=wamid, mtype="text")
     logger.info("wa send text -> %s via %s (%d chars)", phone, via, len(text))
-    return {"sent": True, "via": via, "window": win}
+    return {"sent": True, "via": via}
 
 
 def fetch_meta_media(media_id: str):

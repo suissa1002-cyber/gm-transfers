@@ -3906,6 +3906,12 @@ async function sendWaMsg(){
       }
     } else {
       toast('נשלח ✓',true); ta.value='';
+      // אופטימי: מציגים את ההודעה מיד (לפני הרענון מהשרת) — תחושת שליחה מיידית
+      if(S.waThread&&S.waThread.phone===S.waPhone){
+        S.waThread.messages.push({id:'opt-'+Date.now(),direction:'out',text:text,kind:null,media:[],
+          ts:Math.floor(Date.now()/1000),status:'sent',reply_to:(rep&&rep.id)||null,reply_preview:(rep&&rep.preview)||''});
+        renderWaThread();
+      }
       setTimeout(()=>loadWaThread(true),1200);
     }
   }catch(e){ toast('שליחה נכשלה — '+(e.status===502?'שגיאת ConnectOp':'תקלה'),false); }
