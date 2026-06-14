@@ -119,28 +119,12 @@ def _auto_transfer_job():
         logger.warning("auto_transfer failed: %s", e)
 
 
-def _cargo_in_transit(cargo_meta) -> bool:
-    """True אם יש משלוח Cargo שעדיין לא נמסר (בהפצה). אם כל המשלוחים נמסרו — False."""
-    if not cargo_meta:
-        return False
-    if not isinstance(cargo_meta, dict):
-        return True
-    delivered_words = ("נמסר", "סופק", "delivered")
-    any_ship = False
-    for sh in cargo_meta.values():
-        if isinstance(sh, dict):
-            any_ship = True
-            txt = str((sh.get("status") or {}).get("text") or "")
-            if not any(w in txt for w in delivered_words):
-                return True     # יש משלוח שעוד לא נמסר
-    return False if any_ship else True
-
-
 def _cargo_shipping_advance_job():
-    """תוויות Cargo שנוצרו מחוץ ל-GreenOS (תוסף Cargo/WP): מקדם הזמנות שיש להן
-    משלוח Cargo שעדיין לא נמסר → 'בהפצה' (shipping-stage). כולל 'הושלם' — אצל
+    """כלל פשוט: הודפסה תווית Cargo (קיים `cslfw_shipping`) → ההזמנה ל'בהפצה'.
+    תופס תוויות מכל מקור (תוסף Cargo / WP / GreenOS). כולל 'הושלם' — אצל
     Green Mobile זה מצב מוקדם (NewOrder קובע אותו בהנפקת חשבונית), לא סופי.
-    _advance_to_shipping מגן מנסיגה מ-נמסר/מוכנה-לאיסוף/בוטל."""
+    מקדם **פעם אחת** לכל הזמנה (דגל cargo_adv) — לא נלחם בשינויים ידניים אחר כך.
+    _advance_to_shipping ממילא לא נוגע בנמסר/מוכנה-לאיסוף/בוטל/זוכה (סטטוס סופי)."""
     try:
         creds = _wc_creds()
         if not creds:
@@ -154,10 +138,14 @@ def _cargo_shipping_advance_job():
         if not r.ok:
             return
         for o in r.json():
+            oid = o.get("id")
             meta = {m.get("key"): m.get("value") for m in (o.get("meta_data") or [])}
-            if not _cargo_in_transit(meta.get("cslfw_shipping")):
-                continue
-            ns = _advance_to_shipping(o.get("id"))
+            if not meta.get("cslfw_shipping"):
+                continue                       # אין תווית/משלוח Cargo — לא נוגעים
+            if db.sales_state_get(f"cargo_adv:{oid}"):
+                continue                       # כבר קודם פעם אחת — לא חוזרים
+            ns = _advance_to_shipping(oid)
+            db.sales_state_set(f"cargo_adv:{oid}", "1")
             if ns == "shipping-stage":
                 logger.info("cargo auto-advance -> shipping-stage: order %s", o.get("number"))
     except Exception as e:  # noqa: BLE001
