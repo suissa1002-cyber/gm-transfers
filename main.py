@@ -119,6 +119,33 @@ def _auto_transfer_job():
         logger.warning("auto_transfer failed: %s", e)
 
 
+def _cargo_shipping_advance_job():
+    """תוויות Cargo שנוצרו מחוץ ל-GreenOS (תוסף Cargo/WP): מקדם הזמנות שיש להן
+    משלוח Cargo (meta cslfw_shipping) ושעדיין בסטטוס מוקדם → 'בהפצה' (shipping-stage).
+    _advance_to_shipping מגן מנסיגה (לא נוגע ב-הושלם/נמסר/בוטל וכו')."""
+    try:
+        creds = _wc_creds()
+        if not creds:
+            return
+        base, k, s = creds
+        import requests as _rq
+        r = _rq.get(f"{base}/wp-json/wc/v3/orders",
+                    params={"per_page": 40, "orderby": "date", "order": "desc",
+                            "status": "processing,on-hold,send-cargo,order-processing"},
+                    auth=(k, s), timeout=40)
+        if not r.ok:
+            return
+        for o in r.json():
+            meta = {m.get("key"): m.get("value") for m in (o.get("meta_data") or [])}
+            if not meta.get("cslfw_shipping"):
+                continue
+            ns = _advance_to_shipping(o.get("id"))
+            if ns == "shipping-stage":
+                logger.info("cargo auto-advance -> shipping-stage: order %s", o.get("number"))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("cargo shipping-advance failed: %s", e)
+
+
 def _removals_backfill_job(days: int = 90):
     try:
         import removals_ingest
@@ -211,6 +238,9 @@ def _startup():
     scheduler.add_job(_catalog_refresh_job, "interval", hours=6, id="catalog_refresh", max_instances=1)
     # שידור אוטומטי של בקשות העברה לאתר על הזמנות אתר ששולמו
     scheduler.add_job(_auto_transfer_job, "interval", minutes=5, id="auto_transfer", max_instances=1)
+    # קידום ל'בהפצה' להזמנות עם משלוח Cargo (גם תוויות שהודפסו מחוץ ל-GreenOS)
+    scheduler.add_job(_cargo_shipping_advance_job, "interval", minutes=3,
+                      id="cargo_shipping_advance", max_instances=1, coalesce=True)
     if _is_stale(db.catalog_meta().get("updated_at"), hours=6):
         scheduler.add_job(_catalog_refresh_job, "date", id="catalog_initial",
                           run_date=datetime.now() + timedelta(seconds=150))

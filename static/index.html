@@ -4561,7 +4561,7 @@ function renderWcOrders(){
              oninput="clearTimeout(S._wcoT);S._wcoT=setTimeout(()=>{S.wco.q=this.value;S.wco.page=1;loadWcOrders()},450)" onkeydown="if(event.key==='Enter'){S.wco.q=this.value;S.wco.page=1;loadWcOrders()}">
       <button class="btn-ghost wa-ico" onclick="wcoCalToggle()" title="סינון לפי טווח תאריכים" style="position:relative${(W.after||W.before)?';border-color:#16a34a;color:#16a34a':''}">${ico('calendar',15)}</button>
       <button class="btn-ghost wa-ico" onclick="payLinksOpen()" title="תשלומים מהירים — קישורים ידניים">${ico('zap',15)}</button>
-      <button class="btn-ghost wa-ico" onclick="loadWcOrders()" title="רענן">${ico('refresh',15)}</button>
+      <button class="btn-ghost wa-ico" id="wcoRefreshBtn" onclick="loadWcOrders()" title="רענן">${ico('refresh',15)}</button>
     </div>
     ${(W.after||W.before)?`<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:13px">
       <span class="ord-st" style="color:#16a34a;border-color:#16a34a55;background:#16a34a14;display:inline-flex;align-items:center;gap:5px">${ico('calendar',12)} ${escW(wcoFmtD(W.after))} — ${escW(wcoFmtD(W.before||W.after))}</span>
@@ -4631,6 +4631,8 @@ async function loadWcOrders(){
   const W=S.wco; W.loading=true;
   const box=document.getElementById('wcoList');
   if(box&&W.rows===null) box.innerHTML='<div class="empty">טוען הזמנות…</div>';
+  const rb=document.getElementById('wcoRefreshBtn');   // חיווי: הכפתור מסתובב בזמן טעינה
+  if(rb){ rb.style.animation='spin .8s linear infinite'; rb.style.pointerEvents='none'; }
   try{
     const r=await api('/api/admin/orders?page='+W.page+'&status='+encodeURIComponent(W.status)+'&search='+encodeURIComponent(W.q)
       +'&after='+encodeURIComponent(W.after||'')+'&before='+encodeURIComponent(W.before||'')+'&_t='+Date.now(),null,60000);
@@ -4638,6 +4640,7 @@ async function loadWcOrders(){
     if(r.statuses) S.wcoStatuses=r.statuses;
   }catch(e){ W.rows=[]; toast('טעינת הזמנות נכשלה',false); }
   W.loading=false;
+  if(rb){ rb.style.animation=''; rb.style.pointerEvents=''; }
   const b2=document.getElementById('wcoList'); if(b2) b2.innerHTML=wcoListHTML();
 }
 function wcoListHTML(){
