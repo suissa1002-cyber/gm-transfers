@@ -145,42 +145,56 @@ def _handle_order(o: dict, catalog: dict) -> list:
         except Exception as e:  # noqa: BLE001
             logger.warning("stock read failed for %s: %s", sku, e)
             continue
-        # מלאי האתר לא נחשב — תמיד מביאים יחידה מסניף אמיתי (לפי src_pref)
-        src = next((b for b in src_pref if (stock.get(b) or 0) >= qty), None)
-        if src is None:                    # אין סניף עם כל הכמות — מספיק שיש משהו
-            src = next((b for b in src_pref if (stock.get(b) or 0) > 0), None)
-        if src is None:
-            logger.info("order %s: no source stock for %s", o.get("number"), sku)
-            oos_names.append(name)             # נסמן בסוף (כדי לדעת אם חלקי)
-            continue
-        # מוצר סריאלי: מצמידים יחידות ספציפיות (הוותיקות) — כמו בבקשה ידנית.
-        # כך היחידה מוצגת "משוריין לאתר" במלאי חי, וקליטתה סוגרת את הבקשה אוטומטית.
-        # יוצא דופן: אוזניות/שמע — משדרים לפי כמות בלבד (בלי סריאל ספציפי), כי יש
-        # הרבה יחידות זהות וחיפוש סריאל בסניף מיותר. הקליטה סוגרת לפי כמות/ברקוד.
+        # מוצר סריאלי (ולא אוזניות/שמע) → מצמידים סריאלים ספציפיים. טוענים מראש
+        # את הסריאלים הזמינים לכל סניף (כדי לפצל נכון בין סניפים).
         by_qty = (cat_it.get("category") or "") in NO_SERIAL_BCAST_CATEGORIES
-        lines = []
-        if (catalog.get(sku) or {}).get("kind") == "serial" and not by_qty:
+        is_serial = (catalog.get(sku) or {}).get("kind") == "serial" and not by_qty
+        serials_by_branch = {}
+        if is_serial:
             try:
-                raw = no.get_product_serials(sku) or []
-                units = [u for u in raw
-                         if str(u.get("branchId")) == str(src) and int(u.get("status") or 0) == 1]
-                units.sort(key=lambda u: str(u.get("insertDate") or ""))
-                for u in units[:qty]:
-                    if u.get("serial"):
-                        lines.append({"product_id": sku, "name": f"{name} — סריאל {u['serial']}",
-                                      "from_branch": src, "to_branch": SITE_BRANCH,
-                                      "qty": 1, "serial": str(u["serial"])})
+                for u in (no.get_product_serials(sku) or []):
+                    if int(u.get("status") or 0) == 1 and u.get("serial"):
+                        serials_by_branch.setdefault(str(u.get("branchId")), []).append(u)
+                for b in serials_by_branch:
+                    serials_by_branch[b].sort(key=lambda u: str(u.get("insertDate") or ""))
             except Exception as e:  # noqa: BLE001
                 logger.warning("serial pick failed for %s: %s", sku, e)
-        rem = qty - len(lines)
-        if rem > 0:
-            lines.append({"product_id": sku, "name": name,
-                          "from_branch": src, "to_branch": SITE_BRANCH, "qty": rem})
+        # ⚠️ פיצול בין סניפים: ממלאים את הכמות מכמה סניפים לפי המלאי בכל אחד (סדר
+        # src_pref). מלאי האתר (5) לא נחשב — לא ב-src_pref. כך הזמנת 2 יח׳ ש-1 בגן
+        # העיר ו-1 בסיטי תשדר יחידה מכל סניף — ולא 2 מסניף שיש בו רק 1.
+        lines = []
+        remaining = qty
+        used = []
+        for b in src_pref:
+            if remaining <= 0:
+                break
+            avail = int(stock.get(b) or 0)
+            if avail <= 0:
+                continue
+            take = min(remaining, avail)
+            units = serials_by_branch.get(str(b), [])[:take] if is_serial else []
+            for u in units:
+                lines.append({"product_id": sku, "name": f"{name} — סריאל {u['serial']}",
+                              "from_branch": b, "to_branch": SITE_BRANCH, "qty": 1,
+                              "serial": str(u["serial"])})
+            qrem = take - len(units)           # יתרה בלי סריאל באותו סניף → בקשת כמות
+            if qrem > 0:
+                lines.append({"product_id": sku, "name": name, "from_branch": b,
+                              "to_branch": SITE_BRANCH, "qty": qrem})
+            remaining -= take
+            used.append((b, take))
+        if not lines:                          # אין מלאי בשום סניף אמיתי
+            logger.info("order %s: no source stock for %s", o.get("number"), sku)
+            oos_names.append(name)
+            continue
         ids = db.plan_add(lines, created_by=f"אוטו · הזמנת אתר #{o.get('number')}")
-        db.plan_mark_broadcast(src, ids)
-        created.append({"sku": sku, "name": name, "src": src, "qty": qty})
-        logger.info("order %s: broadcast transfer %s x%s from branch %s -> site",
-                    o.get("number"), sku, qty, src)
+        db.plan_mark_broadcast(used[0][0], ids)   # line_ids ניתנו → מסמן את כל השורות (כל הסניפים)
+        for b, tk in used:
+            created.append({"sku": sku, "name": name, "src": b, "qty": tk})
+        if remaining > 0:                      # לא הספיק מלאי לכל הכמות — היתרה חסרה (חלקי)
+            oos_names.append(name)
+        logger.info("order %s: broadcast %s x%s split across %s -> site",
+                    o.get("number"), sku, qty, used)
     # סימון OOS בסוף — אם חלק מההזמנה כן שודר (created) זה "שודר חלקי" ולא חוסר מלא
     if oos_names:
         _mark_oos(o.get("number"), oos_names[0], partial=bool(created))
