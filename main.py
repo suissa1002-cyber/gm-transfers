@@ -1116,6 +1116,125 @@ def admin_wc_link(sku: str, pos: int = 0, fallback: int = 0, fresh: int = 0,
     return out
 
 
+@app.get("/api/admin/wc-search")
+def admin_wc_search(q: str = "", x_admin_key: Optional[str] = Header(None),
+                    x_device_token: Optional[str] = Header(None)):
+    """חיפוש מוצרים באתר לפי שם — להצמדת מק"ט קופה לווריאציה/מוצר שאינו מחובר.
+    מחזיר רשימה שטוחה: לכל מוצר פשוט שורה אחת, לכל מוצר משתנה שורה לכל וריאציה.
+    מסומן sku אם כבר תפוס (כדי שלא נדרוס בטעות)."""
+    _require_admin_or_device(x_admin_key, x_device_token)
+    creds = _wc_creds()
+    q = (q or "").strip()
+    if not creds or len(q) < 2:
+        return {"results": []}
+    base, k, s = creds
+    import requests as _rq
+    out = []
+    try:
+        r = _rq.get(base + "/wp-json/wc/v3/products",
+                    params={"search": q, "per_page": 12, "status": "publish",
+                            "orderby": "relevance"}, auth=(k, s), timeout=15)
+        prods = r.json() if r.ok else []
+    except Exception as e:  # noqa: BLE001
+        logger.warning("wc-search failed for %s: %s", q, e)
+        prods = []
+    for p in (prods or []):
+        if not isinstance(p, dict):
+            continue
+        pid = p.get("id")
+        pname = p.get("name") or ""
+        img = ((p.get("images") or [{}])[0] or {}).get("src", "")
+        if p.get("type") == "variable":
+            try:
+                rv = _rq.get(base + f"/wp-json/wc/v3/products/{pid}/variations",
+                             params={"per_page": 100}, auth=(k, s), timeout=20)
+                vars_ = rv.json() if rv.ok else []
+            except Exception as e:  # noqa: BLE001
+                logger.warning("wc-search variations failed for %s: %s", pid, e)
+                vars_ = []
+            for v in (vars_ or []):
+                attrs = " / ".join(a.get("option") for a in (v.get("attributes") or [])
+                                   if a.get("option"))
+                vimg = (v.get("image") or {}).get("src", "") or img
+                out.append({"product_id": pid, "variation_id": v.get("id"),
+                            "name": pname, "label": attrs or "וריאציה",
+                            "sku": v.get("sku") or "", "price": v.get("price"),
+                            "image": vimg, "type": "variation"})
+        else:
+            out.append({"product_id": pid, "variation_id": 0,
+                        "name": pname, "label": "", "sku": p.get("sku") or "",
+                        "price": p.get("price"), "image": img, "type": "simple"})
+    return JSONResponse({"results": out},
+                        headers={"Cache-Control": "no-store"})
+
+
+class WcConnectIn(BaseModel):
+    product_id: int
+    variation_id: int = 0
+    sku: str
+
+
+@app.post("/api/admin/wc-connect")
+def admin_wc_connect(body: WcConnectIn, x_admin_key: Optional[str] = Header(None),
+                     x_device_token: Optional[str] = Header(None)):
+    """מצמיד מק"ט קופה (NewOrder) לווריאציה/מוצר באתר. variation_id=0 → מוצר פשוט.
+    בודק שהמק"ט לא תפוס כבר במקום אחר (SKU חייב להיות ייחודי בכל החנות)."""
+    actor = _actor_name(x_admin_key, x_device_token)
+    _require_admin_or_device(x_admin_key, x_device_token)
+    creds = _wc_creds()
+    if not creds:
+        raise HTTPException(503, "wc not configured")
+    base, k, s = creds
+    sku = (body.sku or "").strip()
+    if not sku:
+        raise HTTPException(400, "missing sku")
+    import requests as _rq
+    # בדיקת ייחודיות — אם המק"ט כבר תפוס במוצר/וריאציה אחרים, לא דורסים
+    try:
+        rc = _rq.get(base + "/wp-json/wc/v3/products", params={"sku": sku},
+                     auth=(k, s), timeout=15)
+        ex = rc.json() if rc.ok else []
+        if isinstance(ex, list) and ex:
+            e0 = ex[0]
+            same = (e0.get("id") == body.variation_id) if body.variation_id \
+                else (e0.get("id") == body.product_id)
+            if not same:
+                return JSONResponse(
+                    {"ok": False, "reason": "taken",
+                     "by": {"id": e0.get("id"), "name": e0.get("name"),
+                            "permalink": e0.get("permalink")}},
+                    status_code=409, headers={"Cache-Control": "no-store"})
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001
+        logger.warning("wc-connect uniqueness check failed for %s: %s", sku, e)
+    # כתיבת ה-SKU
+    if body.variation_id:
+        url = base + f"/wp-json/wc/v3/products/{body.product_id}/variations/{body.variation_id}"
+    else:
+        url = base + f"/wp-json/wc/v3/products/{body.product_id}"
+    try:
+        rp = _rq.put(url, json={"sku": sku}, auth=(k, s), timeout=20)
+        if not rp.ok:
+            logger.warning("wc-connect PUT %s -> %s %s", url, rp.status_code, rp.text[:200])
+            return JSONResponse({"ok": False, "reason": "wc_error",
+                                 "detail": rp.text[:200]},
+                                status_code=502, headers={"Cache-Control": "no-store"})
+        d = rp.json()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("wc-connect PUT failed for %s: %s", sku, e)
+        raise HTTPException(502, "wc write failed")
+    # ניקוי cache כדי שהאייקון יידלק מיד בפתיחה הבאה
+    _sku_color_cache.pop(sku, None)
+    _wc_cache.pop(sku, None)
+    for kk in [kx for kx in _wc_full_cache if kx[0] == sku]:
+        _wc_full_cache.pop(kk, None)
+    logger.info("wc-connect: sku %s -> id %s by %s", sku, d.get("id"), actor or "?")
+    return JSONResponse({"ok": True, "id": d.get("id"),
+                         "permalink": d.get("permalink"), "name": d.get("name")},
+                        headers={"Cache-Control": "no-store"})
+
+
 # ── אבטחת מכשירים (device allowlist) ───────────────────────────────
 # כל דפדפן מזדהה ב-X-Device-Token. מכשיר חדש = ממתין לאישור אסי בטלגרם
 # (כפתורי אשר/דחה כקישורים חתומים). מכשיר קיים עם סניף שמור = אישור אוטומטי.

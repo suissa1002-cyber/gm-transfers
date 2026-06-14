@@ -4203,23 +4203,79 @@ async function openWcQuick(pid){
     S._wcQuick={pid:String(pid),d,sel};
     return renderWcQuick();
   } else {
-    const f=d.fallback;
-    const searchUrl=(d.store||'https://greenmobile.co.il')+'/?s='+encodeURIComponent((it&&it.name)||'');
-    body=`<div style="text-align:center;font-size:34px;margin:4px 0">🔌</div>
-      <div style="font-weight:800;text-align:center">הפריט לא מחובר לאתר</div>
-      <div class="muted" style="text-align:center;font-size:13px;margin:4px 0 14px">אין מוצר/וריאציה עם מק״ט ${pid} באתר</div>
-      ${f?`<div style="border:1px solid var(--line);border-radius:12px;padding:10px;display:flex;gap:10px;align-items:center;margin-bottom:12px">
-            ${f.image?`<img src="${f.image}" style="width:54px;height:54px;object-fit:contain;background:#fff;border-radius:8px">`:''}
-            <div style="flex:1;text-align:right"><div style="font-weight:700;font-size:14px">${f.name}</div>
-            <div class="muted" style="font-size:12px">ייתכן שזה העמוד הראשי · ${fmt(f.price)}</div></div>
-            <a class="btn-ghost" style="text-decoration:none;white-space:nowrap" href="${f.permalink}" target="_blank" rel="noopener">פתח ↗</a></div>`:''}
-      <a class="btn-ghost" style="display:block;text-align:center;text-decoration:none" href="${searchUrl}" target="_blank" rel="noopener">חיפוש באתר ↗</a>`;
+    // מוצר לא מחובר → כלי הצמדה: חיפוש מוצר באתר + כפתור "חבר" שמצמיד את המק"ט
+    S._wcConn={pid:String(pid),name:(it&&it.name)||'',store:d.store||'https://greenmobile.co.il'};
+    return renderWcConnect((it&&it.name)||'');
   }
   document.getElementById('modalRoot').innerHTML=`<div class="overlay"><div class="modal" style="max-width:430px;text-align:right;position:relative;max-height:88vh;overflow:auto">
     <button class="dr-x" style="position:absolute;top:10px;inset-inline-start:10px" onclick="closeModal()">✕</button>
     ${body}
     <button class="btn-ghost" style="width:100%;margin-top:10px" onclick="closeModal()">סגור</button>
   </div></div>`;
+}
+// ── כלי הצמדת מק"ט: חלונית חיפוש מוצר באתר + חיבור ──
+function renderWcConnect(initialQ){
+  const C=S._wcConn; if(!C) return;
+  const q=(C.q!=null?C.q:(initialQ||'')).trim();
+  const rows=(C.results||[]).map((r,i)=>{
+    const taken=r.sku&&String(r.sku)!==C.pid;
+    const label=[r.name,r.label].filter(Boolean).join(' · ');
+    const price=(r.price===''||r.price==null)?'':('₪'+Number(r.price).toLocaleString('he-IL'));
+    return `<div style="display:flex;gap:8px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:8px;margin-bottom:6px">
+      ${r.image?`<img src="${r.image}" style="width:42px;height:42px;object-fit:contain;background:#fff;border-radius:7px;flex:none">`:'<div style="width:42px"></div>'}
+      <div style="flex:1;min-width:0;text-align:right">
+        <div style="font-weight:700;font-size:13px;line-height:1.25">${label}</div>
+        <div class="muted" style="font-size:11.5px">${price}${taken?` · מק״ט תפוס: ${r.sku}`:(r.sku?` · מק״ט: ${r.sku}`:'')}</div>
+      </div>
+      <button class="btn-ghost" style="white-space:nowrap;${taken?'opacity:.55':''}" onclick="wcConnDo(${i})">${taken?'החלף 🔗':'🔗 חבר'}</button>
+    </div>`;
+  }).join('');
+  const list = C.busy?'<div class="muted" style="text-align:center;padding:14px">מחפש…</div>'
+    : (C.results? (rows||'<div class="muted" style="text-align:center;padding:14px">לא נמצאו מוצרים</div>') : '');
+  document.getElementById('modalRoot').innerHTML=`<div class="overlay"><div class="modal" style="max-width:460px;text-align:right;position:relative;max-height:90vh;overflow:auto">
+    <button class="dr-x" style="position:absolute;top:10px;inset-inline-start:10px" onclick="closeModal()">✕</button>
+    <div style="text-align:center;font-size:30px;margin:2px 0">🔌</div>
+    <div style="font-weight:800;text-align:center">הצמדת מק״ט ${C.pid} לאתר</div>
+    <div class="muted" style="text-align:center;font-size:12.5px;margin:3px 0 12px">חפש את המוצר/וריאציה ולחץ "חבר"</div>
+    <div style="display:flex;gap:6px;margin-bottom:10px">
+      <input id="wcConnQ" value="${(q||'').replace(/"/g,'&quot;')}" placeholder="שם מוצר…" style="flex:1;padding:9px 11px;border:1px solid var(--line);border-radius:10px;text-align:right;font-size:14px" onkeydown="if(event.key==='Enter')wcConnSearch()">
+      <button class="btn" onclick="wcConnSearch()">חפש</button>
+    </div>
+    ${list}
+    <button class="btn-ghost" style="width:100%;margin-top:8px" onclick="closeModal()">סגור</button>
+  </div></div>`;
+  const inp=document.getElementById('wcConnQ'); if(inp&&!C.results){ inp.focus(); }
+}
+async function wcConnSearch(){
+  const C=S._wcConn; if(!C) return;
+  const inp=document.getElementById('wcConnQ');
+  C.q=inp?inp.value:(C.q||''); C.busy=true; C.results=null; renderWcConnect();
+  try{
+    const d=await api('/api/admin/wc-search?q='+encodeURIComponent((C.q||'').trim()),null,30000);
+    C.results=(d&&d.results)||[];
+  }catch(e){ C.results=[]; toast('שגיאת חיפוש',false); }
+  C.busy=false; renderWcConnect();
+}
+async function wcConnDo(i){
+  const C=S._wcConn; if(!C||!C.results) return;
+  const r=C.results[i]; if(!r) return;
+  const taken=r.sku&&String(r.sku)!==C.pid;
+  if(taken && !confirm('המק״ט '+r.sku+' כבר מוצמד לפריט הזה. להחליף למק״ט '+C.pid+'?')) return;
+  showLoading('מחבר…');
+  try{
+    const res=await api('/api/admin/wc-connect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({product_id:r.product_id,variation_id:r.variation_id||0,sku:C.pid})},30000);
+    hideLoading();
+    if(res&&res.ok){
+      toast('חובר ✓ '+C.pid+' → האתר',true);
+      // מדליקים את האייקון מיד (ה-cache נוקה בשרת; הפתיחה הבאה תביא נתון מלא)
+      S.lsWc[C.pid]={at:Date.now(),data:{found:true,id:res.id,permalink:res.permalink,name:res.name}};
+      lsPaintWc(C.pid);
+      closeModal();
+    } else {
+      const by=res&&res.by;
+      toast(by?('המק״ט כבר תפוס ב: '+(by.name||by.id)):'החיבור נכשל',false);
+    }
+  }catch(e){ hideLoading(); toast('החיבור נכשל',false); }
 }
 function wcQuickSel(name,opt){
   const Q=S._wcQuick; if(!Q) return;
