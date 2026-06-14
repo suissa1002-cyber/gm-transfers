@@ -1534,17 +1534,16 @@ def wa_conversations(limit: int = 300) -> list:
 # ── שליחה מתוזמנת ──
 def wa_sched_add(phone, text, send_at, name="", order_number="", total="", pru="",
                  descr="", created_by="") -> int:
+    vals = (str(phone), text or "", name or "", order_number or "", total or "", pru or "",
+            descr or "", send_at, created_by or "", now_iso())
+    cols = "(phone, text, name, order_number, total, pru, descr, send_at, status, created_by, created_at)"
     with _conn() as c:
         cur = c.cursor()
-        cur.execute(_q("""INSERT INTO wa_scheduled
-            (phone, text, name, order_number, total, pru, descr, send_at, status, created_by, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)"""),
-            (str(phone), text or "", name or "", order_number or "", total or "", pru or "",
-             descr or "", send_at, created_by or "", now_iso()))
-        try:
-            return cur.lastrowid
-        except Exception:  # noqa: BLE001
-            return 0
+        if _USE_PG:
+            cur.execute(_q(f"INSERT INTO wa_scheduled {cols} VALUES (?,?,?,?,?,?,?,?,'pending',?,?) RETURNING id"), vals)
+            return cur.fetchone()["id"]
+        cur.execute(_q(f"INSERT INTO wa_scheduled {cols} VALUES (?,?,?,?,?,?,?,?,'pending',?,?)"), vals)
+        return cur.lastrowid
 
 
 def wa_sched_due(now_iso_str: str) -> list:
