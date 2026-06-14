@@ -220,6 +220,8 @@ def _startup():
     scheduler.add_job(_wa_push_job, "interval", seconds=60, id="wa_push", max_instances=1)
     # Web Push הזמנות חדשות: 🎉 push על הזמנת אתר חדשה כל 60ש (גם כשהאפליקציה סגורה)
     scheduler.add_job(_orders_push_job, "interval", seconds=60, id="orders_push", max_instances=1)
+    # שליחה מתוזמנת ("שלח בשעה X") — בדיקה כל 30ש, שולח מה שהגיע זמנו
+    scheduler.add_job(_wa_scheduled_job, "interval", seconds=30, id="wa_scheduled", max_instances=1)
     # backfill היסטוריית וואטסאפ — רץ רק בשעות שקטות (21:00-09:00 IL); resumable.
     # פייר בכל שעה בחלון; max_instances=1 → ריצה ארוכה אחת ללילה + התאוששות מ-restart.
     scheduler.add_job(_wa_backfill_job, "cron", hour="21-23,0-8", minute=10,
@@ -2775,6 +2777,88 @@ def wa_send_guaranteed(body: WaSendSure, x_admin_key: Optional[str] = Header(Non
         logger.info("send-guaranteed: direct path error (%s) — using template", e)
     r = _wa_guard(wa.send_template, phone, body.name or "לקוח/ה יקר/ה", text)
     return {"sent": True, "via": "template", "phone": phone}
+
+
+# ── שליחה מתוזמנת: "שלח בשעה X" — רץ בצד שרת (GreenOS תמיד פעיל), לא תלוי בסשן/אורי ──
+class WaSchedule(BaseModel):
+    phone: str
+    text: str
+    at: str                 # "HH:MM" (שעון ישראל) או ISO מלא
+    name: str = ""
+    order_number: str = ""
+    total: str = ""
+    pru: str = ""
+    desc: str = ""
+
+
+def _resolve_send_at(at: str) -> str:
+    """ממיר "HH:MM" לזמן הקרוב (היום/מחר) בשעון ישראל. ISO מוחזר כמו שהוא."""
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+    import re as _re
+    tz = ZoneInfo(cfg.TZ)
+    now = datetime.now(tz)
+    s = (at or "").strip()
+    m = _re.match(r"^(\d{1,2}):(\d{2})$", s)
+    if m:
+        t = now.replace(hour=int(m.group(1)), minute=int(m.group(2)), second=0, microsecond=0)
+        if t <= now:
+            t = t + timedelta(days=1)
+        return t.isoformat()
+    return s
+
+
+@app.post("/api/admin/wa/schedule")
+def wa_schedule(body: WaSchedule, x_admin_key: Optional[str] = Header(None)):
+    """מתזמן שליחת הודעה ללקוח בשעה מסוימת — השרת ישלח בפועל גם אחרי שהסשן ייסגר."""
+    _require_admin(x_admin_key)
+    import re as _re
+    phone = _re.sub(r"\D", "", body.phone or "")
+    if phone.startswith("0"):
+        phone = "972" + phone[1:]
+    if len(phone) < 11:
+        raise HTTPException(400, "מספר טלפון לא תקין")
+    if not (body.text or "").strip():
+        raise HTTPException(400, "הודעה ריקה")
+    send_at = _resolve_send_at(body.at)
+    sid = db.wa_sched_add(phone, body.text, send_at, body.name, body.order_number,
+                          body.total, body.pru, body.desc, created_by=_actor_name(x_admin_key, None))
+    return {"scheduled": True, "id": sid, "send_at": send_at, "phone": phone}
+
+
+@app.get("/api/admin/wa/scheduled")
+def wa_scheduled_list(x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    return {"scheduled": db.wa_sched_pending()}
+
+
+@app.delete("/api/admin/wa/scheduled/{sid}")
+def wa_scheduled_cancel(sid: int, x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    return {"canceled": db.wa_sched_cancel(sid)}
+
+
+def _wa_scheduled_job():
+    """כל 30ש: שולח הודעות מתוזמנות שהגיע זמנן (דרך השליחה המובטחת)."""
+    try:
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        now_iso = datetime.now(ZoneInfo(cfg.TZ)).isoformat()
+        for s in db.wa_sched_due(now_iso):
+            try:
+                res = wa_send_guaranteed(WaSendSure(
+                    phone=s["phone"], text=s["text"], name=s.get("name") or "",
+                    order_number=s.get("order_number") or "", total=s.get("total") or "",
+                    pru=s.get("pru") or "", desc=s.get("descr") or ""),
+                    x_admin_key=cfg.ADMIN_PASSWORD)
+                db.wa_sched_mark(s["id"], "sent", via=res.get("via", ""))
+                logger.info("scheduled send fired: #%s -> %s", s["id"], s["phone"])
+                _tg_admin(f"✅ <b>הודעה מתוזמנת נשלחה</b>\nל-{s['phone']}:\n{(s['text'] or '')[:200]}")
+            except Exception as e:  # noqa: BLE001
+                db.wa_sched_mark(s["id"], "failed", err=str(e))
+                logger.warning("scheduled send #%s failed: %s", s["id"], e)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("wa_scheduled job error: %s", e)
 
 
 class WaCharge(BaseModel):

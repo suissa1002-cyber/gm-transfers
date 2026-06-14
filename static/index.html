@@ -3236,6 +3236,12 @@ async function waUriAsk(){
   const inp=document.getElementById('waUriInput');
   const q=(inp&&inp.value||'').trim(); if(!q||!S.waPhone) return;
   const chat=waUriChat();
+  // "שלח בשעה HH:MM" — תזמון שליחה בצד שרת (GreenOS תמיד פעיל), לא תלוי בסשן/אורי
+  const tm=q.match(/^(שלח|תשלח|שגר)\b[\s\S]*?(\d{1,2}:\d{2})/);
+  if(tm){
+    const d=[...chat].reverse().find(m=>m.role==='uri'&&m.draft);
+    if(d){ if(inp) inp.value=''; chat.push({role:'user', text:q}); waUriPaint(); waUriScheduleDraft(d.draft, tm[2]); return; }
+  }
   // "שלח" וחברותיה — שליחה מיידית של הטיוטה האחרונה, בלי סיבוב נוסף אצל אורי
   if(/^(שלח|תשלח|שגר|אשר|מאשר|אשר ושלח|שלח עכשיו|שלח ללקוח)[.!]*$/.test(q)){
     const d=[...chat].reverse().find(m=>m.role==='uri'&&m.draft);
@@ -3275,6 +3281,18 @@ function waUriToReply(idx){
 }
 async function waUriSendDraft(idx){
   const m=(waUriChat()||[])[idx]; if(m) waUriSendDraftText(m.draft||m.text);
+}
+async function waUriScheduleDraft(text, hm){
+  // תזמון שליחת הטיוטה בשעה — השרת שולח בפועל (גם אחרי שהסשן נסגר)
+  if(!text||!S.waPhone) return;
+  const chat=waUriChat();
+  try{
+    const nm=(S.waContact&&S.waContact.contact&&S.waContact.contact.first_name)||'';
+    const r=await api('/api/admin/wa/schedule',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({phone:S.waPhone, text, at:hm, name:nm})});
+    chat.push({role:'uri', sys:true, text:`✓ מתוזמן לשליחה ב-${hm} — השרת ישלח אוטומטית (לא צריך אותך פתוח)`});
+    waUriPaint(); toast('מתוזמן לשליחה ✓',true);
+  }catch(e){ chat.push({role:'uri', sys:true, text:'❌ התזמון נכשל'}); waUriPaint(); toast('תזמון נכשל',false); }
 }
 async function waUriSendDraftText(text){
   // שליחת טיוטת אורי ללקוח — ישירות, בלי סיבוב נוסף מול המודל (מיידי)

@@ -393,6 +393,26 @@ _SCHEMA = [
     """,
     # מעקב backfill — אילו שיחות כבר נשאבו (resumable: לדלג עליהן בריצה הבאה)
     "CREATE TABLE IF NOT EXISTS wa_backfill_done (phone TEXT PRIMARY KEY, done_at TEXT)",
+    # שליחה מתוזמנת — "שלח בשעה X". רץ בצד שרת (GreenOS תמיד פעיל), לא תלוי בסשן/אורי.
+    """
+    CREATE TABLE IF NOT EXISTS wa_scheduled (
+        id           {pk},
+        phone        TEXT,
+        text         TEXT,
+        name         TEXT,
+        order_number TEXT,
+        total        TEXT,
+        pru          TEXT,
+        descr        TEXT,
+        send_at      TEXT,
+        status       TEXT DEFAULT 'pending',
+        created_by   TEXT,
+        created_at   TEXT,
+        sent_at      TEXT,
+        via          TEXT,
+        err          TEXT
+    )
+    """.format(pk=_PK),
     # תור משימות לסוכן אורי (claude על המק של אסי, חיוב Max — לא API)
     """
     CREATE TABLE IF NOT EXISTS uri_jobs (
@@ -1509,6 +1529,53 @@ def wa_conversations(limit: int = 300) -> list:
             ORDER BY c.last_msg_ts DESC LIMIT ?
         """), (int(limit),))
         return [dict(r) for r in cur.fetchall()]
+
+
+# ── שליחה מתוזמנת ──
+def wa_sched_add(phone, text, send_at, name="", order_number="", total="", pru="",
+                 descr="", created_by="") -> int:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""INSERT INTO wa_scheduled
+            (phone, text, name, order_number, total, pru, descr, send_at, status, created_by, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)"""),
+            (str(phone), text or "", name or "", order_number or "", total or "", pru or "",
+             descr or "", send_at, created_by or "", now_iso()))
+        try:
+            return cur.lastrowid
+        except Exception:  # noqa: BLE001
+            return 0
+
+
+def wa_sched_due(now_iso_str: str) -> list:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""SELECT * FROM wa_scheduled
+                          WHERE status = 'pending' AND send_at <= ? ORDER BY send_at"""),
+                    (now_iso_str,))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def wa_sched_pending() -> list:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute("SELECT * FROM wa_scheduled WHERE status = 'pending' ORDER BY send_at")
+        return [dict(r) for r in cur.fetchall()]
+
+
+def wa_sched_mark(sid, status, via="", err="", sent_at=""):
+    with _conn() as c:
+        c.cursor().execute(_q("""UPDATE wa_scheduled SET status=?, via=?, err=?, sent_at=?
+                                 WHERE id=?"""), (status, via or "", (err or "")[:300],
+                                                  sent_at or now_iso(), int(sid)))
+
+
+def wa_sched_cancel(sid) -> int:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("UPDATE wa_scheduled SET status='canceled' WHERE id=? AND status='pending'"),
+                    (int(sid),))
+        return cur.rowcount if hasattr(cur, "rowcount") else 0
 
 
 def wa_bf_done_set(phone: str):
