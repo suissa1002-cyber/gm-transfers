@@ -71,6 +71,29 @@ def _mark_oos(number, name):
         logger.warning("oos mark failed for %s: %s", number, e)
 
 
+def _mark_unmatched(number, name):
+    """מסמן הזמנה עם פריט פיזי שלא זוהה בקופה (אין SKU / SKU לא בקטלוג) — כדי
+    שלא תיפול בשקט (לא שודרה ולא סומנה OOS). שומר רשימת JSON + התראת טלגרם חד-פעמית."""
+    import json
+    try:
+        raw = db.sales_state_get("order_unmatched_list")
+        lst = json.loads(raw) if raw else []
+        num = str(number)
+        if any(str(x.get("number")) == num for x in lst):
+            return                              # כבר מסומן — בלי כפילות/התראה חוזרת
+        lst.insert(0, {"number": num, "item": name})
+        db.sales_state_set("order_unmatched_list", json.dumps(lst[:100], ensure_ascii=False))
+        try:
+            alerts._send(os.getenv("TELEGRAM_ADMIN_CHAT", "448181407"),
+                         f"⚠️ <b>הזמנה דורשת טיפול ידני</b>\n"
+                         f"הזמנה <b>#{num}</b>: הפריט <b>{name}</b> ללא מק\"ט מחובר לקופה —\n"
+                         f"לא ניתן לשריין מלאי/לשדר. הוסף מק\"ט למוצר ב-WooCommerce.")
+        except Exception:  # noqa: BLE001
+            pass
+    except Exception as e:  # noqa: BLE001
+        logger.warning("unmatched mark failed for %s: %s", number, e)
+
+
 def _pickup_branch(o: dict) -> int:
     """סניף האיסוף שנבחר בהזמנת איסוף עצמי (מ-meta _gm_pickup_branch). None אם לא איסוף."""
     titles = " ".join((sl.get("method_title") or "") for sl in (o.get("shipping_lines") or []))
@@ -100,8 +123,13 @@ def _handle_order(o: dict, catalog: dict) -> list:
     for li in o.get("line_items", []):
         sku = str(li.get("sku") or "").strip()
         qty = max(1, int(li.get("quantity") or 1))
-        if not sku or sku not in catalog:
-            continue                       # פריט שלא מחובר לקופה — לא ענייננו
+        if not sku:
+            # פריט פיזי ללא מק"ט — בעיית נתונים (המוצר הועלה בלי SKU). לא לדלג
+            # בשקט: לסמן את ההזמנה לטיפול ידני (אחרת לא משודרת ולא מסומנת OOS).
+            _mark_unmatched(o.get("number"), li.get("name") or "פריט ללא מק\"ט")
+            continue
+        if sku not in catalog:
+            continue                       # יש מק"ט אך לא בקטלוג הקופה (דיגיטלי/לא מסונכרן)
         cat_it = catalog.get(sku) or {}
         if cat_it.get("is_stock") is False:
             continue                       # מוצר דיגיטלי/לא-מנוהל-מלאי (גיפט קארד/קוד) — אין שידור/OOS
