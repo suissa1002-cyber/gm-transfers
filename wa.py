@@ -204,7 +204,16 @@ def _parse_entry_product(text: str):
 
 def get_thread(phone: str, limit: int = 60):
     """שיחה מפוענחת (ישן→חדש) + מצב חלון 24ש."""
-    msgs = _dash_call(_dash().get_conversation, phone, limit=limit)
+    try:
+        msgs = _dash_call(_dash().get_conversation, phone, limit=limit)
+    except WaError as e:
+        # מספר שאינו איש-קשר עדיין (שיחה חדשה) — ConnectOp מחזיר 404. מחזירים
+        # שיחה ריקה (לא זורקים) כדי שאפשר יהיה לפתוח שיחה חדשה ולשלוח תבנית.
+        if "404" in str(e):
+            return {"phone": phone, "messages": [],
+                    "window": {"in_window": False, "hours_left": 0, "last_inbound_ts": 0},
+                    "entry_product": None}
+        raise
     msgs = list(reversed(msgs))  # הדשבורד מחזיר חדש→ישן
     slim = []
     entry_product = None

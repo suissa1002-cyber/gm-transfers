@@ -2401,6 +2401,7 @@ function renderWa(){
         <div class="wa-listbar ${mobileThread?'wa-bar-hidden':''}" id="waBar">
           <input id="waSearch" placeholder="🔎 חיפוש שם / טלפון / הודעה" value="${escW(S.waSearch||'')}"
                  oninput="S.waSearch=this.value;S._refocusWa=true;waServerSearch();renderWa()">
+          <button class="btn-ghost wa-ico" onclick="waNewConv()" title="שיחה חדשה (פנייה ללקוח)" style="color:#16a34a;font-weight:800;font-size:18px;line-height:1">＋</button>
           <button class="btn-ghost wa-ico" onclick="loadWa(true)" title="רענן">${ico('refresh',16)}</button>
           <button class="btn-ghost wa-ico" id="waPushBtn" onclick="waEnablePush()" title="התראות במכשיר הזה">${ico('bell',16)}</button>
           <label class="ls-check" title="כולל ארכיון"><input type="checkbox" ${S.waArchived?'checked':''}
@@ -3829,6 +3830,32 @@ function renderWaThread(){
     if(k.v) el.value=k.v;
     if(k.f){ el.focus(); try{ el.selectionStart=el.selectionEnd=k.s; }catch(e){} }
   }
+}
+function waNewConv(){
+  document.getElementById('modalRoot').innerHTML=`<div class="overlay" onclick="closeModal()"><div class="modal" style="max-width:420px;text-align:right;line-height:1.5" onclick="event.stopPropagation()">
+    <h3 style="margin:0 0 4px;display:flex;align-items:center;gap:7px">${ico('chat',18)} שיחה חדשה</h3>
+    <div class="muted" style="font-size:13px;margin-bottom:12px">פנייה ללקוח שלא כתב לנו תישלח כ<b>תבנית מאושרת</b> (כלל WhatsApp). הקלד מספר, פתח שיחה, ושלח — המערכת תציע את התבנית.</div>
+    <label class="muted" style="font-size:13px">מספר טלפון</label>
+    <input id="ncPhone" placeholder="05X-XXXXXXX או 9725..." style="width:100%;margin:4px 0 10px" inputmode="tel"
+           onkeydown="if(event.key==='Enter')waNewConvGo()">
+    <label class="muted" style="font-size:13px">שם (אופציונלי)</label>
+    <input id="ncName" placeholder="שם הלקוח" style="width:100%;margin:4px 0 14px" onkeydown="if(event.key==='Enter')waNewConvGo()">
+    <button class="btn-primary" style="width:100%" onclick="waNewConvGo()">פתח שיחה</button>
+  </div></div>`;
+  setTimeout(()=>{ const p=document.getElementById('ncPhone'); if(p) p.focus(); },60);
+}
+function waNewConvGo(){
+  let digits=((document.getElementById('ncPhone')||{}).value||'').replace(/\D/g,'');
+  const nm=((document.getElementById('ncName')||{}).value||'').trim();
+  if(digits.startsWith('0')) digits='972'+digits.slice(1);
+  else if(digits.length===9&&digits.startsWith('5')) digits='972'+digits;
+  if(digits.length<11){ toast('מספר טלפון לא תקין',false); return; }
+  S.waConvs=S.waConvs||[];
+  if(!S.waConvs.some(c=>c.phone===digits))
+    S.waConvs.unshift({phone:digits,name:nm||digits,ts:Math.floor(Date.now()/1000),unread:false,archived:false,live_chat:true,star:false,pic:''});
+  closeModal();
+  if(!(S.view==='admin'&&S.adminTab==='wa')) setAdminTab('wa');
+  openWaConv(digits);
 }
 async function openWaConv(phone){
   // שיחה שנפתחה מתוצאת חיפוש-שרת ולא קיימת ברשימה המקומית — מצרפים אותה
