@@ -4888,7 +4888,7 @@ async function wcoOpenReturn(oid,isOpen){
     const txt=[c.name,c.phone,c.address,c.email].filter(Boolean).join(' · ');
     if(navigator.clipboard&&navigator.clipboard.writeText&&txt){ try{ await navigator.clipboard.writeText(txt); }catch(e){} }
     toast('↩️ החזרה נפתחה ותועדה ✓ — פרטי הלקוח הועתקו',true);
-    window.open('https://dashboard.cargo.co.il/','_blank');   // יצירת האיסוף בדשבורד Cargo
+    window.open('https://dashboard.cargo.co.il/company/177/dashboard','_blank');   // דשבורד Cargo של Green Mobile — ליצירת האיסוף
     loadWcOrders(); openWcOrder(oid);
   }catch(e){ toast('פתיחת ההחזרה נכשלה',false); }
   hideLoading();
