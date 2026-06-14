@@ -4881,16 +4881,17 @@ async function wcoOpenReturn(oid,isOpen){
     hideLoading(); return;
   }
   if(!confirm('לפתוח החזרה (איסוף מהלקוח)?\nזה יתעד בהזמנה, יעתיק את פרטי הלקוח, ויפתח את דשבורד Cargo ליצירת האיסוף.')) return;
+  // ⚠️ לפתוח את Cargo *כאן*, בתוך לחיצת המשתמש ולפני ה-await — אחרת הדפדפן חוסם את ה-popup
+  const cargoWin=window.open('https://dashboard.cargo.co.il/company/177/dashboard','_blank');
   showLoading('פותח החזרה…');
   try{
     const r=await api('/api/admin/orders/'+oid+'/return',{method:'POST'},45000);
     const c=r.customer||{};
     const txt=[c.name,c.phone,c.address,c.email].filter(Boolean).join(' · ');
     if(navigator.clipboard&&navigator.clipboard.writeText&&txt){ try{ await navigator.clipboard.writeText(txt); }catch(e){} }
-    toast('↩️ החזרה נפתחה ותועדה ✓ — פרטי הלקוח הועתקו',true);
-    window.open('https://dashboard.cargo.co.il/company/177/dashboard','_blank');   // דשבורד Cargo של Green Mobile — ליצירת האיסוף
+    toast(cargoWin?'↩️ החזרה נפתחה ותועדה ✓ — פרטי הלקוח הועתקו':'↩️ החזרה נפתחה ✓ — חלון Cargo נחסם, פתח ידנית',true);
     loadWcOrders(); openWcOrder(oid);
-  }catch(e){ toast('פתיחת ההחזרה נכשלה',false); }
+  }catch(e){ if(cargoWin)try{cargoWin.close()}catch(_){}; toast('פתיחת ההחזרה נכשלה',false); }
   hideLoading();
 }
 async function wcoTrash(oid){
