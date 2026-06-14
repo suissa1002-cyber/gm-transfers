@@ -94,7 +94,7 @@ def list_conversations(limit: int = 200, include_archived: bool = False):
         if archived and not include_archived:
             continue
         ts_ms = int(r.get("timestamp") or 0)
-        last_read = int(r.get("last_read_page") or 0)
+        t_sent = int(r.get("t_last_sent") or 0)   # מתי שלחנו (אנחנו/בוט) אחרון — במ"ש
         phone = r.get("ms_id")
         out.append({
             "phone": phone,
@@ -103,7 +103,9 @@ def list_conversations(limit: int = 200, include_archived: bool = False):
             "ts": ts_ms // 1000,
             "archived": archived,
             "live_chat": str(r.get("live_chat", "0")) == "1",
-            "unread": bool(ts_ms and last_read and ts_ms / 1000 > last_read + 2),
+            # ממתין למענה: הלקוח כתב אחרי השליחה האחרונה שלנו (גם ms). מחליף את
+            # last_read_page של קונקטופ שהיה כמעט תמיד 0 (לכן הבאדג' לא נדלק).
+            "unread": bool(ts_ms and ts_ms > t_sent + 2000),
             "star": phone in stars,
             "pic": r.get("profile_pic") or "",
         })
