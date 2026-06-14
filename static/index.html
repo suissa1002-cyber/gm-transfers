@@ -3333,14 +3333,14 @@ function waPanelHTML(){
   const ct=c.contact||{};
   const ordersHTML = c.orders===null ? '<div class="muted">חיבור אתר לא זמין</div>'
     : !(c.orders||[]).length ? '<div class="muted">אין הזמנות לטלפון זה</div>'
-    : c.orders.map(o=>`<a class="wa-order" target="_blank" href="${escW(o.admin_url)}">
+    : c.orders.map(o=>`<div class="wa-order" style="cursor:pointer" onclick="openWcOrder(${o.id})" title="פתח פרטי הזמנה מלאים">
         <div style="display:flex;justify-content:space-between;align-items:center">
           <b>#${o.id}</b><span class="st">${WA_STATUS[o.status]||o.status}</span>
         </div>
         <div class="muted" style="font-size:12px">${escW((o.items||[]).join(', ').slice(0,70))}</div>
         <div style="display:flex;justify-content:space-between;font-size:12px;margin-top:3px">
           <span>${o.currency}${o.total}</span><span class="muted">${escW(o.date)}</span>
-        </div></a>`).join('');
+        </div></div>`).join('');
   const tagOpts=(S.waTags||[]).filter(t=>!(c.tags||[]).some(x=>String(x.id)===String(t.id)))
     .map(t=>`<option value="${t.id}">${escW(t.name)}</option>`).join('');
   const tagsBody=`
