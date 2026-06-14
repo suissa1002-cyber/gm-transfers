@@ -4880,18 +4880,24 @@ async function wcoOpenReturn(oid,isOpen){
     }catch(e){ toast('סגירת ההחזרה נכשלה',false); }
     hideLoading(); return;
   }
-  if(!confirm('לפתוח החזרה (איסוף מהלקוח)?\nזה יתעד בהזמנה, יעתיק את פרטי הלקוח, ויפתח את דשבורד Cargo ליצירת האיסוף.')) return;
-  // ⚠️ לפתוח את Cargo *כאן*, בתוך לחיצת המשתמש ולפני ה-await — אחרת הדפדפן חוסם את ה-popup
-  const cargoWin=window.open('https://dashboard.cargo.co.il/company/create-shipment/177','_blank');   // דף יצירת משלוח — בחר סוג "איסוף (מנמען לבית העסק)" = החזרה
+  if(!confirm('לפתוח החזרה (איסוף מהלקוח)?\nזה יתעד בהזמנה, יעתיק את פרטי הלקוח, ויפתח את דף יצירת המשלוח ב-Cargo.')) return;
+  // 1) בונים את הטקסט מההזמנה שכבר טעונה (סינכרוני, בתוך לחיצת המשתמש)
+  const d=S._wcoD||{}, b=d.billing||{}, sh=d.shipping||{};
+  const src=(sh.address_1||sh.city)?sh:b;
+  const nm=((src.first_name||b.first_name||'')+' '+(src.last_name||b.last_name||'')).trim();
+  const addr=[src.address_1,src.city].filter(Boolean).join(', ');
+  S._returnTxt=[nm, b.phone, addr, b.email].filter(Boolean).join(' · ');
+  // 2) מעתיקים *קודם* — כשהמסמך עוד בפוקוס (לפני פתיחת חלון שגונב פוקוס, ובתוך הג׳סצ׳ר)
+  let copied=false;
+  try{ if(navigator.clipboard&&navigator.clipboard.writeText&&S._returnTxt){ navigator.clipboard.writeText(S._returnTxt); copied=true; } }catch(e){}
+  // 3) רק עכשיו פותחים את Cargo (עדיין בתוך הג׳סצ׳ר → לא נחסם)
+  const cargoWin=window.open('https://dashboard.cargo.co.il/company/create-shipment/177','_blank');
   showLoading('פותח החזרה…');
   try{
-    const r=await api('/api/admin/orders/'+oid+'/return',{method:'POST'},45000);
-    const c=r.customer||{};
-    const txt=[c.name,c.phone,c.address,c.email].filter(Boolean).join(' · ');
-    if(navigator.clipboard&&navigator.clipboard.writeText&&txt){ try{ await navigator.clipboard.writeText(txt); }catch(e){} }
-    toast(cargoWin?'↩️ החזרה נפתחה ותועדה ✓ — פרטי הלקוח הועתקו':'↩️ החזרה נפתחה ✓ — חלון Cargo נחסם, פתח ידנית',true);
+    await api('/api/admin/orders/'+oid+'/return',{method:'POST'},45000);   // תיעוד הערה + דגל
+    toast((copied?'פרטי הלקוח הועתקו ✓ · ':'')+'↩️ החזרה נפתחה'+(cargoWin?'':' · חלון Cargo נחסם, פתח ידנית'),true);
     loadWcOrders(); openWcOrder(oid);
-  }catch(e){ if(cargoWin)try{cargoWin.close()}catch(_){}; toast('פתיחת ההחזרה נכשלה',false); }
+  }catch(e){ toast('פתיחת ההחזרה נכשלה',false); }
   hideLoading();
 }
 async function wcoTrash(oid){
