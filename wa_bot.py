@@ -75,6 +75,25 @@ def handle(phone: str, text: str, mtype: str = "text", reply_id: str = ""):
         return _new_order_results(phone, text)
     if state == "new_pick" and rid.startswith("prod:"):
         return _product_card(phone, rid, sess.get("data") or {})
+    # ── זרימת הזמנה בצ'אט ──
+    if rid.startswith("buy:"):
+        return _start_order(phone, rid.split(":", 1)[1], sess)
+    if state == "order_color" and rid.startswith("color:"):
+        d = sess.get("data") or {}
+        return _show_storage(phone, d.get("pid"), d.get("product") or {},
+                             d.get("variations") or [], rid.split(":", 1)[1])
+    if state == "order_storage" and rid.startswith("storage:"):
+        d = sess.get("data") or {}
+        st = rid.split(":", 1)[1]
+        vs = [v for v in (d.get("variations") or [])
+              if (not d.get("color") or v.get("color") == d.get("color")) and v.get("storage") == st]
+        v = vs[0] if vs else {}
+        label = " ".join(x for x in [_short_name((d.get("product") or {}).get("name")),
+                                     d.get("color"), st] if x)
+        return _ask_name(phone, {"pid": d.get("pid"), "vid": v.get("id") or 0,
+                                 "price": v.get("price"), "label": label})
+    if state == "order_name" and not rid:
+        return _finalize_order(phone, text, sess.get("data") or {})
 
     # ── ניתוב תפריט ──
     if rid == "status" or ("סטטוס" in low and "הזמנ" in low):
@@ -163,7 +182,8 @@ def _product_card(phone, rid, data):
     if p.get("permalink"):
         lines.append(f"\n🔗 לרכישה ולפרטים:\n{p['permalink']}")
     body = "\n".join(lines)
-    btns = [("search_again", "🔍 מוצר אחר"), ("agent", "👤 נציג"), ("menu", "↩️ תפריט")]
+    pid = rid.split(":", 1)[1]
+    btns = [(f"buy:{pid}", "🛒 הזמן עכשיו"), ("search_again", "🔍 מוצר אחר"), ("agent", "👤 נציג")]
     img = p.get("image") or ""
     try:                                   # כרטיס עם תמונה; אם נכשל — fallback לטקסט
         wa.send_buttons(phone, body, btns, header_image=img if img.startswith("http") else "")
@@ -171,7 +191,81 @@ def _product_card(phone, rid, data):
         logger.warning("product card image failed, text fallback: %s", e)
         wa.send_text(phone, body)
         wa.send_buttons(phone, "מה הלאה?", btns)
+    # שומרים את המוצר לשלב הרכישה
+    db.bot_session_set(phone, "viewing", {"pid": pid, "product": p})
+
+
+# ── זרימת הזמנה ותשלום בצ'אט ──
+def _start_order(phone, pid, sess):
+    import main
+    prod = (sess.get("data") or {}).get("product") or {}
+    variations = main.bot_get_variations(pid)
+    if not variations:                       # מוצר פשוט
+        return _ask_name(phone, {"pid": pid, "vid": 0, "price": prod.get("price"),
+                                 "label": _short_name(prod.get("name"))})
+    colors = []
+    seen = set()
+    for v in variations:
+        c = v.get("color")
+        if c and c not in seen:
+            seen.add(c)
+            colors.append(c)
+    if len(colors) > 1:
+        rows = [(f"color:{c}", c, "") for c in colors[:10]]
+        wa.send_list(phone, f"איזה צבע ל-{_short_name(prod.get('name'))}?", rows,
+                     button_label="צבעים", section_title="בחר/י צבע")
+        db.bot_session_set(phone, "order_color",
+                           {"pid": pid, "product": prod, "variations": variations})
+        return
+    return _show_storage(phone, pid, prod, variations, colors[0] if colors else "")
+
+
+def _show_storage(phone, pid, prod, variations, color):
+    vs = [v for v in variations if (not color or v.get("color") == color)]
+    storages = []
+    seen = set()
+    for v in vs:
+        st = v.get("storage")
+        if st and st not in seen:
+            seen.add(st)
+            storages.append(st)
+    if len(storages) > 1:
+        rows = [(f"storage:{st}", st, "") for st in storages[:10]]
+        wa.send_list(phone, "איזה נפח אחסון?", rows, button_label="נפח", section_title="בחר/י נפח")
+        db.bot_session_set(phone, "order_storage",
+                           {"pid": pid, "product": prod, "variations": variations, "color": color})
+        return
+    v = vs[0] if vs else {}                   # וריאציה יחידה — נקבעה
+    label = " ".join(x for x in [_short_name(prod.get("name")), color, v.get("storage")] if x)
+    return _ask_name(phone, {"pid": pid, "vid": v.get("id") or 0, "price": v.get("price"), "label": label})
+
+
+def _ask_name(phone, order):
+    price = order.get("price")
+    pstr = f" (₪{int(float(price)):,})" if price not in (None, "", "0") else ""
+    wa.send_text(phone, f"מעולה — {order.get('label')}{pstr} 🛒\nלשם מי ההזמנה? (שם מלא)")
+    db.bot_session_set(phone, "order_name", order)
+
+
+def _finalize_order(phone, name, order):
+    import main
     db.bot_session_clear(phone)
+    try:
+        res = main.bot_create_order(order["pid"], order.get("vid") or 0,
+                                    order.get("price"), name, phone)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("bot order finalize failed: %s", e)
+        wa.send_text(phone, "הייתה תקלה ביצירת ההזמנה 🙁 נציג יחזור אליך לסיים. מצטערים!")
+        return _to_agent(phone, note=f"הזמנה אוטומטית נכשלה: {order.get('label')}")
+    msg = (f"✅ ההזמנה נוצרה!\nהזמנה #{res.get('number')} · סה\"כ ₪{res.get('total')}\n\n"
+           f"💳 להשלמת התשלום (מאובטח):\n{res.get('pay_link')}\n\n"
+           f"לאחר התשלום נעדכן אותך כאן 🙏")
+    wa.send_text(phone, msg)
+    try:
+        main._tg_admin(f"🛒 <b>הזמנה חדשה מהבוט!</b>\n#{res.get('number')} · {order.get('label')} · "
+                       f"₪{res.get('total')}\n{phone} ({name})")
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _menu_tail(phone):

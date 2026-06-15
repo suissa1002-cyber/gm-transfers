@@ -3034,6 +3034,61 @@ def _rq_mod():
     return _rq
 
 
+def bot_get_variations(product_id) -> list:
+    """וריאציות מוצר לבוט: [{id, price, color, storage, stock}]. ריק = מוצר פשוט."""
+    creds = _wc_creds()
+    if not creds:
+        return []
+    base, k, s = creds
+    import requests as _rq
+    try:
+        r = _rq.get(base + f"/wp-json/wc/v3/products/{int(product_id)}/variations",
+                    params={"per_page": 100}, auth=(k, s), timeout=20)
+        vs = r.json() if r.ok else []
+    except Exception as e:  # noqa: BLE001
+        logger.warning("bot_get_variations failed for %s: %s", product_id, e)
+        return []
+    out = []
+    for v in (vs or []):
+        attrs = {a.get("name"): a.get("option") for a in (v.get("attributes") or [])}
+        out.append({"id": v.get("id"), "price": v.get("price"),
+                    "color": attrs.get("בחירת צבע") or "",
+                    "storage": attrs.get("בחירת נפח אחסון") or attrs.get("נפח אחסון") or "",
+                    "stock": v.get("stock_status")})
+    return out
+
+
+def bot_create_order(product_id, variation_id, price, name, phone) -> dict:
+    """יוצר הזמנת WC (pending) + קישור תשלום PayPlus — לבוט ה-native. מחזיר
+    {number, total, pay_link}. מקושר ל-IPN דרך payplus_pru:."""
+    base, k, s = _wc_creds()
+    import requests as _rq
+    li = {"product_id": int(product_id), "quantity": 1}
+    if variation_id:
+        li["variation_id"] = int(variation_id)
+    if price not in (None, "", "0"):
+        tot = str(round(float(price), 2))
+        li["subtotal"] = tot
+        li["total"] = tot
+    payload = {"status": "pending",
+               "billing": {"first_name": (name or "לקוח")[:40], "phone": str(phone), "country": "IL"},
+               "line_items": [li],
+               "meta_data": [{"key": "greenos_source", "value": "whatsapp-bot"},
+                             {"key": "greenos_wa_phone", "value": str(phone)}]}
+    r = _rq.post(f"{base}/wp-json/wc/v3/orders", json=payload, auth=(k, s), timeout=45)
+    if r.status_code not in (200, 201):
+        logger.warning("bot order create failed %s: %s", r.status_code, r.text[:200])
+        raise RuntimeError("order create failed")
+    o = r.json()
+    pp = _payplus_link(float(o.get("total") or 0), str(o.get("number")),
+                       {"name": name, "phone": str(phone)}, payments=1)
+    try:
+        db.sales_state_set(f"payplus_pru:{pp['pru']}", str(o.get("id")))
+    except Exception:  # noqa: BLE001
+        pass
+    return {"number": o.get("number"), "total": o.get("total"), "pay_link": pp["link"]}
+
+
 def bot_product_search(q: str, limit: int = 8) -> list:
     """חיפוש מוצרים לבוט ה-native — שם/מחיר/תמונה/קישור, **מדורג לפי רלוונטיות**
     (מספר דגם + דרגה Pro/Ultra במשקל גבוה → S26 Ultra עולה ראשון). עם נפילה
