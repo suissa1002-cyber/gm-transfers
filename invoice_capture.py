@@ -36,6 +36,22 @@ def configured() -> bool:
     return bool(IMAP_USER and IMAP_PASS)
 
 
+def _all_mail_folder(M) -> str:
+    """מאתר את תיקיית "כל המיילים" של Gmail (special-use \\All) — כי מייל שנשלח
+    מהחשבון לעצמו מדלג על INBOX ויושב רק שם. עמיד לשפה (לא תלוי בשם המתורגם)."""
+    try:
+        typ, boxes = M.list()
+        for b in (boxes or []):
+            line = b.decode() if isinstance(b, bytes) else str(b)
+            if "\\All" in line:
+                m = re.search(r'"([^"]+)"\s*$', line) or re.search(r'([^"\s]+)\s*$', line)
+                if m:
+                    return m.group(1)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("all-mail folder lookup failed: %s", e)
+    return "INBOX"
+
+
 def _decode(s) -> str:
     if not s:
         return ""
@@ -115,7 +131,8 @@ def probe(days: int = 21, max_msgs: int = 40) -> dict:
     except Exception as e:  # noqa: BLE001
         return {"ok": False, "reason": f"login: {e}"}
     try:
-        M.select("INBOX", readonly=True)
+        out["mailbox"] = _all_mail_folder(M)
+        M.select(f'"{out["mailbox"]}"', readonly=True)
         import time as _t
         since = _t.strftime("%d-%b-%Y", _t.gmtime(_t.time() - days * 86400))
         typ, data = M.uid("search", None, "SINCE", since)
@@ -157,7 +174,8 @@ def capture(max_msgs: int = 80) -> dict:
         logger.warning("imap login failed: %s", e)
         return {"ok": False, "reason": f"login: {e}"}
     try:
-        M.select("INBOX", readonly=True)        # readonly — לא נוגעים בדגלי Itzik
+        box = _all_mail_folder(M)               # עותקי self-send מדלגים על INBOX
+        M.select(f'"{box}"', readonly=True)     # readonly — לא נוגעים בדגלי Itzik
         import time as _t
         since = _t.strftime("%d-%b-%Y", _t.gmtime(_t.time() - SCAN_DAYS * 86400))
         crit = ["SINCE", since]
