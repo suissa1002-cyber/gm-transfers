@@ -1675,6 +1675,53 @@ async def checks_gql(request: Request, x_admin_key: Optional[str] = Header(None)
     return JSONResponse(r.json(), status_code=r.status_code)
 
 
+@app.post("/api/checks/upload")
+async def checks_upload(request: Request, x_admin_key: Optional[str] = Header(None),
+                        x_checks_key: Optional[str] = Header(None)):
+    """העלאת צילום צ'ק לעמודת הקבצים במאנדיי — דרך השרת (הטוקן בצד השרת בלבד).
+    מחליף את ההעלאה הישנה לוורקר Cloudflare שהפסיקה לעבוד אחרי המיגרציה
+    (הקליינט שלח token=undefined). מקבל multipart: item_id + file."""
+    checks_pw = os.getenv("CHECKS_PASSWORD", "").strip()
+    admin_ok = (not cfg.ADMIN_PASSWORD) or (x_admin_key or "") == cfg.ADMIN_PASSWORD
+    checks_ok = bool(checks_pw) and (x_checks_key or "") == checks_pw
+    if not (admin_ok or checks_ok):
+        raise HTTPException(401, "checks auth required")
+    token = os.getenv("MONDAY_API_TOKEN", "")
+    if not token:
+        raise HTTPException(400, "MONDAY_API_TOKEN לא מוגדר")
+    form = await request.form()
+    item_id = (form.get("item_id") or "").strip()
+    column_id = (form.get("column_id") or "files__1").strip()
+    up = form.get("file")
+    if not item_id or up is None or not hasattr(up, "read"):
+        raise HTTPException(400, "חסר item_id או קובץ")
+    try:
+        item_id_int = int(item_id)
+    except ValueError:
+        raise HTTPException(400, "item_id לא תקין")
+    file_bytes = await up.read()
+    filename = getattr(up, "filename", None) or "check.jpg"
+    content_type = getattr(up, "content_type", None) or "image/jpeg"
+    mutation = (f'mutation ($file: File!) {{ add_file_to_column('
+                f'item_id: {item_id_int}, column_id: "{column_id}", file: $file) {{ id }} }}')
+    import requests as _rq
+    try:
+        r = _rq.post("https://api.monday.com/v2/file",
+                     headers={"Authorization": token, "API-Version": "2024-10"},
+                     data={"query": mutation},
+                     files={"variables[file]": (filename, file_bytes, content_type)},
+                     timeout=90)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("checks upload to monday failed: %s", e)
+        raise HTTPException(502, "העלאת הקובץ למאנדיי נכשלה")
+    try:
+        j = r.json()
+    except Exception:  # noqa: BLE001
+        logger.warning("checks upload non-json (%s): %s", r.status_code, r.text[:200])
+        raise HTTPException(502, f"מאנדיי החזיר תשובה לא תקינה ({r.status_code})")
+    return JSONResponse(j, status_code=r.status_code)
+
+
 # ── Ops Hub: משימות סוכנים (Monday proxy — הטוקן בצד השרת בלבד) ────
 @app.get("/api/admin/tasks")
 def admin_tasks(force: int = 0, x_admin_key: Optional[str] = Header(None)):
