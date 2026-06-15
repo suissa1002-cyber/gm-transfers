@@ -66,9 +66,26 @@ _lock = threading.RLock()
 # סכמה ייעודית ב-Postgres כדי לבודד את הטבלאות שלנו (חולקים instance עם stock_watcher)
 _PG_SCHEMA = os.getenv("PG_SCHEMA", "transfers_app")
 
+_pool = None
 if _USE_PG:
     import psycopg
     from psycopg.rows import dict_row
+    from psycopg_pool import ConnectionPool
+    # מאגר חיבורים — חיבורים נשמרים וממוחזרים במקום לפתוח חיבור חדש (TLS+auth+
+    # search_path) בכל שאילתה. זה היה צוואר הבקבוק: טעינת הזמנות = עשרות שאילתות
+    # קטנות × ~120ms חיבור כל אחת. עם pool — מילישניות. max_size קטן כי חולקים
+    # instance עם stock_watcher.
+    def _pg_configure(c):
+        # מגדיר search_path פעם אחת לכל חיבור חדש ב-pool, ומקבע (commit) כדי
+        # שלא יתאפס ב-rollback של טרנזקציה מאוחרת.
+        c.execute(f"SET search_path TO {_PG_SCHEMA}")
+        c.commit()
+
+    _pool = ConnectionPool(
+        cfg.DATABASE_URL, min_size=1, max_size=8, timeout=20,
+        kwargs={"row_factory": dict_row, "autocommit": False},
+        configure=_pg_configure, open=True,
+    )
 else:
     import sqlite3
 
@@ -84,23 +101,28 @@ def _q(sql: str) -> str:
 
 @contextmanager
 def _conn():
-    """חיבור DB עם dict-rows; thread-safe (נעילה גסה, מספיק לעומס הנמוך כאן)."""
-    with _lock:
-        if _USE_PG:
-            conn = psycopg.connect(cfg.DATABASE_URL, row_factory=dict_row, autocommit=False)
-            # בידוד בסכמה ייעודית (לא נוגעים בטבלאות של stock_watcher באותו instance)
-            conn.execute(f"SET search_path TO {_PG_SCHEMA}")
-        else:
+    """חיבור DB עם dict-rows. Postgres — מתוך ה-pool (חיבורים ממוחזרים, ללא נעילה
+    גלובלית → web ו-jobs רצים במקביל). SQLite — חיבור-לכל-קריאה תחת נעילה (כותב יחיד)."""
+    if _USE_PG:
+        with _pool.connection() as conn:      # search_path מוגדר ב-configure ביצירת החיבור
+            try:
+                yield conn
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+    else:
+        with _lock:
             conn = sqlite3.connect(cfg.SQLITE_PATH)
             conn.row_factory = sqlite3.Row
-        try:
-            yield conn
-            conn.commit()
-        except Exception:
-            conn.rollback()
-            raise
-        finally:
-            conn.close()
+            try:
+                yield conn
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+            finally:
+                conn.close()
 
 
 # Postgres רוצה SERIAL/BIGINT; SQLite רוצה INTEGER PRIMARY KEY AUTOINCREMENT.
