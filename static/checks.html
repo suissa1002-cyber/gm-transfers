@@ -2260,20 +2260,14 @@
         }
 
         function nextCheckNumber() {
-            // המספר הבא = המספר המספרי הגבוה ביותר מבין הצ'קים הקיימים + 1.
-            // שומר על אורך/אפסים מובילים (למשל 0042 → 0043). אם אין צ'קים — ריק.
-            const nums = (allChecks || [])
-                .map(c => String(c.name || '').trim())
-                .filter(n => /^\d+$/.test(n));
-            if (!nums.length) return '';
-            let maxVal = -1, width = 0;
-            nums.forEach(n => {
-                const v = parseInt(n, 10);
-                if (v > maxVal) { maxVal = v; width = n.length; }
-            });
-            if (maxVal < 0) return '';
-            const next = String(maxVal + 1);
-            return next.length < width ? next.padStart(width, '0') : next;
+            // המספר הבא = המספר האחרון שאסי הזין *במכשיר הזה* + 1.
+            // לא מנחשים מהבורד — שם יש מספרים חריגים ופנקסים שונים (5002001, 14766...).
+            // הרצף שלו נשמר ב-localStorage אחרי כל שמירה מוצלחת. אם עוד אין — ריק
+            // (מקלידים את הראשון פעם אחת, ומשם זה מתקדם לבד).
+            const last = (localStorage.getItem('checks_last_number') || '').trim();
+            if (!/^\d+$/.test(last)) return '';
+            const next = String(parseInt(last, 10) + 1);
+            return next.length < last.length ? next.padStart(last.length, '0') : next;
         }
 
         function populateSuppliersList() {
@@ -2403,6 +2397,9 @@
                         throw new Error('העלאת התמונה נכשלה - הצק לא נוסף');
                     }
                 }
+
+                // זוכרים את המספר שהוזן כדי להציע את הבא בפעם הבאה
+                try { localStorage.setItem('checks_last_number', checkNumber); } catch(e) {}
 
                 alert('✅ הצק נוסף בהצלחה!');
                 closeAddCheckModal();
