@@ -440,6 +440,7 @@ _SCHEMA = [
         issued_date   TEXT,
         customer_name TEXT,
         customer_phone TEXT,
+        order_number  TEXT,
         filename      TEXT,
         subject       TEXT,
         email_uid     TEXT,
@@ -511,6 +512,8 @@ def _migrate():
         ("devices",        "branch_locked", "TEXT"),
         # is_stock=0 → מוצר דיגיטלי/לא-מנוהל-מלאי (גיפט קארד/קוד) — מדלגים על שידור/OOS
         ("catalog",        "is_stock", "INTEGER"),
+        # מספר הזמנת אתר מתוך החשבונית — מקשר חשבונית→הזמנה→לקוח
+        ("customer_invoices", "order_number", "TEXT"),
     ]
     for table, col, typ in cols:
         try:
@@ -1675,23 +1678,41 @@ def invoice_exists(email_uid: str) -> bool:
         return cur.fetchone() is not None
 
 
+def invoice_doc_exists(doc_number: str) -> bool:
+    dn = str(doc_number or "").strip()
+    if not dn:
+        return False
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT 1 FROM customer_invoices WHERE doc_number = ?"), (dn,))
+        return cur.fetchone() is not None
+
+
+def invoices_reset() -> int:
+    """מוחק את כל החשבוניות שנקלטו — לקליטה מחדש אחרי כיוונון פענוח."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute("DELETE FROM customer_invoices")
+        return cur.rowcount if hasattr(cur, "rowcount") else 0
+
+
 def invoice_add(email_uid, pdf_b64, doc_number="", doc_type="", total="",
                 issued_date="", customer_name="", customer_phone="",
-                filename="", subject="") -> int:
+                order_number="", filename="", subject="") -> int:
     cols = ("(doc_number, doc_type, total, issued_date, customer_name, customer_phone, "
-            "filename, subject, email_uid, pdf_b64, captured_at)")
+            "order_number, filename, subject, email_uid, pdf_b64, captured_at)")
     vals = (str(doc_number or ""), doc_type or "", str(total or ""), issued_date or "",
-            customer_name or "", customer_phone or "", filename or "", (subject or "")[:300],
-            str(email_uid), pdf_b64 or "", now_iso())
+            customer_name or "", customer_phone or "", str(order_number or ""),
+            filename or "", (subject or "")[:300], str(email_uid), pdf_b64 or "", now_iso())
     with _conn() as c:
         cur = c.cursor()
         if _USE_PG:
-            cur.execute(_q(f"INSERT INTO customer_invoices {cols} VALUES (?,?,?,?,?,?,?,?,?,?,?) "
+            cur.execute(_q(f"INSERT INTO customer_invoices {cols} VALUES (?,?,?,?,?,?,?,?,?,?,?,?) "
                            "ON CONFLICT (email_uid) DO NOTHING RETURNING id"), vals)
             row = cur.fetchone()
             return row["id"] if row else 0
         try:
-            cur.execute(_q(f"INSERT INTO customer_invoices {cols} VALUES (?,?,?,?,?,?,?,?,?,?,?)"), vals)
+            cur.execute(_q(f"INSERT INTO customer_invoices {cols} VALUES (?,?,?,?,?,?,?,?,?,?,?,?)"), vals)
             return cur.lastrowid
         except Exception:  # noqa: BLE001 — sqlite unique violation (dedup)
             return 0
@@ -1700,15 +1721,16 @@ def invoice_add(email_uid, pdf_b64, doc_number="", doc_type="", total="",
 def invoice_search(phone="", q="", limit=40) -> list:
     """חיפוש חשבוניות לפי טלפון לקוח ו/או טקסט (מספר מסמך/שם/סכום). בלי ה-PDF."""
     fields = ("id, doc_number, doc_type, total, issued_date, customer_name, "
-              "customer_phone, filename, subject, captured_at")
+              "customer_phone, order_number, filename, subject, captured_at")
     where, args = [], []
     if phone:
         d = "".join(ch for ch in str(phone) if ch.isdigit())[-9:]
         where.append("customer_phone LIKE ?")
         args.append(f"%{d}%")
     if q:
-        where.append("(doc_number LIKE ? OR customer_name LIKE ? OR total LIKE ? OR subject LIKE ?)")
-        args += [f"%{q}%"] * 4
+        where.append("(doc_number LIKE ? OR customer_name LIKE ? OR total LIKE ? "
+                     "OR order_number LIKE ? OR subject LIKE ?)")
+        args += [f"%{q}%"] * 5
     sql = f"SELECT {fields} FROM customer_invoices"
     if where:
         sql += " WHERE " + " AND ".join(where)

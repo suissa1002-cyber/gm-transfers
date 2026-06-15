@@ -3440,7 +3440,7 @@ function waInvHTML(){
   if(!items.length) return '<div class="muted">לא נמצאו חשבוניות לטלפון זה</div>';
   return items.map(x=>{
     const ttl=[x.doc_type||'מסמך',x.doc_number?('#'+x.doc_number):''].filter(Boolean).join(' ');
-    const sub=[x.total?('₪'+x.total):'',x.issued_date||'',x.customer_name||''].filter(Boolean).join(' · ');
+    const sub=[x.total?('₪'+x.total):'',x.issued_date||'',x.order_number?('הזמנה '+x.order_number):'',x.customer_name||''].filter(Boolean).join(' · ');
     return `<div class="wa-order" style="display:flex;gap:8px;align-items:center">
       <div style="flex:1;min-width:0;text-align:right">
         <b style="font-size:13px">${escW(ttl)}</b>

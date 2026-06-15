@@ -81,41 +81,56 @@ def _pdf_text(pdf_bytes: bytes) -> str:
         return ""
 
 
-def _parse(pdf_bytes: bytes) -> dict:
-    """מחלץ מזהים מה-PDF (best-effort). חוזר dict עם מה שנמצא."""
-    t = _pdf_text(pdf_bytes)
+def _parse(pdf_bytes: bytes, subject: str = "") -> dict:
+    """מחלץ מזהים מהחשבונית. מקורות אמינים: מספר מסמך — מנושא המייל; שם לקוח /
+    מספר הזמנת אתר / טלפון — מהבלוק המובנה בתחתית ה-PDF (* שם לקוח: ... / מספר
+    הזמנה באתר / טל' לקוח). best-effort עם נפילה רכה."""
     out = {"doc_type": "", "doc_number": "", "total": "", "issued_date": "",
-           "customer_name": "", "customer_phone": ""}
+           "customer_name": "", "customer_phone": "", "order_number": ""}
+    # מספר מסמך — מנושא המייל ("חשבונית מס/קבלה מספר 1064")
+    ms = re.search(r"מספר\s*(\d+)", subject or "")
+    if ms:
+        out["doc_number"] = ms.group(1)
+    t = _pdf_text(pdf_bytes)
     if not t:
         return out
-    # סוג + מספר מסמך
+    # סוג מסמך
     if re.search(r"חשבונית\s*(?:מס\s*)?זיכוי", t):
         out["doc_type"] = "חשבונית זיכוי"
-    elif re.search(r"חשבונית\s*מס", t):
+    elif re.search(r"חשבונית[\s\\/]*מס", t):
         out["doc_type"] = "חשבונית מס"
-    elif re.search(r"קבלה", t):
+    elif "קבלה" in t:
         out["doc_type"] = "קבלה"
-    m = re.search(r"חשבונית\s*(?:מס\s*)?(?:זיכוי\s*)?(\d{3,})", t) \
-        or re.search(r"קבלה\s*(?:מס['׳]?\s*)?(\d{3,})", t) \
-        or re.search(r"מסמך\D{0,8}(\d{4,})", t)
-    if m:
-        out["doc_number"] = m.group(1)
-    # סכום (סה"כ לתשלום / סה"כ כולל מע"מ)
-    mt = re.search(r"(?:סה[\"״]?כ\s*(?:לתשלום|כולל)?[^\d]{0,12})([\d,]+\.\d{2})", t)
-    if mt:
-        out["total"] = mt.group(1).replace(",", "")
-    # תאריך
-    md = re.search(r"(\d{1,2}[/.\-]\d{1,2}[/.\-]\d{2,4})", t)
-    if md:
-        out["issued_date"] = md.group(1)
-    # טלפון ישראלי של הלקוח
-    mp = re.search(r"\b(0(?:5\d|7\d|[2-489])[-\s]?\d{3}[-\s]?\d{4})\b", t)
+    # מספר מסמך — נפילה מה-PDF אם לא היה בנושא ("חשבונית מס\קבלה05-001064")
+    if not out["doc_number"]:
+        md = re.search(r"חשבונית[\s\\/א-ת]*?(\d{2}-\d{4,}|\d{4,})", t)
+        if md:
+            num = md.group(1)
+            out["doc_number"] = (num.split("-")[-1].lstrip("0") or num) if "-" in num else num
+    # בלוק מובנה בתחתית (אמין): מספר הזמנה / שם לקוח / טלפון
+    mo = re.search(r"(\d{3,})\s*:\s*\*?\s*מספר\s*הזמנה\s*באתר", t)
+    if mo:
+        out["order_number"] = mo.group(1)
+    mn = re.search(r"שם\s*לקוח\s*:\s*([^\n]+)", t)
+    if mn:
+        out["customer_name"] = mn.group(1).strip(" *:‏‎")[:80]
+    # טלפון — מהבלוק המובנה ("0537174944 :* טל' לקוח") או כללי ראשון במסמך
+    mp = re.search(r"(0\d{1,2}[-\s]?\d{6,8})\s*:\s*\*?\s*טל", t) \
+        or re.search(r"\b(0(?:5\d|7\d|[2-489])[-\s]?\d{3}[-\s]?\d{4})\b", t)
     if mp:
         out["customer_phone"] = re.sub(r"[-\s]", "", mp.group(1))
-    # שם לקוח — אחרי "לכבוד" / "שם הלקוח"
-    mn = re.search(r"(?:לכבוד|שם\s*הלקוח|לקוח)\s*[:\-]?\s*(.+)", t)
-    if mn:
-        out["customer_name"] = mn.group(1).strip()[:80]
+    # תאריך — "תאריך חשבונית: 15/06/2026" או הראשון במסמך
+    md2 = re.search(r"(\d{1,2}/\d{1,2}/\d{4})", t)
+    if md2:
+        out["issued_date"] = md2.group(1)
+    # סכום כולל מע"מ — ליד התווית, אחרת הסכום הגדול ביותר במסמך
+    mt = re.search(r'כולל\s*מע[\"״]מ[^\d₪]{0,25}₪?\s*([\d,]+\.\d{2})', t)
+    if mt:
+        out["total"] = mt.group(1).replace(",", "")
+    else:
+        amts = [float(x.replace(",", "")) for x in re.findall(r"([\d,]+\.\d{2})", t)]
+        if amts:
+            out["total"] = f"{max(amts):.2f}"
     return out
 
 
@@ -207,7 +222,10 @@ def capture(max_msgs: int = 80) -> dict:
                         continue
             if not pdf_bytes:
                 continue
-            parsed = _parse(pdf_bytes)
+            parsed = _parse(pdf_bytes, subject=subject)
+            # מניעת כפילות: הקופה שולחת לפעמים עותק כפול לאותו מסמך
+            if parsed.get("doc_number") and db.invoice_doc_exists(parsed["doc_number"]):
+                continue
             if any(parsed.values()):
                 res["parsed"] += 1
             iid = db.invoice_add(
