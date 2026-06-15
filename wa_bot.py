@@ -117,8 +117,17 @@ def handle(phone: str, text: str, mtype: str = "text", reply_id: str = ""):
     if rid == "lab":
         return _to_agent(phone, note="פנייה למעבדה")
 
-    # ברכה / טקסט חופשי / לא מזוהה → תפריט (שלב 6ג: כאן ייכנס אורי)
+    # ── טקסט חופשי → מנוע החיפוש (אם נראה מוצר), אחרת תפריט ──
+    # (שלב 6ג: שאלות מורכבות/השוואות → אורי. כרגע: חיפוש מוצר מיידי.)
+    if low and low not in _GREETINGS and len(low) >= 3:
+        import main
+        if main.bot_product_search(text, limit=6):
+            return _new_order_results(phone, text)
     _menu(phone)
+
+
+_GREETINGS = {"היי", "שלום", "הי", "הייי", "hello", "hi", "hey", "בוקר טוב",
+              "ערב טוב", "צהריים טובים", "מה קורה", "מה נשמע", "שלום רב", "אהלן"}
 
 
 import re as _re
