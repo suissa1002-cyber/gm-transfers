@@ -403,16 +403,34 @@ async def wa_webhook_recv(request: Request):
     raw = await request.body()
     import wa_webhook
     sig = request.headers.get("x-hub-signature-256", "")
-    # בטיחות cutover: מעבירים לקונקטופ עותק זהה (כולל החתימה המקורית) **תמיד**,
-    # לפני ובלי תלות באימות/עיבוד שלנו — כך הבוט שלהם לעולם לא נשבר במעבר.
-    # הם מאמתים את החתימה בעצמם, וזה זהה למה שמטא שולח להם היום.
-    wa_webhook.forward_to_connectop(raw, sig)
+    # שלב 6 (גלגול בטוח): אם השולח ב-BOT_WHITELIST → הבוט ה-native מטפל בו, ולכן
+    # *לא* מעבירים לקונקטופ (אחרת הלקוח יקבל שתי תשובות). כל שאר הלקוחות —
+    # מועברים לקונקטופ כרגיל. כל פעולה כאן עטופה ב-try; כשל → ברירת מחדל בטוחה
+    # (מעבירים לקונקטופ), כך שלקוחות אמיתיים לעולם לא מושפעים.
+    bot_sender = None
+    try:
+        import wa_bot
+        snd = wa_webhook.extract_sender(raw)
+        if snd and wa_bot.enabled_for(snd):
+            bot_sender = snd
+    except Exception:  # noqa: BLE001
+        bot_sender = None
+    if not bot_sender:
+        wa_webhook.forward_to_connectop(raw, sig)
     # העיבוד והשמירה שלנו — רק על חתימה תקפה (מגן על החנות שלנו, לא על קונקטופ).
     if wa_webhook.verify_signature(raw, sig):
         try:
             wa_webhook.process(raw)
         except Exception as e:  # noqa: BLE001
             logger.warning("wa webhook process failed: %s", e)
+        if bot_sender:                       # הבוט ה-native — רק לשולח whitelisted
+            try:
+                import wa_bot
+                inb = wa_webhook.extract_inbound(raw)
+                if inb and inb[1] is not None:
+                    wa_bot.handle(bot_sender, inb[1], inb[2] or "text")
+            except Exception as e:  # noqa: BLE001
+                logger.warning("wa bot dispatch failed: %s", e)
     else:
         logger.warning("wa webhook bad signature — הועבר לקונקטופ, דילגנו על שמירה מקומית")
     return {"ok": True}

@@ -509,6 +509,55 @@ def send_document(phone: str, pdf_bytes: bytes, filename: str = "document.pdf",
     return {"sent": True, "wamid": wamid}
 
 
+def _meta_interactive(phone: str, payload: dict, preview_text: str) -> str:
+    """שולח הודעת interactive (כפתורים/רשימה) דרך Meta. מחזיר wamid, שומר outbound."""
+    if not meta_direct_ready():
+        raise WaError("Meta ישיר לא מוגדר")
+    import os as _os
+    import requests as _rq
+    r = _rq.post(f"{META_GRAPH}/{_os.getenv('META_WA_PHONE_ID').strip()}/messages",
+                 headers={"Authorization": f"Bearer {_os.getenv('META_WA_TOKEN').strip()}",
+                          "Content-Type": "application/json"},
+                 json={"messaging_product": "whatsapp", "to": phone,
+                       "type": "interactive", "interactive": payload}, timeout=30)
+    if r.status_code not in (200, 201):
+        raise WaError(f"Meta interactive failed ({r.status_code}): {r.text[:200]}")
+    wamid = ((r.json().get("messages") or [{}])[0]).get("id", "")
+    _store_outbound(phone, preview_text, wamid=wamid, mtype="interactive")
+    return wamid
+
+
+def send_buttons(phone: str, body: str, buttons: list, header: str = "") -> str:
+    """עד 3 כפתורי תשובה. buttons = [(id, title), ...] (title ≤20 תווים)."""
+    payload = {"type": "button", "body": {"text": body},
+               "action": {"buttons": [{"type": "reply", "reply": {"id": bid, "title": t[:20]}}
+                                       for bid, t in buttons[:3]]}}
+    if header:
+        payload["header"] = {"type": "text", "text": header[:60]}
+    return _meta_interactive(phone, payload, f"[כפתורים] {body}")
+
+
+def send_list(phone: str, body: str, rows: list, button_label: str = "בחר",
+              header: str = "", section_title: str = "אפשרויות") -> str:
+    """רשימת בחירה (עד 10 שורות). rows = [(id, title, desc), ...] (title ≤24)."""
+    payload = {"type": "list", "body": {"text": body},
+               "action": {"button": button_label[:20], "sections": [{
+                   "title": section_title[:24],
+                   "rows": [{"id": r[0], "title": r[1][:24],
+                             "description": (r[2][:72] if len(r) > 2 and r[2] else "")}
+                            for r in rows[:10]]}]}}
+    if header:
+        payload["header"] = {"type": "text", "text": header[:60]}
+    return _meta_interactive(phone, payload, f"[רשימה] {body}")
+
+
+def send_text(phone: str, text: str) -> str:
+    """טקסט פשוט מהבוט (לא דרך send_reply שמסמן 'אנושי')."""
+    wamid = _meta_send_text(phone, text)
+    _store_outbound(phone, text, wamid=wamid, mtype="text")
+    return wamid
+
+
 def _store_outbound(phone: str, text: str, wamid: str = "", mtype: str = "text",
                     media_url: str = ""):
     """שומר הודעה יוצאת בחנות העצמאית (wa_msg) — חובה כי webhook של מטא לא מחזיר

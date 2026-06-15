@@ -454,6 +454,15 @@ _SCHEMA = [
         err          TEXT
     )
     """.format(pk=_PK),
+    # שלב 6 — בוט native: מצב שיחה לכל לקוח (איפה הוא בעץ הזרימה)
+    """
+    CREATE TABLE IF NOT EXISTS wa_bot_session (
+        phone       TEXT PRIMARY KEY,
+        state       TEXT,
+        data        TEXT,
+        updated_at  TEXT
+    )
+    """,
     # חשבוניות לקוח שנקלטו ממייל (הקופה שולחת עותק מקור ל-greenmobile.eshop@gmail)
     # — לשליחה חוזרת ללקוח בוואטסאפ בלי להיכנס לקופה. ה-PDF נשמר base64.
     """
@@ -1606,6 +1615,43 @@ def wa_contact_upsert(phone, name=None, wa_id=None, in_ts: int = 0, out_ts: int 
                 archived    = CASE WHEN excluded.last_in_ts > 0 THEN 0 ELSE wa_contact.archived END,
                 updated_at  = excluded.updated_at
         """), (str(phone), name, wa_id, int(in_ts or 0), msg_ts, now_iso()))
+
+
+def bot_session_get(phone: str) -> dict:
+    """מצב שיחת הבוט ללקוח. חוזר {state, data} (data כ-dict)."""
+    import json as _j
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT state, data FROM wa_bot_session WHERE phone = ?"), (str(phone),))
+        r = cur.fetchone()
+        if not r:
+            return {"state": None, "data": {}}
+        try:
+            data = _j.loads(r["data"]) if r["data"] else {}
+        except Exception:  # noqa: BLE001
+            data = {}
+        return {"state": r["state"], "data": data}
+
+
+def bot_session_set(phone: str, state: str, data: dict = None):
+    import json as _j
+    d = _j.dumps(data or {}, ensure_ascii=False)
+    with _conn() as c:
+        cur = c.cursor()
+        if _USE_PG:
+            cur.execute(_q("""INSERT INTO wa_bot_session (phone, state, data, updated_at)
+                              VALUES (?,?,?,?)
+                              ON CONFLICT(phone) DO UPDATE SET state=excluded.state,
+                              data=excluded.data, updated_at=excluded.updated_at"""),
+                        (str(phone), state, d, now_iso()))
+        else:
+            cur.execute(_q("INSERT OR REPLACE INTO wa_bot_session (phone, state, data, updated_at) VALUES (?,?,?,?)"),
+                        (str(phone), state, d, now_iso()))
+
+
+def bot_session_clear(phone: str):
+    with _conn() as c:
+        c.cursor().execute(_q("DELETE FROM wa_bot_session WHERE phone = ?"), (str(phone),))
 
 
 def wa_set_archived(phone, archived: bool):

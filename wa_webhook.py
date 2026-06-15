@@ -64,6 +64,26 @@ def _msg_text(m: dict) -> str:
     return ""
 
 
+def extract_inbound(raw: bytes):
+    """מחזיר (phone, text, type) של הודעת הלקוח הראשונה ב-payload, או None
+    (אירוע סטטוס / לא הודעה / שגיאה). לשימוש בגלגול הבוט ה-native (whitelist)."""
+    import json as _json
+    try:
+        data = _json.loads(raw.decode("utf-8", "ignore") or "{}")
+        for entry in data.get("entry", []):
+            for ch in entry.get("changes", []):
+                for m in (ch.get("value", {}) or {}).get("messages", []):
+                    return m.get("from"), _msg_text(m), m.get("type")
+    except Exception:  # noqa: BLE001
+        return None
+    return None
+
+
+def extract_sender(raw: bytes):
+    r = extract_inbound(raw)
+    return r[0] if r else None
+
+
 def _media_fields(m: dict):
     t = m.get("type")
     if t in ("image", "video", "document", "audio", "sticker"):
