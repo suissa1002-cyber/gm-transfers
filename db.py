@@ -1718,7 +1718,7 @@ def invoice_add(email_uid, pdf_b64, doc_number="", doc_type="", total="",
             return 0
 
 
-def invoice_search(phone="", q="", limit=40) -> list:
+def invoice_search(phone="", q="", order="", limit=40) -> list:
     """חיפוש חשבוניות לפי טלפון לקוח ו/או טקסט (מספר מסמך/שם/סכום). בלי ה-PDF."""
     fields = ("id, doc_number, doc_type, total, issued_date, customer_name, "
               "customer_phone, order_number, filename, subject, captured_at")
@@ -1727,6 +1727,9 @@ def invoice_search(phone="", q="", limit=40) -> list:
         d = "".join(ch for ch in str(phone) if ch.isdigit())[-9:]
         where.append("customer_phone LIKE ?")
         args.append(f"%{d}%")
+    if order:
+        where.append("order_number = ?")
+        args.append(str(order).strip())
     if q:
         where.append("(doc_number LIKE ? OR customer_name LIKE ? OR total LIKE ? "
                      "OR order_number LIKE ? OR subject LIKE ?)")

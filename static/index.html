@@ -5006,6 +5006,7 @@ function paintWcOrder(){
       <select id="wcoSt" style="padding:8px 10px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--txt)">${stOpts}</select>
       <button class="btn-primary" style="padding:8px 14px" onclick="wcoSetStatus(${d.id})">עדכן סטטוס</button>
       <a class="btn-ghost" style="text-decoration:none;padding:8px 12px" target="_blank" href="${escW(d.admin_url)}">פתח ב-WC ↗</a>
+      ${phoneIntl.length>10?`<button class="btn-ghost" style="padding:8px 12px;border-color:#0d9488;color:#0d9488;display:inline-flex;align-items:center;gap:6px" onclick="wcoSendInvoice('${d.number}','${phoneIntl}')" title="שולח ללקוח בוואטסאפ את החשבונית של ההזמנה">📄 שלח חשבונית</button>`:''}
       ${d.cargo?`<button class="btn-ghost" style="padding:8px 12px;border-color:#0369a1;color:#0369a1;display:inline-flex;align-items:center;gap:6px" onclick="wcoCargoLabel(${d.id})">${ico('truck',14)} תווית Cargo</button>`
         :`<button class="btn-ghost" style="padding:8px 12px;border-color:#0369a1;color:#0369a1;display:inline-flex;align-items:center;gap:6px" onclick="wcoCargoCreate(${d.id},${(d.ship_tag||'').includes('tlv')?'true':'false'})">${ico('truck',14)} צור משלוח Cargo</button>`}
       <button class="btn-ghost" style="padding:8px 12px;border-color:#15803d;color:#15803d;display:inline-flex;align-items:center;gap:6px" onclick="wcoAutoTransfer(${d.id},${d.bcast?1:0})" title="מריץ את לוגיקת השיריון/השידור להזמנה (אחרי הצמדת/תיקון מק״ט)">${ico('radio',14)} ${d.bcast?'שדר מחדש':'הרץ שיריון/שידור'}</button>
@@ -5018,6 +5019,25 @@ function paintWcOrder(){
       <button class="btn-ghost" onclick="wcoAddNote(${d.id})">➕</button>
     </div>
   </div></div>`;
+}
+async function wcoSendInvoice(orderNumber, phoneIntl){
+  showLoading('מחפש חשבונית…');
+  let invs=[];
+  try{ const r=await api('/api/admin/invoices?order='+encodeURIComponent(orderNumber)); invs=(r&&r.invoices)||[]; }
+  catch(e){ hideLoading(); toast('שגיאה בחיפוש חשבונית',false); return; }
+  hideLoading();
+  if(!invs.length){ toast('לא נמצאה חשבונית שנקלטה להזמנה '+orderNumber+' (אולי עוד לא הגיעה למייל)',false); return; }
+  const inv=invs[0];
+  const lbl=[inv.doc_type||'חשבונית',inv.doc_number?('#'+inv.doc_number):'',inv.total?('₪'+inv.total):''].filter(Boolean).join(' ');
+  if(!confirm('לשלוח ללקוח בוואטסאפ את '+lbl+'?')) return;
+  showLoading('שולח חשבונית…');
+  try{
+    const res=await api('/api/admin/invoices/'+inv.id+'/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:phoneIntl})},40000);
+    hideLoading();
+    if(res&&res.sent) toast('החשבונית נשלחה ללקוח ✓',true);
+    else if(res&&res.needs_template) toast('הלקוח מחוץ לחלון 24ש — צריך תבנית כדי לשלוח מסמך',false);
+    else toast('השליחה נכשלה',false);
+  }catch(e){ hideLoading(); toast('השליחה נכשלה',false); }
 }
 async function wcoCargoCreate(oid,pickup){
   if(!confirm('ליצור משלוח Cargo להזמנה זו'+(pickup?' (נקודת איסוף)':'')+'?')) return;

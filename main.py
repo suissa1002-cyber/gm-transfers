@@ -2907,12 +2907,12 @@ def _rq_mod():
 
 # ── חשבוניות לקוח (נקלטות ממייל הקופה; לשליחה חוזרת ללקוח בוואטסאפ) ──
 @app.get("/api/admin/invoices")
-def admin_invoices(phone: str = "", q: str = "",
+def admin_invoices(phone: str = "", q: str = "", order: str = "",
                    x_admin_key: Optional[str] = Header(None),
                    x_device_token: Optional[str] = Header(None)):
-    """חיפוש חשבוניות שנקלטו — לפי טלפון לקוח ו/או טקסט (מספר/שם/סכום)."""
+    """חיפוש חשבוניות שנקלטו — לפי טלפון לקוח / מספר הזמנה / טקסט (מספר/שם/סכום)."""
     _require_admin_or_device(x_admin_key, x_device_token)
-    return JSONResponse({"invoices": db.invoice_search(phone=phone, q=q),
+    return JSONResponse({"invoices": db.invoice_search(phone=phone, q=q, order=order),
                          "total": db.invoice_count()},
                         headers={"Cache-Control": "no-store"})
 
