@@ -59,36 +59,90 @@ def _menu(phone):
     db.bot_session_set(phone, "menu", {})
 
 
-def handle(phone: str, text: str, mtype: str = "text"):
-    """נקודת הכניסה — מקבלת הודעת לקוח ומגיבה. מנוהל מצב ב-wa_bot_session."""
+def handle(phone: str, text: str, mtype: str = "text", reply_id: str = ""):
+    """נקודת הכניסה — מקבלת הודעת לקוח ומגיבה. מנוהל מצב ב-wa_bot_session.
+    reply_id = id של כפתור/רשימה (ניתוב מדויק); נופלים לטקסט אם אין."""
     text = (text or "").strip()
     sess = db.bot_session_get(phone)
     state = sess.get("state")
-    sel = _TITLE2ID.get(text)            # אם לחץ שורת תפריט → text=כותרת
+    rid = reply_id or _TITLE2ID.get(text, "")   # id מהבחירה, או מיפוי מהכותרת
     low = text
 
-    # ממתינים למספר הזמנה
-    if state == "await_order_number" and not sel:
+    # ── זרימות תלויות-מצב ──
+    if state == "await_order_number" and not rid:
         return _order_status(phone, text)
+    if state == "new_search" and not rid:
+        return _new_order_results(phone, text)
+    if state == "new_pick" and rid.startswith("prod:"):
+        return _product_card(phone, rid, sess.get("data") or {})
 
-    if sel == "status" or ("סטטוס" in low and "הזמנ" in low):
+    # ── ניתוב תפריט ──
+    if rid == "status" or ("סטטוס" in low and "הזמנ" in low):
         wa.send_text(phone, "מה מספר ההזמנה? (ספרות בלבד)")
         db.bot_session_set(phone, "await_order_number", {})
         return
-    if sel == "branches" or "סניפ" in low:
+    if rid == "branches" or "סניפ" in low:
         wa.send_text(phone, BRANCHES)
         return _menu_tail(phone)
-    if sel == "shipping" or "משלוח" in low:
+    if rid == "shipping" or "משלוח" in low:
         wa.send_text(phone, SHIPPING)
         return _menu_tail(phone)
-    if sel == "agent" or any(w in low for w in ["נציג", "אנושי", "בנאדם", "מישהו"]):
+    if rid == "new" or rid == "search_again":
+        wa.send_text(phone, "מה שם המוצר שאתה מחפש? 🔍\n(למשל: אייפון 17 פרו, גלקסי S25, אוזניות JBL)")
+        db.bot_session_set(phone, "new_search", {})
+        return
+    if rid == "menu":
+        return _menu(phone)
+    if rid == "agent" or any(w in low for w in ["נציג", "אנושי", "בנאדם", "מישהו"]):
         return _to_agent(phone)
-    if sel in ("new", "lab"):
-        # שלב 6ב/6ג — בקרוב; בינתיים מעבר מסודר לנציג עם הקשר
-        return _to_agent(phone, note=("הזמנה חדשה" if sel == "new" else "פנייה למעבדה"))
+    if rid == "lab":
+        return _to_agent(phone, note="פנייה למעבדה")
 
     # ברכה / טקסט חופשי / לא מזוהה → תפריט (שלב 6ג: כאן ייכנס אורי)
     _menu(phone)
+
+
+def _new_order_results(phone, query):
+    """חיפוש מוצר חי → רשימת תוצאות עם מחירים (התיקון מס' 1 של 'הזמנה חדשה')."""
+    import main
+    results = main.bot_product_search(query, limit=8)
+    if not results:
+        wa.send_text(phone, f"לא מצאתי '{query}' 🙁 נסה שם אחר, או כתוב 'נציג'.")
+        return
+    rows, data = [], {}
+    for p in results:
+        pid = f"prod:{p['id']}"
+        price = p.get("price")
+        desc = (f"₪{int(float(price)):,}" if price not in (None, "", "0") else "לפרטים")
+        rows.append((pid, (p.get("name") or "מוצר")[:24], desc))
+        data[pid] = {"name": p.get("name"), "price": price, "permalink": p.get("permalink"),
+                     "sku": p.get("sku"), "stock": p.get("stock_status")}
+    rows.append(("search_again", "🔍 חיפוש חדש", ""))
+    wa.send_list(phone, f"מצאתי {len(results)} תוצאות ל'{query}'. בחר/י לפרטים:",
+                 rows, button_label="לתוצאות", section_title="תוצאות חיפוש")
+    db.bot_session_set(phone, "new_pick", data)
+
+
+def _product_card(phone, rid, data):
+    """כרטיס מוצר — שם, מחיר חי, זמינות וקישור רכישה."""
+    p = (data or {}).get(rid)
+    if not p:
+        wa.send_text(phone, "לא מצאתי את הפריט, ננסה שוב 🙏")
+        return _menu(phone)
+    price = p.get("price")
+    lines = [f"*{p.get('name')}*"]
+    if price not in (None, "", "0"):
+        lines.append(f"💰 מחיר: ₪{int(float(price)):,}")
+    if p.get("stock") == "instock":
+        lines.append("✅ במלאי")
+    elif p.get("stock") == "outofstock":
+        lines.append("⏳ אזל — ניתן להשיג מהספק (שאל נציג)")
+    if p.get("permalink"):
+        lines.append(f"\n🔗 לרכישה ולפרטים מלאים:\n{p['permalink']}")
+    wa.send_text(phone, "\n".join(lines))
+    wa.send_buttons(phone, "מה הלאה?",
+                    [("search_again", "🔍 מוצר אחר"), ("agent", "👤 נציג"), ("menu", "↩️ תפריט")])
+    db.bot_session_clear(phone)
 
 
 def _menu_tail(phone):

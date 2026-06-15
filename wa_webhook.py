@@ -64,16 +64,25 @@ def _msg_text(m: dict) -> str:
     return ""
 
 
+def _msg_reply_id(m: dict) -> str:
+    """ה-ID של בחירת הכפתור/רשימה (אם זו הודעת interactive) — לניתוב הבוט."""
+    if m.get("type") == "interactive":
+        it = m.get("interactive") or {}
+        br = it.get("button_reply") or it.get("list_reply") or {}
+        return br.get("id", "")
+    return ""
+
+
 def extract_inbound(raw: bytes):
-    """מחזיר (phone, text, type) של הודעת הלקוח הראשונה ב-payload, או None
-    (אירוע סטטוס / לא הודעה / שגיאה). לשימוש בגלגול הבוט ה-native (whitelist)."""
+    """מחזיר (phone, text, type, reply_id) של הודעת הלקוח הראשונה ב-payload, או
+    None (אירוע סטטוס / לא הודעה / שגיאה). reply_id = id של כפתור/שורת-רשימה."""
     import json as _json
     try:
         data = _json.loads(raw.decode("utf-8", "ignore") or "{}")
         for entry in data.get("entry", []):
             for ch in entry.get("changes", []):
                 for m in (ch.get("value", {}) or {}).get("messages", []):
-                    return m.get("from"), _msg_text(m), m.get("type")
+                    return m.get("from"), _msg_text(m), m.get("type"), _msg_reply_id(m)
     except Exception:  # noqa: BLE001
         return None
     return None

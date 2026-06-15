@@ -428,7 +428,8 @@ async def wa_webhook_recv(request: Request):
                 import wa_bot
                 inb = wa_webhook.extract_inbound(raw)
                 if inb and inb[1] is not None:
-                    wa_bot.handle(bot_sender, inb[1], inb[2] or "text")
+                    wa_bot.handle(bot_sender, inb[1], inb[2] or "text",
+                                  reply_id=(inb[3] if len(inb) > 3 else ""))
             except Exception as e:  # noqa: BLE001
                 logger.warning("wa bot dispatch failed: %s", e)
     else:
@@ -3031,6 +3032,33 @@ def admin_scheduled_status_cancel(sid: int, x_admin_key: Optional[str] = Header(
 def _rq_mod():
     import requests as _rq
     return _rq
+
+
+def bot_product_search(q: str, limit: int = 8) -> list:
+    """חיפוש מוצרים קליל לבוט ה-native — שם/מחיר/קישור/מק"ט. מחזיר מוצרי-אב."""
+    creds = _wc_creds()
+    q = (q or "").strip()
+    if not creds or len(q) < 2:
+        return []
+    base, k, s = creds
+    import requests as _rq
+    try:
+        r = _rq.get(base + "/wp-json/wc/v3/products",
+                    params={"search": q, "per_page": limit, "status": "publish"},
+                    auth=(k, s), timeout=15)
+        prods = r.json() if r.ok else []
+    except Exception as e:  # noqa: BLE001
+        logger.warning("bot_product_search failed for %s: %s", q, e)
+        return []
+    out = []
+    for p in (prods or []):
+        if not isinstance(p, dict):
+            continue
+        out.append({"id": p.get("id"), "name": p.get("name") or "",
+                    "price": p.get("price"), "permalink": p.get("permalink") or "",
+                    "sku": p.get("sku") or "", "type": p.get("type"),
+                    "stock_status": p.get("stock_status")})
+    return out
 
 
 # ── חשבוניות לקוח (נקלטות ממייל הקופה; לשליחה חוזרת ללקוח בוואטסאפ) ──
