@@ -10,7 +10,7 @@ from typing import Optional
 from datetime import datetime, timedelta
 
 from fastapi import FastAPI, HTTPException, Header, Request
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -260,6 +260,8 @@ def _startup():
     scheduler.add_job(_wa_scheduled_job, "interval", seconds=30, id="wa_scheduled", max_instances=1)
     # שינוי סטטוס הזמנה מתוזמן — בדיקה כל 30ש, מחיל מה שהגיע זמנו
     scheduler.add_job(_scheduled_status_job, "interval", seconds=30, id="scheduled_status", max_instances=1)
+    # קליטת חשבוניות ממייל הקופה — כל 10 דק' (פעיל רק אם INVOICE_IMAP_* מוגדר)
+    scheduler.add_job(_invoice_capture_job, "interval", minutes=10, id="invoice_capture", max_instances=1)
     # backfill היסטוריית וואטסאפ — רץ רק בשעות שקטות (21:00-09:00 IL); resumable.
     # פייר בכל שעה בחלון; max_instances=1 → ריצה ארוכה אחת ללילה + התאוששות מ-restart.
     scheduler.add_job(_wa_backfill_job, "cron", hour="21-23,0-8", minute=10,
@@ -2854,6 +2856,81 @@ def admin_scheduled_status_cancel(sid: int, x_admin_key: Optional[str] = Header(
 def _rq_mod():
     import requests as _rq
     return _rq
+
+
+# ── חשבוניות לקוח (נקלטות ממייל הקופה; לשליחה חוזרת ללקוח בוואטסאפ) ──
+@app.get("/api/admin/invoices")
+def admin_invoices(phone: str = "", q: str = "",
+                   x_admin_key: Optional[str] = Header(None),
+                   x_device_token: Optional[str] = Header(None)):
+    """חיפוש חשבוניות שנקלטו — לפי טלפון לקוח ו/או טקסט (מספר/שם/סכום)."""
+    _require_admin_or_device(x_admin_key, x_device_token)
+    return JSONResponse({"invoices": db.invoice_search(phone=phone, q=q),
+                         "total": db.invoice_count()},
+                        headers={"Cache-Control": "no-store"})
+
+
+@app.get("/api/admin/invoices/{iid}/pdf")
+def admin_invoice_pdf(iid: int, x_admin_key: Optional[str] = Header(None),
+                      x_device_token: Optional[str] = Header(None)):
+    """מוריד/מציג את ה-PDF של חשבונית שנקלטה (לתצוגה מקדימה בקונסולה)."""
+    _require_admin_or_device(x_admin_key, x_device_token)
+    inv = db.invoice_get(iid, with_pdf=True)
+    if not inv or not inv.get("pdf_b64"):
+        raise HTTPException(404, "חשבונית/קובץ לא נמצא")
+    import base64 as _b64
+    pdf = _b64.b64decode(inv["pdf_b64"])
+    fn = inv.get("filename") or f"invoice-{inv.get('doc_number') or iid}.pdf"
+    return Response(content=pdf, media_type="application/pdf",
+                    headers={"Content-Disposition": f'inline; filename="{fn}"',
+                             "Cache-Control": "no-store"})
+
+
+class InvoiceSendIn(BaseModel):
+    phone: str
+    caption: str = ""
+
+
+@app.post("/api/admin/invoices/{iid}/send")
+def admin_invoice_send(iid: int, body: InvoiceSendIn,
+                       x_admin_key: Optional[str] = Header(None)):
+    """שולח את ה-PDF של החשבונית ללקוח בוואטסאפ (חלון 24ש נאכף בצד wa)."""
+    _require_admin(x_admin_key)
+    inv = db.invoice_get(iid, with_pdf=True)
+    if not inv or not inv.get("pdf_b64"):
+        raise HTTPException(404, "חשבונית/קובץ לא נמצא")
+    import base64 as _b64
+    pdf = _b64.b64decode(inv["pdf_b64"])
+    fn = inv.get("filename") or f"invoice-{inv.get('doc_number') or iid}.pdf"
+    cap = (body.caption or "").strip() or "מצורף עותק החשבונית. Green Mobile 🟢"
+    import wa
+    try:
+        res = wa.send_document(body.phone, pdf, filename=fn, caption=cap)
+    except wa.WaError as e:
+        raise HTTPException(502, str(e))
+    return res
+
+
+@app.post("/api/admin/invoices/capture")
+def admin_invoices_capture(x_admin_key: Optional[str] = Header(None)):
+    """הפעלה ידנית של קליטת חשבוניות ממייל (לבדיקה / קליטה מיידית)."""
+    _require_admin(x_admin_key)
+    import invoice_capture
+    if not invoice_capture.configured():
+        return {"ok": False, "reason": "חסר INVOICE_IMAP_USER/INVOICE_IMAP_PASS ב-env"}
+    return invoice_capture.capture()
+
+
+def _invoice_capture_job():
+    """קליטת חשבוניות ממייל הקופה — כל 10 דק' (אם מוגדר IMAP)."""
+    try:
+        import invoice_capture
+        if invoice_capture.configured():
+            r = invoice_capture.capture()
+            if r.get("new"):
+                logger.info("invoice capture: %s new", r.get("new"))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("invoice capture job error: %s", e)
 
 
 @app.delete("/api/admin/orders/{oid}")

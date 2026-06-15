@@ -450,6 +450,54 @@ def _meta_send_text(phone: str, text: str) -> str:
     return ((r.json().get("messages") or [{}])[0]).get("id", "")
 
 
+def send_document(phone: str, pdf_bytes: bytes, filename: str = "document.pdf",
+                  caption: str = "") -> dict:
+    """שולח קובץ PDF ללקוח דרך WhatsApp (העלאת מדיה למטא → הודעת document).
+    אוכף חלון 24ש: אם השליחה נכשלת ומחוץ לחלון → needs_template."""
+    if not meta_direct_ready():
+        raise WaError("Meta ישיר לא מוגדר — שליחת מסמך דורשת חיבור Meta")
+    if not pdf_bytes:
+        raise WaError("קובץ ריק")
+    import os as _os
+    import requests as _rq
+    tok = _os.getenv("META_WA_TOKEN").strip()
+    pid = _os.getenv("META_WA_PHONE_ID").strip()
+    # 1) העלאת המדיה למטא → media_id
+    try:
+        up = _rq.post(f"{META_GRAPH}/{pid}/media",
+                      headers={"Authorization": f"Bearer {tok}"},
+                      data={"messaging_product": "whatsapp"},
+                      files={"file": (filename, pdf_bytes, "application/pdf")}, timeout=60)
+    except Exception as e:  # noqa: BLE001
+        raise WaError(f"העלאת המסמך נכשלה: {e}")
+    if up.status_code not in (200, 201):
+        raise WaError(f"העלאת מדיה נכשלה ({up.status_code}): {up.text[:200]}")
+    media_id = up.json().get("id")
+    if not media_id:
+        raise WaError("לא התקבל media_id ממטא")
+    # 2) שליחת הודעת document
+    body = {"messaging_product": "whatsapp", "to": phone, "type": "document",
+            "document": {"id": media_id, "filename": filename}}
+    if caption:
+        body["document"]["caption"] = caption
+    r = _rq.post(f"{META_GRAPH}/{pid}/messages",
+                 headers={"Authorization": f"Bearer {tok}", "Content-Type": "application/json"},
+                 json=body, timeout=30)
+    if r.status_code not in (200, 201):
+        # ייתכן מחוץ לחלון 24ש (מטא 131047) — מאותתים needs_template
+        try:
+            win = _window_state(get_thread(phone, limit=60)["messages"])
+        except Exception:  # noqa: BLE001
+            win = None
+        if win is not None and not win["in_window"]:
+            return {"sent": False, "needs_template": True, "window": win}
+        raise WaError(f"שליחת המסמך נכשלה ({r.status_code}): {r.text[:200]}")
+    wamid = ((r.json().get("messages") or [{}])[0]).get("id", "")
+    _store_outbound(phone, caption or f"📄 {filename}", wamid=wamid, mtype="document")
+    logger.info("wa send document -> %s (%s)", phone, filename)
+    return {"sent": True, "wamid": wamid}
+
+
 def _store_outbound(phone: str, text: str, wamid: str = "", mtype: str = "text",
                     media_url: str = ""):
     """שומר הודעה יוצאת בחנות העצמאית (wa_msg) — חובה כי webhook של מטא לא מחזיר

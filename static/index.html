@@ -3389,6 +3389,7 @@ function waPanelHTML(){
       <button class="btn-ghost" onclick="waAddNote()">➕</button>
     </div>`;
   const mediaCount=S.waMedia&&S.waMedia.phone===S.waPhone?S.waMedia.items.length:undefined;
+  const invCount=S.waInv&&S.waInv.phone===S.waPhone?S.waInv.items.length:undefined;
   return `
     <div style="display:flex;justify-content:space-between;align-items:center">
       <b style="font-size:15px">${escW(ct.full_name||'')}</b>
@@ -3405,6 +3406,7 @@ function waPanelHTML(){
     })(S.waThread.entry_product):''}
     ${c.note_cf?waSec('notecf',ico('pin',14)+' NOTE (קונקטופ)',`<div class="wa-note">${escW(c.note_cf)}</div>`):''}
     ${waSec('orders',ico('cart',14)+' הזמנות באתר',ordersHTML,(c.orders||[]).length)}
+    ${waSec('invoices','📄 חשבוניות',`<div id="waInvBox">${waInvHTML()}</div>`,invCount)}
     ${waSec('tags',ico('tag',14)+' תגיות',tagsBody,(c.tags||[]).length)}
     ${waSec('notes',ico('pencil',14)+' הערות (GreenOS)',notesBody,(c.notes||[]).length)}
     ${waSec('media',ico('image',14)+' מדיה וקבצים',`<div id="waMediaBox">${waMediaHTML()}</div>`,mediaCount)}
@@ -3430,9 +3432,59 @@ async function loadWaMedia(){
          const b=document.getElementById('waMediaBox'); if(b) b.innerHTML=waMediaHTML(); } }
   catch(e){}
 }
+// ── חשבוניות שנקלטו ממייל הקופה — תצוגה + שליחה ללקוח בוואטסאפ ──
+function waInvHTML(){
+  const v=S.waInv;
+  if(!v||v.phone!==S.waPhone) return '<div class="muted">טוען חשבוניות…</div>';
+  const items=v.items||[];
+  if(!items.length) return '<div class="muted">לא נמצאו חשבוניות לטלפון זה</div>';
+  return items.map(x=>{
+    const ttl=[x.doc_type||'מסמך',x.doc_number?('#'+x.doc_number):''].filter(Boolean).join(' ');
+    const sub=[x.total?('₪'+x.total):'',x.issued_date||'',x.customer_name||''].filter(Boolean).join(' · ');
+    return `<div class="wa-order" style="display:flex;gap:8px;align-items:center">
+      <div style="flex:1;min-width:0;text-align:right">
+        <b style="font-size:13px">${escW(ttl)}</b>
+        <div class="muted" style="font-size:11.5px">${escW(sub)}</div>
+      </div>
+      <button class="btn-ghost" style="padding:4px 8px" onclick="waInvView(${x.id})" title="תצוגה מקדימה">👁</button>
+      <button class="btn-primary" style="padding:4px 10px;font-size:12.5px" onclick="waSendInvoice(${x.id})">📤 שלח</button>
+    </div>`;
+  }).join('');
+}
+async function loadWaInvoices(){
+  const phone=S.waPhone; if(!phone) return;
+  try{ const r=await api('/api/admin/invoices?phone='+encodeURIComponent(phone));
+       if(S.waPhone===phone){ S.waInv={phone, items:r.invoices||[]};
+         const b=document.getElementById('waInvBox'); if(b) b.innerHTML=waInvHTML(); } }
+  catch(e){}
+}
+async function waInvView(id){
+  showLoading('פותח חשבונית…');
+  const h={}; if(S.adminKey)h['X-Admin-Key']=S.adminKey; if(S.deviceToken)h['X-Device-Token']=S.deviceToken;
+  try{
+    const r=await fetchT('/api/admin/invoices/'+id+'/pdf',{headers:h},40000);
+    if(!r.ok) throw new Error('http '+r.status);
+    const u=URL.createObjectURL(await r.blob());
+    hideLoading(); window.open(u,'_blank');
+    setTimeout(()=>URL.revokeObjectURL(u),60000);
+  }catch(e){ hideLoading(); toast('פתיחת החשבונית נכשלה',false); }
+}
+async function waSendInvoice(id){
+  if(!S.waPhone) return;
+  if(!confirm('לשלוח את החשבונית ללקוח בוואטסאפ?')) return;
+  showLoading('שולח חשבונית…');
+  try{
+    const res=await api('/api/admin/invoices/'+id+'/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:S.waPhone})},40000);
+    hideLoading();
+    if(res&&res.sent){ toast('החשבונית נשלחה ✓',true); if(S.waPanel&&S.waPanelMode==='uri'){} waRefreshMsgsOnly&&waRefreshMsgsOnly(); }
+    else if(res&&res.needs_template){ toast('הלקוח מחוץ לחלון 24ש — צריך תבנית כדי לשלוח מסמך',false); }
+    else toast('השליחה נכשלה',false);
+  }catch(e){ hideLoading(); toast('השליחה נכשלה',false); }
+}
 async function loadWaContact(){
   const phone=S.waPhone; if(!phone) return;
   loadWaMedia();   // גלריה נטענת במקביל
+  loadWaInvoices();   // חשבוניות נטענות במקביל
   if(!S.waTags){ try{ S.waTags=(await api('/api/admin/wa/tags')).tags||[]; }catch(e){ S.waTags=[]; } }
   try{ const c=await api('/api/admin/wa/contact/'+encodeURIComponent(phone));
        if(S.waPhone===phone){ S.waContact=c; const p=document.getElementById('waPanelBox'); if(p) p.innerHTML=waPanelHTML(); } }

@@ -429,6 +429,27 @@ _SCHEMA = [
         err          TEXT
     )
     """.format(pk=_PK),
+    # חשבוניות לקוח שנקלטו ממייל (הקופה שולחת עותק מקור ל-greenmobile.eshop@gmail)
+    # — לשליחה חוזרת ללקוח בוואטסאפ בלי להיכנס לקופה. ה-PDF נשמר base64.
+    """
+    CREATE TABLE IF NOT EXISTS customer_invoices (
+        id            {pk},
+        doc_number    TEXT,
+        doc_type      TEXT,
+        total         TEXT,
+        issued_date   TEXT,
+        customer_name TEXT,
+        customer_phone TEXT,
+        filename      TEXT,
+        subject       TEXT,
+        email_uid     TEXT,
+        pdf_b64       TEXT,
+        captured_at   TEXT
+    )
+    """.format(pk=_PK),
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_cust_inv_uid ON customer_invoices(email_uid)",
+    "CREATE INDEX IF NOT EXISTS idx_cust_inv_phone ON customer_invoices(customer_phone)",
+    "CREATE INDEX IF NOT EXISTS idx_cust_inv_doc ON customer_invoices(doc_number)",
     # תור משימות לסוכן אורי (claude על המק של אסי, חיוב Max — לא API)
     """
     CREATE TABLE IF NOT EXISTS uri_jobs (
@@ -1644,6 +1665,76 @@ def sched_status_cancel(sid) -> int:
         cur.execute(_q("UPDATE scheduled_status SET state='canceled' WHERE id=? AND state='pending'"),
                     (int(sid),))
         return cur.rowcount if hasattr(cur, "rowcount") else 0
+
+
+# ── חשבוניות לקוח (נקלטו ממייל הקופה) ──
+def invoice_exists(email_uid: str) -> bool:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT 1 FROM customer_invoices WHERE email_uid = ?"), (str(email_uid),))
+        return cur.fetchone() is not None
+
+
+def invoice_add(email_uid, pdf_b64, doc_number="", doc_type="", total="",
+                issued_date="", customer_name="", customer_phone="",
+                filename="", subject="") -> int:
+    cols = ("(doc_number, doc_type, total, issued_date, customer_name, customer_phone, "
+            "filename, subject, email_uid, pdf_b64, captured_at)")
+    vals = (str(doc_number or ""), doc_type or "", str(total or ""), issued_date or "",
+            customer_name or "", customer_phone or "", filename or "", (subject or "")[:300],
+            str(email_uid), pdf_b64 or "", now_iso())
+    with _conn() as c:
+        cur = c.cursor()
+        if _USE_PG:
+            cur.execute(_q(f"INSERT INTO customer_invoices {cols} VALUES (?,?,?,?,?,?,?,?,?,?,?) "
+                           "ON CONFLICT (email_uid) DO NOTHING RETURNING id"), vals)
+            row = cur.fetchone()
+            return row["id"] if row else 0
+        try:
+            cur.execute(_q(f"INSERT INTO customer_invoices {cols} VALUES (?,?,?,?,?,?,?,?,?,?,?)"), vals)
+            return cur.lastrowid
+        except Exception:  # noqa: BLE001 — sqlite unique violation (dedup)
+            return 0
+
+
+def invoice_search(phone="", q="", limit=40) -> list:
+    """חיפוש חשבוניות לפי טלפון לקוח ו/או טקסט (מספר מסמך/שם/סכום). בלי ה-PDF."""
+    fields = ("id, doc_number, doc_type, total, issued_date, customer_name, "
+              "customer_phone, filename, subject, captured_at")
+    where, args = [], []
+    if phone:
+        d = "".join(ch for ch in str(phone) if ch.isdigit())[-9:]
+        where.append("customer_phone LIKE ?")
+        args.append(f"%{d}%")
+    if q:
+        where.append("(doc_number LIKE ? OR customer_name LIKE ? OR total LIKE ? OR subject LIKE ?)")
+        args += [f"%{q}%"] * 4
+    sql = f"SELECT {fields} FROM customer_invoices"
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    sql += " ORDER BY id DESC LIMIT ?"
+    args.append(int(limit))
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q(sql), tuple(args))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def invoice_get(iid: int, with_pdf: bool = False):
+    cols = "*" if with_pdf else ("id, doc_number, doc_type, total, issued_date, "
+                                  "customer_name, customer_phone, filename, subject, captured_at")
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q(f"SELECT {cols} FROM customer_invoices WHERE id = ?"), (int(iid),))
+        r = cur.fetchone()
+        return dict(r) if r else None
+
+
+def invoice_count() -> int:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute("SELECT COUNT(*) AS n FROM customer_invoices")
+        return cur.fetchone()["n"]
 
 
 def wa_bf_done_set(phone: str):
