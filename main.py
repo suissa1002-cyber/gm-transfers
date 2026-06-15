@@ -3115,40 +3115,72 @@ def bot_product_search(q: str, limit: int = 8) -> list:
     import requests as _rq
     import re as _re
 
+    # מילות מילוי שמזהמות את החיפוש ("עם","אני מחפש"...) — WC מתאים עליהן בתיאורים
+    _FILLERS = {"אני", "מחפש", "מחפשת", "רוצה", "רוצים", "צריך", "צריכה", "את", "עם",
+                "של", "יש", "לכם", "לי", "אפשר", "מה", "המחיר", "חפש", "למצוא",
+                "מעוניין", "מעוניינת", "בבקשה", "היי", "שלום", "הי", "כמה", "עולה",
+                "במלאי", "זמין", "עוד", "גם", "כן", "תודה", "גיגה", "ג'יגה",
+                "gb", "ram", "רם", "mb", "tb"}
+    _HEB_TIER = {"פרו": "pro", "מקס": "max", "אולטרה": "ultra", "אלטרה": "ultra",
+                 "פלוס": "plus", "מיני": "mini", "אייר": "air", "לייט": "lite",
+                 "פולד": "fold", "פליפ": "flip"}
+    _HEB_BRAND = {"אייפון": "iphone", "אפל": "apple", "גלקסי": "galaxy", "סמסונג": "samsung",
+                  "שיאומי": "xiaomi", "רדמי": "redmi", "אופו": "oppo", "הונור": "honor",
+                  "וואנפלוס": "oneplus"}
+    _TIERS = {"pro", "max", "ultra", "plus", "fe", "mini", "air", "edge", "fold",
+              "flip", "lite", "neo", "ace", "prime"}
+
+    raw = [t for t in _re.split(r"[\s/,]+", q.lower()) if t and t not in _FILLERS]
+    search_q = " ".join(raw).strip() or q.strip()
+
     def _fetch(query):
         try:
             r = _rq.get(base + "/wp-json/wc/v3/products",
-                        params={"search": query, "per_page": 16, "status": "publish"},
+                        params={"search": query, "per_page": 20, "status": "publish"},
                         auth=(k, s), timeout=15)
             return r.json() if r.ok else []
         except Exception:  # noqa: BLE001
             return []
 
-    prods = _fetch(q)
-    if not prods:                       # נפילה: מקצרים מילה מהסוף עד שנמצא
-        toks = q.split()
+    prods = _fetch(search_q)
+    if not prods:
+        toks = search_q.split()
         while not prods and len(toks) > 1:
             toks = toks[:-1]
             prods = _fetch(" ".join(toks))
 
-    _TIERS = {"pro", "max", "ultra", "plus", "fe", "mini", "air", "edge", "fold",
-              "flip", "lite", "neo", "ace", "prime"}
-    qtl = [t for t in _re.split(r"[\s/,]+", q.lower()) if t]
-    q_models = [t for t in qtl if _re.fullmatch(r"\d{1,4}", t)]
+    q_models = [t for t in raw if _re.fullmatch(r"\d{1,4}", t)]
+
+    def _forms(t):
+        f = {t}
+        if t in _HEB_TIER:
+            f.add(_HEB_TIER[t])
+        if t in _HEB_BRAND:
+            f.add(_HEB_BRAND[t])
+        return f
+
     scored = []
     for p in (prods or []):
         if not isinstance(p, dict):
             continue
         name = (p.get("name") or "").lower()
-        toks = set(_re.split(r"[\s/,\-]+", name))
-        sc = 0
-        for t in qtl:
+        sc, model_hit = 0, False
+        for t in raw:
+            hit = any(f in name for f in _forms(t))
             if t in q_models:
-                sc += 6 if t in toks else 0
-            elif t in _TIERS:
-                sc += 4 if t in toks else 0
-            elif len(t) >= 2 and t in name:
-                sc += 1
+                if hit:
+                    sc += 6
+                    model_hit = True
+            elif t in _TIERS or t in _HEB_TIER:
+                if hit:
+                    sc += 4
+            elif len(t) >= 2 and hit:
+                sc += 2
+        # סינון זבל: אם בשאילתה יש מספר דגם — חובה שיתאים; אחרת לפחות התאמה אחת
+        if q_models and not model_hit:
+            continue
+        if sc <= 0:
+            continue
         img = ((p.get("images") or [{}])[0] or {}).get("src", "")
         scored.append((sc, {"id": p.get("id"), "name": p.get("name") or "",
                             "price": p.get("price"), "permalink": p.get("permalink") or "",
