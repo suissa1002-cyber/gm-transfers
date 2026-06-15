@@ -224,15 +224,14 @@ def _is_stale(iso_ts, hours: float) -> bool:
         return True
 
 
-@app.on_event("startup")
-def _startup():
-    db.init_db()
-    logger.info("DB ready (%s)", "Postgres" if cfg.DATABASE_URL else "SQLite")
-    # פיתוח מקומי: DISABLE_BACKGROUND_JOBS=1 מכבה את כל עבודות הרקע (פולר/סנכרונים),
-    # כדי לא להעמיס על הטוקן המשותף במקביל לפרודקשן. ה-API וה-UI עובדים רגיל.
-    if os.getenv("DISABLE_BACKGROUND_JOBS", "").strip() in ("1", "true", "yes"):
-        logger.warning("background jobs DISABLED (DISABLE_BACKGROUND_JOBS)")
-        return
+# RUN_JOBS=0 → מצב "web בלבד": לא מריצים את עבודות הרקע החוזרות (הן רצות בשירות
+# worker נפרד, כדי שעיבוד הרקע לא יגזול CPU מבקשות המשתמשים). ברירת מחדל=מופעל
+# (תאימות לאחור לשירות יחיד). השרת עדיין מפעיל את ה-scheduler לטריגרים חד-פעמיים.
+_RUN_JOBS = os.getenv("RUN_JOBS", "1").strip() not in ("0", "false", "no")
+
+
+def register_recurring_jobs():
+    """רושם את כל עבודות הרקע החוזרות. נקרא מ-_startup (אם _RUN_JOBS) או מ-worker.py."""
     # סבב ראשון מיד, ואז לפי האינטרוול
     scheduler.add_job(_poll_job, "interval", seconds=cfg.POLL_INTERVAL_SEC,
                       id="poll", next_run_time=None, max_instances=1)
@@ -301,10 +300,23 @@ def _startup():
                       hour=9, minute=30, max_instances=1)
     scheduler.add_job(_token_watch_job, "date", id="token_watch_initial",
                       run_date=datetime.now() + timedelta(seconds=45))
-    scheduler.start()
-    # סבב ראשוני סינכרוני קצר כדי שהלוח לא יהיה ריק בהפעלה
+
+
+@app.on_event("startup")
+def _startup():
+    db.init_db()
+    logger.info("DB ready (%s)", "Postgres" if cfg.DATABASE_URL else "SQLite")
+    # פיתוח מקומי: DISABLE_BACKGROUND_JOBS=1 מכבה את כל עבודות הרקע.
+    if os.getenv("DISABLE_BACKGROUND_JOBS", "").strip() in ("1", "true", "yes"):
+        logger.warning("background jobs DISABLED (DISABLE_BACKGROUND_JOBS)")
+        return
+    scheduler.start()   # תמיד — גם במצב web (לטריגרים חד-פעמיים מ-endpoints, כמו תשלום)
+    if not _RUN_JOBS:
+        logger.info("WEB mode — recurring jobs run in the separate worker service")
+        return
+    register_recurring_jobs()
     try:
-        poller.poll_once()
+        poller.poll_once()   # סבב ראשוני קצר כדי שהלוח לא יהיה ריק בהפעלה
     except Exception as e:  # noqa: BLE001
         logger.warning("initial poll failed: %s", e)
 

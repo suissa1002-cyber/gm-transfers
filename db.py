@@ -81,8 +81,11 @@ if _USE_PG:
         c.execute(f"SET search_path TO {_PG_SCHEMA}")
         c.commit()
 
+    # max_size מוגדר ב-env כי web ו-worker חולקים את ה-Postgres (+ stock_watcher);
+    # מגבילים סך החיבורים. web=8, worker=4 (פחות מקביליות).
+    _POOL_MAX = int(os.getenv("DB_POOL_MAX", "8"))
     _pool = ConnectionPool(
-        cfg.DATABASE_URL, min_size=1, max_size=8, timeout=20,
+        cfg.DATABASE_URL, min_size=1, max_size=_POOL_MAX, timeout=20,
         kwargs={"row_factory": dict_row, "autocommit": False},
         configure=_pg_configure, open=True,
     )
