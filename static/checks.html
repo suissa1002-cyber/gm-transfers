@@ -2236,8 +2236,8 @@
             // Set today's date as entry date
             const today = new Date().toISOString().split('T')[0];
             document.getElementById('addCheckEntryDate').value = today;
-            // Clear form
-            document.getElementById('addCheckNumber').value = '';
+            // Clear form — מספר הצ'ק מתמלא אוטומטית למספר הבא (האחרון שהוזן + 1)
+            document.getElementById('addCheckNumber').value = nextCheckNumber();
             document.getElementById('addCheckSupplier').value = '';
             document.getElementById('addCheckAmount').value = '';
             document.getElementById('addCheckDueDate').value = '';
@@ -2257,6 +2257,23 @@
             if (content) content.scrollTop = 0;
             modal.scrollTop = 0;
             setTimeout(() => { const f = document.getElementById('addCheckNumber'); if (f) f.focus(); }, 80);
+        }
+
+        function nextCheckNumber() {
+            // המספר הבא = המספר המספרי הגבוה ביותר מבין הצ'קים הקיימים + 1.
+            // שומר על אורך/אפסים מובילים (למשל 0042 → 0043). אם אין צ'קים — ריק.
+            const nums = (allChecks || [])
+                .map(c => String(c.name || '').trim())
+                .filter(n => /^\d+$/.test(n));
+            if (!nums.length) return '';
+            let maxVal = -1, width = 0;
+            nums.forEach(n => {
+                const v = parseInt(n, 10);
+                if (v > maxVal) { maxVal = v; width = n.length; }
+            });
+            if (maxVal < 0) return '';
+            const next = String(maxVal + 1);
+            return next.length < width ? next.padStart(width, '0') : next;
         }
 
         function populateSuppliersList() {
