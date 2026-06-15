@@ -3165,6 +3165,37 @@ def admin_order_note(oid: int, body: OrderNoteIn, x_admin_key: Optional[str] = H
     return {"ok": True}
 
 
+class CustomerEditIn(BaseModel):
+    first_name: str = ""
+    last_name: str = ""
+    phone: str = ""
+    email: str = ""
+    address_1: str = ""
+    city: str = ""
+
+
+@app.post("/api/admin/orders/{oid}/customer")
+def admin_order_customer(oid: int, body: CustomerEditIn,
+                         x_admin_key: Optional[str] = Header(None)):
+    """עריכת פרטי הלקוח בהזמנה (שם/טלפון/אימייל/כתובת) — מעדכן חיוב + משלוח."""
+    _require_admin(x_admin_key)
+    import requests as _rq
+    base, k, s = _wc_creds()
+    fn = (body.first_name or "").strip()
+    ln = (body.last_name or "").strip()
+    billing = {"first_name": fn, "last_name": ln, "phone": (body.phone or "").strip(),
+               "email": (body.email or "").strip(), "address_1": (body.address_1 or "").strip(),
+               "city": (body.city or "").strip()}
+    shipping = {"first_name": fn, "last_name": ln,
+                "address_1": (body.address_1 or "").strip(), "city": (body.city or "").strip()}
+    r = _rq.put(f"{base}/wp-json/wc/v3/orders/{oid}",
+                json={"billing": billing, "shipping": shipping}, auth=(k, s), timeout=45)
+    if not r.ok:
+        raise HTTPException(502, f"עדכון פרטי הלקוח נכשל ({r.status_code}: {r.text[:150]})")
+    o = r.json()
+    return {"ok": True, "billing": o.get("billing", {})}
+
+
 # ── תשלום כללי (ללא הזמנת WC): קישור PayPlus חופשי מהמגירה ──
 class PayQuick(BaseModel):
     desc: str
