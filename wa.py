@@ -304,13 +304,20 @@ def get_thread_native(phone: str, limit: int = 80):
         if murl:
             mt = (m.get("media_mime") or "").split("/")[0] or m.get("type") or "file"
             media = [{"type": mt, "url": murl, "caption": ""}]
-        text = _strip_entry_marker(m.get("text") or "") if "_strip_entry_marker" in globals() else (m.get("text") or "")
+        text = (m.get("text") or "").replace("[interactive]", "", 1).strip()
+        if "_strip_entry_marker" in globals():
+            text = _strip_entry_marker(text)
+        # סטטוס מסירה: הודעות היסטוריות (מהבקאפ) מסומנות 'historic' ואין להן מידע
+        # מסירה מדויק → מציגים אפור ✓✓ (נמסר). הודעות חדשות נושאות סטטוס אמיתי ממטא.
+        st = m.get("status") or ""
+        if m.get("direction") == "out" and st in ("", "historic"):
+            st = "delivered"
         slim.append({
             "id": m.get("wamid"), "direction": m.get("direction"),
             "text": text, "kind": m.get("type"), "tpl": None, "media": media,
             "ts": m.get("ts") or 0,
             "sent_by": "greenos" if m.get("direction") == "out" else None,
-            "reply_to": m.get("reply_to") or None, "status": m.get("status"),
+            "reply_to": m.get("reply_to") or None, "status": st,
         })
     by_id = {x["id"]: (x.get("text") or "") for x in slim if x.get("id")}
     for x in slim:
