@@ -1227,7 +1227,7 @@
             background: rgba(0,0,0,0.5);
             z-index: 2000;
             display: none;
-            align-items: center;
+            align-items: flex-start;
             justify-content: center;
             padding: 20px;
             overflow-y: auto;
@@ -2250,8 +2250,13 @@
             
             // Populate suppliers list from existing checks
             populateSuppliersList();
-            
+
             modal.classList.add('active');
+            // פתיחה תמיד מראש הטופס (לא משאירים גלילה מהפעם הקודמת) + פוקוס לשדה הראשון
+            const content = modal.querySelector('.add-check-modal-content');
+            if (content) content.scrollTop = 0;
+            modal.scrollTop = 0;
+            setTimeout(() => { const f = document.getElementById('addCheckNumber'); if (f) f.focus(); }, 80);
         }
 
         function populateSuppliersList() {
