@@ -258,6 +258,8 @@ def _startup():
     scheduler.add_job(_orders_push_job, "interval", seconds=60, id="orders_push", max_instances=1)
     # שליחה מתוזמנת ("שלח בשעה X") — בדיקה כל 30ש, שולח מה שהגיע זמנו
     scheduler.add_job(_wa_scheduled_job, "interval", seconds=30, id="wa_scheduled", max_instances=1)
+    # שינוי סטטוס הזמנה מתוזמן — בדיקה כל 30ש, מחיל מה שהגיע זמנו
+    scheduler.add_job(_scheduled_status_job, "interval", seconds=30, id="scheduled_status", max_instances=1)
     # backfill היסטוריית וואטסאפ — רץ רק בשעות שקטות (21:00-09:00 IL); resumable.
     # פייר בכל שעה בחלון; max_instances=1 → ריצה ארוכה אחת ללילה + התאוששות מ-restart.
     scheduler.add_job(_wa_backfill_job, "cron", hour="21-23,0-8", minute=10,
@@ -2784,6 +2786,76 @@ def admin_order_status(oid: int, body: OrderStatusIn, x_admin_key: Optional[str]
     return {"ok": True, "status": r.json().get("status")}
 
 
+def _normalize_status(st: str) -> str:
+    """מאמת סטטוס מול רשימת הסטטוסים האמיתית של האתר (כולל מותאמים)."""
+    base, k, s = _wc_creds()
+    core = {"pending", "processing", "on-hold", "completed", "cancelled", "refunded", "failed"}
+    valid = set(_wc_statuses(base, k, s).keys()) | core
+    st = (st or "").strip()
+    st = st[3:] if st.startswith("wc-") else st
+    if st not in valid:
+        raise HTTPException(400, f"סטטוס לא מוכר: {st}")
+    return st
+
+
+class StatusScheduleIn(BaseModel):
+    status: str
+    run_at: str                     # ISO; אם בלי אזור-זמן — מניחים שעון ישראל
+
+
+@app.post("/api/admin/orders/{oid}/status/schedule")
+def admin_order_status_schedule(oid: int, body: StatusScheduleIn,
+                                x_admin_key: Optional[str] = Header(None)):
+    """תזמון שינוי סטטוס הזמנה לזמן עתידי — רץ בשרת (תמיד פעיל), שורד הפעלות מחדש.
+    run_at: ISO. אם נשלח בלי offset — מתפרש כשעון ישראל (cfg.TZ)."""
+    _require_admin(x_admin_key)
+    from datetime import datetime as _dt
+    from zoneinfo import ZoneInfo
+    st = _normalize_status(body.status)
+    tz = ZoneInfo(cfg.TZ)
+    try:
+        dt = _dt.fromisoformat((body.run_at or "").strip())
+    except Exception:  # noqa: BLE001
+        raise HTTPException(400, "run_at לא תקין (נדרש ISO, למשל 2026-06-15T16:00)")
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=tz)
+    run_at = dt.astimezone(tz).isoformat()
+    label = _wc_statuses(*_wc_creds()).get(st, st)
+    onum = ""
+    try:
+        base, k, s = _wc_creds()
+        rr = _rq_mod().get(f"{base}/wp-json/wc/v3/orders/{oid}",
+                           params={"_fields": "number"}, auth=(k, s), timeout=20)
+        if rr.ok:
+            onum = str(rr.json().get("number") or "")
+    except Exception:  # noqa: BLE001
+        pass
+    sid = db.sched_status_add(oid, st, run_at, order_number=onum,
+                              status_label=label, created_by="קונסולת ניהול")
+    logger.info("scheduled status #%s: order %s -> %s at %s", sid, oid, st, run_at)
+    return {"ok": True, "id": sid, "order_id": oid, "status": st,
+            "status_label": label, "run_at": run_at}
+
+
+@app.get("/api/admin/scheduled-status")
+def admin_scheduled_status_list(x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    return JSONResponse({"pending": db.sched_status_pending()},
+                        headers={"Cache-Control": "no-store"})
+
+
+@app.delete("/api/admin/scheduled-status/{sid}")
+def admin_scheduled_status_cancel(sid: int, x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    n = db.sched_status_cancel(sid)
+    return {"ok": True, "canceled": n}
+
+
+def _rq_mod():
+    import requests as _rq
+    return _rq
+
+
 @app.delete("/api/admin/orders/{oid}")
 def admin_order_trash(oid: int, x_admin_key: Optional[str] = Header(None)):
     """העברת הזמנה לפח (לא מחיקה סופית) — מותר רק על בוטלו/נכשל/הוחזר."""
@@ -3374,6 +3446,38 @@ def _wa_scheduled_job():
                 logger.warning("scheduled send #%s failed: %s", s["id"], e)
     except Exception as e:  # noqa: BLE001
         logger.warning("wa_scheduled job error: %s", e)
+
+
+def _scheduled_status_job():
+    """כל 30ש: מחיל שינויי-סטטוס הזמנה מתוזמנים שהגיע זמנם (רץ בשרת — אמין)."""
+    try:
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        import requests as _rq
+        now_iso = datetime.now(ZoneInfo(cfg.TZ)).isoformat()
+        due = db.sched_status_due(now_iso)
+        if not due:
+            return
+        base, k, s = _wc_creds()
+        for it in due:
+            oid = it["order_id"]
+            st = it["status"]
+            try:
+                r = _rq.put(f"{base}/wp-json/wc/v3/orders/{oid}",
+                            json={"status": st}, auth=(k, s), timeout=45)
+                if not r.ok:
+                    raise RuntimeError(f"{r.status_code}: {r.text[:120]}")
+                db.sched_status_mark(it["id"], "done")
+                logger.info("scheduled status fired: #%s order %s -> %s", it["id"], oid, st)
+                lbl = it.get("status_label") or st
+                onum = it.get("order_number") or oid
+                _tg_admin(f"✅ <b>סטטוס הזמנה שונה (מתוזמן)</b>\nהזמנה #{onum} → {lbl}")
+            except Exception as e:  # noqa: BLE001
+                db.sched_status_mark(it["id"], "failed", err=str(e))
+                logger.warning("scheduled status #%s failed: %s", it["id"], e)
+                _tg_admin(f"⚠️ <b>תזמון סטטוס נכשל</b>\nהזמנה #{it.get('order_number') or oid}: {e}")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("scheduled_status job error: %s", e)
 
 
 class WaCharge(BaseModel):

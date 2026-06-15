@@ -413,6 +413,22 @@ _SCHEMA = [
         err          TEXT
     )
     """.format(pk=_PK),
+    # שינוי סטטוס הזמנה מתוזמן (רץ בשרת — לא תלוי ב-Claude/מחשב פתוח)
+    """
+    CREATE TABLE IF NOT EXISTS scheduled_status (
+        id           {pk},
+        order_id     TEXT,
+        order_number TEXT,
+        status       TEXT,
+        status_label TEXT,
+        run_at       TEXT,
+        state        TEXT DEFAULT 'pending',
+        created_by   TEXT,
+        created_at   TEXT,
+        done_at      TEXT,
+        err          TEXT
+    )
+    """.format(pk=_PK),
     # תור משימות לסוכן אורי (claude על המק של אסי, חיוב Max — לא API)
     """
     CREATE TABLE IF NOT EXISTS uri_jobs (
@@ -1581,6 +1597,51 @@ def wa_sched_cancel(sid) -> int:
     with _conn() as c:
         cur = c.cursor()
         cur.execute(_q("UPDATE wa_scheduled SET status='canceled' WHERE id=? AND status='pending'"),
+                    (int(sid),))
+        return cur.rowcount if hasattr(cur, "rowcount") else 0
+
+
+# ── שינוי סטטוס הזמנה מתוזמן ──
+def sched_status_add(order_id, status, run_at, order_number="", status_label="",
+                     created_by="") -> int:
+    vals = (str(order_id), str(order_number or ""), status, status_label or "",
+            run_at, created_by or "", now_iso())
+    cols = "(order_id, order_number, status, status_label, run_at, state, created_by, created_at)"
+    with _conn() as c:
+        cur = c.cursor()
+        if _USE_PG:
+            cur.execute(_q(f"INSERT INTO scheduled_status {cols} VALUES (?,?,?,?,?,'pending',?,?) RETURNING id"), vals)
+            return cur.fetchone()["id"]
+        cur.execute(_q(f"INSERT INTO scheduled_status {cols} VALUES (?,?,?,?,?,'pending',?,?)"), vals)
+        return cur.lastrowid
+
+
+def sched_status_due(now_iso_str: str) -> list:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""SELECT * FROM scheduled_status
+                          WHERE state = 'pending' AND run_at <= ? ORDER BY run_at"""),
+                    (now_iso_str,))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def sched_status_pending() -> list:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute("SELECT * FROM scheduled_status WHERE state = 'pending' ORDER BY run_at")
+        return [dict(r) for r in cur.fetchall()]
+
+
+def sched_status_mark(sid, state, err=""):
+    with _conn() as c:
+        c.cursor().execute(_q("""UPDATE scheduled_status SET state=?, err=?, done_at=?
+                                 WHERE id=?"""), (state, (err or "")[:300], now_iso(), int(sid)))
+
+
+def sched_status_cancel(sid) -> int:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("UPDATE scheduled_status SET state='canceled' WHERE id=? AND state='pending'"),
                     (int(sid),))
         return cur.rowcount if hasattr(cur, "rowcount") else 0
 
