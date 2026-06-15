@@ -1145,6 +1145,12 @@ def admin_wc_search(q: str = "", x_admin_key: Optional[str] = Header(None),
             logger.warning("wc-search failed for %s: %s", query, e)
             return []
 
+    def _is_junk_sku(sku):
+        """מק"ט משוכפל — שריד משכפול ליסט (WooCommerce מוסיף סיומת -1/-1-1 כשמנסים
+        לשמור מק"ט כפול). מק"טי קופה אמיתיים הם מספר נקי בלי מקפים. מק"ט כזה אינו
+        חיבור אמיתי — מתייחסים אליו כלא-מחובר, וההתאמה באה מהדגם/צבע/נפח, לא ממנו."""
+        return bool(_re.fullmatch(r"\d+(-\d+)+", (sku or "").strip()))
+
     # שם המוצר בקופה הוא באנגלית וכולל צבע/נפח (למשל "Xiaomi Redmi 15C 128GB Blue"),
     # אבל שם המוצר באתר בעברית והצבע/נפח הם וריאציות — לכן המחרוזת המלאה מחזירה 0.
     # אם החיפוש המלא ריק — מסירים מילות צבע/נפח ואז מקצרים מהסוף עד שנמצא.
@@ -1184,13 +1190,17 @@ def admin_wc_search(q: str = "", x_admin_key: Optional[str] = Header(None),
                 attrs = " / ".join(a.get("option") for a in (v.get("attributes") or [])
                                    if a.get("option"))
                 vimg = (v.get("image") or {}).get("src", "") or img
+                vsku = v.get("sku") or ""
                 out.append({"product_id": pid, "variation_id": v.get("id"),
                             "name": pname, "label": attrs or "וריאציה",
-                            "sku": v.get("sku") or "", "price": v.get("price"),
+                            "sku": vsku, "junk": _is_junk_sku(vsku),
+                            "price": v.get("price"),
                             "image": vimg, "type": "variation"})
         else:
+            psku = p.get("sku") or ""
             out.append({"product_id": pid, "variation_id": 0,
-                        "name": pname, "label": "", "sku": p.get("sku") or "",
+                        "name": pname, "label": "", "sku": psku,
+                        "junk": _is_junk_sku(psku),
                         "price": p.get("price"), "image": img, "type": "simple"})
     return JSONResponse({"results": out},
                         headers={"Cache-Control": "no-store"})
