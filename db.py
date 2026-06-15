@@ -1602,8 +1602,31 @@ def wa_contact_upsert(phone, name=None, wa_id=None, in_ts: int = 0, out_ts: int 
                                    THEN excluded.last_in_ts  ELSE wa_contact.last_in_ts END,
                 last_msg_ts = CASE WHEN excluded.last_msg_ts > COALESCE(wa_contact.last_msg_ts, 0)
                                    THEN excluded.last_msg_ts ELSE wa_contact.last_msg_ts END,
+                -- הודעה נכנסת חדשה מבטלת ארכוב (השיחה חוזרת ל-inbox)
+                archived    = CASE WHEN excluded.last_in_ts > 0 THEN 0 ELSE wa_contact.archived END,
                 updated_at  = excluded.updated_at
         """), (str(phone), name, wa_id, int(in_ts or 0), msg_ts, now_iso()))
+
+
+def wa_set_archived(phone, archived: bool):
+    """ארכוב/שחזור שיחה בחנות שלנו (מה שה-inbox ה-native קורא)."""
+    with _conn() as c:
+        c.cursor().execute(_q("UPDATE wa_contact SET archived = ? WHERE phone = ?"),
+                           (1 if archived else 0, str(phone)))
+
+
+def wa_archive_all_except(keep_phones: list) -> dict:
+    """מעביר את כל השיחות לארכיון חוץ מ-keep_phones (שמשוחזרות). 2 שאילתות."""
+    keep = [str(p) for p in keep_phones if p]
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute("UPDATE wa_contact SET archived = 1")
+        if keep:
+            ph = ",".join(["?"] * len(keep))
+            cur.execute(_q(f"UPDATE wa_contact SET archived = 0 WHERE phone IN ({ph})"), tuple(keep))
+        cur.execute("SELECT COUNT(*) AS n FROM wa_contact WHERE archived = 1")
+        arch = cur.fetchone()["n"]
+    return {"archived": arch, "kept": len(keep)}
 
 
 def wa_msg_thread(phone: str, limit: int = 80) -> list:

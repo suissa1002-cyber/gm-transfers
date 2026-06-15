@@ -934,6 +934,16 @@ def set_tag(phone: str, tag_id, add: bool = True):
 
 
 def archive(phone: str, archived: bool = True):
+    import db
+    db.wa_set_archived(phone, archived)   # native — מה שה-inbox קורא
+    try:                                  # קונקטופ — גיבוי, best-effort (לא מפיל)
+        _dash_call(_dash().archive_conversation, phone, archive=archived)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("connectop archive failed for %s: %s", phone, e)
+    return {"ok": True, "phone": phone, "archived": archived}
+
+
+def _archive_legacy(phone: str, archived: bool = True):
     _dash_call(_dash().archive_conversation, phone, archive=archived)
     with _lock:
         _inbox_cache["rows"] = None  # שהשינוי ייראה מיד

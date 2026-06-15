@@ -2016,6 +2016,24 @@ def wa_send_template(body: WaTemplate, x_admin_key: Optional[str] = Header(None)
     return _wa_guard(wa.send_template, body.phone, body.name, body.body)
 
 
+@app.post("/api/admin/wa/archive-old")
+def wa_archive_old(keep: int = 10, x_admin_key: Optional[str] = Header(None)):
+    """מעביר לארכיון את כל השיחות חוץ מ-keep האחרונות של היום (שעון ישראל).
+    אם יש פחות מ-keep שיחות היום — שומר את כל מה שיש היום."""
+    _require_admin(x_admin_key)
+    import wa
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo(cfg.TZ)
+    now = datetime.now(tz)
+    today_start = int(now.replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
+    convs = wa.list_conversations_native()           # ממוין לפי last_msg_ts יורד
+    today = [c for c in convs if int(c.get("ts") or 0) >= today_start]
+    keep_phones = [c["phone"] for c in today[:max(0, keep)]]
+    res = db.wa_archive_all_except(keep_phones)
+    logger.info("wa archive-old: kept %d (today), archived %d", res["kept"], res["archived"])
+    return {"ok": True, "kept_phones": keep_phones, **res}
+
+
 @app.post("/api/admin/wa/archive")
 def wa_archive(body: WaFlag, x_admin_key: Optional[str] = Header(None)):
     _require_admin(x_admin_key)
