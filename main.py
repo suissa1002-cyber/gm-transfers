@@ -1239,15 +1239,16 @@ def admin_wc_search(q: str = "", x_admin_key: Optional[str] = Header(None),
             if _COLOR_HE[c] in hay or c in hay:
                 sc += 4
                 col_ok = True
-        # מספר דגם וטוקני דרגה — משקל גבוה (מבדילים דגם), ונדרשים ל-match
+        # מספר דגם וטוקני דרגה — משקל הגבוה ביותר (מבדילים דגם 10 מ-9, Pro מ-XL),
+        # מעל צבע, כדי שהדגם הנכון יעלה למעלה גם כשהצבע המבוקש לא קיים. נדרשים ל-match.
         model_ok = all(m in hay_toks for m in q_models)
         tier_ok = all(t in hay_toks for t in q_tiers)
         for m in q_models:
             if m in hay_toks:
-                sc += 3
+                sc += 6
         for t in q_tiers:
             if t in hay_toks:
-                sc += 2
+                sc += 3
         for t in qtl:
             if t in q_storage or t in q_colors or t in q_models or t in q_tiers or len(t) < 2:
                 continue
