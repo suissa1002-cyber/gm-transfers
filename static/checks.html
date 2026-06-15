@@ -2390,6 +2390,10 @@
                 alert('✅ הצק נוסף בהצלחה!');
                 closeAddCheckModal();
                 loadData(); // Refresh the list
+                // חזרה לראש הדף (הכפתור בתחתית — הדף נשאר גלול למטה אחרת)
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                document.documentElement.scrollTop = 0;
+                document.body.scrollTop = 0;
 
             } catch (error) {
                 console.error('Error adding check:', error);
