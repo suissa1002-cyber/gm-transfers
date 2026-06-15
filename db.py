@@ -1642,6 +1642,25 @@ def uri_job_get(jid: int):
         return dict(r) if r else None
 
 
+def uri_history(phone: str, limit: int = 80) -> list:
+    """היסטוריית השיחה עם אורי לטלפון נתון (להמשכיות בין מכשירים).
+    מחזיר את ה-jobs שכבר נענו, מהישן לחדש; מדלג על warmup ועל ריקים."""
+    phone = (phone or "").strip()
+    if not phone:
+        return []
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""
+            SELECT id, question, status, answer, created_at, answered_at
+            FROM uri_jobs
+            WHERE phone = ? AND status IN ('done','error')
+                  AND question <> '[WARMUP]'
+            ORDER BY id DESC LIMIT ?"""), (phone, int(limit)))
+        rows = [dict(r) for r in cur.fetchall()]
+    rows.reverse()
+    return rows
+
+
 def uri_jobs_pending(mark_running: bool = True) -> list:
     """משימות ממתינות לגשר; מסומנות running כדי שלא יימשכו פעמיים."""
     with _conn() as c:

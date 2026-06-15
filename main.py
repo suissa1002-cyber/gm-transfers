@@ -1983,6 +1983,16 @@ def uri_job(jid: int, x_admin_key: Optional[str] = Header(None)):
     return {"status": j["status"], "answer": j.get("answer")}
 
 
+@app.get("/api/admin/wa/uri/history")
+def uri_history(phone: str = "", x_admin_key: Optional[str] = Header(None)):
+    """היסטוריית השיחה עם אורי לשיחה (טלפון) — להמשכיות בין מכשירים.
+    מחזיר רשימת jobs שנענו (question+answer+status) מהישן לחדש; הצד-לקוח
+    מפענח [DRAFT] כמו ב-poll הרגיל ובונה את חוט השיחה."""
+    _require_admin(x_admin_key)
+    rows = db.uri_history(phone)
+    return JSONResponse({"jobs": rows}, headers={"Cache-Control": "no-store"})
+
+
 @app.get("/api/admin/wa/uri/status")
 def uri_status(x_admin_key: Optional[str] = Header(None)):
     """האם הגשר על המק חי (heartbeat מ-2 הדקות האחרונות)."""

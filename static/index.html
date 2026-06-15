@@ -3159,6 +3159,7 @@ function waToggleUri(){
   if(S.waPanel && S.waPanelMode==='uri'){ S.waPanel=false; renderWaThread(); return; }
   S.waPanel=true; S.waPanelMode='uri';
   renderWaThread(); waUriCheckBridge();
+  waUriLoadHistory(S.waPhone);
   waUriWarmup();
   setTimeout(()=>{ const i=document.getElementById('waUriInput'); if(i) i.focus(); },150);
 }
@@ -3172,6 +3173,35 @@ function waUriWarmup(){
     body:JSON.stringify({phone:ph, question:'[WARMUP]'})}).catch(()=>{ S.waUriWarm[ph]=0; });
 }
 function waUriChat(){ S.waUriChats=S.waUriChats||{}; return S.waUriChats[S.waPhone]=S.waUriChats[S.waPhone]||[]; }
+// פענוח תשובת אורי לטקסט + טיוטה ([DRAFT]…[/DRAFT]) — משותף ל-poll ולטעינת היסטוריה
+function waUriParse(ans){
+  let t=ans||''; const out={text:t};
+  const dm=t.match(/\[DRAFT\]\s*([\s\S]*?)\s*\[\/DRAFT\]/);
+  if(dm){ out.draft=dm[1].trim(); out.text=t.replace(dm[0],'').trim(); }
+  return out;
+}
+// טעינת היסטוריית השיחה עם אורי מהשרת — להמשכיות בין מכשירים (אייפון↔מחשב)
+async function waUriLoadHistory(phone){
+  phone=phone||S.waPhone; if(!phone) return;
+  S.waUriLoaded=S.waUriLoaded||{};
+  if(S.waUriLoaded[phone]) return;                       // כבר נטען בסשן הזה
+  S.waUriChats=S.waUriChats||{};
+  if((S.waUriChats[phone]||[]).length) { S.waUriLoaded[phone]=true; return; } // כבר יש שיחה פעילה
+  S.waUriLoaded[phone]=true;
+  try{
+    const r=await api('/api/admin/wa/uri/history?phone='+encodeURIComponent(phone));
+    const jobs=(r&&r.jobs)||[]; if(!jobs.length) return;
+    const chat=[];
+    jobs.forEach(j=>{
+      chat.push({role:'user', text:j.question||''});
+      if(j.status==='error'){ chat.push({role:'uri', status:'error', text:j.answer||'שגיאה'}); }
+      else { const p=waUriParse(j.answer); chat.push({role:'uri', status:'done', text:p.text, draft:p.draft}); }
+    });
+    // אם בינתיים המשתמש כבר התחיל לכתוב לשיחה הזו — לא דורסים
+    if(!(S.waUriChats[phone]||[]).length) S.waUriChats[phone]=chat;
+    if(S.waPhone===phone) waUriPaint();
+  }catch(e){ S.waUriLoaded[phone]=false; }               // כשל — נאפשר ניסיון חוזר
+}
 function waUriHTML(){
   const chat=waUriChat();
   const alive=S.waUriAlive;
@@ -3869,6 +3899,7 @@ async function openWaConv(phone){
   // עדכון סימון active ברשימה בלי לרנדר הכל (שומר פוקוס/גלילה)
   document.querySelectorAll('.wa-conv').forEach(el=>el.classList.remove('active'));
   renderWaThread();
+  if(S.waPanel && S.waPanelMode==='uri') waUriLoadHistory(phone);
   const conv=(S.waConvs||[]).find(c=>c.phone===phone);
   if(conv) waMarkSeen(phone, conv.ts||Math.floor(Date.now()/1000));
   await loadWaThread(false);
