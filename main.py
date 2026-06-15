@@ -1216,12 +1216,19 @@ def admin_wc_search(q: str = "", x_admin_key: Optional[str] = Header(None),
         "titanium": "טיטניום", "graphite": "גרפיט", "navy": "כחול", "orange": "כתום",
         "yellow": "צהוב", "beige": "בז׳", "coral": "אלמוג",
     }
+    _TIERS = {"pro", "xl", "ultra", "max", "plus", "fe", "mini", "air", "edge",
+              "fold", "flip", "neo", "lite", "prime", "ace", "se"}
     qtl = [t for t in _re.split(r"[\s/,]+", q.lower()) if t]
     q_storage = [t for t in qtl if _re.fullmatch(r"\d+(gb|tb)", t)]
     q_colors = [t for t in qtl if t in _COLOR_HE]
+    # מספרי דגם (10/9/15) וטוקני דרגה (pro/xl/ultra) — מבדילים בין Pixel 10 ל-9
+    # ובין Pro ל-Pro XL. חובה שיתאימו ל-match, אחרת "החלף" ידביק לדגם הלא-נכון.
+    q_models = [t for t in qtl if _re.fullmatch(r"\d{1,3}", t)]
+    q_tiers = [t for t in qtl if t in _TIERS]
     for row in out:
         hay = (str(row.get("name", "")) + " " + str(row.get("label", ""))).lower()
         hay_ns = hay.replace(" ", "")
+        hay_toks = set(_re.split(r"[\s/,\-]+", hay))
         sc = 0
         st_ok = bool(q_storage) and all(st in hay_ns for st in q_storage)
         for st in q_storage:
@@ -1232,15 +1239,27 @@ def admin_wc_search(q: str = "", x_admin_key: Optional[str] = Header(None),
             if _COLOR_HE[c] in hay or c in hay:
                 sc += 4
                 col_ok = True
+        # מספר דגם וטוקני דרגה — משקל גבוה (מבדילים דגם), ונדרשים ל-match
+        model_ok = all(m in hay_toks for m in q_models)
+        tier_ok = all(t in hay_toks for t in q_tiers)
+        for m in q_models:
+            if m in hay_toks:
+                sc += 3
+        for t in q_tiers:
+            if t in hay_toks:
+                sc += 2
         for t in qtl:
-            if t in q_storage or t in q_colors or len(t) < 2:
+            if t in q_storage or t in q_colors or t in q_models or t in q_tiers or len(t) < 2:
                 continue
             if t in hay:
                 sc += 1
         row["score"] = sc
-        # התאמה מלאה: גם הנפח וגם הצבע שביקש (אם ביקש) קיימים בווריאציה
-        row["match"] = bool((st_ok or not q_storage) and (col_ok or not q_colors)
-                            and (q_storage or q_colors))
+        # התאמה מלאה: נפח + צבע + מספר-דגם + דרגה שביקש (אם ביקש) — כולם תואמים
+        asked = bool(q_storage or q_colors or q_models or q_tiers)
+        row["match"] = bool(asked
+                            and (st_ok or not q_storage)
+                            and (col_ok or not q_colors)
+                            and model_ok and tier_ok)
     out.sort(key=lambda r: r.get("score", 0), reverse=True)
     return JSONResponse({"results": out},
                         headers={"Cache-Control": "no-store"})
