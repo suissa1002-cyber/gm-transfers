@@ -679,6 +679,59 @@ def _recount(cur, op_id: str):
     return rec, total, status
 
 
+def reconcile_sold_transfer_items() -> list:
+    """סוגר אוטומטית כרטיסי קליטה שהמכשיר שלהם נמכר לפני שבוצעה קליטה.
+    עובר על פריטי-העברה פתוחים (received=0, עם סיריאלי, בהעברות in_transit/partial);
+    אם הסיריאלי מופיע כמכירה ב-NewOrder (doc_type=0, qty>0) אחרי תחילת ההעברה —
+    מסמן את הפריט כנקלט (received=1 אם נמכר ביעד, =2 אם נמכר בסניף אחר), מעדכן/סוגר
+    את ההעברה, ומחזיר רשימה להתראה. שני המקרים מנקים את הכרטיס מהדשבורד."""
+    out = []
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""
+            SELECT ti.id AS item_id, ti.op_id, ti.serial, ti.name,
+                   t.to_branch_id, t.from_branch_id,
+                   COALESCE(t.first_seen, t.created_at) AS t_start
+            FROM transfer_items ti
+            JOIN transfers t ON t.op_id = ti.op_id
+            WHERE ti.received = 0 AND ti.serial IS NOT NULL AND ti.serial <> ''
+              AND t.status IN ('in_transit', 'partial')
+        """))
+        items = [dict(r) for r in cur.fetchall()]
+        for it in items:
+            start = it.get("t_start") or ""
+            cur.execute(_q("""
+                SELECT branch_id, sale_date FROM sales
+                WHERE serial = ? AND doc_type = 0 AND qty > 0
+                  AND (? = '' OR sale_date >= ?)
+                ORDER BY sale_date DESC LIMIT 1
+            """), (it["serial"], start, start))
+            row = cur.fetchone()
+            if not row:
+                continue
+            sale = dict(row)
+            sold_b = sale.get("branch_id")
+            try:
+                same = sold_b is not None and int(sold_b) == int(it["to_branch_id"])
+            except (TypeError, ValueError):
+                same = False
+            recv = 1 if same else 2
+            cur.execute(_q("""
+                UPDATE transfer_items
+                SET received = ?, received_at = ?, received_by = ?, received_method = ?
+                WHERE id = ?
+            """), (recv, sale.get("sale_date") or now_iso(), "נמכר (אוטומטי)",
+                   "נמכר" if same else "נמכר בסניף אחר", it["item_id"]))
+            rec, total, status = _recount(cur, it["op_id"])
+            out.append({
+                "serial": it["serial"], "name": it.get("name") or "", "op_id": it["op_id"],
+                "to_branch_id": it["to_branch_id"], "sold_branch_id": sold_b,
+                "same_branch": same, "sale_date": sale.get("sale_date"),
+                "transfer_closed": status in ("received", "closed"),
+            })
+    return out
+
+
 def receive_scan(branch_id: int, code: str, op_id: str = None, employee: str = None,
                  method: str = None) -> dict:
     """

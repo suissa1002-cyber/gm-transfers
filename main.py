@@ -85,6 +85,34 @@ def _sales_ingest_job():
         sales_ingest.ingest_incremental()
     except Exception as e:  # noqa: BLE001
         logger.warning("sales_ingest failed: %s", e)
+    _sold_reconcile_job()   # אחרי כל קליטת מכירות — מזהה מכשירים שנמכרו לפני קליטה
+
+
+def _sold_reconcile_job():
+    """סוגר אוטומטית כרטיסי קליטה שהמכשיר שלהם נמכר לפני קליטה, ומתריע בטלגרם.
+    case1: נמכר בסניף היעד · case2: נמכר בסניף שונה מהיעד — בשניהם מנקה מהדשבורד."""
+    try:
+        rows = db.reconcile_sold_transfer_items()
+        for r in rows:
+            to_name = cfg.branch_name(r.get("to_branch_id"))
+            sold_name = cfg.branch_name(r.get("sold_branch_id"))
+            if r.get("same_branch"):
+                head = "📦✅ <b>מכשיר נמכר לפני קליטה</b>"
+                where = f"נמכר בסניף היעד (<b>{to_name}</b>) לפני שבוצעה קליטה ב-GreenOS."
+            else:
+                head = "📦↪️ <b>מכשיר נמכר בסניף שונה מהיעד</b>"
+                where = f"היעד היה <b>{to_name}</b>, אך נמכר ב<b>{sold_name}</b>."
+            cleared = ("כרטיס הקליטה נסגר ונוקה מהדשבורד."
+                       if r.get("transfer_closed") else "הפריט סומן כנמכר ונוקה מהכרטיס.")
+            _tg_admin(f"{head}\n{r.get('name')} (סריאלי <code>{r.get('serial')}</code>)\n"
+                      f"{where}\n{cleared}")
+            logger.info("sold-reconcile: serial=%s op=%s same=%s closed=%s",
+                        r.get("serial"), r.get("op_id"), r.get("same_branch"),
+                        r.get("transfer_closed"))
+        if rows:
+            logger.info("sold-reconcile: closed %d stuck receive item(s)", len(rows))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("sold reconcile job error: %s", e)
 
 
 def _sales_backfill_job(days: int = 90, max_new_docs: int = 1500):
@@ -228,6 +256,8 @@ def _startup():
     # איסוף מכירות מצטבר: כל 3 שעות. ריצה ראשונית רק אם האיסוף האחרון ישן —
     # deploys תכופים לא צריכים להפעיל אותו שוב ושוב (מעמיס על הקצב המשותף).
     scheduler.add_job(_sales_ingest_job, "interval", hours=3, id="sales_ingest", max_instances=1)
+    # סגירת כרטיסי קליטה למכשירים שנמכרו לפני קליטה — גם עצמאית (גיבוי ל-hook באיסוף)
+    scheduler.add_job(_sold_reconcile_job, "interval", minutes=30, id="sold_reconcile", max_instances=1)
     if _is_stale(db.sales_state_get("last_run"), hours=2):
         scheduler.add_job(_sales_ingest_job, "date", id="sales_ingest_initial",
                           run_date=datetime.now() + timedelta(seconds=120))
@@ -1810,6 +1840,29 @@ def admin_sales_ingest(x_admin_key: Optional[str] = Header(None)):
     scheduler.add_job(_sales_ingest_job, "date", id="sales_ingest_manual",
                       run_date=datetime.now() + timedelta(seconds=1), replace_existing=True)
     return {"started": True}
+
+
+@app.post("/api/admin/sold-reconcile")
+def admin_sold_reconcile(x_admin_key: Optional[str] = Header(None)):
+    """הפעלה ידנית: סגירת כרטיסי קליטה למכשירים שנמכרו לפני קליטה (+התראות)."""
+    _require_admin(x_admin_key)
+    rows = db.reconcile_sold_transfer_items()
+    for r in rows:
+        try:
+            to_name = cfg.branch_name(r.get("to_branch_id"))
+            sold_name = cfg.branch_name(r.get("sold_branch_id"))
+            if r.get("same_branch"):
+                head, where = ("📦✅ <b>מכשיר נמכר לפני קליטה</b>",
+                               f"נמכר בסניף היעד (<b>{to_name}</b>) לפני קליטה.")
+            else:
+                head, where = ("📦↪️ <b>מכשיר נמכר בסניף שונה מהיעד</b>",
+                               f"היעד היה <b>{to_name}</b>, אך נמכר ב<b>{sold_name}</b>.")
+            cleared = ("כרטיס הקליטה נסגר ונוקה." if r.get("transfer_closed")
+                       else "הפריט סומן כנמכר ונוקה.")
+            _tg_admin(f"{head}\n{r.get('name')} (סריאלי <code>{r.get('serial')}</code>)\n{where}\n{cleared}")
+        except Exception:  # noqa: BLE001
+            pass
+    return {"closed": len(rows), "items": rows}
 
 
 @app.post("/api/admin/sales-backfill")
