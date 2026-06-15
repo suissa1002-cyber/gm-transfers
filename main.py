@@ -1129,17 +1129,43 @@ def admin_wc_search(q: str = "", x_admin_key: Optional[str] = Header(None),
         return {"results": []}
     base, k, s = creds
     import requests as _rq
+    import re as _re
+
+    def _fetch(query):
+        try:
+            r = _rq.get(base + "/wp-json/wc/v3/products",
+                        params={"search": query, "per_page": 12, "status": "publish"},
+                        auth=(k, s), timeout=15)
+            if not r.ok:
+                logger.warning("wc-search %s -> %s %s", query, r.status_code, r.text[:160])
+                return []
+            j = r.json()
+            return j if isinstance(j, list) else []
+        except Exception as e:  # noqa: BLE001
+            logger.warning("wc-search failed for %s: %s", query, e)
+            return []
+
+    # שם המוצר בקופה הוא באנגלית וכולל צבע/נפח (למשל "Xiaomi Redmi 15C 128GB Blue"),
+    # אבל שם המוצר באתר בעברית והצבע/נפח הם וריאציות — לכן המחרוזת המלאה מחזירה 0.
+    # אם החיפוש המלא ריק — מסירים מילות צבע/נפח ואז מקצרים מהסוף עד שנמצא.
+    _COLORS = {"black", "white", "blue", "green", "red", "gold", "silver", "gray",
+               "grey", "orange", "purple", "pink", "yellow", "titanium", "graphite",
+               "cream", "lavender", "mint", "navy", "beige", "rose",
+               "שחור", "לבן", "כחול", "ירוק", "אדום", "זהב", "כסף", "כסוף", "אפור",
+               "כתום", "סגול", "ורוד", "צהוב", "תכלת", "חום", "קרם", "טיטניום"}
+    prods = _fetch(q)
+    if not prods:
+        toks = q.split()
+        # מסירים צבעים וטוקני נפח/RAM (128GB / 256gb / 8GB / 1TB)
+        core = [t for t in toks if t.lower() not in _COLORS
+                and not _re.fullmatch(r"\d+(gb|tb)", t.lower())]
+        if core and core != toks:
+            prods = _fetch(" ".join(core))
+        # עדיין ריק — מקצרים מילה-מילה מהסוף (ברנד+דגם לרוב בהתחלה)
+        while not prods and len(core) > 1:
+            core = core[:-1]
+            prods = _fetch(" ".join(core))
     out = []
-    try:
-        r = _rq.get(base + "/wp-json/wc/v3/products",
-                    params={"search": q, "per_page": 12, "status": "publish"},
-                    auth=(k, s), timeout=15)
-        prods = r.json() if r.ok else []
-        if not r.ok:
-            logger.warning("wc-search %s -> %s %s", q, r.status_code, r.text[:160])
-    except Exception as e:  # noqa: BLE001
-        logger.warning("wc-search failed for %s: %s", q, e)
-        prods = []
     for p in (prods or []):
         if not isinstance(p, dict):
             continue
