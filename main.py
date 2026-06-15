@@ -1202,6 +1202,46 @@ def admin_wc_search(q: str = "", x_admin_key: Optional[str] = Header(None),
                         "name": pname, "label": "", "sku": psku,
                         "junk": _is_junk_sku(psku),
                         "price": p.get("price"), "image": img, "type": "simple"})
+    # ── דירוג לפי רלוונטיות (דגם + נפח + צבע) ──
+    # WC מחזיר את כל הווריאציות של כל מוצר שמתאים בשם → בלי דירוג זה "מציף" את כל
+    # הצבעים/נפחים. מדרגים כל וריאציה מול מילות החיפוש המקוריות: נפח (256gb) וצבע
+    # (Porcelain→פורצלן) במשקל גבוה, טוקני דגם (10/pro/xl) נמוך. match=True רק אם
+    # גם הנפח וגם הצבע שביקש נמצאים — כדי שלא "יחליף" וריאציה בצבע אחר בטעות.
+    _COLOR_HE = {
+        "porcelain": "פורצלן", "obsidian": "אובסידיאן", "moonstone": "מונסטון",
+        "hazel": "הייזל", "jade": "ג׳ייד", "black": "שחור", "white": "לבן",
+        "gray": "אפור", "grey": "אפור", "green": "ירוק", "blue": "כחול",
+        "red": "אדום", "pink": "ורוד", "purple": "סגול", "gold": "זהב",
+        "silver": "כסף", "cream": "קרם", "lavender": "לבנדר", "mint": "מנטה",
+        "titanium": "טיטניום", "graphite": "גרפיט", "navy": "כחול", "orange": "כתום",
+        "yellow": "צהוב", "beige": "בז׳", "coral": "אלמוג",
+    }
+    qtl = [t for t in _re.split(r"[\s/,]+", q.lower()) if t]
+    q_storage = [t for t in qtl if _re.fullmatch(r"\d+(gb|tb)", t)]
+    q_colors = [t for t in qtl if t in _COLOR_HE]
+    for row in out:
+        hay = (str(row.get("name", "")) + " " + str(row.get("label", ""))).lower()
+        hay_ns = hay.replace(" ", "")
+        sc = 0
+        st_ok = bool(q_storage) and all(st in hay_ns for st in q_storage)
+        for st in q_storage:
+            if st in hay_ns:
+                sc += 4
+        col_ok = False
+        for c in q_colors:
+            if _COLOR_HE[c] in hay or c in hay:
+                sc += 4
+                col_ok = True
+        for t in qtl:
+            if t in q_storage or t in q_colors or len(t) < 2:
+                continue
+            if t in hay:
+                sc += 1
+        row["score"] = sc
+        # התאמה מלאה: גם הנפח וגם הצבע שביקש (אם ביקש) קיימים בווריאציה
+        row["match"] = bool((st_ok or not q_storage) and (col_ok or not q_colors)
+                            and (q_storage or q_colors))
+    out.sort(key=lambda r: r.get("score", 0), reverse=True)
     return JSONResponse({"results": out},
                         headers={"Cache-Control": "no-store"})
 
