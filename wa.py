@@ -527,12 +527,16 @@ def _meta_interactive(phone: str, payload: dict, preview_text: str) -> str:
     return wamid
 
 
-def send_buttons(phone: str, body: str, buttons: list, header: str = "") -> str:
-    """עד 3 כפתורי תשובה. buttons = [(id, title), ...] (title ≤20 תווים)."""
+def send_buttons(phone: str, body: str, buttons: list, header: str = "",
+                 header_image: str = "") -> str:
+    """עד 3 כפתורי תשובה. buttons = [(id, title), ...] (title ≤20 תווים).
+    header_image = URL תמונה לכותרת (כרטיס מוצר)."""
     payload = {"type": "button", "body": {"text": body},
                "action": {"buttons": [{"type": "reply", "reply": {"id": bid, "title": t[:20]}}
                                        for bid, t in buttons[:3]]}}
-    if header:
+    if header_image:
+        payload["header"] = {"type": "image", "image": {"link": header_image}}
+    elif header:
         payload["header"] = {"type": "text", "text": header[:60]}
     return _meta_interactive(phone, payload, f"[כפתורים] {body}")
 

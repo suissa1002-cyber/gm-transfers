@@ -116,7 +116,8 @@ def _new_order_results(phone, query):
         desc = (f"₪{int(float(price)):,}" if price not in (None, "", "0") else "לפרטים")
         rows.append((pid, (p.get("name") or "מוצר")[:24], desc))
         data[pid] = {"name": p.get("name"), "price": price, "permalink": p.get("permalink"),
-                     "sku": p.get("sku"), "stock": p.get("stock_status")}
+                     "sku": p.get("sku"), "stock": p.get("stock_status"),
+                     "image": p.get("image")}
     rows.append(("search_again", "🔍 חיפוש חדש", ""))
     wa.send_list(phone, f"מצאתי {len(results)} תוצאות ל'{query}'. בחר/י לפרטים:",
                  rows, button_label="לתוצאות", section_title="תוצאות חיפוש")
@@ -124,7 +125,7 @@ def _new_order_results(phone, query):
 
 
 def _product_card(phone, rid, data):
-    """כרטיס מוצר — שם, מחיר חי, זמינות וקישור רכישה."""
+    """כרטיס מוצר אמיתי — תמונה + שם + מחיר חי + זמינות + קישור רכישה + כפתורים."""
     p = (data or {}).get(rid)
     if not p:
         wa.send_text(phone, "לא מצאתי את הפריט, ננסה שוב 🙏")
@@ -134,14 +135,20 @@ def _product_card(phone, rid, data):
     if price not in (None, "", "0"):
         lines.append(f"💰 מחיר: ₪{int(float(price)):,}")
     if p.get("stock") == "instock":
-        lines.append("✅ במלאי")
+        lines.append("✅ זמין במלאי")
     elif p.get("stock") == "outofstock":
         lines.append("⏳ אזל — ניתן להשיג מהספק (שאל נציג)")
     if p.get("permalink"):
-        lines.append(f"\n🔗 לרכישה ולפרטים מלאים:\n{p['permalink']}")
-    wa.send_text(phone, "\n".join(lines))
-    wa.send_buttons(phone, "מה הלאה?",
-                    [("search_again", "🔍 מוצר אחר"), ("agent", "👤 נציג"), ("menu", "↩️ תפריט")])
+        lines.append(f"\n🔗 לרכישה ולפרטים:\n{p['permalink']}")
+    body = "\n".join(lines)
+    btns = [("search_again", "🔍 מוצר אחר"), ("agent", "👤 נציג"), ("menu", "↩️ תפריט")]
+    img = p.get("image") or ""
+    try:                                   # כרטיס עם תמונה; אם נכשל — fallback לטקסט
+        wa.send_buttons(phone, body, btns, header_image=img if img.startswith("http") else "")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("product card image failed, text fallback: %s", e)
+        wa.send_text(phone, body)
+        wa.send_buttons(phone, "מה הלאה?", btns)
     db.bot_session_clear(phone)
 
 

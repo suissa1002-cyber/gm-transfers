@@ -3035,30 +3035,58 @@ def _rq_mod():
 
 
 def bot_product_search(q: str, limit: int = 8) -> list:
-    """חיפוש מוצרים קליל לבוט ה-native — שם/מחיר/קישור/מק"ט. מחזיר מוצרי-אב."""
+    """חיפוש מוצרים לבוט ה-native — שם/מחיר/תמונה/קישור, **מדורג לפי רלוונטיות**
+    (מספר דגם + דרגה Pro/Ultra במשקל גבוה → S26 Ultra עולה ראשון). עם נפילה
+    מקצרת אם 0 תוצאות (כמו ב-wc-search)."""
     creds = _wc_creds()
     q = (q or "").strip()
     if not creds or len(q) < 2:
         return []
     base, k, s = creds
     import requests as _rq
-    try:
-        r = _rq.get(base + "/wp-json/wc/v3/products",
-                    params={"search": q, "per_page": limit, "status": "publish"},
-                    auth=(k, s), timeout=15)
-        prods = r.json() if r.ok else []
-    except Exception as e:  # noqa: BLE001
-        logger.warning("bot_product_search failed for %s: %s", q, e)
-        return []
-    out = []
+    import re as _re
+
+    def _fetch(query):
+        try:
+            r = _rq.get(base + "/wp-json/wc/v3/products",
+                        params={"search": query, "per_page": 16, "status": "publish"},
+                        auth=(k, s), timeout=15)
+            return r.json() if r.ok else []
+        except Exception:  # noqa: BLE001
+            return []
+
+    prods = _fetch(q)
+    if not prods:                       # נפילה: מקצרים מילה מהסוף עד שנמצא
+        toks = q.split()
+        while not prods and len(toks) > 1:
+            toks = toks[:-1]
+            prods = _fetch(" ".join(toks))
+
+    _TIERS = {"pro", "max", "ultra", "plus", "fe", "mini", "air", "edge", "fold",
+              "flip", "lite", "neo", "ace", "prime"}
+    qtl = [t for t in _re.split(r"[\s/,]+", q.lower()) if t]
+    q_models = [t for t in qtl if _re.fullmatch(r"\d{1,4}", t)]
+    scored = []
     for p in (prods or []):
         if not isinstance(p, dict):
             continue
-        out.append({"id": p.get("id"), "name": p.get("name") or "",
-                    "price": p.get("price"), "permalink": p.get("permalink") or "",
-                    "sku": p.get("sku") or "", "type": p.get("type"),
-                    "stock_status": p.get("stock_status")})
-    return out
+        name = (p.get("name") or "").lower()
+        toks = set(_re.split(r"[\s/,\-]+", name))
+        sc = 0
+        for t in qtl:
+            if t in q_models:
+                sc += 6 if t in toks else 0
+            elif t in _TIERS:
+                sc += 4 if t in toks else 0
+            elif len(t) >= 2 and t in name:
+                sc += 1
+        img = ((p.get("images") or [{}])[0] or {}).get("src", "")
+        scored.append((sc, {"id": p.get("id"), "name": p.get("name") or "",
+                            "price": p.get("price"), "permalink": p.get("permalink") or "",
+                            "sku": p.get("sku") or "", "type": p.get("type"),
+                            "image": img, "stock_status": p.get("stock_status")}))
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return [p for _sc, p in scored][:limit]
 
 
 # ── חשבוניות לקוח (נקלטות ממייל הקופה; לשליחה חוזרת ללקוח בוואטסאפ) ──
