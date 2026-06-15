@@ -290,8 +290,8 @@ def _startup():
     scheduler.add_job(_wa_scheduled_job, "interval", seconds=30, id="wa_scheduled", max_instances=1)
     # שינוי סטטוס הזמנה מתוזמן — בדיקה כל 30ש, מחיל מה שהגיע זמנו
     scheduler.add_job(_scheduled_status_job, "interval", seconds=30, id="scheduled_status", max_instances=1)
-    # קליטת חשבוניות ממייל הקופה — כל 30 דק' (חשבוניות לא דחופות; חוסך עומס IMAP/PDF)
-    scheduler.add_job(_invoice_capture_job, "interval", minutes=30, id="invoice_capture", max_instances=1)
+    # קליטת חשבוניות ממייל הקופה — כל 3 שעות (לא דחוף; חוסך עומס IMAP/PDF)
+    scheduler.add_job(_invoice_capture_job, "interval", hours=3, id="invoice_capture", max_instances=1)
     # backfill היסטוריית וואטסאפ — רץ רק בשעות שקטות (21:00-09:00 IL); resumable.
     # פייר בכל שעה בחלון; max_instances=1 → ריצה ארוכה אחת ללילה + התאוששות מ-restart.
     scheduler.add_job(_wa_backfill_job, "cron", hour="21-23,0-8", minute=10,
