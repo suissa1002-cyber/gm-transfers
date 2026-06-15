@@ -3129,11 +3129,20 @@ def bot_product_search(q: str, limit: int = 8) -> list:
                   "וואנפלוס": "oneplus"}
     _TIERS = {"pro", "max", "ultra", "plus", "fe", "mini", "air", "edge", "fold",
               "flip", "lite", "neo", "ace", "prime"}
+    # נפחי אחסון — תכונת וריאציה, לא בשם המוצר-האב. מוציאים מחיפוש WC (פוגע בתוצאות).
+    _STORAGE = {"32", "64", "128", "256", "512", "1024", "2048"}
 
     raw = [t for t in _re.split(r"[\s/,]+", q.lower()) if t and t not in _FILLERS]
-    search_q = " ".join(raw).strip() or q.strip()
+
+    def _en(t):
+        return _HEB_BRAND.get(t) or _HEB_TIER.get(t) or t
+    search_he = " ".join(t for t in raw if t not in _STORAGE).strip()
+    search_en = " ".join(_en(t) for t in raw if t not in _STORAGE).strip()
+    search_q = search_he or q.strip()
 
     def _fetch(query):
+        if not query:
+            return []
         try:
             r = _rq.get(base + "/wp-json/wc/v3/products",
                         params={"search": query, "per_page": 20, "status": "publish"},
@@ -3142,14 +3151,21 @@ def bot_product_search(q: str, limit: int = 8) -> list:
         except Exception:  # noqa: BLE001
             return []
 
-    prods = _fetch(search_q)
-    if not prods:
-        toks = search_q.split()
+    # שתי שאילתות — עברית (כפי שהוקלד) + אנגלית ממופה — ומיזוג. שמות מוצרים מעורבים:
+    # אייפון בעברית, סמסונג/גלקסי באנגלית בלבד. כך מוצאים את שניהם.
+    prods, _seen = [], set()
+    for _sq in [search_q] + ([search_en] if search_en and search_en != search_q else []):
+        for p in _fetch(_sq):
+            if isinstance(p, dict) and p.get("id") not in _seen:
+                _seen.add(p.get("id"))
+                prods.append(p)
+    if not prods:                       # נפילה אחרונה: מקצרים מילה מהסוף
+        toks = (search_en or search_q).split()
         while not prods and len(toks) > 1:
             toks = toks[:-1]
             prods = _fetch(" ".join(toks))
 
-    q_models = [t for t in raw if _re.fullmatch(r"\d{1,4}", t)]
+    q_models = [t for t in raw if _re.fullmatch(r"\d{1,4}", t) and t not in _STORAGE]
 
     def _forms(t):
         f = {t}
