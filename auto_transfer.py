@@ -99,6 +99,24 @@ def _mark_unmatched(number, name):
         logger.warning("unmatched mark failed for %s: %s", number, e)
 
 
+def _unmark_unmatched(number):
+    """מסיר הזמנה מרשימת ה'דורש טיפול ידני' — אחרי שחובר מק"ט והפריט זוהה
+    (כדי שבאנר 'פריט ללא מק"ט מחובר' יתנקה בשידור-מחדש)."""
+    import json
+    try:
+        raw = db.sales_state_get("order_unmatched_list")
+        if not raw:
+            return
+        lst = json.loads(raw)
+        num = str(number)
+        new = [x for x in lst if str(x.get("number")) != num]
+        if len(new) != len(lst):
+            db.sales_state_set("order_unmatched_list",
+                               json.dumps(new[:100], ensure_ascii=False))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("unmatched unmark failed for %s: %s", number, e)
+
+
 def _pickup_branch(o: dict) -> int:
     """סניף האיסוף שנבחר בהזמנת איסוף עצמי (מ-meta _gm_pickup_branch). None אם לא איסוף."""
     titles = " ".join((sl.get("method_title") or "") for sl in (o.get("shipping_lines") or []))
@@ -126,12 +144,14 @@ def _handle_order(o: dict, catalog: dict) -> list:
     src_pref = ([pickup_b] + [b for b in PREF_SOURCE if b != pickup_b]) if pickup_b else PREF_SOURCE
     created = []
     oos_names = []           # פריטים חסרים בכל הסניפים — לזיהוי "שודר חלקי" בסוף
+    had_unmatched = False     # פריט פיזי ללא מק"ט בריצה הזו (לעדכון הבאנר)
     for li in o.get("line_items", []):
         sku = str(li.get("sku") or "").strip()
         qty = max(1, int(li.get("quantity") or 1))
         if not sku:
             # פריט פיזי ללא מק"ט — בעיית נתונים (המוצר הועלה בלי SKU). לא לדלג
             # בשקט: לסמן את ההזמנה לטיפול ידני (אחרת לא משודרת ולא מסומנת OOS).
+            had_unmatched = True
             _mark_unmatched(o.get("number"), li.get("name") or "פריט ללא מק\"ט")
             continue
         if sku not in catalog:
@@ -195,6 +215,9 @@ def _handle_order(o: dict, catalog: dict) -> list:
             oos_names.append(name)
         logger.info("order %s: broadcast %s x%s split across %s -> site",
                     o.get("number"), sku, qty, used)
+    # אם כבר אין פריט ללא מק"ט (חובר מק"ט) — מנקים את ההזמנה מרשימת הטיפול הידני
+    if not had_unmatched:
+        _unmark_unmatched(o.get("number"))
     # סימון OOS בסוף — אם חלק מההזמנה כן שודר (created) זה "שודר חלקי" ולא חוסר מלא
     if oos_names:
         _mark_oos(o.get("number"), oos_names[0], partial=bool(created))
