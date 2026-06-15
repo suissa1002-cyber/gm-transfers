@@ -85,15 +85,12 @@ def handle(phone: str, text: str, mtype: str = "text", reply_id: str = ""):
     if state == "order_storage" and rid.startswith("storage:"):
         d = sess.get("data") or {}
         st = rid.split(":", 1)[1]
+        prod = d.get("product") or {}
         vs = [v for v in (d.get("variations") or [])
               if (not d.get("color") or v.get("color") == d.get("color")) and v.get("storage") == st]
         v = vs[0] if vs else {}
-        label = " ".join(x for x in [_short_name((d.get("product") or {}).get("name")),
-                                     d.get("color"), st] if x)
-        return _ask_name(phone, {"pid": d.get("pid"), "vid": v.get("id") or 0,
-                                 "price": v.get("price"), "label": label})
-    if state == "order_name" and not rid:
-        return _finalize_order(phone, text, sess.get("data") or {})
+        label = " ".join(x for x in [_short_name(prod.get("name")), d.get("color"), st] if x)
+        return _order_checkout(phone, label, v.get("price"), prod.get("permalink"))
 
     # ── ניתוב תפריט ──
     if rid == "status" or ("סטטוס" in low and "הזמנ" in low):
@@ -210,8 +207,8 @@ def _start_order(phone, pid, sess):
     prod = (sess.get("data") or {}).get("product") or {}
     variations = main.bot_get_variations(pid)
     if not variations:                       # מוצר פשוט
-        return _ask_name(phone, {"pid": pid, "vid": 0, "price": prod.get("price"),
-                                 "label": _short_name(prod.get("name"))})
+        return _order_checkout(phone, _short_name(prod.get("name")),
+                               prod.get("price"), prod.get("permalink"))
     colors = []
     seen = set()
     for v in variations:
@@ -246,7 +243,22 @@ def _show_storage(phone, pid, prod, variations, color):
         return
     v = vs[0] if vs else {}                   # וריאציה יחידה — נקבעה
     label = " ".join(x for x in [_short_name(prod.get("name")), color, v.get("storage")] if x)
-    return _ask_name(phone, {"pid": pid, "vid": v.get("id") or 0, "price": v.get("price"), "label": label})
+    return _order_checkout(phone, label, v.get("price"), prod.get("permalink"))
+
+
+def _order_checkout(phone, label, price, permalink):
+    """סגירת הזמנה — מפנה לצ'קאאוט באתר (כל השדות + תשלומים + תשלום מאובטח).
+    מחליף את איסוף-השם השביר. (שדרוג עתידי: אורי אוסף הכל בצ'אט.)"""
+    pstr = f" (₪{int(float(price)):,})" if price not in (None, "", "0") else ""
+    db.bot_session_clear(phone)
+    if permalink:
+        wa.send_text(phone,
+                     f"מעולה — {label}{pstr}! 🛒\n\n"
+                     f"להשלמת ההזמנה (פרטים מלאים + עד 12 תשלומים + תשלום מאובטח):\n{permalink}\n\n"
+                     f"או כתוב/י *נציג* ואחד מהצוות יסגור איתך 🙏")
+    else:
+        wa.send_text(phone, f"מעולה — {label}{pstr}! נציג יחזור אליך לסגור את ההזמנה 🙏")
+        return _to_agent(phone, note=f"הזמנה: {label}")
 
 
 def _ask_name(phone, order):
