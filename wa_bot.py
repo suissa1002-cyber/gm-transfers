@@ -114,17 +114,52 @@ def handle(phone: str, text: str, mtype: str = "text", reply_id: str = ""):
     if rid == "lab":
         return _to_agent(phone, note="פנייה למעבדה")
 
-    # ── טקסט חופשי → מנוע החיפוש (אם נראה מוצר), אחרת תפריט ──
-    # (שלב 6ג: שאלות מורכבות/השוואות → אורי. כרגע: חיפוש מוצר מיידי.)
+    # ── טקסט חופשי → חיפוש מוצר (מיידי) או אורי (לשאלות/השוואות, אם זמין) ──
     if low and low not in _GREETINGS and len(low) >= 3:
         import main
-        if main.bot_product_search(text, limit=6):
+        results = main.bot_product_search(text, limit=6)
+        question_like = bool(_re.search(
+            r"\?|מה ההבדל|הבדל בין|השוואה|עדיף|מה מתאים|כדאי|להמליץ|המלצ|תקציב|עד \d|"
+            r"יבואן|אחריות|האם|כמה עולה|מה יותר", text))
+        # שאלה מורכבת או אין תוצאות → אורי (אם הגשר חי); אחרת תוצאות חיפוש
+        if (question_like or not results) and _ask_uri(phone, text):
+            return
+        if results:
             return _new_order_results(phone, text)
+        wa.send_text(phone, "לא הצלחתי למצוא 🙁 נסה/י שם מוצר אחר, או כתוב/י *נציג*.")
+        return
     _menu(phone)
 
 
 _GREETINGS = {"היי", "שלום", "הי", "הייי", "hello", "hi", "hey", "בוקר טוב",
               "ערב טוב", "צהריים טובים", "מה קורה", "מה נשמע", "שלום רב", "אהלן"}
+
+
+def _uri_alive() -> bool:
+    """האם גשר אורי על המק חי (heartbeat מ-2.5 הדקות האחרונות)."""
+    import db
+    last = db.sales_state_get("uri_bridge_ping")
+    if not last:
+        return False
+    from datetime import datetime
+    try:
+        t = datetime.fromisoformat(str(last))
+        return (datetime.now(t.tzinfo) - t).total_seconds() < 150
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _ask_uri(phone, question) -> bool:
+    """מנתב שאלה לאורי (תשובה תישלח אוטומטית כשתחזור). False אם הגשר לא זמין."""
+    if not _uri_alive():
+        return False
+    import db
+    wa.send_text(phone, "רגע, בודק/ת עבורך 🔍")
+    q = ("[שאלת לקוח בוואטסאפ — נסח תשובה ישירה וקצרה ללקוח, בשפת הלקוח. השתמש "
+         "בחיפוש מוצרים/מלאי/מחירים חיים מהאתר והקופה. אל תבטיח מה שאין. אם אינך "
+         "בטוח — המלץ על מעבר לנציג.]\n\n" + (question or ""))
+    db.uri_job_add(phone, q, source="bot")
+    return True
 
 
 import re as _re

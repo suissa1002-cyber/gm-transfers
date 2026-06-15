@@ -548,6 +548,8 @@ def _migrate():
         ("catalog",        "is_stock", "INTEGER"),
         # מספר הזמנת אתר מתוך החשבונית — מקשר חשבונית→הזמנה→לקוח
         ("customer_invoices", "order_number", "TEXT"),
+        # מקור משימת אורי: panel (טיוטה לאסי) / bot (תשובה אוטומטית ללקוח)
+        ("uri_jobs", "source", "TEXT"),
     ]
     for table, col, typ in cols:
         try:
@@ -2006,17 +2008,18 @@ def wa_canned_delete(cid: int) -> bool:
 
 
 # ── תור אורי ──
-def uri_job_add(phone: str, question: str) -> int:
+def uri_job_add(phone: str, question: str, source: str = "panel") -> int:
+    """source='panel' → טיוטה לאסי בקונסולה. source='bot' → תשובה אוטומטית ללקוח."""
     with _conn() as c:
         cur = c.cursor()
-        vals = (phone, question, now_iso())
+        vals = (phone, question, source, now_iso())
         if _USE_PG:
             cur.execute(_q("""
-                INSERT INTO uri_jobs (phone, question, created_at)
-                VALUES (?, ?, ?) RETURNING id"""), vals)
+                INSERT INTO uri_jobs (phone, question, source, created_at)
+                VALUES (?, ?, ?, ?) RETURNING id"""), vals)
             return cur.fetchone()["id"]
         cur.execute(_q("""
-            INSERT INTO uri_jobs (phone, question, created_at) VALUES (?, ?, ?)"""), vals)
+            INSERT INTO uri_jobs (phone, question, source, created_at) VALUES (?, ?, ?, ?)"""), vals)
         return cur.lastrowid
 
 

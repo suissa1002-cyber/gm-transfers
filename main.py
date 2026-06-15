@@ -2296,6 +2296,20 @@ def bridge_jobs(x_bridge_key: Optional[str] = Header(None)):
 def bridge_answer(body: UriAnswer, x_bridge_key: Optional[str] = Header(None)):
     _require_bridge(x_bridge_key)
     db.uri_job_answer(body.id, body.answer, body.status)
+    # משימת בוט (source='bot') → שולחים את תשובת אורי אוטומטית ללקוח בוואטסאפ
+    try:
+        job = db.uri_job_get(body.id)
+        if job and job.get("source") == "bot" and body.status == "done":
+            import re as _re
+            ans = body.answer or ""
+            m = _re.search(r"\[DRAFT\]\s*([\s\S]*?)\s*\[/DRAFT\]", ans)
+            ans = (m.group(1) if m else _re.sub(r"\[/?DRAFT\]", "", ans)).strip()
+            if ans:
+                import wa
+                wa.send_text(job["phone"], ans)
+                logger.info("uri bot-answer sent to %s (job %s)", job["phone"], body.id)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("uri bot auto-send failed (job %s): %s", body.id, e)
     return {"ok": True}
 
 
