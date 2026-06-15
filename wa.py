@@ -333,12 +333,16 @@ def list_conversations_native(limit: int = 300):
     out = []
     for r in db.wa_conversations(limit):
         ph = r.get("phone")
+        in_ts = int(r.get("last_in_ts") or 0)
+        msg_ts = int(r.get("last_msg_ts") or 0)
+        # לא-נקרא = ההודעה האחרונה בשיחה היא מהלקוח (טרם ענינו אחריה)
+        unread = bool(in_ts and in_ts >= msg_ts)
         out.append({
             "phone": ph, "name": r.get("name") or ph,
             "last_msg": (r.get("last_msg") or "")[:120],
-            "ts": int(r.get("last_msg_ts") or 0),
+            "ts": msg_ts,
             "archived": bool(r.get("archived")), "live_chat": bool(r.get("live_chat")),
-            "unread": False, "star": ph in stars, "pic": "",
+            "unread": unread, "star": ph in stars, "pic": "",
         })
     return out
 

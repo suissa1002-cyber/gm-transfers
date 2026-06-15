@@ -1968,10 +1968,21 @@ def _wa_guard(fn, *args, **kwargs):
         raise HTTPException(502, str(e))
 
 
+def _wa_read_native() -> bool:
+    """WA_READ_NATIVE=1 → קוראים שיחות מהחנות שלנו (wa_msg) במקום מקונקטופ.
+    הפיך מיידית (כיבוי הדגל → חוזר לקונקטופ)."""
+    return os.getenv("WA_READ_NATIVE", "0").strip().lower() in ("1", "true", "yes", "on")
+
+
 @app.get("/api/admin/wa/conversations")
 def wa_conversations(archived: int = 0, x_admin_key: Optional[str] = Header(None)):
     _require_admin(x_admin_key)
     import wa
+    if _wa_read_native():
+        convs = wa.list_conversations_native()
+        if not archived:
+            convs = [c for c in convs if not c.get("archived")]
+        return {"conversations": convs, "source": "native"}
     return {"conversations": _wa_guard(wa.list_conversations,
                                        include_archived=bool(archived))}
 
@@ -1980,6 +1991,8 @@ def wa_conversations(archived: int = 0, x_admin_key: Optional[str] = Header(None
 def wa_thread(phone: str, limit: int = 60, x_admin_key: Optional[str] = Header(None)):
     _require_admin(x_admin_key)
     import wa
+    if _wa_read_native():
+        return wa.get_thread_native(phone, limit=min(limit, 200))
     return _wa_guard(wa.get_thread, phone, limit=min(limit, 200))
 
 
