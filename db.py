@@ -1615,6 +1615,68 @@ def wa_set_archived(phone, archived: bool):
                            (1 if archived else 0, str(phone)))
 
 
+def wa_flow_stats(top: int = 50) -> dict:
+    """ניתוח כמותי של כל ההיסטוריה לבניית הבוט ה-native: צמתי בוט (פקודות יוצאות
+    נפוצות), קלטי לקוח נפוצים, שיעור מעבר-לנציג, אורך שיחות, ואותות תסכול."""
+    out = {}
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute("SELECT COUNT(*) AS m, COUNT(DISTINCT phone) AS p FROM wa_msg")
+        r = cur.fetchone(); out["messages"] = r["m"]; out["conversations"] = r["p"]
+        # צמתי בוט — הודעות יוצאות נפוצות (התפריטים/פקודות). מנקים [interactive].
+        cur.execute(_q("""
+            SELECT REPLACE(text, '[interactive]', '') AS t, COUNT(*) AS n
+            FROM wa_msg WHERE direction='out' AND text IS NOT NULL AND text <> ''
+            GROUP BY REPLACE(text, '[interactive]', '') ORDER BY n DESC LIMIT ?"""), (top,))
+        out["bot_prompts"] = [{"text": (r["t"] or "").strip()[:160], "n": r["n"]} for r in cur.fetchall()]
+        # קלטי לקוח נפוצים (בחירות תפריט / תשובות)
+        cur.execute(_q("""
+            SELECT text AS t, COUNT(*) AS n FROM wa_msg
+            WHERE direction='in' AND text IS NOT NULL AND text <> ''
+            GROUP BY text ORDER BY n DESC LIMIT ?"""), (top,))
+        out["customer_inputs"] = [{"text": (r["t"] or "").strip()[:120], "n": r["n"]} for r in cur.fetchall()]
+        # מעבר לנציג — כמה שיחות הגיעו לזה
+        cur.execute(_q("""SELECT COUNT(DISTINCT phone) AS n FROM wa_msg
+                          WHERE direction='in' AND text LIKE '%נציג%'"""))
+        out["handoff_convs"] = cur.fetchone()["n"]
+        # אותות תסכול בקלט לקוח
+        frus = {}
+        for kw in ["לא הבנתי", "לא עובד", "נמאס", "אותו דבר", "כבר אמרתי", "מה זה",
+                   "לא רוצה", "תפסיק", "אנושי", "בנאדם", "מישהו"]:
+            cur.execute(_q("SELECT COUNT(*) AS n FROM wa_msg WHERE direction='in' AND text LIKE ?"),
+                        (f"%{kw}%",))
+            frus[kw] = cur.fetchone()["n"]
+        out["frustration"] = frus
+        # התפלגות אורך שיחות (כמה הודעות לכל שיחה)
+        cur.execute(_q("""
+            SELECT CASE WHEN n<=2 THEN '1-2' WHEN n<=5 THEN '3-5' WHEN n<=10 THEN '6-10'
+                        WHEN n<=20 THEN '11-20' ELSE '20+' END AS bucket, COUNT(*) AS c
+            FROM (SELECT phone, COUNT(*) AS n FROM wa_msg GROUP BY phone) q
+            GROUP BY 1 ORDER BY MIN(n)"""))
+        out["length_buckets"] = [{"bucket": r["bucket"], "convs": r["c"]} for r in cur.fetchall()]
+    return out
+
+
+def wa_sample_threads(limit: int = 30, min_msgs: int = 4, max_msgs: int = 30) -> list:
+    """דגימת שיחות מלאות (קומפקטי: כיוון+טקסט) לקריאת זרימה איכותנית."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""
+            SELECT phone FROM (
+                SELECT phone, COUNT(*) AS n FROM wa_msg GROUP BY phone
+            ) q WHERE n >= ? AND n <= ? ORDER BY phone DESC LIMIT ?"""),
+            (min_msgs, max_msgs, limit))
+        phones = [r["phone"] for r in cur.fetchall()]
+        threads = []
+        for ph in phones:
+            cur.execute(_q("""SELECT direction, text FROM wa_msg WHERE phone=?
+                              ORDER BY ts ASC LIMIT 40"""), (ph,))
+            msgs = [{"d": r["direction"], "t": (r["text"] or "").replace("[interactive]", "").strip()[:140]}
+                    for r in cur.fetchall()]
+            threads.append({"phone": ph, "msgs": msgs})
+        return threads
+
+
 def wa_archive_all_except(keep_phones: list) -> dict:
     """מעביר את כל השיחות לארכיון חוץ מ-keep_phones (שמשוחזרות). 2 שאילתות."""
     keep = [str(p) for p in keep_phones if p]

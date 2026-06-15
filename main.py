@@ -2016,6 +2016,20 @@ def wa_send_template(body: WaTemplate, x_admin_key: Optional[str] = Header(None)
     return _wa_guard(wa.send_template, body.phone, body.name, body.body)
 
 
+@app.get("/api/admin/wa/flow-analysis")
+def wa_flow_analysis(x_admin_key: Optional[str] = Header(None)):
+    """ניתוח כל ההיסטוריה — לבניית הבוט ה-native על בסיס נתונים אמיתיים."""
+    _require_admin(x_admin_key)
+    return JSONResponse(db.wa_flow_stats(), headers={"Cache-Control": "no-store"})
+
+
+@app.get("/api/admin/wa/flow-sample")
+def wa_flow_sample(limit: int = 30, x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    return JSONResponse({"threads": db.wa_sample_threads(limit=limit)},
+                        headers={"Cache-Control": "no-store"})
+
+
 @app.post("/api/admin/wa/archive-old")
 def wa_archive_old(keep: int = 10, x_admin_key: Optional[str] = Header(None)):
     """מעביר לארכיון את כל השיחות חוץ מ-keep האחרונות של היום (שעון ישראל).
