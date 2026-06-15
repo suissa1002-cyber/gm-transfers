@@ -304,9 +304,11 @@ def get_thread_native(phone: str, limit: int = 80):
         if murl:
             mt = (m.get("media_mime") or "").split("/")[0] or m.get("type") or "file"
             media = [{"type": mt, "url": murl, "caption": ""}]
-        text = (m.get("text") or "").replace("[interactive]", "", 1).strip()
+        # מנקים marker טכני בתחילת ההודעה ([interactive]/[רשימה]/[כפתורים]) מהבקאפ/בוט
+        text = re.sub(r"^\s*\[(interactive|רשימה|כפתורים)\]\s*", "", m.get("text") or "")
         if "_strip_entry_marker" in globals():
             text = _strip_entry_marker(text)
+        text = text.strip()
         # סטטוס מסירה: הודעות היסטוריות (מהבקאפ) מסומנות 'historic' ואין להן מידע
         # מסירה מדויק → מציגים אפור ✓✓ (נמסר). הודעות חדשות נושאות סטטוס אמיתי ממטא.
         st = m.get("status") or ""

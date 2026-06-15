@@ -102,6 +102,24 @@ def handle(phone: str, text: str, mtype: str = "text", reply_id: str = ""):
     _menu(phone)
 
 
+import re as _re
+
+_GENERIC_PREFIX = ["סמארטפון", "טלפון סלולרי", "טלפון סלולארי", "מכשיר סלולרי",
+                   "מכשיר סלולארי", "טלפון סלולרי -", "מכשיר", "טלפון", "שעון חכם",
+                   "סלולרי", "אוזניות אלחוטיות", "אוזניות"]
+
+
+def _short_name(name: str) -> str:
+    """שם מוצר קצר וקריא לרשימה — מסיר תחיליות גנריות ('סמארטפון...') כדי שהדגם
+    יופיע בהתחלה ולא ייחתך. למשל 'סמארטפון OPPO X9 Pro 5G' → 'OPPO X9 Pro 5G'."""
+    n = _re.sub(r"\s+", " ", (name or "")).strip()
+    for pre in _GENERIC_PREFIX:
+        if n.startswith(pre + " ") or n == pre:
+            n = n[len(pre):].strip(" -–—")
+            break
+    return n or (name or "מוצר")
+
+
 def _new_order_results(phone, query):
     """חיפוש מוצר חי → רשימת תוצאות עם מחירים (התיקון מס' 1 של 'הזמנה חדשה')."""
     import main
@@ -113,8 +131,12 @@ def _new_order_results(phone, query):
     for p in results:
         pid = f"prod:{p['id']}"
         price = p.get("price")
-        desc = (f"₪{int(float(price)):,}" if price not in (None, "", "0") else "לפרטים")
-        rows.append((pid, (p.get("name") or "מוצר")[:24], desc))
+        short = _short_name(p.get("name"))
+        # מחיר + שארית השם (נפח/דגם) בתיאור — עוד 72 תווים של מידע
+        rest = short[24:].strip() if len(short) > 24 else ""
+        price_s = (f"₪{int(float(price)):,}" if price not in (None, "", "0") else "לפרטים")
+        desc = f"{price_s} · {rest}"[:72] if rest else price_s
+        rows.append((pid, short[:24], desc))
         data[pid] = {"name": p.get("name"), "price": price, "permalink": p.get("permalink"),
                      "sku": p.get("sku"), "stock": p.get("stock_status"),
                      "image": p.get("image")}
