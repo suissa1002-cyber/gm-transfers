@@ -2912,13 +2912,14 @@ def admin_invoice_send(iid: int, body: InvoiceSendIn,
 
 
 @app.post("/api/admin/invoices/capture")
-def admin_invoices_capture(x_admin_key: Optional[str] = Header(None)):
-    """הפעלה ידנית של קליטת חשבוניות ממייל (לבדיקה / קליטה מיידית)."""
+def admin_invoices_capture(probe: int = 0, x_admin_key: Optional[str] = Header(None)):
+    """הפעלה ידנית של קליטת חשבוניות ממייל. probe=1 — אבחון בלבד (לא שומר):
+    מראה אילו מיילים עם PDF יש בתיבה ומאיזה שולח (לכיוונון הפילטר)."""
     _require_admin(x_admin_key)
     import invoice_capture
     if not invoice_capture.configured():
         return {"ok": False, "reason": "חסר INVOICE_IMAP_USER/INVOICE_IMAP_PASS ב-env"}
-    return invoice_capture.capture()
+    return invoice_capture.probe() if probe else invoice_capture.capture()
 
 
 def _invoice_capture_job():

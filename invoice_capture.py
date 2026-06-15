@@ -103,6 +103,48 @@ def _parse(pdf_bytes: bytes) -> dict:
     return out
 
 
+def probe(days: int = 21, max_msgs: int = 40) -> dict:
+    """אבחון בלבד (לא שומר): סורק את התיבה ומחזיר אילו מיילים עם PDF יש,
+    מאיזה שולח ובאיזה נושא — כדי לכוון את הפילטר/פענוח. לא נוגע בדגלים."""
+    if not configured():
+        return {"ok": False, "reason": "imap-not-configured"}
+    out = {"ok": True, "with_pdf": 0, "items": []}
+    try:
+        M = imaplib.IMAP4_SSL(IMAP_HOST)
+        M.login(IMAP_USER, IMAP_PASS)
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "reason": f"login: {e}"}
+    try:
+        M.select("INBOX", readonly=True)
+        import time as _t
+        since = _t.strftime("%d-%b-%Y", _t.gmtime(_t.time() - days * 86400))
+        typ, data = M.uid("search", None, "SINCE", since)
+        uids = (data[0].split() if data and data[0] else [])[-max_msgs:]
+        for uid in uids:
+            typ, md = M.uid("fetch", uid, "(BODY.PEEK[HEADER.FIELDS (FROM SUBJECT)])")
+            if not md or not md[0]:
+                continue
+            hdr = email.message_from_bytes(md[0][1])
+            frm = _decode(hdr.get("From"))
+            subj = _decode(hdr.get("Subject"))
+            # בודקים אם יש PDF בלי להוריד את כל הגוף (BODYSTRUCTURE)
+            typ, bs = M.uid("fetch", uid, "(BODYSTRUCTURE)")
+            has_pdf = bool(bs and bs[0] and b"PDF" in bs[0].upper())
+            if has_pdf:
+                out["with_pdf"] += 1
+                out["items"].append({"from": frm[:80], "subject": subj[:80]})
+        # שולחים ייחודיים (לזיהוי כתובת השולח של עותקי הקופה)
+        out["senders"] = sorted({i["from"] for i in out["items"]})
+    except Exception as e:  # noqa: BLE001
+        out = {"ok": False, "reason": str(e)}
+    finally:
+        try:
+            M.logout()
+        except Exception:  # noqa: BLE001
+            pass
+    return out
+
+
 def capture(max_msgs: int = 80) -> dict:
     """קורא את התיבה, קולט עותקי מסמכים חדשים. חוזר סיכום."""
     if not configured():
