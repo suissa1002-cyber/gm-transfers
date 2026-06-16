@@ -227,12 +227,18 @@ _GENERIC_PREFIX = ["סמארטפון", "טלפון סלולרי", "טלפון ס
 
 
 def _short_name(name: str) -> str:
-    """שם מוצר קצר וקריא לרשימה — מסיר תחיליות גנריות ('סמארטפון...') כדי שהדגם
-    יופיע בהתחלה ולא ייחתך. למשל 'סמארטפון OPPO X9 Pro 5G' → 'OPPO X9 Pro 5G'."""
+    """שם מוצר קצר וקריא לרשימה — מסיר תחיליות גנריות ('סמארטפון...') וכפילות מותג
+    (Xiaomi לפני Redmi) כדי שהדגם המבדיל (Pro+/מסך) ייכנס ב-24 התווים של הכותרת.
+    'סמארטפון Xiaomi Redmi Note 15 Pro+' → 'Redmi Note 15 Pro+'."""
     n = _re.sub(r"\s+", " ", (name or "")).strip()
     for pre in _GENERIC_PREFIX:
         if n.startswith(pre + " ") or n == pre:
             n = n[len(pre):].strip(" -–—")
+            break
+    # כפילות מותג — המותג מובלע בקו-המוצר; מסירים כדי לפנות מקום למבדיל
+    for redundant in ("Xiaomi Redmi", "Apple iPhone", "Samsung Galaxy"):
+        if n.startswith(redundant):
+            n = n[len(redundant.split(" ", 1)[0]):].strip()
             break
     return n or (name or "מוצר")
 
