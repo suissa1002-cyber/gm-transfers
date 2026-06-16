@@ -9,7 +9,7 @@ import logging
 from typing import Optional
 from datetime import datetime, timedelta
 
-from fastapi import FastAPI, HTTPException, Header, Request
+from fastapi import FastAPI, HTTPException, Header, Request, BackgroundTasks
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -416,8 +416,28 @@ def wa_webhook_verify(request: Request):
     raise HTTPException(403, "verify failed")
 
 
+_HANDLED_WAMIDS = set()   # מניעת כפילות: מטא שולחת webhook שוב כשהתגובה איטית
+
+
+def _dispatch_bot(bot_sender, inb):
+    """ריצת הבוט ברקע — כדי שה-webhook יחזיר 200 מיד (מונע retry של מטא וכפילות)."""
+    try:
+        import wa
+        if len(inb) > 4 and inb[4]:
+            wa.send_typing(inb[4])
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        import wa_bot
+        wa_bot.handle(bot_sender, inb[1], inb[2] or "text",
+                      reply_id=(inb[3] if len(inb) > 3 else ""),
+                      wamid=(inb[4] if len(inb) > 4 else ""))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("wa bot dispatch failed: %s", e)
+
+
 @app.post("/api/wa/webhook")
-async def wa_webhook_recv(request: Request):
+async def wa_webhook_recv(request: Request, background: BackgroundTasks):
     raw = await request.body()
     import wa_webhook
     sig = request.headers.get("x-hub-signature-256", "")
@@ -443,18 +463,18 @@ async def wa_webhook_recv(request: Request):
             logger.warning("wa webhook process failed: %s", e)
         if bot_sender:                       # הבוט ה-native — רק לשולח whitelisted
             try:
-                import wa_bot
                 inb = wa_webhook.extract_inbound(raw)
                 if inb and inb[1] is not None:
-                    try:                         # חיווי הקלדה מיידי ללקוח (+ נקרא)
-                        import wa
-                        if len(inb) > 4 and inb[4]:
-                            wa.send_typing(inb[4])
-                    except Exception:  # noqa: BLE001
-                        pass
-                    wa_bot.handle(bot_sender, inb[1], inb[2] or "text",
-                                  reply_id=(inb[3] if len(inb) > 3 else ""),
-                                  wamid=(inb[4] if len(inb) > 4 else ""))
+                    wamid = inb[4] if len(inb) > 4 else ""
+                    if wamid and wamid in _HANDLED_WAMIDS:
+                        pass                     # אותה הודעה כבר טופלה (retry) — דילוג
+                    else:
+                        if wamid:
+                            _HANDLED_WAMIDS.add(wamid)
+                            if len(_HANDLED_WAMIDS) > 800:
+                                _HANDLED_WAMIDS.clear()
+                        # ריצה ברקע → 200 מיידי, בלי retry מצד מטא
+                        background.add_task(_dispatch_bot, bot_sender, inb)
             except Exception as e:  # noqa: BLE001
                 logger.warning("wa bot dispatch failed: %s", e)
     else:
