@@ -100,7 +100,7 @@ def handle(phone: str, text: str, mtype: str = "text", reply_id: str = "", wamid
               if (not d.get("color") or v.get("color") == d.get("color")) and v.get("storage") == st]
         v = vs[0] if vs else {}
         label = " ".join(x for x in [_short_name(prod.get("name")), d.get("color"), st] if x)
-        return _order_checkout(phone, label, v.get("price"), prod.get("permalink"))
+        return _order_checkout(phone, label, v.get("price"), d.get("pid"), prod.get("permalink"), v)
 
     # ── ניתוב תפריט ──
     if rid == "status" or ("סטטוס" in low and "הזמנ" in low):
@@ -284,7 +284,7 @@ def _start_order(phone, pid, sess):
     variations = main.bot_get_variations(pid)
     if not variations:                       # מוצר פשוט
         return _order_checkout(phone, _short_name(prod.get("name")),
-                               prod.get("price"), prod.get("permalink"))
+                               prod.get("price"), pid, prod.get("permalink"))
     colors = []
     seen = set()
     for v in variations:
@@ -319,7 +319,7 @@ def _show_storage(phone, pid, prod, variations, color):
         return
     v = vs[0] if vs else {}                   # וריאציה יחידה — נקבעה
     label = " ".join(x for x in [_short_name(prod.get("name")), color, v.get("storage")] if x)
-    return _order_checkout(phone, label, v.get("price"), prod.get("permalink"))
+    return _order_checkout(phone, label, v.get("price"), pid, prod.get("permalink"), v)
 
 
 def _short_link(url: str) -> str:
@@ -346,18 +346,38 @@ def _short_link(url: str) -> str:
         return url
 
 
-def _order_checkout(phone, label, price, permalink):
-    """סגירת הזמנה — כפתור CTA שפותח את עמוד המוצר באתר (כל השדות + תשלומים +
-    תשלום מאובטח). slug עברי → קישור מקוצר gm-. מחליף את איסוף-השם השביר."""
+def _cart_url(parent_id, variation, parent_permalink=""):
+    """קישור add-to-cart → צ'קאאוט: המוצר (כולל הוריאציה שנבחרה) כבר בעגלה, הלקוח
+    נוחת ישר בצ'קאאוט. הוריאציה כוללת permalink עם ה-attributes שצריך ל-add-to-cart."""
+    from urllib.parse import urlsplit
+    base = ""
+    src = (variation or {}).get("permalink") or parent_permalink or ""
+    if src:
+        sp = urlsplit(src)
+        base = f"{sp.scheme}://{sp.netloc}"
+    if not (base and parent_id):
+        return parent_permalink or ""
+    if variation and variation.get("id") and variation.get("permalink"):
+        q = urlsplit(variation["permalink"]).query   # attribute_pa_...=...&...
+        url = (f"{base}/checkout/?add-to-cart={parent_id}"
+               f"&variation_id={variation['id']}&quantity=1")
+        return url + (f"&{q}" if q else "")
+    return f"{base}/checkout/?add-to-cart={parent_id}&quantity=1"   # מוצר פשוט
+
+
+def _order_checkout(phone, label, price, parent_id, parent_permalink, variation=None):
+    """סגירת הזמנה — כפתור CTA שמוסיף את המוצר (עם הצבע/נפח שנבחרו) לעגלה ומוביל
+    ישר לצ'קאאוט. נפילה: עמוד המוצר. slug עברי → קישור מקוצר gm-."""
     pstr = f" (₪{int(float(price)):,})" if price not in (None, "", "0") else ""
     db.bot_session_clear(phone)
-    if not permalink:
+    url = _cart_url(parent_id, variation, parent_permalink)
+    if not url:
         wa.send_text(phone, f"מעולה — {label}{pstr}! נציג יחזור אליך לסגור את ההזמנה 🙏")
         return _to_agent(phone, note=f"הזמנה: {label}")
-    link = _short_link(permalink)
+    link = _short_link(url)
     body = (f"מעולה — {label}{pstr}! 🛒\n\n"
-            f"להשלמת ההזמנה (פרטים מלאים + עד 12 תשלומים + תשלום מאובטח) — לחצ/י על הכפתור.\n"
-            f"או כתוב/י *נציג* ואחד מהצוות יסגור איתך 🙏")
+            f"המוצר מחכה לך בעגלה — לחצ/י להשלמת ההזמנה (פרטים + עד 12 תשלומים + "
+            f"תשלום מאובטח).\nאו כתוב/י *נציג* ואחד מהצוות יסגור איתך 🙏")
     try:
         wa.send_cta_url(phone, body, "🛒 להשלמת ההזמנה", link)
     except Exception:  # noqa: BLE001 — נפילה לקישור-טקסט אם CTA נכשל

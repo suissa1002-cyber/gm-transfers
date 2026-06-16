@@ -3093,7 +3093,8 @@ def bot_get_variations(product_id) -> list:
         out.append({"id": v.get("id"), "price": v.get("price"),
                     "color": attrs.get("בחירת צבע") or "",
                     "storage": attrs.get("בחירת נפח אחסון") or attrs.get("נפח אחסון") or "",
-                    "stock": v.get("stock_status")})
+                    "stock": v.get("stock_status"),
+                    "permalink": v.get("permalink") or ""})  # מכיל את ה-attributes ל-add-to-cart
     return out
 
 
