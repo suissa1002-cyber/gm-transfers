@@ -226,21 +226,46 @@ _GENERIC_PREFIX = ["סמארטפון", "טלפון סלולרי", "טלפון ס
                    "סלולרי", "אוזניות אלחוטיות", "אוזניות"]
 
 
-def _short_name(name: str) -> str:
-    """שם מוצר קצר וקריא לרשימה — מסיר תחיליות גנריות ('סמארטפון...') וכפילות מותג
-    (Xiaomi לפני Redmi) כדי שהדגם המבדיל (Pro+/מסך) ייכנס ב-24 התווים של הכותרת.
-    'סמארטפון Xiaomi Redmi Note 15 Pro+' → 'Redmi Note 15 Pro+'."""
+_BRANDS = ("xiaomi", "redmi", "poco", "apple", "iphone", "ipad", "macbook", "samsung",
+           "galaxy", "oppo", "realme", "honor", "vivo", "oneplus", "google", "pixel",
+           "motorola", "nokia", "jbl", "sony", "anker", "bose", "razer", "logitech",
+           "nothing", "huawei", "lenovo", "asus", "nubia", "redmagic", "tecno",
+           "infinix", "marshall", "doogee", "ulefone")
+
+
+def _name_parts(name: str):
+    """(כותרת-דגם, תיאור): מחלץ את חלק המותג+דגם — איפה שהוא בשם, גם אם בסוף —
+    לכותרת, והשאר לתת-כותרת. 'טלפון... Xiaomi Redmi 15C' → ('Redmi 15C', 'עם מסך...').
+    כך הכותרת תמיד הדגם, לא תיאור גנרי."""
     n = _re.sub(r"\s+", " ", (name or "")).strip()
     for pre in _GENERIC_PREFIX:
         if n.startswith(pre + " ") or n == pre:
             n = n[len(pre):].strip(" -–—")
             break
-    # כפילות מותג — המותג מובלע בקו-המוצר; מסירים כדי לפנות מקום למבדיל
+    low = n.lower()
+    positions = []
+    for b in _BRANDS:
+        if low.startswith(b):
+            positions.append(0)
+        for sep in (" ", "-", "–", "—"):
+            p = low.find(sep + b)
+            if p >= 0:
+                positions.append(p + 1)
+    pos = min(positions) if positions else -1
+    if pos > 0:                       # הדגם באמצע/בסוף — הכותרת ממנו
+        title, desc = n[pos:].strip(), n[:pos].strip(" -–—,")
+    else:                             # הדגם בהתחלה (או אין מותג מזוהה)
+        title, desc = n, ""
     for redundant in ("Xiaomi Redmi", "Apple iPhone", "Samsung Galaxy"):
-        if n.startswith(redundant):
-            n = n[len(redundant.split(" ", 1)[0]):].strip()
+        if title.lower().startswith(redundant.lower()):
+            title = title[len(redundant.split(" ", 1)[0]):].strip()
             break
-    return n or (name or "מוצר")
+    return (title or (name or "מוצר")), desc
+
+
+def _short_name(name: str) -> str:
+    """שם דגם קצר וקריא לכותרת (ראה _name_parts)."""
+    return _name_parts(name)[0]
 
 
 def _new_order_results(phone, query):
@@ -256,12 +281,11 @@ def _new_order_results(phone, query):
     for p in results:
         pid = f"prod:{p['id']}"
         price = p.get("price")
-        short = _short_name(p.get("name"))
-        # מחיר + שארית השם (נפח/דגם) בתיאור — עוד 72 תווים של מידע
-        rest = short[24:].strip() if len(short) > 24 else ""
+        title, desc_extra = _name_parts(p.get("name"))   # דגם לכותרת, תיאור לתת-כותרת
+        extra = desc_extra or (title[24:].strip() if len(title) > 24 else "")
         price_s = (f"₪{int(float(price)):,}" if price not in (None, "", "0") else "לפרטים")
-        desc = f"{price_s} · {rest}"[:72] if rest else price_s
-        rows.append((pid, short[:24], desc))
+        desc = f"{price_s} · {extra}"[:72] if extra else price_s
+        rows.append((pid, title[:24], desc))
         data[pid] = {"name": p.get("name"), "price": price, "permalink": p.get("permalink"),
                      "sku": p.get("sku"), "stock": p.get("stock_status"),
                      "image": p.get("image")}
