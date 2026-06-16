@@ -2401,6 +2401,18 @@ def bridge_answer(body: UriAnswer, x_bridge_key: Optional[str] = Header(None)):
             # מסירים 🔗 שלפני קישור, ומכריחים כל URL לשורה נקייה משלו.
             ans = _re.sub(r"[ \t]*🔗️?[ \t]*(?=https?://)", "", ans)
             ans = _re.sub(r"(?<=\S)[ \t]+(https?://\S+)", r"\n\1", ans)
+            # קיצור קישורי greenmobile עם slug עברי → gm- (כלל: עברי מקצרים; אנגלי נשאר)
+            try:
+                import wa_bot as _wb
+
+                def _shorten(_m):
+                    u, tail = _m.group(0), ""
+                    while u and u[-1] in ".,;:!?)]⁩":
+                        tail, u = u[-1] + tail, u[:-1]
+                    return _wb._short_link(u) + tail
+                ans = _re.sub(r"https?://greenmobile\.co\.il/\S+", _shorten, ans)
+            except Exception:  # noqa: BLE001
+                pass
             if ans:
                 import wa
                 wa.send_text(job["phone"], ans)
