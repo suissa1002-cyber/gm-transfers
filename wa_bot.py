@@ -365,15 +365,17 @@ def _cart_url(parent_id, variation, parent_permalink=""):
         base = f"{sp.scheme}://{sp.netloc}"
     if not (base and parent_id):
         return parent_permalink or ""
-    # עמוד הצ'קאאוט באתר הוא slug עברי (/מעבר-לתשלום/, page id 16) — /checkout/ נותן
-    # 404. מפנים לפי page_id (עמיד לשינוי slug). add-to-cart מעובד בכל מקרה.
-    pg = os.getenv("WC_CHECKOUT_PAGE_ID", "16")
+    # נתיב הצ'קאאוט הקנוני (slug עברי מקודד: /מעבר-לתשלום/). חשוב: ?page_id=16 גורם
+    # ל-redirect לנתיב הזה, וה-add-to-cart נדלק פעמיים (2 יחידות). הנתיב הישיר —
+    # בלי redirect — מפעיל add-to-cart פעם אחת בלבד.
+    co = os.getenv("WC_CHECKOUT_PATH",
+                   "/%d7%9e%d7%a2%d7%91%d7%a8-%d7%9c%d7%aa%d7%a9%d7%9c%d7%95%d7%9d/")
     if variation and variation.get("id") and variation.get("permalink"):
         q = urlsplit(variation["permalink"]).query   # attribute_pa_...=...&...
-        url = (f"{base}/?page_id={pg}&add-to-cart={parent_id}"
+        url = (f"{base}{co}?add-to-cart={parent_id}"
                f"&variation_id={variation['id']}&quantity=1")
         return url + (f"&{q}" if q else "")
-    return f"{base}/?page_id={pg}&add-to-cart={parent_id}&quantity=1"   # מוצר פשוט
+    return f"{base}{co}?add-to-cart={parent_id}&quantity=1"   # מוצר פשוט
 
 
 def _short_cart_link(url, parent_permalink, variation, parent_id):
