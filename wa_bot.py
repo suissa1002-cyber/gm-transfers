@@ -324,7 +324,9 @@ def _new_order_results(phone, query):
             url = f"https://greenmobile.co.il/?product_cat={quote(best['slug'], safe='%')}"
             lbl = best["name"]
             if brand:
-                url += f"&pwb-brand={brand}"
+                # WC 10.x = מותגים native (taxonomy product_brand, query_var זהה).
+                # pwb-brand הישן כבר לא מסנן → השתמש ב-product_brand (AND עם product_cat).
+                url += f"&product_brand={brand}"
                 lbl = f"{best['name']} · {brand.upper()}"
             wa.send_cta_url(phone, f"לעיון בכל *{lbl}* באתר (וסינון):", "🔎 עוד באתר", url)
         except Exception:  # noqa: BLE001
