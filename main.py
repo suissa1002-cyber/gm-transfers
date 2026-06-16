@@ -2366,12 +2366,14 @@ def bridge_search(q: str = "", limit: int = 8, x_bridge_key: Optional[str] = Hea
     """חיפוש מוצרים לאורי (מסלול הבוט המהיר) — כך שלא יהיה תלוי רק במועמדים שהוזרקו.
     מחזיר שם/מחיר/מלאי/קישור, מדורג כמו מנוע החיפוש של הבוט."""
     _require_bridge(x_bridge_key)
-    res = bot_product_search(q or "", limit=max(1, min(int(limit or 8), 12)))
+    sr = bot_smart_search(q or "", limit=max(1, min(int(limit or 8), 12)))  # אותו מוח כמו הבוט
+    res = sr.get("results") or []
     return {"results": [{"id": r.get("id"), "name": r.get("name"),
                          "price_from": r.get("price"),   # מחיר בסיס; לוריאציות ראה /variations
                          "type": r.get("type"),
                          "in_stock": r.get("stock_status") == "instock",
-                         "url": r.get("permalink")} for r in res]}
+                         "url": r.get("permalink")} for r in res],
+            "meta": sr.get("meta") or {}}
 
 
 @app.get("/api/uri-bridge/variations/{product_id}")
@@ -3601,7 +3603,8 @@ def _understand_heuristic(q, vocab):
         he_words = {w for w in _re2.split(r"[\s/,\-]+", tn)
                     if len(w) >= 3 and not w.isascii() and w not in cat_words}
         slug_hit = bool(t["slug"]) and t["slug"].lower() in tokset
-        phrase_hit = bool(he_words) and he_words <= tokset
+        # דורש ביטוי בן 2+ מילות-עברית (מילה גנרית בודדת כמו 'אלחוטי' לא מסננת)
+        phrase_hit = len(he_words) >= 2 and he_words <= tokset
         if slug_hit or phrase_hit:
             term_hits.append((len(he_words) + (2 if slug_hit else 0), t))
     term_hits.sort(key=lambda x: x[0], reverse=True)
@@ -3695,46 +3698,61 @@ def bot_smart_search(q: str, limit: int = 20) -> dict:
                 "meta": {"via": facets.get("via"), "facets": facets}}
     base, k, s = _wc_creds()
     import requests as _rq
-    params = {"per_page": 50, "status": "publish"}
-    if facets.get("cat_id"):
-        params["category"] = facets["cat_id"]
-    if facets.get("max_price"):
-        params["max_price"] = facets["max_price"]
-    if facets.get("min_price"):
-        params["min_price"] = facets["min_price"]
     terms = facets.get("terms") or []
-    if terms:                                    # WC מסנן תכונה אחת — הראשונה
-        params["attribute"], params["attribute_term"] = terms[0]["attr"], terms[0]["id"]
-    if facets.get("keywords") and not facets.get("cat_id"):
-        params["search"] = facets["keywords"]
-    try:
-        r = _rq.get(base + "/wp-json/wc/v3/products", params=params, auth=(k, s), timeout=20)
-        raw = r.json() if r.ok else []
-    except Exception:  # noqa: BLE001
-        raw = []
     brand = facets.get("brand")
     kw = [w for w in (facets.get("keywords") or "").lower().split() if w]
-    scored = []
-    for p in (raw or []):
-        if not isinstance(p, dict):
-            continue
-        if p.get("catalog_visibility") == "hidden" or p.get("type") in ("external", "grouped"):
-            continue
-        name = (p.get("name") or "").lower()
-        if brand and brand.get("slug"):
-            bn_name = (brand.get("name", "") or "").lower()
-            pb = [(b.get("slug"), (b.get("name") or "").lower()) for b in (p.get("brands") or [])]
-            in_tax = any(brand["slug"] == bs or bn_name == bn for bs, bn in pb)
-            # מוצרים רבים ללא מותג משויך אך שמם מכיל את המותג — לא לפסול אותם
-            in_name = bool(bn_name) and bn_name in name
-            if not (in_tax or in_name):
+
+    def _run(use_cat=True, use_term=True, search=None):
+        params = {"per_page": 50, "status": "publish"}
+        if use_cat and facets.get("cat_id"):
+            params["category"] = facets["cat_id"]
+        if facets.get("max_price"):
+            params["max_price"] = facets["max_price"]
+        if facets.get("min_price"):
+            params["min_price"] = facets["min_price"]
+        if use_term and terms:
+            params["attribute"], params["attribute_term"] = terms[0]["attr"], terms[0]["id"]
+        if search:
+            params["search"] = search
+        try:
+            r = _rq.get(base + "/wp-json/wc/v3/products", params=params, auth=(k, s), timeout=20)
+            raw = r.json() if r.ok else []
+        except Exception:  # noqa: BLE001
+            raw = []
+        scored = []
+        for p in (raw or []):
+            if not isinstance(p, dict):
                 continue
-        sc = sum(2 for w in kw if w in name)
-        if p.get("stock_status") == "instock":
-            sc += 1
-        scored.append((sc, _smart_pack(p)))
-    scored.sort(key=lambda x: x[0], reverse=True)
-    results = [p for _sc, p in scored][:limit]
+            if (p.get("catalog_visibility") == "hidden"
+                    or p.get("type") in ("external", "grouped")):
+                continue
+            name = (p.get("name") or "").lower()
+            if brand and brand.get("slug"):
+                bn = (brand.get("name", "") or "").lower()
+                pb = [(b.get("slug"), (b.get("name") or "").lower()) for b in (p.get("brands") or [])]
+                # מותג מ-taxonomy או משם המוצר (הרבה מוצרים בלי מותג משויך)
+                if not (any(brand["slug"] == bs or bn == bnm for bs, bnm in pb)
+                        or (bn and bn in name)):
+                    continue
+            sc = sum(2 for w in kw if w in name)
+            if p.get("stock_status") == "instock":
+                sc += 1
+            scored.append((sc, _smart_pack(p)))
+        scored.sort(key=lambda x: x[0], reverse=True)
+        return [p for _sc, p in scored][:limit]
+
+    # סולם שחרור: סינון מלא → בלי תכונה → בלי קטגוריה (חיפוש מילולי) → fallback מילולי.
+    # ככה תכונה/קטגוריה שמחזירה 0 (כמו 'ספורט' שלא מתויג) לא נותנת מסך ריק שגוי.
+    kw_search = facets.get("keywords") or q
+    results = _run(use_cat=True, use_term=True,
+                   search=(kw_search if not facets.get("cat_id") else None))
+    if not results and terms:
+        results = _run(use_cat=True, use_term=False,
+                       search=(kw_search if not facets.get("cat_id") else None))
+    if not results and facets.get("cat_id"):
+        results = _run(use_cat=False, use_term=False, search=kw_search)
+    if not results:                              # אחרון: חיפוש מילולי עם קיצור מילים
+        results = bot_product_search(q, limit=limit)
     note = None
     if brand and not results:                    # מותג שצוין אך אין לו מוצר בתוצאה
         note = f"no_brand:{brand.get('name')}"

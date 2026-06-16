@@ -139,21 +139,15 @@ def handle(phone: str, text: str, mtype: str = "text", reply_id: str = "", wamid
     if rid == "lab":
         return _to_agent(phone, note="פנייה למעבדה")
 
-    # ── טקסט חופשי → חיפוש מוצר (מיידי) או אורי (לשאלות/השוואות, אם זמין) ──
+    # ── טקסט חופשי → שאלה שיחתית לאורי, אחרת חיפוש מוצר (שמפיל לאורי אם ריק) ──
     if low and low not in _GREETINGS and len(low) >= 3:
-        import main
-        results = main.bot_product_search(text, limit=6)
         question_like = bool(_re.search(
             r"\?|מה ההבדל|הבדל בין|השוואה|עדיף|מה מתאים|כדאי|להמליץ|המלצ|תקציב|עד \d|"
             r"יבואן|אחריות|האם|כמה עולה|מה יותר", text))
-        # שאלה מורכבת או אין תוצאות → אורי (אם הגשר חי); אחרת תוצאות חיפוש
-        if (question_like or not results) and _ask_uri(phone, text, wamid):
+        # שאלה מורכבת → אורי ישירות. אחרת → חיפוש חכם (שכבר מפיל לאורי אם ריק).
+        if question_like and _ask_uri(phone, text, wamid):
             return
-        if results:
-            return _new_order_results(phone, text)
-        wa.send_text(phone, "לא הצלחתי למצוא 🙁 נסה/י שם מוצר אחר, "
-                            "או *תפריט* לחזרה / *נציג* לאדם.")
-        return
+        return _new_order_results(phone, text)
     _menu(phone)
 
 
@@ -204,8 +198,8 @@ def _ask_uri(phone, question, wamid="") -> bool:
         except Exception:  # noqa: BLE001
             pass
     q = question or ""
-    try:
-        cands = main.bot_product_search(question, limit=6) or []
+    try:                                         # מועמדים מהמנוע החכם (אותו מוח כמו הבוט)
+        cands = (main.bot_smart_search(question, limit=6) or {}).get("results") or []
     except Exception:  # noqa: BLE001
         cands = []
     if cands:
@@ -291,6 +285,10 @@ def _new_order_results(phone, query):
     meta = sr.get("meta") or {}
     results = all_results[:9]
     if not results:
+        # אין תוצאות → קודם כל אורי (AI) מטפל אם הוא חי — מבין ניסוח, ממליץ חלופות,
+        # משוחח. רק אם אורי לא זמין נופלים להודעה הישרה.
+        if _ask_uri(phone, query):
+            return
         note = meta.get("note") or ""
         if note.startswith("no_brand:"):        # מותג שצוין אך אין לו מוצר — תשובה ישרה
             bn = note.split(":", 1)[1]
