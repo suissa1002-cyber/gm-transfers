@@ -2344,7 +2344,8 @@ def bridge_thread(phone: str, limit: int = 8, x_bridge_key: Optional[str] = Head
     _require_bridge(x_bridge_key)
     import wa
     try:
-        msgs = wa.get_thread_native(phone, limit=max(2, min(int(limit or 8), 20)))
+        msgs = (wa.get_thread_native(phone, limit=max(2, min(int(limit or 8), 20)))
+                or {}).get("messages", [])
     except Exception:  # noqa: BLE001
         msgs = []
     lines = []
