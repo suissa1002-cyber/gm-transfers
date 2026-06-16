@@ -743,7 +743,17 @@ def _repair_part_result(phone, text):
         return _menu(phone)
     matched = main.bot_repair_match_part(device, text)
     if matched:
-        return _send_repair_prices(phone, device, matched)
+        reps = device.get("repairs") or {}
+        priced = [r for r in matched if any(x.get("price") for x in (reps.get(r) or []))]
+        missing = [r for r in matched if r not in priced]
+        if priced:
+            return _send_repair_prices(phone, device, priced, missing=missing)
+        # סוג תיקון תקין אך אין לו מחיר לדגם הזה (טרם עודכן בגיליון)
+        names = " / ".join(matched)
+        wa.send_text(phone, f"המחיר ל{names} ב-{_pretty_model(device['display'])} עדיין "
+                            f"לא עודכן 🛠️\nכתוב/י *נציג* ונשמח לתת לך הצעת מחיר.")
+        db.bot_session_set(phone, "menu", {})
+        return
     # לא זוהה — מציג את סוגי התיקון הזמינים לדגם כרשימה ללחיצה
     parts = [r for r, t in (device.get("repairs") or {}).items()
              if any(x.get("price") for x in t)]
@@ -757,7 +767,7 @@ def _repair_part_result(phone, text):
                  rows, button_label="בחר/י תיקון", section_title="סוגי תיקון")
 
 
-def _send_repair_prices(phone, device, reps=None):
+def _send_repair_prices(phone, device, reps=None, missing=None):
     """מציג מחיר רק לסוגי התיקון שנבחרו (reps) — לא את כל המחירון."""
     items = reps or list((device.get("repairs") or {}).keys())
     lines = [f"🔧 *{_pretty_model(device['display'])}* — הצעת מחיר:"]
@@ -771,6 +781,9 @@ def _send_repair_prices(phone, device, reps=None):
         for t in priced:                     # רמה אחת בכל שורה
             label = t.get("tier") or "מחיר"
             lines.append(f"• {label} — ₪{t['price']:,}")
+    if missing:
+        lines.append(f"\nℹ️ {' / '.join(missing)} — המחיר לדגם זה עדיין לא עודכן, "
+                     f"לבירור כתוב/י *נציג*.")
     lines.append("\n⚠️ הערכה לפי התיאור בלבד — המחיר הסופי נקבע לאחר בדיקת מעבדה.")
     lines.append("לתור או בירור — *נציג*.")
     wa.send_text(phone, "\n".join(lines))

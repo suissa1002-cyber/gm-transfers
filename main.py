@@ -3397,11 +3397,11 @@ _REPAIR_PART_SYN = {
 
 
 def bot_repair_match_part(device: dict, query: str) -> list:
-    """מהות התיקון שהלקוח כתב → סוגי התיקון הרלוונטיים של הדגם (לא כל המחירון)."""
+    """מהות התיקון שהלקוח כתב → סוגי התיקון התקפים (מתוך כלל הסוגים המוכרים, לא רק
+    אלה שיש להם מחיר לדגם — כדי להבחין בין 'לא מוכר' ל'אין מחיר לדגם')."""
     q = (query or "").lower()
     matched = []
-    for rep in (device.get("repairs") or {}):
-        syns = _REPAIR_PART_SYN.get(rep, [rep])
+    for rep, syns in _REPAIR_PART_SYN.items():
         if rep.lower() in q or any(s.lower() in q for s in syns):
             matched.append(rep)
     return matched
