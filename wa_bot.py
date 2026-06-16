@@ -677,6 +677,32 @@ def _repair_status(phone, fix_id=None):
     db.bot_session_set(phone, "menu", {})
 
 
+_MODEL_BRANDS = {"iphone": "iPhone", "ipad": "iPad", "airpods": "AirPods",
+                 "macbook": "MacBook", "imac": "iMac", "watch": "Watch"}
+_MODEL_WORDS = {"pro": "Pro", "max": "Max", "plus": "Plus", "mini": "Mini",
+                "se": "SE", "fe": "FE", "ultra": "Ultra", "lite": "Lite",
+                "note": "Note", "gen": "Gen", "with": "With", "anc": "ANC",
+                "edge": "Edge", "neo": "Neo", "air": "Air"}
+
+
+def _pretty_model(name: str) -> str:
+    """שם דגם לתצוגה: מותג נכון (iPhone), קוד דגם ב-CAPS (A16), מילים — אות ראשונה."""
+    out = []
+    for w in (name or "").split():
+        wl = w.lower()
+        if wl in _MODEL_BRANDS:
+            out.append(_MODEL_BRANDS[wl])
+        elif wl in _MODEL_WORDS:
+            out.append(_MODEL_WORDS[wl])
+        elif _re.search(r"\d", w) and _re.search(r"[a-zA-Z]", w):
+            out.append(w.upper())            # a16 / 4g/5g / s23
+        elif w.isascii() and w.isalpha():
+            out.append(w.capitalize())       # galaxy → Galaxy
+        else:
+            out.append(w)                    # מספרים / + / עברית
+    return " ".join(out)
+
+
 _REPAIR_ICON = {"מסך": "🖥️", "סוללה": "🔋", "שקע": "🔌", "גב": "🪟",
                 "מצלמה אחורית": "📷", "מצלמה קדמית": "🤳", "מסגרת קומפלט": "🔲",
                 "עדשות": "🔎", "אפכרסת": "🔊", "כפתור בית": "⚪", "הדלקה": "⏻",
@@ -694,7 +720,8 @@ def _repair_quote_result(phone, text):
         return
     if len(cands) == 1:
         return _repair_ask_part(phone, cands[0])
-    rows = [(f"rmodel:{i}", cands[i]["display"][:24], "") for i in range(min(len(cands), 9))]
+    rows = [(f"rmodel:{i}", _pretty_model(cands[i]["display"])[:24], "")
+            for i in range(min(len(cands), 9))]
     db.bot_session_set(phone, "await_repair_model", {"cands": cands})
     wa.send_list(phone, "נמצאו כמה דגמים — איזה מהם?", rows,
                  button_label="בחר/י דגם", section_title="דגמים")
@@ -703,7 +730,7 @@ def _repair_quote_result(phone, text):
 def _repair_ask_part(phone, device):
     """אחרי שזוהה הדגם — שואל מה צריך לתקן (לא מציג את כל המחירון)."""
     db.bot_session_set(phone, "await_repair_part", {"device": device})
-    wa.send_text(phone, f"📱 *{device['display']}* — מה צריך לתקן?\n"
+    wa.send_text(phone, f"📱 *{_pretty_model(device['display'])}* — מה צריך לתקן?\n"
                         f"(למשל: מסך, סוללה, שקע טעינה, גב, מצלמה)")
 
 
@@ -726,14 +753,14 @@ def _repair_part_result(phone, text):
             for i in range(min(len(parts), 9))]
     d["parts"] = parts
     db.bot_session_set(phone, "await_repair_part", d)
-    wa.send_list(phone, f"לא זיהיתי '{text}' 🤔 מה לתקן ב-{device['display']}?",
+    wa.send_list(phone, f"לא זיהיתי '{text}' 🤔 מה לתקן ב-{_pretty_model(device['display'])}?",
                  rows, button_label="בחר/י תיקון", section_title="סוגי תיקון")
 
 
 def _send_repair_prices(phone, device, reps=None):
     """מציג מחיר רק לסוגי התיקון שנבחרו (reps) — לא את כל המחירון."""
     items = reps or list((device.get("repairs") or {}).keys())
-    lines = [f"🔧 *{device['display']}* — הצעת מחיר:"]
+    lines = [f"🔧 *{_pretty_model(device['display'])}* — הצעת מחיר:"]
     for rep in items:
         tiers = (device.get("repairs") or {}).get(rep) or []
         priced = sorted([t for t in tiers if t.get("price")], key=lambda t: t["price"])
