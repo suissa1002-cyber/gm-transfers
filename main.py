@@ -2385,6 +2385,81 @@ def bridge_variations(product_id: int, x_bridge_key: Optional[str] = Header(None
                             "in_stock": v.get("stock") == "instock"} for v in vs]}
 
 
+_ATTR_TERMS_CACHE = {"at": 0.0, "data": None}
+_FILTER_GENERIC = {"אוזניות", "טלפון", "סלולרי", "סלולארי", "מסך", "סוללה", "מצלמה",
+                   "סמארטפון", "מכשיר", "עם", "תוך", "אוזן", "שעון", "חכם", "אלחוטיות",
+                   "אלחוטי", "כבל", "מטען", "wireless", "phone", "screen", "battery"}
+
+
+def _wc_attr_terms():
+    """כל ערכי-התכונות (terms) מכל ה-attributes, cache שעה — לסינון לפי תכונה."""
+    import time as _t
+    if _ATTR_TERMS_CACHE["data"] is not None and (_t.time() - _ATTR_TERMS_CACHE["at"] < 3600):
+        return _ATTR_TERMS_CACHE["data"]
+    base, k, s = _wc_creds()
+    import requests as _rq
+    out = []
+    try:
+        ra = _rq.get(f"{base}/wp-json/wc/v3/products/attributes",
+                     params={"per_page": 100}, auth=(k, s), timeout=25)
+        for a in (ra.json() if ra.ok else []):
+            rt = _rq.get(f"{base}/wp-json/wc/v3/products/attributes/{a['id']}/terms",
+                         params={"per_page": 100}, auth=(k, s), timeout=20)
+            for t in (rt.json() if rt.ok else []):
+                if (t.get("count") or 0) > 0:
+                    out.append({"attr": a.get("slug"), "id": t.get("id"),
+                                "name": t.get("name") or "", "slug": t.get("slug") or ""})
+        _ATTR_TERMS_CACHE.update(at=_t.time(), data=out)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("attr terms fetch failed: %s", e)
+    return out
+
+
+@app.get("/api/uri-bridge/filter")
+def bridge_filter(q: str = "", max_price: int = 0, min_price: int = 0,
+                  x_bridge_key: Optional[str] = Header(None)):
+    """סינון מוצרים לפי **תכונה + מחיר** (לא רק מילה בשם). מזהה את התכונה מהשאלה
+    (ANC/'ביטול רעשים'/RGB...) מול ערכי-התכונות של WC, ומחזיר את כל המתאימים בטווח
+    המחיר. לשאלות 'X עם תכונה Y עד Z₪' — זה הכלי הנכון, לא search."""
+    _require_bridge(x_bridge_key)
+    import re as _re2
+    base, k, s = _wc_creds()
+    import requests as _rq
+    ql = (q or "").lower()
+    if not max_price:
+        mm = _re2.search(r"(?:עד|מתחת\s*ל-?|under|below|<)\s*[₪]?\s*(\d{2,5})", ql)
+        if mm:
+            max_price = int(mm.group(1))
+    qwords = {w for w in _re2.split(r"[\s/,\-]+", ql) if len(w) >= 3 and w not in _FILTER_GENERIC}
+    best, best_score = None, 0
+    for t in _wc_attr_terms():
+        nwords = {w for w in _re2.split(r"[\s/,\-]+", (t["name"] or "").lower())
+                  if len(w) >= 3 and w not in _FILTER_GENERIC}
+        score = len(qwords & nwords)
+        if t["slug"] and t["slug"].lower() in qwords:
+            score += 2                       # התאמת slug אנגלי (anc)
+        if score > best_score:
+            best, best_score = t, score
+    params = {"per_page": 40, "status": "publish", "orderby": "price", "order": "asc"}
+    if max_price:
+        params["max_price"] = max_price
+    if min_price:
+        params["min_price"] = min_price
+    if best and best_score > 0:
+        params["attribute"], params["attribute_term"] = best["attr"], best["id"]
+    try:
+        r = _rq.get(f"{base}/wp-json/wc/v3/products", params=params, auth=(k, s), timeout=30)
+        res = [p for p in (r.json() if r.ok else [])
+               if p.get("catalog_visibility") != "hidden" and p.get("type") not in ("external", "grouped")]
+    except Exception:  # noqa: BLE001
+        res = []
+    return {"feature": (best["name"] if best and best_score > 0 else None),
+            "max_price": max_price or None, "count": len(res),
+            "results": [{"name": p.get("name"), "price": p.get("price"),
+                         "in_stock": p.get("stock_status") == "instock",
+                         "url": p.get("permalink")} for p in res[:25]]}
+
+
 @app.post("/api/uri-bridge/answer")
 def bridge_answer(body: UriAnswer, x_bridge_key: Optional[str] = Header(None)):
     _require_bridge(x_bridge_key)
