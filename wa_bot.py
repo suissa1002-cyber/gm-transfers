@@ -286,12 +286,24 @@ def _new_order_results(phone, query):
     """חיפוש מוצר חי → רשימת תוצאות עם מחירים. רשימת WhatsApp מוגבלת ל-10 שורות
     (מטא), אז מציגים עד 9 מוצרים + שורת חיפוש; אם יש יותר — מציינים ומציעים לצמצם."""
     import main
-    all_results = main.bot_product_search(query, limit=20)
-    results = (all_results or [])[:9]
+    sr = main.bot_smart_search(query, limit=20)
+    all_results = sr.get("results") or []
+    meta = sr.get("meta") or {}
+    results = all_results[:9]
     if not results:
-        wa.send_text(phone, f"לא מצאתי תוצאות ל'{query}' 🙁\n"
-                            f"נסה/י שם מוצר אחר (למשל: אייפון 17, גלקסי S25), "
-                            f"או *תפריט* לחזרה / *נציג* לאדם.")
+        note = meta.get("note") or ""
+        if note.startswith("no_brand:"):        # מותג שצוין אך אין לו מוצר — תשובה ישרה
+            bn = note.split(":", 1)[1]
+            cat = meta.get("cat")
+            msg = f"לא מצאתי מוצרי *{bn}*"
+            msg += f" בקטגוריית {cat} 🙁" if cat else " 🙁"
+            msg += ("\nרוצה לראות חלופות? כתוב/י את שם הקטגוריה בלבד "
+                    "(למשל 'אוזניות'), או *נציג* לאדם.")
+            wa.send_text(phone, msg)
+        else:
+            wa.send_text(phone, f"לא מצאתי תוצאות ל'{query}' 🙁\n"
+                                f"נסה/י שם מוצר אחר (למשל: אייפון 17, גלקסי S25), "
+                                f"או *תפריט* לחזרה / *נציג* לאדם.")
         return
     rows, data = [], {}
     for p in results:

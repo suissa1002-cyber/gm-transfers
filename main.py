@@ -3441,7 +3441,8 @@ def _wc_categories():
                         params={"per_page": 100, "page": page}, auth=(k, s), timeout=25)
             js = r.json() if r.ok else []
             for c in js:
-                out[c.get("slug")] = {"name": c.get("name") or "", "count": c.get("count") or 0}
+                out[c.get("slug")] = {"name": c.get("name") or "", "count": c.get("count") or 0,
+                                      "id": c.get("id")}
             if len(js) < 100:
                 break
             page += 1
@@ -3497,6 +3498,252 @@ def bot_best_category(cat_freq, min_count=0):
         return None
     cand.sort()
     return {"slug": cand[0][2], "name": cand[0][3], "count": cand[0][1]}
+
+
+# ════════════════ חיפוש חכם (Smart Search v2) ════════════════
+# מנוע שמבין כוונה: ממפה את שאילתת הלקוח אל אוצר-המילים החי של החנות
+# (קטגוריות/מותגים/תכונות) ומסנן עם הפילטרים האמיתיים של WooCommerce — במקום
+# ניחוש מילולי. שכבת Claude Haiku (אם יש ANTHROPIC_API_KEY) מבינה ניסוח חופשי;
+# בלעדיה נופל להתאמת-vocabulary היוריסטית. שתיהן מסתנכרנות לבד עם החנות.
+_BRANDS_CACHE = {"at": 0.0, "data": None}
+_HE_BRAND_ALIAS = {"אנקר": "anker", "סמסונג": "samsung", "אפל": "apple", "שיאומי": "xiaomi",
+                   "סוני": "sony", "וואווי": "huawei", "אופו": "oppo", "ריאלמי": "realme",
+                   "הונור": "honor", "וויוו": "vivo", "מרשל": "marshall", "בוס": "bose",
+                   "נטינג": "nothing", "גוגל": "google", "וואנפלוס": "oneplus"}
+_SEARCH_STOP = {"עם", "של", "את", "אני", "מחפש", "מחפשת", "רוצה", "צריך", "יש", "לכם",
+                "תחת", "עד", "מתחת", "מעל", "the", "a", "for", "with", "and", "מכשיר", "דגם"}
+
+
+def _wc_brands():
+    """כל מותגי החנות (taxonomy product_brand) — [{name, slug, id}], cache שעה."""
+    import time as _t
+    if _BRANDS_CACHE["data"] is not None and (_t.time() - _BRANDS_CACHE["at"] < 3600):
+        return _BRANDS_CACHE["data"]
+    base, k, s = _wc_creds()
+    import requests as _rq
+    out, page = [], 1
+    try:
+        while page <= 6:
+            r = _rq.get(f"{base}/wp-json/wc/v3/products/brands",
+                        params={"per_page": 100, "page": page}, auth=(k, s), timeout=25)
+            js = r.json() if r.ok else []
+            for b in js:
+                if (b.get("count") or 0) > 0:
+                    out.append({"name": b.get("name") or "", "slug": b.get("slug") or "",
+                                "id": b.get("id")})
+            if len(js) < 100:
+                break
+            page += 1
+        _BRANDS_CACHE.update(at=_t.time(), data=out)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("brands fetch failed: %s", e)
+    return out
+
+
+def _search_vocab():
+    """אוצר-המילים המובנה של החנות לחיפוש החכם (מותגים/קטגוריות/תכונות)."""
+    cats = [{"slug": sl, "name": info.get("name") or "", "count": info.get("count") or 0,
+             "id": info.get("id")}
+            for sl, info in (_wc_categories() or {}).items() if info.get("id")]
+    return {"brands": _wc_brands(), "cats": cats, "terms": _wc_attr_terms()}
+
+
+def _parse_price(ql):
+    import re as _re2
+    mx = _re2.search(r"(?:עד|תחת|מתחת\s*ל-?|under|below|<)\s*[₪]?\s*(\d{2,6})", ql)
+    mn = _re2.search(r"(?:מעל|above|over|>)\s*[₪]?\s*(\d{2,6})", ql)
+    return (int(mx.group(1)) if mx else 0, int(mn.group(1)) if mn else 0)
+
+
+def _understand_heuristic(q, vocab):
+    """מיפוי שאילתה→מבנה ע"י התאמה לאוצר-המילים החי של החנות (בלי AI)."""
+    import re as _re2
+    ql = (q or "").lower().strip()
+    max_price, min_price = _parse_price(ql)
+    ql2 = _re2.sub(r"(?:עד|תחת|מתחת\s*ל-?|מעל|under|below|above|over|<|>)\s*[₪]?\s*\d{2,6}",
+                   " ", ql)
+    toks = [t for t in _re2.split(r"[\s/,]+", ql2) if t and t not in _SEARCH_STOP]
+    tokset = set(toks)
+    brand = None
+    for b in vocab["brands"]:
+        bl = (b["name"] or "").lower()
+        if bl and (bl in ql or b["slug"] in tokset):
+            brand = b
+            break
+    if not brand:
+        for he, en in _HE_BRAND_ALIAS.items():
+            if he in ql:
+                brand = next((b for b in vocab["brands"]
+                              if b["slug"] == en or (b["name"] or "").lower() == en),
+                             {"name": en.title(), "slug": en, "id": None})
+                break
+    def _cat_hit(cnl):
+        if cnl in ql:                          # שם הקטגוריה במלואו בשאילתה
+            return True
+        cwords = cnl.split()
+        if len(cwords) == 1 and len(cwords[0]) >= 4:   # קטגוריה חד-מילתית — התאמת תחילית
+            cw = cwords[0]                              # (סטרימר↔סטרימרים, יחיד↔רבים)
+            return any(len(t) >= 4 and (cw.startswith(t) or t.startswith(cw)) for t in toks)
+        return False
+    cmatch = [c for c in vocab["cats"]
+              if c["name"] and not c["name"].isascii() and _cat_hit(c["name"].lower())]
+    cmatch.sort(key=lambda c: c["count"])      # הקטגוריה הספציפית ביותר קודם
+    cat = cmatch[0] if cmatch else None
+    # תכונות — התאמה **קשיחה** בלבד (היוריסטיקה לא מנחשת תכונות; ניחוש שגוי גרוע
+    # מכלום): slug אנגלי מדויק (anc) או כל מילות-העברית של ה-term קיימות בשאילתה.
+    bname = (brand["name"] or "").lower() if brand else ""
+    cat_words = set((cat["name"] or "").lower().split()) if cat else set()
+    term_hits = []
+    for t in vocab["terms"]:
+        tn = (t["name"] or "").lower()
+        if bname and tn == bname:              # שם מותג אינו תכונה
+            continue
+        he_words = {w for w in _re2.split(r"[\s/,\-]+", tn)
+                    if len(w) >= 3 and not w.isascii() and w not in cat_words}
+        slug_hit = bool(t["slug"]) and t["slug"].lower() in tokset
+        phrase_hit = bool(he_words) and he_words <= tokset
+        if slug_hit or phrase_hit:
+            term_hits.append((len(he_words) + (2 if slug_hit else 0), t))
+    term_hits.sort(key=lambda x: x[0], reverse=True)
+    terms = [t for _n, t in term_hits[:1]]     # WC מסנן תכונה אחת — הטובה ביותר
+    used = set((brand["name"] or "").lower().split()) if brand else set()
+    used |= set((cat["name"] or "").lower().split()) if cat else set()
+    keywords = " ".join(t for t in toks if t not in used).strip()
+    return {"brand": brand, "cat": cat, "cat_id": (cat or {}).get("id"),
+            "terms": terms, "max_price": max_price, "min_price": min_price,
+            "keywords": keywords, "via": "heuristic"}
+
+
+def _understand_claude(q, vocab):
+    """שכבת Claude Haiku — מיפוי ניסוח חופשי אל ה-taxonomy. None אם אין מפתח/נכשל."""
+    key = os.getenv("ANTHROPIC_API_KEY")
+    if not key:
+        return None
+    import requests as _rq
+    import json as _json
+    import re as _re2
+    cat_names = [c["name"] for c in vocab["cats"] if c["name"] and not c["name"].isascii()]
+    brand_names = [b["name"] for b in vocab["brands"] if b["name"]]
+    term_list = [{"id": t["id"], "name": t["name"]} for t in vocab["terms"] if t["name"]]
+    sys = ("אתה ממפה שאילתת קונה (עברית או אנגלית) בחנות אלקטרוניקה ישראלית אל "
+           "הטקסונומיה של החנות. החזר אך ורק JSON תקין, בלי טקסט נוסף. "
+           "השתמש רק בערכים שמופיעים ברשימות. אם הקונה מציין מותג שלא ברשימה — "
+           "החזר אותו ב-brand עם brand_unknown=true. price_max/price_min רק אם צוין במפורש.")
+    schema = ('{"category": <שם קטגוריה מהרשימה או null>, "brand": <שם מותג מהרשימה '
+              'או null>, "brand_unknown": <true/false>, "term_ids": [<מזהי תכונות '
+              'מהרשימה>], "price_max": <מספר או null>, "price_min": <מספר או null>, '
+              '"keywords": "<מילות דגם/חיפוש שנותרו, או ריק>"}')
+    user = (f"שאילתה: {q!r}\n\nקטגוריות: {_json.dumps(cat_names, ensure_ascii=False)}\n\n"
+            f"מותגים: {_json.dumps(brand_names, ensure_ascii=False)}\n\n"
+            f"תכונות: {_json.dumps(term_list, ensure_ascii=False)}\n\n"
+            f"החזר JSON במבנה: {schema}")
+    try:
+        r = _rq.post("https://api.anthropic.com/v1/messages", timeout=12,
+                     headers={"x-api-key": key, "anthropic-version": "2023-06-01",
+                              "content-type": "application/json"},
+                     json={"model": "claude-haiku-4-5-20251001", "max_tokens": 400,
+                           "system": sys, "messages": [{"role": "user", "content": user}]})
+        if not r.ok:
+            logger.warning("claude understand HTTP %s: %s", r.status_code, r.text[:200])
+            return None
+        txt = "".join(b.get("text", "") for b in r.json().get("content", []))
+        m = _re2.search(r"\{[\s\S]*\}", txt)
+        data = _json.loads(m.group(0)) if m else {}
+    except Exception as e:  # noqa: BLE001
+        logger.warning("claude understand failed: %s", e)
+        return None
+    cat = next((c for c in vocab["cats"] if c["name"] == data.get("category")), None)
+    brand = None
+    if data.get("brand"):
+        brand = next((b for b in vocab["brands"]
+                      if (b["name"] or "").lower() == str(data["brand"]).lower()), None)
+        if not brand:
+            sl = str(data["brand"]).lower().strip().replace(" ", "-")
+            brand = {"name": data["brand"], "slug": sl, "id": None, "unknown": True}
+    tid = set(data.get("term_ids") or [])
+    terms = [t for t in vocab["terms"] if t["id"] in tid]
+    return {"brand": brand, "cat": cat, "cat_id": (cat or {}).get("id"), "terms": terms,
+            "max_price": int(data["price_max"]) if data.get("price_max") else 0,
+            "min_price": int(data["price_min"]) if data.get("price_min") else 0,
+            "keywords": (data.get("keywords") or "").strip(), "via": "claude"}
+
+
+def _smart_pack(p):
+    img = ((p.get("images") or [{}])[0] or {}).get("src", "")
+    return {"id": p.get("id"), "name": p.get("name") or "", "price": p.get("price"),
+            "permalink": p.get("permalink") or "", "sku": p.get("sku") or "",
+            "type": p.get("type"), "image": img, "stock_status": p.get("stock_status"),
+            "brand": ((p.get("brands") or [{}])[0] or {}).get("name", ""),
+            "cats": [{"slug": c.get("slug"), "name": c.get("name")}
+                     for c in (p.get("categories") or []) if c.get("slug")]}
+
+
+def bot_smart_search(q: str, limit: int = 20) -> dict:
+    """חיפוש חכם: מבין כוונה (Claude Haiku אם יש מפתח, אחרת היוריסטיקה), ממפה
+    אל ה-taxonomy של החנות, ומסנן עם WooCommerce. מחזיר {results, meta}.
+    אם לא זוהה אף facet מובנה — נופל לחיפוש המילולי הקיים (שמות/דגמים)."""
+    q = (q or "").strip()
+    if len(q) < 2:
+        return {"results": [], "meta": {}}
+    vocab = _search_vocab()
+    facets = _understand_claude(q, vocab) or _understand_heuristic(q, vocab)
+    structured = bool(facets.get("cat_id") or facets.get("brand") or facets.get("terms")
+                      or facets.get("max_price") or facets.get("min_price"))
+    if not structured:
+        # שאילתת שם/דגם טהורה — החיפוש המילולי הקיים מצוין לזה
+        return {"results": bot_product_search(q, limit=limit),
+                "meta": {"via": facets.get("via"), "facets": facets}}
+    base, k, s = _wc_creds()
+    import requests as _rq
+    params = {"per_page": 50, "status": "publish"}
+    if facets.get("cat_id"):
+        params["category"] = facets["cat_id"]
+    if facets.get("max_price"):
+        params["max_price"] = facets["max_price"]
+    if facets.get("min_price"):
+        params["min_price"] = facets["min_price"]
+    terms = facets.get("terms") or []
+    if terms:                                    # WC מסנן תכונה אחת — הראשונה
+        params["attribute"], params["attribute_term"] = terms[0]["attr"], terms[0]["id"]
+    if facets.get("keywords") and not facets.get("cat_id"):
+        params["search"] = facets["keywords"]
+    try:
+        r = _rq.get(base + "/wp-json/wc/v3/products", params=params, auth=(k, s), timeout=20)
+        raw = r.json() if r.ok else []
+    except Exception:  # noqa: BLE001
+        raw = []
+    brand = facets.get("brand")
+    kw = [w for w in (facets.get("keywords") or "").lower().split() if w]
+    scored = []
+    for p in (raw or []):
+        if not isinstance(p, dict):
+            continue
+        if p.get("catalog_visibility") == "hidden" or p.get("type") in ("external", "grouped"):
+            continue
+        name = (p.get("name") or "").lower()
+        if brand and brand.get("slug"):
+            bn_name = (brand.get("name", "") or "").lower()
+            pb = [(b.get("slug"), (b.get("name") or "").lower()) for b in (p.get("brands") or [])]
+            in_tax = any(brand["slug"] == bs or bn_name == bn for bs, bn in pb)
+            # מוצרים רבים ללא מותג משויך אך שמם מכיל את המותג — לא לפסול אותם
+            in_name = bool(bn_name) and bn_name in name
+            if not (in_tax or in_name):
+                continue
+        sc = sum(2 for w in kw if w in name)
+        if p.get("stock_status") == "instock":
+            sc += 1
+        scored.append((sc, _smart_pack(p)))
+    scored.sort(key=lambda x: x[0], reverse=True)
+    results = [p for _sc, p in scored][:limit]
+    note = None
+    if brand and not results:                    # מותג שצוין אך אין לו מוצר בתוצאה
+        note = f"no_brand:{brand.get('name')}"
+    return {"results": results,
+            "meta": {"brand": (brand or {}).get("name") if brand else None,
+                     "cat": (facets.get("cat") or {}).get("name") if facets.get("cat") else None,
+                     "max_price": facets.get("max_price") or None,
+                     "terms": [t["name"] for t in terms], "note": note,
+                     "via": facets.get("via")}}
 
 
 # ── חשבוניות לקוח (נקלטות ממייל הקופה; לשליחה חוזרת ללקוח בוואטסאפ) ──
