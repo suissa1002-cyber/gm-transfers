@@ -99,6 +99,8 @@ def handle(phone: str, text: str, mtype: str = "text", reply_id: str = "", wamid
         return _order_status(phone, text)
     if state == "await_repair_id" and not rid and text:
         return _repair_status(phone, fix_id="".join(ch for ch in text if ch.isdigit()))
+    if state == "await_repair_model" and not rid and text:
+        return _repair_quote_result(phone, text)
     if state == "new_search" and not rid:
         return _new_order_results(phone, text)
     if state == "new_pick" and rid.startswith("prod:"):
@@ -164,9 +166,19 @@ def handle(phone: str, text: str, mtype: str = "text", reply_id: str = "", wamid
                          ("repair_quote", "💰 הצעת מחיר"), ("menu", "↩️ תפריט")])
         return
     if rid == "repair_quote":
-        return _to_agent(phone, note="הצעת מחיר לתיקון")
+        wa.send_text(phone, "💰 *הצעת מחיר לתיקון*\nכתוב/י את דגם המכשיר "
+                            "(למשל: אייפון 13, גלקסי A54, iPhone 14 Pro):")
+        db.bot_session_set(phone, "await_repair_model", {})
+        return
     if rid == "repair_status":
         return _repair_status(phone)
+    if rid.startswith("rmodel:"):
+        d = (sess.get("data") or {})
+        idx = int(rid.split(":", 1)[1]) if rid.split(":", 1)[1].isdigit() else -1
+        cands = d.get("cands") or []
+        if 0 <= idx < len(cands):
+            return _send_repair_prices(phone, cands[idx])
+        return _menu(phone)
 
     # ── טקסט חופשי → שאלה שיחתית לאורי, אחרת חיפוש מוצר (שמפיל לאורי אם ריק) ──
     if low and low not in _GREETINGS and len(low) >= 3:
@@ -652,6 +664,49 @@ def _repair_status(phone, fix_id=None):
     if len(results) > 5:
         msg += f"\n\n(ועוד {len(results) - 5} תיקונים — לפרטים פנה/י לנציג)"
     wa.send_text(phone, msg)
+    _menu_tail(phone)
+    db.bot_session_set(phone, "menu", {})
+
+
+_REPAIR_ICON = {"מסך": "🖥️", "סוללה": "🔋", "שקע": "🔌", "גב": "🪟",
+                "מצלמה אחורית": "📷", "מצלמה קדמית": "🤳", "מסגרת קומפלט": "🔲",
+                "עדשות": "🔎", "אפכרסת": "🔊", "כפתור בית": "⚪", "הדלקה": "⏻",
+                "ווליום": "🔉", "צלצלן": "🔔"}
+
+
+def _repair_quote_result(phone, text):
+    """אחרי שהלקוח כתב דגם — מציג מחיר, או רשימת דגמים אם רב-משמעי."""
+    import main
+    cands = main.bot_repair_quote(text)
+    if not cands:
+        wa.send_text(phone, f"לא מצאתי מחירון לדגם '{text}' 🤔\n"
+                            f"נסה/י שם מדויק (למשל: אייפון 13, גלקסי A12), "
+                            f"או *נציג* לבירור.")
+        return
+    if len(cands) == 1:
+        return _send_repair_prices(phone, cands[0])
+    rows = [(f"rmodel:{i}", cands[i]["display"][:24], "") for i in range(min(len(cands), 9))]
+    db.bot_session_set(phone, "await_repair_model", {"cands": cands})
+    wa.send_list(phone, "נמצאו כמה דגמים — איזה מהם?", rows,
+                 button_label="בחר/י דגם", section_title="דגמים")
+
+
+def _send_repair_prices(phone, device):
+    """מציג את מחירון התיקון של דגם — כל סוג תיקון + רמות (זול→יקר)."""
+    lines = [f"🔧 *{device['display']}* — מחירון תיקון:\n"]
+    for rep, tiers in (device.get("repairs") or {}).items():
+        priced = sorted([t for t in tiers if t.get("price")], key=lambda t: t["price"])
+        if not priced:
+            continue
+        ic = _REPAIR_ICON.get(rep, "🔧")
+        if len(priced) == 1 and not priced[0].get("tier"):
+            lines.append(f"{ic} {rep}: ₪{priced[0]['price']:,}")
+        else:
+            opts = " · ".join(f"{t['tier'] or 'מחיר'} ₪{t['price']:,}" for t in priced)
+            lines.append(f"{ic} {rep}: {opts}")
+    lines.append("\n💡 חילופי = חלק תואם · מקורי = חלק מקורי. המחירים כוללים עבודה.")
+    lines.append("לקביעת תור או בירור — כתוב/י *נציג*.")
+    wa.send_text(phone, "\n".join(lines))
     _menu_tail(phone)
     db.bot_session_set(phone, "menu", {})
 

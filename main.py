@@ -3330,6 +3330,50 @@ def bot_repair_status(phone: str = "", fix_id=None) -> list:
     return out
 
 
+_REPAIR_CACHE = {"at": 0.0, "data": None}
+_REPAIR_HE = {"אייפון": "iphone", "גלקסי": "galaxy", "סמסונג": "samsung",
+              "אייפד": "ipad", "וואטש": "watch", "שעון": "watch", "פרו": "pro",
+              "מקס": "max", "מאקס": "max", "מיני": "mini", "פלוס": "plus",
+              "אולטרה": "ultra", "פלוו": "plus"}
+
+
+def _repair_prices():
+    """מחירון תיקונים מהגיליון המפורסם (CSV), cache 30 דק'."""
+    import time as _t
+    if _REPAIR_CACHE["data"] is not None and (_t.time() - _REPAIR_CACHE["at"] < 1800):
+        return _REPAIR_CACHE["data"]
+    try:
+        import repair_prices
+        data = repair_prices.fetch_and_parse()
+        if data.get("devices"):
+            _REPAIR_CACHE.update(at=_t.time(), data=data)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("repair prices fetch failed: %s", e)
+    return _REPAIR_CACHE["data"] or {"devices": {}, "services": []}
+
+
+def bot_repair_quote(query: str) -> list:
+    """מחיר תיקון לפי דגם. מחזיר רשימת דגמים תואמים ({display, repairs}) —
+    התאמה אחת = הצג; כמה = בקש בחירה; ריק = לא נמצא."""
+    import re as _re
+    data = _repair_prices()
+    devices = data.get("devices") or {}
+    if not devices:
+        return []
+    q = (query or "").lower()
+    for he, en in _REPAIR_HE.items():
+        q = q.replace(he, en)
+    qwords = [w for w in _re.split(r"[\s/]+", q) if w and w not in ("של", "תיקון", "מחיר", "כמה", "עולה")]
+    if not qwords:
+        return []
+    matches = []
+    for k, v in devices.items():
+        if all(w in k for w in qwords):      # כל מילות השאילתה במפתח הדגם
+            matches.append((len(k), v))
+    matches.sort(key=lambda x: x[0])         # הדגם הקצר/מדויק קודם
+    return [v for _l, v in matches[:9]]
+
+
 def bot_create_order(product_id, variation_id, price, name, phone) -> dict:
     """יוצר הזמנת WC (pending) + קישור תשלום PayPlus — לבוט ה-native. מחזיר
     {number, total, pay_link}. מקושר ל-IPN דרך payplus_pru:."""
