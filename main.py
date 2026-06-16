@@ -3449,6 +3449,31 @@ def _wc_categories():
     return out
 
 
+_TERM_LINK_CACHE: dict = {}
+
+
+def _wc_term_link(taxonomy: str, slug: str) -> str:
+    """הכתובת הקנונית (permalink) של ארכיון taxonomy term — דרך wp/v2, cache.
+    קריטי לקישורי הבוט: קישור `?product_cat=slug` עושה redirect קנוני, והדפדפן
+    הפנימי של וואטסאפ נכשל ב-navigation הראשון על redirect קר ('אין אינטרנט').
+    קישור ישיר לכתובת הקנונית = בלי redirect = נטען בלחיצה הראשונה."""
+    key = f"{taxonomy}:{slug}"
+    if key in _TERM_LINK_CACHE:
+        return _TERM_LINK_CACHE[key]
+    link = ""
+    try:
+        base = _wc_creds()[0]
+        import requests as _rq
+        r = _rq.get(f"{base}/wp-json/wp/v2/{taxonomy}",
+                    params={"slug": slug}, auth=_wp_app_auth(), timeout=20)
+        if r.ok and r.json():
+            link = r.json()[0].get("link") or ""
+    except Exception as e:  # noqa: BLE001
+        logger.warning("term link fetch failed %s/%s: %s", taxonomy, slug, e)
+    _TERM_LINK_CACHE[key] = link
+    return link
+
+
 def bot_best_category(cat_freq, min_count=0):
     """בוחר קטגוריה לקישור 'עוד באתר'. cat_freq = {slug: כמה מהמוצרים שנמצאו שייכים
     לקטגוריה}. הכלל: לא קטגוריית מותג (שם אנגלי); הקטגוריה ה**משותפת לרוב** (freq

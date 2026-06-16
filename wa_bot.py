@@ -320,13 +320,16 @@ def _new_order_results(phone, query):
             if (cat_freq and total > len(results)) else None)
     if best:
         try:
-            from urllib.parse import quote
-            url = f"https://greenmobile.co.il/?product_cat={quote(best['slug'], safe='%')}"
+            # כתובת קנונית של ארכיון הקטגוריה (בלי redirect → נטען בלחיצה ראשונה
+            # בדפדפן הפנימי של וואטסאפ). fallback ל-query string אם ה-permalink לא נמצא.
+            url = main._wc_term_link("product_cat", best["slug"]) \
+                or f"https://greenmobile.co.il/?product_cat={best['slug']}"
             lbl = best["name"]
             if brand:
-                # WC 10.x = מותגים native (taxonomy product_brand, query_var זהה).
-                # pwb-brand הישן כבר לא מסנן → השתמש ב-product_brand (AND עם product_cat).
-                url += f"&product_brand={brand}"
+                # WC 10.x = מותגים native (taxonomy product_brand). pwb-brand הישן לא
+                # מסנן. product_brand כפרמטר עושה AND עם הקטגוריה, בלי לשבור את הקנוניות.
+                sep = "&" if "?" in url else "?"
+                url += f"{sep}product_brand={brand}"
                 lbl = f"{best['name']} · {brand.upper()}"
             wa.send_cta_url(phone, f"לעיון בכל *{lbl}* באתר (וסינון):", "🔎 עוד באתר", url)
         except Exception:  # noqa: BLE001
