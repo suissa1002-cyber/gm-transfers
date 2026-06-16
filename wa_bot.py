@@ -733,23 +733,19 @@ def _repair_part_result(phone, text):
 def _send_repair_prices(phone, device, reps=None):
     """מציג מחיר רק לסוגי התיקון שנבחרו (reps) — לא את כל המחירון."""
     items = reps or list((device.get("repairs") or {}).keys())
-    lines = [f"🔧 *{device['display']}* — הצעת מחיר:\n"]
+    lines = [f"🔧 *{device['display']}* — הצעת מחיר:"]
     for rep in items:
         tiers = (device.get("repairs") or {}).get(rep) or []
         priced = sorted([t for t in tiers if t.get("price")], key=lambda t: t["price"])
         if not priced:
             continue
         ic = _REPAIR_ICON.get(rep, "🔧")
-        if len(priced) == 1 and not priced[0].get("tier"):
-            lines.append(f"{ic} {rep}: ₪{priced[0]['price']:,}")
-        else:
-            opts = " · ".join(f"{t['tier'] or 'מחיר'} ₪{t['price']:,}" for t in priced)
-            lines.append(f"{ic} {rep}: {opts}")
-    lines.append("\n💡 חילופי = חלק תואם · מקורי = חלק מקורי. המחירים כוללים עבודה.")
-    lines.append("⚠️ המחיר הוא *הערכה ראשונית* לפי התיאור בלבד. לעיתים מתגלים נזקים "
-                 "נוספים (למשל מסך שנראה שבור אך יש פגיעה גם ברכיבים מתחת) — רק בדיקת "
-                 "מעבדה מאמתת את סוג התיקון, והמחיר הסופי נקבע לאחר אבחון.")
-    lines.append("לקביעת תור או בירור — כתוב/י *נציג*.")
+        lines.append(f"\n{ic} *{rep}*:")
+        for t in priced:                     # רמה אחת בכל שורה
+            label = t.get("tier") or "מחיר"
+            lines.append(f"• {label} — ₪{t['price']:,}")
+    lines.append("\n⚠️ הערכה לפי התיאור בלבד — המחיר הסופי נקבע לאחר בדיקת מעבדה.")
+    lines.append("לתור או בירור — *נציג*.")
     wa.send_text(phone, "\n".join(lines))
     _menu_tail(phone)
     db.bot_session_set(phone, "menu", {})
