@@ -292,7 +292,9 @@ def register_recurring_jobs():
     # מסירת Cargo (נמסר) → 'נמסרה' (+חוו"ד) → +24ש 'הושלם'; ישנות → ישר 'הושלם'
     scheduler.add_job(_cargo_delivery_sync_job, "interval", minutes=30,
                       id="cargo_delivery", max_instances=1, coalesce=True)
-    if _is_stale(db.catalog_meta().get("updated_at"), hours=6):
+    # catch-up בהפעלה אם הקטלוג ישן מ-2ש' — כך דפלויים תכופים לא מרעיבים את רענון
+    # ה-6ש' ומשאירים מוצרים שחוברו לאחרונה מחוץ לקטלוג (חוסם שידור הזמנות).
+    if _is_stale(db.catalog_meta().get("updated_at"), hours=2):
         scheduler.add_job(_catalog_refresh_job, "date", id="catalog_initial",
                           run_date=datetime.now() + timedelta(seconds=150))
     else:
@@ -307,6 +309,10 @@ def register_recurring_jobs():
     scheduler.add_job(_scheduled_status_job, "interval", seconds=30, id="scheduled_status", max_instances=1)
     # קליטת חשבוניות ממייל הקופה — כל 3 שעות (לא דחוף; חוסך עומס IMAP/PDF)
     scheduler.add_job(_invoice_capture_job, "interval", hours=3, id="invoice_capture", max_instances=1)
+    # catch-up בהפעלה: דפלוי תכוף מאפס את טיימר ה-3ש' → היום אף קליטה לא רצה. ריצה
+    # קצרה אחרי כל הפעלה (אידמפוטנטית — רק חדשות) מבטיחה שלא נפספס יום שלם.
+    scheduler.add_job(_invoice_capture_job, "date", id="invoice_capture_initial",
+                      run_date=datetime.now() + timedelta(seconds=90))
     # backfill היסטוריית וואטסאפ — רץ רק בשעות שקטות (21:00-09:00 IL); resumable.
     # פייר בכל שעה בחלון; max_instances=1 → ריצה ארוכה אחת ללילה + התאוששות מ-restart.
     scheduler.add_job(_wa_backfill_job, "cron", hour="21-23,0-8", minute=10,
