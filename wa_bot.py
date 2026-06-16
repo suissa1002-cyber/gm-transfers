@@ -703,6 +703,7 @@ def _pretty_model(name: str) -> str:
     return " ".join(out)
 
 
+_TIER_LABEL = {"אולד": "חילופי OLED", "oled": "חילופי OLED"}   # 'אולד' בגיליון = חילופי OLED
 _REPAIR_ICON = {"מסך": "🖥️", "סוללה": "🔋", "שקע": "🔌", "גב": "🪟",
                 "מצלמה אחורית": "📷", "מצלמה קדמית": "🤳", "מסגרת קומפלט": "🔲",
                 "עדשות": "🔎", "אפכרסת": "🔊", "כפתור בית": "⚪", "הדלקה": "⏻",
@@ -779,7 +780,7 @@ def _send_repair_prices(phone, device, reps=None, missing=None):
         ic = _REPAIR_ICON.get(rep, "🔧")
         lines.append(f"\n{ic} *{rep}*:")
         for t in priced:                     # רמה אחת בכל שורה
-            label = t.get("tier") or "מחיר"
+            label = _TIER_LABEL.get((t.get("tier") or "").lower(), t.get("tier") or "מחיר")
             lines.append(f"• {label} — ₪{t['price']:,}")
     if missing:
         lines.append(f"\nℹ️ {' / '.join(missing)} — המחיר לדגם זה עדיין לא עודכן, "
