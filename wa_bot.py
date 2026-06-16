@@ -119,6 +119,26 @@ def handle(phone: str, text: str, mtype: str = "text", reply_id: str = "", wamid
         except Exception:  # noqa: BLE001
             pass
         return _ask_next_attr(phone)
+    if state == "order_attr" and not rid and text and (sess.get("data") or {}).get("ask_attr"):
+        # הקלדת שם הערך (כשיש >10 ולא נכנס לרשימה, או פשוט הקליד) — התאמה לכל הערכים
+        d = sess.get("data") or {}
+        attr = d.get("ask_attr")
+        allopts = d.get("all_options") or [[o, o] for o in (d.get("ask_options") or [])]
+        tl = text.strip().lower()
+        exact = [o for o in allopts if (o[1] or "").lower() == tl]
+        partial = [o for o in allopts if tl in (o[1] or "").lower() and o not in exact]
+        match = exact + partial
+        if match:
+            chosen = d.get("chosen") or {}
+            chosen[attr] = match[0][0]
+            d["chosen"] = chosen
+            for key_ in ("ask_attr", "ask_options", "all_options"):
+                d.pop(key_, None)
+            db.bot_session_set(phone, "order_attr", d)
+            return _ask_next_attr(phone)
+        wa.send_text(phone, f"לא זיהיתי '{text}' 🤔 כתוב/י את השם המדויק מהרשימה, "
+                            f"או בחר/י מהרשימה למעלה.")
+        return
 
     # ── ניתוב תפריט ──
     if rid == "status" or ("סטטוס" in low and "הזמנ" in low):
@@ -323,6 +343,7 @@ def _new_order_results(phone, query):
     else:
         hdr = f"מצאתי {total} תוצאות ל'{query}'. בחר/י לפרטים:"
     wa.send_list(phone, hdr, rows, button_label="לתוצאות", section_title="תוצאות חיפוש")
+    data["__q"] = query                  # שומרים את השאלה — לרמז צבע/וריאציה בהזמנה
     db.bot_session_set(phone, "new_pick", data)
     # כפתור "עוד באתר" — מבוסס על ה**קטגוריה המשותפת** של המוצרים שנמצאו (לא חיפוש
     # מילולי שנשבר על שאילתות עבריות שאינן בכותרות). ככה הקישור תמיד מוביל לתוצאות
@@ -383,8 +404,8 @@ def _product_card(phone, rid, data):
         logger.warning("product card image failed, text fallback: %s", e)
         wa.send_text(phone, body)
         wa.send_buttons(phone, "מה הלאה?", btns)
-    # שומרים את המוצר לשלב הרכישה
-    db.bot_session_set(phone, "viewing", {"pid": pid, "product": p})
+    # שומרים את המוצר לשלב הרכישה (כולל שאלת הלקוח — לרמז צבע/וריאציה)
+    db.bot_session_set(phone, "viewing", {"pid": pid, "product": p, "q": (data or {}).get("__q", "")})
 
 
 # ── זרימת הזמנה ותשלום בצ'אט ──
@@ -396,7 +417,8 @@ def _start_order(phone, pid, sess):
         return _order_checkout(phone, _short_name(prod.get("name"), prod.get("brand")),
                                prod.get("price"), pid, prod.get("permalink"))
     db.bot_session_set(phone, "order_attr",
-                       {"pid": pid, "product": prod, "variations": variations, "chosen": {}})
+                       {"pid": pid, "product": prod, "variations": variations, "chosen": {},
+                        "q": (sess.get("data") or {}).get("q", "")})   # רמז הצבע מהשאלה
     return _ask_next_attr(phone)
 
 
@@ -421,12 +443,26 @@ def _ask_next_attr(phone):
             if val and val not in seen:
                 seen.add(val)
                 opts.append((val, disp))
-        if len(opts) > 1:                     # יש בחירה — שואלים את הלקוח (מציגים שם)
-            rows = [(f"pick:{i}", opts[i][1][:24], "") for i in range(min(len(opts), 10))]
-            d["ask_attr"], d["ask_options"], d["chosen"] = attr, [o[0] for o in opts], chosen
+        if len(opts) > 1:                     # יש בחירה
+            ql = (d.get("q") or "").lower()
+            # רמז מהשאלה: ערך שהלקוח כבר ציין (למשל 'שחור' ב"שלט שחור") — מותאם לפי שם
+            hinted = [o for o in opts if o[1] and o[1].lower() in ql]
+            if len(hinted) == 1:              # ציין ערך יחיד וברור → בחירה אוטומטית, בלי לשאול
+                chosen[attr] = hinted[0][0]
+                d["chosen"] = chosen
+                db.bot_session_set(phone, "order_attr", d)
+                return _ask_next_attr(phone)
+            # מיון: הרמוזים קודם (כדי שלא ייחתכו ב-10 הראשונים), ואז השאר. רשימת WhatsApp ≤10.
+            ordered = hinted + [o for o in opts if o not in hinted]
+            show = ordered[:10]
+            rows = [(f"pick:{i}", show[i][1][:24], "") for i in range(len(show))]
+            d["ask_attr"], d["ask_options"], d["chosen"] = attr, [o[0] for o in show], chosen
+            d["all_options"] = [list(o) for o in opts]   # כל הערכים — לבחירה בהקלדה
             db.bot_session_set(phone, "order_attr", d)
-            wa.send_list(phone, f"בחר/י {attr} ל-{_short_name(prod.get('name'), prod.get('brand'))}:",
-                         rows, button_label="בחירה", section_title=attr[:24])
+            msg = f"בחר/י {attr} ל-{_short_name(prod.get('name'), prod.get('brand'))}:"
+            if len(opts) > 10:                # יותר מ-10 ערכים — וואטסאפ מציג רק 10
+                msg += f"\n(יש {len(opts)} אפשרויות — אם לא רואה את מה שרצית, כתוב/י את השם)"
+            wa.send_list(phone, msg, rows, button_label="בחירה", section_title=attr[:24])
             return
         if len(opts) == 1:                    # ערך יחיד — אוטומטי, בלי לשאול
             chosen[attr] = opts[0][0]
