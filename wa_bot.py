@@ -365,6 +365,25 @@ def _cart_url(parent_id, variation, parent_permalink=""):
     return f"{base}/checkout/?add-to-cart={parent_id}&quantity=1"   # מוצר פשוט
 
 
+def _short_cart_link(url, parent_permalink, variation, parent_id):
+    """מקצר את קישור הצ'קאאוט ל-TinyURL gm- (ייחודי לוריאציה, דטרמיניסטי). הקישור
+    ארוך ומכיל עברית מקודדת — כלל: קישור עם עברית מקצרים."""
+    from urllib.parse import urlsplit, quote
+    slug = urlsplit(parent_permalink or "").path.rstrip("/").split("/")[-1]
+    ascii_slug = _re.sub(r"[^a-z0-9]+", "-", _re.sub(r"[^\x00-\x7f]", "", slug.lower())).strip("-")[:30].strip("-")
+    vid = (variation or {}).get("id") or parent_id or ""
+    alias = "gm-" + "-".join(x for x in [ascii_slug, str(vid)] if x)
+    try:
+        import requests as _rq
+        r = _rq.get(f"https://tinyurl.com/api-create.php?url={quote(url, safe='')}&alias={alias}",
+                    timeout=10)
+        if r.ok and r.text.startswith("http"):
+            return r.text.strip()
+    except Exception:  # noqa: BLE001
+        pass
+    return f"https://tinyurl.com/{alias}"   # alias דטרמיניסטי — כבר קיים מריצה קודמת
+
+
 def _order_checkout(phone, label, price, parent_id, parent_permalink, variation=None):
     """סגירת הזמנה — כפתור CTA שמוסיף את המוצר (עם הצבע/נפח שנבחרו) לעגלה ומוביל
     ישר לצ'קאאוט. נפילה: עמוד המוצר. slug עברי → קישור מקוצר gm-."""
@@ -374,7 +393,7 @@ def _order_checkout(phone, label, price, parent_id, parent_permalink, variation=
     if not url:
         wa.send_text(phone, f"מעולה — {label}{pstr}! נציג יחזור אליך לסגור את ההזמנה 🙏")
         return _to_agent(phone, note=f"הזמנה: {label}")
-    link = _short_link(url)
+    link = _short_cart_link(url, parent_permalink, variation, parent_id)
     body = (f"מעולה — {label}{pstr}! 🛒\n\n"
             f"המוצר מחכה לך בעגלה — לחצ/י להשלמת ההזמנה (פרטים + עד 12 תשלומים + "
             f"תשלום מאובטח).\nאו כתוב/י *נציג* ואחד מהצוות יסגור איתך 🙏")
