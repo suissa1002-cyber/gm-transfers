@@ -3414,9 +3414,61 @@ def bot_product_search(q: str, limit: int = 8) -> list:
         scored.append((sc, {"id": p.get("id"), "name": p.get("name") or "",
                             "price": p.get("price"), "permalink": p.get("permalink") or "",
                             "sku": p.get("sku") or "", "type": p.get("type"),
-                            "image": img, "stock_status": p.get("stock_status")}))
+                            "image": img, "stock_status": p.get("stock_status"),
+                            # קטגוריות — לקישור "עוד באתר" חכם (לפי קטגוריית המוצרים שנמצאו)
+                            "cats": [{"slug": c.get("slug"), "name": c.get("name")}
+                                     for c in (p.get("categories") or []) if c.get("slug")]}))
     scored.sort(key=lambda x: x[0], reverse=True)
     return [p for _sc, p in scored][:limit]
+
+
+_CATS_CACHE = {"at": 0.0, "data": None}
+
+
+def _wc_categories():
+    """כל קטגוריות המוצרים (slug→{name,count}), cache שעה — לבחירת קטגוריה לקישור."""
+    import time as _t
+    if _CATS_CACHE["data"] is not None and (_t.time() - _CATS_CACHE["at"] < 3600):
+        return _CATS_CACHE["data"]
+    base, k, s = _wc_creds()
+    import requests as _rq
+    out, page = {}, 1
+    try:
+        while page <= 12:
+            r = _rq.get(f"{base}/wp-json/wc/v3/products/categories",
+                        params={"per_page": 100, "page": page}, auth=(k, s), timeout=25)
+            js = r.json() if r.ok else []
+            for c in js:
+                out[c.get("slug")] = {"name": c.get("name") or "", "count": c.get("count") or 0}
+            if len(js) < 100:
+                break
+            page += 1
+        _CATS_CACHE.update(at=_t.time(), data=out)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("categories fetch failed: %s", e)
+    return out
+
+
+def bot_best_category(slugs, min_count=0):
+    """מבין הקטגוריות של המוצרים שנמצאו — הטובה ביותר לקישור 'עוד באתר': לא קטגוריית
+    מותג (שם אנגלי), והכי **ספציפית** (count הנמוך ביותר) עם יותר מ-min_count מוצרים.
+    מחזיר {slug, name, count} או None."""
+    cats = _wc_categories()
+    cand = []
+    for sl in set(slugs or []):
+        info = cats.get(sl)
+        if not info:
+            continue
+        nm = info.get("name") or ""
+        if nm.isascii():          # קטגוריות מותג/אנגלית (AMAZON, Xiaomi...) — מדלגים
+            continue
+        cnt = info.get("count") or 0
+        if cnt > min_count:
+            cand.append((cnt, sl, nm))
+    if not cand:
+        return None
+    cand.sort()                   # count נמוך = ספציפי יותר
+    return {"slug": cand[0][1], "name": cand[0][2], "count": cand[0][0]}
 
 
 # ── חשבוניות לקוח (נקלטות ממייל הקופה; לשליחה חוזרת ללקוח בוואטסאפ) ──

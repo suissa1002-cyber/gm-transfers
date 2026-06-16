@@ -300,14 +300,18 @@ def _new_order_results(phone, query):
         hdr = f"מצאתי {total} תוצאות ל'{query}'. בחר/י לפרטים:"
     wa.send_list(phone, hdr, rows, button_label="לתוצאות", section_title="תוצאות חיפוש")
     db.bot_session_set(phone, "new_pick", data)
-    # כפתור "כל התוצאות באתר" — רק כשיש באמת יותר ממה שהוצג (אחרת אין טעם, וגם חיפוש
-    # האתר המילולי לא מוצא שאילתות צרות שאינן בכותרות בעברית).
-    if total > len(results):
+    # כפתור "עוד באתר" — מבוסס על ה**קטגוריה המשותפת** של המוצרים שנמצאו (לא חיפוש
+    # מילולי שנשבר על שאילתות עבריות שאינן בכותרות). ככה הקישור תמיד מוביל לתוצאות
+    # אמיתיות וניתנות לסינון, גם אם הלקוח כתב מונח שלא קיים מילולית באתר.
+    cand_slugs = {c.get("slug") for p in (all_results or [])
+                  for c in (p.get("cats") or []) if c.get("slug")}
+    best = main.bot_best_category(cand_slugs, min_count=len(results)) if cand_slugs else None
+    if best:
         try:
             from urllib.parse import quote
-            url = f"https://greenmobile.co.il/?s={quote(query or '')}&post_type=product"
-            wa.send_cta_url(phone, "רוצה לראות את *כל* התוצאות ולסנן לפי מחיר/מותג/תכונות?",
-                            "🔎 כל התוצאות באתר", url)
+            url = f"https://greenmobile.co.il/?product_cat={quote(best['slug'], safe='%')}"
+            wa.send_cta_url(phone, f"לעיון בכל קטגוריית *{best['name']}* באתר וסינון "
+                                   f"(מחיר/מותג/תכונות):", "🔎 עוד באתר", url)
         except Exception:  # noqa: BLE001
             pass
 
