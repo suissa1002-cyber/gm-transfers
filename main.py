@@ -2397,6 +2397,10 @@ def bridge_answer(body: UriAnswer, x_bridge_key: Optional[str] = Header(None)):
             ans = body.answer or ""
             m = _re.search(r"\[DRAFT\]\s*([\s\S]*?)\s*\[/DRAFT\]", ans)
             ans = (m.group(1) if m else _re.sub(r"\[/?DRAFT\]", "", ans)).strip()
+            # 🔗 / טקסט צמוד ל-URL בהקשר RTL שובר את הלחיצוּת בוואטסאפ — מנקים:
+            # מסירים 🔗 שלפני קישור, ומכריחים כל URL לשורה נקייה משלו.
+            ans = _re.sub(r"[ \t]*🔗️?[ \t]*(?=https?://)", "", ans)
+            ans = _re.sub(r"(?<=\S)[ \t]+(https?://\S+)", r"\n\1", ans)
             if ans:
                 import wa
                 wa.send_text(job["phone"], ans)
