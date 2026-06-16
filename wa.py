@@ -476,7 +476,8 @@ def _meta_send_text(phone: str, text: str) -> str:
                  headers={"Authorization": f"Bearer {_os.getenv('META_WA_TOKEN').strip()}",
                           "Content-Type": "application/json"},
                  json={"messaging_product": "whatsapp", "to": phone, "type": "text",
-                       "text": {"body": text}}, timeout=30)
+                       # preview_url=true — חובה כדי שקישורים בטקסט יהיו לחיצים בוואטסאפ
+                       "text": {"body": text, "preview_url": True}}, timeout=30)
     if r.status_code not in (200, 201):
         raise WaError(f"Meta text send failed ({r.status_code}): {r.text[:200]}")
     return ((r.json().get("messages") or [{}])[0]).get("id", "")
