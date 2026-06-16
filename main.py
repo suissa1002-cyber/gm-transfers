@@ -289,6 +289,9 @@ def register_recurring_jobs():
     # קידום ל'בהפצה' להזמנות עם משלוח Cargo (גם תוויות שהודפסו מחוץ ל-GreenOS)
     scheduler.add_job(_cargo_shipping_advance_job, "interval", minutes=3,
                       id="cargo_shipping_advance", max_instances=1, coalesce=True)
+    # מסירת Cargo (נמסר) → 'נמסרה' (+חוו"ד) → +24ש 'הושלם'; ישנות → ישר 'הושלם'
+    scheduler.add_job(_cargo_delivery_sync_job, "interval", minutes=30,
+                      id="cargo_delivery", max_instances=1, coalesce=True)
     if _is_stale(db.catalog_meta().get("updated_at"), hours=6):
         scheduler.add_job(_catalog_refresh_job, "date", id="catalog_initial",
                           run_date=datetime.now() + timedelta(seconds=150))
@@ -3424,6 +3427,61 @@ def _wp_app_auth():
 class CargoCreateIn(BaseModel):
     pickup: bool = False        # נק׳ איסוף (shipping_type=2)
     double: bool = False        # משלוח כפול
+
+
+def _cargo_delivery_sync_job():
+    """סנכרון מסירת Cargo → סטטוס הזמנה (רץ על ה-worker כל 30 דק'):
+    הזמנות ב-'shipping-stage' שה-Cargo סימן נמסר (status.number==3):
+    • נמסרו לאחרונה (date_modified ≤ 2 ימים) → 'delivered' — מפעיל את הודעת חוות
+      הדעת ללקוח (זרימה קיימת) — ואז תזמון +24ש → 'completed'.
+    • נמסרו מזמן (catch-up של ישנות) → ישר 'completed', בלי להציף חוו"ד ללקוחות ישנים.
+    אידמפוטנטי: ברגע ששונה הסטטוס ההזמנה יוצאת מ-shipping-stage ולא נסרקת שוב."""
+    try:
+        from datetime import datetime, timedelta
+        from zoneinfo import ZoneInfo
+        import requests as _rq
+        base, k, s = _wc_creds()
+        r = _rq.get(f"{base}/wp-json/wc/v3/orders",
+                    params={"status": "shipping-stage", "per_page": 100,
+                            "_fields": "id,number,date_modified_gmt,meta_data"},
+                    auth=(k, s), timeout=40)
+        if not r.ok:
+            return
+        now_utc = datetime.utcnow()
+        tz = ZoneInfo(cfg.TZ)
+        for o in (r.json() or []):
+            try:
+                meta = {m.get("key"): m.get("value") for m in (o.get("meta_data") or [])}
+                cs = _cargo_status(meta)
+                if not cs or int(cs.get("num") or 0) != 3:     # 3 = נמסר
+                    continue
+                oid, onum = o.get("id"), o.get("number")
+                recent = False
+                try:
+                    dmt = datetime.fromisoformat((o.get("date_modified_gmt") or "").replace("Z", ""))
+                    recent = (now_utc - dmt).total_seconds() < 2 * 86400
+                except Exception:  # noqa: BLE001
+                    pass
+                if recent:
+                    pr = _rq.put(f"{base}/wp-json/wc/v3/orders/{oid}",
+                                 json={"status": "delivered"}, auth=(k, s), timeout=30)
+                    if not pr.ok:
+                        logger.warning("cargo-delivery delivered failed %s: %s", onum, pr.text[:120])
+                        continue
+                    run_at = (datetime.now(tz) + timedelta(hours=24)).isoformat()
+                    db.sched_status_add(oid, "completed", run_at, order_number=str(onum),
+                                        status_label="הושלם", created_by="cargo-delivery-auto")
+                    logger.info("cargo-delivery: %s -> delivered (+24h completed)", onum)
+                    _tg_admin(f"📦 <b>הזמנה נמסרה</b>\n#{onum} → נמסרה (חוו\"ד ללקוח). הושלם בעוד 24ש.")
+                else:
+                    pr = _rq.put(f"{base}/wp-json/wc/v3/orders/{oid}",
+                                 json={"status": "completed"}, auth=(k, s), timeout=30)
+                    if pr.ok:
+                        logger.info("cargo-delivery: %s -> completed (ישן, בלי חוו\"ד)", onum)
+            except Exception as e:  # noqa: BLE001
+                logger.warning("cargo-delivery order %s: %s", o.get("number"), e)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("cargo delivery sync error: %s", e)
 
 
 def _advance_to_shipping(oid: int):
