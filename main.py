@@ -3334,7 +3334,12 @@ _REPAIR_CACHE = {"at": 0.0, "data": None}
 _REPAIR_HE = {"אייפון": "iphone", "גלקסי": "galaxy", "סמסונג": "samsung",
               "אייפד": "ipad", "וואטש": "watch", "שעון": "watch", "פרו": "pro",
               "מקס": "max", "מאקס": "max", "מיני": "mini", "פלוס": "plus",
-              "אולטרה": "ultra", "פלוו": "plus"}
+              "אולטרה": "ultra", "פלוו": "plus", "שיאומי": "xiaomi", "שאומי": "xiaomi",
+              "רדמי": "redmi", " רדמי": "redmi", "פוקו": "poco", "נוט": "note",
+              "נוט ": "note "}
+# מילות מותג/יצרן — לא חובה שיופיעו במפתח הדגם (הרבה שורות בגיליון בלי קידומת מותג)
+_REPAIR_BRAND_W = {"iphone", "ipad", "galaxy", "samsung", "xiaomi", "redmi",
+                   "poco", "pocophone", "apple", "mi"}
 
 
 def _repair_prices():
@@ -3371,12 +3376,16 @@ def bot_repair_quote(query: str) -> list:
     q_norm = " ".join(qwords)
     if q_norm in devices:                    # התאמה מדויקת = הדגם הבסיסי (לא הפרו)
         return [devices[q_norm]]
-    matches = []
-    for k, v in devices.items():
-        if all(w in k for w in qwords):      # כל מילות השאילתה במפתח הדגם
-            matches.append((len(k), v))
-    matches.sort(key=lambda x: x[0])         # הדגם הקצר/מדויק קודם
-    return [v for _l, v in matches[:9]]
+
+    def _match(words):
+        return sorted((k for k, v in devices.items() if words and all(w in k for w in words)),
+                      key=len)
+    keys = _match(qwords)
+    if not keys:                             # נפילה: הרבה שורות בגיליון בלי קידומת מותג
+        core = [w for w in qwords if w not in _REPAIR_BRAND_W]   # ("note 12" בלי "xiaomi")
+        if core and core != qwords:
+            keys = _match(core)
+    return [devices[k] for k in keys[:9]]
 
 
 _REPAIR_PART_SYN = {
