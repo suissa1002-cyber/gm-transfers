@@ -357,12 +357,15 @@ def _cart_url(parent_id, variation, parent_permalink=""):
         base = f"{sp.scheme}://{sp.netloc}"
     if not (base and parent_id):
         return parent_permalink or ""
+    # עמוד הצ'קאאוט באתר הוא slug עברי (/מעבר-לתשלום/, page id 16) — /checkout/ נותן
+    # 404. מפנים לפי page_id (עמיד לשינוי slug). add-to-cart מעובד בכל מקרה.
+    pg = os.getenv("WC_CHECKOUT_PAGE_ID", "16")
     if variation and variation.get("id") and variation.get("permalink"):
         q = urlsplit(variation["permalink"]).query   # attribute_pa_...=...&...
-        url = (f"{base}/checkout/?add-to-cart={parent_id}"
+        url = (f"{base}/?page_id={pg}&add-to-cart={parent_id}"
                f"&variation_id={variation['id']}&quantity=1")
         return url + (f"&{q}" if q else "")
-    return f"{base}/checkout/?add-to-cart={parent_id}&quantity=1"   # מוצר פשוט
+    return f"{base}/?page_id={pg}&add-to-cart={parent_id}&quantity=1"   # מוצר פשוט
 
 
 def _short_cart_link(url, parent_permalink, variation, parent_id):
@@ -372,7 +375,9 @@ def _short_cart_link(url, parent_permalink, variation, parent_id):
     slug = urlsplit(parent_permalink or "").path.rstrip("/").split("/")[-1]
     ascii_slug = _re.sub(r"[^a-z0-9]+", "-", _re.sub(r"[^\x00-\x7f]", "", slug.lower())).strip("-")[:30].strip("-")
     vid = (variation or {}).get("id") or parent_id or ""
-    alias = "gm-" + "-".join(x for x in [ascii_slug, str(vid)] if x)
+    # 'co' = סכמת צ'קאאוט מתוקנת (page_id). alias של TinyURL לא ניתן לעדכון, ולכן
+    # סיומת חדשה כשמשנים את כתובת היעד (אחרת הקישור הישן תקוע על /checkout/ השבור).
+    alias = "gm-" + "-".join(x for x in [ascii_slug, "co" + str(vid)] if x)
     try:
         import requests as _rq
         r = _rq.get(f"https://tinyurl.com/api-create.php?url={quote(url, safe='')}&alias={alias}",
