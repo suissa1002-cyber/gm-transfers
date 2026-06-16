@@ -2384,7 +2384,9 @@ def bridge_variations(product_id: int, x_bridge_key: Optional[str] = Header(None
     vs = bot_get_variations(product_id) or []
     return {"variations": [{"storage": v.get("storage"), "color": v.get("color"),
                             "price": v.get("price"),
-                            "in_stock": v.get("stock") == "instock"} for v in vs]}
+                            "in_stock": v.get("stock") == "instock",
+                            "url": v.get("permalink") or ""}   # קישור ישיר לוריאציה (slug צבע)
+                           for v in vs]}
 
 
 _ATTR_TERMS_CACHE = {"at": 0.0, "data": None}
