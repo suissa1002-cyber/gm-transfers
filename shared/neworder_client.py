@@ -280,6 +280,21 @@ class NewOrderClient:
         """פרטי מסמך בודד לפי מזהה חשבונית."""
         return self._get(f"/api/Documents/{invoice_id}")
 
+    # ── Fixes (תיקוני מעבדה) ──────────────────────────────────────────
+    def get_fixes(self, branch_id: Optional[int] = None, from_date: Optional[str] = None,
+                  to_date: Optional[str] = None, status: int = -1) -> list[dict]:
+        """תיקוני מעבדה (/api/Fixes). status=-1 לכל הסטטוסים. כל תיקון: fixId,
+        statusName, deviceInfo (model/color/serial), creationDate/fixedDate/
+        deliveredDate, customer{name,phoneNumber}, estimatedCharge/invoiceCharge."""
+        return self._get("/api/Fixes", {
+            "branchId": branch_id, "startDate": _fmt_date(from_date),
+            "endDate": _fmt_date(to_date), "status": status,
+        })
+
+    def get_fix_items(self, fix_id: Union[str, int]) -> list[dict]:
+        """פריטי תיקון ספציפי (/api/Fixes/items)."""
+        return self._get("/api/Fixes/items", {"fixId": fix_id})
+
     # ── Meta ──────────────────────────────────────────────────────────
     def get_schema(self) -> Any:
         """סכמת מטא-דאטה של ה-API."""

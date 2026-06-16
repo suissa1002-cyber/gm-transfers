@@ -34,7 +34,7 @@ MENU = [
     ("branches", "📍 סניפים ושעות", "כתובות ושעות פתיחה"),
     ("shipping", "🚚 משלוחים", "אפשרויות ומחירים"),
     ("new",      "🛒 הזמנה חדשה", "מוצרים, מחירים וזמינות"),
-    ("lab",      "🔧 מעבדה / תיקון", "הצעת מחיר לתיקון"),
+    ("lab",      "🔧 מעבדה / תיקון", "הצעת מחיר / בדיקת סטטוס תיקון"),
     ("agent",    "👤 נציג אנושי", "מעבר לשירות אנושי"),
 ]
 _TITLE2ID = {t: rid for rid, t, _ in MENU}
@@ -97,6 +97,8 @@ def handle(phone: str, text: str, mtype: str = "text", reply_id: str = "", wamid
     # ── זרימות תלויות-מצב ──
     if state == "await_order_number" and not rid:
         return _order_status(phone, text)
+    if state == "await_repair_id" and not rid and text:
+        return _repair_status(phone, fix_id="".join(ch for ch in text if ch.isdigit()))
     if state == "new_search" and not rid:
         return _new_order_results(phone, text)
     if state == "new_pick" and rid.startswith("prod:"):
@@ -157,7 +159,14 @@ def handle(phone: str, text: str, mtype: str = "text", reply_id: str = "", wamid
         db.bot_session_set(phone, "new_search", {})
         return
     if rid == "lab":
-        return _to_agent(phone, note="פנייה למעבדה")
+        wa.send_buttons(phone, "🔧 *מעבדה / תיקון*\nבמה אפשר לעזור?",
+                        [("repair_status", "🔍 סטטוס תיקון"),
+                         ("repair_quote", "💰 הצעת מחיר"), ("menu", "↩️ תפריט")])
+        return
+    if rid == "repair_quote":
+        return _to_agent(phone, note="הצעת מחיר לתיקון")
+    if rid == "repair_status":
+        return _repair_status(phone)
 
     # ── טקסט חופשי → שאלה שיחתית לאורי, אחרת חיפוש מוצר (שמפיל לאורי אם ריק) ──
     if low and low not in _GREETINGS and len(low) >= 3:
@@ -607,6 +616,44 @@ def _to_agent(phone, note: str = ""):
         main._tg_admin(f"👤 <b>לקוח ביקש נציג (בוט native)</b>\n{phone}{(' · ' + note) if note else ''}")
     except Exception:  # noqa: BLE001
         pass
+
+
+_REPAIR_EMOJI = {"ממתין": "⏳", "תוקן": "✅", "נמסר ללקוח": "📦",
+                 "נשלח למעבדה חיצונית": "🔧", "נישלח לאחריות": "🛡️", "מושבת": "🚫"}
+
+
+def _repair_status(phone, fix_id=None):
+    """סטטוס תיקון מ-NewOrder (/api/Fixes) — לפי טלפון הלקוח, או מספר תיקון שהוקלד."""
+    import main
+    results = main.bot_repair_status(phone=("" if fix_id else phone), fix_id=fix_id)
+    if not results:
+        if fix_id:
+            wa.send_text(phone, f"לא מצאתי תיקון מספר {fix_id} 🤔\n"
+                                f"בדוק/י את המספר, או כתוב/י *נציג* לבירור.")
+        else:                              # לא נמצא לפי הטלפון → לבקש מספר תיקון
+            wa.send_text(phone, "לא מצאתי תיקון על המספר שלך 🤔\n"
+                                "אם יש *מספר תיקון* (מהקבלה) — כתוב/י אותו, או *נציג* לבירור.")
+            db.bot_session_set(phone, "await_repair_id", {})
+        return
+    _d = lambda x: (x or "").split(" ")[0]   # תאריך בלבד (בלי שעה)
+    blocks = []
+    for r in results[:5]:
+        em = _REPAIR_EMOJI.get(r["status"], "🔧")
+        seg = [f"{em} *{r['device'] or 'מכשיר'}* — תיקון #{r['fixId']}",
+               f"סטטוס: *{r['status']}*"]
+        if r.get("created"):
+            seg.append(f"📅 התקבל: {_d(r['created'])}")
+        if r["status"] == "נמסר ללקוח" and r.get("delivered"):
+            seg.append(f"📦 נמסר: {_d(r['delivered'])}")
+        elif r.get("estimated"):
+            seg.append(f"💰 הערכת עלות: ₪{r['estimated']}")
+        blocks.append("\n".join(seg))
+    msg = "\n\n".join(blocks)
+    if len(results) > 5:
+        msg += f"\n\n(ועוד {len(results) - 5} תיקונים — לפרטים פנה/י לנציג)"
+    wa.send_text(phone, msg)
+    _menu_tail(phone)
+    db.bot_session_set(phone, "menu", {})
 
 
 def _order_status(phone, raw_num: str):

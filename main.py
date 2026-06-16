@@ -3290,6 +3290,46 @@ def bot_get_variations(product_id) -> list:
     return out
 
 
+def bot_repair_status(phone: str = "", fix_id=None) -> list:
+    """סטטוס תיקוני מעבדה ללקוח — מ-NewOrder /api/Fixes. זיהוי לפי טלפון הלקוח
+    (customer.phoneNumber) או מספר תיקון (fixId). מחזיר רשימת תיקונים תואמים."""
+    import poller
+    try:
+        res = poller.client().get_fixes(status=-1)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("get_fixes failed: %s", e)
+        return []
+    fixes = res if isinstance(res, list) else (res.get("data") or res.get("fixes") or [])
+
+    def _norm(p):
+        d = "".join(ch for ch in str(p or "") if ch.isdigit())
+        return d[-9:] if len(d) >= 9 else d
+    target = _norm(phone)
+    out = []
+    for f in (fixes or []):
+        if not isinstance(f, dict):
+            continue
+        cust = f.get("customer") or {}
+        if fix_id is not None:
+            if str(f.get("fixId")) != str(fix_id):
+                continue
+        elif not (target and _norm(cust.get("phoneNumber")) == target):
+            continue
+        dev = f.get("deviceInfo") or {}
+        _model = (dev.get("model") or "").strip()
+        _color = (dev.get("color") or "").strip()
+        _device = _model if (not _color or _color in _model) else f"{_model} {_color}".strip()
+        out.append({
+            "fixId": f.get("fixId"), "status": (f.get("statusName") or "").strip(),
+            "device": _device,
+            "created": f.get("creationDate"), "fixed": f.get("fixedDate"),
+            "delivered": f.get("deliveredDate"), "name": (cust.get("name") or "").strip(),
+            "estimated": f.get("estimatedCharge"), "invoice": f.get("invoiceCharge"),
+        })
+    out.sort(key=lambda r: r.get("fixId") or 0, reverse=True)   # אחרון קודם
+    return out
+
+
 def bot_create_order(product_id, variation_id, price, name, phone) -> dict:
     """יוצר הזמנת WC (pending) + קישור תשלום PayPlus — לבוט ה-native. מחזיר
     {number, total, pay_link}. מקושר ל-IPN דרך payplus_pru:."""
