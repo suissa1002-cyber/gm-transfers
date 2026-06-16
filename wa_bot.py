@@ -68,6 +68,12 @@ def handle(phone: str, text: str, mtype: str = "text", reply_id: str = ""):
     rid = reply_id or _TITLE2ID.get(text, "")   # id מהבחירה, או מיפוי מהכותרת
     low = text
 
+    # ── יציאה גלובלית מכל מצב (גם מתוך חיפוש/הזמנה שבולעים טקסט) ──
+    if rid == "menu" or low in _ESCAPE:
+        return _menu(phone)
+    if rid == "agent" or any(w in low for w in ["נציג", "אנושי", "בנאדם", "מישהו"]):
+        return _to_agent(phone)
+
     # ── זרימות תלויות-מצב ──
     if state == "await_order_number" and not rid:
         return _order_status(phone, text)
@@ -94,7 +100,7 @@ def handle(phone: str, text: str, mtype: str = "text", reply_id: str = ""):
 
     # ── ניתוב תפריט ──
     if rid == "status" or ("סטטוס" in low and "הזמנ" in low):
-        wa.send_text(phone, "מה מספר ההזמנה? (ספרות בלבד)")
+        wa.send_text(phone, "מה מספר ההזמנה? (ספרות בלבד)\nאו כתוב/י *תפריט* לחזרה.")
         db.bot_session_set(phone, "await_order_number", {})
         return
     if rid == "branches" or "סניפ" in low:
@@ -104,13 +110,10 @@ def handle(phone: str, text: str, mtype: str = "text", reply_id: str = ""):
         wa.send_text(phone, SHIPPING)
         return _menu_tail(phone)
     if rid == "new" or rid == "search_again":
-        wa.send_text(phone, "מה שם המוצר שאתה מחפש? 🔍\n(למשל: אייפון 17 פרו, גלקסי S25, אוזניות JBL)")
+        wa.send_text(phone, "מה שם המוצר שאתה מחפש? 🔍\n(למשל: אייפון 17 פרו, גלקסי S25, אוזניות JBL)"
+                            "\nאו כתוב/י *תפריט* לחזרה.")
         db.bot_session_set(phone, "new_search", {})
         return
-    if rid == "menu":
-        return _menu(phone)
-    if rid == "agent" or any(w in low for w in ["נציג", "אנושי", "בנאדם", "מישהו"]):
-        return _to_agent(phone)
     if rid == "lab":
         return _to_agent(phone, note="פנייה למעבדה")
 
@@ -134,6 +137,10 @@ def handle(phone: str, text: str, mtype: str = "text", reply_id: str = ""):
 _GREETINGS = {"היי", "שלום", "הי", "הייי", "hello", "hi", "hey", "בוקר טוב",
               "ערב טוב", "צהריים טובים", "מה קורה", "מה נשמע", "שלום רב", "אהלן"}
 
+# מילות יציאה גלובליות — חוזרות לתפריט מכל מצב (גם מתוך חיפוש/הזמנה)
+_ESCAPE = {"תפריט", "menu", "חזור", "חזרה", "ביטול", "בטל", "התחל", "מהתחלה",
+           "start", "צא", "יציאה", "ראשי", "עצור", "די"}
+
 
 def _uri_alive() -> bool:
     """האם גשר אורי על המק חי (heartbeat מ-2.5 הדקות האחרונות)."""
@@ -150,14 +157,24 @@ def _uri_alive() -> bool:
 
 
 def _ask_uri(phone, question) -> bool:
-    """מנתב שאלה לאורי (תשובה תישלח אוטומטית כשתחזור). False אם הגשר לא זמין."""
+    """מנתב שאלה לאורי (תשובה תישלח אוטומטית כשתחזור). False אם הגשר לא זמין.
+    מצרף מוצרים מועמדים מהחיפוש כדי שאורי יענה מהר — בלי סבב כלים."""
     if not _uri_alive():
         return False
-    import db
+    import main
     wa.send_text(phone, "רגע, בודק/ת עבורך 🔍")
-    q = ("[שאלת לקוח בוואטסאפ — נסח תשובה ישירה וקצרה ללקוח, בשפת הלקוח. השתמש "
-         "בחיפוש מוצרים/מלאי/מחירים חיים מהאתר והקופה. אל תבטיח מה שאין. אם אינך "
-         "בטוח — המלץ על מעבר לנציג.]\n\n" + (question or ""))
+    q = question or ""
+    try:
+        cands = main.bot_product_search(question, limit=6) or []
+    except Exception:  # noqa: BLE001
+        cands = []
+    if cands:
+        lines = "\n".join(
+            f"- {c.get('name')} | ₪{c.get('price')} | "
+            f"{'במלאי' if c.get('stock_status') == 'instock' else 'אזל'} | {c.get('permalink')}"
+            for c in cands)
+        q += ("\n\n[מוצרים מועמדים (כבר חיפשתי באתר — השתמש באלה, אל תחפש שוב "
+              f"אלא אם אף אחד לא מתאים):\n{lines}]")
     db.uri_job_add(phone, q, source="bot")
     return True
 
@@ -281,19 +298,46 @@ def _show_storage(phone, pid, prod, variations, color):
     return _order_checkout(phone, label, v.get("price"), prod.get("permalink"))
 
 
+def _short_link(url: str) -> str:
+    """slug עברי / תווים לא-אנגליים בקישור → TinyURL ‏gm-<אנגלית מתוך ה-slug>
+    (קישור עברי ארוך נראה שבור/חשוד בוואטסאפ). slug אנגלי תקין → מוחזר כמו שהוא."""
+    try:
+        from urllib.parse import urlsplit, quote, unquote
+        path = unquote(urlsplit(url).path)
+        if path.isascii():                       # slug אנגלי — קישור ישיר
+            return url
+        slug = path.rstrip("/").split("/")[-1]
+        ascii_part = _re.sub(r"[^a-z0-9]+", "-", _re.sub(r"[^\x00-\x7f]", "", slug.lower())).strip("-")
+        alias = "gm-" + (ascii_part[:40].strip("-") or "p")
+        try:
+            import requests as _rq
+            r = _rq.get(f"https://tinyurl.com/api-create.php?url={quote(url, safe='')}&alias={alias}",
+                        timeout=10)
+            if r.ok and r.text.startswith("http"):
+                return r.text.strip()
+        except Exception:  # noqa: BLE001
+            pass
+        return f"https://tinyurl.com/{alias}"     # alias כבר קיים מריצה קודמת — דטרמיניסטי
+    except Exception:  # noqa: BLE001
+        return url
+
+
 def _order_checkout(phone, label, price, permalink):
-    """סגירת הזמנה — מפנה לצ'קאאוט באתר (כל השדות + תשלומים + תשלום מאובטח).
-    מחליף את איסוף-השם השביר. (שדרוג עתידי: אורי אוסף הכל בצ'אט.)"""
+    """סגירת הזמנה — כפתור CTA שפותח את עמוד המוצר באתר (כל השדות + תשלומים +
+    תשלום מאובטח). slug עברי → קישור מקוצר gm-. מחליף את איסוף-השם השביר."""
     pstr = f" (₪{int(float(price)):,})" if price not in (None, "", "0") else ""
     db.bot_session_clear(phone)
-    if permalink:
-        wa.send_text(phone,
-                     f"מעולה — {label}{pstr}! 🛒\n\n"
-                     f"להשלמת ההזמנה (פרטים מלאים + עד 12 תשלומים + תשלום מאובטח):\n{permalink}\n\n"
-                     f"או כתוב/י *נציג* ואחד מהצוות יסגור איתך 🙏")
-    else:
+    if not permalink:
         wa.send_text(phone, f"מעולה — {label}{pstr}! נציג יחזור אליך לסגור את ההזמנה 🙏")
         return _to_agent(phone, note=f"הזמנה: {label}")
+    link = _short_link(permalink)
+    body = (f"מעולה — {label}{pstr}! 🛒\n\n"
+            f"להשלמת ההזמנה (פרטים מלאים + עד 12 תשלומים + תשלום מאובטח) — לחצ/י על הכפתור.\n"
+            f"או כתוב/י *נציג* ואחד מהצוות יסגור איתך 🙏")
+    try:
+        wa.send_cta_url(phone, body, "🛒 להשלמת ההזמנה", link)
+    except Exception:  # noqa: BLE001 — נפילה לקישור-טקסט אם CTA נכשל
+        wa.send_text(phone, f"{body}\n\n{link}")
 
 
 def _ask_name(phone, order):
