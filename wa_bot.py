@@ -101,6 +101,8 @@ def handle(phone: str, text: str, mtype: str = "text", reply_id: str = "", wamid
         return _repair_status(phone, fix_id="".join(ch for ch in text if ch.isdigit()))
     if state == "await_repair_model" and not rid and text:
         return _repair_quote_result(phone, text)
+    if state == "await_repair_part" and not rid and text:
+        return _repair_part_result(phone, text)
     if state == "new_search" and not rid:
         return _new_order_results(phone, text)
     if state == "new_pick" and rid.startswith("prod:"):
@@ -177,7 +179,14 @@ def handle(phone: str, text: str, mtype: str = "text", reply_id: str = "", wamid
         idx = int(rid.split(":", 1)[1]) if rid.split(":", 1)[1].isdigit() else -1
         cands = d.get("cands") or []
         if 0 <= idx < len(cands):
-            return _send_repair_prices(phone, cands[idx])
+            return _repair_ask_part(phone, cands[idx])
+        return _menu(phone)
+    if rid.startswith("rpart:") and state == "await_repair_part":
+        d = (sess.get("data") or {})
+        parts = d.get("parts") or []
+        idx = int(rid.split(":", 1)[1]) if rid.split(":", 1)[1].isdigit() else -1
+        if d.get("device") and 0 <= idx < len(parts):
+            return _send_repair_prices(phone, d["device"], [parts[idx]])
         return _menu(phone)
 
     # ── טקסט חופשי → שאלה שיחתית לאורי, אחרת חיפוש מוצר (שמפיל לאורי אם ריק) ──
@@ -675,7 +684,7 @@ _REPAIR_ICON = {"מסך": "🖥️", "סוללה": "🔋", "שקע": "🔌", "ג
 
 
 def _repair_quote_result(phone, text):
-    """אחרי שהלקוח כתב דגם — מציג מחיר, או רשימת דגמים אם רב-משמעי."""
+    """אחרי שהלקוח כתב דגם — עובר לשאלת מהות התיקון, או רשימת דגמים אם רב-משמעי."""
     import main
     cands = main.bot_repair_quote(text)
     if not cands:
@@ -684,17 +693,49 @@ def _repair_quote_result(phone, text):
                             f"או *נציג* לבירור.")
         return
     if len(cands) == 1:
-        return _send_repair_prices(phone, cands[0])
+        return _repair_ask_part(phone, cands[0])
     rows = [(f"rmodel:{i}", cands[i]["display"][:24], "") for i in range(min(len(cands), 9))]
     db.bot_session_set(phone, "await_repair_model", {"cands": cands})
     wa.send_list(phone, "נמצאו כמה דגמים — איזה מהם?", rows,
                  button_label="בחר/י דגם", section_title="דגמים")
 
 
-def _send_repair_prices(phone, device):
-    """מציג את מחירון התיקון של דגם — כל סוג תיקון + רמות (זול→יקר)."""
-    lines = [f"🔧 *{device['display']}* — מחירון תיקון:\n"]
-    for rep, tiers in (device.get("repairs") or {}).items():
+def _repair_ask_part(phone, device):
+    """אחרי שזוהה הדגם — שואל מה צריך לתקן (לא מציג את כל המחירון)."""
+    db.bot_session_set(phone, "await_repair_part", {"device": device})
+    wa.send_text(phone, f"📱 *{device['display']}* — מה צריך לתקן?\n"
+                        f"(למשל: מסך, סוללה, שקע טעינה, גב, מצלמה)")
+
+
+def _repair_part_result(phone, text):
+    """מזהה את מהות התיקון שהלקוח כתב ומציג רק את הסעיפים הרלוונטיים."""
+    import main
+    d = (db.bot_session_get(phone).get("data") or {})
+    device = d.get("device")
+    if not device:
+        return _menu(phone)
+    matched = main.bot_repair_match_part(device, text)
+    if matched:
+        return _send_repair_prices(phone, device, matched)
+    # לא זוהה — מציג את סוגי התיקון הזמינים לדגם כרשימה ללחיצה
+    parts = [r for r, t in (device.get("repairs") or {}).items()
+             if any(x.get("price") for x in t)]
+    if not parts:
+        return _to_agent(phone, note=f"תיקון {device['display']}")
+    rows = [(f"rpart:{i}", f"{_REPAIR_ICON.get(parts[i], '🔧')} {parts[i]}"[:24], "")
+            for i in range(min(len(parts), 9))]
+    d["parts"] = parts
+    db.bot_session_set(phone, "await_repair_part", d)
+    wa.send_list(phone, f"לא זיהיתי '{text}' 🤔 מה לתקן ב-{device['display']}?",
+                 rows, button_label="בחר/י תיקון", section_title="סוגי תיקון")
+
+
+def _send_repair_prices(phone, device, reps=None):
+    """מציג מחיר רק לסוגי התיקון שנבחרו (reps) — לא את כל המחירון."""
+    items = reps or list((device.get("repairs") or {}).keys())
+    lines = [f"🔧 *{device['display']}* — הצעת מחיר:\n"]
+    for rep in items:
+        tiers = (device.get("repairs") or {}).get(rep) or []
         priced = sorted([t for t in tiers if t.get("price")], key=lambda t: t["price"])
         if not priced:
             continue
@@ -705,7 +746,7 @@ def _send_repair_prices(phone, device):
             opts = " · ".join(f"{t['tier'] or 'מחיר'} ₪{t['price']:,}" for t in priced)
             lines.append(f"{ic} {rep}: {opts}")
     lines.append("\n💡 חילופי = חלק תואם · מקורי = חלק מקורי. המחירים כוללים עבודה.")
-    lines.append("⚠️ המחירים הם *הערכה ראשונית* לפי התיאור בלבד. לעיתים מתגלים נזקים "
+    lines.append("⚠️ המחיר הוא *הערכה ראשונית* לפי התיאור בלבד. לעיתים מתגלים נזקים "
                  "נוספים (למשל מסך שנראה שבור אך יש פגיעה גם ברכיבים מתחת) — רק בדיקת "
                  "מעבדה מאמתת את סוג התיקון, והמחיר הסופי נקבע לאחר אבחון.")
     lines.append("לקביעת תור או בירור — כתוב/י *נציג*.")

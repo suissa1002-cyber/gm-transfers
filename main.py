@@ -3374,6 +3374,34 @@ def bot_repair_quote(query: str) -> list:
     return [v for _l, v in matches[:9]]
 
 
+_REPAIR_PART_SYN = {
+    "מסך": ["מסך", "צג", "תצוגה", "זכוכית", "מסכ", "screen", "glass", "טאץ", "טצ"],
+    "סוללה": ["סוללה", "בטריה", "battery", "נגמרת", "מתרוקנת", "לא מחזיק", "מתנפח"],
+    "שקע": ["שקע", "טעינה", "נטען", "כבל", "charging", "port", "מחבר", "לא נכנס"],
+    "גב": ["גב", "כיסוי אחורי", "back", "מכסה אחורי", "זכוכית אחורית"],
+    "מצלמה אחורית": ["מצלמה אחורית", "מצלמה ראשית", "rear", "מצלמה מאחור", "מצלמה"],
+    "מצלמה קדמית": ["מצלמה קדמית", "סלפי", "selfie", "מצלמה קדמ", "מצלמה"],
+    "מסגרת קומפלט": ["מסגרת", "קומפלט", "frame", "שלדה"],
+    "עדשות": ["עדשה", "עדשות", "זכוכית מצלמה", "lens"],
+    "אפכרסת": ["אפרכסת", "אפכרסת", "רמקול שיחה", "לא שומע בשיחה", "earpiece", "אוזנית"],
+    "כפתור בית": ["כפתור בית", "הום", "home", "טביעת אצבע"],
+    "הדלקה": ["הדלקה", "לא נדלק", "כפתור הפעלה", "power", "לא עולה"],
+    "ווליום": ["ווליום", "עוצמה", "כפתור עוצמה", "volume", "וליום"],
+    "צלצלן": ["צלצלן", "רמקול תחתון", "רמקול", "buzzer", "ringer", "לא שומעים"],
+}
+
+
+def bot_repair_match_part(device: dict, query: str) -> list:
+    """מהות התיקון שהלקוח כתב → סוגי התיקון הרלוונטיים של הדגם (לא כל המחירון)."""
+    q = (query or "").lower()
+    matched = []
+    for rep in (device.get("repairs") or {}):
+        syns = _REPAIR_PART_SYN.get(rep, [rep])
+        if rep.lower() in q or any(s.lower() in q for s in syns):
+            matched.append(rep)
+    return matched
+
+
 def bot_create_order(product_id, variation_id, price, name, phone) -> dict:
     """יוצר הזמנת WC (pending) + קישור תשלום PayPlus — לבוט ה-native. מחזיר
     {number, total, pay_link}. מקושר ל-IPN דרך payplus_pru:."""
