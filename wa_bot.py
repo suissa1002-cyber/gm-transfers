@@ -705,6 +705,9 @@ def _send_repair_prices(phone, device):
             opts = " · ".join(f"{t['tier'] or 'מחיר'} ₪{t['price']:,}" for t in priced)
             lines.append(f"{ic} {rep}: {opts}")
     lines.append("\n💡 חילופי = חלק תואם · מקורי = חלק מקורי. המחירים כוללים עבודה.")
+    lines.append("⚠️ המחירים הם *הערכה ראשונית* לפי התיאור בלבד. לעיתים מתגלים נזקים "
+                 "נוספים (למשל מסך שנראה שבור אך יש פגיעה גם ברכיבים מתחת) — רק בדיקת "
+                 "מעבדה מאמתת את סוג התיקון, והמחיר הסופי נקבע לאחר אבחון.")
     lines.append("לקביעת תור או בירור — כתוב/י *נציג*.")
     wa.send_text(phone, "\n".join(lines))
     _menu_tail(phone)
