@@ -23,34 +23,33 @@ def _norm(s) -> str:
 
 
 def parse_cell(text) -> list:
-    """תא מחיר → [{tier, price}] (או [{ref}] להפניה, [] לריק/לא-זמין)."""
+    """תא מחיר → [{tier, price}] (או [{ref}] להפניה, [] לריק/לא-זמין).
+    שומר את **כל** הטקסט ליד כל מחיר כתווית (כולל הערות כמו 'עם מסגרת'/'בלי
+    מסגרת'/'ללא פייס'), לא רק מילת-מפתח — כדי לא לאבד מידע."""
     t = _norm(text).replace("\\", "/")
     if not t or t in ("-", "—"):
         return []
     if "כמו" in t and not re.search(r"\d", t.split("כמו")[0]):
         return [{"ref": _norm(t.split("כמו", 1)[1])}]
-    nums = [(int(m.group()), m.start()) for m in re.finditer(r"\d+", t)]
-    if not nums:
+    items = []                           # [(price, label), ...]
+    for pc in (p for p in t.split("/") if p.strip()):
+        nums = list(re.finditer(r"\d+", pc))
+        if not nums:
+            continue
+        if len(nums) == 1:               # מספר אחד בקטע → התווית = כל שאר הטקסט
+            items.append((int(nums[0].group()), _norm(re.sub(r"\d+", " ", pc))))
+        else:                            # כמה מספרים בקטע אחד → טקסט שאחרי כל מספר
+            for i, m in enumerate(nums):
+                end = nums[i + 1].start() if i + 1 < len(nums) else len(pc)
+                items.append((int(m.group()), _norm(re.sub(r"\d+", " ", pc[m.end():end]))))
+    if not items:
         return []
-    # מופעי תוויות מוכרות, ארוכות קודם, בלי כפילות חופפת (מקורי בתוך 'מקורי חדש')
-    labels, covered = [], []
-    for lab in sorted(_TIERS, key=len, reverse=True):
-        for m in re.finditer(re.escape(lab), t, re.I):
-            span = (m.start(), m.end())
-            if any(span[0] >= c[0] and span[1] <= c[1] for c in covered):
-                continue
-            labels.append((lab, m.start()))
-            covered.append(span)
-    if not labels:                       # ללא תוויות: a/b → זול=חילופי / יקר=מקורי
-        if len(nums) == 2:
-            lo, hi = sorted(n for n, _ in nums)
+    if all(not lbl for _p, lbl in items):    # ללא תוויות: a/b → זול=חילופי / יקר=מקורי
+        if len(items) == 2:
+            lo, hi = sorted(p for p, _ in items)
             return [{"tier": "חילופי", "price": lo}, {"tier": "מקורי", "price": hi}]
-        return [{"tier": "", "price": nums[0][0]}]
-    out = []                             # כל מספר → התווית הקרובה אליו ביותר
-    for n, pos in nums:
-        lab = min(((abs(pos - lp), lab) for lab, lp in labels), default=(0, ""))[1]
-        out.append({"tier": lab, "price": n})
-    return out
+        return [{"tier": "", "price": items[0][0]}]
+    return [{"tier": lbl, "price": p} for p, lbl in items]
 
 
 def _is_matrix_header(row) -> bool:
