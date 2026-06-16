@@ -243,7 +243,55 @@ def _handle_order(o: dict, catalog: dict) -> list:
         _mark_oos(o.get("number"), oos_names[0], partial=bool(created))
     else:
         _unmark_oos(o.get("number"))   # הכל זמין/שודר → לנקות דגל OOS ישן (ריצה חוזרת)
+    if created:                        # דגל עמיד "שודר אי-פעם" — מונע שידור כפול בריפוי-עצמי
+        db.sales_state_set(f"auto_tr_bcast:{o.get('number')}", "1")
     return created
+
+
+def _alert_created(o, created):
+    """התראות טלגרם על בקשות העברה ששודרו (אדמין + צ'אט סניף המקור)."""
+    if not created:
+        return
+    lines = "\n".join(f"• {c['name']} ×{c['qty']} — מ{cfg.branch_name(c['src'])}"
+                      for c in created)
+    alerts._send(os.getenv("TELEGRAM_ADMIN_CHAT", "448181407"),
+                 f"📦 <b>שודרה בקשת העברה אוטומטית לאתר</b>\n"
+                 f"הזמנה <b>#{o.get('number')}</b>:\n{lines}")
+    for c in created:                  # גם לצ'אט של סניף המקור, אם מוגדר
+        chat = alerts._branch_chat(c["src"])
+        if chat:
+            alerts._send(chat, f"📦 בקשת העברה חדשה לאתר: {c['name']} ×{c['qty']}\n"
+                               f"(הזמנת אתר #{o.get('number')} — שודר אוטומטית)")
+
+
+def _rescan_flagged(orders, catalog):
+    """ריפוי-עצמי: הזמנות מדוגלות (חסר-מלאי / ללא-מק"ט) שעדיין **לא שודר** להן כלום —
+    אולי חובר להן מק"ט / רוענן הקטלוג מאז. מריץ אותן מחדש כך שישדרו לבד.
+    גארד כפול נגד שידור כפול: מדלג אם יש דגל 'שודר אי-פעם' או שורת תוכנית קיימת."""
+    import json as _json
+    import re as _re
+    flagged = set()
+    for key in ("order_oos_list", "order_unmatched_list"):
+        raw = db.sales_state_get(key)
+        for x in (_json.loads(raw) if raw else []):
+            flagged.add(str(x.get("number")))
+    if not flagged:
+        return
+    plan_nums = set()
+    for ln in db.plan_list():
+        m = _re.search(r"הזמנת אתר #(\d+)", ln.get("created_by") or "")
+        if m:
+            plan_nums.add(m.group(1))
+    for o in orders:
+        num = str(o.get("number"))
+        if num not in flagged:
+            continue
+        if num in plan_nums or db.sales_state_get(f"auto_tr_bcast:{num}"):
+            continue                   # כבר שודר (שורה פעילה או דגל עמיד) → לא נוגעים
+        created = _handle_order(o, catalog)
+        if created:
+            logger.info("self-heal: order %s broadcast after re-link/catalog", num)
+            _alert_created(o, created)
 
 
 def scan_orders():
@@ -266,15 +314,6 @@ def scan_orders():
         if not oid or db.sales_state_get(f"auto_tr_seen:{oid}"):
             continue
         db.sales_state_set(f"auto_tr_seen:{oid}", datetime.now().isoformat(timespec="seconds"))
-        created = _handle_order(o, catalog)
-        if created:
-            lines = "\n".join(f"• {c['name']} ×{c['qty']} — מ{cfg.branch_name(c['src'])}"
-                              for c in created)
-            alerts._send(os.getenv("TELEGRAM_ADMIN_CHAT", "448181407"),
-                         f"📦 <b>שודרה בקשת העברה אוטומטית לאתר</b>\n"
-                         f"הזמנה <b>#{o.get('number')}</b>:\n{lines}")
-            for c in created:              # גם לצ'אט של סניף המקור, אם מוגדר
-                chat = alerts._branch_chat(c["src"])
-                if chat:
-                    alerts._send(chat, f"📦 בקשת העברה חדשה לאתר: {c['name']} ×{c['qty']}\n"
-                                       f"(הזמנת אתר #{o.get('number')} — שודר אוטומטית)")
+        _alert_created(o, _handle_order(o, catalog))
+    # ריפוי-עצמי: הזמנות שדוגלו (חסר/ללא-מק"ט) ושעדיין לא שודר להן — אולי חובר מק"ט מאז
+    _rescan_flagged(orders, catalog)
