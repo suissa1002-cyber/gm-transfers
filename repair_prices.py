@@ -70,8 +70,11 @@ def parse(csv_text: str) -> dict:
             cols = {i: _norm(c) for i, c in enumerate(row) if i > 0 and _norm(c)}
             continue
         model = _norm(row[0])
-        if cols and model and not model.isupper() or (cols and model and re.search(r"[a-zא-ת]", model) and any(_norm(c) for c in row[1:])):
-            # שורת דגם תחת מטריצה — אם יש מחיר כלשהו בעמודות
+        # גבול סקשן לא-מטריצה (כותרת כמו AirPods/Watch) = 2+ תאי-טקסט בלי ספרות → איפוס
+        if cols and sum(1 for c in row[1:] if _norm(c) and not re.search(r"\d", c)) >= 2:
+            cols = None
+            continue
+        if cols and model:                   # שורת דגם תחת מטריצה (כולל UPPERCASE כמו IPHONE 15)
             repairs = {}
             for i, rep in cols.items():
                 if i < len(row):

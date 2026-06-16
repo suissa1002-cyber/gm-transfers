@@ -3363,9 +3363,14 @@ def bot_repair_quote(query: str) -> list:
     q = (query or "").lower()
     for he, en in _REPAIR_HE.items():
         q = q.replace(he, en)
-    qwords = [w for w in _re.split(r"[\s/]+", q) if w and w not in ("של", "תיקון", "מחיר", "כמה", "עולה")]
+    _stop = ("של", "תיקון", "מחיר", "כמה", "עולה", "רגיל", "רגילה", "פשוט",
+             "בסיסי", "basic", "standard", "דגם", "ה")
+    qwords = [w for w in _re.split(r"[\s/]+", q) if w and w not in _stop]
     if not qwords:
         return []
+    q_norm = " ".join(qwords)
+    if q_norm in devices:                    # התאמה מדויקת = הדגם הבסיסי (לא הפרו)
+        return [devices[q_norm]]
     matches = []
     for k, v in devices.items():
         if all(w in k for w in qwords):      # כל מילות השאילתה במפתח הדגם
