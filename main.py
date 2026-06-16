@@ -230,6 +230,19 @@ def _is_stale(iso_ts, hours: float) -> bool:
 _RUN_JOBS = os.getenv("RUN_JOBS", "1").strip() not in ("0", "false", "no")
 
 
+def _keepalive_job():
+    """פינג לשירותי Render חינמיים כדי שלא יירדמו (נרדמים אחרי 15 דק' חוסר פעילות).
+    URLs ב-KEEPALIVE_URLS (מופרד בפסיק); ברירת מחדל = invoice-manager."""
+    import requests as _rq
+    urls = [u.strip() for u in os.getenv(
+        "KEEPALIVE_URLS", "https://invoice-manager-tfqj.onrender.com").split(",") if u.strip()]
+    for u in urls:
+        try:
+            _rq.get(u, timeout=20)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("keepalive ping failed %s: %s", u, e)
+
+
 def register_recurring_jobs():
     """רושם את כל עבודות הרקע החוזרות. נקרא מ-_startup (אם _RUN_JOBS) או מ-worker.py."""
     # סבב ראשון מיד, ואז לפי האינטרוול
@@ -300,6 +313,11 @@ def register_recurring_jobs():
                       hour=9, minute=30, max_instances=1)
     scheduler.add_job(_token_watch_job, "date", id="token_watch_initial",
                       run_date=datetime.now() + timedelta(seconds=45))
+    # keep-alive: שומר שירותי Render חינמיים ערים (נרדמים אחרי 15 דק' חוסר פעילות).
+    # invoice-manager (Itzik) מריץ פולינג Gmail פנימי שמפסיק בשינה — הפינג מחליף את
+    # ה-cron של GitHub Actions (שנחסם עם מכסת הדקות).
+    if os.getenv("KEEPALIVE_URLS", "https://invoice-manager-tfqj.onrender.com").strip():
+        scheduler.add_job(_keepalive_job, "interval", minutes=10, id="keepalive", max_instances=1)
 
 
 @app.on_event("startup")
@@ -428,8 +446,15 @@ async def wa_webhook_recv(request: Request):
                 import wa_bot
                 inb = wa_webhook.extract_inbound(raw)
                 if inb and inb[1] is not None:
+                    try:                         # חיווי הקלדה מיידי ללקוח (+ נקרא)
+                        import wa
+                        if len(inb) > 4 and inb[4]:
+                            wa.send_typing(inb[4])
+                    except Exception:  # noqa: BLE001
+                        pass
                     wa_bot.handle(bot_sender, inb[1], inb[2] or "text",
-                                  reply_id=(inb[3] if len(inb) > 3 else ""))
+                                  reply_id=(inb[3] if len(inb) > 3 else ""),
+                                  wamid=(inb[4] if len(inb) > 4 else ""))
             except Exception as e:  # noqa: BLE001
                 logger.warning("wa bot dispatch failed: %s", e)
     else:
