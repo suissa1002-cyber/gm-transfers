@@ -231,6 +231,9 @@ _BRANDS = ("xiaomi", "redmi", "poco", "apple", "iphone", "ipad", "macbook", "sam
            "motorola", "nokia", "jbl", "sony", "anker", "bose", "razer", "logitech",
            "nothing", "huawei", "lenovo", "asus", "nubia", "redmagic", "tecno",
            "infinix", "marshall", "doogee", "ulefone")
+_BRAND_HE = {"אנקר": "anker", "סמסונג": "samsung", "אפל": "apple", "שיאומי": "xiaomi",
+             "סוני": "sony", "וואווי": "huawei", "אופו": "oppo", "ריאלמי": "realme",
+             "הונור": "honor", "וויוו": "vivo", "מרשל": "marshall", "בוס": "bose"}
 
 
 def _name_parts(name: str):
@@ -303,17 +306,27 @@ def _new_order_results(phone, query):
     # כפתור "עוד באתר" — מבוסס על ה**קטגוריה המשותפת** של המוצרים שנמצאו (לא חיפוש
     # מילולי שנשבר על שאילתות עבריות שאינן בכותרות). ככה הקישור תמיד מוביל לתוצאות
     # אמיתיות וניתנות לסינון, גם אם הלקוח כתב מונח שלא קיים מילולית באתר.
-    # רק כשהבוט מצא יותר ממה שנכנס ברשימה (מגבלת 10 שורות בוואטסאפ) — אחרת אין "עוד".
-    cand_slugs = {c.get("slug") for p in (all_results or [])
-                  for c in (p.get("cats") or []) if c.get("slug")}
-    best = (main.bot_best_category(cand_slugs, min_count=len(results))
-            if (cand_slugs and total > len(results)) else None)
+    # כפתור "עוד באתר" — רק כשהבוט מצא יותר ממה שנכנס ברשימה (מגבלת 10 שורות).
+    # היעד: הקטגוריה המשותפת של המוצרים שנמצאו + סינון מותג אם היצרן ברור בשאלה
+    # (כך "אוזניות anker" → קטגוריית אוזניות + מותג Anker, תוצאה מדויקת).
+    cat_freq = {}
+    for p in (all_results or []):
+        for sl in {c.get("slug") for c in (p.get("cats") or []) if c.get("slug")}:
+            cat_freq[sl] = cat_freq.get(sl, 0) + 1
+    low2 = (query or "").lower()
+    brand = next((b for b in _BRANDS if b in low2), None) \
+        or next((en for he, en in _BRAND_HE.items() if he in (query or "")), None)
+    best = (main.bot_best_category(cat_freq, min_count=len(results))
+            if (cat_freq and total > len(results)) else None)
     if best:
         try:
             from urllib.parse import quote
             url = f"https://greenmobile.co.il/?product_cat={quote(best['slug'], safe='%')}"
-            wa.send_cta_url(phone, f"לעיון בכל קטגוריית *{best['name']}* באתר וסינון "
-                                   f"(מחיר/מותג/תכונות):", "🔎 עוד באתר", url)
+            lbl = best["name"]
+            if brand:
+                url += f"&pwb-brand={brand}"
+                lbl = f"{best['name']} · {brand.upper()}"
+            wa.send_cta_url(phone, f"לעיון בכל *{lbl}* באתר (וסינון):", "🔎 עוד באתר", url)
         except Exception:  # noqa: BLE001
             pass
 

@@ -3449,13 +3449,14 @@ def _wc_categories():
     return out
 
 
-def bot_best_category(slugs, min_count=0):
-    """מבין הקטגוריות של המוצרים שנמצאו — הטובה ביותר לקישור 'עוד באתר': לא קטגוריית
-    מותג (שם אנגלי), והכי **ספציפית** (count הנמוך ביותר) עם יותר מ-min_count מוצרים.
-    מחזיר {slug, name, count} או None."""
+def bot_best_category(cat_freq, min_count=0):
+    """בוחר קטגוריה לקישור 'עוד באתר'. cat_freq = {slug: כמה מהמוצרים שנמצאו שייכים
+    לקטגוריה}. הכלל: לא קטגוריית מותג (שם אנגלי); הקטגוריה ה**משותפת לרוב** (freq
+    גבוה — כך נבחר 'אוזניות' ולא תת-סוג 'open ear'), ובין שוות-freq הספציפית ביותר
+    (count נמוך — 'סטרימרים' ולא 'מוצרי חשמל'). מחזיר {slug, name, count} או None."""
     cats = _wc_categories()
     cand = []
-    for sl in set(slugs or []):
+    for sl, freq in (cat_freq or {}).items():
         info = cats.get(sl)
         if not info:
             continue
@@ -3464,11 +3465,11 @@ def bot_best_category(slugs, min_count=0):
             continue
         cnt = info.get("count") or 0
         if cnt > min_count:
-            cand.append((cnt, sl, nm))
+            cand.append((-int(freq), cnt, sl, nm))   # freq גבוה קודם, ואז count נמוך
     if not cand:
         return None
-    cand.sort()                   # count נמוך = ספציפי יותר
-    return {"slug": cand[0][1], "name": cand[0][2], "count": cand[0][0]}
+    cand.sort()
+    return {"slug": cand[0][2], "name": cand[0][3], "count": cand[0][1]}
 
 
 # ── חשבוניות לקוח (נקלטות ממייל הקופה; לשליחה חוזרת ללקוח בוואטסאפ) ──
