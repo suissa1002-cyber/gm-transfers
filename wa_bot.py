@@ -303,9 +303,11 @@ def _new_order_results(phone, query):
     # כפתור "עוד באתר" — מבוסס על ה**קטגוריה המשותפת** של המוצרים שנמצאו (לא חיפוש
     # מילולי שנשבר על שאילתות עבריות שאינן בכותרות). ככה הקישור תמיד מוביל לתוצאות
     # אמיתיות וניתנות לסינון, גם אם הלקוח כתב מונח שלא קיים מילולית באתר.
+    # רק כשהבוט מצא יותר ממה שנכנס ברשימה (מגבלת 10 שורות בוואטסאפ) — אחרת אין "עוד".
     cand_slugs = {c.get("slug") for p in (all_results or [])
                   for c in (p.get("cats") or []) if c.get("slug")}
-    best = main.bot_best_category(cand_slugs, min_count=len(results)) if cand_slugs else None
+    best = (main.bot_best_category(cand_slugs, min_count=len(results))
+            if (cand_slugs and total > len(results)) else None)
     if best:
         try:
             from urllib.parse import quote
