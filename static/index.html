@@ -2449,6 +2449,7 @@ function waThreadHTML(){
           <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">↩ בתגובה ל: <b>${escW(S.waReplyTo.preview||'הודעה')}</b></span>
           <button class="btn-ghost" style="padding:2px 8px" onclick="waReplyClear()">✕</button>
         </div>`:''}
+        ${waPendingHTML()}
         <div class="wa-send" style="position:relative">
           <div id="waCannedPop" class="wa-canned" style="display:none"></div>
           <div id="waTplPop" class="wa-canned" style="display:none"></div>
@@ -3722,19 +3723,46 @@ function waToggleAttach(){
 }
 async function waSendFile(inp){
   const f=inp.files&&inp.files[0]; inp.value=''; if(!f) return;
-  waSendBlob(f, f.name);
+  waStageFile(f, f.name);          // פריוויו לפני שליחה, לא שולחים מיד
 }
 function waPaste(e){
-  // הדבקת תמונה מה-clipboard ישירות לשיחה
+  // הדבקת תמונה מה-clipboard → פריוויו בתיבת ההקלדה (לא שליחה עיוורת)
   const items=(e.clipboardData&&e.clipboardData.items)||[];
   for(const it of items){
     if(it.kind==='file' && it.type.startsWith('image/')){
       e.preventDefault();
       const f=it.getAsFile();
-      if(f && confirm('לשלוח את התמונה שהודבקה ללקוח?')) waSendBlob(f, 'pasted_image.png');
+      if(f) waStageFile(f, 'pasted_image.png');
       return;
     }
   }
+}
+// ── פריוויו קובץ מצורף לפני שליחה ──
+function waPendingHTML(){
+  if(!S.waPending) return '<div id="waPendingPrev" style="display:none"></div>';
+  const vid=(S.waPending.blob&&(S.waPending.blob.type||'').startsWith('video/'));
+  const thumb=vid?`<div style="width:46px;height:46px;display:flex;align-items:center;justify-content:center;background:#0003;border-radius:6px">🎬</div>`
+    :`<img src="${S.waPending.url}" style="width:46px;height:46px;object-fit:cover;border-radius:6px;border:1px solid var(--border)">`;
+  return `<div id="waPendingPrev" class="wa-replybar" style="align-items:center;gap:10px">
+    ${thumb}
+    <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📎 מוכן לשליחה — לחץ <b>שלח</b> (אפשר להוסיף כיתוב)</span>
+    <button class="btn-ghost" style="padding:2px 8px" onclick="waClearPending()" title="הסר">✕</button>
+  </div>`;
+}
+function waRenderPending(){
+  const el=document.getElementById('waPendingPrev'); if(el) el.outerHTML=waPendingHTML();
+}
+function waStageFile(f, name){
+  if(!f) return;
+  if(f.size>15*1024*1024){ toast('קובץ גדול מדי (מקס׳ 15MB)',false); return; }
+  if(S.waPending&&S.waPending.url){ try{URL.revokeObjectURL(S.waPending.url)}catch(_){} }
+  S.waPending={blob:f, name:name||f.name||'image.png', url:URL.createObjectURL(f)};
+  waRenderPending();
+  const ta=document.getElementById('waText'); if(ta) ta.focus();
+}
+function waClearPending(){
+  if(S.waPending&&S.waPending.url){ try{URL.revokeObjectURL(S.waPending.url)}catch(_){} }
+  S.waPending=null; waRenderPending();
 }
 async function waSendBlob(f, name){
   if(!S.waPhone) return;
@@ -3747,6 +3775,7 @@ async function waSendBlob(f, name){
     const r=await api('/api/admin/wa/send-file',{method:'POST',body:fd},180000);
     hideLoading(); toast('הקובץ נשלח ✓',true);
     const ta=document.getElementById('waText'); if(ta) ta.value='';
+    waClearPending();
     setTimeout(()=>loadWaThread(true),1500);
   }catch(e){
     hideLoading();
@@ -3971,6 +4000,7 @@ async function loadWaThread(silent){
 }
 async function sendWaMsg(){
   const ta=document.getElementById('waText'); if(!ta) return;
+  if(S.waPending){ const p=S.waPending; return waSendBlob(p.blob, p.name); }  // תמונה מצורפת → נשלחת עם הטקסט ככיתוב
   const text=(ta.value||'').trim(); if(!text) return;
   const btn=document.getElementById('waSendBtn'); if(btn) btn.disabled=true;
   const rep=S.waReplyTo||null;
