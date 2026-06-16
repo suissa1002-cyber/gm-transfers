@@ -2367,9 +2367,22 @@ def bridge_search(q: str = "", limit: int = 8, x_bridge_key: Optional[str] = Hea
     מחזיר שם/מחיר/מלאי/קישור, מדורג כמו מנוע החיפוש של הבוט."""
     _require_bridge(x_bridge_key)
     res = bot_product_search(q or "", limit=max(1, min(int(limit or 8), 12)))
-    return {"results": [{"name": r.get("name"), "price": r.get("price"),
+    return {"results": [{"id": r.get("id"), "name": r.get("name"),
+                         "price_from": r.get("price"),   # מחיר בסיס; לוריאציות ראה /variations
+                         "type": r.get("type"),
                          "in_stock": r.get("stock_status") == "instock",
                          "url": r.get("permalink")} for r in res]}
+
+
+@app.get("/api/uri-bridge/variations/{product_id}")
+def bridge_variations(product_id: int, x_bridge_key: Optional[str] = Header(None)):
+    """וריאציות מוצר לאורי (נפח/צבע/מחיר/מלאי) — לשאלות ספציפיות כמו '256GB עד 700'.
+    חשוב: מחיר משתנה בין וריאציות; אסור לקבוע 'אין' לפי מחיר הבסיס בלבד."""
+    _require_bridge(x_bridge_key)
+    vs = bot_get_variations(product_id) or []
+    return {"variations": [{"storage": v.get("storage"), "color": v.get("color"),
+                            "price": v.get("price"),
+                            "in_stock": v.get("stock") == "instock"} for v in vs]}
 
 
 @app.post("/api/uri-bridge/answer")
