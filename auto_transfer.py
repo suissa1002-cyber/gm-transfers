@@ -69,11 +69,31 @@ def _mark_oos(number, name, partial=False):
         raw = db.sales_state_get("order_oos_list")
         lst = json.loads(raw) if raw else []
         num = str(number)
-        if not any(str(x.get("number")) == num for x in lst):
+        existing = next((x for x in lst if str(x.get("number")) == num), None)
+        if existing:                            # כבר ברשימה → לעדכן דגל 'חלקי' (ריצה חוזרת
+            existing["partial"] = bool(partial)  # אחרי הצמדת מק"ט: שודר-חלקי במקום חסר-מלא)
+            existing["item"] = name
+        else:
             lst.insert(0, {"number": num, "item": name, "partial": bool(partial)})
-            db.sales_state_set("order_oos_list", json.dumps(lst[:100], ensure_ascii=False))
+        db.sales_state_set("order_oos_list", json.dumps(lst[:100], ensure_ascii=False))
     except Exception as e:  # noqa: BLE001
         logger.warning("oos mark failed for %s: %s", number, e)
+
+
+def _unmark_oos(number):
+    """מסיר הזמנה מרשימת ה-OOS — אחרי שכל הפריטים שודרו/זמינים (ריצה חוזרת)."""
+    import json
+    try:
+        raw = db.sales_state_get("order_oos_list")
+        if not raw:
+            return
+        lst = json.loads(raw)
+        num = str(number)
+        new = [x for x in lst if str(x.get("number")) != num]
+        if len(new) != len(lst):
+            db.sales_state_set("order_oos_list", json.dumps(new[:100], ensure_ascii=False))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("oos unmark failed for %s: %s", number, e)
 
 
 def _mark_unmatched(number, name):
@@ -221,6 +241,8 @@ def _handle_order(o: dict, catalog: dict) -> list:
     # סימון OOS בסוף — אם חלק מההזמנה כן שודר (created) זה "שודר חלקי" ולא חוסר מלא
     if oos_names:
         _mark_oos(o.get("number"), oos_names[0], partial=bool(created))
+    else:
+        _unmark_oos(o.get("number"))   # הכל זמין/שודר → לנקות דגל OOS ישן (ריצה חוזרת)
     return created
 
 
