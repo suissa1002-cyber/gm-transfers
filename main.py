@@ -3443,7 +3443,7 @@ def _cargo_delivery_sync_job():
         base, k, s = _wc_creds()
         r = _rq.get(f"{base}/wp-json/wc/v3/orders",
                     params={"status": "shipping-stage", "per_page": 100,
-                            "_fields": "id,number,date_modified_gmt,meta_data"},
+                            "_fields": "id,number,date_modified_gmt,meta_data,billing"},
                     auth=(k, s), timeout=40)
         if not r.ok:
             return
@@ -3473,6 +3473,21 @@ def _cargo_delivery_sync_job():
                                         status_label="הושלם", created_by="cargo-delivery-auto")
                     logger.info("cargo-delivery: %s -> delivered (+24h completed)", onum)
                     _tg_admin(f"📦 <b>הזמנה נמסרה</b>\n#{onum} → נמסרה (חוו\"ד ללקוח). הושלם בעוד 24ש.")
+                    # אחרי cutover קונקטופ: אנחנו שולחים את template הביקורת (כל עוד
+                    # קונקטופ חי הוא שולח — לכן מאחורי דגל, ברירת מחדל כבוי, בלי כפילות).
+                    if os.getenv("WA_SEND_REVIEW", "0").strip() == "1":
+                        try:
+                            bl = o.get("billing") or {}
+                            ph = "".join(c for c in str(bl.get("phone") or "") if c.isdigit())
+                            if ph.startswith("0"):
+                                ph = "972" + ph[1:]
+                            elif ph and not ph.startswith("972"):
+                                ph = "972" + ph
+                            if ph:
+                                import wa
+                                wa.send_review_template(ph, bl.get("first_name") or "", onum, "נמסרה")
+                        except Exception as _e:  # noqa: BLE001
+                            logger.warning("review template send failed %s: %s", onum, _e)
                 else:
                     pr = _rq.put(f"{base}/wp-json/wc/v3/orders/{oid}",
                                  json={"status": "completed"}, auth=(k, s), timeout=30)

@@ -590,6 +590,30 @@ def send_cta_url(phone: str, body: str, button_text: str, url: str,
     return _meta_interactive(phone, payload, f"[כפתור] {body}")
 
 
+def send_review_template(phone: str, name: str, order_number, status_text: str = "נמסרה") -> str:
+    """שולח את template הביקורת (order_delivered_review_request, he) ישירות דרך מטא:
+    עדכון סטטוס + כפתורי חוות דעת גוגל/זאפ. {{1}}=שם, {{2}}=מס' הזמנה, {{3}}=סטטוס.
+    מחליף את זרימת הביקורת של קונקטופ אחרי ה-cutover."""
+    if not meta_direct_ready():
+        raise WaError("Meta ישיר לא מוגדר")
+    import os as _os
+    import requests as _rq
+    params = [{"type": "text", "text": str(name or "לקוח/ה יקר/ה")[:60]},
+              {"type": "text", "text": str(order_number or "")[:20]},
+              {"type": "text", "text": str(status_text or "נמסרה")[:60]}]
+    payload = {"messaging_product": "whatsapp", "to": str(phone), "type": "template",
+               "template": {"name": "order_delivered_review_request", "language": {"code": "he"},
+                            "components": [{"type": "body", "parameters": params}]}}
+    r = _rq.post(f"{META_GRAPH}/{_os.getenv('META_WA_PHONE_ID').strip()}/messages",
+                 headers={"Authorization": f"Bearer {_os.getenv('META_WA_TOKEN').strip()}",
+                          "Content-Type": "application/json"}, json=payload, timeout=30)
+    if r.status_code not in (200, 201):
+        raise WaError(f"review template failed ({r.status_code}): {r.text[:200]}")
+    wamid = ((r.json().get("messages") or [{}])[0]).get("id", "")
+    _store_outbound(phone, "[בקשת חוות דעת — הזמנה נמסרה]", wamid=wamid, mtype="template")
+    return wamid
+
+
 def send_text(phone: str, text: str) -> str:
     """טקסט פשוט מהבוט (לא דרך send_reply שמסמן 'אנושי')."""
     wamid = _meta_send_text(phone, text)
