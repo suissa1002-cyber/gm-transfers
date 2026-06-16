@@ -398,13 +398,15 @@ def _order_checkout(phone, label, price, parent_id, parent_permalink, variation=
     if not url:
         wa.send_text(phone, f"מעולה — {label}{pstr}! נציג יחזור אליך לסגור את ההזמנה 🙏")
         return _to_agent(phone, note=f"הזמנה: {label}")
-    link = _short_cart_link(url, parent_permalink, variation, parent_id)
     body = (f"מעולה — {label}{pstr}! 🛒\n\n"
             f"המוצר מחכה לך בעגלה — לחצ/י להשלמת ההזמנה (פרטים + עד 12 תשלומים + "
             f"תשלום מאובטח).\nאו כתוב/י *נציג* ואחד מהצוות יסגור איתך 🙏")
     try:
-        wa.send_cta_url(phone, body, "🛒 להשלמת ההזמנה", link)
-    except Exception:  # noqa: BLE001 — נפילה לקישור-טקסט אם CTA נכשל
+        # הכפתור מסתיר את ה-URL — שולחים ישיר, בלי redirect של tinyurl (שנכשל
+        # בטעינה ראשונה בדפדפן הפנימי של וואטסאפ).
+        wa.send_cta_url(phone, body, "🛒 להשלמת ההזמנה", url)
+    except Exception:  # noqa: BLE001 — נפילה לטקסט גלוי → אז כן מקצרים
+        link = _short_cart_link(url, parent_permalink, variation, parent_id)
         wa.send_text(phone, f"{body}\n\n{link}")
 
 
