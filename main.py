@@ -2317,6 +2317,17 @@ def bridge_jobs(x_bridge_key: Optional[str] = Header(None)):
     return {"jobs": db.uri_jobs_pending()}
 
 
+@app.get("/api/uri-bridge/search")
+def bridge_search(q: str = "", limit: int = 8, x_bridge_key: Optional[str] = Header(None)):
+    """חיפוש מוצרים לאורי (מסלול הבוט המהיר) — כך שלא יהיה תלוי רק במועמדים שהוזרקו.
+    מחזיר שם/מחיר/מלאי/קישור, מדורג כמו מנוע החיפוש של הבוט."""
+    _require_bridge(x_bridge_key)
+    res = bot_product_search(q or "", limit=max(1, min(int(limit or 8), 12)))
+    return {"results": [{"name": r.get("name"), "price": r.get("price"),
+                         "in_stock": r.get("stock_status") == "instock",
+                         "url": r.get("permalink")} for r in res]}
+
+
 @app.post("/api/uri-bridge/answer")
 def bridge_answer(body: UriAnswer, x_bridge_key: Optional[str] = Header(None)):
     _require_bridge(x_bridge_key)
