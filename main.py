@@ -3280,6 +3280,10 @@ def bot_product_search(q: str, limit: int = 8) -> list:
     for p in (prods or []):
         if not isinstance(p, dict):
             continue
+        # מוצרי external (קישור החוצה) ו-grouped אינם ניתנים לקנייה דרך העגלה — והם
+        # לרוב ליסט כפול של מוצר variable אמיתי. הבוט מוביל לצ'קאאוט, אז מסננים אותם.
+        if p.get("type") in ("external", "grouped"):
+            continue
         name = (p.get("name") or "").lower()
         sc, model_hit = 0, False
         for t in raw:
