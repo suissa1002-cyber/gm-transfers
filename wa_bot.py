@@ -269,9 +269,11 @@ def _short_name(name: str) -> str:
 
 
 def _new_order_results(phone, query):
-    """חיפוש מוצר חי → רשימת תוצאות עם מחירים (התיקון מס' 1 של 'הזמנה חדשה')."""
+    """חיפוש מוצר חי → רשימת תוצאות עם מחירים. רשימת WhatsApp מוגבלת ל-10 שורות
+    (מטא), אז מציגים עד 9 מוצרים + שורת חיפוש; אם יש יותר — מציינים ומציעים לצמצם."""
     import main
-    results = main.bot_product_search(query, limit=8)
+    all_results = main.bot_product_search(query, limit=20)
+    results = (all_results or [])[:9]
     if not results:
         wa.send_text(phone, f"לא מצאתי תוצאות ל'{query}' 🙁\n"
                             f"נסה/י שם מוצר אחר (למשל: אייפון 17, גלקסי S25), "
@@ -290,8 +292,13 @@ def _new_order_results(phone, query):
                      "sku": p.get("sku"), "stock": p.get("stock_status"),
                      "image": p.get("image")}
     rows.append(("search_again", "🔍 חיפוש חדש", ""))
-    wa.send_list(phone, f"מצאתי {len(results)} תוצאות ל'{query}'. בחר/י לפרטים:",
-                 rows, button_label="לתוצאות", section_title="תוצאות חיפוש")
+    total = len(all_results or [])
+    if total > len(results):     # יש יותר ממה שנכנס ברשימה (מגבלת 10 שורות בוואטסאפ)
+        hdr = (f"מצאתי {total} תוצאות ל'{query}' — הנה {len(results)} הרלוונטיות. "
+               f"לצמצום, הוסף/י דגם או סדרה (למשל JBL Flip / Charge). בחר/י לפרטים:")
+    else:
+        hdr = f"מצאתי {total} תוצאות ל'{query}'. בחר/י לפרטים:"
+    wa.send_list(phone, hdr, rows, button_label="לתוצאות", section_title="תוצאות חיפוש")
     db.bot_session_set(phone, "new_pick", data)
 
 
