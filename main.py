@@ -3087,12 +3087,35 @@ def bot_get_variations(product_id) -> list:
     except Exception as e:  # noqa: BLE001
         logger.warning("bot_get_variations failed for %s: %s", product_id, e)
         return []
+    # מפת slug→שם-תצוגה לכל תכונה (ה-option בוריאציה הוא לעיתים slug, כמו 'esim-only')
+    term_disp = {}
+    for a in ((vs[0].get("attributes") if vs else []) or []):
+        nm, aid = a.get("name"), a.get("id")
+        if not (nm and aid) or nm in term_disp:
+            continue
+        term_disp[nm] = {}
+        try:
+            rt = _rq.get(base + f"/wp-json/wc/v3/products/attributes/{aid}/terms",
+                         params={"per_page": 100}, auth=(k, s), timeout=12)
+            for t in (rt.json() if rt.ok else []):
+                term_disp[nm][t.get("slug")] = t.get("name")
+                term_disp[nm][t.get("name")] = t.get("name")
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _disp(nm, opt):
+        return term_disp.get(nm, {}).get(opt, opt)
+
     out = []
     for v in (vs or []):
-        attrs = {a.get("name"): a.get("option") for a in (v.get("attributes") or [])}
+        attr_order = [a.get("name") for a in (v.get("attributes") or []) if a.get("option")]
+        attrs = {a.get("name"): a.get("option") for a in (v.get("attributes") or []) if a.get("option")}
+        attrs_disp = {nm: _disp(nm, opt) for nm, opt in attrs.items()}
         out.append({"id": v.get("id"), "price": v.get("price"),
                     "color": attrs.get("בחירת צבע") or "",
                     "storage": attrs.get("בחירת נפח אחסון") or attrs.get("נפח אחסון") or "",
+                    "attrs": attrs, "attrs_disp": attrs_disp,   # ערך לחיפוש + שם לתצוגה
+                    "attr_order": attr_order,
                     "stock": v.get("stock_status"),
                     "permalink": v.get("permalink") or ""})  # מכיל את ה-attributes ל-add-to-cart
     return out

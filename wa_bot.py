@@ -85,22 +85,24 @@ def handle(phone: str, text: str, mtype: str = "text", reply_id: str = "", wamid
         return _new_order_results(phone, text)
     if state == "new_pick" and rid.startswith("prod:"):
         return _product_card(phone, rid, sess.get("data") or {})
-    # ── זרימת הזמנה בצ'אט ──
+    # ── זרימת הזמנה בצ'אט (וריאציה גנרית — כל תכונה שמשתנה) ──
     if rid.startswith("buy:"):
         return _start_order(phone, rid.split(":", 1)[1], sess)
-    if state == "order_color" and rid.startswith("color:"):
+    if state == "order_attr" and rid.startswith("pick:"):
         d = sess.get("data") or {}
-        return _show_storage(phone, d.get("pid"), d.get("product") or {},
-                             d.get("variations") or [], rid.split(":", 1)[1])
-    if state == "order_storage" and rid.startswith("storage:"):
-        d = sess.get("data") or {}
-        st = rid.split(":", 1)[1]
-        prod = d.get("product") or {}
-        vs = [v for v in (d.get("variations") or [])
-              if (not d.get("color") or v.get("color") == d.get("color")) and v.get("storage") == st]
-        v = vs[0] if vs else {}
-        label = " ".join(x for x in [_short_name(prod.get("name")), d.get("color"), st] if x)
-        return _order_checkout(phone, label, v.get("price"), d.get("pid"), prod.get("permalink"), v)
+        try:
+            idx = int(rid.split(":", 1)[1])
+            opts, attr = d.get("ask_options") or [], d.get("ask_attr")
+            if attr and 0 <= idx < len(opts):
+                chosen = d.get("chosen") or {}
+                chosen[attr] = opts[idx]
+                d["chosen"] = chosen
+                d.pop("ask_attr", None)
+                d.pop("ask_options", None)
+                db.bot_session_set(phone, "order_attr", d)
+        except Exception:  # noqa: BLE001
+            pass
+        return _ask_next_attr(phone)
 
     # ── ניתוב תפריט ──
     if rid == "status" or ("סטטוס" in low and "הזמנ" in low):
@@ -285,41 +287,47 @@ def _start_order(phone, pid, sess):
     if not variations:                       # מוצר פשוט
         return _order_checkout(phone, _short_name(prod.get("name")),
                                prod.get("price"), pid, prod.get("permalink"))
-    colors = []
-    seen = set()
-    for v in variations:
-        c = v.get("color")
-        if c and c not in seen:
-            seen.add(c)
-            colors.append(c)
-    if len(colors) > 1:
-        rows = [(f"color:{c}", c, "") for c in colors[:10]]
-        wa.send_list(phone, f"איזה צבע ל-{_short_name(prod.get('name'))}?", rows,
-                     button_label="צבעים", section_title="בחר/י צבע")
-        db.bot_session_set(phone, "order_color",
-                           {"pid": pid, "product": prod, "variations": variations})
-        return
-    return _show_storage(phone, pid, prod, variations, colors[0] if colors else "")
+    db.bot_session_set(phone, "order_attr",
+                       {"pid": pid, "product": prod, "variations": variations, "chosen": {}})
+    return _ask_next_attr(phone)
 
 
-def _show_storage(phone, pid, prod, variations, color):
-    vs = [v for v in variations if (not color or v.get("color") == color)]
-    storages = []
-    seen = set()
-    for v in vs:
-        st = v.get("storage")
-        if st and st not in seen:
-            seen.add(st)
-            storages.append(st)
-    if len(storages) > 1:
-        rows = [(f"storage:{st}", st, "") for st in storages[:10]]
-        wa.send_list(phone, "איזה נפח אחסון?", rows, button_label="נפח", section_title="בחר/י נפח")
-        db.bot_session_set(phone, "order_storage",
-                           {"pid": pid, "product": prod, "variations": variations, "color": color})
-        return
-    v = vs[0] if vs else {}                   # וריאציה יחידה — נקבעה
-    label = " ".join(x for x in [_short_name(prod.get("name")), color, v.get("storage")] if x)
-    return _order_checkout(phone, label, v.get("price"), pid, prod.get("permalink"), v)
+def _ask_next_attr(phone):
+    """זרימת וריאציה גנרית: שואל על כל תכונה שמשתנה (צבע / נפח / קישוריות / אחריות...)
+    עד שהוריאציה נקבעת חד-משמעית, ואז סוגר הזמנה. תכונה עם ערך יחיד נבחרת אוטומטית."""
+    sess = db.bot_session_get(phone)
+    d = sess.get("data") or {}
+    variations = d.get("variations") or []
+    chosen = d.get("chosen") or {}
+    prod = d.get("product") or {}
+    matching = [v for v in variations
+                if all((v.get("attrs") or {}).get(k) == val for k, val in chosen.items())] or variations
+    order = (variations[0].get("attr_order") if variations else []) or []
+    for attr in order:
+        if attr in chosen:
+            continue
+        opts, seen = [], set()                # [(value, display), ...]
+        for v in matching:
+            val = (v.get("attrs") or {}).get(attr)
+            disp = (v.get("attrs_disp") or {}).get(attr, val)
+            if val and val not in seen:
+                seen.add(val)
+                opts.append((val, disp))
+        if len(opts) > 1:                     # יש בחירה — שואלים את הלקוח (מציגים שם)
+            rows = [(f"pick:{i}", opts[i][1][:24], "") for i in range(min(len(opts), 10))]
+            d["ask_attr"], d["ask_options"], d["chosen"] = attr, [o[0] for o in opts], chosen
+            db.bot_session_set(phone, "order_attr", d)
+            wa.send_list(phone, f"בחר/י {attr} ל-{_short_name(prod.get('name'))}:",
+                         rows, button_label="בחירה", section_title=attr[:24])
+            return
+        if len(opts) == 1:                    # ערך יחיד — אוטומטי, בלי לשאול
+            chosen[attr] = opts[0][0]
+    v = matching[0] if matching else {}       # כל התכונות נקבעו → סגירה
+    disp = v.get("attrs_disp") or {}
+    label = " ".join([_short_name(prod.get("name"))]
+                     + [disp.get(a, "") for a in order if (v.get("attrs") or {}).get(a)])
+    return _order_checkout(phone, label.strip(), v.get("price"),
+                           d.get("pid"), prod.get("permalink"), v)
 
 
 def _short_link(url: str) -> str:
