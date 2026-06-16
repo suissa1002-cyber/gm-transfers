@@ -2055,7 +2055,7 @@ def uri_jobs_pending(mark_running: bool = True) -> list:
     with _conn() as c:
         cur = c.cursor()
         cur.execute(_q("""
-            SELECT id, phone, question FROM uri_jobs
+            SELECT id, phone, question, source FROM uri_jobs
             WHERE status = 'pending' ORDER BY id LIMIT 5"""))
         jobs = [dict(r) for r in cur.fetchall()]
         if mark_running and jobs:

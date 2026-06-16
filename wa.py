@@ -447,6 +447,25 @@ def fetch_meta_media(media_id: str):
     return r2.content, mime
 
 
+def send_typing(message_id: str) -> bool:
+    """חיווי הקלדה רשמי של מטא (+ סימון 'נקרא') — מוצג ללקוח עד ~25 שניות או עד
+    שנשלחת הודעה. message_id = wamid של ההודעה הנכנסת של הלקוח."""
+    if not (meta_direct_ready() and message_id):
+        return False
+    import os as _os
+    import requests as _rq
+    try:
+        r = _rq.post(f"{META_GRAPH}/{_os.getenv('META_WA_PHONE_ID').strip()}/messages",
+                     headers={"Authorization": f"Bearer {_os.getenv('META_WA_TOKEN').strip()}",
+                              "Content-Type": "application/json"},
+                     json={"messaging_product": "whatsapp", "status": "read",
+                           "message_id": message_id,
+                           "typing_indicator": {"type": "text"}}, timeout=10)
+        return r.status_code in (200, 201)
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def _meta_send_text(phone: str, text: str) -> str:
     """שליחת טקסט חופשי ישירות דרך WhatsApp Cloud API של מטא. מחזיר wamid."""
     if not meta_direct_ready():
@@ -557,6 +576,20 @@ def send_list(phone: str, body: str, rows: list, button_label: str = "בחר",
     return _meta_interactive(phone, payload, f"[רשימה] {body}")
 
 
+def send_cta_url(phone: str, body: str, button_text: str, url: str,
+                 header: str = "", header_image: str = "") -> str:
+    """כפתור CTA שפותח URL בלחיצה (cta_url). button_text ≤20 תווים.
+    header_image = URL תמונה לכותרת (כרטיס מוצר)."""
+    payload = {"type": "cta_url", "body": {"text": body},
+               "action": {"name": "cta_url",
+                          "parameters": {"display_text": button_text[:20], "url": url}}}
+    if header_image:
+        payload["header"] = {"type": "image", "image": {"link": header_image}}
+    elif header:
+        payload["header"] = {"type": "text", "text": header[:60]}
+    return _meta_interactive(phone, payload, f"[כפתור] {body}")
+
+
 def send_text(phone: str, text: str) -> str:
     """טקסט פשוט מהבוט (לא דרך send_reply שמסמן 'אנושי')."""
     wamid = _meta_send_text(phone, text)
@@ -565,21 +598,24 @@ def send_text(phone: str, text: str) -> str:
 
 
 def _store_outbound(phone: str, text: str, wamid: str = "", mtype: str = "text",
-                    media_url: str = ""):
+                    media_url: str = "", reply_to: str = "", reply_preview: str = ""):
     """שומר הודעה יוצאת בחנות העצמאית (wa_msg) — חובה כי webhook של מטא לא מחזיר
-    את ההודעות שלנו. גם wa_shadow (לתצוגה ב-get_thread בזמן מעבר)."""
+    את ההודעות שלנו. גם wa_shadow (לתצוגה ב-get_thread בזמן מעבר).
+    reply_to = wamid המצוטט (מענה reply), כדי שהציטוט יופיע גם בתצוגה הנייטיב."""
     import db
     ts = int(time.time())
     wid = wamid or f"gm-out-{ts}-{abs(hash(text)) % 100000}"
     try:
         db.wa_msg_upsert(wamid=wid, phone=str(phone), direction="out", mtype=mtype,
-                         text=text or "", media_url=media_url or "", ts=ts, status="sent")
+                         text=text or "", media_url=media_url or "", reply_to=reply_to or "",
+                         ts=ts, status="sent")
         db.wa_contact_upsert(str(phone), out_ts=ts)
     except Exception as e:  # noqa: BLE001
         logger.warning("store outbound failed: %s", e)
     if wamid:
         try:
-            db.wa_shadow_add(str(phone), wamid, text or "", ts=ts)
+            db.wa_shadow_add(str(phone), wamid, text or "", reply_to=reply_to,
+                             reply_preview=reply_preview, ts=ts)
         except Exception:  # noqa: BLE001
             pass
 
@@ -818,7 +854,9 @@ def send_reply_quoted(phone: str, text: str, reply_to: str, reply_preview: str =
         raise WaError(f"שליחת ה-reply נכשלה: {err}")
     mid = (j["messages"][0] or {}).get("id", "")
     _auto_human(phone)
-    _shadow(phone, mid, text, reply_to=reply_to, reply_preview=reply_preview)
+    # נשמר ב-wa_msg (התצוגה הנייטיב קוראת משם) + wa_shadow — אחרת ה-reply נעלם בריענון
+    _store_outbound(phone, text, wamid=mid, mtype="text",
+                    reply_to=reply_to, reply_preview=reply_preview)
     logger.info("wa meta-direct reply -> %s (quoting %s)", phone, (reply_to or "")[:30])
     return {"sent": True, "via": "meta-reply", "window": win, "message_id": mid}
 

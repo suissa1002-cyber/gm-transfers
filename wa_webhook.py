@@ -74,15 +74,17 @@ def _msg_reply_id(m: dict) -> str:
 
 
 def extract_inbound(raw: bytes):
-    """מחזיר (phone, text, type, reply_id) של הודעת הלקוח הראשונה ב-payload, או
-    None (אירוע סטטוס / לא הודעה / שגיאה). reply_id = id של כפתור/שורת-רשימה."""
+    """מחזיר (phone, text, type, reply_id, wamid) של הודעת הלקוח הראשונה ב-payload,
+    או None (אירוע סטטוס / לא הודעה / שגיאה). reply_id = id של כפתור/שורת-רשימה;
+    wamid = מזהה ההודעה הנכנסת (לחיווי הקלדה / סימון נקרא)."""
     import json as _json
     try:
         data = _json.loads(raw.decode("utf-8", "ignore") or "{}")
         for entry in data.get("entry", []):
             for ch in entry.get("changes", []):
                 for m in (ch.get("value", {}) or {}).get("messages", []):
-                    return m.get("from"), _msg_text(m), m.get("type"), _msg_reply_id(m)
+                    return (m.get("from"), _msg_text(m), m.get("type"),
+                            _msg_reply_id(m), m.get("id"))
     except Exception:  # noqa: BLE001
         return None
     return None
