@@ -3700,11 +3700,30 @@ def bot_smart_search(q: str, limit: int = 20) -> dict:
     import requests as _rq
     terms = facets.get("terms") or []
     brand = facets.get("brand")
+    cat_name = ((facets.get("cat") or {}).get("name") or "").lower()
     kw = [w for w in (facets.get("keywords") or "").lower().split() if w]
+    if not kw:                                   # Haiku לפעמים מרוקן keywords — נפילה
+        import re as _kre                        # למילות השאילתה (לא מותג/קטגוריה) לדירוג
+        _used = set((brand.get("name", "") or "").lower().split()) if brand else set()
+        _used |= set(cat_name.split())
+        kw = [w for w in _kre.split(r"[\s/,]+", q.lower())
+              if w and w not in _used and w not in _SEARCH_STOP and len(w) >= 3
+              and not w.isdigit()]
 
-    def _run(use_cat=True, use_term=True, search=None):
-        params = {"per_page": 50, "status": "publish"}
-        if use_cat and facets.get("cat_id"):
+    def _cat_related(p):
+        # שייך לקטגוריית-היעד או לתת-קטגוריה שלה — לפי **שם** מול כל קטגוריות המוצר
+        # (לא ID בודד צר; כך AirPods Max ב'אוזניות ורמקולים' נשאר תחת 'אוזניות').
+        if not cat_name:
+            return True
+        for c in (p.get("categories") or []):
+            cn = (c.get("name") or "").lower()
+            if cn and (cat_name in cn or cn in cat_name):
+                return True
+        return False
+
+    def _fetch(search=None, use_cat_id=False, use_term=True):
+        params = {"per_page": 60, "status": "publish"}
+        if use_cat_id and facets.get("cat_id"):
             params["category"] = facets["cat_id"]
         if facets.get("max_price"):
             params["max_price"] = facets["max_price"]
@@ -3719,42 +3738,61 @@ def bot_smart_search(q: str, limit: int = 20) -> dict:
             raw = r.json() if r.ok else []
         except Exception:  # noqa: BLE001
             raw = []
-        scored = []
+        out = []
         for p in (raw or []):
             if not isinstance(p, dict):
                 continue
             if (p.get("catalog_visibility") == "hidden"
                     or p.get("type") in ("external", "grouped")):
                 continue
-            name = (p.get("name") or "").lower()
             if brand and brand.get("slug"):
                 bn = (brand.get("name", "") or "").lower()
+                name = (p.get("name") or "").lower()
                 pb = [(b.get("slug"), (b.get("name") or "").lower()) for b in (p.get("brands") or [])]
-                # מותג מ-taxonomy או משם המוצר (הרבה מוצרים בלי מותג משויך)
                 if not (any(brand["slug"] == bs or bn == bnm for bs, bnm in pb)
                         or (bn and bn in name)):
                     continue
+            out.append(p)
+        return out
+
+    def _rank_pack(raw):
+        # צמצום-קטגוריה רך: שומר רק קשורי-קטגוריה; אם מצמצם לאפס — מוותר (לא מאבד הכל)
+        pool = [p for p in raw if _cat_related(p)] if cat_name else list(raw)
+        if cat_name and not pool:
+            pool = list(raw)
+        scored = []
+        for p in pool:
+            name = (p.get("name") or "").lower()
             sc = sum(2 for w in kw if w in name)
+            if _cat_related(p):
+                sc += 1
             if p.get("stock_status") == "instock":
                 sc += 1
             scored.append((sc, _smart_pack(p)))
         scored.sort(key=lambda x: x[0], reverse=True)
         return [p for _sc, p in scored][:limit]
 
-    # סולם שחרור: סינון מלא → בלי תכונה → בלי קטגוריה (חיפוש מילולי) → fallback מילולי.
-    # ככה תכונה/קטגוריה שמחזירה 0 (כמו 'ספורט' שלא מתויג) לא נותנת מסך ריק שגוי.
-    kw_search = facets.get("keywords") or q
-    results = _run(use_cat=True, use_term=True,
-                   search=(kw_search if not facets.get("cat_id") else None))
-    if not results and terms:
-        results = _run(use_cat=True, use_term=False,
-                       search=(kw_search if not facets.get("cat_id") else None))
-    if not results and facets.get("cat_id"):
-        results = _run(use_cat=False, use_term=False, search=kw_search)
-    if not results:                              # אחרון: חיפוש מילולי עם קיצור מילים
+    def _gather(use_term=True):
+        # **מיזוג** של שתי שאילתות → לא צר מדי ולא רחב מדי:
+        # (1) דפדוף הקטגוריה (מבטיח את פריטי הקטגוריה — מקלדות, לא פדים),
+        # (2) חיפוש מותג/דגם (מבטיח פריטים חוצי-קטגוריה — AirPods על פני תתי-קטגוריות).
+        merged = {}
+        if facets.get("cat_id"):
+            for p in _fetch(use_cat_id=True, use_term=use_term):
+                merged[p.get("id")] = p
+        srch = brand.get("name") if brand else (" ".join(kw) if kw else q)
+        if srch:
+            for p in _fetch(search=srch, use_term=use_term):
+                merged[p.get("id")] = p
+        return list(merged.values())
+
+    results = _rank_pack(_gather())
+    if not results and terms:                     # שחרור: הורד תכונה שמצמצמת מדי
+        results = _rank_pack(_gather(use_term=False))
+    if not results:                               # אחרון: חיפוש מילולי עם קיצור מילים
         results = bot_product_search(q, limit=limit)
     note = None
-    if brand and not results:                    # מותג שצוין אך אין לו מוצר בתוצאה
+    if brand and not results:                     # מותג שצוין אך אין לו מוצר בתוצאה
         note = f"no_brand:{brand.get('name')}"
     return {"results": results,
             "meta": {"brand": (brand or {}).get("name") if brand else None,
