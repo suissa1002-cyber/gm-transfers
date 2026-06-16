@@ -2337,6 +2337,26 @@ def bridge_jobs(x_bridge_key: Optional[str] = Header(None)):
     return {"jobs": db.uri_jobs_pending()}
 
 
+@app.get("/api/uri-bridge/thread/{phone}")
+def bridge_thread(phone: str, limit: int = 8, x_bridge_key: Optional[str] = Header(None)):
+    """הקשר השיחה מהחנות הנייטיב (wa_msg) — כולל את הודעות הבוט/אורי עצמן (שנשלחות
+    דרך מטא ולכן חסרות בקונקטופ). זה מה שנותן לאורי המשכיות לשאלות שהוא עצמו שאל."""
+    _require_bridge(x_bridge_key)
+    import wa
+    try:
+        msgs = wa.get_thread_native(phone, limit=max(2, min(int(limit or 8), 20)))
+    except Exception:  # noqa: BLE001
+        msgs = []
+    lines = []
+    for m in (msgs or [])[-int(limit or 8):]:
+        t = (m.get("text") or "").strip()
+        if not t:
+            continue
+        who = "לקוח" if m.get("direction") == "in" else "אורי (אנחנו)"
+        lines.append(f"{who}: {t}")
+    return {"thread": "\n".join(lines)}
+
+
 @app.get("/api/uri-bridge/search")
 def bridge_search(q: str = "", limit: int = 8, x_bridge_key: Optional[str] = Header(None)):
     """חיפוש מוצרים לאורי (מסלול הבוט המהיר) — כך שלא יהיה תלוי רק במועמדים שהוזרקו.
