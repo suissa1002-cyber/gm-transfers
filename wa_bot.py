@@ -300,6 +300,14 @@ def _new_order_results(phone, query):
         hdr = f"מצאתי {total} תוצאות ל'{query}'. בחר/י לפרטים:"
     wa.send_list(phone, hdr, rows, button_label="לתוצאות", section_title="תוצאות חיפוש")
     db.bot_session_set(phone, "new_pick", data)
+    # לאפשרויות נוספות — כפתור לעמוד החיפוש/סינון באתר (URL מוסתר מאחורי הכפתור)
+    try:
+        from urllib.parse import quote
+        url = f"https://greenmobile.co.il/?s={quote(query or '')}&post_type=product"
+        wa.send_cta_url(phone, "רוצה לראות את *כל* התוצאות ולסנן לפי מחיר/מותג/תכונות?",
+                        "🔎 כל התוצאות באתר", url)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _product_card(phone, rid, data):
