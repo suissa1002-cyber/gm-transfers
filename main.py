@@ -3415,6 +3415,8 @@ def bot_product_search(q: str, limit: int = 8) -> list:
                             "price": p.get("price"), "permalink": p.get("permalink") or "",
                             "sku": p.get("sku") or "", "type": p.get("type"),
                             "image": img, "stock_status": p.get("stock_status"),
+                            # מותג המוצר (taxonomy native) — לחילוץ מדויק של הדגם לכותרת
+                            "brand": ((p.get("brands") or [{}])[0] or {}).get("name", ""),
                             # קטגוריות — לקישור "עוד באתר" חכם (לפי קטגוריית המוצרים שנמצאו)
                             "cats": [{"slug": c.get("slug"), "name": c.get("name")}
                                      for c in (p.get("categories") or []) if c.get("slug")]}))

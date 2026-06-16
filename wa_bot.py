@@ -236,10 +236,11 @@ _BRAND_HE = {"אנקר": "anker", "סמסונג": "samsung", "אפל": "apple", 
              "הונור": "honor", "וויוו": "vivo", "מרשל": "marshall", "בוס": "bose"}
 
 
-def _name_parts(name: str):
+def _name_parts(name: str, brand: str = ""):
     """(כותרת-דגם, תיאור): מחלץ את חלק המותג+דגם — איפה שהוא בשם, גם אם בסוף —
     לכותרת, והשאר לתת-כותרת. 'טלפון... Xiaomi Redmi 15C' → ('Redmi 15C', 'עם מסך...').
-    כך הכותרת תמיד הדגם, לא תיאור גנרי."""
+    כך הכותרת תמיד הדגם, לא תיאור גנרי. brand = המותג האמיתי של המוצר (taxonomy) —
+    אם סופק, מאתרים אותו בשם במדויק (עובד לכל מותג בחנות, בלי תלות ברשימה הקשיחה)."""
     n = _re.sub(r"\s+", " ", (name or "")).strip()
     for pre in _GENERIC_PREFIX:
         if n.startswith(pre + " ") or n == pre:
@@ -247,11 +248,21 @@ def _name_parts(name: str):
             break
     low = n.lower()
     positions = []
-    for b in _BRANDS:
+    # 1) המותג האמיתי של המוצר (Turtle Beach, SteelSeries... — כל מה שבחנות)
+    b = (brand or "").lower().strip()
+    if b and b in low:
         if low.startswith(b):
             positions.append(0)
         for sep in (" ", "-", "–", "—"):
             p = low.find(sep + b)
+            if p >= 0:
+                positions.append(p + 1)
+    # 2) נפילה לרשימת המותגים הקשיחה (כשאין מותג משויך / לא נמצא בשם)
+    for b2 in _BRANDS:
+        if low.startswith(b2):
+            positions.append(0)
+        for sep in (" ", "-", "–", "—"):
+            p = low.find(sep + b2)
             if p >= 0:
                 positions.append(p + 1)
     pos = min(positions) if positions else -1
@@ -266,9 +277,9 @@ def _name_parts(name: str):
     return (title or (name or "מוצר")), desc
 
 
-def _short_name(name: str) -> str:
+def _short_name(name: str, brand: str = "") -> str:
     """שם דגם קצר וקריא לכותרת (ראה _name_parts)."""
-    return _name_parts(name)[0]
+    return _name_parts(name, brand)[0]
 
 
 def _new_order_results(phone, query):
@@ -286,14 +297,14 @@ def _new_order_results(phone, query):
     for p in results:
         pid = f"prod:{p['id']}"
         price = p.get("price")
-        title, desc_extra = _name_parts(p.get("name"))   # דגם לכותרת, תיאור לתת-כותרת
+        title, desc_extra = _name_parts(p.get("name"), p.get("brand"))   # דגם לכותרת, תיאור לתת-כותרת
         extra = desc_extra or (title[24:].strip() if len(title) > 24 else "")
         price_s = (f"₪{int(float(price)):,}" if price not in (None, "", "0") else "לפרטים")
         desc = f"{price_s} · {extra}"[:72] if extra else price_s
         rows.append((pid, title[:24], desc))
         data[pid] = {"name": p.get("name"), "price": price, "permalink": p.get("permalink"),
                      "sku": p.get("sku"), "stock": p.get("stock_status"),
-                     "image": p.get("image")}
+                     "image": p.get("image"), "brand": p.get("brand")}
     rows.append(("search_again", "🔍 חיפוש חדש", ""))
     total = len(all_results or [])
     if total > len(results):     # יש יותר ממה שנכנס ברשימה (מגבלת 10 שורות בוואטסאפ)
@@ -372,7 +383,7 @@ def _start_order(phone, pid, sess):
     prod = (sess.get("data") or {}).get("product") or {}
     variations = main.bot_get_variations(pid)
     if not variations:                       # מוצר פשוט
-        return _order_checkout(phone, _short_name(prod.get("name")),
+        return _order_checkout(phone, _short_name(prod.get("name"), prod.get("brand")),
                                prod.get("price"), pid, prod.get("permalink"))
     db.bot_session_set(phone, "order_attr",
                        {"pid": pid, "product": prod, "variations": variations, "chosen": {}})
@@ -404,14 +415,14 @@ def _ask_next_attr(phone):
             rows = [(f"pick:{i}", opts[i][1][:24], "") for i in range(min(len(opts), 10))]
             d["ask_attr"], d["ask_options"], d["chosen"] = attr, [o[0] for o in opts], chosen
             db.bot_session_set(phone, "order_attr", d)
-            wa.send_list(phone, f"בחר/י {attr} ל-{_short_name(prod.get('name'))}:",
+            wa.send_list(phone, f"בחר/י {attr} ל-{_short_name(prod.get('name'), prod.get('brand'))}:",
                          rows, button_label="בחירה", section_title=attr[:24])
             return
         if len(opts) == 1:                    # ערך יחיד — אוטומטי, בלי לשאול
             chosen[attr] = opts[0][0]
     v = matching[0] if matching else {}       # כל התכונות נקבעו → סגירה
     disp = v.get("attrs_disp") or {}
-    label = " ".join([_short_name(prod.get("name"))]
+    label = " ".join([_short_name(prod.get("name"), prod.get("brand"))]
                      + [disp.get(a, "") for a in order if (v.get("attrs") or {}).get(a)])
     return _order_checkout(phone, label.strip(), v.get("price"),
                            d.get("pid"), prod.get("permalink"), v)
