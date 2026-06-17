@@ -2216,7 +2216,7 @@ async def wc_order_webhook(request: Request):
         if not _hmac.compare_digest(expected, sig or ""):
             raise HTTPException(401, "bad signature")
     try:
-        order = json.loads(raw)
+        order = json_mod.loads(raw)
     except Exception:  # noqa: BLE001
         return {"ok": True, "skip": "no-json"}
     if not isinstance(order, dict) or not order.get("number"):
