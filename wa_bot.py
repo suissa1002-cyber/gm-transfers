@@ -54,6 +54,19 @@ MENU = [
 ]
 _TITLE2ID = {t: rid for rid, t, _ in MENU}
 
+# כפתורים/טקסטים חיצוניים שאינם פריטי התפריט שלנו — WhatsApp Ice Breakers, כפתורי
+# Chaty באתר, ושאריות מתפריט ConnectOp הישן. בלי המיפוי הזה הם נופלים לחיפוש מוצר
+# ("מצאתי 9 תוצאות ל'שירות לקוחות'") במקום לכוונה הנכונה.
+_BTN_ALIASES = {
+    "שירות לקוחות": "agent", "שירות לקוח": "agent", "שירות": "agent",
+    "צור קשר": "agent", "יצירת קשר": "agent", "דבר עם נציג": "agent",
+    "הזמנות": "status", "ההזמנות שלי": "status", "ההזמנה שלי": "status",
+    "מעקב הזמנה": "status", "מעקב הזמנות": "status", "מעקב משלוח": "status",
+    "סניפים": "branches", "כתובות": "branches", "שעות פתיחה": "branches",
+    "משלוחים": "shipping", "מחירי משלוח": "shipping",
+    "מעבדה": "lab", "תיקון": "lab", "תיקונים": "lab",
+}
+
 GREET = "היי תודה שפנית לגרין מובייל, רשת חנויות סלולר, גיימינג מחשבים ועוד. איך נוכל לעזור?"
 
 BRANCHES = ("📍 *הסניפים שלנו*\n"
@@ -107,6 +120,10 @@ def handle(phone: str, text: str, mtype: str = "text", reply_id: str = "", wamid
     sess = db.bot_session_get(phone)
     state = sess.get("state")
     rid = reply_id or _TITLE2ID.get(text, "")   # id מהבחירה, או מיפוי מהכותרת
+    if rid in _BTN_ALIASES:                       # reply_id שנושא תווית במקום id
+        rid = _BTN_ALIASES[rid]
+    elif not rid:                                 # כפתור חיצוני (Ice Breaker/Chaty) → כוונה
+        rid = _BTN_ALIASES.get(text, "")
     low = text
 
     # ── handoff לנציג אנושי: הבוט *שותק* כדי שאדם ישתלט. אבל אם הלקוח לוחץ כפתור/
