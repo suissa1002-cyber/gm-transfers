@@ -3598,10 +3598,13 @@ def bot_repair_quote(query: str) -> list:
              "בסיסי", "basic", "standard", "דגם", "ה")
     qwords = [w for w in _re.split(r"[\s/]+", q) if w and w not in _stop]
     # מילות מהות-תיקון (מסך/סוללה/שקע...) אינן חלק מהדגם — מסירים, כדי שהדגם יימצא
-    # גם כשהלקוח כתב 'מסך אייפון 14' (מהות+דגם יחד) בשלב הדגם.
+    # גם כשהלקוח כתב 'מסך וגב אייפון 14' (כמה תיקונים + דגם יחד) בשלב הדגם.
     _parts = {w.lower() for syns in _REPAIR_PART_SYN.values() for w in syns}
     _parts |= {k.lower() for k in _REPAIR_PART_SYN}
-    qwords = [w for w in qwords if w not in _parts]
+
+    def _is_part(w):                          # גם עם ו' חיבור ('וגב' → 'גב')
+        return w in _parts or (w.startswith("ו") and len(w) > 2 and w[1:] in _parts)
+    qwords = [w for w in qwords if not _is_part(w)]
     if not qwords:
         return []
     q_norm = " ".join(qwords)
