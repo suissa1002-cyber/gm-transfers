@@ -99,6 +99,10 @@ def handle(phone: str, text: str, mtype: str = "text", reply_id: str = "", wamid
         return _menu(phone)
     if rid == "agent" or any(w in low for w in ["נציג", "אנושי", "בנאדם", "מישהו"]):
         return _to_agent(phone)
+    # כניסה מעמוד מוצר: כפתור הוואטסאפ (Chaty) באתר ממלא "...לגבי המוצר: <שם> — <תיאור>".
+    # מזהים, מחלצים את שם המוצר, וקופצים ישר אליו — במקום תפריט גנרי. המרה גבוהה.
+    if not rid and "לגבי המוצר" in low:
+        return _entry_product_flow(phone, text)
     # ברכה (גם בתוך מצב חיפוש) → תפריט, במקום "לא מצאתי 'היי'"
     if not rid and _is_greeting(low):
         return _menu(phone)
@@ -344,6 +348,46 @@ def _short_name(name: str, brand: str = "") -> str:
     return _name_parts(name, brand)[0]
 
 
+def _entry_product_name(text: str) -> str:
+    """מחלץ שם מוצר מהודעת כניסה מעמוד מוצר: 'שלום, אני מתעניין/ת לגבי המוצר: <שם> —
+    <תיאור>'. חותך את התיאור (אחרי —/–/-), מנקה תווים נסתרים (zero-width/כיווניות)
+    ששוברים את השם (למשל 'Samsung'), ומכווץ רווחים."""
+    m = _re.search(r"לגבי המוצר:\s*(.+)", text or "", _re.S)
+    if not m:
+        return ""
+    name = m.group(1)
+    name = _re.split(r"[\n\r]|—|–|\s-\s", name)[0]               # חותך בתיאור
+    name = _re.sub(r"[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]", "", name)  # tavim nistarim
+    name = _re.sub(r"\s+", " ", name).strip(" -–—:·")
+    return name[:80]
+
+
+def _entry_product_flow(phone, text):
+    """כניסה מעמוד מוצר → מציג ישר את המוצר. התאמה יחידה → כרטיס מוצר מלא; כמה
+    תוצאות → רשימה לבחירה; אין → אורי/הזרימה הרגילה. כך כל קליק מעמוד מוצר באתר
+    הופך מיד למעורבות במוצר הספציפי, לא לתפריט גנרי."""
+    import main
+    name = _entry_product_name(text)
+    if not name:
+        return _menu(phone)
+    try:
+        results = (main.bot_smart_search(name, limit=8) or {}).get("results") or []
+    except Exception:  # noqa: BLE001
+        results = []
+    if len(results) == 1:                       # התאמה ודאית → ישר לכרטיס
+        top = results[0]
+        pid = f"prod:{top['id']}"
+        data = {pid: {"name": top.get("name"), "price": top.get("price"),
+                      "permalink": top.get("permalink"), "sku": top.get("sku"),
+                      "stock": top.get("stock_status"), "type": top.get("type"),
+                      "image": top.get("image"), "brand": top.get("brand")},
+                "__q": name}
+        db.bot_session_set(phone, "new_pick", data)
+        wa.send_text(phone, "מצוין! הנה המוצר שהתעניינת בו 👇")
+        return _product_card(phone, pid, data)
+    return _new_order_results(phone, name)      # 0/רבים → רשימה או 'לא נמצא'/אורי
+
+
 def _price_label(p, prefix=""):
     """מחיר לתצוגה. מוצר variable (נפחים/וריאציות שמשנים מחיר) → 'החל מ-' כי המחיר
     מ-WC הוא המינימום; מוצר פשוט → המחיר המדויק. מחזיר 'לפרטים' אם אין מחיר."""
@@ -533,7 +577,7 @@ def _ask_next_attr(phone):
 
 
 def _short_link(url: str) -> str:
-    """slug עברי / תווים לא-אנגליים בקישור → TinyURL ‏gm-<אנגלית מתוך ה-slug>
+    """slug עברי / תווים לא-אנגליים בקישור → TinyURL gm-<אנגלית מתוך ה-slug>
     (קישור עברי ארוך נראה שבור/חשוד בוואטסאפ). slug אנגלי תקין → מוחזר כמו שהוא."""
     try:
         from urllib.parse import urlsplit, quote, unquote
