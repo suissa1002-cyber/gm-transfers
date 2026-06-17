@@ -127,6 +127,23 @@ def _window_state(msgs):
             "last_inbound_ts": last_in}
 
 
+def _window_for(phone: str):
+    """מצב חלון 24ש לבדיקת שליחה — מעדיף את החנות שלנו (native), כי במצב cutover
+    ההודעות הנכנסות אצלנו ולא בקונקטופ. נפילה לקונקטופ אם אצלנו סגור (זמן מעבר)."""
+    try:
+        wn = get_thread_native(phone, limit=30).get("window") or {}
+    except Exception:  # noqa: BLE001
+        wn = {}
+    if wn.get("in_window"):
+        return wn
+    try:
+        wc = get_thread(phone, limit=30).get("window") or {}
+    except Exception:  # noqa: BLE001
+        wc = {}
+    # מחזירים את זה עם ההודעה הנכנסת האחרונה (החלון הפתוח ביותר)
+    return wc if (wc.get("last_inbound_ts") or 0) >= (wn.get("last_inbound_ts") or 0) else wn
+
+
 _MEDIA_TYPES = ("image", "video", "audio", "document", "file", "sticker")
 
 
@@ -416,7 +433,7 @@ def send_reply(phone: str, text: str):
             errs.append(f"Meta: {e}")
             logger.warning("meta text send failed: %s", e)
             try:   # כשל — אולי מחוץ לחלון 24ש. בודקים עכשיו בלבד (מקרה נדיר).
-                win = _window_state(get_thread(phone, limit=60)["messages"])
+                win = _window_for(phone)
             except Exception:  # noqa: BLE001
                 win = None
             if win is not None and not win["in_window"]:
@@ -574,7 +591,7 @@ def send_document(phone: str, pdf_bytes: bytes, filename: str = "document.pdf",
     if r.status_code not in (200, 201):
         # ייתכן מחוץ לחלון 24ש (מטא 131047) — מאותתים needs_template
         try:
-            win = _window_state(get_thread(phone, limit=60)["messages"])
+            win = _window_for(phone)
         except Exception:  # noqa: BLE001
             win = None
         if win is not None and not win["in_window"]:
@@ -791,7 +808,7 @@ def send_media(phone: str, filename: str, content: bytes, mime: str, caption: st
     import json as _json
     if len(content) > 15 * 1024 * 1024:
         raise WaError("קובץ גדול מדי (מקס׳ 15MB)")
-    win = _window_state(get_thread(phone, limit=60)["messages"])
+    win = _window_for(phone)
     if not win["in_window"]:
         raise WaError("מחוץ לחלון 24ש׳ — אי אפשר לשלוח מדיה (רק template טקסט)")
     m = (mime or "").lower()
@@ -984,7 +1001,7 @@ def send_reply_quoted(phone: str, text: str, reply_to: str, reply_preview: str =
         raise WaError("ההודעה מכילה test/ping — חסום")
     if not meta_direct_ready():
         raise WaError("חיבור Meta ישיר לא מוגדר")
-    win = _window_state(get_thread(phone, limit=60)["messages"])
+    win = _window_for(phone)
     if not win["in_window"]:
         return {"sent": False, "needs_template": True, "window": win}
     payload = {"messaging_product": "whatsapp", "to": str(phone),
