@@ -628,13 +628,19 @@ def send_order_confirm(phone: str, name: str, order_number,
     params = [{"type": "text", "text": str(name or "לקוח/ה יקר/ה")[:60]},
               {"type": "text", "text": str(order_number or "")[:20]},
               {"type": "text", "text": str(status_text or "")[:60]}]
+    # 3 כפתורי quick-reply (לפי סדר הטמפלייט): סטטוס (payload דינמי) · תפריט · נציג.
+    # הטקסט נקבע בטמפלייט; ה-payload נקבע כאן ומגיע ל-webhook כ-reply_id לניתוב הבוט.
     payload = {"messaging_product": "whatsapp", "to": str(phone), "type": "template",
                "template": {"name": "order_update_1", "language": {"code": "he"},
                             "components": [
                                 {"type": "body", "parameters": params},
                                 {"type": "button", "sub_type": "quick_reply", "index": "0",
                                  "parameters": [{"type": "payload",
-                                                 "payload": f"ordstatus:{order_number}"}]}]}}
+                                                 "payload": f"ordstatus:{order_number}"}]},
+                                {"type": "button", "sub_type": "quick_reply", "index": "1",
+                                 "parameters": [{"type": "payload", "payload": "menu"}]},
+                                {"type": "button", "sub_type": "quick_reply", "index": "2",
+                                 "parameters": [{"type": "payload", "payload": "agent"}]}]}}
     r = _rq.post(f"{META_GRAPH}/{_os.getenv('META_WA_PHONE_ID').strip()}/messages",
                  headers={"Authorization": f"Bearer {_os.getenv('META_WA_TOKEN').strip()}",
                           "Content-Type": "application/json"}, json=payload, timeout=30)
