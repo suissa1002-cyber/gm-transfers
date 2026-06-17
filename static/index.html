@@ -3556,10 +3556,14 @@ function waBubble(m){
   // כשיש מדיה — מסתירים את ה-placeholder הטקסטואלי ([image] וכו'), משאירים caption אמיתי
   let txt=(m.text||'').trim();
   if(media) txt=txt.replace(/\[(image|video|audio|document|file|sticker)[^\]]*\]/g,'').trim();
+  // לחיצת כפתור של הלקוח (טמפלייט quick-reply / בוט) — מסמנים בבירור "👆 לחץ/ה"
+  const isChoice=m.direction==='in'&&(m.kind==='button'||m.kind==='interactive');
   const mark=m.kind==='template'?`<div class="wa-mark">📋 תבנית · <span style="direction:ltr">${escW(m.tpl||'')}</span></div>`
+            :isChoice?'<div class="wa-mark" style="color:#16a34a">👆 לחץ/ה על כפתור</div>'
             :m.kind==='interactive'?'<div class="wa-mark">🤖 בוט</div>':'';
-  // ציטוט (reply): הודעה שמגיבה להודעה ספציפית — מציגים את הקטע המצוטט בראש הבועה
-  const quote=m.reply_to?`<div class="wa-quote" ${m.reply_preview?'':'style="opacity:.6"'}>${escW(m.reply_preview||'הודעה קודמת')}</div>`:'';
+  // ציטוט (reply): הודעה שמגיבה להודעה ספציפית. בלחיצת כפתור הציטוט הוא רק הטמפלייט
+  // ("הודעה קודמת" מבלבל) — אז לא מציגים אותו; הטקסט עצמו הוא שם הכפתור שנלחץ.
+  const quote=(m.reply_to&&!isChoice)?`<div class="wa-quote" ${m.reply_preview?'':'style="opacity:.6"'}>${escW(m.reply_preview||'הודעה קודמת')}</div>`:'';
   // לחיצה ארוכה (מובייל) / קליק ימני (דסקטופ) על הבועה ← תפריט השב/העתק
   const press=m.id?` data-mid="${escW(String(m.id))}" data-prev="${escW(String((m.text||'').slice(0,90)))}" data-full="${escW(String(m.text||''))}"
     onpointerdown="waBubPress(event,this)" onpointerup="waBubRelease()" onpointercancel="waBubRelease()"
@@ -4094,11 +4098,10 @@ async function waHuman(enable){
   catch(e){ toast('הפעולה נכשלה',false); }
 }
 function waPollTick(){
-  // רענון שקט: רשימה תמיד; שיחה פתוחה — רק אם לא מקלידים תשובה כרגע.
-  // (גם כשפאנל אורי/מלאי פתוח — loadWaThread מעדכן אז רק את ההודעות, בלי לדרוס הפאנל)
+  // רענון שקט: רשימה + שיחה פתוחה תמיד. הרינדור משמר טיוטה+פוקוס (renderWaThread),
+  // אז מרעננים גם תוך כדי הקלדה — אחרת הודעות נכנסות לא מופיעות עד שליחה/מעבר שיחה.
   loadWaSilent();
-  const ta=document.getElementById('waText');
-  if(S.waPhone && !(ta && (document.activeElement===ta && ta.value))) loadWaThread(true);
+  if(S.waPhone) loadWaThread(true);
 }
 // עדכון אזור ההודעות בלבד (כשפאנל אורי/מלאי פתוח) — בלי לרנדר מחדש את הפאנל/השדות,
 // עם שימור מיקום גלילה (גלילה לתחתית רק אם המשתמש כבר היה למטה — כמו בוואטסאפ).
