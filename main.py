@@ -292,6 +292,9 @@ def register_recurring_jobs():
     # מסירת Cargo (נמסר) → 'נמסרה' (+חוו"ד) → +24ש 'הושלם'; ישנות → ישר 'הושלם'
     scheduler.add_job(_cargo_delivery_sync_job, "interval", minutes=30,
                       id="cargo_delivery", max_instances=1, coalesce=True)
+    # עדכוני סטטוס אוטומטיים ללקוח (בהפצה/מוכן לאיסוף/נק' מסירה) — מחליף קונקטופ
+    scheduler.add_job(_status_notify_job, "interval", minutes=3,
+                      id="status_notify", max_instances=1, coalesce=True)
     # catch-up בהפעלה אם הקטלוג ישן מ-2ש' — כך דפלויים תכופים לא מרעיבים את רענון
     # ה-6ש' ומשאירים מוצרים שחוברו לאחרונה מחוץ לקטלוג (חוסם שידור הזמנות).
     if _is_stale(db.catalog_meta().get("updated_at"), hours=2):
@@ -4059,6 +4062,70 @@ def _wp_app_auth():
 class CargoCreateIn(BaseModel):
     pickup: bool = False        # נק׳ איסוף (shipping_type=2)
     double: bool = False        # משלוח כפול
+
+
+_STATUS_NOTIFY_TPL = {                       # סטטוס → template מאושר (2 פרמטרים)
+    "shipping-stage": "order_update_distribution",
+    "send-cargo": "order_update_distribution",
+    "order-ready": "order_ready_for_pickup",
+    "tlv-pickup": "messege_tlv_pickup",
+}
+
+
+def _il_phone(raw) -> str:
+    d = "".join(ch for ch in str(raw or "") if ch.isdigit())
+    if d.startswith("972"):
+        return d
+    if d.startswith("0"):
+        return "972" + d[1:]
+    if len(d) == 9 and d.startswith("5"):
+        return "972" + d
+    return d
+
+
+def _status_notify_job():
+    """עוקב אחרי שינויי סטטוס ושולח ללקוח את ה-template המאושר המתאים (בהפצה/מוכן
+    לאיסוף/נק' מסירה) נייטיב — מחליף את זרימות הסטטוס של קונקטופ. ריצה ראשונה רק
+    רושמת סטטוסים (בלי לשלוח — מונע backfill). מאחורי דגל WA_SEND_STATUS_AUTO.
+    דדופ פר הזמנה+סטטוס. 'delivered' לא כאן (מטופל ב-cargo_delivery → חוו"ד)."""
+    try:
+        base, k, s = _wc_creds()
+        import requests as _rq
+        r = _rq.get(f"{base}/wp-json/wc/v3/orders",
+                    params={"per_page": 50, "orderby": "modified", "order": "desc"},
+                    auth=(k, s), timeout=40)
+        orders = r.json() if r.ok else []
+    except Exception as e:  # noqa: BLE001
+        logger.warning("status notify fetch failed: %s", e)
+        return
+    init = db.sales_state_get("status_notify_init")
+    enabled = os.getenv("WA_SEND_STATUS_AUTO", "0") == "1"
+    for o in (orders or []):
+        if not isinstance(o, dict):
+            continue
+        num = str(o.get("number"))
+        st = o.get("status")
+        key = f"order_last_status:{num}"
+        last = db.sales_state_get(key)
+        db.sales_state_set(key, st)
+        if not init or last is None or last == st:
+            continue                         # ריצה ראשונה / לא ידוע / ללא שינוי → דלג
+        tpl = _STATUS_NOTIFY_TPL.get(st)
+        if not tpl or not enabled or db.sales_state_get(f"status_sent:{num}:{st}"):
+            continue
+        b = o.get("billing") or {}
+        phone = _il_phone(b.get("phone"))
+        if len(phone) < 11:
+            continue
+        try:
+            import wa
+            wa.send_status_template(phone, (b.get("first_name") or "").strip(), num, tpl)
+            db.sales_state_set(f"status_sent:{num}:{st}", "1")
+            logger.info("status notify %s -> %s (%s)", num, st, tpl)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("status notify send failed %s: %s", num, e)
+    if not init:
+        db.sales_state_set("status_notify_init", datetime.now().isoformat(timespec="seconds"))
 
 
 def _cargo_delivery_sync_job():
