@@ -168,9 +168,7 @@ def handle(phone: str, text: str, mtype: str = "text", reply_id: str = "", wamid
 
     # ── ניתוב תפריט ──
     if rid == "status" or ("סטטוס" in low and "הזמנ" in low):
-        wa.send_text(phone, "מה מספר ההזמנה? (ספרות בלבד)\nאו כתוב/י *תפריט* לחזרה.")
-        db.bot_session_set(phone, "await_order_number", {})
-        return
+        return _order_status_auto(phone)
     if rid == "branches" or "סניפ" in low:
         wa.send_text(phone, BRANCHES)
         return _menu_tail(phone)
@@ -811,6 +809,72 @@ def _send_repair_prices(phone, device, reps=None, missing=None):
     wa.send_text(phone, "\n".join(lines))
     _menu_tail(phone)
     db.bot_session_set(phone, "menu", {})
+
+
+def _order_status_auto(phone):
+    """סטטוס הזמנה עם זיהוי אוטומטי לפי הטלפון. נמצאה הזמנה → מציג ישר (בלי לשאול
+    מספר). יש כמה → מציג את הרלוונטית ומאפשר להקליד מספר אחר. אין → מבקש מספר."""
+    orders = _lookup_orders_by_phone(phone)
+    if not orders:
+        wa.send_text(phone, "מה מספר ההזמנה? (ספרות בלבד)\nאו כתוב/י *תפריט* לחזרה.")
+        db.bot_session_set(phone, "await_order_number", {})
+        return
+    wa.send_text(phone, orders[0]["msg"])
+    if len(orders) > 1:
+        nums = ", ".join(o["num"] for o in orders[1:4])
+        wa.send_text(phone, f"יש לך גם הזמנות נוספות על שם זה ({nums}).\n"
+                            f"לבדיקת אחת מהן — כתוב/י את מספר ההזמנה, או *תפריט* לחזרה.")
+        db.bot_session_set(phone, "await_order_number", {})
+        return
+    db.bot_session_clear(phone)
+    _menu_tail(phone)
+
+
+_DONE_STATES = {"completed", "cancelled", "refunded", "failed", "trash"}
+
+
+def _lookup_orders_by_phone(phone):
+    """כל ההזמנות האחרונות של הלקוח לפי טלפון (התאמת 972-מנורמל מול billing.phone).
+    הזמנות פעילות קודם, ואז לפי תאריך יורד. כל פריט: {num, msg}."""
+    try:
+        import main
+        import requests as _rq
+        creds = main._wc_creds()
+        if not creds:
+            return []
+        base, k, s = creds
+        target = main._il_phone(phone)
+        if not target or len(target) < 9:
+            return []
+        local = "0" + target[3:] if target.startswith("972") else target
+        found = {}
+        for term in (local, target):           # מחפשים גם 05... וגם 972...
+            try:
+                r = _rq.get(f"{base}/wp-json/wc/v3/orders",
+                            params={"search": term, "per_page": 10,
+                                    "orderby": "date", "order": "desc"},
+                            auth=(k, s), timeout=20)
+                if not r.ok:
+                    continue
+                for o in r.json():
+                    bp = main._il_phone((o.get("billing") or {}).get("phone"))
+                    if bp and bp == target:    # התאמה ודאית — לא רק חיפוש טקסט
+                        found[o.get("id")] = o
+            except Exception:  # noqa: BLE001
+                continue
+        orders = sorted(found.values(),
+                        key=lambda o: o.get("date_created") or "", reverse=True)
+        orders.sort(key=lambda o: 1 if o.get("status") in _DONE_STATES else 0)
+        out = []
+        for o in orders[:5]:
+            meta = {m.get("key"): m.get("value") for m in (o.get("meta_data") or [])}
+            name = ((o.get("billing") or {}).get("first_name") or "").strip()
+            num = str(o.get("number"))
+            out.append({"num": num, "msg": _status_msg(o, meta, name, num)})
+        return out
+    except Exception as e:  # noqa: BLE001
+        logging.warning("lookup orders by phone failed: %s", e)
+        return []
 
 
 def _order_status(phone, raw_num: str):
