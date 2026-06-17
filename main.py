@@ -3520,12 +3520,26 @@ def bot_repair_status(phone: str = "", fix_id=None) -> list:
     """סטטוס תיקוני מעבדה ללקוח — מ-NewOrder /api/Fixes. זיהוי לפי טלפון הלקוח
     (customer.phoneNumber) או מספר תיקון (fixId). מחזיר רשימת תיקונים תואמים."""
     import poller
-    try:
-        res = poller.client().get_fixes(status=-1)
-    except Exception as e:  # noqa: BLE001
-        logger.warning("get_fixes failed: %s", e)
-        return []
-    fixes = res if isinstance(res, list) else (res.get("data") or res.get("fixes") or [])
+    cli = poller.client()
+    # ⚠️ /api/Fixes בלי branchId מחזיר רק סניף אחד (ה-100 עם ה-fixId הגבוה). הספרה
+    # הראשונה ב-fixId = הסניף (1=גן העיר,2=סטאר,3=סיטי,4=עד הלום), אז שואלים את כל
+    # הסניפים וממזגים — אחרת תיקונים מסניפים אחרים (כמו 216417 בסניף 2) לא נמצאים.
+    fixes = []
+    branches = (1, 2, 3, 4, 5)
+    if fix_id is not None and str(fix_id) and str(fix_id)[0].isdigit():
+        b0 = int(str(fix_id)[0])             # אופטימיזציה: לפי מספר → קודם הסניף שלו
+        if b0 in branches:
+            branches = (b0,) + tuple(b for b in branches if b != b0)
+    for br in branches:
+        try:
+            res = cli.get_fixes(status=-1, branch_id=br)
+            fixes.extend(res if isinstance(res, list)
+                         else (res.get("data") or res.get("fixes") or []))
+        except Exception as e:  # noqa: BLE001
+            logger.warning("get_fixes branch %s failed: %s", br, e)
+        if fix_id is not None and any(str(f.get("fixId")) == str(fix_id)
+                                      for f in fixes if isinstance(f, dict)):
+            break                            # נמצא לפי מספר → לא צריך להמשיך לסניפים
 
     def _norm(p):
         d = "".join(ch for ch in str(p or "") if ch.isdigit())
