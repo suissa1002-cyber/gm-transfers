@@ -344,6 +344,16 @@ def _short_name(name: str, brand: str = "") -> str:
     return _name_parts(name, brand)[0]
 
 
+def _price_label(p, prefix=""):
+    """מחיר לתצוגה. מוצר variable (נפחים/וריאציות שמשנים מחיר) → 'החל מ-' כי המחיר
+    מ-WC הוא המינימום; מוצר פשוט → המחיר המדויק. מחזיר 'לפרטים' אם אין מחיר."""
+    price = p.get("price")
+    if price in (None, "", "0"):
+        return "לפרטים"
+    amt = f"₪{int(float(price)):,}"
+    return (f"{prefix}החל מ-{amt}" if p.get("type") == "variable" else f"{prefix}{amt}")
+
+
 def _new_order_results(phone, query):
     """חיפוש מוצר חי → רשימת תוצאות עם מחירים. רשימת WhatsApp מוגבלת ל-10 שורות
     (מטא), אז מציגים עד 9 מוצרים + שורת חיפוש; אם יש יותר — מציינים ומציעים לצמצם."""
@@ -377,11 +387,11 @@ def _new_order_results(phone, query):
         price = p.get("price")
         title, desc_extra = _name_parts(p.get("name"), p.get("brand"))   # דגם לכותרת, תיאור לתת-כותרת
         extra = desc_extra or (title[24:].strip() if len(title) > 24 else "")
-        price_s = (f"₪{int(float(price)):,}" if price not in (None, "", "0") else "לפרטים")
+        price_s = _price_label(p)            # 'החל מ-' למוצר עם וריאציות שמשנות מחיר
         desc = f"{price_s} · {extra}"[:72] if extra else price_s
         rows.append((pid, title[:24], desc))
         data[pid] = {"name": p.get("name"), "price": price, "permalink": p.get("permalink"),
-                     "sku": p.get("sku"), "stock": p.get("stock_status"),
+                     "sku": p.get("sku"), "stock": p.get("stock_status"), "type": p.get("type"),
                      "image": p.get("image"), "brand": p.get("brand")}
     rows.append(("search_again", "🔍 חיפוש חדש", ""))
     total = len(all_results or [])
@@ -435,7 +445,7 @@ def _product_card(phone, rid, data):
     price = p.get("price")
     lines = [f"*{p.get('name')}*"]
     if price not in (None, "", "0"):
-        lines.append(f"💰 מחיר: ₪{int(float(price)):,}")
+        lines.append(f"💰 מחיר: {_price_label(p)}")
     if p.get("stock") == "instock":
         lines.append("✅ זמין במלאי")
     elif p.get("stock") == "outofstock":

@@ -431,21 +431,40 @@ def wa_webhook_verify(request: Request):
 _HANDLED_WAMIDS = set()   # מניעת כפילות: מטא שולחת webhook שוב כשהתגובה איטית
 
 
+def _typing_keepalive(wamid, stop_evt, max_seconds=150):
+    """שומר על חיווי ההקלדה *חי* לכל אורך עיבוד הבוט. חיווי מטא פג אחרי ~25 שניות,
+    אז כשהבוט עובד זמן רב (מנוע חיפוש → אורי → API) הלקוח רואה 'דממה'. כאן משדרים
+    את החיווי מחדש כל 20 שניות עד שהבוט מסיים (stop_evt) או עד תקרה — כך הלקוח תמיד
+    רואה שמשהו קורה בצד השני, בכל סיטואציה."""
+    import wa
+    waited = 0
+    while waited < max_seconds:
+        try:
+            wa.send_typing(wamid)
+        except Exception:  # noqa: BLE001
+            pass
+        if stop_evt.wait(20):      # ממתין עד 20ש או עד שהבוט סיים
+            return
+        waited += 20
+
+
 def _dispatch_bot(bot_sender, inb):
     """ריצת הבוט ברקע — כדי שה-webhook יחזיר 200 מיד (מונע retry של מטא וכפילות)."""
-    try:
-        import wa
-        if len(inb) > 4 and inb[4]:
-            wa.send_typing(inb[4])
-    except Exception:  # noqa: BLE001
-        pass
+    import threading
+    wamid = inb[4] if len(inb) > 4 else ""
+    stop_evt = threading.Event()
+    if wamid:                      # חיווי הקלדה רציף לכל אורך העיבוד (לא רק 25ש)
+        threading.Thread(target=_typing_keepalive, args=(wamid, stop_evt),
+                         daemon=True).start()
     try:
         import wa_bot
         wa_bot.handle(bot_sender, inb[1], inb[2] or "text",
                       reply_id=(inb[3] if len(inb) > 3 else ""),
-                      wamid=(inb[4] if len(inb) > 4 else ""))
+                      wamid=wamid)
     except Exception as e:  # noqa: BLE001
         logger.warning("wa bot dispatch failed: %s", e)
+    finally:
+        stop_evt.set()             # עוצר את חיווי ההקלדה ברגע שיש תשובה
 
 
 @app.post("/api/wa/webhook")
