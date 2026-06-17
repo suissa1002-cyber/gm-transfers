@@ -443,9 +443,9 @@ def _typing_keepalive(wamid, stop_evt, max_seconds=150):
             wa.send_typing(wamid)
         except Exception:  # noqa: BLE001
             pass
-        if stop_evt.wait(20):      # ממתין עד 20ש או עד שהבוט סיים
+        if stop_evt.wait(8):       # רענון כל 8ש (החיווי פג אחרי ~25ש) — בלי פערים
             return
-        waited += 20
+        waited += 8
 
 
 def _dispatch_bot(bot_sender, inb):
@@ -3846,6 +3846,28 @@ def _smart_pack(p):
             "brand": ((p.get("brands") or [{}])[0] or {}).get("name", ""),
             "cats": [{"slug": c.get("slug"), "name": c.get("name")}
                      for c in (p.get("categories") or []) if c.get("slug")]}
+
+
+def bot_wc_title_search(query: str, limit: int = 20) -> list:
+    """חיפוש כותרת ישיר ב-WooCommerce (פרמטר search) — בלי מנוע ה-facet/relaxation.
+    לכניסה מעמוד מוצר, שבה הכותרת בהודעה כמעט זהה לכותרת המוצר באתר, זה מחזיר את
+    המוצר המדויק. מחזיר תוצאות packed (כמו _smart_pack); הדירוג לפי דמיון בצד הבוט."""
+    creds = _wc_creds()
+    query = (query or "").strip()
+    if not creds or len(query) < 2:
+        return []
+    base, k, s = creds
+    import requests as _rq
+    try:
+        r = _rq.get(f"{base}/wp-json/wc/v3/products",
+                    params={"search": query, "per_page": limit, "status": "publish"},
+                    auth=(k, s), timeout=20)
+        prods = r.json() if r.ok else []
+    except Exception:  # noqa: BLE001
+        return []
+    return [_smart_pack(p) for p in prods
+            if p.get("catalog_visibility") != "hidden"
+            and p.get("type") not in ("external", "grouped")]
 
 
 def bot_smart_search(q: str, limit: int = 20) -> dict:

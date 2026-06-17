@@ -358,40 +358,52 @@ def _entry_product_name(text: str) -> str:
     name = m.group(1)
     name = _re.split(r"[\n\r]|—|–|\s-\s", name)[0]               # חותך בתיאור
     name = _re.sub(r"[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]", "", name)  # tavim nistarim
-    name = _re.sub(r"\s+", " ", name).strip(" -–—:·")
-    # דגמים באתר תמיד באנגלית. אם יש לטינית — מצמצמים לטווח מהאות הלטינית הראשונה
-    # ועד התו הלטיני/ספרה האחרון (מותג+דגם+מפרט כמו 256GB), וזורקים מילות קטגוריה
-    # ('אוזניות', 'סמארטפון') ותיאור בעברית מסביב → התאמת חיפוש מדויקת בהרבה.
-    core = _re.search(r"[A-Za-z].*[A-Za-z0-9]", name)
-    if core and len(core.group(0)) >= 2:
-        name = core.group(0).strip()
-    return name[:80]
+    name = _re.sub(r"\s+", " ", name).strip(" -–—:·\"״׳")
+    return name[:90]
+
+
+def _title_sim(q: str, name: str) -> float:
+    """דמיון בין כותרת הכניסה לשם מוצר באתר. Jaccard על טוקנים + יחס רצף. הכותרת
+    בהודעה ≈ כותרת המוצר באתר, אז המוצר המדויק מקבל ציון גבוה במובהק."""
+    import difflib
+
+    def _n(t):
+        t = _re.sub(r"[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff\"\u05f4\u05f3]", "", t or "")
+        t = _re.sub(r"[^\w֐-׿]+", " ", t.lower())
+        return _re.sub(r"\s+", " ", t).strip()
+    qn, nn = _n(q), _n(name)
+    a, b = set(qn.split()), set(nn.split())
+    if not a or not b:
+        return 0.0
+    jac = len(a & b) / len(a | b)
+    return 0.6 * jac + 0.4 * difflib.SequenceMatcher(None, qn, nn).ratio()
 
 
 def _entry_product_flow(phone, text):
-    """כניסה מעמוד מוצר → מציג ישר את המוצר. התאמה יחידה → כרטיס מוצר מלא; כמה
-    תוצאות → רשימה לבחירה; אין → אורי/הזרימה הרגילה. כך כל קליק מעמוד מוצר באתר
-    הופך מיד למעורבות במוצר הספציפי, לא לתפריט גנרי."""
+    """כניסה מעמוד מוצר → מציג ישר את המוצר. חיפוש כותרת ישיר ב-WC (לא מנוע ה-facet
+    שמשחרר ומחזיר מוצר שגוי) + דירוג לפי דמיון לכותרת. התאמה ודאית (ציון גבוה) →
+    כרטיס ישיר; אחרת → רשימה/חיפוש רגיל, כדי לא להציג מוצר שגוי בביטחון."""
     import main
-    name = _entry_product_name(text)
-    if not name:
+    title = _entry_product_name(text)
+    if not title:
         return _menu(phone)
     try:
-        results = (main.bot_smart_search(name, limit=8) or {}).get("results") or []
+        results = main.bot_wc_title_search(title, limit=20) or []
     except Exception:  # noqa: BLE001
         results = []
-    if len(results) == 1:                       # התאמה ודאית → ישר לכרטיס
-        top = results[0]
+    ranked = sorted(results, key=lambda p: _title_sim(title, p.get("name", "")), reverse=True)
+    if ranked and _title_sim(title, ranked[0].get("name", "")) >= 0.6:
+        top = ranked[0]                         # התאמה ודאית → ישר לכרטיס
         pid = f"prod:{top['id']}"
         data = {pid: {"name": top.get("name"), "price": top.get("price"),
                       "permalink": top.get("permalink"), "sku": top.get("sku"),
                       "stock": top.get("stock_status"), "type": top.get("type"),
                       "image": top.get("image"), "brand": top.get("brand")},
-                "__q": name}
+                "__q": title}
         db.bot_session_set(phone, "new_pick", data)
         wa.send_text(phone, "מצוין! הנה המוצר שהתעניינת בו 👇")
         return _product_card(phone, pid, data)
-    return _new_order_results(phone, name)      # 0/רבים → רשימה או 'לא נמצא'/אורי
+    return _new_order_results(phone, title)     # לא ודאי → רשימה / 'לא נמצא' / אורי
 
 
 def _price_label(p, prefix=""):
