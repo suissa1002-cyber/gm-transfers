@@ -724,6 +724,33 @@ def _recount(cur, op_id: str):
     return rec, total, status
 
 
+def _sale_near_or_after(sale_date: str, start: str, grace_min: int = 180) -> bool:
+    """האם המכירה אירעה סביב/אחרי תחילת ההעברה (פרסור תאריכים עמיד, לא השוואת
+    מחרוזות). חלון חסד לאחור (grace_min) — מכירה ויצירת העברה יכולות לקרות באותה
+    דקה. תאריך לא-פריק → לא חוסם (עדיף לסגור מאשר להשאיר תקוע)."""
+    from datetime import datetime, timedelta
+    if not start:
+        return True
+
+    def _p(s):
+        s = (s or "").strip()
+        if not s:
+            return None
+        try:
+            return datetime.fromisoformat(s.replace("Z", "+00:00"))
+        except Exception:  # noqa: BLE001
+            try:
+                return datetime.fromisoformat(s[:19])
+            except Exception:  # noqa: BLE001
+                return None
+    sd, st = _p(sale_date), _p(start)
+    if sd is None or st is None:
+        return True
+    if sd.tzinfo is None or st.tzinfo is None:   # נרמול: אם אחד naive — משווים בלי tz
+        sd, st = sd.replace(tzinfo=None), st.replace(tzinfo=None)
+    return sd >= st - timedelta(minutes=grace_min)
+
+
 def reconcile_sold_transfer_items() -> list:
     """סוגר אוטומטית כרטיסי קליטה שהמכשיר שלהם נמכר לפני שבוצעה קליטה.
     עובר על פריטי-העברה פתוחים (received=0, עם סיריאלי, בהעברות in_transit/partial);
@@ -745,16 +772,21 @@ def reconcile_sold_transfer_items() -> list:
         items = [dict(r) for r in cur.fetchall()]
         for it in items:
             start = it.get("t_start") or ""
+            # לא מסננים תאריך ב-SQL (השוואת מחרוזות שבירה — פורמט/אזור-זמן שונים בין
+            # createDate ל-first_seen); לוקחים את המכירה האחרונה ומסננים בזמן אמיתי למטה.
             cur.execute(_q("""
                 SELECT branch_id, sale_date FROM sales
                 WHERE serial = ? AND doc_type = 0 AND qty > 0
-                  AND (? = '' OR sale_date >= ?)
                 ORDER BY sale_date DESC LIMIT 1
-            """), (it["serial"], start, start))
+            """), (it["serial"],))
             row = cur.fetchone()
             if not row:
                 continue
             sale = dict(row)
+            # המכירה צריכה להיות סביב/אחרי תחילת ההעברה — עם חלון חסד, כי מכירה בקופה
+            # ויצירת ההעברה יכולות לקרות באותה דקה (בכל סדר), כמו 13933 (פער 3 שניות).
+            if not _sale_near_or_after(sale.get("sale_date"), start, grace_min=180):
+                continue
             sold_b = sale.get("branch_id")
             try:
                 same = sold_b is not None and int(sold_b) == int(it["to_branch_id"])
