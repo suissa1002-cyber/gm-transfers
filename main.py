@@ -2171,6 +2171,23 @@ def wa_read_native_set(on: int = 1, x_admin_key: Optional[str] = Header(None)):
     return {"ok": True, "read_native": _wa_read_native()}
 
 
+@app.get("/api/admin/wa/bot-state/{phone}")
+def wa_bot_state(phone: str, x_admin_key: Optional[str] = Header(None)):
+    """מצב הבוט ללקוח — בעיקר אם הוא ב-handoff לנציג (הבוט שותק)."""
+    _require_admin(x_admin_key)
+    s = db.bot_session_get(phone)
+    return {"phone": phone, "state": s.get("state"),
+            "handoff": s.get("state") == "agent"}
+
+
+@app.post("/api/admin/wa/bot-release")
+def wa_bot_release(phone: str, x_admin_key: Optional[str] = Header(None)):
+    """משחרר לקוח מ-handoff-לנציג בחזרה לבוט (מנקה את מצב 'agent' — הבוט יענה שוב)."""
+    _require_admin(x_admin_key)
+    db.bot_session_clear(phone)
+    return {"ok": True, "phone": phone}
+
+
 @app.post("/api/admin/wa/cutover")
 def wa_cutover_set(mode: str, x_admin_key: Optional[str] = Header(None)):
     """החלפת מצב ה-cutover **מיידית** (נשמר ב-DB, בלי redeploy):

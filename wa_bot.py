@@ -109,6 +109,11 @@ def handle(phone: str, text: str, mtype: str = "text", reply_id: str = "", wamid
     rid = reply_id or _TITLE2ID.get(text, "")   # id מהבחירה, או מיפוי מהכותרת
     low = text
 
+    # ── handoff לנציג אנושי: הבוט *שותק* כדי שאדם ישתלט (עד timeout/שחרור בקונסולה).
+    # חייב להיות ראשון — אחרת הבוט היה ממשיך לענות מעל הנציג. ──
+    if state == "agent" and _agent_handoff_active(sess):
+        return
+
     # ── יציאה גלובלית מכל מצב (גם מתוך חיפוש/הזמנה שבולעים טקסט) ──
     if rid == "menu" or low in _ESCAPE:
         return _menu(phone)
@@ -789,12 +794,30 @@ def _to_agent(phone, note: str = ""):
     wa.send_text(phone, "😊 לפני שניפרד אני רוצה לתאם ציפיות. נציגי השירות שלנו הם בני אדם "
                         "(לא כמוני) ולכן הם נותנים כעת את תשומת ליבם ללקוחות קודמים. זה אומר "
                         "שאולי ייקח קצת זמן עד שיענו לך. תודה מראש על הסבלנות")
-    db.bot_session_set(phone, "agent", {"note": note})
+    from datetime import datetime, timezone
+    # state 'agent' + חותמת → הבוט משתתק (handle בודק בתחילתו) כדי שאדם ישתלט
+    db.bot_session_set(phone, "agent", {"note": note,
+                                        "ts": datetime.now(timezone.utc).isoformat()})
     try:                                  # מסמן 'אנושי' שהבוט לא יקפוץ + מתריע
         import main
-        main._tg_admin(f"👤 <b>לקוח ביקש נציג (בוט native)</b>\n{phone}{(' · ' + note) if note else ''}")
+        main._tg_admin(f"👤 <b>לקוח ביקש נציג (בוט native)</b>\n{phone}{(' · ' + note) if note else ''}"
+                       f"\n🤖 הבוט הושתק לשיחה הזו — ענה/י ידנית בקונסולה.")
     except Exception:  # noqa: BLE001
         pass
+
+
+def _agent_handoff_active(sess, hours=4) -> bool:
+    """האם הלקוח עדיין מועבר לנציג אנושי (הבוט צריך לשתוק). פג אחרי `hours` שעות —
+    אז הבוט חוזר לענות. חותמת חסרה (handoff ישן מלפני התיקון) → לא חוסם."""
+    from datetime import datetime
+    ts = (sess.get("data") or {}).get("ts")
+    if not ts:
+        return False
+    try:
+        t = datetime.fromisoformat(str(ts))
+        return (datetime.now(t.tzinfo) - t).total_seconds() < hours * 3600
+    except Exception:  # noqa: BLE001
+        return False
 
 
 _REPAIR_EMOJI = {"ממתין": "⏳", "תוקן": "✅", "נמסר ללקוח": "📦",
