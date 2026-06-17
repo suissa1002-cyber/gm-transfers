@@ -862,8 +862,9 @@ def _repair_status(phone, fix_id=None):
     results = main.bot_repair_status(phone=("" if fix_id else phone), fix_id=fix_id)
     if not results:
         if fix_id:                            # חיפשו לפי מספר ולא נמצא → לנסות שוב / נציג
-            wa.send_text(phone, f"לא מצאתי תיקון מספר {fix_id} 🤔\n"
-                                "בדוק/י את המספר ונסה/י שוב, או כתוב/י *נציג* לבירור.")
+            wa.send_text(phone, f"לא מצאתי את תיקון מספר {fix_id} במערכת המקוונת 🤔\n"
+                                "ייתכן שזה תיקון ישן יותר, או מספר שגוי. בדוק/י ונסה/י שוב, "
+                                "או כתוב/י *נציג* — נבדוק עבורך ישירות מול המעבדה.")
             db.bot_session_set(phone, "await_repair_id", {})
         else:                                 # לא נמצא לפי הטלפון → לבקש מספר תיקון
             wa.send_text(phone, "לא מצאתי תיקון על מספר הטלפון שלך 🤔\n"
