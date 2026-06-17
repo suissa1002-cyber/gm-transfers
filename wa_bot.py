@@ -109,10 +109,16 @@ def handle(phone: str, text: str, mtype: str = "text", reply_id: str = "", wamid
     rid = reply_id or _TITLE2ID.get(text, "")   # id מהבחירה, או מיפוי מהכותרת
     low = text
 
-    # ── handoff לנציג אנושי: הבוט *שותק* כדי שאדם ישתלט (עד timeout/שחרור בקונסולה).
-    # חייב להיות ראשון — אחרת הבוט היה ממשיך לענות מעל הנציג. ──
+    # ── handoff לנציג אנושי: הבוט *שותק* כדי שאדם ישתלט. אבל אם הלקוח לוחץ כפתור/
+    # 'תפריט'/ברכה — הוא רוצה את הבוט בחזרה → משחררים את ה-handoff וממשיכים. רק טקסט
+    # חופשי משאיר את הבוט שקט (אדם מטפל). חייב להיות ראשון. ──
     if state == "agent" and _agent_handoff_active(sess):
-        return
+        reengage = bool(rid) or low in _ESCAPE or _is_greeting(low)
+        if not reengage:
+            return
+        db.bot_session_clear(phone)
+        sess = {"state": None, "data": {}}
+        state = None
 
     # ── יציאה גלובלית מכל מצב (גם מתוך חיפוש/הזמנה שבולעים טקסט) ──
     if rid == "menu" or low in _ESCAPE:
