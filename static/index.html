@@ -2438,6 +2438,8 @@ function waThreadHTML(){
         <a class="btn-ghost wa-ico" target="_blank" href="https://newapp.connectop.co.il/en/inbox?acc=1428408&id=${escW(S.waPhone)}" title="פתח ב-ConnectOp">${ico('globe')}</a>
         <button class="btn-ghost wa-ico ${conv.live_chat?'wa-human-on':''}" onclick="waHuman(${conv.live_chat?'false':'true'})"
                 title="${conv.live_chat?'מצב אנושי — הבוט מושתק בשיחה. לחץ להחזיר את הבוט':'הבוט פעיל בשיחה. לחץ להשתיק אותו (מענה אנושי)'}">${ico(conv.live_chat?'user':'bot')}</button>
+        <button class="btn-ghost wa-ico ${S.waBotHandoff?'wa-human-on':''}" onclick="waBotRelease()"
+                title="${S.waBotHandoff?'🤖 הבוט מושתק (הלקוח ביקש נציג). לחץ להחזיר את הבוט לשיחה':'החזר את השיחה לבוט (בטל handoff לנציג)'}">🤖</button>
         <button class="btn-ghost wa-ico" onclick="waArchive(${conv.archived?'false':'true'})" title="${conv.archived?'החזר מארכיון':'העבר לארכיון'}">${ico(conv.archived?'restore':'archive')}</button>
       </span>
     </div>
@@ -4026,6 +4028,18 @@ async function loadWaThread(silent){
          const last=Math.max(0,...(t.messages||[]).map(m=>m.ts||0));
          if(last) waMarkSeen(phone,last); } }
   catch(e){ if(!silent) toast('טעינת שיחה נכשלה',false); }
+  // מצב handoff של הבוט ה-native (האם הבוט מושתק כי הלקוח ביקש נציג)
+  try{ const b=await api('/api/admin/wa/bot-state/'+encodeURIComponent(phone));
+       if(S.waPhone===phone){ const was=S.waBotHandoff; S.waBotHandoff=!!(b&&b.handoff);
+         if(was!==S.waBotHandoff && !(S.waPanel&&(S.waPanelMode==='uri'||S.waPanelMode==='stock'))) renderWaThread(); } }
+  catch(e){}
+}
+async function waBotRelease(){
+  if(!S.waPhone) return;
+  if(!confirm('להחזיר את השיחה לבוט?\nהבוט יחזור לענות אוטומטית ללקוח הזה.')) return;
+  try{ await api('/api/admin/wa/bot-release?phone='+encodeURIComponent(S.waPhone),{method:'POST'});
+       S.waBotHandoff=false; toast('הוחזר לבוט 🤖',true); renderWaThread(); }
+  catch(e){ toast('שגיאה',false); }
 }
 async function sendWaMsg(){
   const ta=document.getElementById('waText'); if(!ta) return;
