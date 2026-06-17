@@ -2200,6 +2200,15 @@ def wa_cutover_get(x_admin_key: Optional[str] = Header(None)):
             "read_native": _wa_read_native()}
 
 
+@app.post("/api/admin/wa/active")
+def wa_admin_active(x_admin_key: Optional[str] = Header(None)):
+    """heartbeat: האדמין פעיל במערכת כרגע → push לטלפון מדוכא (כמו אפליקציה אמיתית)."""
+    _require_admin(x_admin_key)
+    import time as _t
+    db.sales_state_set("admin_active_ts", str(_t.time()))
+    return {"ok": True}
+
+
 @app.post("/api/admin/wa/read-native")
 def wa_read_native_set(on: int = 1, x_admin_key: Optional[str] = Header(None)):
     """מתג ידני: האם הטאב יציג שיחות מהבוט ה-native (wa_msg) במקום מקונקטופ.

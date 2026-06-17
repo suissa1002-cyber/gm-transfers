@@ -91,6 +91,16 @@ def _use_native() -> bool:
         return False
 
 
+def _admin_active(window_sec: int = 75) -> bool:
+    """האם האדמין פעיל במערכת כרגע (heartbeat מהקונסולה ב-window_sec האחרונות).
+    אם כן — לא שולחים push לטלפון (אתה כבר רואה את ההתראה הפנימית)."""
+    try:
+        ts = db.sales_state_get("admin_active_ts")
+        return bool(ts and (time.time() - float(ts)) < window_sec)
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def poll_and_push():
     """ג'וב מתוזמן: מזהה הודעות נכנסות חדשות ושולח push. במצב native קורא מהחנות
     שלנו (קונקטופ כבר לא רואה את הודעות הבוט)."""
@@ -113,6 +123,9 @@ def poll_and_push():
         # ריצה ראשונה — בסיס בלבד, בלי התראות רטרואקטיביות
         db.sales_state_set(_STATE_KEY, json.dumps(new_state))
         return
+    # אדמין פעיל במערכת כרגע (heartbeat) → לא שולחים push (כמו אפליקציה אמיתית) —
+    # מעדכנים מצב כדי שלא יוצף בהמשך; ההתראה הפנימית (badge/טוסט) כבר מטפלת.
+    suppress = _admin_active()
     for c in convs:
         prev = state.get(c["phone"], 0)
         if c["ts"] <= prev:
@@ -131,6 +144,8 @@ def poll_and_push():
         fresh_in = [m for m in msgs if m.get("direction") == "in"
                     and (m.get("ts") or 0) > prev]
         if not fresh_in:
+            continue
+        if suppress:                 # אדמין פעיל — לא שולחים push, רק מעדכנים מצב
             continue
         last = fresh_in[-1]
         body = (last.get("text") or "").strip() or "📷 מדיה"

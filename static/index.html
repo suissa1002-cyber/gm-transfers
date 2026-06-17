@@ -5371,9 +5371,16 @@ async function adminOpen(opId){
 }
 
 // ── התראות רקע: בודק העברות נכנסות חדשות בכל מצב (גם אם לא על מסך הלוח) ──
+function waPingActive(){   // heartbeat: אני פעיל במערכת → השרת לא ישלח push לטלפון
+  if(S.adminKey && document.visibilityState==='visible')
+    api('/api/admin/wa/active',{method:'POST'}).catch(()=>{});
+}
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') waPingActive(); });
+window.addEventListener('focus', waPingActive);
 function startNotifPoll(){ clearInterval(S.notifTimer);
   S.notifTimer=setInterval(async()=>{
     if(!S.branchId) return;
+    waPingActive();   // כל עוד הקונסולה פתוחה ולפנים → אין push לטלפון
     // 💬 התראות וואטסאפ — רק במחשב הניהול (סניף אתר + סיסמה), גם כשלא בטאב
     const isAdminPC=S.cfg&&Number(S.branchId)===S.cfg.admin_branch_id&&(!S.cfg.admin_required||S.adminKey);
     if(isAdminPC && !(S.view==='admin'&&S.adminTab==='wa')){   // בטאב עצמו loadWaSilent כבר מטפל
