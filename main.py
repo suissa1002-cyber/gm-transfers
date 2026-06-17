@@ -2114,6 +2114,28 @@ def wa_test_order_confirm(phone: str, order: str, name: str = "בדיקה",
     return {"ok": True, "wamid": wamid, "phone": phone, "order": order}
 
 
+@app.post("/api/admin/wa/test-status")
+def wa_test_status(phone: str, order: str, name: str = "בדיקה",
+                   template: str = "order_update_distribution",
+                   x_admin_key: Optional[str] = Header(None)):
+    """בדיקה: שולח template עדכון-סטטוס (ברירת מחדל order_update_distribution — עם
+    כפתור 'קיבלתי את ההזמנה'). ללא קשר לדגל WA_SEND_STATUS_AUTO."""
+    _require_admin(x_admin_key)
+    import wa
+    wamid = wa.send_status_template(phone, name, order, template)
+    return {"ok": True, "wamid": wamid, "phone": phone, "order": order, "template": template}
+
+
+@app.post("/api/admin/wa/test-review")
+def wa_test_review(phone: str, order: str, name: str = "בדיקה",
+                   x_admin_key: Optional[str] = Header(None)):
+    """בדיקה: שולח את template חוות-הדעת (order_delivered_review_request). ללא דגל."""
+    _require_admin(x_admin_key)
+    import wa
+    wamid = wa.send_review_template(phone, name, order)
+    return {"ok": True, "wamid": wamid, "phone": phone, "order": order}
+
+
 @app.post("/api/admin/wa/send-template")
 def wa_send_template(body: WaTemplate, x_admin_key: Optional[str] = Header(None)):
     """שליחה מחוץ לחלון: template מאושר new_message (שם, גוף בשורה אחת)."""
