@@ -1070,7 +1070,27 @@ function renderDrawer(){
         <span>${ico(a.icon,16)}</span><span>${a.title}${lock}</span>
         <a class="dr-ext" href="${a.url}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="פתח בחלון נפרד">↗</a>
       </div>`).join('')}
+    <div class="dr-sec">הגדרות כלליות</div>
+    <div class="dr-item" id="drPushItem" onclick="drawerPushClick()">
+      <span id="drPushIco">${ico('bell',16)}</span><span id="drPushLabel">התראות במכשיר הזה</span></div>
     <div class="dr-foot">Green Mobile · GreenOS</div>`;
+  drawerPushState();
+}
+let _drPushOnClick=null;
+function drawerPushClick(){ if(_drPushOnClick) _drPushOnClick(); }
+async function drawerPushState(){
+  const item=document.getElementById('drPushItem'); if(!item) return;
+  const ic=document.getElementById('drPushIco'), lbl=document.getElementById('drPushLabel');
+  if(!('serviceWorker' in navigator)||!('PushManager' in window)){
+    ic.innerHTML=ico('bellOff',16); item.style.color=''; lbl.textContent='התראות — לא נתמך / לא מותקן כאפליקציה';
+    _drPushOnClick=()=>toast('באייפון: שתף ← "הוסף למסך הבית", ואז הפעל מכאן',false); return; }
+  try{ const reg=await navigator.serviceWorker.getRegistration();
+       const sub=reg&&await reg.pushManager.getSubscription();
+       if(sub&&Notification.permission==='granted'){ ic.innerHTML=ico('bell',16); item.style.color='#16a34a';
+         lbl.textContent='התראות פעילות ✓ — לחץ לבדיקה'; _drPushOnClick=waPushTest; }
+       else { ic.innerHTML=ico('bellOff',16); item.style.color='';
+         lbl.textContent='הפעל התראות במכשיר הזה'; _drPushOnClick=waEnablePush; }
+  }catch(e){}
 }
 let _hubWarmed=false;
 function toggleDrawer(open){
@@ -2404,7 +2424,6 @@ function renderWa(){
                  oninput="S.waSearch=this.value;S._refocusWa=true;waServerSearch();renderWa()">
           <button class="btn-ghost wa-ico" onclick="waNewConv()" title="שיחה חדשה (פנייה ללקוח)" style="color:#16a34a;font-weight:800;font-size:18px;line-height:1">＋</button>
           <button class="btn-ghost wa-ico" onclick="loadWa(true)" title="רענן">${ico('refresh',16)}</button>
-          <button class="btn-ghost wa-ico" id="waPushBtn" onclick="waEnablePush()" title="התראות במכשיר הזה">${ico('bell',16)}</button>
           <button class="btn-ghost wa-ico" id="waCutoverBtn" onclick="waCutover()" title="מצב cutover (בוט native / קונקטופ)" style="font-size:16px;line-height:1">🔀</button>
           <button class="btn-ghost wa-ico ${S.waStarred?'wa-star-on':''}" title="${S.waStarred?'מציג מסומנים בלבד — לחץ לבטל':'הצג רק שיחות מסומנות בכוכב'}"
                   onclick="S.waStarred=S.waStarred?0:1;renderWa()">${ico('star',16,S.waStarred)}</button>
@@ -3927,7 +3946,7 @@ async function waEnablePush(){
     const r=await api('/api/admin/wa/push/subscribe',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({sub:sub.toJSON(), ua:navigator.userAgent})});
     toast(`התראות הופעלו ✓ (${r.devices} מכשירים רשומים)`,true);
-    waPushBtnState();
+    waPushBtnState(); drawerPushState();
   }catch(e){ toast('הפעלת התראות נכשלה — '+(e.message||e),false); }
 }
 async function waPushTest(){
