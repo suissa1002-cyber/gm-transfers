@@ -2221,6 +2221,11 @@ async def wc_order_webhook(request: Request):
         return {"ok": True, "skip": "no-json"}
     if not isinstance(order, dict) or not order.get("number"):
         return {"ok": True, "skip": "ping-or-not-order"}
+    # רק הזמנות ששולמו (כמו הסריקה — AUTO_TR_STATUSES, ברירת מחדל processing) —
+    # לא מאשרים הזמנות ממתינות-תשלום/נכשלו/בוטלו.
+    paid = [s.strip() for s in os.getenv("AUTO_TR_STATUSES", "processing").split(",") if s.strip()]
+    if order.get("status") not in paid:
+        return {"ok": True, "skip": "status:" + str(order.get("status"))}
     try:
         import auto_transfer
         auto_transfer._send_order_confirm(order)   # מיידי (מאחורי דגל + דדופ)
