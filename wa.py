@@ -661,9 +661,14 @@ def send_status_template(phone: str, name: str, order_number, template_name: str
     import requests as _rq
     params = [{"type": "text", "text": str(name or "לקוח/ה יקר/ה")[:60]},
               {"type": "text", "text": str(order_number or "")[:20]}]
+    components = [{"type": "body", "parameters": params}]
+    if template_name == "order_update_distribution":   # כפתור 'קיבלתי את ההזמנה' → payload דינמי
+        components.append({"type": "button", "sub_type": "quick_reply", "index": "0",
+                           "parameters": [{"type": "payload",
+                                           "payload": f"received:{order_number}"}]})
     payload = {"messaging_product": "whatsapp", "to": str(phone), "type": "template",
                "template": {"name": template_name, "language": {"code": "he"},
-                            "components": [{"type": "body", "parameters": params}]}}
+                            "components": components}}
     r = _rq.post(f"{META_GRAPH}/{_os.getenv('META_WA_PHONE_ID').strip()}/messages",
                  headers={"Authorization": f"Bearer {_os.getenv('META_WA_TOKEN').strip()}",
                           "Content-Type": "application/json"}, json=payload, timeout=30)

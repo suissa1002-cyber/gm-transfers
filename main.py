@@ -4083,6 +4083,38 @@ def _il_phone(raw) -> str:
     return d
 
 
+def bot_confirm_received(num):
+    """לקוח לחץ 'קיבלתי את ההזמנה' → מסמן 'נמסרה' + שולח חוו"ד (דדופ עם זרימת Cargo)."""
+    try:
+        base, k, s = _wc_creds()
+        import requests as _rq
+        r = _rq.get(f"{base}/wp-json/wc/v3/orders", params={"search": str(num), "per_page": 3},
+                    auth=(k, s), timeout=20)
+        orders = [o for o in (r.json() if r.ok else []) if str(o.get("number")) == str(num)]
+        if not orders:
+            return False
+        o = orders[0]
+        oid = o.get("id")
+        if o.get("status") not in ("delivered", "completed"):
+            try:
+                _rq.put(f"{base}/wp-json/wc/v3/orders/{oid}", json={"status": "delivered"},
+                        auth=(k, s), timeout=20)
+            except Exception:  # noqa: BLE001
+                pass
+        if (os.getenv("WA_SEND_REVIEW", "0").strip() == "1"
+                and not db.sales_state_get(f"review_sent:{num}")):
+            b = o.get("billing") or {}
+            ph = _il_phone(b.get("phone"))
+            if len(ph) >= 11:
+                import wa
+                wa.send_review_template(ph, b.get("first_name") or "", str(num), "נמסרה")
+                db.sales_state_set(f"review_sent:{num}", "1")
+        return True
+    except Exception as e:  # noqa: BLE001
+        logger.warning("confirm received failed for %s: %s", num, e)
+        return False
+
+
 def _status_notify_job():
     """עוקב אחרי שינויי סטטוס ושולח ללקוח את ה-template המאושר המתאים (בהפצה/מוכן
     לאיסוף/נק' מסירה) נייטיב — מחליף את זרימות הסטטוס של קונקטופ. ריצה ראשונה רק
@@ -4174,17 +4206,15 @@ def _cargo_delivery_sync_job():
                     _tg_admin(f"📦 <b>הזמנה נמסרה</b>\n#{onum} → נמסרה (חוו\"ד ללקוח). הושלם בעוד 24ש.")
                     # אחרי cutover קונקטופ: אנחנו שולחים את template הביקורת (כל עוד
                     # קונקטופ חי הוא שולח — לכן מאחורי דגל, ברירת מחדל כבוי, בלי כפילות).
-                    if os.getenv("WA_SEND_REVIEW", "0").strip() == "1":
+                    if (os.getenv("WA_SEND_REVIEW", "0").strip() == "1"
+                            and not db.sales_state_get(f"review_sent:{onum}")):
                         try:
                             bl = o.get("billing") or {}
-                            ph = "".join(c for c in str(bl.get("phone") or "") if c.isdigit())
-                            if ph.startswith("0"):
-                                ph = "972" + ph[1:]
-                            elif ph and not ph.startswith("972"):
-                                ph = "972" + ph
-                            if ph:
+                            ph = _il_phone(bl.get("phone"))
+                            if len(ph) >= 11:
                                 import wa
                                 wa.send_review_template(ph, bl.get("first_name") or "", onum, "נמסרה")
+                                db.sales_state_set(f"review_sent:{onum}", "1")
                         except Exception as _e:  # noqa: BLE001
                             logger.warning("review template send failed %s: %s", onum, _e)
                 else:
