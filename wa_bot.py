@@ -362,21 +362,17 @@ def _entry_product_name(text: str) -> str:
     return name[:90]
 
 
-def _title_sim(q: str, name: str) -> float:
-    """דמיון בין כותרת הכניסה לשם מוצר באתר. Jaccard על טוקנים + יחס רצף. הכותרת
-    בהודעה ≈ כותרת המוצר באתר, אז המוצר המדויק מקבל ציון גבוה במובהק."""
-    import difflib
+def _title_toks(t):
+    t = _re.sub(r"[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff\"\u05f4\u05f3]", "", t or "")
+    t = _re.sub(r"[^\w֐-׿]+", " ", t.lower())
+    return set(w for w in t.split() if w)
 
-    def _n(t):
-        t = _re.sub(r"[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff\"\u05f4\u05f3]", "", t or "")
-        t = _re.sub(r"[^\w֐-׿]+", " ", t.lower())
-        return _re.sub(r"\s+", " ", t).strip()
-    qn, nn = _n(q), _n(name)
-    a, b = set(qn.split()), set(nn.split())
-    if not a or not b:
-        return 0.0
-    jac = len(a & b) / len(a | b)
-    return 0.6 * jac + 0.4 * difflib.SequenceMatcher(None, qn, nn).ratio()
+
+def _title_cov(title, name):
+    """כיסוי: איזה חלק ממילות כותרת הכניסה מופיעות בשם המוצר באתר. שם המוצר ארוך
+    מהכותרת (כולל תיאור), אז כיסוי עדיף על Jaccard — המוצר המדויק מקבל ~1.0."""
+    a, b = _title_toks(title), _title_toks(name)
+    return (len(a & b) / len(a)) if a else 0.0
 
 
 def _entry_product_flow(phone, text):
@@ -391,9 +387,13 @@ def _entry_product_flow(phone, text):
         results = main.bot_wc_title_search(title, limit=20) or []
     except Exception:  # noqa: BLE001
         results = []
-    ranked = sorted(results, key=lambda p: _title_sim(title, p.get("name", "")), reverse=True)
-    if ranked and _title_sim(title, ranked[0].get("name", "")) >= 0.6:
-        top = ranked[0]                         # התאמה ודאית → ישר לכרטיס
+    if not results:                              # כותרת לא מצאה כלום → הזרימה הרגילה
+        return _new_order_results(phone, title)
+    # דירוג לפי כיסוי (כמה ממילות הכותרת בשם המוצר), ואז שם קצר יותר = ספציפי יותר
+    ranked = sorted(results, key=lambda p: (_title_cov(title, p.get("name", "")),
+                                            -len(p.get("name", ""))), reverse=True)
+    top = ranked[0]
+    if _title_cov(title, top.get("name", "")) >= 0.7:   # התאמה ודאית → ישר לכרטיס
         pid = f"prod:{top['id']}"
         data = {pid: {"name": top.get("name"), "price": top.get("price"),
                       "permalink": top.get("permalink"), "sku": top.get("sku"),
@@ -403,7 +403,28 @@ def _entry_product_flow(phone, text):
         db.bot_session_set(phone, "new_pick", data)
         wa.send_text(phone, "מצוין! הנה המוצר שהתעניינת בו 👇")
         return _product_card(phone, pid, data)
-    return _new_order_results(phone, title)     # לא ודאי → רשימה / 'לא נמצא' / אורי
+    # יש מועמדים אך לא ודאי → רשימת תוצאות הכותרת (לא מנוע ה-facet שמחזיר מותג שגוי)
+    return _entry_results_list(phone, ranked[:9], title)
+
+
+def _entry_results_list(phone, results, query):
+    """רשימת מוצרים מתוצאות חיפוש הכותרת (לא facet). לבחירה כשאין התאמה ודאית."""
+    rows, data = [], {}
+    for p in results:
+        pid = f"prod:{p['id']}"
+        ttl, extra = _name_parts(p.get("name"), p.get("brand"))
+        price_s = _price_label(p)
+        desc = f"{price_s} · {extra}"[:72] if extra else price_s
+        rows.append((pid, ttl[:24], desc))
+        data[pid] = {"name": p.get("name"), "price": p.get("price"),
+                     "permalink": p.get("permalink"), "sku": p.get("sku"),
+                     "stock": p.get("stock_status"), "type": p.get("type"),
+                     "image": p.get("image"), "brand": p.get("brand")}
+    rows.append(("search_again", "🔍 חיפוש חדש", ""))
+    data["__q"] = query
+    db.bot_session_set(phone, "new_pick", data)
+    wa.send_list(phone, "מצאתי כמה אפשרויות — בחר/י את המוצר:", rows,
+                 button_label="לתוצאות", section_title="תוצאות")
 
 
 def _price_label(p, prefix=""):

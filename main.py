@@ -3850,21 +3850,30 @@ def _smart_pack(p):
 
 def bot_wc_title_search(query: str, limit: int = 20) -> list:
     """חיפוש כותרת ישיר ב-WooCommerce (פרמטר search) — בלי מנוע ה-facet/relaxation.
-    לכניסה מעמוד מוצר, שבה הכותרת בהודעה כמעט זהה לכותרת המוצר באתר, זה מחזיר את
-    המוצר המדויק. מחזיר תוצאות packed (כמו _smart_pack); הדירוג לפי דמיון בצד הבוט."""
+    לכניסה מעמוד מוצר, שבה הכותרת בהודעה כמעט זהה לכותרת המוצר באתר. החיפוש של WC
+    הוא AND על המילים, אז כותרת ארוכה (חבילה/תיאור) עלולה להחזיר 0 — לכן **משחררים**:
+    מורידים מילים מהסוף עד שיש תוצאות. מחזיר packed; הדירוג לפי כיסוי בצד הבוט."""
     creds = _wc_creds()
     query = (query or "").strip()
     if not creds or len(query) < 2:
         return []
     base, k, s = creds
     import requests as _rq
-    try:
-        r = _rq.get(f"{base}/wp-json/wc/v3/products",
-                    params={"search": query, "per_page": limit, "status": "publish"},
-                    auth=(k, s), timeout=20)
-        prods = r.json() if r.ok else []
-    except Exception:  # noqa: BLE001
-        return []
+
+    def _fetch(q):
+        try:
+            r = _rq.get(f"{base}/wp-json/wc/v3/products",
+                        params={"search": q, "per_page": limit, "status": "publish"},
+                        auth=(k, s), timeout=20)
+            return r.json() if r.ok else []
+        except Exception:  # noqa: BLE001
+            return []
+    toks = query.split()
+    prods = []
+    for cut in range(len(toks), 1, -1):          # מלא → פחות מילים, עד שיש תוצאות
+        prods = _fetch(" ".join(toks[:cut]))
+        if prods:
+            break
     return [_smart_pack(p) for p in prods
             if p.get("catalog_visibility") != "hidden"
             and p.get("type") not in ("external", "grouped")]
