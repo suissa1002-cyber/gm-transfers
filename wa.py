@@ -336,9 +336,11 @@ def get_thread_native(phone: str, limit: int = 80):
 
 
 def list_conversations_native(limit: int = 300):
-    """רשימת שיחות מ-wa_contact (החנות שלנו) — אותו פורמט כמו list_conversations."""
+    """רשימת שיחות מ-wa_contact (החנות שלנו) — אותו פורמט כמו list_conversations.
+    handoff = הבוט מושתק לשיחה (הלקוח ביקש נציג / השתלטות ידנית)."""
     import db
     stars = db.wa_stars()
+    handoff = db.bot_handoff_phones()
     out = []
     for r in db.wa_conversations(limit):
         ph = r.get("phone")
@@ -351,6 +353,7 @@ def list_conversations_native(limit: int = 300):
             "last_msg": (r.get("last_msg") or "")[:120],
             "ts": msg_ts,
             "archived": bool(r.get("archived")), "live_chat": bool(r.get("live_chat")),
+            "handoff": ph in handoff,
             "unread": unread, "star": ph in stars, "pic": "",
         })
     return out

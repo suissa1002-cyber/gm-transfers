@@ -2324,7 +2324,7 @@ function waConvRow(c){
   return `<div class="wa-conv ${active}" onclick="openWaConv('${escW(c.phone)}')">
     ${waIsUnread(c)?'<span class="wa-dot"></span>':''}
     <div style="min-width:0;flex:1">
-      <div class="nm" style="display:flex;align-items:center;gap:5px">${c.star?`<span class="wa-star-on" style="display:inline-flex">${ico('star',13,true)}</span>`:''}<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(c.name)}</span> ${c.live_chat?`<span title="מצב אנושי — הבוט מושתק" style="display:inline-flex;color:#16a34a">${ico('user',13)}</span>`:''}</div>
+      <div class="nm" style="display:flex;align-items:center;gap:5px">${c.star?`<span class="wa-star-on" style="display:inline-flex">${ico('star',13,true)}</span>`:''}<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(c.name)}</span> ${(c.handoff||c.live_chat)?`<span title="מצב אנושי — הבוט מושתק בשיחה" style="display:inline-flex;color:#16a34a">${ico('user',13)}</span>`:''}</div>
       <div class="lm">${escW(c.last_msg)||'<i>—</i>'}</div>
     </div>
     <div class="meta muted" style="font-size:11px">${c.ts?fmtTime(new Date(c.ts*1000).toISOString()):''}</div>
@@ -2436,10 +2436,8 @@ function waThreadHTML(){
         <button class="btn-ghost wa-ico ${S.waPanel&&S.waPanelMode==='stock'?'wa-human-on':''}" onclick="waToggleStock()" title="מלאי חי — חיפוש מוצר בלי לעזוב את השיחה">${ico('search')}</button>
         <button class="btn-ghost wa-ico" onclick="waTogglePanel()" title="פרטי פונה (הזמנות/תגיות/הערות)">${ico('info')}</button>
         <a class="btn-ghost wa-ico" target="_blank" href="https://newapp.connectop.co.il/en/inbox?acc=1428408&id=${escW(S.waPhone)}" title="פתח ב-ConnectOp">${ico('globe')}</a>
-        <button class="btn-ghost wa-ico ${conv.live_chat?'wa-human-on':''}" onclick="waHuman(${conv.live_chat?'false':'true'})"
-                title="${conv.live_chat?'מצב אנושי — הבוט מושתק בשיחה. לחץ להחזיר את הבוט':'הבוט פעיל בשיחה. לחץ להשתיק אותו (מענה אנושי)'}">${ico(conv.live_chat?'user':'bot')}</button>
         <button class="btn-ghost wa-ico ${S.waBotHandoff?'wa-human-on':''}" onclick="waBotHandoff(${S.waBotHandoff?0:1})"
-                title="${S.waBotHandoff?'🙋 מצב אנושי — הבוט מושתק. לחץ להחזיר את הבוט':'🤖 הבוט פעיל. לחץ להשתלט ידנית (להשתיק את הבוט)'}">${S.waBotHandoff?'🙋':'🤖'}</button>
+                title="${S.waBotHandoff?'מצב אנושי — הבוט מושתק בשיחה. לחץ להחזיר את הבוט':'הבוט פעיל בשיחה. לחץ להשתלט ידנית (להשתיק את הבוט)'}">${ico(S.waBotHandoff?'user':'bot',17)}</button>
         <button class="btn-ghost wa-ico" onclick="waArchive(${conv.archived?'false':'true'})" title="${conv.archived?'החזר מארכיון':'העבר לארכיון'}">${ico(conv.archived?'restore':'archive')}</button>
       </span>
     </div>
@@ -4064,12 +4062,15 @@ async function sendWaMsg(){
       }
     } else {
       toast('נשלח ✓',true); ta.value='';
+      // מענה ידני → השתלטות אוטומטית: הבוט מושתק לשיחה (השרת סימן), נעדכן את החיווי
+      if(!S.waBotHandoff){ S.waBotHandoff=true;
+        const cv=(S.waConvs||[]).find(c=>c.phone===S.waPhone); if(cv) cv.handoff=true; }
       // אופטימי: מציגים את ההודעה מיד (לפני הרענון מהשרת) — תחושת שליחה מיידית
       if(S.waThread&&S.waThread.phone===S.waPhone){
         S.waThread.messages.push({id:'opt-'+Date.now(),direction:'out',text:text,kind:null,media:[],
           ts:Math.floor(Date.now()/1000),status:'sent',reply_to:(rep&&rep.id)||null,reply_preview:(rep&&rep.preview)||''});
-        renderWaThread();
-      }
+        renderWa();
+      } else { renderWa(); }
       setTimeout(()=>loadWaThread(true),1200);
     }
   }catch(e){ toast('שליחה נכשלה — '+(e.status===502?'שגיאת ConnectOp':'תקלה'),false); }

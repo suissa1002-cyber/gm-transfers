@@ -2103,12 +2103,27 @@ def wa_thread(phone: str, limit: int = 60, x_admin_key: Optional[str] = Header(N
     return _wa_guard(wa.get_thread, phone, limit=min(limit, 200))
 
 
+def _bot_handoff_on(phone):
+    """מענה אנושי → השתלטות אוטומטית: מסמן את השיחה 'agent' (הבוט משתתק) ומרענן
+    חותמת. כך עצם השליחה הידנית מוציאה את הלקוח מהבוט, בלי ללחוץ כפתור."""
+    try:
+        from datetime import datetime, timezone
+        prev = (db.bot_session_get(phone).get("data") or {}).get("note")
+        db.bot_session_set(str(phone), "agent",
+                           {"note": prev or "מענה אנושי",
+                            "ts": datetime.now(timezone.utc).isoformat()})
+    except Exception:  # noqa: BLE001
+        pass
+
+
 @app.post("/api/admin/wa/send")
 def wa_send(body: WaSend, x_admin_key: Optional[str] = Header(None)):
     """מענה אנושי; אם מחוץ לחלון 24ש — מחזיר needs_template (לא שולח).
-    עם reply_to — מענה מצוטט (reply אמיתי) דרך Meta ישיר."""
+    עם reply_to — מענה מצוטט (reply אמיתי) דרך Meta ישיר.
+    מענה ידני → הבוט מושתק אוטומטית לשיחה (השתלטות)."""
     _require_admin(x_admin_key)
     import wa
+    _bot_handoff_on(body.phone)
     if body.reply_to and wa.meta_direct_ready():
         return _wa_guard(wa.send_reply_quoted, body.phone, body.text,
                          body.reply_to, body.reply_preview)
@@ -2359,6 +2374,7 @@ async def wa_send_file(request: Request, x_admin_key: Optional[str] = Header(Non
         raise HTTPException(400, "phone + file required")
     content = await up.read()
     import wa
+    _bot_handoff_on(phone)                 # שליחת קובץ ידנית → השתלטות (הבוט משתתק)
     return _wa_guard(wa.send_media, phone, up.filename or "file",
                      content, up.content_type or "", caption)
 
