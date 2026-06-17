@@ -231,22 +231,20 @@ def handle(phone: str, text: str, mtype: str = "text", reply_id: str = "", wamid
             return _send_repair_prices(phone, d["device"], [parts[idx]])
         return _menu(phone)
 
-    # ── טקסט חופשי → שאלה שיחתית לאורי, אחרת חיפוש מוצר (שמפיל לאורי אם ריק) ──
-    if low and low not in _GREETINGS and len(low) >= 3:
-        question_like = bool(_re.search(
-            r"\?|מה ההבדל|הבדל בין|השוואה|עדיף|מה מתאים|כדאי|להמליץ|המלצ|תקציב|עד \d|"
-            r"יבואן|אחריות|האם|כמה עולה|מה יותר", text))
-        # נראה כמו חיפוש מוצר? (מותג/דגם באנגלית/קטגוריה) — אז חיפוש גם באמצע שיחה.
-        # לא כולל מספרים בלבד (טלפון/כמות) כדי ש'0549...' לא ייחשב מוצר.
-        product_like = bool(_re.search(
-            r"[A-Za-z]{2,}|אייפון|גלקסי|סמסונג|שיאומי|רדמי|אוזניות|טלפון סלולרי|מטען|כבל|"
-            r"שעון חכם|טאבלט|מחשב|קונסולה|רמקול|פלייסטיישן", text))
-        # שיחה פעילה עם אורי → המשך ההודעות (שם/תודה/טלפון) נשאר עם אורי, לא חיפוש —
-        # אלא אם זה ברור חיפוש מוצר חדש.
-        if (question_like or (_uri_engaged(phone) and not product_like)) \
-                and _ask_uri(phone, text, wamid):
+    # ── טקסט חופשי → אורי (שיחה) או חיפוש מוצר ──
+    if low and low not in _GREETINGS:
+        prod = _product_query(low)
+        # שיחה פעילה עם אורי: כל עוד זו לא שאילתת מוצר ברורה — הכל נשאר עם אורי,
+        # כולל הודעות קצרות ('Ok'/'תודה') ומשפטים באנגלית ('I should receive it today').
+        if _uri_engaged(phone) and not prod and _ask_uri(phone, text, wamid):
             return
-        return _new_order_results(phone, text)
+        if len(low) >= 3:
+            question_like = bool(_re.search(
+                r"\?|מה ההבדל|הבדל בין|השוואה|עדיף|מה מתאים|כדאי|להמליץ|המלצ|תקציב|עד \d|"
+                r"יבואן|אחריות|האם|כמה עולה|מה יותר", text))
+            if question_like and _ask_uri(phone, text, wamid):
+                return
+            return _new_order_results(phone, text)
     _menu(phone)
 
 
@@ -351,6 +349,22 @@ _BRANDS = ("xiaomi", "redmi", "poco", "apple", "iphone", "ipad", "macbook", "sam
 _BRAND_HE = {"אנקר": "anker", "סמסונג": "samsung", "אפל": "apple", "שיאומי": "xiaomi",
              "סוני": "sony", "וואווי": "huawei", "אופו": "oppo", "ריאלמי": "realme",
              "הונור": "honor", "וויוו": "vivo", "מרשל": "marshall", "בוס": "bose"}
+
+# מילות קטגוריה ברורות (לא 'טלפון'/'מסך' הגנריים) — לזיהוי שאילתת מוצר אמיתית
+_PRODUCT_CATS = ("אוזניות", "סמארטפון", "אייפון", "גלקסי", "מטען", "כבל", "שעון חכם",
+                 "טאבלט", "קונסולה", "רמקול", "פלייסטיישן", "מקלדת", "עכבר", "ראוטר",
+                 "סוללה", "ספיקר", "באנדל", "כיסוי", "מגן מסך")
+
+
+def _product_query(text: str) -> bool:
+    """האם הטקסט נראה כשאילתת מוצר ברורה — מותג ידוע (אנגלית/עברית) או מילת קטגוריה.
+    כך משפט שיחתי (גם באנגלית: 'I should receive it today') לא נחטף לחיפוש מוצר."""
+    t = (text or "").lower()
+    if any(b in t for b in _BRANDS):
+        return True
+    if any(he in text for he in _BRAND_HE):
+        return True
+    return any(c in text for c in _PRODUCT_CATS)
 
 
 def _name_parts(name: str, brand: str = ""):
