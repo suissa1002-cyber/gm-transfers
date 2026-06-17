@@ -683,7 +683,11 @@ def send_review_template(phone: str, name: str, order_number, status_text: str =
     if r.status_code not in (200, 201):
         raise WaError(f"review template failed ({r.status_code}): {r.text[:200]}")
     wamid = ((r.json().get("messages") or [{}])[0]).get("id", "")
-    _store_outbound(phone, "[בקשת חוות דעת — הזמנה נמסרה]", wamid=wamid, mtype="template")
+    body = (f"שלום {name or 'לקוח/ה יקר/ה'},\n"
+            f"הזמנתך מס' {order_number} נמסרה 🎉\n\n"
+            f"נשמח מאוד אם תשתף/י אותנו בחוות דעת — זה עוזר לנו המון!\n"
+            f"［דירוג בגוגל · המלצה］")
+    _store_outbound(phone, body, wamid=wamid, mtype="template")
     return wamid
 
 
@@ -719,8 +723,21 @@ def send_order_confirm(phone: str, name: str, order_number,
     if r.status_code not in (200, 201):
         raise WaError(f"order confirm template failed ({r.status_code}): {r.text[:200]}")
     wamid = ((r.json().get("messages") or [{}])[0]).get("id", "")
-    _store_outbound(phone, f"[קבלת הזמנה #{order_number}]", wamid=wamid, mtype="template")
+    # שומרים את המלל שהלקוח באמת רואה (לא placeholder) — כדי שהנציג יראה בקונסולה
+    body = (f"שלום {name or 'לקוח/ה יקר/ה'},\n"
+            f"עדכון בנוגע להזמנה מס' {order_number}\n\n"
+            f"סטטוס הזמנתך: {status_text or 'הזמנתך נקלטה ונמצאת בטיפול'}\n\n"
+            f"תודה, גרין מובייל.\n"
+            f"［בדיקת סטטוס הזמנה · תפריט · נציג］")
+    _store_outbound(phone, body, wamid=wamid, mtype="template")
     return wamid
+
+
+_STATUS_TPL_DESC = {
+    "order_update_distribution": "הזמנתך עברה לשלב הפצה ותימסר במסגרת ימי המשלוח שנבחרו 🚚",
+    "order_ready_for_pickup": "הזמנתך מוכנה לאיסוף מהסניף 🏬",
+    "messege_tlv_pickup": "הזמנתך בדרך לנקודת המסירה בתל אביב 📍",
+}
 
 
 def send_status_template(phone: str, name: str, order_number, template_name: str) -> str:
@@ -747,8 +764,11 @@ def send_status_template(phone: str, name: str, order_number, template_name: str
     if r.status_code not in (200, 201):
         raise WaError(f"status template {template_name} failed ({r.status_code}): {r.text[:200]}")
     wamid = ((r.json().get("messages") or [{}])[0]).get("id", "")
-    _store_outbound(phone, f"[עדכון סטטוס — {template_name} #{order_number}]",
-                    wamid=wamid, mtype="template")
+    desc = _STATUS_TPL_DESC.get(template_name, "עדכון סטטוס להזמנתך")
+    tail = "\n［קיבלתי את ההזמנה］" if template_name == "order_update_distribution" else ""
+    body = (f"שלום {name or 'לקוח/ה יקר/ה'},\n"
+            f"עדכון בנוגע להזמנה מס' {order_number}\n\n{desc}\n\nתודה, גרין מובייל.{tail}")
+    _store_outbound(phone, body, wamid=wamid, mtype="template")
     return wamid
 
 
