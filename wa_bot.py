@@ -112,6 +112,17 @@ def _menu(phone):
     db.bot_session_set(phone, "menu", {})
 
 
+def _is_order_status_intent(low: str) -> bool:
+    """כוונת 'איפה ההזמנה שלי' בטקסט חופשי → לנתב לזרימה הדטרמיניסטית (זיהוי לפי
+    טלפון) במקום לאורי, שאין לו גישה למערכת ההזמנות ונכנס ללופ."""
+    if any(w in low for w in ("הזמנה חדשה", "להזמין", "לקנות", "רוצה להזמין", "איך מזמינים")):
+        return False
+    has_order = any(w in low for w in ("הזמנה", "הזמנת", "המשלוח", "החבילה"))
+    track = any(w in low for w in ("סטטוס", "איפה", "היכן", "מתי", "הגיע", "מעקב",
+                                   "לא קיבלתי", "לא הגיע", "מה קורה עם", "מה עם"))
+    return has_order and track
+
+
 def handle(phone: str, text: str, mtype: str = "text", reply_id: str = "", wamid: str = ""):
     """נקודת הכניסה — מקבלת הודעת לקוח ומגיבה. מנוהל מצב ב-wa_bot_session.
     reply_id = id של כפתור/רשימה (ניתוב מדויק); נופלים לטקסט אם אין.
@@ -214,7 +225,7 @@ def handle(phone: str, text: str, mtype: str = "text", reply_id: str = "", wamid
         return
 
     # ── ניתוב תפריט ──
-    if rid == "status" or ("סטטוס" in low and "הזמנ" in low):
+    if rid == "status" or _is_order_status_intent(low):
         return _order_status_auto(phone)
     if rid == "branches" or "סניפ" in low:
         wa.send_text(phone, BRANCHES)
@@ -1070,7 +1081,9 @@ def _order_status_auto(phone):
     מספר). יש כמה → מציג את הרלוונטית ומאפשר להקליד מספר אחר. אין → מבקש מספר."""
     orders = _lookup_orders_by_phone(phone)
     if not orders:
-        wa.send_text(phone, "מה מספר ההזמנה? (ספרות בלבד)\nאו כתוב/י *תפריט* לחזרה.")
+        wa.send_text(phone, "לא מצאתי הזמנה על מספר הטלפון הזה 🤔\n"
+                            "אם יש לך *מספר הזמנה* — שלח/י אותו (ספרות בלבד) ואבדוק מיד.\n"
+                            "אם אין — כתוב/י *נציג* ונשמח לעזור.")
         db.bot_session_set(phone, "await_order_number", {})
         return
     wa.send_text(phone, orders[0]["msg"])
