@@ -3935,11 +3935,19 @@ async function waPushTest(){
 function waScrollBottom(){ const el=document.getElementById('waMsgs'); if(el) el.scrollTop=el.scrollHeight; }
 function renderWaThread(){
   const p=document.getElementById('waThreadPane'); if(!p) return;
+  // שמירת מיקום גלילה: אם המשתמש גלל למעלה לקרוא היסטוריה — לא קופצים לתחתית
+  // ברענון הפולינג. קופצים לתחתית רק אם הוא כבר היה למטה (או פתיחה ראשונה).
+  const oldMsgs=document.getElementById('waMsgs');
+  let nearBottom=true, prevTop=0;
+  if(oldMsgs){ prevTop=oldMsgs.scrollTop;
+    nearBottom=(oldMsgs.scrollHeight - oldMsgs.scrollTop - oldMsgs.clientHeight) < 120; }
   // שימור הקלדה ופוקוס בשדות (waText / waUriInput) — הרינדור מהפולינג מחק אותם
   const keep={};
   ['waText','waUriInput','waStockQ'].forEach(id=>{ const el=document.getElementById(id);
     if(el) keep[id]={v:el.value, f:document.activeElement===el, s:el.selectionStart}; });
-  p.innerHTML=waThreadHTML(); waScrollBottom();
+  p.innerHTML=waThreadHTML();
+  const newMsgs=document.getElementById('waMsgs');
+  if(newMsgs) newMsgs.scrollTop = nearBottom ? newMsgs.scrollHeight : prevTop;
   if(S.waPanel&&S.waPanelMode==='stock') waStockPaint();   // התוצאות נצבעות מחדש אחרי רינדור
   for(const [id,k] of Object.entries(keep)){
     const el=document.getElementById(id); if(!el) continue;
