@@ -65,11 +65,14 @@ def _msg_text(m: dict) -> str:
 
 
 def _msg_reply_id(m: dict) -> str:
-    """ה-ID של בחירת הכפתור/רשימה (אם זו הודעת interactive) — לניתוב הבוט."""
+    """ה-ID של בחירת הכפתור/רשימה — לניתוב הבוט. interactive → button/list reply id;
+    button (כפתור quick-reply של **טמפלייט**) → ה-payload הדינמי (למשל ordstatus:46818)."""
     if m.get("type") == "interactive":
         it = m.get("interactive") or {}
         br = it.get("button_reply") or it.get("list_reply") or {}
         return br.get("id", "")
+    if m.get("type") == "button":
+        return (m.get("button") or {}).get("payload", "")
     return ""
 
 

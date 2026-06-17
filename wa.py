@@ -615,6 +615,36 @@ def send_review_template(phone: str, name: str, order_number, status_text: str =
     return wamid
 
 
+def send_order_confirm(phone: str, name: str, order_number,
+                       status_text: str = "הזמנתך נקלטה ונמצאת בטיפול") -> str:
+    """template 'order_update_1' (he) על קבלת הזמנה — ישירות דרך מטא. {{1}}=שם,
+    {{2}}=מס' הזמנה, {{3}}=סטטוס. לכפתור 'בדיקת סטטוס הזמנה' (quick-reply, index 0)
+    מצרפים **payload דינמי** עם מספר ההזמנה, כך שלחיצה תציג את סטטוס ההזמנה הזו
+    אוטומטית, בלי הזנת מספר. מחליף את זרימת קבלת ההזמנה של קונקטופ."""
+    if not meta_direct_ready():
+        raise WaError("Meta ישיר לא מוגדר")
+    import os as _os
+    import requests as _rq
+    params = [{"type": "text", "text": str(name or "לקוח/ה יקר/ה")[:60]},
+              {"type": "text", "text": str(order_number or "")[:20]},
+              {"type": "text", "text": str(status_text or "")[:60]}]
+    payload = {"messaging_product": "whatsapp", "to": str(phone), "type": "template",
+               "template": {"name": "order_update_1", "language": {"code": "he"},
+                            "components": [
+                                {"type": "body", "parameters": params},
+                                {"type": "button", "sub_type": "quick_reply", "index": "0",
+                                 "parameters": [{"type": "payload",
+                                                 "payload": f"ordstatus:{order_number}"}]}]}}
+    r = _rq.post(f"{META_GRAPH}/{_os.getenv('META_WA_PHONE_ID').strip()}/messages",
+                 headers={"Authorization": f"Bearer {_os.getenv('META_WA_TOKEN').strip()}",
+                          "Content-Type": "application/json"}, json=payload, timeout=30)
+    if r.status_code not in (200, 201):
+        raise WaError(f"order confirm template failed ({r.status_code}): {r.text[:200]}")
+    wamid = ((r.json().get("messages") or [{}])[0]).get("id", "")
+    _store_outbound(phone, f"[קבלת הזמנה #{order_number}]", wamid=wamid, mtype="template")
+    return wamid
+
+
 def send_text(phone: str, text: str) -> str:
     """טקסט פשוט מהבוט (לא דרך send_reply שמסמן 'אנושי')."""
     wamid = _meta_send_text(phone, text)

@@ -264,6 +264,39 @@ def _alert_created(o, created):
                                f"(הזמנת אתר #{o.get('number')} — שודר אוטומטית)")
 
 
+def _intl_phone(raw) -> str:
+    """טלפון ישראלי → בינלאומי בלי + (לפורמט של Meta)."""
+    d = "".join(ch for ch in str(raw or "") if ch.isdigit())
+    if d.startswith("972"):
+        return d
+    if d.startswith("0"):
+        return "972" + d[1:]
+    if len(d) == 9 and d.startswith("5"):
+        return "972" + d
+    return d
+
+
+def _send_order_confirm(o):
+    """הודעת 'הזמנה התקבלה' נייטיב ללקוח (template order_update_1 עם כפתור סטטוס
+    דינמי). חד-פעמי לכל הזמנה, מאחורי דגל WA_SEND_ORDER_CONFIRM (כבוי עד אישור)."""
+    if os.getenv("WA_SEND_ORDER_CONFIRM", "0") != "1":
+        return
+    num = str(o.get("number"))
+    if db.sales_state_get(f"order_confirm_sent:{num}"):
+        return
+    b = o.get("billing") or {}
+    phone = _intl_phone(b.get("phone"))
+    if len(phone) < 11:
+        return
+    try:
+        import wa
+        wa.send_order_confirm(phone, (b.get("first_name") or "").strip(), num)
+        db.sales_state_set(f"order_confirm_sent:{num}", "1")
+        logger.info("order confirm sent for %s -> %s", num, phone)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("order confirm failed for %s: %s", num, e)
+
+
 def _rescan_flagged(orders, catalog):
     """ריפוי-עצמי: הזמנות מדוגלות (חסר-מלאי / ללא-מק"ט) שעדיין **לא שודר** להן כלום —
     אולי חובר להן מק"ט / רוענן הקטלוג מאז. מריץ אותן מחדש כך שישדרו לבד.
@@ -315,5 +348,6 @@ def scan_orders():
             continue
         db.sales_state_set(f"auto_tr_seen:{oid}", datetime.now().isoformat(timespec="seconds"))
         _alert_created(o, _handle_order(o, catalog))
+        _send_order_confirm(o)               # 'הזמנה התקבלה' נייטיב ללקוח (מאחורי דגל)
     # ריפוי-עצמי: הזמנות שדוגלו (חסר/ללא-מק"ט) ושעדיין לא שודר להן — אולי חובר מק"ט מאז
     _rescan_flagged(orders, catalog)

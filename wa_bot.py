@@ -107,6 +107,10 @@ def handle(phone: str, text: str, mtype: str = "text", reply_id: str = "", wamid
         return _new_order_results(phone, text)
     if state == "new_pick" and rid.startswith("prod:"):
         return _product_card(phone, rid, sess.get("data") or {})
+    # כפתור "בדיקת סטטוס הזמנה" מטמפלייט קבלת ההזמנה — ה-payload נושא את מס' ההזמנה,
+    # אז מציגים את סטטוס ההזמנה הזו אוטומטית, בלי שהלקוח יזין מספר.
+    if rid.startswith("ordstatus:"):
+        return _order_status(phone, rid.split(":", 1)[1])
     # ── זרימת הזמנה בצ'אט (וריאציה גנרית — כל תכונה שמשתנה) ──
     if rid.startswith("buy:"):
         return _start_order(phone, rid.split(":", 1)[1], sess)
