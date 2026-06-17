@@ -819,20 +819,56 @@ def _menu_tail(phone):
     wa.send_buttons(phone, "אוכל לעזור במשהו נוסף?", [("menu", "↩️ לתפריט"), ("agent", "👤 נציג")])
 
 
+def _il_now():
+    """שעון ישראל (השרת רץ ב-UTC). ZoneInfo מטפל ב-DST; נפילה ל-UTC+3 אם חסר tzdata."""
+    from datetime import datetime, timezone, timedelta
+    try:
+        from zoneinfo import ZoneInfo
+        return datetime.now(ZoneInfo("Asia/Jerusalem"))
+    except Exception:  # noqa: BLE001
+        return datetime.now(timezone.utc) + timedelta(hours=3)
+
+
+def _within_business_hours(now=None) -> bool:
+    """שעות פעילות: א'-ה' 09:00-21:00, יום ו' 09:00-14:00, שבת סגור.
+    weekday(): Mon=0..Sun=6 → ראשון=6, שני-חמישי=0-3, שישי=4, שבת=5."""
+    now = now or _il_now()
+    wd = now.weekday()
+    h = now.hour + now.minute / 60.0
+    if wd == 5:                # שבת
+        return False
+    if wd == 4:                # שישי
+        return 9 <= h < 14
+    return 9 <= h < 21         # ראשון-חמישי
+
+
+_CLOSED_MSG = ("🕐 משרדינו סגורים כרגע.\n\n"
+               "שעות הפעילות:\n"
+               "ימים א׳-ה׳ | 09:00-21:00\n"
+               "יום ו׳ | 09:00-14:00\n\n"
+               "השאירו כאן את נושא הפנייה ונחזור אליכם בהקדם ביום העסקים הבא 🙏")
+
+
 def _to_agent(phone, note: str = ""):
-    # 2 הודעות ברצף: אישור קבלה + תיאום ציפיות לגבי נציג אנושי
-    wa.send_text(phone, "תודה, פנייתך התקבלה בהצלחה אחד מנציגינו יחזור אליך בהקדם האפשרי.")
-    wa.send_text(phone, "😊 לפני שניפרד אני רוצה לתאם ציפיות. נציגי השירות שלנו הם בני אדם "
-                        "(לא כמוני) ולכן הם נותנים כעת את תשומת ליבם ללקוחות קודמים. זה אומר "
-                        "שאולי ייקח קצת זמן עד שיענו לך. תודה מראש על הסבלנות")
     from datetime import datetime, timezone
+    open_now = _within_business_hours()
+    if open_now:
+        # בשעות הפעילות: 2 הודעות — אישור קבלה + תיאום ציפיות לגבי נציג אנושי
+        wa.send_text(phone, "תודה, פנייתך התקבלה בהצלחה אחד מנציגינו יחזור אליך בהקדם האפשרי.")
+        wa.send_text(phone, "😊 לפני שניפרד אני רוצה לתאם ציפיות. נציגי השירות שלנו הם בני אדם "
+                            "(לא כמוני) ולכן הם נותנים כעת את תשומת ליבם ללקוחות קודמים. זה אומר "
+                            "שאולי ייקח קצת זמן עד שיענו לך. תודה מראש על הסבלנות")
+    else:
+        # מחוץ לשעות הפעילות: הודעת "משרדינו סגורים" (אף נציג לא יענה כעת)
+        wa.send_text(phone, _CLOSED_MSG)
     # state 'agent' + חותמת → הבוט משתתק (handle בודק בתחילתו) כדי שאדם ישתלט
     db.bot_session_set(phone, "agent", {"note": note,
                                         "ts": datetime.now(timezone.utc).isoformat()})
     try:                                  # מסמן 'אנושי' שהבוט לא יקפוץ + מתריע
         import main
+        closed_tag = "" if open_now else "\n🌙 <i>מחוץ לשעות הפעילות — נשלחה הודעת 'משרדינו סגורים'</i>"
         main._tg_admin(f"👤 <b>לקוח ביקש נציג (בוט native)</b>\n{phone}{(' · ' + note) if note else ''}"
-                       f"\n🤖 הבוט הושתק לשיחה הזו — ענה/י ידנית בקונסולה.")
+                       f"\n🤖 הבוט הושתק לשיחה הזו — ענה/י ידנית בקונסולה.{closed_tag}")
     except Exception:  # noqa: BLE001
         pass
 
