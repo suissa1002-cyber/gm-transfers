@@ -514,6 +514,15 @@ _SCHEMA = [
     "CREATE INDEX IF NOT EXISTS idx_sales_date ON sales(sale_date)",
     "CREATE INDEX IF NOT EXISTS idx_removals_product ON removals(product_id, removed_at)",
     "CREATE INDEX IF NOT EXISTS idx_removals_date ON removals(removed_at)",
+    # גיבוי מדיה נכנסת ממטא (תמונות/מסמכים) — base64, כדי שלא יאבד כשמטא ימחק (~30 יום)
+    """
+    CREATE TABLE IF NOT EXISTS wa_media_blob (
+        wamid       TEXT PRIMARY KEY,
+        mime        TEXT,
+        b64         TEXT,
+        created_at  TEXT
+    )
+    """,
 ]
 
 
@@ -1597,6 +1606,55 @@ def wa_msg_set_media_url(wamid: str, url: str):
         return
     with _conn() as c:
         c.cursor().execute(_q("UPDATE wa_msg SET media_url = ? WHERE wamid = ?"), (url, wamid))
+
+
+def wa_media_blob_set(wamid: str, mime: str, data: bytes):
+    """שומר גיבוי מדיה (base64) — אידמפוטנטי לפי wamid."""
+    if not wamid or not data:
+        return
+    import base64
+    from datetime import datetime, timezone
+    b64 = base64.b64encode(data).decode("ascii")
+    now = datetime.now(timezone.utc).isoformat()
+    with _conn() as c:
+        cur = c.cursor()
+        if _USE_PG:
+            cur.execute(_q("""INSERT INTO wa_media_blob (wamid, mime, b64, created_at)
+                              VALUES (?, ?, ?, ?)
+                              ON CONFLICT (wamid) DO UPDATE SET mime = EXCLUDED.mime,
+                                  b64 = EXCLUDED.b64"""), (wamid, mime or "", b64, now))
+        else:
+            cur.execute(_q("""INSERT OR REPLACE INTO wa_media_blob (wamid, mime, b64, created_at)
+                              VALUES (?, ?, ?, ?)"""), (wamid, mime or "", b64, now))
+
+
+def wa_media_blob_get(wamid: str):
+    """מחזיר (mime, bytes) מהגיבוי, או None."""
+    if not wamid:
+        return None
+    import base64
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT mime, b64 FROM wa_media_blob WHERE wamid = ?"), (wamid,))
+        r = cur.fetchone()
+        if not r or not r["b64"]:
+            return None
+        try:
+            return r["mime"], base64.b64decode(r["b64"])
+        except Exception:  # noqa: BLE001
+            return None
+
+
+def wa_media_pending(limit: int = 50):
+    """הודעות מדיה נכנסות שיש להן media_id אך עדיין לא גובו (אין blob) — לגיבוי יזום."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""SELECT m.wamid, m.media_id FROM wa_msg m
+                          LEFT JOIN wa_media_blob b ON b.wamid = m.wamid
+                          WHERE m.direction = 'in' AND m.media_id IS NOT NULL
+                            AND m.media_id <> '' AND b.wamid IS NULL
+                          ORDER BY m.ts DESC LIMIT ?"""), (limit,))
+        return [{"wamid": r["wamid"], "media_id": r["media_id"]} for r in cur.fetchall()]
 
 
 def wa_contact_upsert(phone, name=None, wa_id=None, in_ts: int = 0, out_ts: int = 0):

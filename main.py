@@ -147,6 +147,24 @@ def _auto_transfer_job():
         logger.warning("auto_transfer failed: %s", e)
 
 
+def _media_backup_job():
+    """מגבה מדיה נכנסת ממטא (תמונות/מסמכים) לפני שמטא מוחק (~30 יום). מוריד עד 30
+    פריטים שטרם גובו בכל ריצה (rate-limit ידידותי)."""
+    try:
+        import wa
+        pend = db.wa_media_pending(limit=30)
+        if not pend:
+            return
+        ok = 0
+        for it in pend:
+            if wa.backup_media(it["wamid"], it["media_id"]):
+                ok += 1
+        if ok:
+            logger.info("media backup: saved %d/%d", ok, len(pend))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("media backup failed: %s", e)
+
+
 def _cargo_shipping_advance_job():
     """כלל פשוט: הודפסה תווית Cargo (קיים `cslfw_shipping`) → ההזמנה ל'בהפצה'.
     תופס תוויות מכל מקור (תוסף Cargo / WP / GreenOS). כולל 'הושלם' — אצל
@@ -284,6 +302,10 @@ def register_recurring_jobs():
         logger.info("removals ingest fresh — skipping initial run")
     # קטלוג מוצרים ל-DB: רענון כל 6 שעות. ריצה ראשונית רק אם הקטלוג ישן (נשמר ב-DB).
     scheduler.add_job(_catalog_refresh_job, "interval", hours=6, id="catalog_refresh", max_instances=1)
+    # גיבוי מדיה נכנסת ממטא (תמונות/מסמכים) — כל 5 דק', כדי שלא יאבד כשמטא ימחק (~30 יום)
+    scheduler.add_job(_media_backup_job, "interval", minutes=5, id="media_backup", max_instances=1)
+    scheduler.add_job(_media_backup_job, "date", id="media_backup_initial",
+                      run_date=datetime.now() + timedelta(seconds=45))
     # שידור אוטומטי של בקשות העברה לאתר על הזמנות אתר ששולמו
     scheduler.add_job(_auto_transfer_job, "interval", minutes=5, id="auto_transfer", max_instances=1)
     # קידום ל'בהפצה' להזמנות עם משלוח Cargo (גם תוויות שהודפסו מחוץ ל-GreenOS)
@@ -514,25 +536,26 @@ async def wa_webhook_recv(request: Request, background: BackgroundTasks):
 
 
 @app.get("/api/wa/media")
-def wa_media(wamid: str, x_admin_key: Optional[str] = Header(None)):
-    """שלב 2 (מדיה): היסטורי → redirect ל-CDN של ChatRace; חי (מטא) → הורדה+הזרמה."""
-    _require_admin(x_admin_key)
+def wa_media(wamid: str, t: Optional[str] = None, x_admin_key: Optional[str] = Header(None)):
+    """מדיה: היסטורי → redirect ל-CDN של ChatRace; חי (מטא) → גיבוי שלנו או הורדה
+    ממטא (ומגבה תוך כדי). אימות: כותרת ניהול **או** טוקן חתום ב-?t= (כדי ש-<img>
+    יוכל לטעון בלי כותרת)."""
+    import wa
+    if not (t and wa.media_token(wamid) == t):
+        _require_admin(x_admin_key)
     m = db.wa_msg_get(wamid)
     if not m:
         raise HTTPException(404, "הודעה לא נמצאה")
     if m.get("media_url"):
         from fastapi.responses import RedirectResponse
         return RedirectResponse(m["media_url"])
-    mid = m.get("media_id")
-    if not mid:
-        raise HTTPException(404, "אין מדיה")
-    import wa
     try:
-        content, mime = wa.fetch_meta_media(mid)
+        content, mime = wa.serve_media(wamid)
     except Exception as e:  # noqa: BLE001
         raise HTTPException(502, str(e)[:200])
     from fastapi.responses import Response
-    return Response(content, media_type=mime)
+    return Response(content, media_type=mime,
+                    headers={"Cache-Control": "private, max-age=86400"})
 
 
 @app.get("/api/admin/wa/store-stats")

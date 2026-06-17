@@ -301,9 +301,16 @@ def get_thread_native(phone: str, limit: int = 80):
     for m in rows:
         media = []
         murl = m.get("media_url")
+        wamid_m = m.get("wamid")
         if murl:
             mt = (m.get("media_mime") or "").split("/")[0] or m.get("type") or "file"
             media = [{"type": mt, "url": murl, "caption": ""}]
+        elif m.get("media_id") and wamid_m:
+            # מדיה נכנסת ממטא (תמונה/מסמך) — מוגשת דרך ה-endpoint שלנו (גיבוי/מטא),
+            # עם טוקן חתום כדי ש-<img> יוכל לטעון בלי כותרת אימות.
+            mt = (m.get("media_mime") or "").split("/")[0] or m.get("type") or "file"
+            media = [{"type": mt, "caption": "",
+                      "url": f"/api/wa/media?wamid={wamid_m}&t={media_token(wamid_m)}"}]
         # מנקים marker טכני בתחילת ההודעה ([interactive]/[רשימה]/[כפתורים]) מהבקאפ/בוט
         text = re.sub(r"^\s*\[(interactive|רשימה|כפתורים)\]\s*", "", m.get("text") or "")
         if "_strip_entry_marker" in globals():
@@ -448,6 +455,51 @@ def fetch_meta_media(media_id: str):
     if not r2.ok:
         raise WaError(f"media download failed ({r2.status_code})")
     return r2.content, mime
+
+
+def media_token(wamid: str) -> str:
+    """טוקן חתום ל-URL של מדיה — מאפשר ל-<img> לטעון בלי כותרת אימות (שלא ניתן
+    לשלוח מתג img), בלי לחשוף את סיסמת הניהול. HMAC על ה-wamid."""
+    import hashlib
+    import hmac
+    import os as _os
+    secret = (_os.getenv("META_APP_SECRET") or _os.getenv("ADMIN_PASSWORD") or "gm-media").encode()
+    return hmac.new(secret, str(wamid).encode(), hashlib.sha256).hexdigest()[:24]
+
+
+def backup_media(wamid: str, media_id: str) -> bool:
+    """מוריד מדיה נכנסת ממטא ושומר גיבוי קבוע (base64) — כדי שלא יאבד כשמטא ימחק
+    אחרי ~30 יום. אידמפוטנטי. מחזיר True אם נשמר."""
+    import db
+    if not wamid or not media_id:
+        return False
+    if db.wa_media_blob_get(wamid):     # כבר מגובה
+        return True
+    try:
+        content, mime = fetch_meta_media(media_id)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("backup_media fetch failed (%s): %s", wamid, e)
+        return False
+    db.wa_media_blob_set(wamid, mime, content)
+    return True
+
+
+def serve_media(wamid: str):
+    """מחזיר (bytes, mime) להצגה — קודם מהגיבוי שלנו, אחרת מוריד ממטא ומגבה תוך כדי."""
+    import db
+    blob = db.wa_media_blob_get(wamid)
+    if blob:
+        return blob[1], blob[0]
+    m = db.wa_msg_get(wamid)
+    mid = (m or {}).get("media_id")
+    if not mid:
+        raise WaError("אין מדיה")
+    content, mime = fetch_meta_media(mid)
+    try:                                # cache-on-view → גם מגבה
+        db.wa_media_blob_set(wamid, mime, content)
+    except Exception:  # noqa: BLE001
+        pass
+    return content, mime
 
 
 def send_typing(message_id: str) -> bool:
