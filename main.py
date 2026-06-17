@@ -2200,6 +2200,35 @@ def wa_cutover_get(x_admin_key: Optional[str] = Header(None)):
             "read_native": _wa_read_native()}
 
 
+@app.post("/api/wc/order-webhook")
+async def wc_order_webhook(request: Request):
+    """webhook מ-WooCommerce על יצירת הזמנה → שולח 'הזמנה התקבלה' **מיידית** ללקוח
+    (במקום להמתין לסריקה כל 5 דק'). מאומת בחתימת WC; מאחורי אותו דגל ודדופ של
+    הסריקה, אז אין כפילות. ping של WC (בלי number) — מתעלמים."""
+    raw = await request.body()
+    secret = (db.sales_state_get("wc_webhook_secret") or os.getenv("WC_WEBHOOK_SECRET", "")).strip()
+    if secret:
+        import base64
+        import hashlib
+        import hmac as _hmac
+        sig = request.headers.get("x-wc-webhook-signature", "")
+        expected = base64.b64encode(_hmac.new(secret.encode(), raw, hashlib.sha256).digest()).decode()
+        if not _hmac.compare_digest(expected, sig or ""):
+            raise HTTPException(401, "bad signature")
+    try:
+        order = json.loads(raw)
+    except Exception:  # noqa: BLE001
+        return {"ok": True, "skip": "no-json"}
+    if not isinstance(order, dict) or not order.get("number"):
+        return {"ok": True, "skip": "ping-or-not-order"}
+    try:
+        import auto_transfer
+        auto_transfer._send_order_confirm(order)   # מיידי (מאחורי דגל + דדופ)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("wc order webhook confirm failed: %s", e)
+    return {"ok": True, "order": order.get("number")}
+
+
 @app.post("/api/admin/wa/active")
 def wa_admin_active(x_admin_key: Optional[str] = Header(None)):
     """heartbeat: האדמין פעיל במערכת כרגע → push לטלפון מדוכא (כמו אפליקציה אמיתית)."""
