@@ -2185,7 +2185,23 @@ def wa_bot_release(phone: str, x_admin_key: Optional[str] = Header(None)):
     """משחרר לקוח מ-handoff-לנציג בחזרה לבוט (מנקה את מצב 'agent' — הבוט יענה שוב)."""
     _require_admin(x_admin_key)
     db.bot_session_clear(phone)
-    return {"ok": True, "phone": phone}
+    return {"ok": True, "phone": phone, "handoff": False}
+
+
+@app.post("/api/admin/wa/bot-handoff")
+def wa_bot_handoff(phone: str, on: int = 1, x_admin_key: Optional[str] = Header(None)):
+    """מתג ידני: on=1 → משתיק את הבוט לשיחה (אדם משתלט); on=0 → מחזיר לבוט.
+    כך אפשר להשתלט/לשחרר כל שיחה מהקונסולה, לא רק כשהלקוח לוחץ 'נציג'."""
+    _require_admin(x_admin_key)
+    if on:
+        from datetime import datetime, timezone
+        db.bot_session_set(phone, "agent",
+                           {"note": "ידני (קונסולה)",
+                            "ts": datetime.now(timezone.utc).isoformat()})
+    else:
+        db.bot_session_clear(phone)
+    s = db.bot_session_get(phone)
+    return {"ok": True, "phone": phone, "handoff": s.get("state") == "agent"}
 
 
 @app.post("/api/admin/wa/cutover")

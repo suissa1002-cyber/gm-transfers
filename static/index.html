@@ -2438,8 +2438,8 @@ function waThreadHTML(){
         <a class="btn-ghost wa-ico" target="_blank" href="https://newapp.connectop.co.il/en/inbox?acc=1428408&id=${escW(S.waPhone)}" title="פתח ב-ConnectOp">${ico('globe')}</a>
         <button class="btn-ghost wa-ico ${conv.live_chat?'wa-human-on':''}" onclick="waHuman(${conv.live_chat?'false':'true'})"
                 title="${conv.live_chat?'מצב אנושי — הבוט מושתק בשיחה. לחץ להחזיר את הבוט':'הבוט פעיל בשיחה. לחץ להשתיק אותו (מענה אנושי)'}">${ico(conv.live_chat?'user':'bot')}</button>
-        <button class="btn-ghost wa-ico ${S.waBotHandoff?'wa-human-on':''}" onclick="waBotRelease()"
-                title="${S.waBotHandoff?'🤖 הבוט מושתק (הלקוח ביקש נציג). לחץ להחזיר את הבוט לשיחה':'החזר את השיחה לבוט (בטל handoff לנציג)'}">🤖</button>
+        <button class="btn-ghost wa-ico ${S.waBotHandoff?'wa-human-on':''}" onclick="waBotHandoff(${S.waBotHandoff?0:1})"
+                title="${S.waBotHandoff?'🙋 מצב אנושי — הבוט מושתק. לחץ להחזיר את הבוט':'🤖 הבוט פעיל. לחץ להשתלט ידנית (להשתיק את הבוט)'}">${S.waBotHandoff?'🙋':'🤖'}</button>
         <button class="btn-ghost wa-ico" onclick="waArchive(${conv.archived?'false':'true'})" title="${conv.archived?'החזר מארכיון':'העבר לארכיון'}">${ico(conv.archived?'restore':'archive')}</button>
       </span>
     </div>
@@ -4034,11 +4034,13 @@ async function loadWaThread(silent){
          if(was!==S.waBotHandoff && !(S.waPanel&&(S.waPanelMode==='uri'||S.waPanelMode==='stock'))) renderWaThread(); } }
   catch(e){}
 }
-async function waBotRelease(){
+async function waBotHandoff(on){
   if(!S.waPhone) return;
-  if(!confirm('להחזיר את השיחה לבוט?\nהבוט יחזור לענות אוטומטית ללקוח הזה.')) return;
-  try{ await api('/api/admin/wa/bot-release?phone='+encodeURIComponent(S.waPhone),{method:'POST'});
-       S.waBotHandoff=false; toast('הוחזר לבוט 🤖',true); renderWaThread(); }
+  const msg=on?'להשתלט על השיחה ידנית?\nהבוט יושתק ולא יענה ללקוח הזה — אתה עונה ידנית.'
+              :'להחזיר את השיחה לבוט?\nהבוט יחזור לענות אוטומטית ללקוח הזה.';
+  if(!confirm(msg)) return;
+  try{ const r=await api('/api/admin/wa/bot-handoff?on='+(on?1:0)+'&phone='+encodeURIComponent(S.waPhone),{method:'POST'});
+       S.waBotHandoff=!!(r&&r.handoff); toast(on?'הבוט הושתק — אתה בשליטה 🙋':'הוחזר לבוט 🤖',true); renderWaThread(); }
   catch(e){ toast('שגיאה',false); }
 }
 async function sendWaMsg(){

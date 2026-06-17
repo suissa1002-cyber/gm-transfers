@@ -806,18 +806,18 @@ def _to_agent(phone, note: str = ""):
         pass
 
 
-def _agent_handoff_active(sess, hours=4) -> bool:
+def _agent_handoff_active(sess, hours=12) -> bool:
     """האם הלקוח עדיין מועבר לנציג אנושי (הבוט צריך לשתוק). פג אחרי `hours` שעות —
-    אז הבוט חוזר לענות. חותמת חסרה (handoff ישן מלפני התיקון) → לא חוסם."""
+    אז הבוט חוזר לענות. **חותמת חסרה → מושתק** (handoff ידני/ישן — עדיף שקט)."""
     from datetime import datetime
     ts = (sess.get("data") or {}).get("ts")
     if not ts:
-        return False
+        return True
     try:
         t = datetime.fromisoformat(str(ts))
         return (datetime.now(t.tzinfo) - t).total_seconds() < hours * 3600
     except Exception:  # noqa: BLE001
-        return False
+        return True
 
 
 _REPAIR_EMOJI = {"ממתין": "⏳", "תוקן": "✅", "נמסר ללקוח": "📦",
