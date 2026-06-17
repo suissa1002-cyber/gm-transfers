@@ -74,13 +74,35 @@ def send_to_all(title: str, body: str, url: str = "/?wa=1", phone: str = "",
     return sent
 
 
+def _use_native() -> bool:
+    """האם השיחות מגיעות מהחנות שלנו (native) ולא מקונקטופ — אז גם ה-push חייב
+    לקרוא משם, אחרת הודעות הבוט ה-native לא מזוהות (push נשבר אחרי ה-cutover)."""
+    if os.getenv("WA_READ_NATIVE", "0").strip().lower() in ("1", "true", "yes", "on"):
+        return True
+    try:
+        import wa_bot
+        if wa_bot.cutover_mode() == "live":
+            return True
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        return (db.sales_state_get("wa_read_native") or "0").strip().lower() in ("1", "true", "on")
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def poll_and_push():
-    """ג'וב מתוזמן: מזהה הודעות נכנסות חדשות ושולח push."""
+    """ג'וב מתוזמן: מזהה הודעות נכנסות חדשות ושולח push. במצב native קורא מהחנות
+    שלנו (קונקטופ כבר לא רואה את הודעות הבוט)."""
     if not db.wa_push_subs():
         return  # אין מכשירים רשומים — לא שורפים קריאות
     import wa
+    native = _use_native()
     try:
-        convs = wa.list_conversations(include_archived=False)
+        if native:
+            convs = [c for c in wa.list_conversations_native() if not c.get("archived")]
+        else:
+            convs = wa.list_conversations(include_archived=False)
     except Exception as e:  # noqa: BLE001
         logger.warning("poll: inbox failed: %s", e)
         return
@@ -95,9 +117,15 @@ def poll_and_push():
         prev = state.get(c["phone"], 0)
         if c["ts"] <= prev:
             continue
+        # רק שיחות שדורשות טיפול אנושי: ההודעה האחרונה מהלקוח וטרם נענתה. אם הבוט
+        # כבר ענה (last out > last in) — לא מציפים את הנציג. handoff/בוט-שתק → unread.
+        if native and not c.get("unread"):
+            continue
         # השיחה התעדכנה — האם ההודעה האחרונה נכנסת (מהלקוח)?
         try:
-            msgs = wa.get_thread(c["phone"], limit=5)["messages"]
+            thr = wa.get_thread_native(c["phone"], limit=5) if native \
+                else wa.get_thread(c["phone"], limit=5)
+            msgs = thr["messages"]
         except Exception:  # noqa: BLE001
             continue
         fresh_in = [m for m in msgs if m.get("direction") == "in"
