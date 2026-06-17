@@ -2221,17 +2221,20 @@ async def wc_order_webhook(request: Request):
         return {"ok": True, "skip": "no-json"}
     if not isinstance(order, dict) or not order.get("number"):
         return {"ok": True, "skip": "ping-or-not-order"}
-    # רק הזמנות ששולמו (כמו הסריקה — AUTO_TR_STATUSES, ברירת מחדל processing) —
-    # לא מאשרים הזמנות ממתינות-תשלום/נכשלו/בוטלו.
-    paid = [s.strip() for s in os.getenv("AUTO_TR_STATUSES", "processing").split(",") if s.strip()]
-    if order.get("status") not in paid:
-        return {"ok": True, "skip": "status:" + str(order.get("status"))}
+    # עדכון סטטוס מיידי — לכל שינוי סטטוס (בהפצה/מוכן לאיסוף/נק' מסירה), מגודר+דדופ
     try:
-        import auto_transfer
-        auto_transfer._send_order_confirm(order)   # מיידי (מאחורי דגל + דדופ)
+        _notify_order_status(order)
     except Exception as e:  # noqa: BLE001
-        logger.warning("wc order webhook confirm failed: %s", e)
-    return {"ok": True, "order": order.get("number")}
+        logger.warning("wc webhook status-notify failed: %s", e)
+    # אישור 'הזמנה התקבלה' — רק הזמנות ששולמו (AUTO_TR_STATUSES, ברירת מחדל processing)
+    paid = [s.strip() for s in os.getenv("AUTO_TR_STATUSES", "processing").split(",") if s.strip()]
+    if order.get("status") in paid:
+        try:
+            import auto_transfer
+            auto_transfer._send_order_confirm(order)   # מיידי (מאחורי דגל + דדופ)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("wc order webhook confirm failed: %s", e)
+    return {"ok": True, "order": order.get("number"), "status": order.get("status")}
 
 
 @app.post("/api/admin/wa/active")
@@ -4375,31 +4378,43 @@ def _status_notify_job():
     init = db.sales_state_get("status_notify_init")
     enabled = os.getenv("WA_SEND_STATUS_AUTO", "0") == "1"
     for o in (orders or []):
-        if not isinstance(o, dict):
-            continue
-        num = str(o.get("number"))
-        st = o.get("status")
-        key = f"order_last_status:{num}"
-        last = db.sales_state_get(key)
-        db.sales_state_set(key, st)
-        if not init or last is None or last == st:
-            continue                         # ריצה ראשונה / לא ידוע / ללא שינוי → דלג
-        tpl = _STATUS_NOTIFY_TPL.get(st)
-        if not tpl or not enabled or db.sales_state_get(f"status_sent:{num}:{st}"):
-            continue
-        b = o.get("billing") or {}
-        phone = _il_phone(b.get("phone"))
-        if len(phone) < 11:
-            continue
-        try:
-            import wa
-            wa.send_status_template(phone, (b.get("first_name") or "").strip(), num, tpl)
-            db.sales_state_set(f"status_sent:{num}:{st}", "1")
-            logger.info("status notify %s -> %s (%s)", num, st, tpl)
-        except Exception as e:  # noqa: BLE001
-            logger.warning("status notify send failed %s: %s", num, e)
+        if isinstance(o, dict):
+            _notify_order_status(o, enabled=enabled, init=init)
     if not init:
         db.sales_state_set("status_notify_init", datetime.now().isoformat(timespec="seconds"))
+
+
+def _notify_order_status(o, enabled=None, init="__fetch__"):
+    """שולח ללקוח template סטטוס מאושר אם הסטטוס *השתנה* (בהפצה/מוכן לאיסוף/נק' מסירה).
+    משמש גם ב-job (כל 3 דק') וגם ב-webhook (מיידי). מגודר WA_SEND_STATUS_AUTO + דדופ
+    פר הזמנה+סטטוס. ריצה ראשונה (init=None) רק רושמת — מונע backfill."""
+    num = str(o.get("number") or "")
+    if not num:
+        return
+    st = o.get("status")
+    if enabled is None:
+        enabled = os.getenv("WA_SEND_STATUS_AUTO", "0") == "1"
+    if init == "__fetch__":
+        init = db.sales_state_get("status_notify_init")
+    key = f"order_last_status:{num}"
+    last = db.sales_state_get(key)
+    db.sales_state_set(key, st)
+    if not init or last is None or last == st:
+        return                               # ריצה ראשונה / לא ידוע / ללא שינוי → דלג
+    tpl = _STATUS_NOTIFY_TPL.get(st)
+    if not tpl or not enabled or db.sales_state_get(f"status_sent:{num}:{st}"):
+        return
+    b = o.get("billing") or {}
+    phone = _il_phone(b.get("phone"))
+    if len(phone) < 11:
+        return
+    try:
+        import wa
+        wa.send_status_template(phone, (b.get("first_name") or "").strip(), num, tpl)
+        db.sales_state_set(f"status_sent:{num}:{st}", "1")
+        logger.info("status notify %s -> %s (%s)", num, st, tpl)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("status notify send failed %s: %s", num, e)
 
 
 def _cargo_delivery_sync_job():
