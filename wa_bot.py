@@ -231,8 +231,15 @@ def handle(phone: str, text: str, mtype: str = "text", reply_id: str = "", wamid
         question_like = bool(_re.search(
             r"\?|מה ההבדל|הבדל בין|השוואה|עדיף|מה מתאים|כדאי|להמליץ|המלצ|תקציב|עד \d|"
             r"יבואן|אחריות|האם|כמה עולה|מה יותר", text))
-        # שאלה מורכבת → אורי ישירות. אחרת → חיפוש חכם (שכבר מפיל לאורי אם ריק).
-        if question_like and _ask_uri(phone, text, wamid):
+        # נראה כמו חיפוש מוצר? (מותג/דגם באנגלית/קטגוריה) — אז חיפוש גם באמצע שיחה.
+        # לא כולל מספרים בלבד (טלפון/כמות) כדי ש'0549...' לא ייחשב מוצר.
+        product_like = bool(_re.search(
+            r"[A-Za-z]{2,}|אייפון|גלקסי|סמסונג|שיאומי|רדמי|אוזניות|טלפון סלולרי|מטען|כבל|"
+            r"שעון חכם|טאבלט|מחשב|קונסולה|רמקול|פלייסטיישן", text))
+        # שיחה פעילה עם אורי → המשך ההודעות (שם/תודה/טלפון) נשאר עם אורי, לא חיפוש —
+        # אלא אם זה ברור חיפוש מוצר חדש.
+        if (question_like or (_uri_engaged(phone) and not product_like)) \
+                and _ask_uri(phone, text, wamid):
             return
         return _new_order_results(phone, text)
     _menu(phone)
@@ -272,6 +279,29 @@ def _uri_alive() -> bool:
         return False
 
 
+def _mark_uri_engaged(phone):
+    """מסמן שהלקוח בשיחה פעילה עם אורי — כדי שהמשך ההודעות הקצרות שלו ('אלי', 'תודה',
+    מספר טלפון) ימשיכו לאורי ולא ייתפסו כחיפוש מוצר."""
+    from datetime import datetime, timezone
+    try:
+        db.sales_state_set(f"uri_eng:{phone}", datetime.now(timezone.utc).isoformat())
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _uri_engaged(phone, minutes=5) -> bool:
+    """האם יש שיחה פעילה עם אורי ב-5 הדקות האחרונות."""
+    from datetime import datetime
+    try:
+        v = db.sales_state_get(f"uri_eng:{phone}")
+        if not v:
+            return False
+        t = datetime.fromisoformat(str(v))
+        return (datetime.now(t.tzinfo) - t).total_seconds() < minutes * 60
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def _ask_uri(phone, question, wamid="") -> bool:
     """מנתב שאלה לאורי (תשובה תישלח אוטומטית כשתחזור). False אם הגשר לא זמין.
     מצרף מוצרים מועמדים מהחיפוש כדי שאורי יענה מהר — בלי סבב כלים."""
@@ -297,6 +327,7 @@ def _ask_uri(phone, question, wamid="") -> bool:
         q += ("\n\n[מוצרים מועמדים (כבר חיפשתי באתר — השתמש באלה, אל תחפש שוב "
               f"אלא אם אף אחד לא מתאים):\n{lines}]")
     db.uri_job_add(phone, q, source="bot")
+    _mark_uri_engaged(phone)          # שיחה פעילה — המשך ההודעות יישאר עם אורי
     return True
 
 
