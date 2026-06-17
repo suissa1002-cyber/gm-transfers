@@ -420,11 +420,16 @@ def _entry_product_name(text: str) -> str:
     m = _re.search(r"לגבי המוצר:\s*(.+)", text or "", _re.S)
     if not m:
         return ""
-    name = m.group(1)
-    name = _re.split(r"[\n\r]|—|–|\s-\s", name)[0]               # חותך בתיאור
+    name = m.group(1).split("\n")[0].split("\r")[0]   # shura rishona
     name = _re.sub(r"[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]", "", name)  # tavim nistarim
     name = _re.sub(r"\s+", " ", name).strip(" -–—:·\"״׳")
-    return name[:90]
+    return name[:120]
+
+
+def _model_core(title):
+    """החלק הלטיני (מותג+דגם — תמיד באנגלית באתר) לחיפוש ממוקד, בלי קשר למיקומו."""
+    m = _re.search(r"[A-Za-z][A-Za-z0-9.\s]*[A-Za-z0-9]", title or "")
+    return m.group(0).strip() if m else ""
 
 
 def _title_toks(t):
@@ -448,12 +453,17 @@ def _entry_product_flow(phone, text):
     title = _entry_product_name(text)
     if not title:
         return _menu(phone)
+    # חיפוש לפי הדגם הלטיני (תמיד באנגלית באתר) — מוצא את המוצר בין אם הדגם לפני
+    # המקף ובין אם אחריו. נפילה לכותרת המלאה אם אין דגם לטיני/אין תוצאות.
+    key = _model_core(title) or title
     try:
-        results = main.bot_wc_title_search(title, limit=20) or []
+        results = main.bot_wc_title_search(key, limit=20) or []
+        if not results and key != title:
+            results = main.bot_wc_title_search(title, limit=20) or []
     except Exception:  # noqa: BLE001
         results = []
-    if not results:                              # כותרת לא מצאה כלום → הזרימה הרגילה
-        return _new_order_results(phone, title)
+    if not results:                              # לא נמצא כלום → הזרימה הרגילה
+        return _new_order_results(phone, key)
     # דירוג לפי כיסוי (כמה ממילות הכותרת בשם המוצר), ואז שם קצר יותר = ספציפי יותר
     ranked = sorted(results, key=lambda p: (_title_cov(title, p.get("name", "")),
                                             -len(p.get("name", ""))), reverse=True)
@@ -599,7 +609,8 @@ def _product_card(phone, rid, data):
     elif p.get("stock") == "outofstock":
         lines.append("⏳ אזל — ניתן להשיג מהספק (שאל נציג)")
     if p.get("permalink"):
-        lines.append(f"\n🔗 לרכישה ולפרטים:\n{p['permalink']}")
+        # slug עברי → קישור מקוצר gm- (קישור עברי ארוך נראה שבור/חשוד); אנגלי נשאר ישיר
+        lines.append(f"\n🔗 לרכישה ולפרטים:\n{_short_link(p['permalink'])}")
     body = "\n".join(lines)
     pid = rid.split(":", 1)[1]
     btns = [(f"buy:{pid}", "🛒 הזמן עכשיו"), ("search_again", "🔍 מוצר אחר"), ("agent", "👤 נציג")]
