@@ -111,11 +111,12 @@ def handle(phone: str, text: str, mtype: str = "text", reply_id: str = "", wamid
     # אז מציגים את סטטוס ההזמנה הזו אוטומטית, בלי שהלקוח יזין מספר.
     if rid.startswith("ordstatus:"):
         return _order_status(phone, rid.split(":", 1)[1])
-    # כפתור "קיבלתי את ההזמנה" (טמפלייט הפצה) — מסמן 'נמסרה' + מודה (+חוו"ד דרך main)
+    # כפתור "קיבלתי את ההזמנה" (טמפלייט הפצה) — מסמן 'נמסרה' ושולח את טמפלייט חוו"ד.
+    # אם חוו"ד נשלחה — היא ההודעה (כוללת תודה); אחרת תודה קצרה כ-fallback.
     if rid.startswith("received:"):
         import main
-        main.bot_confirm_received(rid.split(":", 1)[1])
-        wa.send_text(phone, "תודה שאישרת את קבלת ההזמנה! 🙏 שמחים שהמשלוח הגיע אליך.")
+        if not main.bot_confirm_received(rid.split(":", 1)[1]):
+            wa.send_text(phone, "תודה שאישרת את קבלת ההזמנה! 🙏 שמחים שהמשלוח הגיע אליך.")
         return
     # ── זרימת הזמנה בצ'אט (וריאציה גנרית — כל תכונה שמשתנה) ──
     if rid.startswith("buy:"):

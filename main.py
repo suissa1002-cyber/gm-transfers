@@ -4101,15 +4101,17 @@ def bot_confirm_received(num):
                         auth=(k, s), timeout=20)
             except Exception:  # noqa: BLE001
                 pass
-        if (os.getenv("WA_SEND_REVIEW", "0").strip() == "1"
-                and not db.sales_state_get(f"review_sent:{num}")):
+        # פעולת לקוח מפורשת — שולחים חוו"ד תמיד (לא מגודר ב-WA_SEND_REVIEW), בדדופ עם
+        # זרימת Cargo. מחזיר True רק אם חוו"ד נשלחה בקריאה זו (כדי שהבוט לא יוסיף תודה).
+        if not db.sales_state_get(f"review_sent:{num}"):
             b = o.get("billing") or {}
             ph = _il_phone(b.get("phone"))
             if len(ph) >= 11:
                 import wa
                 wa.send_review_template(ph, b.get("first_name") or "", str(num), "נמסרה")
                 db.sales_state_set(f"review_sent:{num}", "1")
-        return True
+                return True
+        return False
     except Exception as e:  # noqa: BLE001
         logger.warning("confirm received failed for %s: %s", num, e)
         return False
