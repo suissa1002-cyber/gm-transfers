@@ -828,15 +828,49 @@ def _lookup_order(num: str):
         if not orders:
             return None
         o = orders[0]
-        label = main._wc_statuses(base, k, s).get(o.get("status"), o.get("status"))
         meta = {m.get("key"): m.get("value") for m in (o.get("meta_data") or [])}
-        cs = main._cargo_status(meta, (o.get("billing") or {}).get("email") or "")
-        msg = f"📦 הזמנה #{num}\nסטטוס: *{label}*"
-        if cs and cs.get("text"):
-            msg += f"\nמשלוח: {cs['text']}"
-        if cs and cs.get("track_url"):
-            msg += f"\n🔗 מעקב: {cs['track_url']}"
-        return msg
+        name = ((o.get("billing") or {}).get("first_name") or "").strip()
+        return _status_msg(o, meta, name, num)
     except Exception as e:  # noqa: BLE001
         logger.warning("bot order lookup failed for %s: %s", num, e)
         return None
+
+
+_ST_DONE = {"delivered", "completed"}
+_ST_CANCEL = {"cancelled", "refunded", "failed"}
+_ST_FULFILL = {"shipping-stage", "send-cargo", "order-ready", "tlv-pickup", "order-ready-pickup"}
+
+
+def _status_msg(o, meta, name, num):
+    """טקסט סטטוס מותאם לפי שלב ההזמנה + שיטת המשלוח (קרגו/אקספרס/איסוף סניף/נק׳ ת״א)."""
+    import main
+    head = f"היי {name or 'לקוח/ה יקר/ה'},\nעדכון בנוגע להזמנה מס' *{num}*\n"
+    st = o.get("status")
+    titles = " ".join((sl.get("method_title") or "") for sl in (o.get("shipping_lines") or []))
+    is_tlv = st == "tlv-pickup" or "נקודת מסירה" in titles
+    is_pickup = (not is_tlv) and "איסוף" in titles
+    is_express = "אקספרס" in titles or "אותו היום" in titles
+    if st in _ST_CANCEL:
+        return head + "סטטוס: ההזמנה בוטלה. לכל שאלה אנחנו כאן 🙏"
+    if st in _ST_DONE:
+        return head + "סטטוס: הזמנתך נמסרה ✅ תודה שקנית בגרין מובייל!"
+    if st in _ST_FULFILL:
+        if is_tlv:
+            return head + ("סטטוס: הזמנתך בדרך לנקודת המסירה 📍\n"
+                           "במידה וההזמנה בוצעה עד 16:00 בימים א׳-ד׳ — תהיה מוכנה לאיסוף "
+                           "*למחרת* בנקודת המסירה בתל אביב.\n"
+                           "📌 כתובת: י.ל פרץ 35, תל אביב\n🕙 שעות פעילות: 10:00-16:00")
+        if is_pickup:
+            return head + "סטטוס: הזמנתך *מוכנה לאיסוף* מהסניף בו בחרת במהלך ההזמנה 🏬"
+        if is_express:
+            return head + ("סטטוס: הזמנתך בשלב הפצה ותימסר בשעות אחה״צ-ערב ⚡\n"
+                           "• בוצעה עד 13:00 (ימי עסקים א׳-ה׳) — תימסר *באותו היום*.\n"
+                           "• בוצעה אחרי 13:00 — תימסר *ביום העסקים הבא*.\n"
+                           "🛵 שליח מטעמנו יצור קשר לתיאום מסירה לפני ההגעה.")
+        msg = head + ("סטטוס: הזמנתך נמצאת *בשלב הפצה* ותימסר במסגרת ימי המשלוח "
+                      "שנבחרו בהזמנה 🚚")
+        cs = main._cargo_status(meta, (o.get("billing") or {}).get("email") or "")
+        if cs and cs.get("track_url"):
+            msg += f"\n🔗 מעקב משלוח: {cs['track_url']}"
+        return msg
+    return head + "סטטוס: הזמנתך נקלטה ונמצאת בטיפול — אנו מכינים אותה. נעדכן אותך בהמשך 🙏"
