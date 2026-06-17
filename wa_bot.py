@@ -22,9 +22,24 @@ def whitelist() -> set:
     return {p.strip() for p in os.getenv("BOT_WHITELIST", "").replace(" ", "").split(",") if p.strip()}
 
 
+def cutover_mode() -> str:
+    """מצב ה-cutover (נשמר ב-DB → החלפה מיידית בלי redeploy):
+    'live' = כל הלקוחות לבוט ה-native; 'halt' = חירום, כולם לקונקטופ;
+    אחרת (ברירת מחדל 'off') = רק BOT_WHITELIST (מצב בדיקה הנוכחי)."""
+    try:
+        return (db.sales_state_get("wa_cutover") or "off").strip().lower()
+    except Exception:  # noqa: BLE001
+        return "off"
+
+
 def enabled_for(phone: str) -> bool:
-    """האם הבוט ה-native פעיל למספר הזה (whitelist בלבד — גלגול בטוח)."""
-    wl = whitelist()
+    """האם הבוט ה-native מטפל בשולח — לפי מצב ה-cutover (ראה cutover_mode)."""
+    mode = cutover_mode()
+    if mode == "halt":          # חירום → אף אחד native, הכל חוזר לקונקטופ
+        return False
+    if mode == "live":          # cutoff → כל הלקוחות native
+        return True
+    wl = whitelist()            # off (ברירת מחדל) → רק רשימת הבדיקה
     return bool(wl) and str(phone) in wl
 
 

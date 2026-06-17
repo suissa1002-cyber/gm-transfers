@@ -2404,6 +2404,7 @@ function renderWa(){
           <button class="btn-ghost wa-ico" onclick="waNewConv()" title="שיחה חדשה (פנייה ללקוח)" style="color:#16a34a;font-weight:800;font-size:18px;line-height:1">＋</button>
           <button class="btn-ghost wa-ico" onclick="loadWa(true)" title="רענן">${ico('refresh',16)}</button>
           <button class="btn-ghost wa-ico" id="waPushBtn" onclick="waEnablePush()" title="התראות במכשיר הזה">${ico('bell',16)}</button>
+          <button class="btn-ghost wa-ico" id="waCutoverBtn" onclick="waCutover()" title="מצב cutover (בוט native / קונקטופ)" style="font-size:16px;line-height:1">🔀</button>
           <label class="ls-check" title="כולל ארכיון"><input type="checkbox" ${S.waArchived?'checked':''}
                  onchange="S.waArchived=this.checked?1:0;loadWa(true)"> ארכיון</label>
         </div>
@@ -3954,6 +3955,27 @@ function waNewConv(){
     <button class="btn-primary" style="width:100%" onclick="waNewConvGo()">פתח שיחה</button>
   </div></div>`;
   setTimeout(()=>{ const p=document.getElementById('ncPhone'); if(p) p.focus(); },60);
+}
+async function waCutover(){
+  let cur='off';
+  try{ const r=await api('/api/admin/wa/cutover'); cur=(r&&r.mode)||'off'; }catch(e){}
+  const badge=(m)=>m==='live'?'🟢 CUTOVER פעיל — כל הלקוחות בבוט':(m==='halt'?'🔴 חירום — כל הלקוחות בקונקטופ':'⚪ מצב בדיקה — רק whitelist בבוט');
+  document.getElementById('modalRoot').innerHTML=`<div class="overlay" onclick="closeModal()"><div class="modal" style="max-width:440px;text-align:right;line-height:1.55" onclick="event.stopPropagation()">
+    <h3 style="margin:0 0 4px;display:flex;align-items:center;gap:7px">🔀 מצב Cutover</h3>
+    <div class="muted" style="font-size:13px;margin-bottom:6px">מי מטפל בהודעות נכנסות — הבוט שלנו או קונקטופ. ההחלפה מיידית.</div>
+    <div style="background:#f1f5f9;border-radius:8px;padding:9px 11px;margin-bottom:14px;font-weight:700">כרגע: ${badge(cur)}</div>
+    <button class="btn-primary" style="width:100%;margin-bottom:8px;background:#16a34a;border-color:#16a34a" onclick="waCutoverSet('live')">🟢 הפעל CUTOVER — כל הלקוחות לבוט</button>
+    <button class="btn-ghost" style="width:100%;margin-bottom:8px" onclick="waCutoverSet('off')">⚪ מצב בדיקה (רק whitelist בבוט)</button>
+    <button class="btn-primary" style="width:100%;background:#dc2626;border-color:#dc2626" onclick="waCutoverSet('halt')">🔴 חירום — החזר הכל לקונקטופ</button>
+  </div></div>`;
+}
+async function waCutoverSet(mode){
+  const names={live:'🟢 CUTOVER — כל הלקוחות לבוט ה-native',off:'⚪ מצב בדיקה (רק whitelist)',halt:'🔴 חירום — הכל חזרה לקונקטופ'};
+  if(mode==='live' && !confirm('להפעיל CUTOVER?\nכל הלקוחות יתחילו לקבל מענה מהבוט שלנו, וקונקטופ יושתק.')) return;
+  try{ await api('/api/admin/wa/cutover?mode='+mode,{method:'POST'}); }
+  catch(e){ alert('שגיאה בהחלפת המצב'); return; }
+  closeModal();
+  alert('הופעל: '+names[mode]);
 }
 function waNewConvGo(){
   let digits=((document.getElementById('ncPhone')||{}).value||'').replace(/\D/g,'');

@@ -2136,6 +2136,37 @@ def wa_test_review(phone: str, order: str, name: str = "בדיקה",
     return {"ok": True, "wamid": wamid, "phone": phone, "order": order}
 
 
+_CUTOVER_LABELS = {"off": "מצב בדיקה (רק whitelist → native, השאר קונקטופ)",
+                   "live": "🟢 CUTOVER פעיל — כל הלקוחות לבוט ה-native",
+                   "halt": "🔴 חירום — כל הלקוחות חזרה לקונקטופ"}
+
+
+@app.get("/api/admin/wa/cutover")
+def wa_cutover_get(x_admin_key: Optional[str] = Header(None)):
+    """מצב ה-cutover הנוכחי (off/live/halt)."""
+    _require_admin(x_admin_key)
+    mode = (db.sales_state_get("wa_cutover") or "off").strip().lower()
+    return {"mode": mode, "label": _CUTOVER_LABELS.get(mode, mode)}
+
+
+@app.post("/api/admin/wa/cutover")
+def wa_cutover_set(mode: str, x_admin_key: Optional[str] = Header(None)):
+    """החלפת מצב ה-cutover **מיידית** (נשמר ב-DB, בלי redeploy):
+    live = כל הלקוחות לבוט ה-native (ה-cutoff); halt = חירום, הכל לקונקטופ;
+    off = חזרה למצב בדיקה (רק whitelist native). מתריע לטלגרם בכל החלפה."""
+    _require_admin(x_admin_key)
+    mode = (mode or "").strip().lower()
+    if mode not in ("off", "live", "halt"):
+        raise HTTPException(400, "mode must be off | live | halt")
+    prev = (db.sales_state_get("wa_cutover") or "off").strip().lower()
+    db.sales_state_set("wa_cutover", mode)
+    try:
+        _tg_admin(f"🔀 <b>WA cutover</b>: {prev} → <b>{mode}</b>\n{_CUTOVER_LABELS.get(mode, mode)}")
+    except Exception:  # noqa: BLE001
+        pass
+    return {"ok": True, "mode": mode, "prev": prev, "label": _CUTOVER_LABELS.get(mode, mode)}
+
+
 @app.post("/api/admin/wa/send-template")
 def wa_send_template(body: WaTemplate, x_admin_key: Optional[str] = Header(None)):
     """שליחה מחוץ לחלון: template מאושר new_message (שם, גוף בשורה אחת)."""
