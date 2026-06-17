@@ -663,18 +663,15 @@ _REPAIR_EMOJI = {"ממתין": "⏳", "תוקן": "✅", "נמסר ללקוח": 
 
 
 def _repair_status(phone, fix_id=None):
-    """סטטוס תיקון מ-NewOrder (/api/Fixes) — לפי טלפון הלקוח, או מספר תיקון שהוקלד."""
+    """סטטוס תיקון. כרגע ה-API של NewOrder (/api/Fixes) לא תומך בשליפת תיקון בודד
+    לפי טלפון/מספר (אין פרמטר סינון, ו-status=-1 מחזיר 500) — לכן עד שזה ייפתר אצלם
+    מעבירים לנציג עם הסבר נעים, במקום הודעת 'לא נמצא' מטעה."""
     import main
     results = main.bot_repair_status(phone=("" if fix_id else phone), fix_id=fix_id)
     if not results:
-        if fix_id:
-            wa.send_text(phone, f"לא מצאתי תיקון מספר {fix_id} 🤔\n"
-                                f"בדוק/י את המספר, או כתוב/י *נציג* לבירור.")
-        else:                              # לא נמצא לפי הטלפון → לבקש מספר תיקון
-            wa.send_text(phone, "לא מצאתי תיקון על המספר שלך 🤔\n"
-                                "אם יש *מספר תיקון* (מהקבלה) — כתוב/י אותו, או *נציג* לבירור.")
-            db.bot_session_set(phone, "await_repair_id", {})
-        return
+        wa.send_text(phone, "בדיקת סטטוס תיקון מתבצעת ישירות מול צוות המעבדה 🔧\n"
+                            "אני מעביר אותך לנציג שיבדוק עבורך את הסטטוס המדויק 🙏")
+        return _to_agent(phone, note=(f"סטטוס תיקון #{fix_id}" if fix_id else "סטטוס תיקון"))
     _d = lambda x: (x or "").split(" ")[0]   # תאריך בלבד (בלי שעה)
     blocks = []
     for r in results[:5]:
