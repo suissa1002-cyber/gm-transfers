@@ -2064,9 +2064,21 @@ def _wa_guard(fn, *args, **kwargs):
 
 
 def _wa_read_native() -> bool:
-    """WA_READ_NATIVE=1 → קוראים שיחות מהחנות שלנו (wa_msg) במקום מקונקטופ.
-    הפיך מיידית (כיבוי הדגל → חוזר לקונקטופ)."""
-    return os.getenv("WA_READ_NATIVE", "0").strip().lower() in ("1", "true", "yes", "on")
+    """האם להציג שיחות מהחנות שלנו (wa_msg) במקום מקונקטופ. True אם: env
+    WA_READ_NATIVE=1, או מצב cutover='live' (אז הכל native ממילא), או דגל ריצה
+    wa_read_native=1 (הצצה ידנית לשיחות הבוט גם במצב בדיקה). הפיך מיידית."""
+    if os.getenv("WA_READ_NATIVE", "0").strip().lower() in ("1", "true", "yes", "on"):
+        return True
+    try:
+        import wa_bot
+        if wa_bot.cutover_mode() == "live":
+            return True
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        return (db.sales_state_get("wa_read_native") or "0").strip().lower() in ("1", "true", "on")
+    except Exception:  # noqa: BLE001
+        return False
 
 
 @app.get("/api/admin/wa/conversations")
@@ -2143,10 +2155,20 @@ _CUTOVER_LABELS = {"off": "מצב בדיקה (רק whitelist → native, השא�
 
 @app.get("/api/admin/wa/cutover")
 def wa_cutover_get(x_admin_key: Optional[str] = Header(None)):
-    """מצב ה-cutover הנוכחי (off/live/halt)."""
+    """מצב ה-cutover הנוכחי (off/live/halt) + האם הטאב מציג שיחות native."""
     _require_admin(x_admin_key)
     mode = (db.sales_state_get("wa_cutover") or "off").strip().lower()
-    return {"mode": mode, "label": _CUTOVER_LABELS.get(mode, mode)}
+    return {"mode": mode, "label": _CUTOVER_LABELS.get(mode, mode),
+            "read_native": _wa_read_native()}
+
+
+@app.post("/api/admin/wa/read-native")
+def wa_read_native_set(on: int = 1, x_admin_key: Optional[str] = Header(None)):
+    """מתג ידני: האם הטאב יציג שיחות מהבוט ה-native (wa_msg) במקום מקונקטופ.
+    שימושי לניטור שיחות הבוט במצב בדיקה (במצב live זה אוטומטי)."""
+    _require_admin(x_admin_key)
+    db.sales_state_set("wa_read_native", "1" if on else "0")
+    return {"ok": True, "read_native": _wa_read_native()}
 
 
 @app.post("/api/admin/wa/cutover")

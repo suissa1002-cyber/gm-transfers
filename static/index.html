@@ -3957,8 +3957,8 @@ function waNewConv(){
   setTimeout(()=>{ const p=document.getElementById('ncPhone'); if(p) p.focus(); },60);
 }
 async function waCutover(){
-  let cur='off';
-  try{ const r=await api('/api/admin/wa/cutover'); cur=(r&&r.mode)||'off'; }catch(e){}
+  let cur='off', rn=false;
+  try{ const r=await api('/api/admin/wa/cutover'); cur=(r&&r.mode)||'off'; rn=!!(r&&r.read_native); }catch(e){}
   const badge=(m)=>m==='live'?'🟢 CUTOVER פעיל — כל הלקוחות בבוט':(m==='halt'?'🔴 חירום — כל הלקוחות בקונקטופ':'⚪ מצב בדיקה — רק whitelist בבוט');
   document.getElementById('modalRoot').innerHTML=`<div class="overlay" onclick="closeModal()"><div class="modal" style="max-width:440px;text-align:right;line-height:1.55" onclick="event.stopPropagation()">
     <h3 style="margin:0 0 4px;display:flex;align-items:center;gap:7px">🔀 מצב Cutover</h3>
@@ -3966,8 +3966,15 @@ async function waCutover(){
     <div style="background:#f1f5f9;border-radius:8px;padding:9px 11px;margin-bottom:14px;font-weight:700">כרגע: ${badge(cur)}</div>
     <button class="btn-primary" style="width:100%;margin-bottom:8px;background:#16a34a;border-color:#16a34a" onclick="waCutoverSet('live')">🟢 הפעל CUTOVER — כל הלקוחות לבוט</button>
     <button class="btn-ghost" style="width:100%;margin-bottom:8px" onclick="waCutoverSet('off')">⚪ מצב בדיקה (רק whitelist בבוט)</button>
-    <button class="btn-primary" style="width:100%;background:#dc2626;border-color:#dc2626" onclick="waCutoverSet('halt')">🔴 חירום — החזר הכל לקונקטופ</button>
+    <button class="btn-primary" style="width:100%;margin-bottom:14px;background:#dc2626;border-color:#dc2626" onclick="waCutoverSet('halt')">🔴 חירום — החזר הכל לקונקטופ</button>
+    <label class="ls-check" style="font-size:13px;display:flex;align-items:center;gap:7px;border-top:1px solid #e5e7eb;padding-top:11px">
+      <input type="checkbox" ${rn?'checked':''} onchange="waReadNative(this.checked)"> 👁️ הצג בטאב את שיחות הבוט (native) — לניטור${cur==='live'?' · פעיל אוטומטית ב-CUTOVER':''}</label>
   </div></div>`;
+}
+async function waReadNative(on){
+  try{ await api('/api/admin/wa/read-native?on='+(on?1:0),{method:'POST'}); }
+  catch(e){ alert('שגיאה'); return; }
+  closeModal(); loadWa(true);
 }
 async function waCutoverSet(mode){
   const names={live:'🟢 CUTOVER — כל הלקוחות לבוט ה-native',off:'⚪ מצב בדיקה (רק whitelist)',halt:'🔴 חירום — הכל חזרה לקונקטופ'};
