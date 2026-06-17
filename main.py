@@ -2081,6 +2081,17 @@ def wa_send(body: WaSend, x_admin_key: Optional[str] = Header(None)):
     return _wa_guard(wa.send_reply, body.phone, body.text)
 
 
+@app.post("/api/admin/wa/test-order-confirm")
+def wa_test_order_confirm(phone: str, order: str, name: str = "בדיקה",
+                          x_admin_key: Optional[str] = Header(None)):
+    """בדיקה חד-פעמית: שולח את template 'הזמנה התקבלה' (order_update_1) למספר נתון,
+    עם כפתור סטטוס דינמי לאותו order. ללא קשר לדגל WA_SEND_ORDER_CONFIRM."""
+    _require_admin(x_admin_key)
+    import wa
+    wamid = wa.send_order_confirm(phone, name, order)
+    return {"ok": True, "wamid": wamid, "phone": phone, "order": order}
+
+
 @app.post("/api/admin/wa/send-template")
 def wa_send_template(body: WaTemplate, x_admin_key: Optional[str] = Header(None)):
     """שליחה מחוץ לחלון: template מאושר new_message (שם, גוף בשורה אחת)."""
