@@ -822,6 +822,11 @@ def send_media(phone: str, filename: str, content: bytes, mime: str, caption: st
     _auto_human(phone)
     resp = _pub().send_file(phone, url, caption=caption, file_type=send_kind)
     logger.info("wa send %s -> %s (%s)", send_kind, phone, safe)
+    # שמירה בחנות שלנו → הקובץ היוצא מופיע גם בשיחה הנייטיב (לא רק בפאנל המדיה)
+    try:
+        _store_outbound(phone, caption or "", mtype=send_kind, media_url=url)
+    except Exception:  # noqa: BLE001
+        pass
     return {"sent": True, "via": send_kind, "url": url, "resp": resp}
 
 
