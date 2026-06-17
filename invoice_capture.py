@@ -30,10 +30,75 @@ IMAP_PASS = os.getenv("INVOICE_IMAP_PASS", "")
 # שולח עותקי המסמכים (ברירת מחדל = התיבה עצמה; הקופה שולחת "גם לשולח")
 INVOICE_FROM = os.getenv("INVOICE_FROM", "greenmobile.eshop@gmail.com")
 SCAN_DAYS = int(os.getenv("INVOICE_SCAN_DAYS", "14"))
+# העברת חשבוניות לקוח שנקלטו לתווית ייעודית והוצאה מ-INBOX (ארכוב). מסנן **רק**
+# לפי שולח חשבוניות הלקוח (greenmobile.eshop) — לא נוגע בחשבוניות ספק (איציק = hclickapp).
+FILE_SENDER = os.getenv("INVOICE_FILE_SENDER", "greenmobile.eshop@gmail.com")
+FILE_LABEL = os.getenv("INVOICE_FILE_LABEL", "חשבוניות לקוחות")
+FILE_ENABLE = os.getenv("INVOICE_FILE", "1") == "1"
 
 
 def configured() -> bool:
     return bool(IMAP_USER and IMAP_PASS)
+
+
+def _imap_utf7(s: str) -> str:
+    """קידוד modified UTF-7 (RFC 3501) לשמות תוויות/תיקיות בעברית ב-IMAP."""
+    import base64
+    res, buf = [], ""
+
+    def _enc(u):
+        return base64.b64encode(u.encode("utf-16-be")).decode("ascii").replace("/", ",").rstrip("=")
+    for ch in s:
+        if 0x20 <= ord(ch) <= 0x7e:
+            if buf:
+                res.append("&" + _enc(buf) + "-"); buf = ""
+            res.append("&-" if ch == "&" else ch)
+        else:
+            buf += ch
+    if buf:
+        res.append("&" + _enc(buf) + "-")
+    return "".join(res)
+
+
+def file_to_folder(M) -> dict:
+    """מעביר חשבוניות לקוח (FROM=greenmobile.eshop, עם PDF) מ-INBOX לתווית 'חשבוניות
+    לקוחות' ומסיר מ-INBOX (ארכוב: \\Deleted + UID EXPUNGE — נשאר ב-All Mail תחת התווית).
+    בטוח לאיציק (שמטפל רק ב-from:hclickapp) — מסנן בדיוק לפי שולח חשבוניות הלקוח.
+    משתמש ב-PEEK כדי לא לגעת בדגלי \\Seen."""
+    res = {"checked": 0, "filed": 0}
+    try:
+        M.select("INBOX", readonly=False)
+        import time as _t
+        since = _t.strftime("%d-%b-%Y", _t.gmtime(_t.time() - SCAN_DAYS * 86400))
+        typ, data = M.uid("search", None, "FROM", FILE_SENDER, "SINCE", since)
+        uids = (data[0].split() if data and data[0] else [])
+        lbl = '"%s"' % _imap_utf7(FILE_LABEL)
+        to_exp = []
+        for uid in uids:
+            res["checked"] += 1
+            typ, md = M.uid("fetch", uid, "(BODY.PEEK[])")
+            if not md or not md[0]:
+                continue
+            msg = email.message_from_bytes(md[0][1])
+            has_pdf = any((p.get_content_type() or "").lower() == "application/pdf"
+                          or (_decode(p.get_filename() or "")).lower().endswith(".pdf")
+                          for p in msg.walk())
+            if not has_pdf:                  # לא חשבונית (PDF) → לא נוגעים
+                continue
+            M.uid("STORE", uid, "+X-GM-LABELS", lbl)
+            M.uid("STORE", uid, "+FLAGS", "\\Deleted")
+            to_exp.append(uid); res["filed"] += 1
+        for uid in to_exp:                   # UID EXPUNGE — רק ההודעות שלנו
+            try:
+                M.uid("EXPUNGE", uid)
+            except Exception:  # noqa: BLE001
+                M.expunge()
+        if res["filed"]:
+            logger.info("filed %d customer invoices to '%s'", res["filed"], FILE_LABEL)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("file_to_folder failed: %s", e)
+        res["error"] = str(e)
+    return res
 
 
 def _all_mail_folder(M) -> str:
@@ -237,6 +302,9 @@ def capture(max_msgs: int = 80) -> dict:
                 logger.info("invoice captured #%s uid=%s doc=%s total=%s phone=%s",
                             iid, uid_s, parsed.get("doc_number"), parsed.get("total"),
                             parsed.get("customer_phone"))
+        # אחרי הקליטה — מעבירים את חשבוניות הלקוח מה-INBOX לתווית ייעודית (ארכוב)
+        if FILE_ENABLE:
+            res["file"] = file_to_folder(M)
     except Exception as e:  # noqa: BLE001
         logger.warning("invoice capture error: %s", e)
         res["ok"] = False
