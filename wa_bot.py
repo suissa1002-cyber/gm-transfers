@@ -359,6 +359,12 @@ def _entry_product_name(text: str) -> str:
     name = _re.split(r"[\n\r]|—|–|\s-\s", name)[0]               # חותך בתיאור
     name = _re.sub(r"[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]", "", name)  # tavim nistarim
     name = _re.sub(r"\s+", " ", name).strip(" -–—:·")
+    # דגמים באתר תמיד באנגלית. אם יש לטינית — מצמצמים לטווח מהאות הלטינית הראשונה
+    # ועד התו הלטיני/ספרה האחרון (מותג+דגם+מפרט כמו 256GB), וזורקים מילות קטגוריה
+    # ('אוזניות', 'סמארטפון') ותיאור בעברית מסביב → התאמת חיפוש מדויקת בהרבה.
+    core = _re.search(r"[A-Za-z].*[A-Za-z0-9]", name)
+    if core and len(core.group(0)) >= 2:
+        name = core.group(0).strip()
     return name[:80]
 
 
