@@ -934,7 +934,12 @@ def _repair_quote_result(phone, text):
                             f"או *נציג* לבירור.")
         return
     if len(cands) == 1:
-        return _repair_ask_part(phone, cands[0])
+        dev = cands[0]
+        # אם הלקוח כבר ציין מהות תיקון ('מסך אייפון 14') — קופצים ישר למחיר, בלי לשאול שוב
+        if main.bot_repair_match_part(dev, text):
+            db.bot_session_set(phone, "await_repair_part", {"device": dev})
+            return _repair_part_result(phone, text)
+        return _repair_ask_part(phone, dev)
     rows = [(f"rmodel:{i}", _pretty_model(cands[i]["display"])[:24], "")
             for i in range(min(len(cands), 9))]
     db.bot_session_set(phone, "await_repair_model", {"cands": cands})

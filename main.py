@@ -3597,6 +3597,11 @@ def bot_repair_quote(query: str) -> list:
     _stop = ("של", "תיקון", "מחיר", "כמה", "עולה", "רגיל", "רגילה", "פשוט",
              "בסיסי", "basic", "standard", "דגם", "ה")
     qwords = [w for w in _re.split(r"[\s/]+", q) if w and w not in _stop]
+    # מילות מהות-תיקון (מסך/סוללה/שקע...) אינן חלק מהדגם — מסירים, כדי שהדגם יימצא
+    # גם כשהלקוח כתב 'מסך אייפון 14' (מהות+דגם יחד) בשלב הדגם.
+    _parts = {w.lower() for syns in _REPAIR_PART_SYN.values() for w in syns}
+    _parts |= {k.lower() for k in _REPAIR_PART_SYN}
+    qwords = [w for w in qwords if w not in _parts]
     if not qwords:
         return []
     q_norm = " ".join(qwords)
