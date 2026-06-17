@@ -627,7 +627,7 @@ def _finalize_order(phone, name, order):
 
 
 def _menu_tail(phone):
-    wa.send_buttons(phone, "עוד משהו?", [("menu", "↩️ לתפריט"), ("agent", "👤 נציג")])
+    wa.send_buttons(phone, "אוכל לעזור במשהו נוסף?", [("menu", "↩️ לתפריט"), ("agent", "👤 נציג")])
 
 
 def _to_agent(phone, note: str = ""):
