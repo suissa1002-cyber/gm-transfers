@@ -2717,6 +2717,11 @@ def bridge_answer(body: UriAnswer, x_bridge_key: Optional[str] = Header(None)):
                         db.wa_note_add(job["phone"], _n.strip()[:400], "אורי ✨")
                     except Exception:  # noqa: BLE001
                         pass
+            # [HANDOFF]: אורי מבקש להעביר לנציג אמיתי → מסירים את הסימן, ואחרי השליחה
+            # מפעילים העברה אמיתית (משתיק את הבוט + מתריע לצוות) — לא רק "מילים".
+            _handoff = "[HANDOFF]" in ans
+            if _handoff:
+                ans = ans.replace("[HANDOFF]", "").strip()
             # 🔗 / טקסט צמוד ל-URL בהקשר RTL שובר את הלחיצוּת בוואטסאפ — מנקים:
             # מסירים 🔗 שלפני קישור, ומכריחים כל URL לשורה נקייה משלו.
             ans = _re.sub(r"[ \t]*🔗️?[ \t]*(?=https?://)", "", ans)
@@ -2737,6 +2742,17 @@ def bridge_answer(body: UriAnswer, x_bridge_key: Optional[str] = Header(None)):
                 import wa
                 wa.send_text(job["phone"], ans)
                 logger.info("uri bot-answer sent to %s (job %s)", job["phone"], body.id)
+            if _handoff:                       # העברה אמיתית: משתיק את הבוט + מתריע
+                try:
+                    from datetime import datetime as _dt, timezone as _tz
+                    db.bot_session_set(job["phone"], "agent",
+                                       {"note": "אורי העביר לנציג",
+                                        "ts": _dt.now(_tz.utc).isoformat()})
+                    _tg_admin(f"👤 <b>אורי העביר לנציג</b>\n{job['phone']}"
+                              f"\n🤖 הבוט הושתק לשיחה הזו — טפל/י ידנית בקונסולה.")
+                    logger.info("uri HANDOFF → agent for %s (job %s)", job["phone"], body.id)
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("uri handoff trigger failed (job %s): %s", body.id, e)
     except Exception as e:  # noqa: BLE001
         logger.warning("uri bot auto-send failed (job %s): %s", body.id, e)
     return {"ok": True}
