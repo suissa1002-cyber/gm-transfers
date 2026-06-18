@@ -4229,44 +4229,58 @@ def _understand_heuristic(q, vocab):
             "keywords": keywords, "via": "heuristic"}
 
 
+_CLAUDE_Q_CACHE = {}          # שאילתה מנורמלת → (ts, data) — חוסך קריאות API חוזרות
+_CLAUDE_Q_TTL = 12 * 3600
+
+
 def _understand_claude(q, vocab):
-    """שכבת Claude Haiku — מיפוי ניסוח חופשי אל ה-taxonomy. None אם אין מפתח/נכשל."""
+    """שכבת Claude Haiku — מיפוי ניסוח חופשי אל ה-taxonomy. None אם אין מפתח/נכשל.
+    cache לפי שאילתה (12ש) — אותו חיפוש לא מחויב פעמיים."""
     key = os.getenv("ANTHROPIC_API_KEY")
     if not key:
         return None
-    import requests as _rq
+    import time as _t
     import json as _json
     import re as _re2
-    cat_names = [c["name"] for c in vocab["cats"] if c["name"] and not c["name"].isascii()]
-    brand_names = [b["name"] for b in vocab["brands"] if b["name"]]
-    term_list = [{"id": t["id"], "name": t["name"]} for t in vocab["terms"] if t["name"]]
-    sys = ("אתה ממפה שאילתת קונה (עברית או אנגלית) בחנות אלקטרוניקה ישראלית אל "
-           "הטקסונומיה של החנות. החזר אך ורק JSON תקין, בלי טקסט נוסף. "
-           "השתמש רק בערכים שמופיעים ברשימות. אם הקונה מציין מותג שלא ברשימה — "
-           "החזר אותו ב-brand עם brand_unknown=true. price_max/price_min רק אם צוין במפורש.")
-    schema = ('{"category": <שם קטגוריה מהרשימה או null>, "brand": <שם מותג מהרשימה '
-              'או null>, "brand_unknown": <true/false>, "term_ids": [<מזהי תכונות '
-              'מהרשימה>], "price_max": <מספר או null>, "price_min": <מספר או null>, '
-              '"keywords": "<מילות דגם/חיפוש שנותרו, או ריק>"}')
-    user = (f"שאילתה: {q!r}\n\nקטגוריות: {_json.dumps(cat_names, ensure_ascii=False)}\n\n"
-            f"מותגים: {_json.dumps(brand_names, ensure_ascii=False)}\n\n"
-            f"תכונות: {_json.dumps(term_list, ensure_ascii=False)}\n\n"
-            f"החזר JSON במבנה: {schema}")
-    try:
-        r = _rq.post("https://api.anthropic.com/v1/messages", timeout=12,
-                     headers={"x-api-key": key, "anthropic-version": "2023-06-01",
-                              "content-type": "application/json"},
-                     json={"model": "claude-haiku-4-5-20251001", "max_tokens": 400,
-                           "system": sys, "messages": [{"role": "user", "content": user}]})
-        if not r.ok:
-            logger.warning("claude understand HTTP %s: %s", r.status_code, r.text[:200])
+    qn = (q or "").strip().lower()
+    hit = _CLAUDE_Q_CACHE.get(qn)
+    if hit and (_t.time() - hit[0] < _CLAUDE_Q_TTL):
+        data = hit[1]
+    else:
+        import requests as _rq
+        cat_names = [c["name"] for c in vocab["cats"] if c["name"] and not c["name"].isascii()]
+        brand_names = [b["name"] for b in vocab["brands"] if b["name"]]
+        term_list = [{"id": t["id"], "name": t["name"]} for t in vocab["terms"] if t["name"]]
+        sys = ("אתה ממפה שאילתת קונה (עברית או אנגלית) בחנות אלקטרוניקה ישראלית אל "
+               "הטקסונומיה של החנות. החזר אך ורק JSON תקין, בלי טקסט נוסף. "
+               "השתמש רק בערכים שמופיעים ברשימות. אם הקונה מציין מותג שלא ברשימה — "
+               "החזר אותו ב-brand עם brand_unknown=true. price_max/price_min רק אם צוין במפורש.")
+        schema = ('{"category": <שם קטגוריה מהרשימה או null>, "brand": <שם מותג מהרשימה '
+                  'או null>, "brand_unknown": <true/false>, "term_ids": [<מזהי תכונות '
+                  'מהרשימה>], "price_max": <מספר או null>, "price_min": <מספר או null>, '
+                  '"keywords": "<מילות דגם/חיפוש שנותרו, או ריק>"}')
+        user = (f"שאילתה: {q!r}\n\nקטגוריות: {_json.dumps(cat_names, ensure_ascii=False)}\n\n"
+                f"מותגים: {_json.dumps(brand_names, ensure_ascii=False)}\n\n"
+                f"תכונות: {_json.dumps(term_list, ensure_ascii=False)}\n\n"
+                f"החזר JSON במבנה: {schema}")
+        try:
+            r = _rq.post("https://api.anthropic.com/v1/messages", timeout=12,
+                         headers={"x-api-key": key, "anthropic-version": "2023-06-01",
+                                  "content-type": "application/json"},
+                         json={"model": "claude-haiku-4-5-20251001", "max_tokens": 400,
+                               "system": sys, "messages": [{"role": "user", "content": user}]})
+            if not r.ok:
+                logger.warning("claude understand HTTP %s: %s", r.status_code, r.text[:200])
+                return None
+            txt = "".join(b.get("text", "") for b in r.json().get("content", []))
+            m = _re2.search(r"\{[\s\S]*\}", txt)
+            data = _json.loads(m.group(0)) if m else {}
+        except Exception as e:  # noqa: BLE001
+            logger.warning("claude understand failed: %s", e)
             return None
-        txt = "".join(b.get("text", "") for b in r.json().get("content", []))
-        m = _re2.search(r"\{[\s\S]*\}", txt)
-        data = _json.loads(m.group(0)) if m else {}
-    except Exception as e:  # noqa: BLE001
-        logger.warning("claude understand failed: %s", e)
-        return None
+        _CLAUDE_Q_CACHE[qn] = (_t.time(), data)
+        if len(_CLAUDE_Q_CACHE) > 3000:
+            _CLAUDE_Q_CACHE.clear()
     cat = next((c for c in vocab["cats"] if c["name"] == data.get("category")), None)
     brand = None
     if data.get("brand"):
@@ -4332,9 +4346,16 @@ def bot_smart_search(q: str, limit: int = 20) -> dict:
     if len(q) < 2:
         return {"results": [], "meta": {}}
     vocab = _search_vocab()
-    facets = _understand_claude(q, vocab) or _understand_heuristic(q, vocab)
+    # היוריסטיקה (חינם) קודם; Haiku רק כשהיא לא זיהתה מבנה — חוסך ~רוב קריאות ה-API
+    facets = _understand_heuristic(q, vocab)
     structured = bool(facets.get("cat_id") or facets.get("brand") or facets.get("terms")
                       or facets.get("max_price") or facets.get("min_price"))
+    if not structured:
+        cl = _understand_claude(q, vocab)
+        if cl:
+            facets = cl
+            structured = bool(facets.get("cat_id") or facets.get("brand") or facets.get("terms")
+                              or facets.get("max_price") or facets.get("min_price"))
     if not structured:
         # שאילתת שם/דגם טהורה — החיפוש המילולי הקיים מצוין לזה
         return {"results": bot_product_search(q, limit=limit),
