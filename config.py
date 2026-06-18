@@ -4,7 +4,11 @@ Transfers app — קונפיגורציה.
 """
 
 import os
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except ModuleNotFoundError:  # סביבת בדיקה/CI בלי python-dotenv — env מוזרק ישירות
+    def load_dotenv(*a, **k):
+        return False
 
 # .env משותף ברמת השורש (agents/transfers/ -> ../../.env)
 _env_path = os.path.join(os.path.dirname(__file__), "..", "..", ".env")
