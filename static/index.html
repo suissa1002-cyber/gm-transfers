@@ -3833,10 +3833,18 @@ async function waSendBlob(f, name){
     const cap=(document.getElementById('waText')||{}).value||'';
     if(cap.trim()) fd.append('caption',cap.trim());
     const r=await api('/api/admin/wa/send-file',{method:'POST',body:fd},180000);
-    hideLoading(); toast('הקובץ נשלח ✓',true);
-    const ta=document.getElementById('waText'); if(ta) ta.value='';
-    waClearPending();
-    setTimeout(()=>loadWaThread(true),1500);
+    hideLoading();
+    if(r && r.sent){
+      toast('הקובץ נשלח ✓',true);
+      const ta=document.getElementById('waText'); if(ta) ta.value='';
+      waClearPending();
+      setTimeout(()=>loadWaThread(true),1500);
+    } else if(r && r.needs_template){
+      // מחוץ לחלון 24ש — לא משדרים "נשלח". משאירים את התמונה בתצוגה כדי שאפשר לנסות שוב.
+      toast('הלקוח מחוץ לחלון 24 שעות — אי אפשר לשלוח תמונה (רק תבנית טקסט)',false);
+    } else {
+      toast('שליחת הקובץ נכשלה — נסה שוב',false);
+    }
   }catch(e){
     hideLoading();
     let msg='שליחת קובץ נכשלה';
