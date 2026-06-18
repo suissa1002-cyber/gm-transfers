@@ -675,9 +675,34 @@ class ScanIn(BaseModel):
     method: Optional[str] = None
 
 
+def _resolve_main_barcode(code: str) -> str:
+    """ברקוד שנסרק → הברקוד הראשי של הפריט ב-NewOrder. לפריט בקופה יכולים להיות
+    כמה ברקודים (additionalBarcodes); אם נסרק ברקוד נוסף, ההעברה מכירה רק את הראשי.
+    מחזיר את הברקוד הראשי (אם שונה מהנסרק), אחרת '' (לא ברקוד / לא נמצא)."""
+    code = (code or "").strip()
+    if len(code) < 6 or not code.isdigit():     # ברקודים ספרתיים; סריאלים מטופלים בנפרד
+        return ""
+    try:
+        p = poller.client().find_product_by_barcode(code)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("find_product_by_barcode failed for %s: %s", code, e)
+        return ""
+    main = str((p or {}).get("barcode") or "").strip()
+    return main if (main and main != code) else ""
+
+
 @app.post("/api/scan")
 def scan(body: ScanIn):
     res = db.receive_scan(body.branch_id, body.code, body.op_id, body.employee, body.method)
+    if not res.get("matched"):
+        # אולי נסרק ברקוד *נוסף* של הפריט (הקופה תומכת בכמה ברקודים לפריט) — ננסה
+        # למצוא את הברקוד הראשי ב-NewOrder ולקלוט לפיו.
+        main_bc = _resolve_main_barcode(body.code)
+        if main_bc:
+            r2 = db.receive_scan(body.branch_id, main_bc, body.op_id, body.employee, body.method)
+            if r2.get("matched"):
+                logger.info("scan matched via additional barcode %s -> main %s", body.code, main_bc)
+                res = r2
     if res.get("matched"):
         # נקלט בסניף הנכון → סוגר חריגת "לא במקום" אם הייתה פתוחה על הסריאל
         try: db.resolve_misroutes(body.code)
