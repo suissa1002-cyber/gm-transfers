@@ -4872,7 +4872,7 @@ function renderWcOrders(){
   const app=document.getElementById('app');
   S.wco=S.wco||{page:1,status:'',q:'',after:'',before:'',rows:null,pages:1,total:0,loading:false};
   const W=S.wco;
-  const chips=[['','הכל'],['express','⚡ אקספרס'],['processing','בטיפול'],['pending','ממתין'],['on-hold','בהמתנה'],
+  const chips=[['','הכל'],['express','⚡ אקספרס'],['processing','בטיפול'],['on-hold','בהמתנה'],
                ['shipping-stage','בהפצה'],['order-ready','מוכנה'],['tlv-pickup','נק׳ ת״א'],
                ['completed','הושלם'],['cancelled','בוטל'],['refunded','זוכה']]
     .map(([k,t])=>`<button class="btn-ghost" style="padding:6px 12px;font-size:13px${W.status===k?';border-color:#16a34a;color:#16a34a;font-weight:700':''}"
