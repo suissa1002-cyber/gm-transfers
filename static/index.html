@@ -5157,6 +5157,9 @@ async function wcoSendInvoice(orderNumber, phoneIntl){
 function wcoEditCustomer(){
   const d=S._wcoD; if(!d) return;
   const b=d.billing||{}, sh=d.shipping||{};
+  // "זהה לחיוב" כברירת מחדל אם אין כתובת משלוח נפרדת או שהיא זהה לחיוב
+  const same=(!(sh.address_1||'').trim() && !(sh.city||'').trim()) ||
+             ((sh.address_1||'').trim()===(b.address_1||'').trim() && (sh.city||'').trim()===(b.city||'').trim());
   const v=x=>escW(x||'').replace(/"/g,'&quot;');
   const row=(lbl,id,val,ltr)=>`<div style="display:flex;flex-direction:column;gap:3px">
     <label class="muted" style="font-size:12px">${lbl}</label>
@@ -5164,7 +5167,7 @@ function wcoEditCustomer(){
   document.getElementById('modalRoot').innerHTML=`<div class="overlay" onclick="closeModal()"><div class="modal" style="max-width:440px;text-align:right;position:relative;max-height:90vh;overflow:auto" onclick="event.stopPropagation()">
     <button class="dr-x" style="position:absolute;top:10px;inset-inline-start:10px" onclick="closeModal()">✕</button>
     <div style="font-weight:800;margin-bottom:4px">עריכת פרטי לקוח · הזמנה #${d.number}</div>
-    <div class="muted" style="font-size:12px;margin-bottom:14px">מעדכן את כתובת החיוב והמשלוח בהזמנה</div>
+    <div class="muted" style="font-size:12px;margin-bottom:14px">פרטי החיוב + כתובת משלוח (אפשר נפרדת)</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
       ${row('שם פרטי','ecFn',b.first_name)}
       ${row('שם משפחה','ecLn',b.last_name)}
@@ -5172,8 +5175,26 @@ function wcoEditCustomer(){
     <div style="display:flex;flex-direction:column;gap:10px;margin-top:10px">
       ${row('טלפון','ecPh',b.phone,true)}
       ${row('אימייל','ecEm',b.email,true)}
-      ${row('כתובת','ecAd',b.address_1||sh.address_1)}
-      ${row('עיר','ecCt',b.city||sh.city)}
+    </div>
+    <div style="font-weight:700;font-size:13px;margin:14px 0 6px">כתובת חיוב</div>
+    <div style="display:grid;grid-template-columns:2fr 1fr;gap:10px">
+      ${row('רחוב ומספר','ecAd',b.address_1)}
+      ${row('עיר','ecCt',b.city)}
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;margin:16px 0 8px;cursor:pointer;font-weight:700;font-size:13px">
+      <input type="checkbox" id="ecSame" ${same?'checked':''} onchange="ecToggleShip()" style="width:16px;height:16px;cursor:pointer">
+      כתובת המשלוח זהה לכתובת החיוב
+    </label>
+    <div id="ecShipWrap" style="display:${same?'none':'block'};border-inline-start:3px solid var(--line);padding-inline-start:10px">
+      <div style="font-weight:700;font-size:13px;margin-bottom:6px">📦 כתובת למשלוח</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        ${row('שם פרטי (מקבל)','ecSFn',sh.first_name||b.first_name)}
+        ${row('שם משפחה (מקבל)','ecSLn',sh.last_name||b.last_name)}
+      </div>
+      <div style="display:grid;grid-template-columns:2fr 1fr;gap:10px;margin-top:10px">
+        ${row('רחוב ומספר','ecSAd',sh.address_1)}
+        ${row('עיר','ecSCt',sh.city)}
+      </div>
     </div>
     <div style="display:flex;gap:8px;margin-top:18px">
       <button class="btn-primary" style="flex:1;padding:10px" onclick="wcoSaveCustomer(${d.id})">שמור</button>
@@ -5182,16 +5203,24 @@ function wcoEditCustomer(){
   </div></div>`;
   setTimeout(()=>{const f=document.getElementById('ecFn');if(f)f.focus();},80);
 }
+function ecToggleShip(){
+  const w=document.getElementById('ecShipWrap'), c=document.getElementById('ecSame');
+  if(w&&c) w.style.display=c.checked?'none':'block';
+}
 async function wcoSaveCustomer(oid){
   const g=id=>(document.getElementById(id)||{}).value||'';
+  const same=!!(document.getElementById('ecSame')||{}).checked;
   const body={first_name:g('ecFn').trim(),last_name:g('ecLn').trim(),phone:g('ecPh').trim(),
-    email:g('ecEm').trim(),address_1:g('ecAd').trim(),city:g('ecCt').trim()};
+    email:g('ecEm').trim(),address_1:g('ecAd').trim(),city:g('ecCt').trim(),
+    ship_same:same,ship_first_name:g('ecSFn').trim(),ship_last_name:g('ecSLn').trim(),
+    ship_address_1:g('ecSAd').trim(),ship_city:g('ecSCt').trim()};
   if(body.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(body.email)){ toast('אימייל לא תקין',false); return; }
+  if(!same && !body.ship_address_1){ toast('חסרה כתובת משלוח (או סמן "זהה לחיוב")',false); return; }
   showLoading('שומר…');
   try{
     const r=await api('/api/admin/orders/'+oid+'/customer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)},40000);
     hideLoading();
-    if(r&&r.ok){ toast('פרטי הלקוח עודכנו ✓',true); if(r.billing&&S._wcoD)S._wcoD.billing=r.billing; if(S._wcoD&&S._wcoD.shipping){S._wcoD.shipping.address_1=body.address_1;S._wcoD.shipping.city=body.city;} loadWcOrders&&loadWcOrders(); openWcOrder(oid); }
+    if(r&&r.ok){ toast('פרטי הלקוח עודכנו ✓',true); if(r.billing&&S._wcoD)S._wcoD.billing=r.billing; if(r.shipping&&S._wcoD)S._wcoD.shipping=r.shipping; loadWcOrders&&loadWcOrders(); openWcOrder(oid); }
     else toast('העדכון נכשל',false);
   }catch(e){ hideLoading(); toast('העדכון נכשל',false); }
 }

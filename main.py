@@ -4721,14 +4721,21 @@ class CustomerEditIn(BaseModel):
     last_name: str = ""
     phone: str = ""
     email: str = ""
-    address_1: str = ""
-    city: str = ""
+    address_1: str = ""          # כתובת חיוב
+    city: str = ""               # עיר חיוב
+    # כתובת משלוח נפרדת (אופציונלי). אם ship_same=True או שלא נשלחה כתובת משלוח →
+    # המשלוח מועתק מהחיוב (התנהגות קודמת, תאימות לאחור).
+    ship_same: bool = False
+    ship_first_name: str = ""
+    ship_last_name: str = ""
+    ship_address_1: str = ""
+    ship_city: str = ""
 
 
 @app.post("/api/admin/orders/{oid}/customer")
 def admin_order_customer(oid: int, body: CustomerEditIn,
                          x_admin_key: Optional[str] = Header(None)):
-    """עריכת פרטי הלקוח בהזמנה (שם/טלפון/אימייל/כתובת) — מעדכן חיוב + משלוח."""
+    """עריכת פרטי הלקוח בהזמנה (שם/טלפון/אימייל/כתובת חיוב) + כתובת משלוח נפרדת."""
     _require_admin(x_admin_key)
     import requests as _rq
     base, k, s = _wc_creds()
@@ -4737,14 +4744,22 @@ def admin_order_customer(oid: int, body: CustomerEditIn,
     billing = {"first_name": fn, "last_name": ln, "phone": (body.phone or "").strip(),
                "email": (body.email or "").strip(), "address_1": (body.address_1 or "").strip(),
                "city": (body.city or "").strip()}
-    shipping = {"first_name": fn, "last_name": ln,
-                "address_1": (body.address_1 or "").strip(), "city": (body.city or "").strip()}
+    s_addr = (body.ship_address_1 or "").strip()
+    s_city = (body.ship_city or "").strip()
+    if body.ship_same or (not s_addr and not s_city):
+        # משלוח = חיוב (ברירת מחדל / תאימות לאחור)
+        shipping = {"first_name": fn, "last_name": ln,
+                    "address_1": billing["address_1"], "city": billing["city"]}
+    else:
+        shipping = {"first_name": (body.ship_first_name or "").strip() or fn,
+                    "last_name": (body.ship_last_name or "").strip() or ln,
+                    "address_1": s_addr, "city": s_city}
     r = _rq.put(f"{base}/wp-json/wc/v3/orders/{oid}",
                 json={"billing": billing, "shipping": shipping}, auth=(k, s), timeout=45)
     if not r.ok:
         raise HTTPException(502, f"עדכון פרטי הלקוח נכשל ({r.status_code}: {r.text[:150]})")
     o = r.json()
-    return {"ok": True, "billing": o.get("billing", {})}
+    return {"ok": True, "billing": o.get("billing", {}), "shipping": o.get("shipping", {})}
 
 
 # ── תשלום כללי (ללא הזמנת WC): קישור PayPlus חופשי מהמגירה ──
