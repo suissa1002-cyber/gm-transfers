@@ -710,10 +710,13 @@ function detectNewOrders(list){
   if(!S.knownOrderIds){ S.knownOrderIds=new Set(ids); return; }   // טעינה ראשונה — בסיס בלי התראה
   const fresh=(list||[]).filter(o=>!S.knownOrderIds.has(String(o.id)));
   ids.forEach(i=>S.knownOrderIds.add(i));
-  if(fresh.length){
-    S.newOrdersCount=(S.newOrdersCount||0)+fresh.length;
+  // ⚠️ רק הזמנות שנוצרו ממש לאחרונה — לא הזמנה *ישנה* שעברה ל-processing עכשיו (חשבונית
+  // בדיעבד ב-NewOrder). #43333 נוצרה לפני 3 חודשים אך קפצה כ"הזמנה חדשה" — זה הבאג.
+  const recent=fresh.filter(o=>{ const t=Date.parse((o.date||'').replace(' ','T')); return t && (Date.now()-t)<30*60*1000; });
+  if(recent.length){
+    S.newOrdersCount=(S.newOrdersCount||0)+recent.length;
     updateOrderBadge();
-    notifyNewOrder(fresh);
+    notifyNewOrder(recent);
     maybeRefreshOrdersList();   // אם צופים בטאב ההזמנות — לרענן כדי שההזמנה תופיע מיד
   }
 }
