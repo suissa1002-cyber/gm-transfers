@@ -1952,7 +1952,23 @@ function transferRequestHTML(fname, lines){
  .acts{padding:14px 22px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
  .acts button{border-radius:11px;padding:12px 22px;font-size:15px;font-weight:700;cursor:pointer;border:0}
  .acts .wa{background:#16a34a;color:#fff} .acts .pr{background:#fff;color:#2563eb;border:1.5px solid #2563eb}
- @media print{.noprint{display:none!important}}
+ @media print{
+  @page{size:80mm auto;margin:3mm}
+  body{background:#fff!important;padding:0;margin:0;color:#000;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .card{box-shadow:none!important;border-radius:0!important;max-width:80mm;width:80mm;margin:0}
+  .top{background:#fff!important;color:#000!important;padding:4px 0!important;display:block;text-align:center;border-bottom:1px dashed #000}
+  .top .logo{font-size:15px;font-weight:800} .top .ttl{font-size:12px;opacity:1;display:block;margin-top:2px}
+  .meta{padding:5px 0!important;font-size:12px;display:block;border-bottom:1px dashed #000}
+  .meta>div{display:block} .meta b{font-size:13px} .meta .date{font-size:12px;color:#000}
+  table,thead,tbody,tr,td{display:block;width:auto}
+  thead{display:none}
+  tbody tr{border-bottom:1px dashed #999;padding:4px 0;background:#fff!important}
+  td{padding:1px 0!important;border:none!important;text-align:right;font-size:12px;color:#000}
+  td.nm{font-weight:700;font-size:13px} td.sku{font-size:11px;color:#000;direction:ltr;text-align:right}
+  td.q::before{content:"כמות: "} td.to::before{content:"→ "} td.to{color:#000;font-weight:700}
+  .total{background:#fff!important;border-top:1px dashed #000;padding:5px 0!important;font-size:13px}
+  .foot,.noprint{display:none!important}
+ }
 </style></head><body>
 <div class="card">
   <div class="top"><div class="logo">📦 Green Mobile</div><div class="ttl">בקשת העברת מלאי</div></div>
