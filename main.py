@@ -2487,6 +2487,37 @@ def wa_contact_pic_delete(phone: str, x_admin_key: Optional[str] = Header(None))
     return {"ok": True}
 
 
+class TransferWaIn(BaseModel):
+    phone: str
+    text: str
+
+
+@app.post("/api/transfer/send-wa")
+def transfer_send_wa(body: TransferWaIn, x_admin_key: Optional[str] = Header(None),
+                     x_device_token: Optional[str] = Header(None)):
+    """שליחת רשימת ליקוט לעובד בוואטסאפ (מהמספר העסקי). אם העובד מחוץ לחלון 24ש —
+    מחזיר needs_template וה-frontend נופל לקישור wa.me ידני."""
+    _require_admin_or_device(x_admin_key, x_device_token)
+    import wa
+    phone = _il_phone(body.phone)
+    if len(phone) < 11:
+        raise HTTPException(400, "מספר טלפון לא תקין")
+    txt = (body.text or "").strip()
+    if not txt:
+        raise HTTPException(400, "רשימה ריקה")
+    try:
+        wamid = wa.send_text(phone, txt)
+        return {"sent": True, "via": "text", "wamid": wamid}
+    except wa.WaError as e:  # בד"כ מחוץ לחלון 24ש — שולחים כתבנית מאושרת (מגיע תמיד)
+        logger.info("transfer send-wa text failed (%s), trying template: %s", phone, e)
+        try:
+            wa.send_template(phone, "צוות גרין מובייל", txt)
+            return {"sent": True, "via": "template"}
+        except wa.WaError as e2:
+            logger.warning("transfer send-wa template failed (%s): %s", phone, e2)
+            return {"sent": False, "error": str(e2)[:150]}
+
+
 # ── תשובות מוכנות (⚡ canned replies) — מנוהלות ב-GreenOS ──
 class WaCanned(BaseModel):
     title: str

@@ -1963,15 +1963,23 @@ function transferRequestHTML(fname, lines){
     <button class="wa" onclick="sendWa()">📤 שלח לוואטסאפ</button>
     <button class="pr" onclick="window.print()">🖨 הדפס</button>
   </div>
+  <div id="waStatus" class="noprint" style="text-align:center;padding:0 22px 10px;font-size:14px"></div>
   <div class="foot">קליטת העברות — Green Mobile</div>
 </div>
 <script>
 var WA_TEXT=${JSON.stringify(waText)};
 function sendWa(){
-  var n=prompt('מספר וואטסאפ של העובד (למשל 0501234567):'); if(!n) return;
-  n=String(n).replace(/\\D/g,''); if(!n){return;}
-  if(n.charAt(0)==='0') n='972'+n.slice(1); else if(n.slice(0,3)!=='972') n='972'+n;
-  window.open('https://wa.me/'+n+'?text='+encodeURIComponent(WA_TEXT),'_blank');
+  var n=String((prompt('מספר וואטסאפ של העובד (למשל 0501234567):')||'')).replace(/\\D/g,'');
+  if(!n) return;
+  if(n.charAt(0)==='0')n='972'+n.slice(1); else if(n.slice(0,3)!=='972')n='972'+n;
+  var st=document.getElementById('waStatus');
+  if(!(window.opener && window.opener.transferSendWaTo)){ if(st){st.style.color='#b45309';st.textContent='פתח מחדש את הרשימה מהמערכת כדי לשלוח';} return; }
+  if(st){ st.style.color='#5e6b7d'; st.textContent='שולח…'; }
+  window.opener.transferSendWaTo(n, WA_TEXT).then(function(res){
+    if(!st) return;
+    if(res==='sent'){ st.style.color='#16a34a'; st.textContent='✓ הרשימה נשלחה לעובד בוואטסאפ'; }
+    else { st.style.color='#dc2626'; st.textContent='❌ השליחה נכשלה — בדוק את המספר ונסה שוב'; }
+  }).catch(function(){ if(st){ st.style.color='#dc2626'; st.textContent='❌ השליחה נכשלה'; } });
 }
 <\/script>
 </body></html>`;
@@ -1986,6 +1994,14 @@ function openTransferRequestPage(fromBranch){
   const lines=(d.lines||[]).filter(l=>String(l.from_branch)===String(fromBranch));
   if(!lines.length){ toast('אין שורות לסניף זה',false); return; }
   openHTMLWindow(transferRequestHTML(lines[0].from_name, lines));
+}
+// נקרא מחלון הרשימה (window.opener) — שולח את הרשימה מהמספר העסקי (יש כאן אימות)
+async function transferSendWaTo(phone, text){
+  try{
+    const r=await api('/api/transfer/send-wa',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({phone,text})},45000);
+    return (r&&r.sent)?'sent':'fail';
+  }catch(e){ return 'fail'; }
 }
 async function broadcastBranch(fromBranch){
   const d=S.planData||{lines:[]};

@@ -980,7 +980,7 @@ def _meta_send_template(phone: str, template: str, body_params: list, button_par
     components = []
     if body_params:
         components.append({"type": "body",
-                           "parameters": [{"type": "text", "text": str(p)[:120]} for p in body_params]})
+                           "parameters": [{"type": "text", "text": str(p)[:1000]} for p in body_params]})
     if button_params:
         components.append({"type": "button", "sub_type": "url", "index": "0",
                            "parameters": [{"type": "text", "text": str(button_params[0])}]})
