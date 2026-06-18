@@ -194,6 +194,16 @@ def handle(phone: str, text: str, mtype: str = "text", reply_id: str = "", wamid
         if not main.bot_confirm_received(rid.split(":", 1)[1]):
             wa.send_text(phone, "תודה שאישרת את קבלת ההזמנה! 🙏 שמחים שהמשלוח הגיע אליך.")
         return
+    # ── 🔔 הרשמה ל-Stock Watch (כפתור "עדכנו כשחוזר" / בחירת צבע) ──
+    if rid.startswith("notify_stock:"):
+        return _offer_stock_watch(phone, rid.split(":", 1)[1], sess)
+    if rid.startswith("notify_sku:"):
+        parts = rid.split(":")
+        return _register_stock_watch(phone, parts[1] if len(parts) > 1 else "",
+                                     (sess.get("data") or {}).get("product") or {})
+    # "מתי חוזר למלאי?" בזמן צפייה במוצר → הצעת הרשמה ל-Stock Watch
+    if state == "viewing" and not rid and _is_back_in_stock_intent(low):
+        return _offer_stock_watch(phone, (sess.get("data") or {}).get("pid", ""), sess)
     # ── זרימת הזמנה בצ'אט (וריאציה גנרית — כל תכונה שמשתנה) ──
     if rid.startswith("buy:"):
         return _start_order(phone, rid.split(":", 1)[1], sess)
@@ -672,16 +682,34 @@ def _product_card(phone, rid, data):
     lines = [f"*{p.get('name')}*"]
     if price not in (None, "", "0"):
         lines.append(f"💰 מחיר: {_price_label(p)}")
-    if p.get("stock") == "instock":
+    pid = rid.split(":", 1)[1]
+    # מודעות-וריאציה: מוצר משתנה יכול להיות "במלאי" כללי אבל צבע מסוים אזל
+    oos = []
+    if p.get("type") == "variable":
+        try:
+            import main as _m
+            oos = [v for v in (_m.bot_get_variations(pid) or [])
+                   if v.get("stock") == "outofstock" and v.get("sku")]
+        except Exception:  # noqa: BLE001
+            oos = []
+    stock = p.get("stock")
+    if stock == "outofstock":
+        lines.append("⏳ אזל כרגע")
+    elif oos:
+        cols = ", ".join(v.get("color") for v in oos if v.get("color"))
+        lines.append("✅ זמין במלאי" + (f"\n⏳ אזל בצבעים: {cols}" if cols else ""))
+    elif stock == "instock":
         lines.append("✅ זמין במלאי")
-    elif p.get("stock") == "outofstock":
-        lines.append("⏳ אזל — ניתן להשיג מהספק (שאל נציג)")
     if p.get("permalink"):
         # slug עברי → קישור מקוצר gm- (קישור עברי ארוך נראה שבור/חשוד); אנגלי נשאר ישיר
         lines.append(f"\n🔗 לרכישה ולפרטים:\n{_short_link(p['permalink'])}")
     body = "\n".join(lines)
-    pid = rid.split(":", 1)[1]
-    btns = [(f"buy:{pid}", "🛒 הזמן עכשיו"), ("search_again", "🔍 מוצר אחר"), ("agent", "👤 נציג")]
+    can_watch = (stock == "outofstock" and p.get("sku")) or bool(oos)
+    if can_watch:
+        btns = [(f"notify_stock:{pid}", "🔔 עדכנו כשחוזר"),
+                (f"buy:{pid}", "🛒 הזמן"), ("agent", "👤 נציג")]
+    else:
+        btns = [(f"buy:{pid}", "🛒 הזמן עכשיו"), ("search_again", "🔍 מוצר אחר"), ("agent", "👤 נציג")]
     img = p.get("image") or ""
     try:                                   # כרטיס עם תמונה; אם נכשל — fallback לטקסט
         wa.send_buttons(phone, body, btns, header_image=img if img.startswith("http") else "")
@@ -694,6 +722,66 @@ def _product_card(phone, rid, data):
     # מפעילים את אורי — שאלות המשך אחרי כרטיס ("מה מחיר"/"יש צבעים?"/"מה ההבדל") יילכו
     # אליו עם הקשר השיחה, במקום ליפול לברכה (Apple Watch case).
     _mark_uri_engaged(phone)
+
+
+# ── 🔔 Stock Watch: עדכון ללקוח כשמוצר/צבע שאזל חוזר למלאי ──
+def _is_back_in_stock_intent(low: str) -> bool:
+    import re
+    return bool(re.search(r"(מתי|צפי).{0,14}(חוזר|במלאי|יהיה|זמין)"
+                          r"|חוזר(ת|ות)?\s*למלאי|כש(י|ת)חזור|back in stock", low or ""))
+
+
+def _offer_stock_watch(phone, pid, sess):
+    """לקוח רוצה עדכון 'חזר למלאי' — מזהה את הוריאציה לפי רמז הצבע בשאלה ורושם,
+    או שואל איזה צבע אם כמה אזלו."""
+    if not pid:
+        return _to_agent(phone)
+    d = sess.get("data") or {}
+    p = d.get("product") or {}
+    q = d.get("q") or ""
+    try:
+        import main as _m
+        vs = _m.bot_get_variations(pid) or []
+    except Exception:  # noqa: BLE001
+        vs = []
+    oos = [v for v in vs if v.get("stock") == "outofstock" and v.get("sku")]
+    if not oos and p.get("stock") == "outofstock" and p.get("sku"):
+        return _register_stock_watch(phone, str(p.get("sku")), p)
+    if not oos:
+        wa.send_text(phone, "המוצר זמין במלאי כרגע 🙂 אשמח לעזור בהזמנה — לחצ/י *הזמן עכשיו*.")
+        return
+    hit = next((v for v in oos if v.get("color") and v["color"] in q), None)
+    if not hit and len(oos) == 1:
+        hit = oos[0]
+    if hit:
+        return _register_stock_watch(phone, str(hit.get("sku")), p, color=hit.get("color"))
+    btns = [(f"notify_sku:{v.get('sku')}:{pid}", (v.get("color") or "צבע")[:20]) for v in oos[:3]]
+    wa.send_buttons(phone, "לאיזה צבע לעדכן אותך כשחוזר למלאי? 🔔", btns)
+    return
+
+
+def _register_stock_watch(phone, sku, product=None, color=None):
+    """רושם את הלקוח ב-Stock Watcher (notify=False — הבוט שולח אישור משלו)."""
+    p = product or {}
+    pname = p.get("name") or "המוצר"
+    if color:
+        pname = f"{pname} - {color}"
+    name = ""
+    try:
+        name = (db.wa_contact_get(phone) or {}).get("name") or ""
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        import main as _m
+        _m._stock_watch_add(_m.StockWatchAddIn(
+            phone=phone, name=name, sku=str(sku), product_name=pname,
+            product_url=p.get("permalink") or "", notes="נרשם דרך הבוט", notify=False))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("bot stock-watch register failed for %s: %s", phone, e)
+        wa.send_text(phone, "לא הצלחתי לרשום כרגע 🙏 מעביר אותך לנציג שיוסיף אותך ידנית.")
+        return _to_agent(phone)
+    wa.send_text(phone, f"מעולה! רשמתי אותך 🔔\nברגע ש*{pname}* חוזר למלאי — תקבל ממני הודעה.")
+    return _menu_tail(phone)
 
 
 # ── זרימת הזמנה ותשלום בצ'אט ──
