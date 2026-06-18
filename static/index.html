@@ -1920,8 +1920,10 @@ function transferRequestHTML(fname, lines){
   lines=lines.slice().sort((a,b)=>(a.to_branch-b.to_branch)||String(a.name).localeCompare(b.name));
   const date=new Date().toLocaleDateString('he-IL',{day:'2-digit',month:'2-digit',year:'numeric'});
   const totalQty=lines.reduce((a,l)=>a+(Number(l.qty)||0),0);
+  const toNames=[...new Set(lines.map(l=>l.to_name).filter(Boolean))];
+  const toLabel=toNames.length===1?toNames[0]:(toNames.length+' סניפים');
   // גרסת טקסט לוואטסאפ (העובד לוקח את הרשימה בנייד לליקוט)
-  const waText='📦 בקשת העברת מלאי — מסניף '+fname+'\n📅 '+date+'\n\n'+
+  const waText='📦 בקשת העברת מלאי\nמסניף '+fname+(toNames.length?' ← ל'+toLabel:'')+'\n📅 '+date+'\n\n'+
     lines.map((l,i)=>(i+1)+'. '+l.name+(l.color?' ('+l.color+')':'')+
       '\n   מק"ט '+l.product_id+' · כמות '+l.qty+' · ← '+l.to_name).join('\n')+
     '\n\nסה"כ '+lines.length+' שורות · '+totalQty+' יחידות\n— Green Mobile';
@@ -1954,7 +1956,7 @@ function transferRequestHTML(fname, lines){
 </style></head><body>
 <div class="card">
   <div class="top"><div class="logo">📦 Green Mobile</div><div class="ttl">בקשת העברת מלאי</div></div>
-  <div class="meta"><div>מסניף <b>${_esc(fname)}</b></div><div class="date">${date}</div></div>
+  <div class="meta"><div>מסניף <b>${_esc(fname)}</b>${toNames.length?` <span style="color:#2563eb;font-weight:700">← ל${_esc(toLabel)}</span>`:''}</div><div class="date">${date}</div></div>
   <table><thead><tr><th>מוצר</th><th>מק״ט</th><th>כמות</th><th>לסניף</th></tr></thead><tbody>${rows}</tbody></table>
   <div class="total">סה״כ ${lines.length} שורות · ${totalQty} יחידות</div>
   <div class="acts noprint">
