@@ -366,8 +366,26 @@ def _ask_uri(phone, question, wamid="") -> bool:
             for c in cands)
         q += ("\n\n[מוצרים מועמדים (כבר חיפשתי באתר — השתמש באלה, אל תחפש שוב "
               f"אלא אם אף אחד לא מתאים):\n{lines}]")
-    db.uri_job_add(phone, q, source="bot")
+    jid = db.uri_job_add(phone, q, source="bot")
     _mark_uri_engaged(phone)          # שיחה פעילה — המשך ההודעות יישאר עם אורי
+    # ── חיווי הקלדה רציף עד שאורי עונה: העיבוד אסינכרוני (שירות uri-bridge נפרד),
+    #    אז ה-keepalive של ה-webhook נעצר כבר אחרי הניתוב. כאן משדרים "מקליד" כל 8ש
+    #    עד שהמשימה done/error (או תקרה ~144ש) — כך הלקוח לא רואה דממה ב-2 הדקות. ──
+    if wamid:
+        import threading
+        import time as _t
+
+        def _keepalive():
+            for _ in range(18):
+                _t.sleep(8)
+                try:
+                    j = db.uri_job_get(jid)
+                    if not j or j.get("status") in ("done", "error"):
+                        return
+                    wa.send_typing(wamid)
+                except Exception:  # noqa: BLE001
+                    return
+        threading.Thread(target=_keepalive, daemon=True).start()
     return True
 
 
