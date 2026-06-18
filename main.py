@@ -4772,6 +4772,77 @@ def admin_order_customer(oid: int, body: CustomerEditIn,
     return {"ok": True, "billing": o.get("billing", {}), "shipping": o.get("shipping", {})}
 
 
+# ── Stock Watch: הרשמת לקוח לעדכון "חזר למלאי" (יסוד משותף לבוט/אורי/קונסולה) ──
+class StockWatchAddIn(BaseModel):
+    phone: str
+    name: str = ""
+    sku: str = ""              # מק"ט הוריאציה (בדרך כלל = neworder_id)
+    neworder_id: int = 0       # אם כבר ידוע — מדלגים על החיפוש
+    product_name: str = ""
+    product_url: str = ""
+    notes: str = ""
+    notify: bool = True        # לשלוח ללקוח אישור הרשמה
+
+
+@app.post("/api/admin/stock-watch/add")
+def admin_stock_watch_add(body: StockWatchAddIn, x_admin_key: Optional[str] = Header(None)):
+    """מוסיף לקוח ל-Stock Watcher: מזהה מוצר (SKU→neworder_id דרך NewOrder) → רושם
+    ב-watcher → שולח אישור ללקוח. נקודת-כניסה אחת לבוט/אורי/קונסולה."""
+    _require_admin(x_admin_key)
+    import requests as _rq
+    phone = _il_phone(body.phone)
+    if len(phone) < 11:
+        raise HTTPException(400, "טלפון לא תקין")
+    no_id = int(body.neworder_id or 0)
+    pname = (body.product_name or "").strip()
+    if not no_id:
+        sku = (body.sku or "").strip()
+        if not sku:
+            raise HTTPException(400, "צריך SKU או neworder_id")
+        try:
+            prods = poller.client().get_products(search=sku) or []
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(502, f"חיפוש NewOrder נכשל: {e}")
+        match = next((p for p in prods if str(p.get("id")) == sku or str(p.get("barcode")) == sku),
+                     prods[0] if prods else None)
+        if not match:
+            raise HTTPException(404, f"המק\"ט {sku} לא נמצא ב-NewOrder")
+        no_id = int(match.get("id"))
+        if not pname:
+            pname = match.get("name") or sku
+    if not pname:
+        pname = f"מוצר {no_id}"
+    tok = os.getenv("STOCK_WATCHER_TOKEN", "").strip()
+    swurl = os.getenv("STOCK_WATCHER_URL", "https://uri-stock-watcher.onrender.com").rstrip("/")
+    if not tok:
+        raise HTTPException(502, "STOCK_WATCHER_TOKEN לא מוגדר")
+    name = (body.name or "").strip() or "לקוח/ה"
+    try:
+        r = _rq.post(f"{swurl}/watch",
+                     headers={"Authorization": f"Bearer {tok}", "Content-Type": "application/json"},
+                     json={"customer_phone": phone, "customer_name": name, "neworder_id": no_id,
+                           "product_name": pname, "product_url": (body.product_url or "").strip(),
+                           "notes": (body.notes or "").strip()}, timeout=40)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f"רישום ב-Stock Watcher נכשל: {e}")
+    if r.status_code not in (200, 201):
+        raise HTTPException(502, f"רישום ב-Stock Watcher נכשל ({r.status_code}: {r.text[:150]})")
+    watch = r.json() if r.text else {}
+    sent = False
+    if body.notify:
+        try:
+            import wa
+            greet = f"היי {name} 🙂" if name and name != "לקוח/ה" else "היי 🙂"
+            wa.send_text(phone, f"{greet}\nרשמתי אותך לעדכון אוטומטי — ברגע ש*{pname}* "
+                                "חוזר למלאי, תקבל ממני הודעה. שיהיה יום מצוין!")
+            sent = True
+        except Exception as e:  # noqa: BLE001
+            logger.warning("stock-watch confirm send failed for %s: %s", phone, e)
+    logger.info("stock-watch add: %s -> %s (neworder %s, watch %s)", phone, pname, no_id, watch.get("id"))
+    return {"ok": True, "watch_id": watch.get("id"), "neworder_id": no_id,
+            "product_name": pname, "confirmation_sent": sent}
+
+
 # ── תשלום כללי (ללא הזמנת WC): קישור PayPlus חופשי מהמגירה ──
 class PayQuick(BaseModel):
     desc: str
