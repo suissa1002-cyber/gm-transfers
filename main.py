@@ -3654,8 +3654,13 @@ def bot_repair_quote(query: str) -> list:
     for he, en in _REPAIR_HE.items():
         q = q.replace(he, en)
     _stop = ("של", "תיקון", "מחיר", "כמה", "עולה", "רגיל", "רגילה", "פשוט",
-             "בסיסי", "basic", "standard", "דגם", "ה")
-    qwords = [w for w in _re.split(r"[\s/]+", q) if w and w not in _stop]
+             "בסיסי", "basic", "standard", "דגם", "ה",
+             # מילות פעולה/מילוי בניסוח טבעי ("מחיר להחלפת מסך לגלקסי A34")
+             "החלפת", "החלפה", "החליף", "תקן", "צריך", "רוצה", "אפשר",
+             "את", "עבור", "הזמין", "לי")
+    def _depref(w):              # תחילית 'ל' דבוקה: לgalaxy→galaxy, להחלפת→החלפת
+        return _re.sub(r"^ל(?=.{2})", "", w)
+    qwords = [w for w in (_depref(w) for w in _re.split(r"[\s/]+", q)) if w and w not in _stop]
     # מילות מהות-תיקון (מסך/סוללה/שקע...) אינן חלק מהדגם — מסירים, כדי שהדגם יימצא
     # גם כשהלקוח כתב 'מסך וגב אייפון 14' (כמה תיקונים + דגם יחד) בשלב הדגם.
     _parts = {w.lower() for syns in _REPAIR_PART_SYN.values() for w in syns}
