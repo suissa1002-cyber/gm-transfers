@@ -2489,30 +2489,110 @@ def wa_contact_pic_delete(phone: str, x_admin_key: Optional[str] = Header(None))
 
 class TransferWaIn(BaseModel):
     phone: str
-    text: str
+    from_name: str = ""
+    lines: list = []
+
+
+def _render_transfer_list_html(fname: str, lines: list) -> str:
+    """עמוד ציבורי יפה של רשימת הליקוט (נשלח כקישור לעובד — תצוגה מלאה בכל מכשיר)."""
+    import html as _h
+    from datetime import datetime as _dt
+    from zoneinfo import ZoneInfo
+    lines = sorted(lines or [], key=lambda l: (l.get("to_branch") or 0, str(l.get("name") or "")))
+    date = _dt.now(ZoneInfo(cfg.TZ)).strftime("%d.%m.%Y")
+    total = sum(int(l.get("qty") or 0) for l in lines)
+    to_names = list(dict.fromkeys([l.get("to_name") for l in lines if l.get("to_name")]))
+    to_lbl = to_names[0] if len(to_names) == 1 else f"{len(to_names)} סניפים"
+
+    def esc(s):
+        return _h.escape(str(s if s is not None else ""))
+    rows = ""
+    for l in lines:
+        clr = (f' <span style="display:inline-block;font-size:12px;font-weight:700;padding:1px 9px;'
+               f'border-radius:999px;background:#eef2ff;color:#3730a3;margin-inline-start:6px">🎨 {esc(l.get("color"))}</span>'
+               if l.get("color") else "")
+        rows += (f'<tr><td class="nm">{esc(l.get("name"))}{clr}</td>'
+                 f'<td class="sku">{esc(l.get("product_id"))}</td>'
+                 f'<td class="q">{esc(l.get("qty"))}</td>'
+                 f'<td class="to">{esc(l.get("to_name"))}</td></tr>')
+    to_html = (f' <span style="color:#2563eb;font-weight:700">← ל{esc(to_lbl)}</span>' if to_names else "")
+    return f"""<!doctype html><html dir="rtl" lang="he"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>בקשת העברה — {esc(fname)}</title>
+<style>
+ *{{box-sizing:border-box}} body{{margin:0;background:#eef1f6;font-family:-apple-system,Segoe UI,Roboto,Arial,"Heebo",sans-serif;padding:18px;color:#18222f}}
+ .card{{max-width:680px;margin:0 auto;background:#fff;border-radius:18px;overflow:hidden;box-shadow:0 6px 30px rgba(0,0,0,.12)}}
+ .top{{background:#2563eb;color:#fff;padding:18px 22px;display:flex;align-items:center;justify-content:space-between}}
+ .top .logo{{font-size:20px;font-weight:800}} .top .ttl{{font-size:15px;opacity:.95}}
+ .meta{{display:flex;justify-content:space-between;align-items:center;padding:16px 22px;font-size:17px;border-bottom:2px solid #eef1f6}}
+ .meta b{{font-size:20px}} .meta .date{{color:#5e6b7d;font-size:15px}}
+ table{{width:100%;border-collapse:collapse}}
+ th,td{{padding:13px 16px;text-align:right;border-bottom:1px solid #eef1f6;font-size:15px}}
+ th{{background:#f5f7fb;color:#5e6b7d;font-size:13px;font-weight:700}}
+ td.nm{{font-weight:600}} td.sku{{font-family:monospace;direction:ltr;text-align:right;color:#5e6b7d;font-size:13px}}
+ td.q{{font-weight:800;font-size:18px;text-align:center}} td.to{{font-weight:700;color:#2563eb}}
+ tbody tr:nth-child(even){{background:#fafbfd}}
+ .total{{padding:14px 22px;font-weight:700;background:#f5f7fb;text-align:center}}
+ .foot{{padding:10px;text-align:center;color:#9aa6b6;font-size:12px}}
+</style></head><body>
+<div class="card">
+  <div class="top"><div class="logo">📦 Green Mobile</div><div class="ttl">בקשת העברת מלאי</div></div>
+  <div class="meta"><div>מסניף <b>{esc(fname)}</b>{to_html}</div><div class="date">{date}</div></div>
+  <table><thead><tr><th>מוצר</th><th>מק״ט</th><th>כמות</th><th>לסניף</th></tr></thead><tbody>{rows}</tbody></table>
+  <div class="total">סה״כ {len(lines)} שורות · {total} יחידות</div>
+  <div class="foot">קליטת העברות — Green Mobile</div>
+</div></body></html>"""
+
+
+@app.get("/tl/{tid}")
+def transfer_list_page(tid: str):
+    """עמוד ציבורי של רשימת ליקוט (לפי token). נשלח לעובד כקישור."""
+    import json as _json
+    raw = db.sales_state_get(f"tlist:{tid}")
+    if not raw:
+        raise HTTPException(404, "הרשימה לא נמצאה או פגה תוקף")
+    try:
+        data = _json.loads(raw)
+    except Exception:  # noqa: BLE001
+        raise HTTPException(404, "שגיאה בטעינת הרשימה")
+    from fastapi.responses import HTMLResponse
+    return HTMLResponse(_render_transfer_list_html(data.get("from_name", ""), data.get("lines", [])))
 
 
 @app.post("/api/transfer/send-wa")
 def transfer_send_wa(body: TransferWaIn, x_admin_key: Optional[str] = Header(None),
                      x_device_token: Optional[str] = Header(None)):
-    """שליחת רשימת ליקוט לעובד בוואטסאפ (מהמספר העסקי). אם העובד מחוץ לחלון 24ש —
-    מחזיר needs_template וה-frontend נופל לקישור wa.me ידני."""
+    """שולח לעובד הודעת וואטסאפ קצרה עם **קישור** לעמוד רשימת הליקוט המעוצב. ההודעה
+    קצרה — נכנסת גם בתבנית מאושרת (אם העובד מחוץ לחלון 24ש), כך שתמיד מגיעה."""
     _require_admin_or_device(x_admin_key, x_device_token)
     import wa
+    import json as _json
+    import secrets as _secrets
     phone = _il_phone(body.phone)
     if len(phone) < 11:
         raise HTTPException(400, "מספר טלפון לא תקין")
-    txt = (body.text or "").strip()
-    if not txt:
+    lines = body.lines or []
+    if not lines:
         raise HTTPException(400, "רשימה ריקה")
+    tid = _secrets.token_urlsafe(9)
+    db.sales_state_set(f"tlist:{tid}", _json.dumps({"from_name": body.from_name, "lines": lines},
+                                                   ensure_ascii=False))
+    base = (os.getenv("PUBLIC_BASE_URL") or os.getenv("URI_BRIDGE_BASE")
+            or "https://gm-transfers.onrender.com").rstrip("/")
+    url = f"{base}/tl/{tid}"
+    to_names = list(dict.fromkeys([l.get("to_name") for l in lines if l.get("to_name")]))
+    to_lbl = to_names[0] if len(to_names) == 1 else f"{len(to_names)} סניפים"
+    total = sum(int(l.get("qty") or 0) for l in lines)
+    msg = (f"📦 בקשת העברת מלאי לליקוט\nמסניף {body.from_name} ← ל{to_lbl}\n"
+           f"{len(lines)} שורות · {total} יחידות\n\n👈 לרשימה המלאה:\n{url}")
     try:
-        wamid = wa.send_text(phone, txt)
-        return {"sent": True, "via": "text", "wamid": wamid}
-    except wa.WaError as e:  # בד"כ מחוץ לחלון 24ש — שולחים כתבנית מאושרת (מגיע תמיד)
+        wa.send_text(phone, msg)
+        return {"sent": True, "via": "text", "url": url}
+    except wa.WaError as e:  # מחוץ לחלון 24ש — תבנית מאושרת (הקישור קצר, נכנס)
         logger.info("transfer send-wa text failed (%s), trying template: %s", phone, e)
         try:
-            wa.send_template(phone, "צוות גרין מובייל", txt)
-            return {"sent": True, "via": "template"}
+            wa.send_template(phone, "צוות גרין מובייל", msg)
+            return {"sent": True, "via": "template", "url": url}
         except wa.WaError as e2:
             logger.warning("transfer send-wa template failed (%s): %s", phone, e2)
             return {"sent": False, "error": str(e2)[:150]}
