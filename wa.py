@@ -808,17 +808,21 @@ def send_text(phone: str, text: str) -> str:
 
 
 def _store_outbound(phone: str, text: str, wamid: str = "", mtype: str = "text",
-                    media_url: str = "", reply_to: str = "", reply_preview: str = ""):
+                    media_url: str = "", reply_to: str = "", reply_preview: str = "",
+                    media_id: str = "", media_mime: str = "", media_name: str = ""):
     """שומר הודעה יוצאת בחנות העצמאית (wa_msg) — חובה כי webhook של מטא לא מחזיר
     את ההודעות שלנו. גם wa_shadow (לתצוגה ב-get_thread בזמן מעבר).
-    reply_to = wamid המצוטט (מענה reply), כדי שהציטוט יופיע גם בתצוגה הנייטיב."""
+    reply_to = wamid המצוטט (מענה reply), כדי שהציטוט יופיע גם בתצוגה הנייטיב.
+    media_id/media_mime = למדיה יוצאת (הבייטים מגובים ב-wa_media_blob ומוגשים
+    דרך /api/wa/media), כך שהתמונה היוצאת תוצג גם בשיחה וגם בפאנל המדיה."""
     import db
     ts = int(time.time())
     wid = wamid or f"gm-out-{ts}-{abs(hash(text)) % 100000}"
     try:
         db.wa_msg_upsert(wamid=wid, phone=str(phone), direction="out", mtype=mtype,
-                         text=text or "", media_url=media_url or "", reply_to=reply_to or "",
-                         ts=ts, status="sent")
+                         text=text or "", media_url=media_url or "", media_id=media_id or "",
+                         media_mime=media_mime or "", media_name=media_name or "",
+                         reply_to=reply_to or "", ts=ts, status="sent")
         db.wa_contact_upsert(str(phone), out_ts=ts)
     except Exception as e:  # noqa: BLE001
         logger.warning("store outbound failed: %s", e)
@@ -895,9 +899,13 @@ def send_media(phone: str, filename: str, content: bytes, mime: str, caption: st
         raise WaError(f"שליחת המדיה נכשלה ({r.status_code}): {r.text[:200]}")
     wamid = ((r.json().get("messages") or [{}])[0]).get("id", "")
     try:
-        _store_outbound(phone, caption or "", wamid=wamid, mtype=kind)
-    except Exception:  # noqa: BLE001
-        pass
+        import db as _db
+        if wamid:                       # גיבוי הבייטים → הצגה בשיחה ובפאנל המדיה
+            _db.wa_media_blob_set(wamid, mime or "application/octet-stream", content)
+        _store_outbound(phone, caption or "", wamid=wamid, mtype=kind,
+                        media_id=wamid or "", media_mime=mime or "", media_name=safe)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("store outbound media failed: %s", e)
     logger.info("wa send %s (meta) -> %s (%s)", kind, phone, safe)
     return {"sent": True, "via": kind, "message_id": wamid}
 
