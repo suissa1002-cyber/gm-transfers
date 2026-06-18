@@ -2448,6 +2448,45 @@ async def wa_send_file(request: Request, x_admin_key: Optional[str] = Header(Non
                      content, up.content_type or "", caption)
 
 
+# ── תמונת פרופיל ידנית פר-לקוח (מטא לא חושפת תמונה אמיתית; נשמר אצלנו) ──
+@app.post("/api/admin/wa/contact-pic/{phone}")
+async def wa_contact_pic_upload(phone: str, request: Request, x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    form = await request.form()
+    up = form.get("file")
+    if up is None or isinstance(up, str):
+        raise HTTPException(400, "file required")
+    content = await up.read()
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(400, "תמונה גדולה מדי (מקס׳ 5MB)")
+    mime = getattr(up, "content_type", "") or "image/jpeg"
+    if not mime.startswith("image/"):
+        raise HTTPException(400, "אפשר להעלות תמונה בלבד")
+    db.wa_media_blob_set(f"cpic:{phone}", mime, content)
+    import wa
+    return {"ok": True, "pic": f"/api/admin/wa/contact-pic/{phone}?t={wa.media_token('cpic:' + phone)}"}
+
+
+@app.get("/api/admin/wa/contact-pic/{phone}")
+def wa_contact_pic_serve(phone: str, t: Optional[str] = None, x_admin_key: Optional[str] = Header(None)):
+    import wa
+    if not (t and wa.media_token(f"cpic:{phone}") == t):
+        _require_admin(x_admin_key)
+    blob = db.wa_media_blob_get(f"cpic:{phone}")
+    if not blob:
+        raise HTTPException(404, "אין תמונה")
+    from fastapi.responses import Response
+    return Response(blob[1], media_type=blob[0] or "image/jpeg",
+                    headers={"Cache-Control": "private, max-age=3600"})
+
+
+@app.delete("/api/admin/wa/contact-pic/{phone}")
+def wa_contact_pic_delete(phone: str, x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    db.wa_media_blob_del(f"cpic:{phone}")
+    return {"ok": True}
+
+
 # ── תשובות מוכנות (⚡ canned replies) — מנוהלות ב-GreenOS ──
 class WaCanned(BaseModel):
     title: str

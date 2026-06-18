@@ -318,7 +318,8 @@
   .wa-conv .nm{font-weight:700;font-size:14px}
   .wa-conv .lm{color:var(--muted);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .wa-conv .meta{margin-inline-start:auto;text-align:left;flex:none}
-  .wa-avatar{display:inline-flex;align-items:center;justify-content:center;border-radius:50%;color:#fff;font-weight:700;flex:none;line-height:1;text-transform:uppercase;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.15)}
+  .wa-avatar{display:inline-flex;align-items:center;justify-content:center;border-radius:50%;background:var(--card);border:1.5px solid var(--green);color:var(--green);font-weight:600;flex:none;line-height:1;text-transform:uppercase;overflow:hidden;background-size:cover;background-position:center;cursor:default}
+  .wa-avatar.up{cursor:pointer}
   .wa-dot{width:9px;height:9px;border-radius:50%;background:var(--blue);flex:none}
   .wa-thread{background:var(--card);border:1px solid var(--line);border-radius:14px;display:flex;
              flex-direction:column;height:calc(100vh - 270px);min-height:340px}
@@ -2324,17 +2325,22 @@ async function runRemovalsIngest(){
 
 // ── 💬 וואטסאפ (ConnectOp) — inbox + שיחה + מענה עם אכיפת חלון 24ש בצד שרת ──
 function escW(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
-// אווטאר עגול בסגנון וואטסאפ — אות ראשונה + צבע קבוע לפי הטלפון (מטא לא חושפת תמונת פרופיל אמיתית)
-function waAvatar(name, phone, size){
+// ראשי תיבות (2 אותיות): מילה ראשונה+אחרונה, מדלג על אימוג'י; מילה אחת → 2 אותיות
+function waInitials(name, phone){
+  const s = String(name||'').trim();
+  const words = s.split(/\s+/).map(w=>{ for(const ch of w){ if(/[\p{L}\p{N}]/u.test(ch)) return ch; } return ''; }).filter(Boolean);
+  if(words.length>=2) return words[0]+words[words.length-1];
+  if(words.length===1){ let o=''; for(const ch of s){ if(/[\p{L}\p{N}]/u.test(ch)){ o+=ch; if(o.length>=2) break; } } return o||'?'; }
+  const d = String(phone||'').replace(/\D/g,''); return d.slice(-2) || '?';
+}
+// אווטאר עגול — לבן עם מסגרת ירוקה (var(--green)) + ראשי תיבות, או תמונה שהועלתה ידנית.
+// (מטא לא חושפת תמונת פרופיל אמיתית — לכן ראשי תיבות בברירת מחדל / העלאה ידנית פר-לקוח.)
+function waAvatar(name, phone, size, pic){
   size = size || 34;
-  const s = String(name||phone||'?').trim();
-  let init = '?';
-  for(const ch of s){ if(/[\p{L}\p{N}]/u.test(ch)){ init = ch; break; } }
-  const key = String(phone||name||'');
-  let h = 0; for(let i=0;i<key.length;i++){ h = (h*31 + key.charCodeAt(i)) >>> 0; }
-  const colors=['#2a9d8f','#e76f51','#457b9d','#8338ec','#3a86ff','#fb5607','#06a77d','#d62828','#7209b7','#ff006e','#0096c7','#588157'];
-  const bg = colors[h % colors.length];
-  return `<span class="wa-avatar" style="width:${size}px;height:${size}px;font-size:${Math.round(size*0.46)}px;background:${bg}">${escW(init)}</span>`;
+  if(pic){
+    return `<span class="wa-avatar" style="width:${size}px;height:${size}px;background-image:url('${escW(pic)}')"></span>`;
+  }
+  return `<span class="wa-avatar" style="width:${size}px;height:${size}px;font-size:${Math.round(size*0.4)}px">${escW(waInitials(name,phone))}</span>`;
 }
 // Enter שולח רק במחשב (מקלדת פיזית); במובייל Enter = שורה חדשה, שולחים בכפתור — כמו וואטסאפ
 function waEnterSend(ev, fn){
@@ -2361,7 +2367,7 @@ function waConvRow(c){
   const active=S.waPhone===c.phone?'active':'';
   return `<div class="wa-conv ${active}" onclick="openWaConv('${escW(c.phone)}')">
     ${waIsUnread(c)?'<span class="wa-dot"></span>':''}
-    ${waAvatar(c.name, c.phone, 40)}
+    ${waAvatar(c.name, c.phone, 40, c.pic)}
     <div style="min-width:0;flex:1">
       <div class="nm" style="display:flex;align-items:center;gap:5px">${c.star?`<span class="wa-star-on" style="display:inline-flex">${ico('star',13,true)}</span>`:''}<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(c.name)}</span> ${(c.handoff||c.live_chat)?`<span title="מצב אנושי — הבוט מושתק בשיחה" style="display:inline-flex;color:#16a34a">${ico('user',13)}</span>`:''}</div>
       <div class="lm">${escW(c.last_msg)||'<i>—</i>'}</div>
@@ -2468,7 +2474,7 @@ function waThreadHTML(){
   return `
     <div class="wa-head">
       <button class="btn-ghost wa-back wa-ico" onclick="S.waPhone='';S.waThread=null;S.waPanel=false;renderWa()">${ico('back')}</button>
-      ${waAvatar(conv.name, S.waPhone, 36)}
+      ${waAvatar(conv.name, S.waPhone, 36, conv.pic||t.pic)}
       <b>${escW(conv.name)}</b>
       <span class="muted" style="direction:ltr;font-size:12px">+${escW(S.waPhone)}</span>
       ${winChip}
@@ -3433,12 +3439,20 @@ function waPanelHTML(){
     </div>`;
   const mediaCount=S.waMedia&&S.waMedia.phone===S.waPhone?S.waMedia.items.length:undefined;
   const invCount=S.waInv&&S.waInv.phone===S.waPhone?S.waInv.items.length:undefined;
+  const pic=(S.waThread&&S.waThread.pic)||((S.waConvs||[]).find(x=>x.phone===S.waPhone)||{}).pic||'';
   return `
-    <div style="display:flex;justify-content:space-between;align-items:center">
-      <b style="font-size:15px">${escW(ct.full_name||'')}</b>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+      <div style="display:flex;align-items:center;gap:11px;min-width:0">
+        <span class="wa-avatar up" onclick="waPicUpload()" title="${pic?'החלף תמונה':'העלה תמונה'}" style="width:52px;height:52px;font-size:21px;${pic?`background-image:url('${escW(pic)}')`:''}">${pic?'':escW(waInitials(ct.full_name||S.waPhone,S.waPhone))}</span>
+        <div style="min-width:0">
+          <b style="font-size:15px">${escW(ct.full_name||'')}</b>
+          <div class="muted" style="direction:ltr">+${escW(S.waPhone)}</div>
+          <span class="muted" style="font-size:11px;cursor:pointer;text-decoration:underline" onclick="waPicUpload()">${pic?'החלף תמונה':'➕ הוסף תמונה'}</span>${pic?` · <span class="muted" style="font-size:11px;cursor:pointer" onclick="waPicRemove()">הסר</span>`:''}
+        </div>
+      </div>
       <button class="btn-ghost" onclick="waTogglePanel()">✕</button>
     </div>
-    <div class="muted" style="direction:ltr;text-align:end">+${escW(S.waPhone)}</div>
+    <input type="file" id="waPicFile" accept="image/*" style="display:none" onchange="waPicDoUpload(this)">
     ${ct.email?`<div class="muted" style="display:flex;align-items:center;gap:5px;justify-content:flex-end">${escW(ct.email)} ${ico('mail',13)}</div>`:''}
     ${ct.subscribed_date?`<div class="muted" style="font-size:12px">לקוח מאז ${escW(String(ct.subscribed_date).slice(0,10))}</div>`:''}
     ${(S.waThread&&S.waThread.entry_product)?(function(ep){
@@ -3455,6 +3469,31 @@ function waPanelHTML(){
     ${waSec('media',ico('image',14)+' מדיה וקבצים',`<div id="waMediaBox">${waMediaHTML()}</div>`,mediaCount)}
     <h4 style="display:flex;align-items:center;gap:5px">${ico('sliders',14)} פעולות</h4>
     <button class="btn-ghost" onclick="waExport()" style="width:100%;display:inline-flex;align-items:center;justify-content:center;gap:7px">${ico('download',15)} ייצוא שיחה לקובץ</button>`;
+}
+// ── תמונת פרופיל ידנית פר-לקוח ──
+function waPicUpload(){ const f=document.getElementById('waPicFile'); if(f) f.click(); }
+async function waPicDoUpload(inp){
+  const f=inp.files&&inp.files[0]; inp.value=''; if(!f||!S.waPhone) return;
+  if(f.size>5*1024*1024){ toast('תמונה גדולה מדי (מקס׳ 5MB)',false); return; }
+  showLoading('מעלה תמונה…');
+  try{
+    const fd=new FormData(); fd.append('file',f,f.name||'pic.jpg');
+    const r=await api('/api/admin/wa/contact-pic/'+encodeURIComponent(S.waPhone),{method:'POST',body:fd},60000);
+    hideLoading();
+    if(r&&r.ok){ toast('התמונה הועלתה ✓',true); waPicBust(S.waPhone, r.pic+'&v='+Date.now()); }
+    else toast('ההעלאה נכשלה',false);
+  }catch(e){ hideLoading(); toast('ההעלאה נכשלה',false); }
+}
+async function waPicRemove(){
+  if(!S.waPhone || !confirm('להסיר את התמונה של הלקוח?')) return;
+  try{ await api('/api/admin/wa/contact-pic/'+encodeURIComponent(S.waPhone),{method:'DELETE'},20000);
+       waPicBust(S.waPhone, ''); toast('התמונה הוסרה',true); }
+  catch(e){ toast('ההסרה נכשלה',false); }
+}
+function waPicBust(phone, pic){
+  const conv=(S.waConvs||[]).find(c=>c.phone===phone); if(conv) conv.pic=pic;
+  if(S.waThread&&S.waThread.phone===phone) S.waThread.pic=pic;
+  renderWa();
 }
 function waMediaHTML(){
   const m=S.waMedia;

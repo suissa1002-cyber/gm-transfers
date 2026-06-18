@@ -1677,6 +1677,23 @@ def wa_media_blob_get(wamid: str):
             return None
 
 
+def wa_media_blob_del(wamid: str):
+    """מחיקת blob (למשל תמונת פרופיל שהועלתה ידנית)."""
+    if not wamid:
+        return
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("DELETE FROM wa_media_blob WHERE wamid = ?"), (wamid,))
+
+
+def wa_contact_pic_phones() -> set:
+    """קבוצת הטלפונים שיש להם תמונת פרופיל שהועלתה ידנית (מפתח 'cpic:<phone>')."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT wamid FROM wa_media_blob WHERE wamid LIKE 'cpic:%'"))
+        return {str(r["wamid"])[5:] for r in cur.fetchall()}
+
+
 def wa_media_pending(limit: int = 50):
     """הודעות מדיה נכנסות שיש להן media_id אך עדיין לא גובו (אין blob) — לגיבוי יזום."""
     with _conn() as c:

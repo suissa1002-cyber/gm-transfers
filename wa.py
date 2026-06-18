@@ -355,8 +355,10 @@ def get_thread_native(phone: str, limit: int = 80):
             ep = _parse_entry_product(x.get("text") or "")
             if ep:
                 entry = ep
+    has_pic = phone in db.wa_contact_pic_phones()
+    pic = f"/api/admin/wa/contact-pic/{phone}?t={media_token('cpic:' + phone)}" if has_pic else ""
     return {"phone": phone, "messages": slim, "window": _window_state(slim),
-            "entry_product": entry, "source": "native"}
+            "entry_product": entry, "source": "native", "pic": pic}
 
 
 def list_conversations_native(limit: int = 300):
@@ -365,6 +367,7 @@ def list_conversations_native(limit: int = 300):
     import db
     stars = db.wa_stars()
     handoff = db.bot_handoff_phones()
+    pics = db.wa_contact_pic_phones()
     out = []
     for r in db.wa_conversations(limit):
         ph = r.get("phone")
@@ -378,7 +381,8 @@ def list_conversations_native(limit: int = 300):
             "ts": msg_ts,
             "archived": bool(r.get("archived")), "live_chat": bool(r.get("live_chat")),
             "handoff": ph in handoff,
-            "unread": unread, "star": ph in stars, "pic": "",
+            "unread": unread, "star": ph in stars,
+            "pic": (f"/api/admin/wa/contact-pic/{ph}?t={media_token('cpic:' + ph)}" if ph in pics else ""),
         })
     return out
 
