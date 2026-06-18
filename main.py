@@ -2708,6 +2708,15 @@ def bridge_answer(body: UriAnswer, x_bridge_key: Optional[str] = Header(None)):
             ans = body.answer or ""
             m = _re.search(r"\[DRAFT\]\s*([\s\S]*?)\s*\[/DRAFT\]", ans)
             ans = (m.group(1) if m else _re.sub(r"\[/?DRAFT\]", "", ans)).strip()
+            # למידה: שורות [NOTE] נשמרות בכרטיס הלקוח (ℹ️) ו**מוסרות** לפני השליחה ללקוח
+            _notes = _re.findall(r"\[NOTE\]\s*(.+)", ans)
+            if _notes:
+                ans = _re.sub(r"\s*\[NOTE\].*", "", ans).strip()
+                for _n in _notes[:2]:
+                    try:
+                        db.wa_note_add(job["phone"], _n.strip()[:400], "אורי ✨")
+                    except Exception:  # noqa: BLE001
+                        pass
             # 🔗 / טקסט צמוד ל-URL בהקשר RTL שובר את הלחיצוּת בוואטסאפ — מנקים:
             # מסירים 🔗 שלפני קישור, ומכריחים כל URL לשורה נקייה משלו.
             ans = _re.sub(r"[ \t]*🔗️?[ \t]*(?=https?://)", "", ans)
@@ -2745,6 +2754,42 @@ def bridge_context(phone: str, x_bridge_key: Optional[str] = Header(None)):
         orders = []
     return {"notes": db.wa_notes_list(phone), "orders": orders,
             "star": phone in db.wa_stars()}
+
+
+@app.get("/api/uri-bridge/order")
+def bridge_order(phone: str = "", number: str = "", name: str = "",
+                 x_bridge_key: Optional[str] = Header(None)):
+    """בדיקת הזמנה לאורי (read-only): לפי טלפון / מספר הזמנה / שם לקוח. מחזיר
+    status/items/total/date — כדי שאורי יענה מנתונים אמיתיים ולא ינחש סטטוס/תאריך."""
+    _require_bridge(x_bridge_key)
+    import wa
+    if phone and not number and not name:
+        return {"orders": wa._wc_orders_by_phone(phone) or []}
+    import os as _os
+    import requests as _rq
+    base = _os.getenv("WC_STORE_URL", "").rstrip("/")
+    auth = (_os.getenv("WC_CONSUMER_KEY", ""), _os.getenv("WC_CONSUMER_SECRET", ""))
+    term = (number or name).strip()
+    if not base or not auth[0] or not term:
+        return {"orders": []}
+    try:
+        r = _rq.get(f"{base}/wp-json/wc/v3/orders",
+                    params={"search": term, "per_page": 5}, auth=auth, timeout=25)
+        rows = r.json() if r.ok else []
+        if number:  # התאמה מדויקת למספר ההזמנה כשאפשר
+            exact = [o for o in rows if str(o.get("number")) == str(number)
+                     or str(o.get("id")) == str(number)]
+            rows = exact or rows
+        out = [{"id": o.get("id"), "number": o.get("number"), "status": o.get("status"),
+                "total": o.get("total"), "currency": o.get("currency_symbol") or "₪",
+                "date": (o.get("date_created") or "")[:16].replace("T", " "),
+                "items": [i.get("name") for i in (o.get("line_items") or [])][:4],
+                "customer": " ".join(filter(None, [(o.get("billing") or {}).get("first_name"),
+                                                   (o.get("billing") or {}).get("last_name")]))}
+               for o in rows[:5]]
+        return {"orders": out}
+    except Exception:  # noqa: BLE001
+        return {"orders": []}
 
 
 class BridgeNote(BaseModel):
