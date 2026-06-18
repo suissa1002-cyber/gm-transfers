@@ -199,8 +199,18 @@ def handle(phone: str, text: str, mtype: str = "text", reply_id: str = "", wamid
         return _offer_stock_watch(phone, rid.split(":", 1)[1], sess)
     if rid.startswith("notify_sku:"):
         parts = rid.split(":")
-        return _register_stock_watch(phone, parts[1] if len(parts) > 1 else "",
-                                     (sess.get("data") or {}).get("product") or {})
+        sku = parts[1] if len(parts) > 1 else ""
+        spid = parts[2] if len(parts) > 2 else ""
+        color = None
+        if spid:
+            try:
+                import main as _m
+                color = next((v.get("color") for v in (_m.bot_get_variations(spid) or [])
+                              if str(v.get("sku")) == str(sku)), None)
+            except Exception:  # noqa: BLE001
+                color = None
+        return _register_stock_watch(phone, sku,
+                                     (sess.get("data") or {}).get("product") or {}, color=color)
     # "מתי חוזר למלאי?" בזמן צפייה במוצר → הצעת הרשמה ל-Stock Watch
     if state == "viewing" and not rid and _is_back_in_stock_intent(low):
         return _offer_stock_watch(phone, (sess.get("data") or {}).get("pid", ""), sess)
@@ -683,33 +693,44 @@ def _product_card(phone, rid, data):
     if price not in (None, "", "0"):
         lines.append(f"💰 מחיר: {_price_label(p)}")
     pid = rid.split(":", 1)[1]
-    # מודעות-וריאציה: מוצר משתנה יכול להיות "במלאי" כללי אבל צבע מסוים אזל
-    oos = []
+    q = (data or {}).get("__q", "")
+    # מודעות-וריאציה: שולפים פעם אחת (צבע/מלאי/sku)
+    vs = []
     if p.get("type") == "variable":
         try:
             import main as _m
-            oos = [v for v in (_m.bot_get_variations(pid) or [])
-                   if v.get("stock") == "outofstock" and v.get("sku")]
+            vs = _m.bot_get_variations(pid) or []
         except Exception:  # noqa: BLE001
-            oos = []
+            vs = []
+    oos = [v for v in vs if v.get("stock") == "outofstock" and v.get("sku")]
+    instock = [v for v in vs if v.get("stock") == "instock"]
+    asked = _asked_color(q, vs)       # הוריאציה שתואמת לצבע שהלקוח שאל עליו
     stock = p.get("stock")
-    if stock == "outofstock":
-        lines.append("⏳ אזל כרגע")
-    elif oos:
-        cols = ", ".join(v.get("color") for v in oos if v.get("color"))
-        lines.append("✅ זמין במלאי" + (f"\n⏳ אזל בצבעים: {cols}" if cols else ""))
-    elif stock == "instock":
-        lines.append("✅ זמין במלאי")
+    if asked and asked.get("stock") == "outofstock" and instock:
+        # שאל על צבע שאזל ויש זמינים → קודם מציעים את הזמינים; watch רק אם מתעקש
+        avail = ", ".join(v.get("color") for v in instock if v.get("color"))
+        lines.append(f"⏳ הצבע *{asked.get('color')}* אזל כרגע.")
+        lines.append(f"✅ זמין מיד: *{avail}*")
+        btns = [(f"buy:{pid}", "🛒 הזמן זמין"),
+                (f"notify_sku:{asked.get('sku')}:{pid}", f"💙 רק {(asked.get('color') or '')[:11]}"),
+                ("agent", "👤 נציג")]
+    else:
+        if stock == "outofstock":
+            lines.append("⏳ אזל כרגע")
+        elif oos:
+            cols = ", ".join(v.get("color") for v in oos if v.get("color"))
+            lines.append("✅ זמין במלאי" + (f"\n⏳ אזל בצבעים: {cols}" if cols else ""))
+        elif stock == "instock":
+            lines.append("✅ זמין במלאי")
+        if (stock == "outofstock" and p.get("sku")) or oos:
+            btns = [(f"notify_stock:{pid}", "🔔 עדכנו כשחוזר"),
+                    (f"buy:{pid}", "🛒 הזמן"), ("agent", "👤 נציג")]
+        else:
+            btns = [(f"buy:{pid}", "🛒 הזמן עכשיו"), ("search_again", "🔍 מוצר אחר"), ("agent", "👤 נציג")]
     if p.get("permalink"):
         # slug עברי → קישור מקוצר gm- (קישור עברי ארוך נראה שבור/חשוד); אנגלי נשאר ישיר
         lines.append(f"\n🔗 לרכישה ולפרטים:\n{_short_link(p['permalink'])}")
     body = "\n".join(lines)
-    can_watch = (stock == "outofstock" and p.get("sku")) or bool(oos)
-    if can_watch:
-        btns = [(f"notify_stock:{pid}", "🔔 עדכנו כשחוזר"),
-                (f"buy:{pid}", "🛒 הזמן"), ("agent", "👤 נציג")]
-    else:
-        btns = [(f"buy:{pid}", "🛒 הזמן עכשיו"), ("search_again", "🔍 מוצר אחר"), ("agent", "👤 נציג")]
     img = p.get("image") or ""
     try:                                   # כרטיס עם תמונה; אם נכשל — fallback לטקסט
         wa.send_buttons(phone, body, btns, header_image=img if img.startswith("http") else "")
@@ -725,6 +746,16 @@ def _product_card(phone, rid, data):
 
 
 # ── 🔔 Stock Watch: עדכון ללקוח כשמוצר/צבע שאזל חוזר למלאי ──
+def _asked_color(q: str, variations: list):
+    """מזהה את הוריאציה שתואמת לצבע שהלקוח שאל עליו (rezez בשאלה), אם יש."""
+    ql = (q or "")
+    for v in (variations or []):
+        c = (v.get("color") or "").strip()
+        if c and c in ql:
+            return v
+    return None
+
+
 def _is_back_in_stock_intent(low: str) -> bool:
     import re
     return bool(re.search(r"(מתי|צפי).{0,14}(חוזר|במלאי|יהיה|זמין)"
