@@ -301,6 +301,14 @@ def handle(phone: str, text: str, mtype: str = "text", reply_id: str = "", wamid
         # כולל הודעות קצרות ('Ok'/'תודה') ומשפטים באנגלית ('I should receive it today').
         if _uri_engaged(phone) and not prod and _ask_uri(phone, text, wamid):
             return
+        # צבע/נפח קצר אחרי בחירת מוצר → המשך הקשרי (Apple 16 ואז "ורוד"), לא חיפוש
+        # "ורוד" גלובלי. אורי רואה את השיחה ועונה על הוריאציה; אם לא זמין — משלבים.
+        if state in ("new_pick", "viewing") and _is_attr_followup(low):
+            if _ask_uri(phone, text, wamid):
+                return
+            prevq = (sess.get("data") or {}).get("__q", "")
+            if prevq:
+                return _new_order_results(phone, f"{prevq} {text}".strip())
         if len(low) >= 3:
             question_like = bool(_re.search(
                 r"\?|מה ההבדל|הבדל בין|השוואה|עדיף|מה מתאים|כדאי|להמליץ|המלצ|תקציב|עד \d|"
@@ -319,6 +327,22 @@ _ESCAPE = {"תפריט", "menu", "חזור", "חזרה", "ביטול", "בטל",
            "start", "צא", "יציאה", "ראשי", "עצור", "די"}
 _GREET_WORDS = {"היי", "שלום", "הי", "הייי", "אהלן", "בוקר", "ערב", "צהריים",
                 "הלו", "מה", "נשמע", "קורה", "yo", "hi", "hello", "hey", "שבת"}
+
+# צבע/נפח קצר אחרי בחירת מוצר = המשך הקשרי (צבע/וריאציה), לא חיפוש מוצר חדש
+_COLORS = {"ורוד", "שחור", "לבן", "כחול", "אדום", "ירוק", "צהוב", "סגול", "כתום",
+           "אפור", "זהב", "כסף", "תכלת", "חום", "ורד", "נייבי", "רוז", "גרפיט",
+           "שמנת", "כהה", "בהיר", "טבעי", "סגלגל", "ירקרק", "כחלחל"}
+
+
+def _is_attr_followup(low: str) -> bool:
+    w = (low or "").strip()
+    if w in _COLORS:
+        return True
+    if w.startswith("בצבע") or w.startswith("צבע "):
+        return True
+    if _re.fullmatch(r"\d{2,4}\s*(gb|tb|ג'יגה|טרה|ג״ב)?", w, _re.I):
+        return True
+    return False
 
 
 def _is_greeting(text: str) -> bool:
