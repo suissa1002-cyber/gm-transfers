@@ -4868,7 +4868,7 @@ function renderWcOrders(){
   const app=document.getElementById('app');
   S.wco=S.wco||{page:1,status:'',q:'',after:'',before:'',rows:null,pages:1,total:0,loading:false};
   const W=S.wco;
-  const chips=[['','הכל'],['processing','בטיפול'],['pending','ממתין'],['on-hold','בהמתנה'],
+  const chips=[['','הכל'],['express','⚡ אקספרס'],['processing','בטיפול'],['pending','ממתין'],['on-hold','בהמתנה'],
                ['shipping-stage','בהפצה'],['order-ready','מוכנה'],['tlv-pickup','נק׳ ת״א'],
                ['completed','הושלם'],['cancelled','בוטל'],['refunded','זוכה']]
     .map(([k,t])=>`<button class="btn-ghost" style="padding:6px 12px;font-size:13px${W.status===k?';border-color:#16a34a;color:#16a34a;font-weight:700':''}"
@@ -4958,7 +4958,8 @@ async function loadWcOrders(){
   const rb=document.getElementById('wcoRefreshBtn');   // חיווי: הכפתור מסתובב בזמן טעינה
   if(rb){ rb.style.animation='spin .8s linear infinite'; rb.style.pointerEvents='none'; }
   try{
-    const r=await api('/api/admin/orders?page='+W.page+'&status='+encodeURIComponent(W.status)+'&search='+encodeURIComponent(W.q)
+    const ex=W.status==='express'?1:0;   // אקספרס = סינון משלוח (לא סטטוס WC) → פרמטר נפרד
+    const r=await api('/api/admin/orders?page='+W.page+'&status='+encodeURIComponent(ex?'':W.status)+'&express='+ex+'&search='+encodeURIComponent(W.q)
       +'&after='+encodeURIComponent(W.after||'')+'&before='+encodeURIComponent(W.before||'')+'&_t='+Date.now(),null,60000);
     W.rows=r.orders; W.pages=r.pages; W.total=r.total;
     if(r.statuses) S.wcoStatuses=r.statuses;

@@ -3057,7 +3057,7 @@ def admin_orders_latest(x_admin_key: Optional[str] = Header(None)):
 
 @app.get("/api/admin/orders")
 def admin_orders_list(page: int = 1, status: str = "", search: str = "",
-                      after: str = "", before: str = "",
+                      after: str = "", before: str = "", express: int = 0,
                       x_admin_key: Optional[str] = Header(None)):
     _require_admin(x_admin_key)
     import requests as _rq
@@ -3066,7 +3066,9 @@ def admin_orders_list(page: int = 1, status: str = "", search: str = "",
         raise HTTPException(502, "חיבור WooCommerce לא מוגדר")
     base, k, s = creds
     params = {"per_page": 25, "page": max(1, page), "orderby": "date", "order": "desc"}
-    if status.strip():
+    if express:               # אקספרס יכול להיות בכל סטטוס → מושכים 100 אחרונות ומסננים בהמשך
+        params["per_page"] = 100
+    elif status.strip():
         params["status"] = status.strip()
     if after.strip():      # טווח תאריכים מהיומן — YYYY-MM-DD
         params["after"] = f"{after.strip()}T00:00:00"
@@ -3139,11 +3141,13 @@ def admin_orders_list(page: int = 1, status: str = "", search: str = "",
             "cargo": bool(meta.get("cslfw_shipping")),
             "cargo_status": _cargo_status(meta, (o.get("billing") or {}).get("email") or ""),
         })
+    if express:               # רק הזמנות אקספרס (מכל הסטטוסים, מתוך 100 האחרונות)
+        out = [o for o in out if (o.get("ship_tag") or "").startswith("express")]
     # no-store — אסור לקאש ב-edge: אחרת סימוני שודר/חסר/חלקי מתעדכנים באיחור
     # (אותו לקח כמו /orders/latest — שורת שידור חדשה לא נראתה אחרי רענונים)
     return JSONResponse({"orders": out, "page": page,
-                         "pages": int(r.headers.get("X-WP-TotalPages") or 1),
-                         "total": int(r.headers.get("X-WP-Total") or len(out)),
+                         "pages": 1 if express else int(r.headers.get("X-WP-TotalPages") or 1),
+                         "total": len(out) if express else int(r.headers.get("X-WP-Total") or len(out)),
                          "statuses": _wc_statuses(base, k, s)},
                         headers={"Cache-Control": "no-store, max-age=0"})
 
