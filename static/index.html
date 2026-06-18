@@ -3756,17 +3756,46 @@ async function waSendFile(inp){
   const f=inp.files&&inp.files[0]; inp.value=''; if(!f) return;
   waStageFile(f, f.name);          // פריוויו לפני שליחה, לא שולחים מיד
 }
+// fallback ברמת המסמך: אם הדביקו תמונה כשהפוקוס לא בתיבת ההודעה (לחצו על השיחה
+// ואז Cmd/Ctrl+V) — נתפוס גם את זה, אבל רק כששיחת WhatsApp פתוחה ולא מדביקים
+// לתוך שדה קלט אחר (כדי לא לחטוף הדבקות במקומות אחרים).
+if(!window._waPasteDocBound){
+  window._waPasteDocBound=true;
+  document.addEventListener('paste', function(e){
+    try{
+      if(!S || !S.waPhone) return;                 // אין שיחה פתוחה
+      const t=e.target;
+      if(t && t.id==='waText') return;             // התיבה כבר מטופלת ב-onpaste
+      if(t && (t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.isContentEditable)) return; // שדה אחר — לא לגעת
+      const cd=e.clipboardData; if(!cd) return;
+      const hasImg=[].some.call(cd.items||[], it=>it.kind==='file'&&(it.type||'').startsWith('image/'))
+                 || [].some.call(cd.files||[], f=>(f.type||'').startsWith('image/'));
+      if(hasImg) waPaste(e);
+    }catch(_){}
+  });
+}
 function waPaste(e){
-  // הדבקת תמונה מה-clipboard → פריוויו בתיבת ההקלדה (לא שליחה עיוורת)
-  const items=(e.clipboardData&&e.clipboardData.items)||[];
+  // הדבקת תמונה מה-clipboard → פריוויו בתיבת ההקלדה (לא שליחה עיוורת).
+  // עמיד למגוון מקורות: items עם type image/*, clipboardData.files (macOS/Safari),
+  // ו-fallback ל-file item גם בלי type מדויק.
+  const cd=e.clipboardData; if(!cd) return;
+  let f=null;
+  const items=cd.items||[];
+  // 1) items עם type image/* (צילום מסך, "העתק תמונה")
   for(const it of items){
-    if(it.kind==='file' && it.type.startsWith('image/')){
-      e.preventDefault();
-      const f=it.getAsFile();
-      if(f) waStageFile(f, 'pasted_image.png');
-      return;
+    if(it.kind==='file' && (it.type||'').startsWith('image/')){ f=it.getAsFile(); if(f) break; }
+  }
+  // 2) clipboardData.files — חלק מהדפדפנים/מערכות חושפים תמונה מודבקת כאן
+  if(!f && cd.files && cd.files.length){
+    for(const cf of cd.files){ if((cf.type||'').startsWith('image/')){ f=cf; break; } }
+  }
+  // 3) fallback: כל file item שמתברר כתמונה גם בלי type מדויק
+  if(!f){
+    for(const it of items){
+      if(it.kind==='file'){ const g=it.getAsFile&&it.getAsFile(); if(g && (g.type||'').startsWith('image/')){ f=g; break; } }
     }
   }
+  if(f){ e.preventDefault(); waStageFile(f, f.name||'pasted_image.png'); }
 }
 // ── פריוויו קובץ מצורף לפני שליחה ──
 function waPendingHTML(){
