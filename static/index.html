@@ -703,7 +703,7 @@ function notifyNewOrder(orders){
   const n=orders.length;
   const title = n>1 ? `🎉 ${n} הזמנות חדשות נכנסו!` : '🎉 נכנסה הזמנה חדשה!';
   const body = orders.map(o=>`#${o.number} · ${o.item||'הזמנה'}${o.items_n>1?` (${o.items_n})`:''}`).join('\n');
-  kaching(); flashTitle(title); toast(title+' '+body.split('\n')[0], true);
+  kaching(); flashTitle(title); toast(title+' '+body.split('\n')[0], true, 7000);  // 7ש — מספיק לקרוא הזמנה חדשה
 }
 function detectNewOrders(list){
   const ids=(list||[]).map(o=>String(o.id));
@@ -752,8 +752,9 @@ async function dismissBroadcast(toBranch){
     body:JSON.stringify({branch_id:Number(S.branchId), to_branch:Number(toBranch)})}); }catch(e){}
   renderBoard(document.getElementById('app'), true);
 }
-function toast(msg,ok){ const t=document.getElementById('toast');
-  t.textContent=msg;t.className='toast show '+(ok?'ok':'err');setTimeout(()=>t.className='toast',1100); }
+function toast(msg,ok,ms){ const t=document.getElementById('toast');
+  clearTimeout(S._toastT);
+  t.textContent=msg;t.className='toast show '+(ok?'ok':'err');S._toastT=setTimeout(()=>t.className='toast',ms||1100); }
 
 // ── חיווי טעינה ──
 function showLoading(msg){
