@@ -106,7 +106,7 @@ def fetch_context(phone: str) -> str:
 
 
 def build_prompt(phone: str, question: str) -> str:
-    thread = fetch_thread_text(phone)
+    thread = fetch_thread_native(phone, limit=20)   # native (GreenOS) — לא ConnectOp
     ctx = fetch_context(phone)
     return f"""אתה אורי — סוכן שירות הלקוחות של Green Mobile, בדיוק כמו בסשנים הרגילים שלך.
 אסי פנה אליך מתוך מערכת GreenOS לגבי שיחת וואטסאפ עם לקוח.
@@ -132,6 +132,10 @@ def build_prompt(phone: str, question: str) -> str:
     (Authorization: Bearer <stock_watcher_token מתוך agents/uri/stock_watcher/.deploy_state.json>;
     body: {{"due_at":"YYYY-MM-DD HH:MM" שעון ישראל, "context":"...", "customer_name":"...", "customer_phone":"{phone}"}}).
     זו התזכורת שמופיעה בלוח Uri Stock Watcher ושולחת טלגרם בזמן שנקבע — זה הערוץ הנכון, לא Monday.
+  • **הרשמה ל-Stock Watch** (לקוח שמבקש עדכון כשמוצר/צבע *שאזל* חוזר למלאי) →
+    `curl -s -X POST {BASE}/api/uri-bridge/stock-watch -H "X-Bridge-Key: {KEY}" -H "Content-Type: application/json" -d '{{"phone":"{phone}","name":"<שם הלקוח>","sku":"<מק\"ט הוריאציה שאזלה>","product_name":"<שם המוצר + צבע>","product_url":"<קישור>","notify":false}}'`.
+    את ה-`sku` משיגים מ-`{BASE}/api/uri-bridge/variations/<product_id>` (כל וריאציה מחזירה `sku`+`in_stock`+`color` — בחר את הצבע ש-`in_stock=false`). השרת ממיר אוטומטית SKU→neworder_id ורושם.
+    ⚠️ `notify:false` — **אתה לא שולח אישור**, אלא נותן לאסי [DRAFT] קצר ("רשמתי אותך, נעדכן כשחוזר") והוא שולח.
   • **משימת עבודה גדולה** (לא תזכורת-זמן) → משימה במאנדיי דרך agents/shared/monday_tasks (קבוצת uri).
   אחרי יצירה — אשר לאסי מה נוצר, איפה, ולמתי.
 - מחיר ללקוח: תמיד מחיר האתר (שדה price — כולל מבצע), לעולם לא מחיר קופה. בפער קופה↔אתר — האתר מנצח.
@@ -156,7 +160,7 @@ def build_prompt(phone: str, question: str) -> str:
 
 def build_followup_prompt(phone: str, question: str) -> str:
     """בקשת המשך בסשן קיים — ההקשר כבר בזיכרון; שולחים רק עדכון שיחה + שאלה."""
-    thread = fetch_thread_text(phone, limit=8)
+    thread = fetch_thread_native(phone, limit=10)   # native (GreenOS) — לא ConnectOp
     return f"""בקשה נוספת מאסי על אותה שיחת וואטסאפ ({phone}).
 עדכון אחרון מהשיחה (ייתכן שהתחדשה):
 {thread}

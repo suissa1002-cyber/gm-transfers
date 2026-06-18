@@ -2617,6 +2617,7 @@ def bridge_variations(product_id: int, x_bridge_key: Optional[str] = Header(None
     return {"variations": [{"storage": v.get("storage"), "color": v.get("color"),
                             "price": v.get("price"),
                             "in_stock": v.get("stock") == "instock",
+                            "sku": v.get("sku") or "",          # להרשמת stock-watch לצבע שאזל
                             "url": v.get("permalink") or ""}   # קישור ישיר לוריאציה (slug צבע)
                            for v in vs]}
 
@@ -3585,6 +3586,7 @@ def bot_get_variations(product_id) -> list:
                     "attrs": attrs, "attrs_disp": attrs_disp,   # ערך לחיפוש + שם לתצוגה
                     "attr_order": attr_order,
                     "stock": v.get("stock_status"),
+                    "sku": v.get("sku") or "",   # = neworder_id ברוב המקרים (להרשמת stock-watch)
                     "permalink": v.get("permalink") or ""})  # מכיל את ה-attributes ל-add-to-cart
     return out
 
@@ -4784,11 +4786,9 @@ class StockWatchAddIn(BaseModel):
     notify: bool = True        # לשלוח ללקוח אישור הרשמה
 
 
-@app.post("/api/admin/stock-watch/add")
-def admin_stock_watch_add(body: StockWatchAddIn, x_admin_key: Optional[str] = Header(None)):
-    """מוסיף לקוח ל-Stock Watcher: מזהה מוצר (SKU→neworder_id דרך NewOrder) → רושם
-    ב-watcher → שולח אישור ללקוח. נקודת-כניסה אחת לבוט/אורי/קונסולה."""
-    _require_admin(x_admin_key)
+def _stock_watch_add(body: StockWatchAddIn):
+    """לוגיקת ההרשמה ל-Stock Watcher (משותפת לאדמין/בריג'/בוט): מזהה מוצר
+    (SKU→neworder_id דרך NewOrder) → רושם ב-watcher → שולח אישור ללקוח."""
     import requests as _rq
     phone = _il_phone(body.phone)
     if len(phone) < 11:
@@ -4841,6 +4841,20 @@ def admin_stock_watch_add(body: StockWatchAddIn, x_admin_key: Optional[str] = He
     logger.info("stock-watch add: %s -> %s (neworder %s, watch %s)", phone, pname, no_id, watch.get("id"))
     return {"ok": True, "watch_id": watch.get("id"), "neworder_id": no_id,
             "product_name": pname, "confirmation_sent": sent}
+
+
+@app.post("/api/admin/stock-watch/add")
+def admin_stock_watch_add(body: StockWatchAddIn, x_admin_key: Optional[str] = Header(None)):
+    """הרשמת לקוח ל-Stock Watcher מהקונסולה (admin-key)."""
+    _require_admin(x_admin_key)
+    return _stock_watch_add(body)
+
+
+@app.post("/api/uri-bridge/stock-watch")
+def bridge_stock_watch(body: StockWatchAddIn, x_bridge_key: Optional[str] = Header(None)):
+    """הרשמת לקוח ל-Stock Watcher מאורי/הבוט (bridge-key)."""
+    _require_bridge(x_bridge_key)
+    return _stock_watch_add(body)
 
 
 # ── תשלום כללי (ללא הזמנת WC): קישור PayPlus חופשי מהמגירה ──
