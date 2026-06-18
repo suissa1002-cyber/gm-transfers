@@ -389,22 +389,11 @@ _human_auto_cache: dict = {}
 
 
 def _auto_human(phone: str):
-    """אחרי מענה אנושי (שלנו או טיוטה של אורי שנשלחה) — מסמנים את השיחה כ'אנושי'
-    כדי שהבוט יפסיק לענות ללקוח (בקשת אסי 12/06: "אחרי שאני עונה ממשיך לקבל בוט").
-    cache 30 דק' — לא חוזרים על ה-toggle בכל הודעה. כשל כאן לעולם לא מפיל שליחה.
-    ⚠️ ה-toggle שולח עדכון WebSocket שעלול לשבור UI של ConnectOp אם פתוח במקביל
-    (לקח 03/06) — התקבל במודע: GreenOS הוא ממשק העבודה; רענון מתקן אצלם."""
-    now = time.time()
-    if now - _human_auto_cache.get(phone, 0) < 1800:
-        return
-    try:
-        _dash_call(_dash().set_human_mode, phone, enable=True)
-        _human_auto_cache[phone] = now
-        with _lock:
-            _inbox_cache["rows"] = None
-        logger.info("wa auto human-mode -> %s", phone)
-    except Exception as e:  # noqa: BLE001
-        logger.warning("auto human-mode failed for %s: %s", phone, e)
+    """No-op מאז ניתוק קונקטופ (18/06/2026). תפקידו היחיד היה לסמן 'אנושי' בקונקטופ
+    כדי להשתיק את הבוט *שלהם*. הבוט שלנו מושתק נייטיב (bot_session='agent') בנתיב
+    המענה האנושי (main._bot_handoff_on / _bot_handoff_on). נשאר כ-stub כדי לא לשנות
+    את כל הקוראים."""
+    return
 
 
 def send_reply(phone: str, text: str):
@@ -850,60 +839,67 @@ def send_template(phone: str, name: str, body: str):
     body = re.sub(r"\s{4,}|\t+", " ", body)
     if not body:
         raise WaError("גוף הודעה ריק")
-    resp = _dash_call(_dash().send_whatsapp_template,
-                      phone, "new_message", [name or "לקוח/ה יקר/ה", body])
-    _auto_human(phone)
-    logger.info("wa send template new_message -> %s", phone)
-    return {"sent": True, "via": "template", "resp": resp}
+    mid = _meta_send_template(phone, "new_message", [name or "לקוח/ה יקר/ה", body], [])
+    _store_outbound(phone, (name + ": " if name else "") + body, wamid=mid, mtype="template")
+    logger.info("wa send template new_message (meta) -> %s", phone)
+    return {"sent": True, "via": "template", "message_id": mid}
 
 
 def send_media(phone: str, filename: str, content: bytes, mime: str, caption: str = ""):
-    """
-    שליחת קובץ ללקוח: מעלים ל-file manager של ConnectOp (multipart ל-user.php,
-    op=inbox_file_manager/upload — אותו מנגנון של הדשבורד שלהם, הקובץ יושב על
-    cdnj1) ואז שולחים דרך ה-API הציבורי. גם מדיה כפופה לחלון 24ש.
-    הערה: ההעלאה הקודמת ל-WordPress נחסמה ע"י Cloudflare מ-IP של Render.
-    """
-    import json as _json
+    """שליחת קובץ ללקוח **ישירות דרך Meta** (העלאה ל-/media → הודעת media). מחליף את
+    נתיב ה-file-manager של קונקטופ. כפוף לחלון 24ש (template-only מחוצה לו)."""
+    import os as _os
+    import requests as _rq
     if len(content) > 15 * 1024 * 1024:
         raise WaError("קובץ גדול מדי (מקס׳ 15MB)")
-    win = _window_for(phone)
-    if not win["in_window"]:
-        raise WaError("מחוץ לחלון 24ש׳ — אי אפשר לשלוח מדיה (רק template טקסט)")
+    if not meta_direct_ready():
+        raise WaError("Meta ישיר לא מוגדר")
     m = (mime or "").lower()
     kind = ("image" if m.startswith("image/") else
             "audio" if m.startswith("audio/") else
-            "video" if m.startswith("video/") else "file")
+            "video" if m.startswith("video/") else "document")
     safe = re.sub(r"[^\w.\-]+", "_", filename or "file", flags=re.UNICODE) or "file"
-    d = _dash()
-    param = {"page_id": d.account_id, "op": "inbox_file_manager", "op1": "upload",
-             "op2": kind, "file_name": safe, "uploadFB": False, "inbox": True,
-             "ms_id": str(phone)}
+    tok = _os.getenv("META_WA_TOKEN").strip()
+    pid = _os.getenv("META_WA_PHONE_ID").strip()
+    # 1) העלאה למטא → media_id
     try:
-        r = d._session.post(f"{d.base_url}/php/user.php",
-                            data={"param": _json.dumps(param)},
-                            files={"file": (safe, content, mime or "application/octet-stream")},
-                            headers={"X-Requested-With": "XMLHttpRequest",
-                                     "Referer": f"{d.base_url}/en/inbox?acc={d.account_id}"},
-                            timeout=90)
-        j = r.json() if r.ok else {}
+        up = _rq.post(f"{META_GRAPH}/{pid}/media",
+                      headers={"Authorization": f"Bearer {tok}"},
+                      data={"messaging_product": "whatsapp"},
+                      files={"file": (safe, content, mime or "application/octet-stream")},
+                      timeout=90)
     except Exception as e:  # noqa: BLE001
-        raise WaError(f"העלאת קובץ ל-ConnectOp נכשלה: {e}") from e
-    if not (isinstance(j, dict) and j.get("status") == "OK"):
-        raise WaError(f"העלאה נדחתה: {str(j)[:120] or r.status_code} (טוקן דשבורד?)")
-    url = (j.get("data") or {}).get("url", "")
-    if not url:
-        raise WaError("ConnectOp לא החזיר כתובת קובץ")
-    send_kind = "document" if kind == "file" else kind
-    _auto_human(phone)
-    resp = _pub().send_file(phone, url, caption=caption, file_type=send_kind)
-    logger.info("wa send %s -> %s (%s)", send_kind, phone, safe)
-    # שמירה בחנות שלנו → הקובץ היוצא מופיע גם בשיחה הנייטיב (לא רק בפאנל המדיה)
+        raise WaError(f"העלאת מדיה למטא נכשלה: {e}") from e
+    if up.status_code not in (200, 201):
+        raise WaError(f"העלאת מדיה נכשלה ({up.status_code}): {up.text[:200]}")
+    media_id = up.json().get("id")
+    if not media_id:
+        raise WaError("לא התקבל media_id ממטא")
+    # 2) שליחת הודעת media
+    obj = {"id": media_id}
+    if caption and kind in ("image", "video", "document"):
+        obj["caption"] = caption
+    if kind == "document":
+        obj["filename"] = safe
+    payload = {"messaging_product": "whatsapp", "to": str(phone), "type": kind, kind: obj}
+    r = _rq.post(f"{META_GRAPH}/{pid}/messages",
+                 headers={"Authorization": f"Bearer {tok}", "Content-Type": "application/json"},
+                 json=payload, timeout=40)
+    if r.status_code not in (200, 201):
+        try:
+            win = _window_for(phone)
+        except Exception:  # noqa: BLE001
+            win = None
+        if win is not None and not win["in_window"]:
+            return {"sent": False, "needs_template": True, "window": win}
+        raise WaError(f"שליחת המדיה נכשלה ({r.status_code}): {r.text[:200]}")
+    wamid = ((r.json().get("messages") or [{}])[0]).get("id", "")
     try:
-        _store_outbound(phone, caption or "", mtype=send_kind, media_url=url)
+        _store_outbound(phone, caption or "", wamid=wamid, mtype=kind)
     except Exception:  # noqa: BLE001
         pass
-    return {"sent": True, "via": send_kind, "url": url, "resp": resp}
+    logger.info("wa send %s (meta) -> %s (%s)", kind, phone, safe)
+    return {"sent": True, "via": kind, "message_id": wamid}
 
 
 # ── פעולות שיחה ─────────────────────────────────────────────────────
@@ -917,35 +913,17 @@ _tpl_cache = {"at": 0.0, "items": None}
 
 
 def saved_replies():
-    """התשובות השמורות של ConnectOp (read-only אצלנו), cache 5 דקות."""
-    now = time.time()
-    if _sr_cache["items"] is None or now - _sr_cache["at"] > 300:
-        r = _dash_call(_dash()._post_user_php, {"op": "inbox_saved_reply", "op1": "get"})
-        items = r.get("results", []) if isinstance(r, dict) else []
-        _sr_cache.update(at=now, items=[
-            {"id": i.get("id"), "title": (i.get("shortcode") or "").lstrip("/"),
-             "text": i.get("value") or ""} for i in items])
-    return _sr_cache["items"]
+    """תשובות מהירות לקונסולה — מקור native סטטי (wa_static.CANNED_REPLIES, נצרב
+    מקונקטופ 18/06/2026). אין יותר תלות ב-dashboard."""
+    from wa_static import CANNED_REPLIES
+    return CANNED_REPLIES
 
 
 def wa_templates():
-    """תבניות WhatsApp מאושרות-מטא, מפוענחות: id, שפה, טקסט, מספר פרמטרים."""
-    import json as _json
-    now = time.time()
-    if _tpl_cache["items"] is None or now - _tpl_cache["at"] > 600:
-        r = _dash_call(_dash()._post_user_php, {"op": "whatsapp", "op1": "templates", "op2": "get"})
-        out = []
-        for t in (r.get("results", []) if isinstance(r, dict) else []):
-            try:
-                jb = _json.loads(t.get("json_builder") or "{}")
-            except Exception:  # noqa: BLE001
-                jb = {}
-            body = ((jb.get("body") or {}).get("text")) or ""
-            nums = [int(m) for m in re.findall(r"\{\{(\d+)\}\}", body)]
-            out.append({"id": t.get("id"), "language": t.get("language") or "he",
-                        "body": body, "params": max(nums) if nums else 0})
-        _tpl_cache.update(at=now, items=out)
-    return _tpl_cache["items"]
+    """תבניות WhatsApp מאושרות-מטא (id, שפה, גוף, מספר פרמטרים) — מקור native סטטי
+    (wa_static.TEMPLATE_REGISTRY, נצרב מ-Meta 18/06/2026). אין יותר תלות בקונקטופ."""
+    from wa_static import TEMPLATE_REGISTRY
+    return TEMPLATE_REGISTRY
 
 
 def send_wa_template(phone: str, template_id: str, params=None, language: str = "he"):
@@ -956,11 +934,11 @@ def send_wa_template(phone: str, template_id: str, params=None, language: str = 
     params = [str(p) for p in (params or [])]
     if len(params) < tpl["params"]:
         raise WaError(f"התבנית דורשת {tpl['params']} פרמטרים, התקבלו {len(params)}")
-    resp = _dash_call(_dash().send_whatsapp_template,
-                      phone, template_id, params, language=tpl.get("language") or language)
-    _auto_human(phone)
-    logger.info("wa send template %s -> %s", template_id, phone)
-    return {"sent": True, "via": f"template:{template_id}", "resp": resp}
+    mid = _meta_send_template(phone, template_id, params, [],
+                              language=tpl.get("language") or language)
+    _store_outbound(phone, _tpl_body_filled(template_id, params), wamid=mid, mtype="template")
+    logger.info("wa send template %s (meta) -> %s", template_id, phone)
+    return {"sent": True, "via": f"template:{template_id}", "message_id": mid}
 
 
 # ── שליחת תבנית תשלום ──
@@ -979,20 +957,23 @@ def meta_direct_ready() -> bool:
     return bool(os.getenv("META_WA_TOKEN", "").strip() and os.getenv("META_WA_PHONE_ID", "").strip())
 
 
-def _meta_send_template(phone: str, template: str, body_params: list, button_params: list):
+def _meta_send_template(phone: str, template: str, body_params: list, button_params: list,
+                        language: str = "he"):
     """שליחת תבנית ישירות דרך Meta Cloud API — עוקף את ConnectOp (שלא מסוגל
     להעביר כפתורי URL דינמיים). מחזיר message_id."""
     import os
     import requests as rq
     if not meta_direct_ready():
         raise WaError("חיבור Meta ישיר לא מוגדר (META_WA_TOKEN / META_WA_PHONE_ID)")
-    components = [{"type": "body",
-                   "parameters": [{"type": "text", "text": str(p)[:120]} for p in body_params]}]
+    components = []
+    if body_params:
+        components.append({"type": "body",
+                           "parameters": [{"type": "text", "text": str(p)[:120]} for p in body_params]})
     if button_params:
         components.append({"type": "button", "sub_type": "url", "index": "0",
                            "parameters": [{"type": "text", "text": str(button_params[0])}]})
     payload = {"messaging_product": "whatsapp", "to": str(phone), "type": "template",
-               "template": {"name": template, "language": {"code": "he"},
+               "template": {"name": template, "language": {"code": language or "he"},
                             "components": components}}
     r = rq.post(f"{META_GRAPH}/{os.getenv('META_WA_PHONE_ID').strip()}/messages",
                 headers={"Authorization": f"Bearer {os.getenv('META_WA_TOKEN').strip()}",
@@ -1114,66 +1095,60 @@ def send_pay_template(phone: str, name: str, order_number: str, total: str, pru:
     """
     tpl = next((t for t in wa_templates() if t["id"] == PAY_TEMPLATE_ID), None)
     if tpl is None:
-        raise WaError(f"תבנית {PAY_TEMPLATE_ID} עוד לא סונכרנה מ-Meta")
-    resp = _dash_call(_dash().send_whatsapp_template,
-                      phone, PAY_TEMPLATE_ID,
-                      [name or "לקוח/ה יקר/ה", str(order_number), str(total)],
-                      language=tpl.get("language") or "he")
-    _auto_human(phone)
-    logger.info("wa send pay-template -> %s (order %s)", phone, order_number)
-    return {"sent": True, "via": f"template:{PAY_TEMPLATE_ID}", "resp": resp}
+        raise WaError(f"תבנית {PAY_TEMPLATE_ID} לא רשומה")
+    params = [name or "לקוח/ה יקר/ה", str(order_number), str(total)]
+    mid = _meta_send_template(phone, PAY_TEMPLATE_ID, params, [],
+                              language=tpl.get("language") or "he")
+    _shadow(phone, mid, _tpl_body_filled(PAY_TEMPLATE_ID, params))
+    logger.info("wa send pay-template (meta) -> %s (order %s)", phone, order_number)
+    return {"sent": True, "via": f"template:{PAY_TEMPLATE_ID}", "message_id": mid}
 
 
 def search_conversations(q: str, limit: int = 50):
-    """חיפוש צד-שרת בכל אנשי הקשר (לא רק 200 השיחות האחרונות) — לפי שם/טלפון/אימייל,
-    באותו מנגנון cdts של ה-UI של ConnectOp. ⚠️ בלי saveFilter — שליחתו שוברת את הדשבורד!"""
+    """חיפוש native בכל אנשי הקשר (שם/טלפון) מהמאגר שלנו — מחליף את חיפוש קונקטופ."""
     q = (q or "").strip()
     if not q:
         return []
-    digits = re.sub(r"[\s\-+()]", "", q)
-    if digits.isdigit():
-        cdt = {"atrb_name": "phone", "oprt": "6", "value1": [digits], "value2": None, "order": 1}
-        if len(digits) > 8:
-            cdt["checkContactId"] = True
-    elif "@" in q:
-        cdt = {"atrb_name": "email", "oprt": "6", "value1": [q], "value2": None, "order": 1}
-    else:
-        cdt = {"atrb_name": "user_name", "oprt": "6", "value1": [q], "value2": None, "order": 1}
-    r = _dash_call(_dash()._post_user_php,
-                   {"op": "conversations", "op1": "get", "offset": 0,
-                    "limit": limit, "cdts": [cdt]})
-    rows = r.get("data", []) if isinstance(r, dict) else []
     import db
     stars = db.wa_stars()
+    handoff = db.bot_handoff_phones()
     out = []
-    for c in rows:
-        if str(c.get("channel")) != "5" or str(c.get("blocked", "0")) == "1":
-            continue
-        ts_ms = int(c.get("timestamp") or 0)
-        phone = c.get("ms_id")
+    for r in db.wa_search(q, limit):
+        phone = r.get("phone")
+        in_ts = int(r.get("last_in_ts") or 0)
+        msg_ts = int(r.get("last_msg_ts") or 0)
         out.append({
             "phone": phone,
-            "name": c.get("full_name") or c.get("first_name") or phone,
-            "last_msg": (c.get("last_msg") or "")[:120],
-            "ts": ts_ms // 1000,
-            "archived": str(c.get("archived", "0")) == "1",
-            "live_chat": str(c.get("live_chat", "0")) == "1",
-            "unread": False,
+            "name": r.get("name") or phone,
+            "last_msg": (r.get("last_msg") or "")[:120],
+            "ts": msg_ts,
+            "archived": bool(r.get("archived")),
+            "live_chat": bool(r.get("live_chat")),
+            "handoff": phone in handoff,
+            "unread": bool(in_ts and in_ts >= msg_ts),
             "star": phone in stars,
-            "pic": c.get("profile_pic") or "",
+            "pic": "",
         })
-    out.sort(key=lambda c: c["ts"], reverse=True)
     return out
 
 
 def media_list(phone: str, limit: int = 200):
-    """כל המדיה מהשיחה (תמונות/וידאו/קבצים), חדש→ישן — לגלריה בפאנל הפרטים."""
-    msgs = _dash_call(_dash().get_conversation, phone, limit=limit)
+    """כל המדיה מהשיחה (תמונות/וידאו/קבצים), חדש→ישן — מהמאגר native (wa_msg)."""
+    import db
     out = []
-    for m in msgs:  # הדשבורד מחזיר חדש→ישן — נשארים בסדר הזה
-        for item in _extract_media(m.get("content")):
-            out.append({**item, "ts": m.get("ts") or 0,
-                        "direction": m.get("direction")})
+    for m in db.wa_msg_thread(phone, limit=limit):
+        murl = m.get("media_url")
+        wamid_m = m.get("wamid")
+        mt = (m.get("media_mime") or "").split("/")[0] or m.get("type") or "file"
+        if murl:
+            url = murl
+        elif m.get("media_id") and wamid_m:
+            url = f"/api/wa/media?wamid={wamid_m}&t={media_token(wamid_m)}"
+        else:
+            continue
+        out.append({"type": mt, "url": url, "caption": "",
+                    "ts": m.get("ts") or 0, "direction": m.get("direction")})
+    out.sort(key=lambda x: x["ts"], reverse=True)
     return out
 
 
@@ -1183,10 +1158,15 @@ _tags_cache = {"at": 0.0, "tags": None}
 
 
 def account_tags():
-    """רשימת התגים של החשבון (81+), cache 10 דקות."""
+    """רשימת התגים של החשבון (CRM של קונקטופ), cache 10 דקות. גרייסלי: אם קונקטופ
+    לא זמין (אחרי ניתוק) — מחזיר רשימה ריקה במקום לקרוס."""
     now = time.time()
     if _tags_cache["tags"] is None or now - _tags_cache["at"] > 600:
-        _tags_cache["tags"] = _pub().get_tags()
+        try:
+            _tags_cache["tags"] = _pub().get_tags()
+        except Exception as e:  # noqa: BLE001
+            logger.warning("account_tags unavailable (connectop?): %s", e)
+            _tags_cache["tags"] = []
         _tags_cache["at"] = now
     return _tags_cache["tags"]
 
@@ -1252,20 +1232,22 @@ def contact_card(phone: str):
 
 
 def set_tag(phone: str, tag_id, add: bool = True):
-    if add:
-        _pub().add_tag(phone, tag_id)
-    else:
-        _pub().remove_tag(phone, tag_id)
-    return {"ok": True}
+    """תיוג CRM של קונקטופ. גרייסלי: אם קונקטופ לא זמין — מחזיר skipped במקום לקרוס."""
+    try:
+        if add:
+            _pub().add_tag(phone, tag_id)
+        else:
+            _pub().remove_tag(phone, tag_id)
+        return {"ok": True}
+    except Exception as e:  # noqa: BLE001
+        logger.warning("set_tag unavailable (connectop?): %s", e)
+        return {"ok": False, "skipped": "connectop_unavailable"}
 
 
 def archive(phone: str, archived: bool = True):
+    """ארכוב native (דגל ב-DB — מה שה-inbox קורא). ללא קונקטופ."""
     import db
-    db.wa_set_archived(phone, archived)   # native — מה שה-inbox קורא
-    try:                                  # קונקטופ — גיבוי, best-effort (לא מפיל)
-        _dash_call(_dash().archive_conversation, phone, archive=archived)
-    except Exception as e:  # noqa: BLE001
-        logger.warning("connectop archive failed for %s: %s", phone, e)
+    db.wa_set_archived(phone, archived)
     return {"ok": True, "phone": phone, "archived": archived}
 
 
@@ -1277,12 +1259,13 @@ def _archive_legacy(phone: str, archived: bool = True):
 
 
 def set_human(phone: str, enable: bool = True):
-    """
-    מתג אנושי/בוט. ⚠️ ידוע: שולח עדכון WebSocket שעלול להקריס את ה-UI של
-    ConnectOp אם הוא פתוח בדפדפן במקביל (לקח 03/06/2026) — לכן ב-UI שלנו
-    זה כפתור מפורש עם אזהרה, לא אוטומטי.
-    """
-    _dash_call(_dash().set_human_mode, phone, enable=enable)
+    """מתג אנושי/בוט native: enable=True → משתיק את הבוט שלנו לשיחה (bot_session='agent');
+    enable=False → מחזיר לבוט. מחליף את set_human_mode של קונקטופ."""
+    import db
+    if enable:
+        db.bot_session_set(str(phone), "agent", {"note": "מצב אנושי (ידני)"})
+    else:
+        db.bot_session_set(str(phone), "bot", {})
     with _lock:
         _inbox_cache["rows"] = None
     return {"ok": True}

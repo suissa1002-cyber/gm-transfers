@@ -1907,6 +1907,29 @@ def wa_conversations(limit: int = 300) -> list:
         return [dict(r) for r in cur.fetchall()]
 
 
+def wa_search(q: str, limit: int = 50) -> list:
+    """חיפוש native באנשי הקשר (שם/טלפון) — מחליף את חיפוש ה-dashboard של קונקטופ.
+    אותו פורמט כמו wa_conversations."""
+    q = (q or "").strip()
+    if not q:
+        return []
+    digits = "".join(ch for ch in q if ch.isdigit())
+    like = "%" + q + "%"
+    sel = ("SELECT c.phone, c.name, c.last_in_ts, c.last_msg_ts, c.live_chat, c.archived, "
+           "(SELECT m.text FROM wa_msg m WHERE m.phone = c.phone ORDER BY m.ts DESC LIMIT 1) AS last_msg "
+           "FROM wa_contact c WHERE ")
+    with _conn() as c:
+        cur = c.cursor()
+        if digits and len(digits) >= 4:
+            cur.execute(_q(sel + "(c.phone LIKE ? OR c.name LIKE ?) "
+                           "ORDER BY c.last_msg_ts DESC LIMIT ?"),
+                        ("%" + digits + "%", like, int(limit)))
+        else:
+            cur.execute(_q(sel + "c.name LIKE ? ORDER BY c.last_msg_ts DESC LIMIT ?"),
+                        (like, int(limit)))
+        return [dict(r) for r in cur.fetchall()]
+
+
 # ── שליחה מתוזמנת ──
 def wa_sched_add(phone, text, send_at, name="", order_number="", total="", pru="",
                  descr="", created_by="") -> int:
