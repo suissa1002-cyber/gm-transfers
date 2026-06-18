@@ -4476,10 +4476,29 @@ def _status_notify_job():
         db.sales_state_set("status_notify_init", datetime.now().isoformat(timespec="seconds"))
 
 
+def _classify_cancellation(o: dict) -> str:
+    """מסווג ביטול הזמנה: 'abandoned' (אי-תשלום) מול 'real_cancel' (חוסר מלאי/ביטול אמיתי).
+    משקף את לוגיקת ה-CF worker (classify-cancellation) כדי שה-cutover ישנה רק את הצינור
+    (קונקטופ→Meta ישיר) ולא את התוצאה: לא שולם ובוטל מהר/היה pending → abandoned."""
+    has_pay = bool(str(o.get("transaction_id") or "").strip()) or bool(
+        o.get("date_paid") or o.get("date_paid_gmt"))
+    mins = -1
+    try:
+        cs = (o.get("date_created") or "").replace("Z", "")
+        ms = (o.get("date_modified") or "").replace("Z", "")
+        if cs and ms:
+            mins = round((datetime.fromisoformat(ms) - datetime.fromisoformat(cs)).total_seconds() / 60)
+    except Exception:  # noqa: BLE001
+        mins = -1
+    return "abandoned" if (not has_pay and (0 <= mins <= 30)) else "real_cancel"
+
+
 def _notify_order_status(o, enabled=None, init="__fetch__"):
     """שולח ללקוח template סטטוס מאושר אם הסטטוס *השתנה* (בהפצה/מוכן לאיסוף/נק' מסירה).
     משמש גם ב-job (כל 3 דק') וגם ב-webhook (מיידי). מגודר WA_SEND_STATUS_AUTO + דדופ
-    פר הזמנה+סטטוס. ריצה ראשונה (init=None) רק רושמת — מונע backfill."""
+    פר הזמנה+סטטוס. ריצה ראשונה (init=None) רק רושמת — מונע backfill.
+    ביטול (cancelled): מגודר בדגל *נפרד* WA_SEND_CANCEL_AUTO — שולח native את תבנית
+    הביטול המתאימה (cart_recovery/order_cancelled_stock), מחליף את נתיב קונקטופ."""
     num = str(o.get("number") or "")
     if not num:
         return
@@ -4493,6 +4512,33 @@ def _notify_order_status(o, enabled=None, init="__fetch__"):
     db.sales_state_set(key, st)
     if not init or last is None or last == st:
         return                               # ריצה ראשונה / לא ידוע / ללא שינוי → דלג
+    # --- ביטול הזמנה native (דגל נפרד, רדום עד cutover קונקטופ — מונע כפילות) ---
+    if st == "cancelled":
+        if os.getenv("WA_SEND_CANCEL_AUTO", "0").strip() != "1":
+            return
+        if db.sales_state_get(f"status_sent:{num}:cancelled"):
+            return
+        b = o.get("billing") or {}
+        phone = _il_phone(b.get("phone"))
+        if len(phone) < 11:
+            return
+        name = (b.get("first_name") or "").strip()
+        cls = _classify_cancellation(o)
+        try:
+            import wa
+            if cls == "abandoned":
+                items = o.get("line_items") or []
+                prod = (items[0].get("name") if items else "") or "המוצר שהזמנת"
+                wa.send_cancel_template(phone, name, str(prod)[:200], "cart_recovery")
+                tplname = "cart_recovery"
+            else:
+                wa.send_cancel_template(phone, name, num, "order_cancelled_stock")
+                tplname = "order_cancelled_stock"
+            db.sales_state_set(f"status_sent:{num}:cancelled", "1")
+            logger.info("cancel notify %s -> %s (%s)", num, cls, tplname)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("cancel notify send failed %s: %s", num, e)
+        return
     tpl = _STATUS_NOTIFY_TPL.get(st)
     if not tpl or not enabled or db.sales_state_get(f"status_sent:{num}:{st}"):
         return

@@ -772,6 +772,45 @@ def send_status_template(phone: str, name: str, order_number, template_name: str
     return wamid
 
 
+def _render_cancel_body(template_name: str, name: str, p2) -> str:
+    """משחזר את גוף התבנית המאושרת (לתצוגה בלבד בחנות שלנו — מטא לא מחזיר את הודעותינו)."""
+    nm = (name or "לקוח/ה יקר/ה")
+    if template_name == "order_cancelled_stock":
+        return (f"הזמנה מס׳ {p2} - המוצר חסר במלאי\n\n"
+                f"שלום רב {nm},\n\n"
+                "עקב מחסור במלאי המוצר המוזמן בוצע זיכוי בכרטיסכם וההזמנה בוטלה.\n"
+                "עמכם הסליחה.\n\nתודה,\nGreen Mobile")
+    # cart_recovery (ברירת מחדל)
+    return (f"שלום {nm},\n\n עדכון הזמנה\n\n"
+            f"ההזמנה שלך עם המוצר *{p2}* בוטלה אוטומטית בשל אי-השלמת התשלום בפרק הזמן הנדרש.\n\n"
+            "לבירור או לעזרה בהשלמת ההזמנה ניתן להשיב להודעה זו.\n\nתודה,\nGreen Mobile")
+
+
+def send_cancel_template(phone: str, name: str, p2, template_name: str) -> str:
+    """שולח template ביטול-הזמנה מאושר (2 פרמטרים: {{1}}=שם, {{2}}=מוצר/מס' הזמנה) ישירות
+    דרך מטא — cart_recovery (אי-תשלום) / order_cancelled_stock (חוסר מלאי). מחליף את נתיב
+    הביטול של קונקטופ (flow 1703671507607 + CF worker). ללא כפתורים/header."""
+    if not meta_direct_ready():
+        raise WaError("Meta ישיר לא מוגדר")
+    if template_name not in ("cart_recovery", "order_cancelled_stock"):
+        raise WaError(f"תבנית ביטול לא נתמכת: {template_name}")
+    import os as _os
+    import requests as _rq
+    params = [{"type": "text", "text": str(name or "לקוח/ה יקר/ה")[:60]},
+              {"type": "text", "text": str(p2 or "")[:200]}]
+    payload = {"messaging_product": "whatsapp", "to": str(phone), "type": "template",
+               "template": {"name": template_name, "language": {"code": "he"},
+                            "components": [{"type": "body", "parameters": params}]}}
+    r = _rq.post(f"{META_GRAPH}/{_os.getenv('META_WA_PHONE_ID').strip()}/messages",
+                 headers={"Authorization": f"Bearer {_os.getenv('META_WA_TOKEN').strip()}",
+                          "Content-Type": "application/json"}, json=payload, timeout=30)
+    if r.status_code not in (200, 201):
+        raise WaError(f"cancel template {template_name} failed ({r.status_code}): {r.text[:200]}")
+    wamid = ((r.json().get("messages") or [{}])[0]).get("id", "")
+    _store_outbound(phone, _render_cancel_body(template_name, name, p2), wamid=wamid, mtype="template")
+    return wamid
+
+
 def send_text(phone: str, text: str) -> str:
     """טקסט פשוט מהבוט (לא דרך send_reply שמסמן 'אנושי')."""
     wamid = _meta_send_text(phone, text)
