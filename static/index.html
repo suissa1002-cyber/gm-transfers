@@ -1920,6 +1920,11 @@ function transferRequestHTML(fname, lines){
   lines=lines.slice().sort((a,b)=>(a.to_branch-b.to_branch)||String(a.name).localeCompare(b.name));
   const date=new Date().toLocaleDateString('he-IL',{day:'2-digit',month:'2-digit',year:'numeric'});
   const totalQty=lines.reduce((a,l)=>a+(Number(l.qty)||0),0);
+  // גרסת טקסט לוואטסאפ (העובד לוקח את הרשימה בנייד לליקוט)
+  const waText='📦 בקשת העברת מלאי — מסניף '+fname+'\n📅 '+date+'\n\n'+
+    lines.map((l,i)=>(i+1)+'. '+l.name+(l.color?' ('+l.color+')':'')+
+      '\n   מק"ט '+l.product_id+' · כמות '+l.qty+' · ← '+l.to_name).join('\n')+
+    '\n\nסה"כ '+lines.length+' שורות · '+totalQty+' יחידות\n— Green Mobile';
   const rows=lines.map(l=>{
     const clr=l.color?` <span style="display:inline-block;font-size:12px;font-weight:700;padding:1px 9px;border-radius:999px;background:#eef2ff;color:#3730a3;margin-inline-start:6px">🎨 ${_esc(l.color)}</span>`:'';
     return `<tr><td class="nm">${_esc(l.name)}${clr}</td><td class="sku">${_esc(l.product_id)}</td><td class="q">${l.qty}</td><td class="to">${_esc(l.to_name)}</td></tr>`;}).join('');
@@ -1942,14 +1947,32 @@ function transferRequestHTML(fname, lines){
  tbody tr:nth-child(even){background:#fafbfd}
  .total{padding:14px 22px;font-weight:700;background:#f5f7fb;text-align:center}
  .foot{padding:10px;text-align:center;color:#9aa6b6;font-size:12px}
+ .acts{padding:14px 22px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+ .acts button{border-radius:11px;padding:12px 22px;font-size:15px;font-weight:700;cursor:pointer;border:0}
+ .acts .wa{background:#16a34a;color:#fff} .acts .pr{background:#fff;color:#2563eb;border:1.5px solid #2563eb}
+ @media print{.noprint{display:none!important}}
 </style></head><body>
 <div class="card">
   <div class="top"><div class="logo">📦 Green Mobile</div><div class="ttl">בקשת העברת מלאי</div></div>
   <div class="meta"><div>מסניף <b>${_esc(fname)}</b></div><div class="date">${date}</div></div>
   <table><thead><tr><th>מוצר</th><th>מק״ט</th><th>כמות</th><th>לסניף</th></tr></thead><tbody>${rows}</tbody></table>
   <div class="total">סה״כ ${lines.length} שורות · ${totalQty} יחידות</div>
+  <div class="acts noprint">
+    <button class="wa" onclick="sendWa()">📤 שלח לוואטסאפ</button>
+    <button class="pr" onclick="window.print()">🖨 הדפס</button>
+  </div>
   <div class="foot">קליטת העברות — Green Mobile</div>
-</div></body></html>`;
+</div>
+<script>
+var WA_TEXT=${JSON.stringify(waText)};
+function sendWa(){
+  var n=prompt('מספר וואטסאפ של העובד (למשל 0501234567):'); if(!n) return;
+  n=String(n).replace(/\\D/g,''); if(!n){return;}
+  if(n.charAt(0)==='0') n='972'+n.slice(1); else if(n.slice(0,3)!=='972') n='972'+n;
+  window.open('https://wa.me/'+n+'?text='+encodeURIComponent(WA_TEXT),'_blank');
+}
+<\/script>
+</body></html>`;
 }
 function openHTMLWindow(html){
   const w=window.open('','_blank');
