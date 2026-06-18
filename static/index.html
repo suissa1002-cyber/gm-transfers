@@ -318,6 +318,7 @@
   .wa-conv .nm{font-weight:700;font-size:14px}
   .wa-conv .lm{color:var(--muted);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .wa-conv .meta{margin-inline-start:auto;text-align:left;flex:none}
+  .wa-avatar{display:inline-flex;align-items:center;justify-content:center;border-radius:50%;color:#fff;font-weight:700;flex:none;line-height:1;text-transform:uppercase;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.15)}
   .wa-dot{width:9px;height:9px;border-radius:50%;background:var(--blue);flex:none}
   .wa-thread{background:var(--card);border:1px solid var(--line);border-radius:14px;display:flex;
              flex-direction:column;height:calc(100vh - 270px);min-height:340px}
@@ -2323,6 +2324,18 @@ async function runRemovalsIngest(){
 
 // ── 💬 וואטסאפ (ConnectOp) — inbox + שיחה + מענה עם אכיפת חלון 24ש בצד שרת ──
 function escW(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+// אווטאר עגול בסגנון וואטסאפ — אות ראשונה + צבע קבוע לפי הטלפון (מטא לא חושפת תמונת פרופיל אמיתית)
+function waAvatar(name, phone, size){
+  size = size || 34;
+  const s = String(name||phone||'?').trim();
+  let init = '?';
+  for(const ch of s){ if(/[\p{L}\p{N}]/u.test(ch)){ init = ch; break; } }
+  const key = String(phone||name||'');
+  let h = 0; for(let i=0;i<key.length;i++){ h = (h*31 + key.charCodeAt(i)) >>> 0; }
+  const colors=['#2a9d8f','#e76f51','#457b9d','#8338ec','#3a86ff','#fb5607','#06a77d','#d62828','#7209b7','#ff006e','#0096c7','#588157'];
+  const bg = colors[h % colors.length];
+  return `<span class="wa-avatar" style="width:${size}px;height:${size}px;font-size:${Math.round(size*0.46)}px;background:${bg}">${escW(init)}</span>`;
+}
 // Enter שולח רק במחשב (מקלדת פיזית); במובייל Enter = שורה חדשה, שולחים בכפתור — כמו וואטסאפ
 function waEnterSend(ev, fn){
   if(ev.key==='Enter' && !ev.shiftKey && !window.matchMedia('(pointer: coarse)').matches){
@@ -2348,6 +2361,7 @@ function waConvRow(c){
   const active=S.waPhone===c.phone?'active':'';
   return `<div class="wa-conv ${active}" onclick="openWaConv('${escW(c.phone)}')">
     ${waIsUnread(c)?'<span class="wa-dot"></span>':''}
+    ${waAvatar(c.name, c.phone, 40)}
     <div style="min-width:0;flex:1">
       <div class="nm" style="display:flex;align-items:center;gap:5px">${c.star?`<span class="wa-star-on" style="display:inline-flex">${ico('star',13,true)}</span>`:''}<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(c.name)}</span> ${(c.handoff||c.live_chat)?`<span title="מצב אנושי — הבוט מושתק בשיחה" style="display:inline-flex;color:#16a34a">${ico('user',13)}</span>`:''}</div>
       <div class="lm">${escW(c.last_msg)||'<i>—</i>'}</div>
@@ -2454,6 +2468,7 @@ function waThreadHTML(){
   return `
     <div class="wa-head">
       <button class="btn-ghost wa-back wa-ico" onclick="S.waPhone='';S.waThread=null;S.waPanel=false;renderWa()">${ico('back')}</button>
+      ${waAvatar(conv.name, S.waPhone, 36)}
       <b>${escW(conv.name)}</b>
       <span class="muted" style="direction:ltr;font-size:12px">+${escW(S.waPhone)}</span>
       ${winChip}
