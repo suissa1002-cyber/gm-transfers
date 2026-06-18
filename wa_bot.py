@@ -163,6 +163,12 @@ def handle(phone: str, text: str, mtype: str = "text", reply_id: str = "", wamid
     # ברכה (גם בתוך מצב חיפוש) → תפריט, במקום "לא מצאתי 'היי'"
     if not rid and _is_greeting(low):
         return _menu(phone)
+    # תמונה/מדיה ללא טקסט — לא לאבד את הלקוח לברכה ("היי תודה שפנית..." מרגיש כמו איפוס).
+    # מאשרים בחום ומפעילים את אורי, כך שההמשך יישאר בשיחה (Apple Watch case).
+    if not rid and not low and mtype in ("image", "video", "sticker", "document", "audio"):
+        _mark_uri_engaged(phone)
+        wa.send_text(phone, "קיבלתי 📷 איך אפשר לעזור? אפשר גם לתאר לי בקצרה במילים.")
+        return
 
     # ── זרימות תלויות-מצב ──
     if state == "await_order_number" and not rid:
@@ -348,19 +354,11 @@ def _ask_uri(phone, question, wamid="") -> bool:
     if not _uri_alive():
         return False
     import main
-    # "רגע בודק" — רק אם לא נשלח ב-2 הדקות האחרונות (מונע ספאם בשיחה רב-תורית;
-    # החיווי הרציף ממילא מראה שמשהו קורה). מונע את ה-6×"רגע בודק" שראינו אצל Hofit.
-    from datetime import datetime as _dtw, timezone as _tzw
-    _lw = db.sales_state_get(f"uri_wait:{phone}")
-    _show_wait = True
-    if _lw:
-        try:
-            _show_wait = (_dtw.now(_tzw.utc) - _dtw.fromisoformat(_lw)).total_seconds() > 120
-        except Exception:  # noqa: BLE001
-            pass
-    if _show_wait:
-        wa.send_text(phone, "רגע, בודק/ת עבורך 🔍")
-        db.sales_state_set(f"uri_wait:{phone}", _dtw.now(_tzw.utc).isoformat())
+    # "כמה רגעים, בודק עבורך" — רק בתחילת שיחה (כשעוד לא מעורב עם אורי), פעם אחת.
+    # החיווי הרציף מכסה את ההמתנה; חזרה על הטקסט על כל תשובה נראית רע (Hofit/Apple Watch).
+    # זכר (אורי = שם זכר) — בלי 'בודק/ת'.
+    if not _uri_engaged(phone):
+        wa.send_text(phone, "כמה רגעים, בודק עבורך 🔎")
     # ── חיווי הקלדה רציף — מתחיל **מיד** (מכסה גם את החיפוש לפני שהמשימה נכנסת לתור,
     #    שם היה הפער של ~30ש), משדר מחדש כל 7ש כי החיווי פג אחרי ~25ש (וה'רגע בודק'
     #    מנקה אותו), ונעצר כשהמשימה done/error. העיבוד אסינכרוני בשירות נפרד. ──
@@ -693,6 +691,9 @@ def _product_card(phone, rid, data):
         wa.send_buttons(phone, "מה הלאה?", btns)
     # שומרים את המוצר לשלב הרכישה (כולל שאלת הלקוח — לרמז צבע/וריאציה)
     db.bot_session_set(phone, "viewing", {"pid": pid, "product": p, "q": (data or {}).get("__q", "")})
+    # מפעילים את אורי — שאלות המשך אחרי כרטיס ("מה מחיר"/"יש צבעים?"/"מה ההבדל") יילכו
+    # אליו עם הקשר השיחה, במקום ליפול לברכה (Apple Watch case).
+    _mark_uri_engaged(phone)
 
 
 # ── זרימת הזמנה ותשלום בצ'אט ──
