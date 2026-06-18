@@ -3443,15 +3443,19 @@ function waPanelHTML(){
   return `
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
       <div style="display:flex;align-items:center;gap:11px;min-width:0">
-        <span class="wa-avatar up" onclick="waPicUpload()" title="${pic?'החלף תמונה':'העלה תמונה'}" style="width:52px;height:52px;font-size:21px;${pic?`background-image:url('${escW(pic)}')`:''}">${pic?'':escW(waInitials(ct.full_name||S.waPhone,S.waPhone))}</span>
+        <span class="wa-avatar up" onclick="waPicMenu()" title="לחץ להגדרת תמונה" style="width:52px;height:52px;font-size:21px;${pic?`background-image:url('${escW(pic)}')`:''}">${pic?'':escW(waInitials(ct.full_name||S.waPhone,S.waPhone))}</span>
         <div style="min-width:0">
           <b style="font-size:15px">${escW(ct.full_name||'')}</b>
           <div class="muted" style="direction:ltr">+${escW(S.waPhone)}</div>
-          <span class="muted" style="font-size:11px;cursor:pointer;text-decoration:underline" onclick="waPicUpload()">${pic?'החלף תמונה':'➕ הוסף תמונה'}</span>${pic?` · <span class="muted" style="font-size:11px;cursor:pointer" onclick="waPicRemove()">הסר</span>`:''}
         </div>
       </div>
       <button class="btn-ghost" onclick="waTogglePanel()">✕</button>
     </div>
+    ${S._waPicMenu?`<div style="display:flex;align-items:center;gap:8px;margin:7px 0;font-size:12px;flex-wrap:wrap">
+      <button class="btn-ghost" style="padding:4px 10px;font-size:12px" onclick="waPicUpload()">📁 בחר תמונה</button>
+      <span class="muted">או הדבק (Ctrl+V)</span>
+      ${pic?`<button class="btn-ghost" style="padding:4px 10px;font-size:12px" onclick="waPicRemove()">🗑 הסר</button>`:''}
+    </div>`:''}
     <input type="file" id="waPicFile" accept="image/*" style="display:none" onchange="waPicDoUpload(this)">
     ${ct.email?`<div class="muted" style="display:flex;align-items:center;gap:5px;justify-content:flex-end">${escW(ct.email)} ${ico('mail',13)}</div>`:''}
     ${ct.subscribed_date?`<div class="muted" style="font-size:12px">לקוח מאז ${escW(String(ct.subscribed_date).slice(0,10))}</div>`:''}
@@ -3470,24 +3474,36 @@ function waPanelHTML(){
     <h4 style="display:flex;align-items:center;gap:5px">${ico('sliders',14)} פעולות</h4>
     <button class="btn-ghost" onclick="waExport()" style="width:100%;display:inline-flex;align-items:center;justify-content:center;gap:7px">${ico('download',15)} ייצוא שיחה לקובץ</button>`;
 }
-// ── תמונת פרופיל ידנית פר-לקוח ──
+// ── תמונת פרופיל ידנית פר-לקוח (בחירת קובץ או הדבקה מהלוח) ──
+function waPicMenu(){ S._waPicMenu=!S._waPicMenu; const p=document.getElementById('waPanelBox'); if(p) p.innerHTML=waPanelHTML(); }
 function waPicUpload(){ const f=document.getElementById('waPicFile'); if(f) f.click(); }
-async function waPicDoUpload(inp){
-  const f=inp.files&&inp.files[0]; inp.value=''; if(!f||!S.waPhone) return;
+async function waPicDoUpload(inp){ const f=inp.files&&inp.files[0]; inp.value=''; await _waPicSend(f); }
+async function _waPicSend(f){
+  if(!f||!S.waPhone) return;
   if(f.size>5*1024*1024){ toast('תמונה גדולה מדי (מקס׳ 5MB)',false); return; }
   showLoading('מעלה תמונה…');
   try{
     const fd=new FormData(); fd.append('file',f,f.name||'pic.jpg');
     const r=await api('/api/admin/wa/contact-pic/'+encodeURIComponent(S.waPhone),{method:'POST',body:fd},60000);
     hideLoading();
-    if(r&&r.ok){ toast('התמונה הועלתה ✓',true); waPicBust(S.waPhone, r.pic+'&v='+Date.now()); }
+    if(r&&r.ok){ toast('התמונה הועלתה ✓',true); S._waPicMenu=false; waPicBust(S.waPhone, r.pic+'&v='+Date.now()); }
     else toast('ההעלאה נכשלה',false);
   }catch(e){ hideLoading(); toast('ההעלאה נכשלה',false); }
+}
+// הדבקת תמונה מהלוח כשתפריט התמונה פתוח → מגדיר כתמונת הלקוח (קודם לנתיב הצ'אט)
+function waPicTryPaste(e){
+  if(!S._waPicMenu || !S.waPhone) return false;
+  const cd=e.clipboardData; if(!cd) return false;
+  let f=null;
+  for(const it of (cd.items||[])){ if(it.kind==='file'&&(it.type||'').startsWith('image/')){ f=it.getAsFile(); if(f) break; } }
+  if(!f && cd.files && cd.files.length){ for(const cf of cd.files){ if((cf.type||'').startsWith('image/')){ f=cf; break; } } }
+  if(!f) return false;
+  e.preventDefault(); S._waPicMenu=false; _waPicSend(f); return true;  // flag סינכרוני — מונע טיפול כפול
 }
 async function waPicRemove(){
   if(!S.waPhone || !confirm('להסיר את התמונה של הלקוח?')) return;
   try{ await api('/api/admin/wa/contact-pic/'+encodeURIComponent(S.waPhone),{method:'DELETE'},20000);
-       waPicBust(S.waPhone, ''); toast('התמונה הוסרה',true); }
+       S._waPicMenu=false; waPicBust(S.waPhone, ''); toast('התמונה הוסרה',true); }
   catch(e){ toast('ההסרה נכשלה',false); }
 }
 function waPicBust(phone, pic){
@@ -3818,6 +3834,7 @@ if(!window._waPasteDocBound){
   document.addEventListener('paste', function(e){
     try{
       if(!S || !S.waPhone) return;                 // אין שיחה פתוחה
+      if(waPicTryPaste(e)) return;                 // תפריט תמונת הלקוח פתוח → תמונת פרופיל
       const t=e.target;
       if(t && t.id==='waText') return;             // התיבה כבר מטופלת ב-onpaste
       if(t && (t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.isContentEditable)) return; // שדה אחר — לא לגעת
@@ -3829,6 +3846,7 @@ if(!window._waPasteDocBound){
   });
 }
 function waPaste(e){
+  if(waPicTryPaste(e)) return;       // תפריט תמונת הלקוח פתוח → תמונת פרופיל (קודם לצ'אט)
   // הדבקת תמונה מה-clipboard → פריוויו בתיבת ההקלדה (לא שליחה עיוורת).
   // עמיד למגוון מקורות: items עם type image/*, clipboardData.files (macOS/Safari),
   // ו-fallback ל-file item גם בלי type מדויק.
