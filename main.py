@@ -3460,7 +3460,15 @@ def admin_order_status(oid: int, body: OrderStatusIn, x_admin_key: Optional[str]
                 auth=(k, s), timeout=45)
     if not r.ok:
         raise HTTPException(502, f"עדכון הסטטוס נכשל ({r.status_code}: {r.text[:150]})")
-    return {"ok": True, "status": r.json().get("status")}
+    o = r.json()
+    # התראה ללקוח מיידית על שינוי הסטטוס (בהפצה/מוכן לאיסוף/נק' מסירה/ביטול) — לא
+    # מסתמכים על ה-webhook/job (הזמנה עלולה ליפול מ-50 האחרונות). force=True + דדופ
+    # פר-סטטוס מונע כפילות אם ה-webhook גם יירה.
+    try:
+        _notify_order_status(o, force=True)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("immediate status-notify failed for %s: %s", oid, e)
+    return {"ok": True, "status": o.get("status")}
 
 
 def _normalize_status(st: str) -> str:
@@ -4493,12 +4501,14 @@ def _classify_cancellation(o: dict) -> str:
     return "abandoned" if (not has_pay and (0 <= mins <= 30)) else "real_cancel"
 
 
-def _notify_order_status(o, enabled=None, init="__fetch__"):
+def _notify_order_status(o, enabled=None, init="__fetch__", force=False):
     """שולח ללקוח template סטטוס מאושר אם הסטטוס *השתנה* (בהפצה/מוכן לאיסוף/נק' מסירה).
     משמש גם ב-job (כל 3 דק') וגם ב-webhook (מיידי). מגודר WA_SEND_STATUS_AUTO + דדופ
     פר הזמנה+סטטוס. ריצה ראשונה (init=None) רק רושמת — מונע backfill.
     ביטול (cancelled): מגודר בדגל *נפרד* WA_SEND_CANCEL_AUTO — שולח native את תבנית
-    הביטול המתאימה (cart_recovery/order_cancelled_stock), מחליף את נתיב קונקטופ."""
+    הביטול המתאימה (cart_recovery/order_cancelled_stock), מחליף את נתיב קונקטופ.
+    force=True (שינוי סטטוס מפורש מהקונסולה): עוקף את שמירת ה-backfill/שינוי כדי שתמיד
+    תצא התראה — הדדופ פר-סטטוס (status_sent) עדיין מונע כפילות מול ה-webhook/job."""
     num = str(o.get("number") or "")
     if not num:
         return
@@ -4510,7 +4520,7 @@ def _notify_order_status(o, enabled=None, init="__fetch__"):
     key = f"order_last_status:{num}"
     last = db.sales_state_get(key)
     db.sales_state_set(key, st)
-    if not init or last is None or last == st:
+    if not force and (not init or last is None or last == st):
         return                               # ריצה ראשונה / לא ידוע / ללא שינוי → דלג
     # --- ביטול הזמנה native (דגל נפרד, רדום עד cutover קונקטופ — מונע כפילות) ---
     if st == "cancelled":
