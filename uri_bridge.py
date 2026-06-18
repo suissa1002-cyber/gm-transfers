@@ -290,6 +290,10 @@ def run_claude(prompt: str, resume_sid: str = None, fast: bool = False) -> tuple
             return False, (r.stderr or out or "claude נכשל")[-400:], None
         try:
             j = json.loads(out)
+            # מדידה (אפס שינוי התנהגות): turns גבוה = הרבה סבבי-כלים = איטי
+            log.info("claude metrics: turns=%s dur=%sms api=%sms cost=$%s fast=%s",
+                     j.get("num_turns"), j.get("duration_ms"),
+                     j.get("duration_api_ms"), j.get("total_cost_usd"), fast)
             return True, (j.get("result") or "").strip(), j.get("session_id")
         except Exception:  # noqa: BLE001
             return True, out, None
