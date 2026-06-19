@@ -115,18 +115,27 @@ def file_to_folder(M) -> dict:
         M.select("INBOX", readonly=False)
         lbl = '"%s"' % _imap_utf7(FILE_LABEL)
         subs = _inbox_subject_map(M)
-        to_file = [u for u, s in subs.items() if _is_customer_invoice(s)]
+        to_file = [u for u, s in subs.items() if _is_customer_invoice(s)]  # u = str
         res["checked"] = len(to_file)
         res["store"] = []
         for uid in to_file:
-            M.uid("STORE", uid, "+X-GM-LABELS", "(%s)" % lbl)   # מצמיד תווית ייעודית
-            typ, r = M.uid("STORE", uid, "-X-GM-LABELS", "(\\Inbox)")  # ארכוב
-            if len(res["store"]) < 4:
-                rs = b" ".join(x for x in r if isinstance(x, bytes)).decode("utf-8", "replace")
-                res["store"].append({"uid": uid.decode(), "typ": typ, "resp": rs[:150]})
-            res["filed"] += 1
-        # כמה חשבוניות לקוח נשארו ב-INBOX (אחרי STORE מוצלח אמור להיות 0; חישוב זול
-        # בלי fetch נוסף — פער יצביע על STORE שנכשל).
+            try:
+                M.uid("STORE", uid, "+X-GM-LABELS", "(%s)" % lbl)   # מצמיד תווית ייעודית
+                typ, r = M.uid("STORE", uid, "-X-GM-LABELS", "(\\Inbox)")  # ארכוב
+                if len(res["store"]) < 4:
+                    rs = b" ".join(x for x in (r or []) if isinstance(x, bytes)).decode("utf-8", "replace")
+                    res["store"].append({"uid": uid, "typ": typ, "resp": rs[:160]})
+                res["filed"] += 1
+            except Exception as e:  # noqa: BLE001
+                if len(res["store"]) < 4:
+                    res["store"].append({"uid": uid, "err": str(e)[:160]})
+        # בדיקת אמת: כמה מה-to_file עדיין ב-INBOX אחרי הארכוב (0 = הצלחה)
+        try:
+            typ, d = M.uid("search", None, "ALL")
+            still = set(x.decode() for x in (d[0].split() if d and d[0] else []))
+            res["still_in_inbox"] = sum(1 for u in to_file if u in still)
+        except Exception:  # noqa: BLE001
+            pass
         res["remaining"] = res["checked"] - res["filed"]
         if res["filed"]:
             logger.info("filed %d customer-invoice messages to '%s'", res["filed"], FILE_LABEL)
