@@ -66,9 +66,10 @@ def _imap_utf7(s: str) -> str:
     return "".join(res)
 
 
-def _inbox_subject_map(M) -> dict:
-    """מחזיר {uid(str): subject} לכל הודעות ה-INBOX, ב-fetch אצווה אחד (יעיל). כולל
-    גם הודעות \\Deleted ע"י איחוד ALL+DELETED."""
+def _inbox_msg_map(M) -> dict:
+    """מחזיר {uid(str): (subject, thrid)} לכל הודעות ה-INBOX. שולף **באצוות (chunks)** —
+    fetch ענק יחיד החזיר רק חלק מההודעות (זה היה באג: חשבוניות ישנות לא נסרקו). מצרף
+    X-GM-THRID כדי לארכב שרשור-שלם (bounce/תגובה באותו thread). כולל גם \\Deleted."""
     uids = []
     seen = set()
     for crit in (("ALL",), ("DELETED",)):
@@ -80,20 +81,24 @@ def _inbox_subject_map(M) -> dict:
         except Exception:  # noqa: BLE001
             pass
     out = {}
-    if not uids:
-        return out
-    try:
-        uid_csv = b",".join(uids).decode()
-        typ, md = M.uid("fetch", uid_csv, "(BODY.PEEK[HEADER.FIELDS (SUBJECT)])")
-        for part in (md or []):
-            if isinstance(part, tuple) and part[0]:
-                m = re.search(rb"UID (\d+)", part[0])
-                if not m:
-                    continue
-                hdr = email.message_from_bytes(part[1] or b"")
-                out[m.group(1).decode()] = _decode(hdr.get("Subject") or "")
-    except Exception as e:  # noqa: BLE001
-        logger.warning("inbox subject fetch failed: %s", e)
+    CHUNK = 100
+    for i in range(0, len(uids), CHUNK):
+        chunk = uids[i:i + CHUNK]
+        try:
+            uid_csv = b",".join(chunk).decode()
+            typ, md = M.uid("fetch", uid_csv,
+                            "(X-GM-THRID BODY.PEEK[HEADER.FIELDS (SUBJECT)])")
+            for part in (md or []):
+                if isinstance(part, tuple) and part[0]:
+                    mu = re.search(rb"UID (\d+)", part[0])
+                    if not mu:
+                        continue
+                    mt = re.search(rb"X-GM-THRID (\d+)", part[0])
+                    hdr = email.message_from_bytes(part[1] or b"")
+                    out[mu.group(1).decode()] = (_decode(hdr.get("Subject") or ""),
+                                                 mt.group(1).decode() if mt else None)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("inbox msg fetch chunk failed: %s", e)
     return out
 
 
@@ -114,9 +119,14 @@ def file_to_folder(M) -> dict:
     try:
         M.select("INBOX", readonly=False)
         lbl = '"%s"' % _imap_utf7(FILE_LABEL)
-        subs = _inbox_subject_map(M)
-        to_file = [u for u, s in subs.items() if _is_customer_invoice(s)]  # u = str
+        mm = _inbox_msg_map(M)  # {uid: (subject, thrid)}
+        # זיהוי שרשורי חשבונית-לקוח (לפי שם עוסק בנושא של *הודעה כלשהי* בשרשור), ואז
+        # ארכוב **כל** הודעות אותם שרשורים — תופס גם את ה-bounce שכותרתו שונה (DSN).
+        cust_thrids = {th for (s, th) in mm.values() if th and _is_customer_invoice(s)}
+        to_file = [u for u, (s, th) in mm.items()
+                   if (th and th in cust_thrids) or _is_customer_invoice(s)]
         res["checked"] = len(to_file)
+        res["scanned"] = len(mm)
         # ⚠️ ארכוב ב-Gmail: -X-GM-LABELS (\Inbox) **לא עובד** (Gmail מחזיר OK אך לא מסיר;
         # \Inbox אפילו לא מופיע ב-X-GM-LABELS). הדרך האמינה: +FLAGS \Deleted ואז EXPUNGE.
         # ההודעה גם ב-All Mail → EXPUNGE מ-INBOX רק מוריד את תווית Inbox (ארכוב), לא מוחק.
