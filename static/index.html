@@ -1893,7 +1893,7 @@ function renderPlan(){
                 :`<span class="ord-st" style="color:#b45309;border-color:#b4530955;background:#b4530914">ממתין לשידור</span>`;
         const clr=l.color?` <span style="display:inline-block;font-size:11px;font-weight:700;padding:1px 8px;border-radius:999px;border:1px solid var(--line);background:var(--bg);color:var(--txt);margin-inline-start:6px;vertical-align:middle">🎨 ${_esc(l.color)}</span>`:'';
         return `<tr><td style="font-family:monospace;direction:ltr;text-align:right">${l.product_id}</td><td>${l.name}${clr}</td>
-        <td><b>${l.qty}</b></td><td>${l.to_name}</td><td>${tag}</td><td class="muted" style="font-size:12px">${_esc(l.created_by||'—')}</td><td><button class="btn-ghost" onclick="deletePlanLine(${l.id})">✕</button></td></tr>`;}).join('')}
+        <td><b>${l.qty}</b></td><td>${l.to_name}</td><td>${tag}</td><td class="muted" style="font-size:12px">${_esc(l.created_by||'—')}</td><td style="white-space:nowrap"><button class="btn-ghost" title="שנה שידור לסניף אחר" onclick='openReroute(${l.id},${JSON.stringify(String(l.product_id))},${Number(l.from_branch)||0},${Number(l.to_branch)||0},${JSON.stringify(l.name||"")})'>⇄</button> <button class="btn-ghost" onclick="deletePlanLine(${l.id})">✕</button></td></tr>`;}).join('')}
       </tbody></table></div>`;
   });
   app.innerHTML=`<h1 class="title" style="display:flex;align-items:center;gap:8px">${ico('wrench',19)} ניהול אופרציה</h1>${adminTabsHTML()}
@@ -1903,6 +1903,36 @@ function renderPlan(){
       <button class="btn-ghost" onclick="clearPlan()" style="display:inline-flex;align-items:center;gap:5px">${ico('trash',14)} נקה הכל</button>`:''}
     </div>
     ${lines.length?html:'<div class="empty">אין בקשות העברה. הוסף מטאב "איזון מלאי" עם הכפתור ➕ לבקשה.</div>'}`;
+}
+
+// ── שינוי שידור לסניף אחר (re-route): בוחר סניף מקור חדש לפי מלאי חי ──
+async function openReroute(lineId, pid, curFrom, toBranch, name){
+  const root=document.getElementById('modalRoot');
+  root.innerHTML=`<div class="overlay" onclick="closeModal()"><div class="modal" style="max-width:440px;text-align:right" onclick="event.stopPropagation()">
+    <h3 style="margin:0 0 4px;display:flex;align-items:center;gap:6px">${ico('radio',17)} שנה שידור לסניף אחר</h3>
+    <div class="muted" style="font-size:13px;margin-bottom:14px">${_esc(name)} — בחר סניף שיקבל את הבקשה (מבטל בסניף הנוכחי)</div>
+    <div id="rrBody" class="muted" style="text-align:center;padding:18px">טוען מלאי חי מהקופה…</div>
+  </div></div>`;
+  let data;
+  try{ data=await api('/api/admin/live-stock/'+encodeURIComponent(pid)); }
+  catch(e){ const b=document.getElementById('rrBody'); if(b) b.innerHTML='<span style="color:var(--red)">לא ניתן לקרוא מלאי מהקופה כרגע</span>'; return; }
+  const branches=(data.branches||[]).filter(b=>Number(b.id)!==Number(curFrom)&&Number(b.id)!==Number(toBranch));
+  const rows=branches.map(b=>{
+    const has=Number(b.qty)>0;
+    return `<button ${has?'':'disabled'} onclick="doReroute(${lineId},${b.id})"
+      style="display:flex;justify-content:space-between;align-items:center;width:100%;padding:13px 15px;margin-bottom:9px;border:1px solid var(--line);border-radius:12px;background:var(--card);cursor:${has?'pointer':'not-allowed'};opacity:${has?1:.45};color:var(--txt);font:inherit">
+      <b>${_esc(b.name)}</b>
+      <span style="color:${has?'#15803d':'var(--muted)'};font-weight:700">${b.qty} במלאי</span></button>`;
+  }).join('');
+  const el=document.getElementById('rrBody');
+  if(el) el.outerHTML=`<div>${rows||'<div class="muted" style="text-align:center;padding:12px">אין סניפים אחרים זמינים</div>'}</div>`;
+}
+async function doReroute(lineId, branchId){
+  try{ await api('/api/admin/plan/reroute',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({line_id:lineId,from_branch:branchId})}); }
+  catch(e){ alert('שגיאה בשינוי השידור'); return; }
+  closeModal();
+  try{ S.planData=await api('/api/admin/plan'); S.planCount=(S.planData.lines||[]).length; }catch(e){}
+  if(S.adminTab==='plan') renderPlan();
 }
 async function deletePlanLine(id){ showLoading(); try{ await api('/api/admin/plan/'+id,{method:'DELETE'}); }catch(e){} await loadPlan(false); hideLoading(); }
 async function clearPlan(fromBranch){

@@ -970,6 +970,18 @@ def admin_plan_clear(from_branch: Optional[int] = None, x_admin_key: Optional[st
     return {"ok": True}
 
 
+class RerouteIn(BaseModel):
+    line_id: int
+    from_branch: int     # סניף-המקור החדש שאליו מעבירים את השידור
+
+
+@app.post("/api/admin/plan/reroute")
+def admin_plan_reroute(body: RerouteIn, x_admin_key: Optional[str] = Header(None)):
+    """שינוי שידור של שורת בקשה לסניף מקור אחר (מבטל בקיים, משדר לחדש)."""
+    _require_admin(x_admin_key)
+    return {"ok": db.plan_reroute(body.line_id, body.from_branch)}
+
+
 @app.post("/api/admin/rebalance-scan")
 def admin_rebalance_scan(x_admin_key: Optional[str] = Header(None)):
     """הפעלת סריקת איזון מלאי ידנית (רצה ברקע, ~1-2 דק')."""

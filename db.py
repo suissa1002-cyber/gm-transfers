@@ -1354,6 +1354,16 @@ def plan_delete(pid) -> int:
         return cur.rowcount if hasattr(cur, "rowcount") else 0
 
 
+def plan_reroute(line_id, new_from_branch) -> bool:
+    """שינוי שידור לסניף אחר: מעדכן את סניף-המקור של שורת הבקשה ומדליק שידור מחדש
+    (bcast=1). היעד (to_branch) נשאר. מבטל בפועל את השידור בסניף הקודם (השורה עוברת)."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("UPDATE transfer_plan SET from_branch = ?, bcast = 1 WHERE id = ?"),
+                    (int(new_from_branch), int(line_id)))
+        return (cur.rowcount or 0) > 0 if hasattr(cur, "rowcount") else True
+
+
 def plan_clear(from_branch=None):
     with _conn() as c:
         cur = c.cursor()
