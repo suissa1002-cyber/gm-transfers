@@ -1438,7 +1438,6 @@ async function renderBoard(app, silent){
     ? (S.broadcast.groups||[]).map(g=>`<div class="bcast" onclick="openBroadcast(${g.to_branch})">
          <div class="bc-ic">${ico('radio',24)}</div>
          <div class="bc-txt"><b>בקשת העברה אל ${g.to_name}</b><span>${(g.lines||[]).length} פריטים · ${fmtTime(g.latest)} · לחץ לצפייה</span></div>
-         <button class="bc-x" onclick="event.stopPropagation();dismissBroadcast(${g.to_branch})">✕</button>
        </div>`).join('') : '';
   const needEmp=!S.employee;
   const notifBtn = (window.Notification && Notification.permission!=='granted')
