@@ -2057,7 +2057,7 @@ function transferRequestHTML(fname, lines){
 </div>
 <script>
 var WA_FROM=${JSON.stringify(fname)};
-var WA_LINES=${JSON.stringify(lines.map(function(l){return {name:l.name,color:l.color,product_id:l.product_id,qty:l.qty,to_name:l.to_name,to_branch:l.to_branch};}))};
+var WA_LINES=${JSON.stringify(lines.map(function(l){return {name:l.name,color:l.color,product_id:l.product_id,qty:l.qty,to_name:l.to_name,to_branch:l.to_branch,note:l.note};}))};
 function sendWa(){
   var n=String((prompt('מספר וואטסאפ של העובד (למשל 0501234567):')||'')).replace(/\\D/g,'');
   if(!n) return;
