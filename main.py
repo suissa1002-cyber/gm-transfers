@@ -2754,7 +2754,23 @@ def _render_digest_html(d: dict) -> str:
                      chip(f"{od2.get('oos', 0)} חסר בספק", "red" if (od2.get('oos') or 0) else "green")
                      + chip(f"{od2.get('unmatched', 0)} ללא מק\"ט", "amber" if (od2.get('unmatched') or 0) else "green"))
     wa = d.get("wa_unanswered", 0)
-    rows_html += row("💬", "וואטסאפ", chip(f"{wa} ממתינים לנציג", "amber" if (wa and wa != '?') else "green"))
+    wlist = d.get("wa_waiting") or []
+    wa_chip = chip(f"{wa} ממתינים לנציג", "amber" if (wa and wa != '?') else "green")
+    if wlist:
+        items = "".join(
+            f'<div style="padding:9px 20px;border-top:1px solid #f1f4f8;font-size:14px">'
+            f'<b>{esc(c.get("name") or c.get("phone"))}</b>'
+            f'<span style="color:#5e6b7d"> · {esc(c.get("last") or "")}</span></div>'
+            for c in wlist)
+        rows_html += (
+            '<details style="border-bottom:1px solid #eef1f6"><summary style="display:flex;'
+            'align-items:center;justify-content:space-between;padding:14px 20px;gap:10px;cursor:pointer">'
+            '<span style="display:flex;align-items:center;gap:8px;font-size:16px;font-weight:600">'
+            '<span style="font-size:19px">💬</span>וואטסאפ'
+            '<span style="color:#9aa5b1;font-size:12px">▾ הצג</span></span>'
+            f'{wa_chip}</summary><div style="background:#fafbfc">{items}</div></details>')
+    else:
+        rows_html += row("💬", "וואטסאפ", wa_chip)
 
     rems = d.get("reminders") or []
     rem_html = ""
@@ -2778,6 +2794,7 @@ def _render_digest_html(d: dict) -> str:
  .card{{max-width:560px;margin:0 auto;background:#fff;border-radius:18px;overflow:hidden;box-shadow:0 6px 30px rgba(0,0,0,.12)}}
  .top{{background:#1d4ed8;color:#fff;padding:18px 22px;display:flex;align-items:center;justify-content:space-between}}
  .top .ttl{{font-size:18px;font-weight:800}} .top .date{{color:#bfdbfe;font-size:14px}}
+ summary{{list-style:none}} summary::-webkit-details-marker{{display:none}}
 </style></head><body>
 <div class="card">
   <div class="top"><span class="ttl">☀️ בוקר טוב · סקירת היום</span><span class="date">{esc(date_lbl)}</span></div>
