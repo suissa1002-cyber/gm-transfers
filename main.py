@@ -104,8 +104,9 @@ def _sold_reconcile_job():
                 where = f"היעד היה <b>{to_name}</b>, אך נמכר ב<b>{sold_name}</b>."
             cleared = ("כרטיס הקליטה נסגר ונוקה מהדשבורד."
                        if r.get("transfer_closed") else "הפריט סומן כנמכר ונוקה מהכרטיס.")
+            fixed = "\n🔧 תוקן מ'חוסר' שגוי → 'נמכר'." if r.get("was_missing") else ""
             _tg_admin(f"{head}\n{r.get('name')} (סריאלי <code>{r.get('serial')}</code>)\n"
-                      f"{where}\n{cleared}")
+                      f"{where}\n{cleared}{fixed}")
             logger.info("sold-reconcile: serial=%s op=%s same=%s closed=%s",
                         r.get("serial"), r.get("op_id"), r.get("same_branch"),
                         r.get("transfer_closed"))

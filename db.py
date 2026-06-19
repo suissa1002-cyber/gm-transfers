@@ -760,15 +760,22 @@ def reconcile_sold_transfer_items() -> list:
     out = []
     with _conn() as c:
         cur = c.cursor()
+        # פריטים לריפוי: (א) פתוחים שלא נקלטו (received=0, in_transit/partial); וגם
+        # (ב) פריטים שסומנו **חוסר** (received=3) בהעברה שנסגרה לאחרונה — race: ההעברה
+        # נסגרה-כחוסר לפני שהמכירה נקלטה (כמו 13933, פער שניות). _sale_near_or_after
+        # עדיין מוודא שהמכירה סביב תחילת ההעברה, אז גם חוסר ישן לא ייתפס בטעות.
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%S")
         cur.execute(_q("""
-            SELECT ti.id AS item_id, ti.op_id, ti.serial, ti.name,
+            SELECT ti.id AS item_id, ti.op_id, ti.serial, ti.name, ti.received,
                    t.to_branch_id, t.from_branch_id,
                    COALESCE(t.first_seen, t.created_at) AS t_start
             FROM transfer_items ti
             JOIN transfers t ON t.op_id = ti.op_id
-            WHERE ti.received = 0 AND ti.serial IS NOT NULL AND ti.serial <> ''
-              AND t.status IN ('in_transit', 'partial')
-        """))
+            WHERE ti.serial IS NOT NULL AND ti.serial <> ''
+              AND ( (ti.received = 0 AND t.status IN ('in_transit', 'partial'))
+                 OR (ti.received = 3 AND t.status = 'closed'
+                     AND COALESCE(t.created_at, '') >= ?) )
+        """), (cutoff,))
         items = [dict(r) for r in cur.fetchall()]
         for it in items:
             start = it.get("t_start") or ""
@@ -805,6 +812,7 @@ def reconcile_sold_transfer_items() -> list:
                 "to_branch_id": it["to_branch_id"], "sold_branch_id": sold_b,
                 "same_branch": same, "sale_date": sale.get("sale_date"),
                 "transfer_closed": status in ("received", "closed"),
+                "was_missing": it.get("received") == 3,  # תוקן מחוסר-שקרי → נמכר
             })
     return out
 
