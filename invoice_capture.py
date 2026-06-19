@@ -167,31 +167,19 @@ def file_to_folder(M) -> dict:
         DSN_HINT = ("delivery status notification", "mail delivery", "undeliver",
                     "failure notice", "returned mail", "mail delivery failed")
         in_file = set(to_file)
-        dsn_checked = 0
-        res["dsn_samples"] = []
         for u, (s, th) in mm.items():
             if u in in_file or not any(h in (s or "").lower() for h in DSN_HINT):
                 continue
-            dsn_checked += 1
             try:
                 typ, md = M.uid("fetch", u, "(BODY.PEEK[])")
                 txt = _searchable(md[0][1]) if md and md[0] else ""
                 # חשבונית לקוח = שם עוסק+חשבונית, או כשל מסירה של מייל **שאנחנו** שלחנו
                 # (greenmobile.eshop) שהוא חשבונית — כי ספקים לא נשלחים מאיתנו.
-                match = _is_customer_invoice(txt) or \
-                    (INVOICE_FROM in txt and "חשבונית" in txt)
-                if len(res["dsn_samples"]) < 8:
-                    res["dsn_samples"].append({
-                        "match": match, "has_invoice": "חשבונית" in txt,
-                        "markers": [mk for mk in FILE_MARKERS if mk in txt],
-                        "snip": txt[:120]})
-                if match:
+                if _is_customer_invoice(txt) or (INVOICE_FROM in txt and "חשבונית" in txt):
                     to_file.append(u); in_file.add(u)
-            except Exception as e:  # noqa: BLE001
-                res["dsn_samples"].append({"err": str(e)[:80]})
-        res["dsn_checked"] = dsn_checked
+            except Exception:  # noqa: BLE001
+                pass
         res["checked"] = len(to_file)
-        res["scanned"] = len(mm)
         # ⚠️ ארכוב ב-Gmail: -X-GM-LABELS (\Inbox) **לא עובד** (Gmail מחזיר OK אך לא מסיר;
         # \Inbox אפילו לא מופיע ב-X-GM-LABELS). הדרך האמינה: +FLAGS \Deleted ואז EXPUNGE.
         # ההודעה גם ב-All Mail → EXPUNGE מ-INBOX רק מוריד את תווית Inbox (ארכוב), לא מוחק.
