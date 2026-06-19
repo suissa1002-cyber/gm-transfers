@@ -296,6 +296,11 @@ def handle(phone: str, text: str, mtype: str = "text", reply_id: str = "", wamid
 
     # ── טקסט חופשי → אורי (שיחה) או חיפוש מוצר ──
     if low and low not in _GREETINGS:
+        # הודעת סגירה/תודה טהורה ('הבנתי תודה') → תגובה קצרה בנימוס, בלי 'בודק עבורך'
+        # ובלי לערב את אורי (זה רק סיום שיחה, אין מה לחפש).
+        if _is_closing(low):
+            wa.send_text(phone, "בשמחה! אם יש עוד שאלות — אנחנו כאן 😊")
+            return
         prod = _product_query(low)
         # שיחה פעילה עם אורי: כל עוד זו לא שאילתת מוצר ברורה — הכל נשאר עם אורי,
         # כולל הודעות קצרות ('Ok'/'תודה') ומשפטים באנגלית ('I should receive it today').
@@ -343,6 +348,20 @@ def _is_attr_followup(low: str) -> bool:
     if _re.fullmatch(r"\d{2,4}\s*(gb|tb|ג'יגה|טרה|ג״ב)?", w, _re.I):
         return True
     return False
+
+
+# מילות סגירה/תודה — הודעה שכולה כאלה = סיום שיחה, לא שאלה. אסור להפעיל עליה
+# 'בודק עבורך' (אורי) — רק להגיב בנימוס. **לא** כולל 'כן' (עלול להיות אישור רכישה).
+_CLOSE_TOK = {"תודה", "רבה", "הבנתי", "מעולה", "אוקיי", "אוקי", "אוקייי", "סבבה",
+              "מצוין", "מצויין", "יופי", "ברור", "אחלה", "מושלם", "טוב", "תודהה",
+              "ok", "okay", "thanks", "thank", "you", "great", "perfect", "👍", "🙏"}
+
+
+def _is_closing(low: str) -> bool:
+    """True אם כל ההודעה היא מילות סגירה/תודה (עד 4 מילים) — 'הבנתי תודה', 'מעולה'."""
+    s = _re.sub(r"[!.,?‏‎\s]+", " ", (low or "")).strip()
+    words = [w for w in s.split() if w]
+    return bool(words) and len(words) <= 4 and all(w in _CLOSE_TOK for w in words)
 
 
 def _is_greeting(text: str) -> bool:
