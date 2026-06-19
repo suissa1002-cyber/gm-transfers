@@ -309,6 +309,58 @@ def _parse(pdf_bytes: bytes, subject: str = "") -> dict:
     return out
 
 
+def probe_sent(days: int = 21, max_msgs: int = 30) -> dict:
+    """אבחון תיקיית 'נשלח': מאשר שעותקי החשבונית שניו אורדר שולח ללקוחות (מהחשבון שלנו)
+    יושבים ב-Sent עם PDF — כדי לוודא שאפשר לכבות 'שלח עותק לשולח' ועדיין לקלוט מ-Sent."""
+    if not configured():
+        return {"ok": False, "reason": "imap-not-configured"}
+    out = {"ok": True, "folder": None, "with_pdf": 0, "items": []}
+    try:
+        M = imaplib.IMAP4_SSL(IMAP_HOST)
+        M.login(IMAP_USER, IMAP_PASS)
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "reason": f"login: {e}"}
+    try:
+        sent = "INBOX"
+        try:  # איתור תיקיית Sent לפי special-use \Sent (עמיד לשפה)
+            typ, boxes = M.list()
+            for b in (boxes or []):
+                line = b.decode() if isinstance(b, bytes) else str(b)
+                if "\\Sent" in line:
+                    m = re.search(r'"([^"]+)"\s*$', line) or re.search(r'(\S+)\s*$', line)
+                    if m:
+                        sent = m.group(1); break
+        except Exception:  # noqa: BLE001
+            pass
+        out["folder"] = sent
+        M.select(f'"{sent}"', readonly=True)
+        import time as _t
+        since = _t.strftime("%d-%b-%Y", _t.gmtime(_t.time() - days * 86400))
+        typ, data = M.uid("search", None, "FROM", INVOICE_FROM, "SINCE", since)
+        uids = (data[0].split() if data and data[0] else [])[-max_msgs:]
+        for uid in uids:
+            typ, md = M.uid("fetch", uid, "(BODY.PEEK[HEADER.FIELDS (TO SUBJECT)])")
+            if not md or not md[0]:
+                continue
+            hdr = email.message_from_bytes(md[0][1])
+            subj = _decode(hdr.get("Subject"))
+            to = _decode(hdr.get("To"))
+            typ, bs = M.uid("fetch", uid, "(BODYSTRUCTURE)")
+            has_pdf = bool(bs and bs[0] and b"PDF" in bs[0].upper())
+            if has_pdf and "חשבונית" in subj:
+                out["with_pdf"] += 1
+                if len(out["items"]) < 12:
+                    out["items"].append({"to": to[:40], "subject": subj[:60]})
+    except Exception as e:  # noqa: BLE001
+        out = {"ok": False, "reason": str(e)}
+    finally:
+        try:
+            M.logout()
+        except Exception:  # noqa: BLE001
+            pass
+    return out
+
+
 def probe(days: int = 21, max_msgs: int = 40) -> dict:
     """אבחון בלבד (לא שומר): סורק את התיבה ומחזיר אילו מיילים עם PDF יש,
     מאיזה שולח ובאיזה נושא — כדי לכוון את הפילטר/פענוח. לא נוגע בדגלים."""

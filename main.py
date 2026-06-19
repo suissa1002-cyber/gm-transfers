@@ -4556,6 +4556,8 @@ def admin_invoices_capture(probe: int = 0, reset: int = 0, dump: int = 0,
         return {"ok": False, "reason": "חסר INVOICE_IMAP_USER/INVOICE_IMAP_PASS ב-env"}
     if dump:
         return invoice_capture.inbox_dump()
+    if probe == 2:
+        return invoice_capture.probe_sent()
     if probe:
         return invoice_capture.probe()
     cleared = db.invoices_reset() if reset else 0
