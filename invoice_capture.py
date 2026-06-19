@@ -101,9 +101,24 @@ def file_to_folder(M) -> dict:
             M.uid("STORE", uid, "-X-GM-LABELS", "\\Inbox")
             res["filed"] += 1
         # דיאגנוסטיקה: כמה חשבוניות לקוח עדיין נשארו ב-INBOX (אחרי הניקוי אמור להיות ~0)
+        # + פירוט (נושא + has_pdf) כדי לזהות מה שנשאר (למשל הודעות bounce בלי PDF).
         try:
             typ, d2 = M.uid("search", None, "FROM", FILE_SENDER)
-            res["remaining"] = len(d2[0].split()) if d2 and d2[0] else 0
+            rem_uids = (d2[0].split() if d2 and d2[0] else [])
+            res["remaining"] = len(rem_uids)
+            detail = []
+            for uid in rem_uids[:10]:
+                try:
+                    typ, md = M.uid("fetch", uid, "(BODY.PEEK[])")
+                    m = email.message_from_bytes(md[0][1])
+                    subj = _decode(m.get("Subject") or "")
+                    pdf = any((p.get_content_type() or "").lower() == "application/pdf"
+                              or (_decode(p.get_filename() or "")).lower().endswith(".pdf")
+                              for p in m.walk())
+                    detail.append({"subject": subj[:70], "pdf": pdf})
+                except Exception:  # noqa: BLE001
+                    pass
+            res["remaining_detail"] = detail
         except Exception:  # noqa: BLE001
             pass
         if res["filed"]:
