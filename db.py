@@ -2268,6 +2268,15 @@ def sales_docids_since(since_prefix: str) -> set:
         return {str(r["doc_id"]) for r in cur.fetchall()}
 
 
+def sales_by_serial(serial: str) -> list:
+    """כל שורות המכירה לסריאל נתון (אבחון: doc_type/branch/qty/date) — למה ריפוי לא תפס."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""SELECT doc_id, name, qty, price, serial, branch_id, doc_type, sale_date
+                          FROM sales WHERE serial = ? ORDER BY sale_date DESC LIMIT 20"""), (serial,))
+        return [dict(r) for r in cur.fetchall()]
+
+
 def sales_summary() -> dict:
     with _conn() as c:
         cur = c.cursor()
