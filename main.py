@@ -2673,9 +2673,12 @@ def _digest_data() -> dict:
         # מהלקוח). תהליכי בוט/סטטוס/תיקון נחשבים נענו — לא נספרים.
         import wa as _wa
         agent = {str(p) for p in db.bot_handoff_phones(48)}
-        unread = {str(c.get("phone")) for c in _wa.list_conversations_native(limit=400)
-                  if c.get("unread")}
-        out["wa_unanswered"] = len(agent & unread)
+        waiting = [c for c in _wa.list_conversations_native(limit=400)
+                   if c.get("unread") and str(c.get("phone")) in agent]
+        out["wa_unanswered"] = len(waiting)
+        out["wa_waiting"] = [{"phone": c.get("phone"), "name": c.get("name") or "",
+                              "last": (c.get("last_text") or c.get("last_msg") or "")[:45]}
+                             for c in waiting[:25]]
     except Exception:  # noqa: BLE001
         out["wa_unanswered"] = "?"
     try:
