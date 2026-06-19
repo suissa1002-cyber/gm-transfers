@@ -103,10 +103,36 @@ def _inbox_msg_map(M) -> dict:
 
 
 def _is_customer_invoice(subject: str) -> bool:
-    """חשבונית לקוח = הנושא מכיל 'חשבונית' **וגם** שם עוסק שלנו (FILE_MARKERS). תופס
-    self-copy + bounce + תגובה; **לא** תופס חשבוניות ספקים (שם ספק אחר בנושא)."""
+    """חשבונית לקוח = הטקסט מכיל 'חשבונית' **וגם** שם עוסק שלנו (FILE_MARKERS). תופס
+    self-copy + bounce + תגובה; **לא** תופס חשבוניות ספקים (שם ספק אחר). פועל גם על
+    גוף הודעה (לזיהוי DSN לפי החשבונית המקורית בתוכו)."""
     s = subject or ""
     return ("חשבונית" in s) and any(mk in s for mk in FILE_MARKERS)
+
+
+def _searchable(raw: bytes) -> str:
+    """טקסט בר-חיפוש מהודעה גולמית: כותרות מפוענחות (Subject/From/To) + חלקי טקסט +
+    הודעה מצורפת (message/rfc822). נחוץ כדי לזהות בתוך DSN את החשבונית המקורית, שכותרתה
+    מקודדת MIME (חיפוש בייטים גולמי על עברית נכשל)."""
+    try:
+        m = email.message_from_bytes(raw or b"")
+    except Exception:  # noqa: BLE001
+        return ""
+    parts = []
+    for p in m.walk():
+        for h in ("Subject", "From", "To"):
+            v = p.get(h)
+            if v:
+                parts.append(_decode(v))
+        ct = (p.get_content_type() or "")
+        if ct.startswith("text") or "rfc822" in ct:
+            try:
+                payload = p.get_payload(decode=True)
+                if payload:
+                    parts.append(payload.decode("utf-8", "replace"))
+            except Exception:  # noqa: BLE001
+                pass
+    return " ".join(parts)
 
 
 def file_to_folder(M) -> dict:
@@ -125,6 +151,23 @@ def file_to_folder(M) -> dict:
         cust_thrids = {th for (s, th) in mm.values() if th and _is_customer_invoice(s)}
         to_file = [u for u, (s, th) in mm.items()
                    if (th and th in cust_thrids) or _is_customer_invoice(s)]
+        # הודעות כשל-מסירה (DSN) של חשבונית לקוח: ה-Subject באנגלית (בלי שם עוסק), אז
+        # מזהים לפי נושא DSN ואז מאשרים דרך **הגוף** (מכיל את החשבונית המקורית עם שם העוסק).
+        DSN_HINT = ("delivery status notification", "mail delivery", "undeliver",
+                    "failure notice", "returned mail", "mail delivery failed")
+        in_file = set(to_file)
+        dsn_checked = 0
+        for u, (s, th) in mm.items():
+            if u in in_file or not any(h in (s or "").lower() for h in DSN_HINT):
+                continue
+            dsn_checked += 1
+            try:
+                typ, md = M.uid("fetch", u, "(BODY.PEEK[])")
+                if md and md[0] and _is_customer_invoice(_searchable(md[0][1])):
+                    to_file.append(u); in_file.add(u)
+            except Exception:  # noqa: BLE001
+                pass
+        res["dsn_checked"] = dsn_checked
         res["checked"] = len(to_file)
         res["scanned"] = len(mm)
         # ⚠️ ארכוב ב-Gmail: -X-GM-LABELS (\Inbox) **לא עובד** (Gmail מחזיר OK אך לא מסיר;
