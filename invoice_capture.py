@@ -329,26 +329,27 @@ def inbox_dump(limit: int = 50) -> dict:
                         seen.add(x); uids.append(x)
             except Exception:  # noqa: BLE001
                 pass
-        for uid in uids[-limit:]:
+        # סריקה **מלאה** באצוות — מחזירים רק הודעות שנראות קשורות לחשבונית (חיפוש מילים
+        # בנושא) עם From/Subject/thrid האמיתיים, כדי לראות מה באמת בתיבה.
+        NEEDLES = ("חשבונית", "1082", "53996", "1041", "53954", "מובילים", "ג.א.א.ל")
+        CHUNK = 100
+        for i in range(0, len(uids), CHUNK):
+            chunk = uids[i:i + CHUNK]
             try:
-                typ, md = M.uid("fetch", uid,
-                                "(FLAGS X-GM-LABELS BODY.PEEK[HEADER.FIELDS (FROM SUBJECT)])")
-                if not md or not md[0]:
-                    continue
-                env = b""
-                for part in md:
-                    if isinstance(part, tuple) and part[0]:
-                        env += part[0]
-                flags = imaplib.ParseFlags(env)
-                flags = [f.decode() if isinstance(f, bytes) else f for f in flags]
-                env_s = env.decode("utf-8", "replace")
-                ml = re.search(r"X-GM-LABELS \(([^)]*)\)", env_s)
-                labels = ml.group(1) if ml else ""
-                hdr = email.message_from_bytes(md[0][1])
-                frm = _decode(hdr.get("From"))
-                subj = _decode(hdr.get("Subject"))
-                out["items"].append({"from": frm[:60], "subject": subj[:60],
-                                     "flags": flags, "labels": labels[:80]})
+                uid_csv = b",".join(chunk).decode()
+                typ, md = M.uid("fetch", uid_csv,
+                                "(X-GM-THRID BODY.PEEK[HEADER.FIELDS (FROM SUBJECT)])")
+                for part in (md or []):
+                    if not (isinstance(part, tuple) and part[0]):
+                        continue
+                    env_s = part[0].decode("utf-8", "replace")
+                    mt = re.search(r"X-GM-THRID (\d+)", env_s)
+                    hdr = email.message_from_bytes(part[1] or b"")
+                    frm = _decode(hdr.get("From"))
+                    subj = _decode(hdr.get("Subject"))
+                    if any(n in subj for n in NEEDLES) or any(n in frm for n in ("daemon", "mailer")):
+                        out["items"].append({"from": frm[:50], "subject": subj[:70],
+                                             "thrid": mt.group(1) if mt else None})
             except Exception:  # noqa: BLE001
                 pass
     except Exception as e:  # noqa: BLE001
