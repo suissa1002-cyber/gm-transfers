@@ -982,6 +982,22 @@ def admin_plan_reroute(body: RerouteIn, x_admin_key: Optional[str] = Header(None
     return {"ok": db.plan_reroute(body.line_id, body.from_branch)}
 
 
+class PlanNoteIn(BaseModel):
+    product_id: str
+    note: str = ""
+    from_branch: Optional[int] = None
+    to_branch: Optional[int] = None
+    name: str = ""
+
+
+@app.post("/api/admin/plan/note")
+def admin_plan_note(body: PlanNoteIn, x_admin_key: Optional[str] = Header(None)):
+    """הערה חופשית לסניף על פריט (מתחברת לבקשה; מוסיפה אם הפריט עוד לא בבקשה)."""
+    _require_admin(x_admin_key)
+    return db.plan_set_note(body.product_id, body.note, body.from_branch,
+                            body.to_branch, body.name)
+
+
 @app.post("/api/admin/rebalance-scan")
 def admin_rebalance_scan(x_admin_key: Optional[str] = Header(None)):
     """הפעלת סריקת איזון מלאי ידנית (רצה ברקע, ~1-2 דק')."""
@@ -2563,6 +2579,10 @@ def _render_transfer_list_html(fname: str, lines: list) -> str:
                  f'<td class="sku">{esc(l.get("product_id"))}</td>'
                  f'<td class="q">{esc(l.get("qty"))}</td>'
                  f'<td class="to">{esc(l.get("to_name"))}</td></tr>')
+        if (l.get("note") or "").strip():
+            rows += (f'<tr><td colspan="4" style="background:#fff7ed;color:#9a3412;'
+                     f'font-weight:700;font-size:14px;padding:9px 16px;border-bottom:1px solid #eef1f6">'
+                     f'📝 {esc(l.get("note"))}</td></tr>')
     to_html = (f' <span style="color:#2563eb;font-weight:700">← ל{esc(to_lbl)}</span>' if to_names else "")
     return f"""<!doctype html><html dir="rtl" lang="he"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">

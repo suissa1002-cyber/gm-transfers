@@ -551,6 +551,7 @@ def _migrate():
         ("transfer_plan",  "serial", "TEXT"),
         ("transfer_plan",  "bcast", "INTEGER"),
         ("transfer_plan",  "created_by", "TEXT"),
+        ("transfer_plan",  "note", "TEXT"),     # הערה חופשית לסניף (רשמי/eSIM וכו')
         # נעילת סניף: הסניף המאושר של המכשיר — שינוי רק באישור מנהל (טלגרם)
         ("devices",        "branch_locked", "TEXT"),
         # is_stock=0 → מוצר דיגיטלי/לא-מנוהל-מלאי (גיפט קארד/קוד) — מדלגים על שידור/OOS
@@ -1352,6 +1353,26 @@ def plan_delete(pid) -> int:
         cur = c.cursor()
         cur.execute(_q("DELETE FROM transfer_plan WHERE id = ?"), (pid,))
         return cur.rowcount if hasattr(cur, "rowcount") else 0
+
+
+def plan_set_note(product_id, note, from_branch=None, to_branch=None, name="") -> dict:
+    """הערה חופשית לסניף על פריט. אם הפריט כבר בבקשה — מעדכן את ההערה בכל שורותיו;
+    אחרת מוסיף שורת בקשה (לפי המלצת עודף→חוסר, כמות 1) עם ההערה. מחזיר {note, added}."""
+    pid = str(product_id)
+    note = (note or "").strip()
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT COUNT(*) AS n FROM transfer_plan WHERE product_id = ?"), (pid,))
+        exists = cur.fetchone()["n"]
+        if exists:
+            cur.execute(_q("UPDATE transfer_plan SET note = ? WHERE product_id = ?"), (note, pid))
+            return {"product_id": pid, "note": note, "added": 0}
+        cur.execute(_q("""INSERT INTO transfer_plan
+            (product_id, name, from_branch, to_branch, qty, note, created_by, created_at)
+            VALUES (?,?,?,?,?,?,?,?)"""),
+            (pid, name or "", int(from_branch or 0), int(to_branch or 0), 1, note,
+             "קונסולת ניהול", now_iso()))
+        return {"product_id": pid, "note": note, "added": 1}
 
 
 def plan_reroute(line_id, new_from_branch) -> bool:
