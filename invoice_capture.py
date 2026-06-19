@@ -35,6 +35,12 @@ SCAN_DAYS = int(os.getenv("INVOICE_SCAN_DAYS", "14"))
 FILE_SENDER = os.getenv("INVOICE_FILE_SENDER", "greenmobile.eshop@gmail.com")
 FILE_LABEL = os.getenv("INVOICE_FILE_LABEL", "חשבוניות לקוחות")
 FILE_ENABLE = os.getenv("INVOICE_FILE", "1") == "1"
+# זיהוי חשבונית לקוח לפי **שם העוסק שלנו בנושא** (שני העוסקים בקופה). מופיע בכל הודעה
+# של חשבונית לקוח — self-copy, bounce (mailer-daemon "לא נמסרה"), ותגובת לקוח — אבל
+# **לא** בחשבוניות ספקים (LiveDns/סטלר/קונקטופ). כך הלקוחות יוצאים מהנכנסות, הספקים
+# נשארים (אסי רוצה לראות אותם כדי להדפיס). ניתן לעדכון דרך env.
+FILE_MARKERS = [m.strip() for m in os.getenv(
+    "INVOICE_CUSTOMER_MARKERS", "ג.א.א.ל,מובילים בדיגיטל").split(",") if m.strip()]
 
 
 def configured() -> bool:
@@ -60,69 +66,67 @@ def _imap_utf7(s: str) -> str:
     return "".join(res)
 
 
+def _inbox_subject_map(M) -> dict:
+    """מחזיר {uid(str): subject} לכל הודעות ה-INBOX, ב-fetch אצווה אחד (יעיל). כולל
+    גם הודעות \\Deleted ע"י איחוד ALL+DELETED."""
+    uids = []
+    seen = set()
+    for crit in (("ALL",), ("DELETED",)):
+        try:
+            typ, d = M.uid("search", None, *crit)
+            for x in (d[0].split() if d and d[0] else []):
+                if x not in seen:
+                    seen.add(x); uids.append(x)
+        except Exception:  # noqa: BLE001
+            pass
+    out = {}
+    if not uids:
+        return out
+    try:
+        uid_csv = b",".join(uids).decode()
+        typ, md = M.uid("fetch", uid_csv, "(BODY.PEEK[HEADER.FIELDS (SUBJECT)])")
+        for part in (md or []):
+            if isinstance(part, tuple) and part[0]:
+                m = re.search(rb"UID (\d+)", part[0])
+                if not m:
+                    continue
+                hdr = email.message_from_bytes(part[1] or b"")
+                out[m.group(1).decode()] = _decode(hdr.get("Subject") or "")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("inbox subject fetch failed: %s", e)
+    return out
+
+
+def _is_customer_invoice(subject: str) -> bool:
+    """חשבונית לקוח = הנושא מכיל 'חשבונית' **וגם** שם עוסק שלנו (FILE_MARKERS). תופס
+    self-copy + bounce + תגובה; **לא** תופס חשבוניות ספקים (שם ספק אחר בנושא)."""
+    s = subject or ""
+    return ("חשבונית" in s) and any(mk in s for mk in FILE_MARKERS)
+
+
 def file_to_folder(M) -> dict:
-    """מעביר חשבוניות לקוח (FROM=greenmobile.eshop, עם PDF) מ-INBOX לתווית 'חשבוניות
-    לקוחות' ומסיר מ-INBOX (ארכוב: +X-GM-LABELS תווית, -X-GM-LABELS \\Inbox — ההודעה
-    נשארת ב-All Mail תחת התווית, ללא סיכון Trash).
-    בטוח לאיציק (שמטפל רק ב-from:hclickapp) — מסנן בדיוק לפי שולח חשבוניות הלקוח.
-    משתמש ב-PEEK כדי לא לגעת בדגלי \\Seen."""
+    """מארכב את **כל** הודעות חשבונית-הלקוח מה-INBOX (self-copy + bounce + תגובות) לתווית
+    'חשבוניות לקוחות' (+X-GM-LABELS), ומסיר מ-INBOX (-X-GM-LABELS \\Inbox — נשאר ב-All
+    Mail תחת התווית, בלי סיכון Trash). זיהוי לפי שם העוסק בנושא (ראה _is_customer_invoice)
+    כדי לתפוס גם bounces מ-mailer-daemon ותגובות לקוח, ולהשאיר חשבוניות ספקים בנכנסות.
+    בטוח לאיציק (from:hclickapp — אין בנושא את שם העוסק שלנו)."""
     res = {"checked": 0, "filed": 0, "remaining": None}
     try:
         M.select("INBOX", readonly=False)
         lbl = '"%s"' % _imap_utf7(FILE_LABEL)
-        # ⚠️ לארכוב סורקים את **כל** חשבוניות הלקוח שב-INBOX לפי FROM בלבד — **בלי SINCE**.
-        # ה-SINCE (חלון 14 יום) החריג חשבוניות ישנות יותר → הן נתקעו בנכנסות לנצח (זה
-        # היה הבאג). מסונן ממילא לפי שולח + PDF, אז סריקת-הכל בטוחה. ה-DELETED מאחד גם
-        # הודעות שסומנו \Deleted בריצות ישנות (Gmail מחריג אותן מ-SEARCH רגילה).
-        uids = set()
-        for crit in (("FROM", FILE_SENDER),
-                     ("FROM", FILE_SENDER, "DELETED")):
-            try:
-                typ, data = M.uid("search", None, *crit)
-                if data and data[0]:
-                    uids.update(data[0].split())
-            except Exception:  # noqa: BLE001
-                pass
-        for uid in uids:
-            res["checked"] += 1
-            typ, md = M.uid("fetch", uid, "(BODY.PEEK[])")
-            if not md or not md[0]:
-                continue
-            msg = email.message_from_bytes(md[0][1])
-            has_pdf = any((p.get_content_type() or "").lower() == "application/pdf"
-                          or (_decode(p.get_filename() or "")).lower().endswith(".pdf")
-                          for p in msg.walk())
-            if not has_pdf:                  # לא חשבונית (PDF) → לא נוגעים
-                continue
+        subs = _inbox_subject_map(M)
+        to_file = [u for u, s in subs.items() if _is_customer_invoice(s)]
+        res["checked"] = len(to_file)
+        for uid in to_file:
             M.uid("STORE", uid, "+X-GM-LABELS", lbl)          # מצמיד תווית ייעודית
             M.uid("STORE", uid, "-FLAGS", "\\Deleted")        # מנקה דגל מחיקה תקוע מריצות ישנות
-            # ארכוב Gmail-בטוח: מסירים את התווית \Inbox (ההודעה נשארת ב-All Mail תחת
-            # התווית). \Deleted+EXPUNGE לא אמין ב-Gmail — לכן נמנעים ממנו.
-            M.uid("STORE", uid, "-X-GM-LABELS", "\\Inbox")
+            M.uid("STORE", uid, "-X-GM-LABELS", "\\Inbox")    # ארכוב (Gmail-בטוח)
             res["filed"] += 1
-        # דיאגנוסטיקה: כמה חשבוניות לקוח עדיין נשארו ב-INBOX (אחרי הניקוי אמור להיות ~0)
-        # + פירוט (נושא + has_pdf) כדי לזהות מה שנשאר (למשל הודעות bounce בלי PDF).
-        try:
-            typ, d2 = M.uid("search", None, "FROM", FILE_SENDER)
-            rem_uids = (d2[0].split() if d2 and d2[0] else [])
-            res["remaining"] = len(rem_uids)
-            detail = []
-            for uid in rem_uids[:10]:
-                try:
-                    typ, md = M.uid("fetch", uid, "(BODY.PEEK[])")
-                    m = email.message_from_bytes(md[0][1])
-                    subj = _decode(m.get("Subject") or "")
-                    pdf = any((p.get_content_type() or "").lower() == "application/pdf"
-                              or (_decode(p.get_filename() or "")).lower().endswith(".pdf")
-                              for p in m.walk())
-                    detail.append({"subject": subj[:70], "pdf": pdf})
-                except Exception:  # noqa: BLE001
-                    pass
-            res["remaining_detail"] = detail
-        except Exception:  # noqa: BLE001
-            pass
+        # כמה חשבוניות לקוח נשארו ב-INBOX (אחרי STORE מוצלח אמור להיות 0; חישוב זול
+        # בלי fetch נוסף — פער יצביע על STORE שנכשל).
+        res["remaining"] = res["checked"] - res["filed"]
         if res["filed"]:
-            logger.info("filed %d customer invoices to '%s'", res["filed"], FILE_LABEL)
+            logger.info("filed %d customer-invoice messages to '%s'", res["filed"], FILE_LABEL)
     except Exception as e:  # noqa: BLE001
         logger.warning("file_to_folder failed: %s", e)
         res["error"] = str(e)
