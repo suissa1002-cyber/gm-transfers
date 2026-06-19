@@ -119,13 +119,24 @@ def _searchable(raw: bytes) -> str:
     except Exception:  # noqa: BLE001
         return ""
     parts = []
-    for p in m.walk():
+
+    def _add_headers(msg):
         for h in ("Subject", "From", "To"):
-            v = p.get(h)
+            v = msg.get(h)
             if v:
                 parts.append(_decode(v))
+
+    for p in m.walk():
+        _add_headers(p)
         ct = (p.get_content_type() or "")
-        if ct.startswith("text") or "rfc822" in ct:
+        if "rfc822-headers" in ct:
+            # ההודעה המקורית מצורפת ככותרות גולמיות (Subject מקודד MIME) — מפענחים
+            try:
+                payload = p.get_payload(decode=True) or b""
+                _add_headers(email.message_from_bytes(payload))
+            except Exception:  # noqa: BLE001
+                pass
+        elif ct.startswith("text") or "rfc822" in ct:
             try:
                 payload = p.get_payload(decode=True)
                 if payload:
@@ -165,7 +176,10 @@ def file_to_folder(M) -> dict:
             try:
                 typ, md = M.uid("fetch", u, "(BODY.PEEK[])")
                 txt = _searchable(md[0][1]) if md and md[0] else ""
-                match = _is_customer_invoice(txt)
+                # חשבונית לקוח = שם עוסק+חשבונית, או כשל מסירה של מייל **שאנחנו** שלחנו
+                # (greenmobile.eshop) שהוא חשבונית — כי ספקים לא נשלחים מאיתנו.
+                match = _is_customer_invoice(txt) or \
+                    (INVOICE_FROM in txt and "חשבונית" in txt)
                 if len(res["dsn_samples"]) < 8:
                     res["dsn_samples"].append({
                         "match": match, "has_invoice": "חשבונית" in txt,
