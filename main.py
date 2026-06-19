@@ -2658,7 +2658,8 @@ def _digest_data() -> dict:
     except Exception:  # noqa: BLE001
         out["transfers"] = {"overdue": "?", "pending": "?"}
     try:
-        out["rebalance"] = len(db.rebalance_list())
+        # קריטי = פריטים **סריאליים** (מכשירים) שלא מאוזנים — לא אביזרים זולים
+        out["rebalance"] = sum(1 for it in db.rebalance_list() if it.get("kind") == "serial")
     except Exception:  # noqa: BLE001
         out["rebalance"] = "?"
     try:
@@ -2668,9 +2669,13 @@ def _digest_data() -> dict:
     except Exception:  # noqa: BLE001
         out["orders"] = {"oos": "?", "unmatched": "?"}
     try:
+        # רק שיחות שבמצב **נציג** (ביקשו אדם) **וגם** ממתינות למענה (ההודעה האחרונה
+        # מהלקוח). תהליכי בוט/סטטוס/תיקון נחשבים נענו — לא נספרים.
         import wa as _wa
-        out["wa_unanswered"] = sum(1 for c in _wa.list_conversations_native(limit=300)
-                                   if c.get("unread"))
+        agent = {str(p) for p in db.bot_handoff_phones(48)}
+        unread = {str(c.get("phone")) for c in _wa.list_conversations_native(limit=400)
+                  if c.get("unread")}
+        out["wa_unanswered"] = len(agent & unread)
     except Exception:  # noqa: BLE001
         out["wa_unanswered"] = "?"
     try:
@@ -2723,13 +2728,13 @@ def _render_digest_html(d: dict) -> str:
                     chip(f"{tr.get('overdue', 0)} באיחור", "red" if od else "green")
                     + chip(f"{tr.get('pending', 0)} לקליטה", "amber"))
     rb = d.get("rebalance", 0)
-    rows_html += row("⚖️", "איזון מלאי", chip(f"{rb} פריטים לאיזון", "amber" if rb else "green"))
+    rows_html += row("⚖️", "איזון מלאי", chip(f"{rb} מכשירים לאיזון", "amber" if rb else "green"))
     od2 = d.get("orders") or {}
     rows_html += row("🛒", "הזמנות אתר",
                      chip(f"{od2.get('oos', 0)} חסר בספק", "red" if (od2.get('oos') or 0) else "green")
                      + chip(f"{od2.get('unmatched', 0)} ללא מק\"ט", "amber" if (od2.get('unmatched') or 0) else "green"))
     wa = d.get("wa_unanswered", 0)
-    rows_html += row("💬", "וואטסאפ", chip(f"{wa} ללא מענה", "amber" if (wa and wa != '?') else "green"))
+    rows_html += row("💬", "וואטסאפ", chip(f"{wa} ממתינים לנציג", "amber" if (wa and wa != '?') else "green"))
 
     rems = d.get("reminders") or []
     rem_html = ""
@@ -2787,9 +2792,9 @@ def _morning_digest_job():
         od = d.get("orders") or {}
         msg = ["☀️ <b>בוקר טוב · סקירת היום</b>", "",
                f"📦 העברות: {tr.get('overdue', 0)} באיחור · {tr.get('pending', 0)} לקליטה",
-               f"⚖️ איזון מלאי: {d.get('rebalance', 0)} לאיזון",
+               f"⚖️ איזון מלאי: {d.get('rebalance', 0)} מכשירים לאיזון",
                f"🛒 הזמנות אתר: {od.get('oos', 0)} חסר בספק · {od.get('unmatched', 0)} ללא מק\"ט",
-               f"💬 וואטסאפ: {d.get('wa_unanswered', 0)} ללא מענה"]
+               f"💬 וואטסאפ: {d.get('wa_unanswered', 0)} ממתינים לנציג"]
         rems = d.get("reminders") or []
         if rems:
             msg.append(f"⏰ תזכורות להיום: {len(rems)}")
