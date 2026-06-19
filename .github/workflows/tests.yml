@@ -25,3 +25,5 @@ jobs:
         run: pip install requests
       - name: WhatsApp outgoing-media regression test
         run: python3 tests/test_wa_media.py
+      - name: Auto-balance / order-routing regression test
+        run: python3 tests/test_auto_balance.py

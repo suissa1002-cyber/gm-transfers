@@ -27,6 +27,13 @@ logger = logging.getLogger("auto_transfer")
 
 SITE_BRANCH = 5
 PREF_SOURCE = [2, 1, 3, 4]          # סטאר ראשון — הוראת אסי; אח"כ שאר הסניפים
+# ── איזון אוטומטי: ניצול הזמנת אתר לשמירת סטאר (מרכז המשלוחים) מלא ──
+# אחרי מילוי הזמנה, אם סטאר התרוקן (0) → נוצרת "השלמה אוטומטית" של יחידה לסטאר
+# מהסניף-העודף הראשון (2+) לפי עדיפות. כך סטאר תמיד מוכן להזמנה הבאה במהירות (אסי 19/06).
+STAR_BRANCH = 2
+REPL_PRIORITY = [1, 3, 4]           # גן→סיטי→עד הלום (גן מועדף: חלש + מסלול אודי לסטאר)
+REPL_MIN_SOURCE = 2                 # מקור השלמה חייב 2+ כדי לא להתרוקן בעצמו
+REPL_QTY = 1
 # processing = שולם. אפשר להרחיב ב-env, מופרד בפסיקים (למשל "processing,on-hold")
 STATUSES = [s.strip() for s in os.getenv("AUTO_TR_STATUSES", "processing").split(",") if s.strip()]
 # קטגוריות שמשדרים בהן בקשת **כמות** (מק"ט בלבד), בלי סריאל ספציפי — גם אם המוצר
@@ -152,6 +159,19 @@ def _pickup_branch(o: dict) -> int:
     return None
 
 
+def _has_open_balance(sku) -> bool:
+    """האם כבר קיימת השלמה אוטומטית פתוחה לסטאר על המק"ט (מונע כפל בכל סריקה)."""
+    try:
+        for l in db.plan_list():
+            if (str(l.get("product_id")) == str(sku)
+                    and int(l.get("to_branch") or 0) == STAR_BRANCH
+                    and str(l.get("created_by") or "").startswith("השלמה אוטומטית")):
+                return True
+    except Exception:  # noqa: BLE001
+        pass
+    return False
+
+
 def _handle_order(o: dict, catalog: dict) -> list:
     """בודק שורות הזמנה ומשדר בקשות העברה לפי הצורך. מחזיר את מה ששודר.
 
@@ -205,7 +225,11 @@ def _handle_order(o: dict, catalog: dict) -> list:
         lines = []
         remaining = qty
         used = []
-        for b in src_pref:
+        # מעדיפים סניף יחיד (לפי עדיפות) שמכסה את **כל** הכמות — פחות העברות וריקון
+        # מיותר; רק אם אין כזה מפצלים בין סניפים.
+        solo = next((b for b in src_pref if int(stock.get(b) or 0) >= qty), None)
+        order_src = [solo] if solo else src_pref
+        for b in order_src:
             if remaining <= 0:
                 break
             avail = int(stock.get(b) or 0)
@@ -235,6 +259,25 @@ def _handle_order(o: dict, catalog: dict) -> list:
             oos_names.append(name)
         logger.info("order %s: broadcast %s x%s split across %s -> site",
                     o.get("number"), sku, qty, used)
+        # ── איזון אוטומטי: אם סטאר התרוקן (אחרי ניכוי מה שההזמנה לקחה) → השלמה לסטאר ──
+        try:
+            taken = {b: tk for b, tk in used}
+            star_eff = int(stock.get(STAR_BRANCH) or 0) - taken.get(STAR_BRANCH, 0)
+            if star_eff <= 0 and not _has_open_balance(sku):
+                src = next((b for b in REPL_PRIORITY
+                            if int(stock.get(b) or 0) - taken.get(b, 0) >= REPL_MIN_SOURCE), None)
+                if src:
+                    bids = db.plan_add(
+                        [{"product_id": sku, "name": name, "from_branch": src,
+                          "to_branch": STAR_BRANCH, "qty": REPL_QTY}],
+                        created_by=f"השלמה אוטומטית · הזמנת אתר #{o.get('number')}")
+                    db.plan_mark_broadcast(src, bids)
+                    created.append({"sku": sku, "name": name, "src": src,
+                                    "qty": REPL_QTY, "balance": True})
+                    logger.info("order %s: auto-balance %s 1u branch %s -> STAR",
+                                o.get("number"), sku, src)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("auto-balance failed for %s: %s", sku, e)
     # אם כבר אין פריט ללא מק"ט (חובר מק"ט) — מנקים את ההזמנה מרשימת הטיפול הידני
     if not had_unmatched:
         _unmark_unmatched(o.get("number"))
@@ -252,8 +295,10 @@ def _alert_created(o, created):
     """התראות טלגרם על בקשות העברה ששודרו (אדמין + צ'אט סניף המקור)."""
     if not created:
         return
-    lines = "\n".join(f"• {c['name']} ×{c['qty']} — מ{cfg.branch_name(c['src'])}"
-                      for c in created)
+    lines = "\n".join(
+        f"• {c['name']} ×{c['qty']} — מ{cfg.branch_name(c['src'])}"
+        + (f" 🔄 השלמה אוטומטית → {cfg.branch_name(STAR_BRANCH)}" if c.get('balance') else "")
+        for c in created)
     alerts._send(os.getenv("TELEGRAM_ADMIN_CHAT", "448181407"),
                  f"📦 <b>שודרה בקשת העברה אוטומטית לאתר</b>\n"
                  f"הזמנה <b>#{o.get('number')}</b>:\n{lines}")
