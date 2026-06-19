@@ -117,18 +117,21 @@ def file_to_folder(M) -> dict:
         subs = _inbox_subject_map(M)
         to_file = [u for u, s in subs.items() if _is_customer_invoice(s)]  # u = str
         res["checked"] = len(to_file)
-        res["store"] = []
+        # ⚠️ ארכוב ב-Gmail: -X-GM-LABELS (\Inbox) **לא עובד** (Gmail מחזיר OK אך לא מסיר;
+        # \Inbox אפילו לא מופיע ב-X-GM-LABELS). הדרך האמינה: +FLAGS \Deleted ואז EXPUNGE.
+        # ההודעה גם ב-All Mail → EXPUNGE מ-INBOX רק מוריד את תווית Inbox (ארכוב), לא מוחק.
         for uid in to_file:
             try:
-                M.uid("STORE", uid, "+X-GM-LABELS", "(%s)" % lbl)   # מצמיד תווית ייעודית
-                typ, r = M.uid("STORE", uid, "-X-GM-LABELS", "(\\Inbox)")  # ארכוב
-                if len(res["store"]) < 4:
-                    rs = b" ".join(x for x in (r or []) if isinstance(x, bytes)).decode("utf-8", "replace")
-                    res["store"].append({"uid": uid, "typ": typ, "resp": rs[:160]})
+                M.uid("STORE", uid, "+X-GM-LABELS", "(%s)" % lbl)   # תווית ייעודית (findability)
+                M.uid("STORE", uid, "+FLAGS", "(\\Deleted)")
                 res["filed"] += 1
             except Exception as e:  # noqa: BLE001
-                if len(res["store"]) < 4:
-                    res["store"].append({"uid": uid, "err": str(e)[:160]})
+                res.setdefault("errs", []).append(str(e)[:120])
+        if res["filed"]:
+            try:
+                M.expunge()
+            except Exception as e:  # noqa: BLE001
+                res["expunge_err"] = str(e)[:120]
         # בדיקת אמת: כמה מה-to_file עדיין ב-INBOX אחרי הארכוב (0 = הצלחה)
         try:
             typ, d = M.uid("search", None, "ALL")
