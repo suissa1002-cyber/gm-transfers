@@ -310,6 +310,14 @@ def register_recurring_jobs():
                       run_date=datetime.now() + timedelta(seconds=45))
     # שידור אוטומטי של בקשות העברה לאתר על הזמנות אתר ששולמו
     scheduler.add_job(_auto_transfer_job, "interval", minutes=5, id="auto_transfer", max_instances=1)
+    # דייג'סט בוקר יומי לטלגרם (סקירת היום) — 09:45 שעון ישראל
+    try:
+        from zoneinfo import ZoneInfo as _ZI
+        scheduler.add_job(_morning_digest_job, "cron", hour=9, minute=45,
+                          timezone=_ZI(cfg.TZ), id="morning_digest",
+                          max_instances=1, replace_existing=True)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("morning digest schedule failed: %s", e)
     # קידום ל'בהפצה' להזמנות עם משלוח Cargo (גם תוויות שהודפסו מחוץ ל-GreenOS)
     scheduler.add_job(_cargo_shipping_advance_job, "interval", minutes=3,
                       id="cargo_shipping_advance", max_instances=1, coalesce=True)
@@ -2625,6 +2633,181 @@ def transfer_list_page(tid: str):
         raise HTTPException(404, "שגיאה בטעינת הרשימה")
     from fastapi.responses import HTMLResponse
     return HTMLResponse(_render_transfer_list_html(data.get("from_name", ""), data.get("lines", [])))
+
+
+# ── דייג'סט בוקר יומי (סקירת היום): סטטיסטיקות תפעול + קישור לעמוד מעוצב ──
+def _digest_token() -> str:
+    t = db.sales_state_get("digest_token")
+    if not t:
+        import secrets as _s
+        t = _s.token_urlsafe(12)
+        db.sales_state_set("digest_token", t)
+    return t
+
+
+def _digest_data() -> dict:
+    """אוסף את מספרי הסקירה היומית מכל המקורות (עמיד לכשלים — None/[] אם מקור נופל)."""
+    import json as _j
+    out = {}
+    try:
+        import alerts as _al
+        rows = db.list_all_transfers(include_received_days=2)
+        pend = [t for t in rows if t.get("status") != "received"]
+        overdue = sum(1 for t in pend if _al._age_hours(t) >= cfg.RECEIVE_ESCALATE_HOURS)
+        out["transfers"] = {"overdue": overdue, "pending": len(pend)}
+    except Exception:  # noqa: BLE001
+        out["transfers"] = {"overdue": "?", "pending": "?"}
+    try:
+        out["rebalance"] = len(db.rebalance_list())
+    except Exception:  # noqa: BLE001
+        out["rebalance"] = "?"
+    try:
+        oos = _j.loads(db.sales_state_get("order_oos_list") or "[]")
+        unm = _j.loads(db.sales_state_get("order_unmatched_list") or "[]")
+        out["orders"] = {"oos": len(oos), "unmatched": len(unm)}
+    except Exception:  # noqa: BLE001
+        out["orders"] = {"oos": "?", "unmatched": "?"}
+    try:
+        import wa as _wa
+        out["wa_unanswered"] = sum(1 for c in _wa.list_conversations_native(limit=300)
+                                   if c.get("unread"))
+    except Exception:  # noqa: BLE001
+        out["wa_unanswered"] = "?"
+    try:
+        from zoneinfo import ZoneInfo as _ZI
+        today = datetime.now(_ZI(cfg.TZ)).strftime("%Y-%m-%d")
+        tok = os.getenv("STOCK_WATCHER_TOKEN", "").strip()
+        swurl = os.getenv("STOCK_WATCHER_URL", "https://uri-stock-watcher.onrender.com").rstrip("/")
+        rems = []
+        if tok:
+            import requests as _rq
+            r = _rq.get(f"{swurl}/reminders", headers={"Authorization": f"Bearer {tok}"}, timeout=12)
+            for it in (r.json().get("items") or []):
+                if str(it.get("due_at_il", "")).startswith(today):
+                    rems.append(it)
+        out["reminders"] = rems
+    except Exception:  # noqa: BLE001
+        out["reminders"] = []
+    return out
+
+
+def _render_digest_html(d: dict) -> str:
+    import html as _h
+    from datetime import datetime as _dt
+    from zoneinfo import ZoneInfo as _ZI
+    now = _dt.now(_ZI(cfg.TZ))
+    days = ["שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת", "ראשון"]
+    date_lbl = f"{days[now.weekday()]} · {now.strftime('%d.%m.%Y')}"
+
+    def esc(s):
+        return _h.escape(str(s if s is not None else ""))
+
+    def chip(txt, kind):
+        bg = {"red": "#fcebeb", "amber": "#faeeda", "green": "#eaf3de",
+              "blue": "#e6f1fb"}[kind]
+        cl = {"red": "#a32d2d", "amber": "#854f0b", "green": "#3b6d11",
+              "blue": "#185fa5"}[kind]
+        return (f'<span style="background:{bg};color:{cl};font-size:13px;font-weight:700;'
+                f'padding:3px 11px;border-radius:999px;white-space:nowrap">{esc(txt)}</span>')
+
+    def row(icon, label, chips):
+        return (f'<div style="display:flex;align-items:center;justify-content:space-between;'
+                f'padding:14px 20px;border-bottom:1px solid #eef1f6;gap:10px">'
+                f'<span style="display:flex;align-items:center;gap:10px;font-size:16px;font-weight:600">'
+                f'<span style="font-size:19px">{icon}</span>{esc(label)}</span>'
+                f'<span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-start">{chips}</span></div>')
+
+    tr = d.get("transfers") or {}
+    od = (tr.get("overdue") or 0)
+    rows_html = row("📦", "העברות",
+                    chip(f"{tr.get('overdue', 0)} באיחור", "red" if od else "green")
+                    + chip(f"{tr.get('pending', 0)} לקליטה", "amber"))
+    rb = d.get("rebalance", 0)
+    rows_html += row("⚖️", "איזון מלאי", chip(f"{rb} פריטים לאיזון", "amber" if rb else "green"))
+    od2 = d.get("orders") or {}
+    rows_html += row("🛒", "הזמנות אתר",
+                     chip(f"{od2.get('oos', 0)} חסר בספק", "red" if (od2.get('oos') or 0) else "green")
+                     + chip(f"{od2.get('unmatched', 0)} ללא מק\"ט", "amber" if (od2.get('unmatched') or 0) else "green"))
+    wa = d.get("wa_unanswered", 0)
+    rows_html += row("💬", "וואטסאפ", chip(f"{wa} ללא מענה", "amber" if (wa and wa != '?') else "green"))
+
+    rems = d.get("reminders") or []
+    rem_html = ""
+    if rems:
+        items = "".join(
+            f'<div style="padding:11px 20px;border-bottom:1px solid #eef1f6;font-size:15px">'
+            f'<b style="color:#1d4ed8">{esc((r.get("due_at_il") or "")[-5:])}</b> · '
+            f'{esc(r.get("context") or "תזכורת")}'
+            + (f' · <span style="color:#5e6b7d">{esc(r.get("customer_name"))}</span>'
+               if r.get("customer_name") and r.get("customer_name") != "NA" else "")
+            + '</div>'
+            for r in rems)
+        rem_html = ('<div style="font-size:13px;font-weight:700;color:#5e6b7d;padding:14px 20px 6px">'
+                    f'⏰ תזכורות אישיות להיום ({len(rems)})</div>' + items)
+
+    return f"""<!doctype html><html dir="rtl" lang="he"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>סקירת היום — Green Mobile</title>
+<style>
+ *{{box-sizing:border-box}} body{{margin:0;background:#eef1f6;font-family:-apple-system,Segoe UI,Roboto,Arial,"Heebo",sans-serif;padding:18px;color:#18222f}}
+ .card{{max-width:560px;margin:0 auto;background:#fff;border-radius:18px;overflow:hidden;box-shadow:0 6px 30px rgba(0,0,0,.12)}}
+ .top{{background:#1d4ed8;color:#fff;padding:18px 22px;display:flex;align-items:center;justify-content:space-between}}
+ .top .ttl{{font-size:18px;font-weight:800}} .top .date{{color:#bfdbfe;font-size:14px}}
+</style></head><body>
+<div class="card">
+  <div class="top"><span class="ttl">☀️ בוקר טוב · סקירת היום</span><span class="date">{esc(date_lbl)}</span></div>
+  <div>{rows_html}</div>
+  {rem_html}
+  <div style="padding:14px 20px;text-align:center;color:#9aa5b1;font-size:12px;border-top:1px solid #eef1f6">Green Mobile · GreenOS</div>
+</div></body></html>"""
+
+
+@app.get("/digest/{token}")
+def digest_page(token: str):
+    if token != _digest_token():
+        raise HTTPException(404, "not found")
+    from fastapi.responses import HTMLResponse
+    return HTMLResponse(_render_digest_html(_digest_data()))
+
+
+@app.get("/api/admin/digest")
+def admin_digest(x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    return {"data": _digest_data(), "url": f"/digest/{_digest_token()}"}
+
+
+def _morning_digest_job():
+    """דייג'סט בוקר לטלגרם — כותרות + קישור לעמוד המעוצב (09:45 שעון ישראל)."""
+    try:
+        d = _digest_data()
+        base = (os.getenv("PUBLIC_BASE_URL") or os.getenv("URI_BRIDGE_BASE")
+                or "https://gm-transfers.onrender.com").rstrip("/")
+        url = f"{base}/digest/{_digest_token()}"
+        tr = d.get("transfers") or {}
+        od = d.get("orders") or {}
+        msg = ["☀️ <b>בוקר טוב · סקירת היום</b>", "",
+               f"📦 העברות: {tr.get('overdue', 0)} באיחור · {tr.get('pending', 0)} לקליטה",
+               f"⚖️ איזון מלאי: {d.get('rebalance', 0)} לאיזון",
+               f"🛒 הזמנות אתר: {od.get('oos', 0)} חסר בספק · {od.get('unmatched', 0)} ללא מק\"ט",
+               f"💬 וואטסאפ: {d.get('wa_unanswered', 0)} ללא מענה"]
+        rems = d.get("reminders") or []
+        if rems:
+            msg.append(f"⏰ תזכורות להיום: {len(rems)}")
+        msg.append(f"\n🔗 {url}")
+        import alerts as _al
+        chat = os.getenv("TELEGRAM_TASKS_CHAT_ID") or os.getenv("TELEGRAM_ADMIN_CHAT", "448181407")
+        _al._send(chat, "\n".join(msg))
+        logger.info("morning digest sent")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("morning digest job failed: %s", e)
+
+
+@app.post("/api/admin/digest/send-now")
+def admin_digest_send_now(x_admin_key: Optional[str] = Header(None)):
+    """שליחת הדייג'סט עכשיו (לבדיקה)."""
+    _require_admin(x_admin_key)
+    _morning_digest_job()
+    return {"sent": True, "url": f"/digest/{_digest_token()}"}
 
 
 @app.post("/api/transfer/send-wa")
