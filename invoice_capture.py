@@ -270,6 +270,66 @@ def probe(days: int = 21, max_msgs: int = 40) -> dict:
     return out
 
 
+def inbox_dump(limit: int = 50) -> dict:
+    """דיאגנוסטיקה: סורק את ה-INBOX עצמו (לא All Mail) ומחזיר לכל הודעה From/Subject/
+    flags/has_pdf — כדי להבין מה תקוע שם (bounce מ-mailer-daemon? \\Deleted נסתר?).
+    מאחד ALL + DELETED כדי לתפוס גם הודעות מסומנות-מחיקה ש-Gmail מסתיר מ-SEARCH רגיל."""
+    if not configured():
+        return {"ok": False, "reason": "imap-not-configured"}
+    out = {"ok": True, "exists": None, "all": 0, "deleted": 0, "items": []}
+    try:
+        M = imaplib.IMAP4_SSL(IMAP_HOST)
+        M.login(IMAP_USER, IMAP_PASS)
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "reason": f"login: {e}"}
+    try:
+        typ, sel = M.select("INBOX", readonly=True)
+        try:
+            out["exists"] = int(sel[0])
+        except Exception:  # noqa: BLE001
+            pass
+        uids = []
+        seen = set()
+        for crit in (("ALL",), ("DELETED",)):
+            try:
+                typ, d = M.uid("search", None, *crit)
+                u = (d[0].split() if d and d[0] else [])
+                out["all" if crit[0] == "ALL" else "deleted"] = len(u)
+                for x in u:
+                    if x not in seen:
+                        seen.add(x); uids.append(x)
+            except Exception:  # noqa: BLE001
+                pass
+        for uid in uids[-limit:]:
+            try:
+                typ, md = M.uid("fetch", uid, "(FLAGS BODY.PEEK[HEADER.FIELDS (FROM SUBJECT)])")
+                if not md or not md[0]:
+                    continue
+                raw_flags = b""
+                for part in md:
+                    if isinstance(part, tuple) and part[0]:
+                        raw_flags += part[0]
+                flags = imaplib.ParseFlags(raw_flags)
+                flags = [f.decode() if isinstance(f, bytes) else f for f in flags]
+                hdr = email.message_from_bytes(md[0][1])
+                frm = _decode(hdr.get("From"))
+                subj = _decode(hdr.get("Subject"))
+                typ, bs = M.uid("fetch", uid, "(BODYSTRUCTURE)")
+                has_pdf = bool(bs and bs[0] and b"PDF" in bs[0].upper())
+                out["items"].append({"from": frm[:60], "subject": subj[:60],
+                                     "flags": flags, "pdf": has_pdf})
+            except Exception:  # noqa: BLE001
+                pass
+    except Exception as e:  # noqa: BLE001
+        out = {"ok": False, "reason": str(e)}
+    finally:
+        try:
+            M.logout()
+        except Exception:  # noqa: BLE001
+            pass
+    return out
+
+
 def capture(max_msgs: int = 80) -> dict:
     """קורא את התיבה, קולט עותקי מסמכים חדשים. חוזר סיכום."""
     if not configured():

@@ -4545,14 +4545,17 @@ def admin_invoice_send(iid: int, body: InvoiceSendIn,
 
 
 @app.post("/api/admin/invoices/capture")
-def admin_invoices_capture(probe: int = 0, reset: int = 0,
+def admin_invoices_capture(probe: int = 0, reset: int = 0, dump: int = 0,
                            x_admin_key: Optional[str] = Header(None)):
     """הפעלה ידנית של קליטת חשבוניות ממייל. probe=1 — אבחון בלבד (מה בתיבה).
+    dump=1 — דיאגנוסטיקת INBOX (From/Subject/flags/pdf לכל הודעה).
     reset=1 — מוחק את כל מה שנקלט וקולט מחדש (לכיוונון פענוח)."""
     _require_admin(x_admin_key)
     import invoice_capture
     if not invoice_capture.configured():
         return {"ok": False, "reason": "חסר INVOICE_IMAP_USER/INVOICE_IMAP_PASS ב-env"}
+    if dump:
+        return invoice_capture.inbox_dump()
     if probe:
         return invoice_capture.probe()
     cleared = db.invoices_reset() if reset else 0
