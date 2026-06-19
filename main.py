@@ -2636,6 +2636,22 @@ def transfer_list_page(tid: str):
 
 
 # ── דייג'סט בוקר יומי (סקירת היום): סטטיסטיקות תפעול + קישור לעמוד מעוצב ──
+_DIGEST_ACK_TOK = {"תודה", "רבה", "הבנתי", "מעולה", "אוקיי", "אוקי", "סבבה", "מצוין",
+                   "מצויין", "יופי", "ברור", "אחלה", "מושלם", "נהדר", "תודהה", "סחתיין",
+                   "ok", "okay", "thanks", "thank", "you", "great", "perfect", "👍", "🙏", "🙏🏼"}
+
+
+def _digest_is_ack(text: str) -> bool:
+    """הודעת סגירה/תודה (לא 'ממתין לנציג') — מכילה מילת תודה/אישור והיא קצרה, או רק
+    אימוג'י/סימנים. תופס 'תודה', '👍', 'Thank you', 'תודה אסי' — שיחות שכבר נענו."""
+    import re as _re
+    s = _re.sub(r"[!.,?\s‎‏‫‬]+", " ", (text or "")).strip()
+    if not s:
+        return True
+    words = s.split()
+    return len(words) <= 4 and any(w in _DIGEST_ACK_TOK for w in words)
+
+
 def _digest_token() -> str:
     t = db.sales_state_get("digest_token")
     if not t:
@@ -2674,7 +2690,8 @@ def _digest_data() -> dict:
         import wa as _wa
         agent = {str(p) for p in db.bot_handoff_phones(48)}
         waiting = [c for c in _wa.list_conversations_native(limit=400)
-                   if c.get("unread") and str(c.get("phone")) in agent]
+                   if c.get("unread") and str(c.get("phone")) in agent
+                   and not _digest_is_ack(c.get("last_text") or c.get("last_msg") or "")]
         out["wa_unanswered"] = len(waiting)
         out["wa_waiting"] = [{"phone": c.get("phone"), "name": c.get("name") or "",
                               "last": (c.get("last_text") or c.get("last_msg") or "")[:45]}
