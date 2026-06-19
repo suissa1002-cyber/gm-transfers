@@ -2277,6 +2277,19 @@ def sales_by_serial(serial: str) -> list:
         return [dict(r) for r in cur.fetchall()]
 
 
+def transfer_items_by_serial(serial: str) -> list:
+    """פריטי-העברה לסריאל + סטטוס ההעברה והזמנים — לאבחון למה ריפוי-נמכר לא תפס."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""
+            SELECT ti.id AS item_id, ti.op_id, ti.serial, ti.received, ti.name,
+                   t.status, t.to_branch_id, t.from_branch_id,
+                   t.created_at, t.first_seen
+            FROM transfer_items ti JOIN transfers t ON t.op_id = ti.op_id
+            WHERE ti.serial = ? ORDER BY t.created_at DESC LIMIT 10"""), (serial,))
+        return [dict(r) for r in cur.fetchall()]
+
+
 def sales_summary() -> dict:
     with _conn() as c:
         cur = c.cursor()

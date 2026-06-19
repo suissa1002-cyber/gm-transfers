@@ -2024,7 +2024,8 @@ def admin_sold_reconcile(x_admin_key: Optional[str] = Header(None)):
 def admin_sales_by_serial(serial: str, x_admin_key: Optional[str] = Header(None)):
     """אבחון: כל שורות המכירה לסריאל + פרטי ההעברה הפתוחה שלו (למה ריפוי לא תפס)."""
     _require_admin(x_admin_key)
-    return {"serial": serial, "sales": db.sales_by_serial(serial)}
+    return {"serial": serial, "sales": db.sales_by_serial(serial),
+            "transfer_items": db.transfer_items_by_serial(serial)}
 
 
 @app.post("/api/admin/sales-backfill")
