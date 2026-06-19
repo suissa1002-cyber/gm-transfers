@@ -807,6 +807,15 @@ def reconcile_sold_transfer_items() -> list:
             """), (recv, sale.get("sale_date") or now_iso(), "נמכר (אוטומטי)",
                    "נמכר" if same else "נמכר בסניף אחר", it["item_id"]))
             rec, total, status = _recount(cur, it["op_id"])
+            # אם ההעברה נסגרה-כחוסר ועכשיו **אין יותר חוסרים** (כל הפריטים נקלטו/נמכרו,
+            # received∈{1,2}) — מקדמים ל-'received' כדי שתצא מ'באיחור' ומ'נסגר(חוסר)'.
+            cur.execute(_q("""SELECT COUNT(*) AS n FROM transfer_items
+                              WHERE op_id = ? AND received NOT IN (1, 2)"""), (it["op_id"],))
+            if cur.fetchone()["n"] == 0:
+                cur.execute(_q("""UPDATE transfers
+                    SET status='received', received_at=COALESCE(received_at, ?)
+                    WHERE op_id = ?"""), (sale.get("sale_date") or now_iso(), it["op_id"]))
+                status = "received"
             out.append({
                 "serial": it["serial"], "name": it.get("name") or "", "op_id": it["op_id"],
                 "to_branch_id": it["to_branch_id"], "sold_branch_id": sold_b,
@@ -815,6 +824,25 @@ def reconcile_sold_transfer_items() -> list:
                 "was_missing": it.get("received") == 3,  # תוקן מחוסר-שקרי → נמכר
             })
     return out
+
+
+def promote_resolved_closed_transfers() -> int:
+    """העברות שנסגרו-כחוסר אך כעת **כל** פריטיהן נקלטו/נמכרו (received∈{1,2}) → 'received'
+    (יוצאות מ'באיחור' ומתווית 'נסגר חוסר'). מטפל גם בהעברות שרוקנו לפני התיקון (כמו 13933)."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""
+            SELECT t.op_id FROM transfers t
+            WHERE t.status = 'closed'
+              AND EXISTS (SELECT 1 FROM transfer_items ti WHERE ti.op_id = t.op_id)
+              AND NOT EXISTS (SELECT 1 FROM transfer_items ti
+                              WHERE ti.op_id = t.op_id AND ti.received NOT IN (1, 2))
+        """))
+        ops = [r["op_id"] for r in cur.fetchall()]
+        for op in ops:
+            cur.execute(_q("""UPDATE transfers SET status='received',
+                received_at = COALESCE(received_at, ?) WHERE op_id = ?"""), (now_iso(), op))
+        return len(ops)
 
 
 def receive_scan(branch_id: int, code: str, op_id: str = None, employee: str = None,

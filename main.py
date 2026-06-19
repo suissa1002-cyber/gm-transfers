@@ -93,6 +93,7 @@ def _sold_reconcile_job():
     case1: נמכר בסניף היעד · case2: נמכר בסניף שונה מהיעד — בשניהם מנקה מהדשבורד."""
     try:
         rows = db.reconcile_sold_transfer_items()
+        db.promote_resolved_closed_transfers()  # closed-but-resolved → received (יוצא מ'באיחור')
         for r in rows:
             to_name = cfg.branch_name(r.get("to_branch_id"))
             sold_name = cfg.branch_name(r.get("sold_branch_id"))
@@ -2003,6 +2004,7 @@ def admin_sold_reconcile(x_admin_key: Optional[str] = Header(None)):
     """הפעלה ידנית: סגירת כרטיסי קליטה למכשירים שנמכרו לפני קליטה (+התראות)."""
     _require_admin(x_admin_key)
     rows = db.reconcile_sold_transfer_items()
+    promoted = db.promote_resolved_closed_transfers()
     for r in rows:
         try:
             to_name = cfg.branch_name(r.get("to_branch_id"))
@@ -2018,7 +2020,7 @@ def admin_sold_reconcile(x_admin_key: Optional[str] = Header(None)):
             _tg_admin(f"{head}\n{r.get('name')} (סריאלי <code>{r.get('serial')}</code>)\n{where}\n{cleared}")
         except Exception:  # noqa: BLE001
             pass
-    return {"closed": len(rows), "items": rows}
+    return {"closed": len(rows), "promoted": promoted, "items": rows}
 
 
 @app.get("/api/admin/sales/by-serial")
