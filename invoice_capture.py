@@ -306,22 +306,24 @@ def inbox_dump(limit: int = 50) -> dict:
                 pass
         for uid in uids[-limit:]:
             try:
-                typ, md = M.uid("fetch", uid, "(FLAGS BODY.PEEK[HEADER.FIELDS (FROM SUBJECT)])")
+                typ, md = M.uid("fetch", uid,
+                                "(FLAGS X-GM-LABELS BODY.PEEK[HEADER.FIELDS (FROM SUBJECT)])")
                 if not md or not md[0]:
                     continue
-                raw_flags = b""
+                env = b""
                 for part in md:
                     if isinstance(part, tuple) and part[0]:
-                        raw_flags += part[0]
-                flags = imaplib.ParseFlags(raw_flags)
+                        env += part[0]
+                flags = imaplib.ParseFlags(env)
                 flags = [f.decode() if isinstance(f, bytes) else f for f in flags]
+                env_s = env.decode("utf-8", "replace")
+                ml = re.search(r"X-GM-LABELS \(([^)]*)\)", env_s)
+                labels = ml.group(1) if ml else ""
                 hdr = email.message_from_bytes(md[0][1])
                 frm = _decode(hdr.get("From"))
                 subj = _decode(hdr.get("Subject"))
-                typ, bs = M.uid("fetch", uid, "(BODYSTRUCTURE)")
-                has_pdf = bool(bs and bs[0] and b"PDF" in bs[0].upper())
                 out["items"].append({"from": frm[:60], "subject": subj[:60],
-                                     "flags": flags, "pdf": has_pdf})
+                                     "flags": flags, "labels": labels[:80]})
             except Exception:  # noqa: BLE001
                 pass
     except Exception as e:  # noqa: BLE001
