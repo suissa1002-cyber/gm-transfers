@@ -27,13 +27,13 @@ logger = logging.getLogger("auto_transfer")
 
 SITE_BRANCH = 5
 PREF_SOURCE = [2, 1, 3, 4]          # סטאר ראשון — הוראת אסי; אח"כ שאר הסניפים
-# ── איזון אוטומטי: ניצול הזמנת אתר לשמירת סטאר (מרכז המשלוחים) מלא ──
-# אחרי מילוי הזמנה, אם סטאר התרוקן (0) → נוצרת "השלמה אוטומטית" של יחידה לסטאר
-# מהסניף-העודף הראשון (2+) לפי עדיפות. כך סטאר תמיד מוכן להזמנה הבאה במהירות (אסי 19/06).
+# ── איזון אוטומטי: ניצול הזמנת אתר לאזן מלאי בין הסניפים (אסי 19/06) ──
+# אחרי מילוי הזמנה, הסניף-העודף מחלק את כל העודף שלו (כל מה מעל 1) לסניפים הריקים (0).
+# סימטריה: לוקחים מהחלש (PREF_SOURCE: גן מועדף כמקור), ממלאים את החזק (BALANCE_TARGET:
+# סטאר=מרכז קודם, אז סיטי החזק, ...גן החלש אחרון). מקור תמיד שומר ≥1 (אין cascade).
 STAR_BRANCH = 2
-REPL_PRIORITY = [1, 3, 4]           # גן→סיטי→עד הלום (גן מועדף: חלש + מסלול אודי לסטאר)
-REPL_MIN_SOURCE = 2                 # מקור השלמה חייב 2+ כדי לא להתרוקן בעצמו
-REPL_QTY = 1
+BALANCE_TARGET = [2, 3, 4, 1]       # יעד השלמה לפי חוזק/חשיבות: סטאר→סיטי→עד הלום→גן
+REPL_MIN_SOURCE = 2                 # מקור חייב ≥2 כדי לתת 1 ולהישאר עם ≥1
 # processing = שולם. אפשר להרחיב ב-env, מופרד בפסיקים (למשל "processing,on-hold")
 STATUSES = [s.strip() for s in os.getenv("AUTO_TR_STATUSES", "processing").split(",") if s.strip()]
 # קטגוריות שמשדרים בהן בקשת **כמות** (מק"ט בלבד), בלי סריאל ספציפי — גם אם המוצר
@@ -160,11 +160,10 @@ def _pickup_branch(o: dict) -> int:
 
 
 def _has_open_balance(sku) -> bool:
-    """האם כבר קיימת השלמה אוטומטית פתוחה לסטאר על המק"ט (מונע כפל בכל סריקה)."""
+    """האם כבר קיימת השלמה אוטומטית פתוחה על המק"ט (מונע איזון כפול בכל סריקה/הזמנה)."""
     try:
         for l in db.plan_list():
             if (str(l.get("product_id")) == str(sku)
-                    and int(l.get("to_branch") or 0) == STAR_BRANCH
                     and str(l.get("created_by") or "").startswith("השלמה אוטומטית")):
                 return True
     except Exception:  # noqa: BLE001
@@ -259,23 +258,34 @@ def _handle_order(o: dict, catalog: dict) -> list:
             oos_names.append(name)
         logger.info("order %s: broadcast %s x%s split across %s -> site",
                     o.get("number"), sku, qty, used)
-        # ── איזון אוטומטי: אם סטאר התרוקן (אחרי ניכוי מה שההזמנה לקחה) → השלמה לסטאר ──
+        # ── איזון אוטומטי: מפזרים את עודף הסניפים (כל מה מעל 1) לסניפים הריקים (0),
+        # יעד לפי BALANCE_TARGET (סטאר קודם), מקור = העודף הגדול ביותר, שומר ≥1 ──
         try:
-            taken = {b: tk for b, tk in used}
-            star_eff = int(stock.get(STAR_BRANCH) or 0) - taken.get(STAR_BRANCH, 0)
-            if star_eff <= 0 and not _has_open_balance(sku):
-                src = next((b for b in REPL_PRIORITY
-                            if int(stock.get(b) or 0) - taken.get(b, 0) >= REPL_MIN_SOURCE), None)
-                if src:
+            if not _has_open_balance(sku):
+                eff = {b: int(stock.get(b) or 0) for b in (1, 2, 3, 4)}
+                for b, tk in used:
+                    eff[b] = eff.get(b, 0) - tk     # מה שההזמנה כבר לקחה
+                for tgt in BALANCE_TARGET:
+                    if eff.get(tgt, 0) != 0:
+                        continue                    # ממלאים רק סניף ריק (0)
+                    # מקור: העודף הגדול ביותר (≥2) מבין הסניפים — **לא סטאר** (המרכז
+                    # רק מתמלא, לא מרוקנים אותו לטובת אחרים).
+                    src = max((b for b in (1, 3, 4)
+                               if b != tgt and eff.get(b, 0) >= REPL_MIN_SOURCE),
+                              key=lambda b: eff[b], default=None)
+                    if src is None:
+                        break                       # אין יותר עודף לחלק
                     bids = db.plan_add(
                         [{"product_id": sku, "name": name, "from_branch": src,
-                          "to_branch": STAR_BRANCH, "qty": REPL_QTY}],
+                          "to_branch": tgt, "qty": 1}],
                         created_by=f"השלמה אוטומטית · הזמנת אתר #{o.get('number')}")
                     db.plan_mark_broadcast(src, bids)
                     created.append({"sku": sku, "name": name, "src": src,
-                                    "qty": REPL_QTY, "balance": True})
-                    logger.info("order %s: auto-balance %s 1u branch %s -> STAR",
-                                o.get("number"), sku, src)
+                                    "qty": 1, "balance": True, "to": tgt})
+                    eff[src] -= 1
+                    eff[tgt] += 1
+                    logger.info("order %s: auto-balance %s 1u %s -> %s",
+                                o.get("number"), sku, src, tgt)
         except Exception as e:  # noqa: BLE001
             logger.warning("auto-balance failed for %s: %s", sku, e)
     # אם כבר אין פריט ללא מק"ט (חובר מק"ט) — מנקים את ההזמנה מרשימת הטיפול הידני
@@ -297,7 +307,8 @@ def _alert_created(o, created):
         return
     lines = "\n".join(
         f"• {c['name']} ×{c['qty']} — מ{cfg.branch_name(c['src'])}"
-        + (f" 🔄 השלמה אוטומטית → {cfg.branch_name(STAR_BRANCH)}" if c.get('balance') else "")
+        + (f" 🔄 השלמה אוטומטית → {cfg.branch_name(c.get('to', STAR_BRANCH))}"
+           if c.get('balance') else "")
         for c in created)
     alerts._send(os.getenv("TELEGRAM_ADMIN_CHAT", "448181407"),
                  f"📦 <b>שודרה בקשת העברה אוטומטית לאתר</b>\n"
