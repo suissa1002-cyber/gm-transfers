@@ -118,9 +118,10 @@ def file_to_folder(M) -> dict:
         to_file = [u for u, s in subs.items() if _is_customer_invoice(s)]
         res["checked"] = len(to_file)
         for uid in to_file:
-            M.uid("STORE", uid, "+X-GM-LABELS", lbl)          # מצמיד תווית ייעודית
-            M.uid("STORE", uid, "-FLAGS", "\\Deleted")        # מנקה דגל מחיקה תקוע מריצות ישנות
-            M.uid("STORE", uid, "-X-GM-LABELS", "\\Inbox")    # ארכוב (Gmail-בטוח)
+            # ⚠️ Gmail דורש את רשימת ה-labels **בסוגריים** ב-STORE. בלי הסוגריים הסרת
+            # תווית מערכת (\Inbox) נכשלת בשקט (Gmail מחזיר OK אך לא מסיר). זה היה הבאג.
+            M.uid("STORE", uid, "+X-GM-LABELS", "(%s)" % lbl)   # מצמיד תווית ייעודית
+            M.uid("STORE", uid, "-X-GM-LABELS", "(\\Inbox)")    # ארכוב — מסיר מהנכנסות
             res["filed"] += 1
         # כמה חשבוניות לקוח נשארו ב-INBOX (אחרי STORE מוצלח אמור להיות 0; חישוב זול
         # בלי fetch נוסף — פער יצביע על STORE שנכשל).
