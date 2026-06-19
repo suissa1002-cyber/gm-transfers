@@ -69,15 +69,13 @@ def file_to_folder(M) -> dict:
     res = {"checked": 0, "filed": 0, "remaining": None}
     try:
         M.select("INBOX", readonly=False)
-        import time as _t
-        since = _t.strftime("%d-%b-%Y", _t.gmtime(_t.time() - SCAN_DAYS * 86400))
         lbl = '"%s"' % _imap_utf7(FILE_LABEL)
-        # ⚠️ שתי סריקות מאוחדות: (1) הרגילה (SINCE). (2) הודעות שכבר סומנו \Deleted
-        # בריצות ישנות — Gmail **מחריג** הודעות \Deleted מתוצאות SEARCH רגילה, אבל הן
-        # עדיין מוצגות בנכנסות (Gmail web מתעלם מ-\Deleted). בלי הסריקה השנייה הן
-        # נתקעות בנכנסות לנצח (זה היה הבאג). מאחדים UID-ים מהשתיים.
+        # ⚠️ לארכוב סורקים את **כל** חשבוניות הלקוח שב-INBOX לפי FROM בלבד — **בלי SINCE**.
+        # ה-SINCE (חלון 14 יום) החריג חשבוניות ישנות יותר → הן נתקעו בנכנסות לנצח (זה
+        # היה הבאג). מסונן ממילא לפי שולח + PDF, אז סריקת-הכל בטוחה. ה-DELETED מאחד גם
+        # הודעות שסומנו \Deleted בריצות ישנות (Gmail מחריג אותן מ-SEARCH רגילה).
         uids = set()
-        for crit in (("FROM", FILE_SENDER, "SINCE", since),
+        for crit in (("FROM", FILE_SENDER),
                      ("FROM", FILE_SENDER, "DELETED")):
             try:
                 typ, data = M.uid("search", None, *crit)
