@@ -62,7 +62,8 @@ def _imap_utf7(s: str) -> str:
 
 def file_to_folder(M) -> dict:
     """מעביר חשבוניות לקוח (FROM=greenmobile.eshop, עם PDF) מ-INBOX לתווית 'חשבוניות
-    לקוחות' ומסיר מ-INBOX (ארכוב: \\Deleted + UID EXPUNGE — נשאר ב-All Mail תחת התווית).
+    לקוחות' ומסיר מ-INBOX (ארכוב: +X-GM-LABELS תווית, -X-GM-LABELS \\Inbox — ההודעה
+    נשארת ב-All Mail תחת התווית, ללא סיכון Trash).
     בטוח לאיציק (שמטפל רק ב-from:hclickapp) — מסנן בדיוק לפי שולח חשבוניות הלקוח.
     משתמש ב-PEEK כדי לא לגעת בדגלי \\Seen."""
     res = {"checked": 0, "filed": 0}
@@ -73,7 +74,6 @@ def file_to_folder(M) -> dict:
         typ, data = M.uid("search", None, "FROM", FILE_SENDER, "SINCE", since)
         uids = (data[0].split() if data and data[0] else [])
         lbl = '"%s"' % _imap_utf7(FILE_LABEL)
-        to_exp = []
         for uid in uids:
             res["checked"] += 1
             typ, md = M.uid("fetch", uid, "(BODY.PEEK[])")
@@ -85,14 +85,12 @@ def file_to_folder(M) -> dict:
                           for p in msg.walk())
             if not has_pdf:                  # לא חשבונית (PDF) → לא נוגעים
                 continue
-            M.uid("STORE", uid, "+X-GM-LABELS", lbl)
-            M.uid("STORE", uid, "+FLAGS", "\\Deleted")
-            to_exp.append(uid); res["filed"] += 1
-        for uid in to_exp:                   # UID EXPUNGE — רק ההודעות שלנו
-            try:
-                M.uid("EXPUNGE", uid)
-            except Exception:  # noqa: BLE001
-                M.expunge()
+            M.uid("STORE", uid, "+X-GM-LABELS", lbl)          # מצמיד תווית ייעודית
+            # ארכוב Gmail-בטוח: מסירים את התווית \Inbox (ההודעה נשארת ב-All Mail תחת
+            # התווית). \Deleted+EXPUNGE לא אמין ב-Gmail (תלוי הגדרות, לעתים לא מסיר
+            # מ-INBOX או מסכן זריקה ל-Trash) — לכן נמנעים ממנו.
+            M.uid("STORE", uid, "-X-GM-LABELS", "\\Inbox")
+            res["filed"] += 1
         if res["filed"]:
             logger.info("filed %d customer invoices to '%s'", res["filed"], FILE_LABEL)
     except Exception as e:  # noqa: BLE001

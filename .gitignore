@@ -6,3 +6,6 @@ __pycache__/
 .DS_Store
 _*.db
 DEPLOYMENT_INFO.md
+
+# ConnectOp cold export — large raw archive, never commit (Render builds from this repo)
+exports/
