@@ -66,14 +66,25 @@ def file_to_folder(M) -> dict:
     נשארת ב-All Mail תחת התווית, ללא סיכון Trash).
     בטוח לאיציק (שמטפל רק ב-from:hclickapp) — מסנן בדיוק לפי שולח חשבוניות הלקוח.
     משתמש ב-PEEK כדי לא לגעת בדגלי \\Seen."""
-    res = {"checked": 0, "filed": 0}
+    res = {"checked": 0, "filed": 0, "remaining": None}
     try:
         M.select("INBOX", readonly=False)
         import time as _t
         since = _t.strftime("%d-%b-%Y", _t.gmtime(_t.time() - SCAN_DAYS * 86400))
-        typ, data = M.uid("search", None, "FROM", FILE_SENDER, "SINCE", since)
-        uids = (data[0].split() if data and data[0] else [])
         lbl = '"%s"' % _imap_utf7(FILE_LABEL)
+        # ⚠️ שתי סריקות מאוחדות: (1) הרגילה (SINCE). (2) הודעות שכבר סומנו \Deleted
+        # בריצות ישנות — Gmail **מחריג** הודעות \Deleted מתוצאות SEARCH רגילה, אבל הן
+        # עדיין מוצגות בנכנסות (Gmail web מתעלם מ-\Deleted). בלי הסריקה השנייה הן
+        # נתקעות בנכנסות לנצח (זה היה הבאג). מאחדים UID-ים מהשתיים.
+        uids = set()
+        for crit in (("FROM", FILE_SENDER, "SINCE", since),
+                     ("FROM", FILE_SENDER, "DELETED")):
+            try:
+                typ, data = M.uid("search", None, *crit)
+                if data and data[0]:
+                    uids.update(data[0].split())
+            except Exception:  # noqa: BLE001
+                pass
         for uid in uids:
             res["checked"] += 1
             typ, md = M.uid("fetch", uid, "(BODY.PEEK[])")
@@ -86,11 +97,17 @@ def file_to_folder(M) -> dict:
             if not has_pdf:                  # לא חשבונית (PDF) → לא נוגעים
                 continue
             M.uid("STORE", uid, "+X-GM-LABELS", lbl)          # מצמיד תווית ייעודית
+            M.uid("STORE", uid, "-FLAGS", "\\Deleted")        # מנקה דגל מחיקה תקוע מריצות ישנות
             # ארכוב Gmail-בטוח: מסירים את התווית \Inbox (ההודעה נשארת ב-All Mail תחת
-            # התווית). \Deleted+EXPUNGE לא אמין ב-Gmail (תלוי הגדרות, לעתים לא מסיר
-            # מ-INBOX או מסכן זריקה ל-Trash) — לכן נמנעים ממנו.
+            # התווית). \Deleted+EXPUNGE לא אמין ב-Gmail — לכן נמנעים ממנו.
             M.uid("STORE", uid, "-X-GM-LABELS", "\\Inbox")
             res["filed"] += 1
+        # דיאגנוסטיקה: כמה חשבוניות לקוח עדיין נשארו ב-INBOX (אחרי הניקוי אמור להיות ~0)
+        try:
+            typ, d2 = M.uid("search", None, "FROM", FILE_SENDER)
+            res["remaining"] = len(d2[0].split()) if d2 and d2[0] else 0
+        except Exception:  # noqa: BLE001
+            pass
         if res["filed"]:
             logger.info("filed %d customer invoices to '%s'", res["filed"], FILE_LABEL)
     except Exception as e:  # noqa: BLE001
