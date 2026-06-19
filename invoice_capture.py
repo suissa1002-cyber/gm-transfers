@@ -157,16 +157,24 @@ def file_to_folder(M) -> dict:
                     "failure notice", "returned mail", "mail delivery failed")
         in_file = set(to_file)
         dsn_checked = 0
+        res["dsn_samples"] = []
         for u, (s, th) in mm.items():
             if u in in_file or not any(h in (s or "").lower() for h in DSN_HINT):
                 continue
             dsn_checked += 1
             try:
                 typ, md = M.uid("fetch", u, "(BODY.PEEK[])")
-                if md and md[0] and _is_customer_invoice(_searchable(md[0][1])):
+                txt = _searchable(md[0][1]) if md and md[0] else ""
+                match = _is_customer_invoice(txt)
+                if len(res["dsn_samples"]) < 8:
+                    res["dsn_samples"].append({
+                        "match": match, "has_invoice": "חשבונית" in txt,
+                        "markers": [mk for mk in FILE_MARKERS if mk in txt],
+                        "snip": txt[:120]})
+                if match:
                     to_file.append(u); in_file.add(u)
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception as e:  # noqa: BLE001
+                res["dsn_samples"].append({"err": str(e)[:80]})
         res["dsn_checked"] = dsn_checked
         res["checked"] = len(to_file)
         res["scanned"] = len(mm)
