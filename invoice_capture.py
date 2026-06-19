@@ -309,6 +309,72 @@ def _parse(pdf_bytes: bytes, subject: str = "") -> dict:
     return out
 
 
+def probe_storage(days: int = 60) -> dict:
+    """בודק אם עותק חשבונית הלקוח שב-INBOX/תווית הוא **אותה הודעה** כמו רשומת ה-נשלח
+    (CC לעצמנו → X-GM-MSGID משותף → הודעה אחת, אפס כפילות אחסון) או הודעה נפרדת (כפילות
+    אמיתית → מחיקת עותק הנכנסות בטוחה ומשחררת מקום). משווה MSGID בין תווית 'חשבוניות
+    לקוחות' ל-[Gmail]/Sent Mail."""
+    if not configured():
+        return {"ok": False, "reason": "imap-not-configured"}
+    out = {"ok": True}
+    try:
+        M = imaplib.IMAP4_SSL(IMAP_HOST)
+        M.login(IMAP_USER, IMAP_PASS)
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "reason": f"login: {e}"}
+
+    def _msgids(folder):
+        ids = {}
+        try:
+            M.select(f'"{folder}"', readonly=True)
+            import time as _t
+            since = _t.strftime("%d-%b-%Y", _t.gmtime(_t.time() - days * 86400))
+            typ, d = M.uid("search", None, "FROM", INVOICE_FROM, "SINCE", since)
+            uids = (d[0].split() if d and d[0] else [])
+            for i in range(0, len(uids), 100):
+                csv = b",".join(uids[i:i + 100]).decode()
+                typ, md = M.uid("fetch", csv,
+                                "(X-GM-MSGID BODY.PEEK[HEADER.FIELDS (SUBJECT)])")
+                for part in (md or []):
+                    if not (isinstance(part, tuple) and part[0]):
+                        continue
+                    mm = re.search(rb"X-GM-MSGID (\d+)", part[0])
+                    subj = _decode(email.message_from_bytes(part[1] or b"").get("Subject") or "")
+                    if mm and "חשבונית" in subj:
+                        ids[mm.group(1).decode()] = subj[:50]
+        except Exception as e:  # noqa: BLE001
+            out.setdefault("errs", []).append(f"{folder}: {e}")
+        return ids
+
+    try:
+        sent_folder = "[Gmail]/Sent Mail"
+        try:
+            typ, boxes = M.list()
+            for b in (boxes or []):
+                line = b.decode() if isinstance(b, bytes) else str(b)
+                if "\\Sent" in line:
+                    m = re.search(r'"([^"]+)"\s*$', line) or re.search(r'(\S+)\s*$', line)
+                    if m:
+                        sent_folder = m.group(1); break
+        except Exception:  # noqa: BLE001
+            pass
+        label = _msgids(_imap_utf7(FILE_LABEL))
+        sent = _msgids(sent_folder)
+        overlap = set(label) & set(sent)
+        out.update({"label_folder": FILE_LABEL, "sent_folder": sent_folder,
+                    "in_label": len(label), "in_sent": len(sent),
+                    "same_message_overlap": len(overlap),
+                    "label_only_separate": len(set(label) - set(sent))})
+    except Exception as e:  # noqa: BLE001
+        out = {"ok": False, "reason": str(e)}
+    finally:
+        try:
+            M.logout()
+        except Exception:  # noqa: BLE001
+            pass
+    return out
+
+
 def probe_sent(days: int = 21, max_msgs: int = 30) -> dict:
     """אבחון תיקיית 'נשלח': מאשר שעותקי החשבונית שניו אורדר שולח ללקוחות (מהחשבון שלנו)
     יושבים ב-Sent עם PDF — כדי לוודא שאפשר לכבות 'שלח עותק לשולח' ועדיין לקלוט מ-Sent."""
