@@ -2204,8 +2204,9 @@ def _bot_handoff_on(phone):
     try:
         from datetime import datetime, timezone
         prev = (db.bot_session_get(phone).get("data") or {}).get("note")
+        # human=True → השיחה בטיפול אדם בפועל; הבוט יישאר שקט גם מחוץ לשעות (wa_bot)
         db.bot_session_set(str(phone), "agent",
-                           {"note": prev or "מענה אנושי",
+                           {"note": prev or "מענה אנושי", "human": True,
                             "ts": datetime.now(timezone.utc).isoformat()})
     except Exception:  # noqa: BLE001
         pass
@@ -2352,7 +2353,7 @@ def wa_bot_handoff(phone: str, on: int = 1, x_admin_key: Optional[str] = Header(
     if on:
         from datetime import datetime, timezone
         db.bot_session_set(phone, "agent",
-                           {"note": "ידני (קונסולה)",
+                           {"note": "ידני (קונסולה)", "human": True,
                             "ts": datetime.now(timezone.utc).isoformat()})
     else:
         db.bot_session_clear(phone)
