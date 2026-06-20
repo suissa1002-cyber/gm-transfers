@@ -2688,6 +2688,14 @@ def _failed_conversations() -> list:
     return out
 
 
+@app.get("/api/admin/wa/failed-sends")
+def admin_wa_failed_sends(days: int = 7, x_admin_key: Optional[str] = Header(None)):
+    """הודעות שנכשלו במסירה ממטא + סיבה (code · title). err ריק = נכשל לפני שהוספנו לכידת סיבה."""
+    _require_admin(x_admin_key)
+    rows = db.wa_failed_sends(days)
+    return {"count": len(rows), "items": rows}
+
+
 @app.get("/api/admin/wa/failures")
 def admin_wa_failures(x_admin_key: Optional[str] = Header(None)):
     """שיחות שדורשות בדיקה (כשלים): dropped/frustrated/waiting."""

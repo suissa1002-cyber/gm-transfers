@@ -552,6 +552,7 @@ def _migrate():
         ("transfer_plan",  "bcast", "INTEGER"),
         ("transfer_plan",  "created_by", "TEXT"),
         ("transfer_plan",  "note", "TEXT"),     # הערה חופשית לסניף (רשמי/eSIM וכו')
+        ("wa_msg",         "err", "TEXT"),       # סיבת כשל מסירה ממטא (code · title)
         # נעילת סניף: הסניף המאושר של המכשיר — שינוי רק באישור מנהל (טלגרם)
         ("devices",        "branch_locked", "TEXT"),
         # is_stock=0 → מוצר דיגיטלי/לא-מנוהל-מלאי (גיפט קארד/קוד) — מדלגים על שידור/OOS
@@ -1693,11 +1694,27 @@ def wa_msg_upsert(wamid, phone, direction, mtype, text="", media_id="", media_mi
         return bool(getattr(cur, "rowcount", 0))
 
 
-def wa_msg_set_status(wamid: str, status: str):
+def wa_msg_set_status(wamid: str, status: str, err: str = ""):
     if not wamid:
         return
     with _conn() as c:
-        c.cursor().execute(_q("UPDATE wa_msg SET status = ? WHERE wamid = ?"), (status, wamid))
+        if err:
+            c.cursor().execute(_q("UPDATE wa_msg SET status = ?, err = ? WHERE wamid = ?"),
+                               (status, err[:300], wamid))
+        else:
+            c.cursor().execute(_q("UPDATE wa_msg SET status = ? WHERE wamid = ?"), (status, wamid))
+
+
+def wa_failed_sends(days: int = 7, limit: int = 60) -> list:
+    """הודעות יוצאות שנכשלו במסירה (status='failed') + סיבת מטא (err) — לניטור כשלים."""
+    import time as _t
+    cutoff = int(_t.time()) - int(days) * 86400
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""SELECT phone, text, type, err, ts FROM wa_msg
+                          WHERE direction = 'out' AND status = 'failed' AND ts >= ?
+                          ORDER BY ts DESC LIMIT ?"""), (cutoff, int(limit)))
+        return [dict(r) for r in cur.fetchall()]
 
 
 def wa_msg_set_media_url(wamid: str, url: str):

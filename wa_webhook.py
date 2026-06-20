@@ -136,7 +136,16 @@ def process(raw: bytes) -> dict:
                     logger.warning("store inbound failed (%s): %s", wamid, e)
             for s in (v.get("statuses") or []):
                 try:
-                    db.wa_msg_set_status(s.get("id") or "", s.get("status") or "")
+                    st = s.get("status") or ""
+                    err = ""
+                    if st == "failed":
+                        e0 = (s.get("errors") or [{}])[0]
+                        details = (e0.get("error_data") or {}).get("details") or ""
+                        err = (f"{e0.get('code')} · {e0.get('title') or e0.get('message') or ''}"
+                               + (f" · {details}" if details else "")).strip()
+                        logger.warning("WA DELIVERY FAILED phone=%s wamid=%s → %s",
+                                       s.get("recipient_id"), s.get("id"), err)
+                    db.wa_msg_set_status(s.get("id") or "", st, err)
                     n_stat += 1
                 except Exception:  # noqa: BLE001
                     pass
