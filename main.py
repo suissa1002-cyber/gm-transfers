@@ -2682,6 +2682,8 @@ def _digest_data() -> dict:
         oos = _j.loads(db.sales_state_get("order_oos_list") or "[]")
         unm = _j.loads(db.sales_state_get("order_unmatched_list") or "[]")
         out["orders"] = {"oos": len(oos), "unmatched": len(unm)}
+        out["oos_detail"] = [{"number": x.get("number"), "item": x.get("item"),
+                              "partial": bool(x.get("partial"))} for x in oos[:30]]
     except Exception:  # noqa: BLE001
         out["orders"] = {"oos": "?", "unmatched": "?"}
     try:
