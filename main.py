@@ -2652,6 +2652,53 @@ def _digest_is_ack(text: str) -> bool:
     return len(words) <= 4 and any(w in _DIGEST_ACK_TOK for w in words)
 
 
+_CHECKING_PHRASES = ("בודק עבורך", "בודקת עבורך", "כמה רגעים, בודק", "כמה רגעים בודק")
+_FRUSTR_WORDS = ("הלו", "מישהו", "תענו", "כבר אמרתי", "כבר כתבתי", "מה קורה",
+                 "אתם שם", "אתם פה", "בבקשה תענו", "מי שם", "אין מענה")
+
+
+def _failed_conversations() -> list:
+    """שיחות שדורשות בדיקה — 3 סיגנלים, לפי עדיפות:
+    🔴 dropped  — הבוט הבטיח 'בודק עבורך' וההודעה הזו האחרונה >10 דק' בלי מענה (כמו Rotem).
+    🟠 frustrated — הלקוח כתב מילות תסכול ועדיין ממתין.
+    🟠 waiting  — שיחה במצב נציג שממתינה למענה אנושי (לא הודעת תודה)."""
+    import time as _t
+    now = _t.time()
+    out = []
+    try:
+        import wa as _wa
+        for c in _wa.list_conversations_native(limit=400):
+            if c.get("archived"):
+                continue
+            last = c.get("last_msg") or ""
+            ts = c.get("ts") or 0
+            ph, nm = c.get("phone"), c.get("name")
+            if (not c.get("unread")) and ts and (now - ts > 600) \
+                    and any(p in last for p in _CHECKING_PHRASES):
+                out.append({"phone": ph, "name": nm, "type": "dropped", "last": last[:50]})
+            elif c.get("unread") and any(w in last for w in _FRUSTR_WORDS):
+                out.append({"phone": ph, "name": nm, "type": "frustrated", "last": last[:50]})
+            elif c.get("unread") and c.get("handoff") and not _digest_is_ack(last):
+                out.append({"phone": ph, "name": nm, "type": "waiting", "last": last[:50]})
+    except Exception:  # noqa: BLE001
+        pass
+    # מסדרים לפי חומרה: dropped → frustrated → waiting
+    order = {"dropped": 0, "frustrated": 1, "waiting": 2}
+    out.sort(key=lambda x: order.get(x["type"], 9))
+    return out
+
+
+@app.get("/api/admin/wa/failures")
+def admin_wa_failures(x_admin_key: Optional[str] = Header(None)):
+    """שיחות שדורשות בדיקה (כשלים): dropped/frustrated/waiting."""
+    _require_admin(x_admin_key)
+    f = _failed_conversations()
+    by = {}
+    for x in f:
+        by[x["type"]] = by.get(x["type"], 0) + 1
+    return {"count": len(f), "by_type": by, "items": f}
+
+
 def _digest_token() -> str:
     t = db.sales_state_get("digest_token")
     if not t:
