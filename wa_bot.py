@@ -304,6 +304,15 @@ def handle(phone: str, text: str, mtype: str = "text", reply_id: str = "", wamid
         if _is_closing(low):
             wa.send_text(phone, "בשמחה! אם יש עוד שאלות — אנחנו כאן 😊")
             return
+        # שאלת מחיר-תיקון בטקסט חופשי → מחירון המעבדה הדטרמיניסטי (לא אורי, שולח לנציג).
+        # שיחה 972546619676: 'כמה עולה להחליף סוללה לאייפון 14 פרו' נפלה לאורי.
+        if _is_repair_quote_intent(low):
+            import main as _m
+            if _m.bot_repair_quote(text):
+                return _repair_quote_result(phone, text)
+            wa.send_text(phone, "💰 *הצעת מחיר לתיקון*\nלאיזה דגם? (למשל: אייפון 14 פרו, גלקסי S23)")
+            db.bot_session_set(phone, "await_repair_model", {})
+            return
         prod = _product_query(low)
         # שיחה פעילה עם אורי: כל עוד זו לא שאילתת מוצר ברורה — הכל נשאר עם אורי,
         # כולל הודעות קצרות ('Ok'/'תודה') ומשפטים באנגלית ('I should receive it today').
@@ -365,6 +374,24 @@ def _is_closing(low: str) -> bool:
     s = _re.sub(r"[!.,?‏‎\s]+", " ", (low or "")).strip()
     words = [w for w in s.split() if w]
     return bool(words) and len(words) <= 4 and all(w in _CLOSE_TOK for w in words)
+
+
+# זיהוי שאלת מחיר-תיקון בטקסט חופשי ('כמה עולה להחליף סוללה לאייפון 14') → לנתב למחירון
+# המעבדה הדטרמיניסטי במקום לאורי (שלא מכיר אותו ושולח לנציג). דורש חלק-תיקון + פועל/הקשר-
+# תיקון יחד, כדי לא לתפוס שאילתות מוצר ('מגן מסך', 'יש לכם מסך?').
+_REPAIR_PART_W = ("סוללה", "מסך", "צג", "שקע", "מצלמה", "זכוכית", "רמקול", "אוזניה",
+                  "מיקרופון", "טאצ", "לחצן", "כפתור", "ויברציה", "גב ", "דיבורית")
+_REPAIR_VERB_W = ("להחליף", "החלפת", "החלפה", "מחליפים", "לתקן", "תיקון", "שבור", "שבורה",
+                  "נשבר", "סדוק", "התקלקל", "מקולקל", "דפוק", "לא עובד", "לא דולק", "נשרט")
+
+
+def _is_repair_quote_intent(low: str) -> bool:
+    s = low or ""
+    if "מגן" in s or "כיסוי" in s:        # 'מגן מסך'/'כיסוי' = מוצר, לא תיקון
+        return False
+    has_part = any(p in s for p in _REPAIR_PART_W)
+    has_verb = any(v in s for v in _REPAIR_VERB_W)
+    return has_part and has_verb
 
 
 # מילות-מילוי שיחתיות — מוסרות בנרמול שאילתה כדי לזהות שאילתה חוזרת ('אני רוצה אבל
