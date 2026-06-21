@@ -847,6 +847,61 @@ def promote_resolved_closed_transfers() -> int:
         return len(ops)
 
 
+def reconcile_boomerang_transfers() -> list:
+    """בומרנג: מכשיר שיצא בהעברה A (X→Y, received=0) ונשלח **בחזרה למקור** בהעברה פתוחה
+    מאוחרת יותר B (Y→X, received=0) — מבלי שנקלט אי-פעם בדרך. כלומר חזר למקור בלי שנסרק
+    בשום שלב, ולכן תקוע 'בהעברה' בשני הכיוונים. סוגר את שתי השורות (received=4 'בומרנג')
+    ומקדם כל העברה ל-'received' אם כל פריטיה נפתרו (1/2/4).
+    ⚠️ גארד כפול נגד false-positive: (א) שתי השורות חייבות received=0 — אם המכשיר נקלט/
+    נמכר אי-שם, לא נוגעים; (ב) הענפים חייבים להיות **הפוכים מדויקים** (יעד B=מקור A
+    ולהפך) ו-B מאוחר מ-A. סריאל ייחודי למכשיר → סיכון התנגשות זניח. מחזיר רשימה להתראה."""
+    out = []
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%S")
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""
+            SELECT a.id AS a_item, a.op_id AS a_op, a.serial AS serial, a.name AS name,
+                   ta.from_branch_id AS x, ta.to_branch_id AS y,
+                   b.id AS b_item, b.op_id AS b_op
+            FROM transfer_items a
+            JOIN transfers ta ON ta.op_id = a.op_id
+            JOIN transfer_items b ON b.serial = a.serial AND b.op_id <> a.op_id
+            JOIN transfers tb ON tb.op_id = b.op_id
+            WHERE a.serial IS NOT NULL AND a.serial <> ''
+              AND a.received = 0 AND b.received = 0
+              AND ta.status IN ('in_transit', 'partial')
+              AND tb.status IN ('in_transit', 'partial')
+              AND ta.from_branch_id = tb.to_branch_id
+              AND ta.to_branch_id   = tb.from_branch_id
+              AND ta.from_branch_id <> ta.to_branch_id
+              AND COALESCE(tb.created_at, '') > COALESCE(ta.created_at, '')
+              AND COALESCE(ta.created_at, '') >= ?
+        """), (cutoff,))
+        pairs = [dict(r) for r in cur.fetchall()]
+        seen = set()
+        for p in pairs:
+            key = tuple(sorted((p["a_item"], p["b_item"])))
+            if key in seen:
+                continue
+            seen.add(key)
+            ts = now_iso()
+            for item_id, op_id in ((p["a_item"], p["a_op"]), (p["b_item"], p["b_op"])):
+                cur.execute(_q("""
+                    UPDATE transfer_items
+                    SET received = 4, received_at = ?, received_by = ?, received_method = ?
+                    WHERE id = ? AND received = 0
+                """), (ts, "בומרנג (אוטומטי)", "בומרנג / חזר למקור", item_id))
+                cur.execute(_q("""SELECT COUNT(*) AS n FROM transfer_items
+                                  WHERE op_id = ? AND received NOT IN (1, 2, 4)"""), (op_id,))
+                if cur.fetchone()["n"] == 0:
+                    cur.execute(_q("""UPDATE transfers SET status='received',
+                        received_at = COALESCE(received_at, ?) WHERE op_id = ?"""), (ts, op_id))
+            out.append({"serial": p["serial"], "name": p.get("name") or "",
+                        "origin_branch_id": p["x"], "via_branch_id": p["y"],
+                        "op_out": p["a_op"], "op_back": p["b_op"]})
+    return out
+
+
 def receive_scan(branch_id: int, code: str, op_id: str = None, employee: str = None,
                  method: str = None) -> dict:
     """

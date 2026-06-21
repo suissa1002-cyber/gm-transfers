@@ -113,6 +113,16 @@ def _sold_reconcile_job():
                         r.get("transfer_closed"))
         if rows:
             logger.info("sold-reconcile: closed %d stuck receive item(s)", len(rows))
+        # בומרנג: מכשיר שיצא וחזר למקור בלי שנקלט בדרך → תקוע בשני הכיוונים. פותר אוטומטית.
+        for b in db.reconcile_boomerang_transfers():
+            origin = cfg.branch_name(b.get("origin_branch_id"))
+            via = cfg.branch_name(b.get("via_branch_id"))
+            _tg_admin(f"🔁 <b>בומרנג העברה — נפתר אוטומטית</b>\n{b.get('name')} "
+                      f"(סריאלי <code>{b.get('serial')}</code>)\nיצא <b>{origin}</b>→<b>{via}</b> "
+                      f"(op {b.get('op_out')}) וחזר <b>{via}</b>→<b>{origin}</b> (op {b.get('op_back')}) "
+                      f"בלי שנקלט בדרך.\nשתי ההעברות נסגרו, המכשיר חזר להיות זמין ב<b>{origin}</b>.")
+            logger.info("boomerang-reconcile: serial=%s out=%s back=%s",
+                        b.get("serial"), b.get("op_out"), b.get("op_back"))
     except Exception as e:  # noqa: BLE001
         logger.warning("sold reconcile job error: %s", e)
 
@@ -2041,6 +2051,16 @@ def admin_sold_reconcile(x_admin_key: Optional[str] = Header(None)):
     _require_admin(x_admin_key)
     rows = db.reconcile_sold_transfer_items()
     promoted = db.promote_resolved_closed_transfers()
+    booms = db.reconcile_boomerang_transfers()
+    for b in booms:
+        try:
+            origin = cfg.branch_name(b.get("origin_branch_id"))
+            via = cfg.branch_name(b.get("via_branch_id"))
+            _tg_admin(f"🔁 <b>בומרנג העברה — נפתר</b>\n{b.get('name')} "
+                      f"(סריאלי <code>{b.get('serial')}</code>)\nיצא <b>{origin}</b>→<b>{via}</b> "
+                      f"וחזר בלי שנקלט. שתי ההעברות נסגרו, המכשיר זמין ב<b>{origin}</b>.")
+        except Exception:  # noqa: BLE001
+            pass
     for r in rows:
         try:
             to_name = cfg.branch_name(r.get("to_branch_id"))
@@ -2056,7 +2076,8 @@ def admin_sold_reconcile(x_admin_key: Optional[str] = Header(None)):
             _tg_admin(f"{head}\n{r.get('name')} (סריאלי <code>{r.get('serial')}</code>)\n{where}\n{cleared}")
         except Exception:  # noqa: BLE001
             pass
-    return {"closed": len(rows), "promoted": promoted, "items": rows}
+    return {"closed": len(rows), "promoted": promoted, "items": rows,
+            "boomerangs": len(booms), "boomerang_items": booms}
 
 
 @app.get("/api/admin/sales/by-serial")
