@@ -5053,43 +5053,6 @@ def _classify_cancellation(o: dict) -> str:
     return "abandoned" if (not has_pay and (0 <= mins <= 30)) else "real_cancel"
 
 
-def _payplus_recover_if_paid(o) -> bool:
-    """⚠️ הזמנה שבוטלה כ'אי-תשלום' אך **שולמה בפועל** ב-PayPlus (Apple Pay/כרטיס שה-IPN
-    של תוסף האתר לא עדכן ל-WC) → משחזר ל-'processing' + מסמן שולם + מתריע בטלגרם, ולא
-    שולח הודעת ביטול. מחזיר True אם שוחזר. (הזמנה 47323: שולם ₪115 Apple Pay, WC נשאר
-    pending, הביטול-האוטומטי של WC ביטל אותה.)"""
-    meta = {m.get("key"): m.get("value") for m in (o.get("meta_data") or [])}
-    pru = (meta.get("greenos_payplus_pru")
-           or meta.get("payplus_page_request_uid") or "").strip()
-    if not pru:
-        return False
-    tx = _payplus_ipn_check(pru)        # מחזיר את העסקה רק אם status_code 000 (שולם)
-    if not tx:
-        return False
-    num = str(o.get("number") or "")
-    try:
-        base, k, s = _wc_creds()
-        import requests as _rq
-        _rq.put(f"{base}/wp-json/wc/v3/orders/{o.get('id')}", auth=(k, s), timeout=30, json={
-            "status": "processing",
-            "transaction_id": tx.get("transaction_uid") or "",
-            "meta_data": [{"key": "greenos_payplus_recovered",
-                           "value": tx.get("transaction_uid") or "1"}]})
-        db.sales_state_set(f"order_last_status:{num}", "processing")   # מונע re-trigger
-    except Exception as e:  # noqa: BLE001
-        logger.warning("payplus recover restore failed %s: %s", num, e)
-        return False
-    try:
-        _tg_admin(f"💳✅ <b>הזמנה ששולמה שוחזרה מביטול שגוי</b>\nהזמנה {num}: בוטלה "
-                  f"כ'אי-תשלום' אך יש תשלום מאושר ב-PayPlus ({tx.get('amount')}₪ · "
-                  f"{tx.get('alternative_method_name') or tx.get('method') or 'כרטיס'}). "
-                  f"שוחזרה ל'בטיפול' וסומנה שולם.\n⚠️ ודא שהלקוח קיבל את המוצר/קוד.")
-    except Exception:  # noqa: BLE001
-        pass
-    logger.info("payplus recover: order %s restored to processing (paid, pru %s)", num, pru)
-    return True
-
-
 def _notify_order_status(o, enabled=None, init="__fetch__", force=False):
     """שולח ללקוח template סטטוס מאושר אם הסטטוס *השתנה* (בהפצה/מוכן לאיסוף/נק' מסירה).
     משמש גם ב-job (כל 3 דק') וגם ב-webhook (מיידי). מגודר WA_SEND_STATUS_AUTO + דדופ
@@ -5113,9 +5076,6 @@ def _notify_order_status(o, enabled=None, init="__fetch__", force=False):
         return                               # ריצה ראשונה / לא ידוע / ללא שינוי → דלג
     # --- ביטול הזמנה native (דגל נפרד, רדום עד cutover קונקטופ — מונע כפילות) ---
     if st == "cancelled":
-        # ⚠️ קודם כל: בוטלה כ'אי-תשלום' אך שולמה בפועל ב-PayPlus → שחזר, אל תבטל/תודיע.
-        if _classify_cancellation(o) == "abandoned" and _payplus_recover_if_paid(o):
-            return
         if os.getenv("WA_SEND_CANCEL_AUTO", "0").strip() != "1":
             return
         if db.sales_state_get(f"status_sent:{num}:cancelled"):
