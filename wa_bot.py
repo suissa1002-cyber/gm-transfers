@@ -797,8 +797,8 @@ def _product_card(phone, rid, data):
             vs = _m.bot_get_variations(pid) or []
         except Exception:  # noqa: BLE001
             vs = []
-    oos = [v for v in vs if v.get("stock") == "outofstock" and v.get("sku")]
     instock = [v for v in vs if v.get("stock") == "instock"]
+    oos = _oos_variations(vs)
     asked = _asked_color(q, vs)       # הוריאציה שתואמת לצבע שהלקוח שאל עליו
     stock = p.get("stock")
     if asked and asked.get("stock") == "outofstock" and instock:
@@ -841,14 +841,27 @@ def _product_card(phone, rid, data):
 
 
 # ── 🔔 Stock Watch: עדכון ללקוח כשמוצר/צבע שאזל חוזר למלאי ──
+def _oos_variations(vs: list) -> list:
+    """וריאציות שאזלו שכל הצבע שלהן אזל (לא רק נפח מסוים). אותו צבע יכול להופיע בכמה
+    נפחים (TUNDRA UMBER 512GB אזל אך 1TB במלאי) — אם יש ולו וריאציה אחת זמינה באותו
+    צבע, הצבע לא נחשב 'אזל'. בלי זה הבוט מכריז 'אזל בצבע X' שגוי כשיש X זמין בנפח אחר
+    (שיחה 491633171111: יחידה אחרונה דווחה כאזלה)."""
+    instock_colors = {(v.get("color") or "").strip() for v in (vs or [])
+                      if v.get("stock") == "instock" and v.get("color")}
+    return [v for v in (vs or []) if v.get("stock") == "outofstock" and v.get("sku")
+            and (v.get("color") or "").strip() not in instock_colors]
+
+
 def _asked_color(q: str, variations: list):
-    """מזהה את הוריאציה שתואמת לצבע שהלקוח שאל עליו (rezez בשאלה), אם יש."""
+    """מזהה את הוריאציה שתואמת לצבע שהלקוח שאל עליו (רמז בשאלה), אם יש. אותו צבע יכול
+    להופיע בכמה נפחים — מעדיפים וריאציה **זמינה** באותו צבע על פני אחת שאזלה, כדי לא
+    לדווח 'אזל' כשיש יחידה זמינה באותו צבע בנפח אחר."""
     ql = (q or "")
-    for v in (variations or []):
-        c = (v.get("color") or "").strip()
-        if c and c in ql:
-            return v
-    return None
+    match = [v for v in (variations or [])
+             if (v.get("color") or "").strip() and (v.get("color") or "").strip() in ql]
+    if not match:
+        return None
+    return next((v for v in match if v.get("stock") == "instock"), match[0])
 
 
 def _is_back_in_stock_intent(low: str) -> bool:
