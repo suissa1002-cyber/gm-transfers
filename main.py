@@ -3779,7 +3779,9 @@ def _ship_tag(o: dict, meta: dict = None) -> str:
 
 
 def _li_attrs(li: dict) -> list:
-    """מאפייני הוריאציה משורת ההזמנה (צבע/נפח/קישוריות...) — בלי מפתחות פנימיים."""
+    """מאפייני הוריאציה + תוספים (Product Add-Ons) משורת ההזמנה — בלי מפתחות פנימיים.
+    ⚠️ התקרה הייתה 50 תווים וחתכה תוספים (ראש מטען 20W +₪129.27 = 52 תווים), כך שמלקט
+    לא ראה אותם (הזמנה 46875). הועלתה ל-150 + דילוג על תווית-קבוצה כפולה (k==v)."""
     out = []
     for m in (li.get("meta_data") or []):
         k = str(m.get("display_key") or m.get("key") or "")
@@ -3787,9 +3789,11 @@ def _li_attrs(li: dict) -> list:
         if k.startswith("_") or not isinstance(v, (str, int, float)):
             continue
         vs = str(v).strip()
-        if vs and len(vs) <= 50:
+        if not vs or vs == k.strip():        # תווית-קבוצה ריקה/כפולה (כותרת Add-Ons) — דלג
+            continue
+        if len(vs) <= 150:
             out.append({"k": k.replace("בחירת ", ""), "v": vs})
-        if len(out) >= 6:
+        if len(out) >= 12:
             break
     return out
 
