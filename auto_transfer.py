@@ -14,6 +14,7 @@
 """
 import logging
 import os
+import re
 from datetime import datetime
 
 import requests
@@ -47,6 +48,55 @@ def _wc_creds():
     k = os.getenv("WC_CONSUMER_KEY", "")
     s = os.getenv("WC_CONSUMER_SECRET", "")
     return (base, k, s) if (base and k and s) else None
+
+
+_addon_sku_cache = {}
+
+
+def _wc_sku_for_product(wc_id):
+    """SKU של מוצר WC לפי id (cached) — לפענוח תוספי Product Add-Ons → מק\"ט קופה."""
+    wc_id = str(wc_id)
+    if wc_id in _addon_sku_cache:
+        return _addon_sku_cache[wc_id]
+    sku = None
+    creds = _wc_creds()
+    if creds:
+        base, k, s = creds
+        try:
+            r = requests.get(f"{base}/wp-json/wc/v3/products/{int(wc_id)}",
+                             params={"_fields": "id,sku"}, auth=(k, s), timeout=20)
+            if r.ok:
+                sku = (r.json().get("sku") or "").strip() or None
+        except Exception as e:  # noqa: BLE001
+            logger.warning("addon sku lookup failed for %s: %s", wc_id, e)
+    _addon_sku_cache[wc_id] = sku
+    return sku
+
+
+def _order_addon_items(o):
+    """תוספי Product Add-Ons מכל שורות ההזמנה → שורות וירטואליות {sku, quantity, name}
+    שישודרו לליקוט כמו פריט רגיל. מזוהים לפי '(#<wc_id>)' ב-display_key ו-'N x' בערך
+    (הזמנה 46875: ראש מטען 20W #15478, נשמר כ-meta על שורת האייפון, לא כשורה)."""
+    out = []
+    for li in (o.get("line_items") or []):
+        line_qty = max(1, int(li.get("quantity") or 1))
+        for m in (li.get("meta_data") or []):
+            key = str(m.get("display_key") or m.get("key") or "")
+            if key.startswith("_"):
+                continue
+            mid = re.search(r"#(\d{2,})", key)
+            if not mid:
+                continue
+            val = str(m.get("display_value") if m.get("display_value") is not None else (m.get("value") or ""))
+            qm = re.search(r"(\d+)\s*[xX×]", val)
+            if not qm:           # חתימת Product Add-On מסוג מוצר היא 'N x ...' — בלעדיה זה לא תוסף
+                continue
+            sku = _wc_sku_for_product(mid.group(1))   # ריק/None אם למוצר התוסף אין מק"ט
+            qty = int(qm.group(1)) * line_qty
+            name = re.sub(r"\s*\(#\d+\)\s*", "", key).strip() or ("מוצר " + mid.group(1))
+            # sku ריק → השורה תיפול ל-_mark_unmatched בלולאה (גלוי, לא יושמט בשקט).
+            out.append({"sku": sku or "", "quantity": qty, "name": name + " · תוסף", "_addon": True})
+    return out
 
 
 def _fetch_recent_orders():
@@ -184,7 +234,9 @@ def _handle_order(o: dict, catalog: dict) -> list:
     created = []
     oos_names = []           # פריטים חסרים בכל הסניפים — לזיהוי "שודר חלקי" בסוף
     had_unmatched = False     # פריט פיזי ללא מק"ט בריצה הזו (לעדכון הבאנר)
-    for li in o.get("line_items", []):
+    # שורות ההזמנה + תוספי Product Add-Ons (ראש מטען וכו') כשורות וירטואליות — כך
+    # שגם התוסף משודר לליקוט, לא רק המוצר הראשי (פער שהתגלה בהזמנה 46875).
+    for li in (list(o.get("line_items", [])) + _order_addon_items(o)):
         sku = str(li.get("sku") or "").strip()
         qty = max(1, int(li.get("quantity") or 1))
         if not sku:
