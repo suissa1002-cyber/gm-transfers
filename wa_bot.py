@@ -367,6 +367,40 @@ def _is_closing(low: str) -> bool:
     return bool(words) and len(words) <= 4 and all(w in _CLOSE_TOK for w in words)
 
 
+# מילות-מילוי שיחתיות — מוסרות בנרמול שאילתה כדי לזהות שאילתה חוזרת ('אני רוצה אבל
+# אייפון 16' == 'אז יש לכם אייפון 16' → שתיהן 'אייפון 16 פרו מקס'). מונע לופ של אותה
+# תשובת חיפוש שוב ושוב.
+_Q_FILLER = {"אני", "רוצה", "אבל", "אז", "יש", "לכם", "שלכם", "האם", "אתם", "מחפש",
+             "מחפשת", "את", "תגיד", "תגידי", "אולי", "עוד", "גם", "כן", "לא", "צריך",
+             "מעוניין", "מעוניינת", "רק", "בבקשה", "עדיין", "זמין", "קיים", "מכשיר",
+             "טלפון", "דגם", "מחיר", "כמה", "עולה", "של", "ה"}
+
+
+def _norm_q(q: str) -> str:
+    s = _re.sub("[^0-9a-z֐-׿]+", " ", (q or "").lower())
+    return " ".join(w for w in s.split() if w and w not in _Q_FILLER)
+
+
+# רמז-צמצום דינמי לפי המותג שזוהה — במקום דוגמה קבועה (JBL) שנראית אבסורדית בשאילתת
+# אייפון. ברירת מחדל גנרית-הגיונית אם המותג לא זוהה.
+_NARROW_HINT = {"apple": "iPhone 17 / iPad", "iphone": "iPhone 17 / iPad",
+                "ipad": "iPad / iPhone", "macbook": "MacBook Air / Pro",
+                "samsung": "Galaxy S25 / A55", "galaxy": "Galaxy S25 / A55",
+                "xiaomi": "Redmi Note 14", "redmi": "Redmi Note 14", "poco": "Poco X6",
+                "jbl": "Flip / Charge", "anker": "Soundcore / PowerBank",
+                "sony": "WH-1000 / WF", "bose": "QuietComfort", "google": "Pixel 9",
+                "pixel": "Pixel 9", "honor": "Honor Magic", "oppo": "Oppo Reno"}
+_HINT_HE = {"אייפון": "apple", "אייפד": "ipad", "מקבוק": "macbook", "גלקסי": "samsung"}
+
+
+def _narrow_hint(query: str) -> str:
+    low = (query or "").lower()
+    bkey = (next((b for b in _BRANDS if b in low), None)
+            or next((en for he, en in _BRAND_HE.items() if he in (query or "")), None)
+            or next((en for he, en in _HINT_HE.items() if he in (query or "")), None))
+    return _NARROW_HINT.get(bkey, "דגם מדויק או נפח אחסון")
+
+
 def _is_greeting(text: str) -> bool:
     """ברכה/פתיח שיחה — לא חיפוש מוצר. מזהה גם 'היי בוקר טוב', 'שלום מה נשמע'."""
     t = (text or "").strip()
@@ -650,10 +684,25 @@ def _new_order_results(phone, query):
     """חיפוש מוצר חי → רשימת תוצאות עם מחירים. רשימת WhatsApp מוגבלת ל-10 שורות
     (מטא), אז מציגים עד 9 מוצרים + שורת חיפוש; אם יש יותר — מציינים ומציעים לצמצם."""
     import main
+    # שאילתה חוזרת? (הלקוח שואל שוב את אותו דבר אחרי שכבר קיבל רשימה) → הרשימה לא
+    # ענתה לו; אסור להציף שוב את אותן תוצאות (נראה תקוע). מזהים לפי הליבה המנורמלת.
+    _prevq = (db.bot_session_get(phone).get("data") or {}).get("__q", "")
+    _nq = _norm_q(query)
+    is_repeat = bool(_nq) and _norm_q(_prevq) == _nq
     sr = main.bot_smart_search(query, limit=20)
     all_results = sr.get("results") or []
     meta = sr.get("meta") or {}
     results = all_results[:9]
+    if results and is_repeat:
+        # אורי (AI) מטפל בניואנס — דגם שאזל/לא קיים, ממליץ חלופה, משוחח. אם לא זמין —
+        # מציעים נציג במקום אותה רשימה בפעם השנייה.
+        if _ask_uri(phone, query):
+            return
+        wa.send_buttons(phone, "רואה שאתה מחפש את אותו דבר 🙂 אם הדגם המדויק לא מופיע "
+                               "ברשימה — ייתכן שאינו במלאי כרגע. אפשר להעביר אותך לנציג "
+                               "שיבדוק עבורך, או לחפש דגם אחר.",
+                        [("agent", "👤 דבר/י עם נציג"), ("menu", "↩️ תפריט")])
+        return
     if not results:
         # אין תוצאות → קודם כל אורי (AI) מטפל אם הוא חי — מבין ניסוח, ממליץ חלופות,
         # משוחח. רק אם אורי לא זמין נופלים להודעה הישרה.
@@ -689,7 +738,7 @@ def _new_order_results(phone, query):
     total = len(all_results or [])
     if total > len(results):     # יש יותר ממה שנכנס ברשימה (מגבלת 10 שורות בוואטסאפ)
         hdr = (f"מצאתי {total} תוצאות ל'{query}' — הנה {len(results)} הרלוונטיות. "
-               f"לצמצום, הוסף/י דגם או סדרה (למשל JBL Flip / Charge). בחר/י לפרטים:")
+               f"לצמצום, הוסף/י דגם מדויק (למשל {_narrow_hint(query)}). בחר/י לפרטים:")
     else:
         hdr = f"מצאתי {total} תוצאות ל'{query}'. בחר/י לפרטים:"
     wa.send_list(phone, hdr, rows, button_label="לתוצאות", section_title="תוצאות חיפוש")
