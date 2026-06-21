@@ -5400,7 +5400,18 @@ def _stock_watch_add(body: StockWatchAddIn):
     swurl = os.getenv("STOCK_WATCHER_URL", "https://uri-stock-watcher.onrender.com").rstrip("/")
     if not tok:
         raise HTTPException(502, "STOCK_WATCHER_TOKEN לא מוגדר")
-    name = (body.name or "").strip() or "לקוח/ה"
+    # שם הלקוח: אם הקורא (אורי/בוט) לא העביר שם אמיתי — משלימים משם איש הקשר בוואטסאפ,
+    # כדי שלא יירשם "לקוח/ה" גנרי ברשימת המעקב (id 11 Amitai נרשם בלי שם).
+    name = (body.name or "").strip()
+    if not name or name in ("לקוח", "לקוח/ה"):
+        try:
+            c = db.wa_contact_get(phone)
+            cn = (c.get("name") or "").strip() if c else ""
+            if cn:
+                name = cn
+        except Exception:  # noqa: BLE001
+            pass
+    name = name or "לקוח/ה"
     try:
         r = _rq.post(f"{swurl}/watch",
                      headers={"Authorization": f"Bearer {tok}", "Content-Type": "application/json"},
