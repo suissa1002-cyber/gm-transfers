@@ -33,3 +33,5 @@ jobs:
         run: python3 tests/test_variant_stock.py
       - name: Repair-quote free-text intent regression test
         run: python3 tests/test_repair_intent.py
+      - name: Order-status customer message regression test
+        run: python3 tests/test_order_status_msg.py

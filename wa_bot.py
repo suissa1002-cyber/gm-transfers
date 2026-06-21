@@ -1479,6 +1479,9 @@ def _lookup_order(num: str):
 _ST_DONE = {"delivered", "completed"}
 _ST_CANCEL = {"cancelled", "refunded", "failed"}
 _ST_FULFILL = {"shipping-stage", "send-cargo", "order-ready", "tlv-pickup", "order-ready-pickup"}
+# ⚠️ pending = ממתין לתשלום (טרם שולם), לא 'בטיפול'! בלי זה הבוט אמר ללקוח 'נקלטה
+# ונמצאת בטיפול' על הזמנה שלא שולמה (שיחה 539644424, הזמנה 47323).
+_ST_PENDING = {"pending", "checkout-draft"}
 
 
 def _status_msg(o, meta, name, num):
@@ -1490,6 +1493,13 @@ def _status_msg(o, meta, name, num):
     is_tlv = st == "tlv-pickup" or "נקודת מסירה" in titles
     is_pickup = (not is_tlv) and "איסוף" in titles
     is_express = "אקספרס" in titles or "אותו היום" in titles
+    if st in _ST_PENDING:
+        msg = head + ("סטטוס: ההזמנה *ממתינה להשלמת התשלום* 💳\n"
+                      "ברגע שהתשלום יתקבל נתחיל בהכנה ונעדכן אותך 🙏")
+        link = meta.get("greenos_payplus_link") or ""
+        if link:
+            msg += f"\n\n🔗 להשלמת התשלום:\n{link}"
+        return msg
     if st in _ST_CANCEL:
         return head + "סטטוס: ההזמנה בוטלה. לכל שאלה אנחנו כאן 🙏"
     if st in _ST_DONE:
