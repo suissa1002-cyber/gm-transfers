@@ -141,13 +141,14 @@ def handle(phone: str, text: str, mtype: str = "text", reply_id: str = "", wamid
     # 'תפריט'/ברכה — הוא רוצה את הבוט בחזרה → משחררים את ה-handoff וממשיכים. רק טקסט
     # חופשי משאיר את הבוט שקט (אדם מטפל). חייב להיות ראשון. ──
     # ⚠️ ההבחנה היא 'האם אדם ענה בפועל', לא 'שעות עבודה' (באג 20/06: אסי טיפל ידנית
-    # בשבת והבוט פרץ בין ההודעות). 3 מצבים: (א) אדם כבר ענה ידנית (human=True ב-
-    # _bot_handoff_on) → הבוט שקט תמיד, בלי קשר לשעה. (ב) מחוץ לשעות ואיש לא ענה →
-    # אורי עונה לשאלות המשך (אין נציג בלילה). (ג) בשעות → שקט, נציג יטפל.
+    # בשבת והבוט פרץ בין ההודעות). שני מצבים בלבד: (א) אדם כבר ענה ידנית (human=True
+    # ב-_bot_handoff_on) → הבוט שקט תמיד, בלי קשר לשעה — לא פורצים מעל נציג חי. (ב) אף
+    # אדם לא ענה עדיין → אורי ממשיך לענות (גם בתוך שעות), כדי שלקוח שלחץ 'נציג' ואז שאל
+    # שאלה לא יישאר תקוע בלי מענה (שיחות 543159043/546619676). הרגע שאסי כותב — שקט.
     if state == "agent" and _agent_handoff_active(sess):
         human_active = bool((sess.get("data") or {}).get("human"))
         reengage = (bool(rid) or low in _ESCAPE or _is_greeting(low)
-                    or (not _within_business_hours() and not human_active))
+                    or not human_active)
         if not reengage:
             return
         db.bot_session_clear(phone)
