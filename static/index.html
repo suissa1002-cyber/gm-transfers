@@ -3401,7 +3401,7 @@ function waUriHTML(){
   const chat=waUriChat();
   const alive=S.waUriAlive;
   const dot=alive===null||alive===undefined?'⚪':alive?'🟢':'🔴';
-  const note=alive===false?'<div class="wa-note" style="border-color:#dc2626;font-size:12px">⚠️ הגשר במק לא מחובר — הבקשות ימתינו בתור</div>':'';
+  const note=alive===false?'<div class="wa-note" style="border-color:#dc2626;font-size:12px">⚠️ גשר אורי לא מחובר כרגע — הבקשות ימתינו בתור</div>':'';
   return `
     <div class="wa-uri-box">
       <div class="wa-uri-head">
@@ -3489,7 +3489,7 @@ async function waUriAsk(){
 }
 async function waUriPoll(jid, msg, tries){
   tries=tries||0;
-  if(tries>170){ msg.status='error'; msg.text='תם הזמן (8 דק׳) — ייתכן שהגשר במק כבוי'; waUriPaint(); return; }
+  if(tries>170){ msg.status='error'; msg.text='תם הזמן (8 דק׳) — ייתכן שגשר אורי כבוי'; waUriPaint(); return; }
   try{
     const r=await api('/api/admin/wa/uri/job/'+jid);
     if(r.status==='done'){

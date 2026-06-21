@@ -3093,14 +3093,15 @@ def uri_history(phone: str = "", x_admin_key: Optional[str] = Header(None)):
 
 @app.get("/api/admin/wa/uri/status")
 def uri_status(x_admin_key: Optional[str] = Header(None)):
-    """האם הגשר על המק חי (heartbeat מ-2 הדקות האחרונות)."""
+    """האם גשר אורי (שירות uri-bridge ב-Render) חי. heartbeat נשלח גם ע"י thread נפרד
+    בגשר (כל 60ש) ולא רק בעת משיכת jobs — כך job ארוך (3 דק') לא יגרום ל'לא מחובר' שקרי."""
     _require_admin(x_admin_key)
     last = db.sales_state_get("uri_bridge_ping")
     alive = False
     if last:
         try:
             t = datetime.fromisoformat(str(last))
-            alive = (datetime.now(t.tzinfo) - t).total_seconds() < 120
+            alive = (datetime.now(t.tzinfo) - t).total_seconds() < 150
         except Exception:  # noqa: BLE001
             pass
     return {"alive": alive, "last_ping": last}
@@ -3112,6 +3113,15 @@ def bridge_jobs(x_bridge_key: Optional[str] = Header(None)):
     db.sales_state_set("uri_bridge_ping", db.now_iso())
     db.uri_jobs_requeue_stuck()
     return {"jobs": db.uri_jobs_pending()}
+
+
+@app.post("/api/uri-bridge/ping")
+def bridge_ping(x_bridge_key: Optional[str] = Header(None)):
+    """heartbeat קליל — נקרא ע"י thread נפרד בגשר כל 60ש, כך שהמצב 'חי' נשמר גם בזמן
+    job ארוך שחוסם את לולאת ה-jobs."""
+    _require_bridge(x_bridge_key)
+    db.sales_state_set("uri_bridge_ping", db.now_iso())
+    return {"ok": True}
 
 
 @app.get("/api/uri-bridge/thread/{phone}")

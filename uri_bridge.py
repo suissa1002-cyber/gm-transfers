@@ -18,6 +18,7 @@ import logging
 import os
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -410,11 +411,23 @@ def process(job: dict):
         log.error("answer post failed for #%s: %s", jid, e)
 
 
+def _heartbeat_loop():
+    """thread נפרד — שולח heartbeat כל 60ש בלי קשר ללולאת ה-jobs, כך ש-job ארוך
+    (3 דק') לא יגרום ל'גשר לא מחובר' שקרי בקונסולה."""
+    while True:
+        try:
+            requests.post(f"{BASE}/api/uri-bridge/ping", headers=H, timeout=10)
+        except Exception:  # noqa: BLE001
+            pass
+        time.sleep(60)
+
+
 def main():
     if not KEY:
         log.error("URI_BRIDGE_KEY missing in .env")
         sys.exit(1)
     log.info("uri_bridge up — base=%s model=%s", BASE, MODEL)
+    threading.Thread(target=_heartbeat_loop, daemon=True, name="uri-heartbeat").start()
     while True:
         try:
             r = requests.get(f"{BASE}/api/uri-bridge/jobs", headers=H, timeout=20)
