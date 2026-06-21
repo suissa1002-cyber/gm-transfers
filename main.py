@@ -123,6 +123,10 @@ def _sold_reconcile_job():
                       f"בלי שנקלט בדרך.\nשתי ההעברות נסגרו, המכשיר חזר להיות זמין ב<b>{origin}</b>.")
             logger.info("boomerang-reconcile: serial=%s out=%s back=%s",
                         b.get("serial"), b.get("op_out"), b.get("op_back"))
+        # כרטיסים שכל פריטיהם נפתרו (כולל בומרנג=4 + פריטים שנקלטו מאוחר) → received
+        np = db.promote_fully_resolved_transfers()
+        if np:
+            logger.info("promote-resolved: %d open transfer(s) closed (all items resolved)", np)
     except Exception as e:  # noqa: BLE001
         logger.warning("sold reconcile job error: %s", e)
 
@@ -2052,6 +2056,7 @@ def admin_sold_reconcile(x_admin_key: Optional[str] = Header(None)):
     rows = db.reconcile_sold_transfer_items()
     promoted = db.promote_resolved_closed_transfers()
     booms = db.reconcile_boomerang_transfers()
+    promoted += db.promote_fully_resolved_transfers()
     for b in booms:
         try:
             origin = cfg.branch_name(b.get("origin_branch_id"))

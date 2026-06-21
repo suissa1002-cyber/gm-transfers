@@ -101,6 +101,20 @@ assert db.reconcile_boomerang_transfers() == []
 dyn = db.serial_dynamic_status(["SER-BOOM"])
 assert "SER-BOOM" not in dyn, f"resolved serial must not show transit: {dyn}"
 
+# ── קליטה מאוחרת: כרטיס עם בומרנג=4 + פריט שנקלט מאוחר → צריך להתקדם ל'received' ──
+# (op 13987: ה-iPad בומרנג סומן 4 כשפריטים אחרים עוד לא נקלטו; הם נקלטו אחר כך,
+#  והכרטיס נתקע partial. promote_fully_resolved_transfers סוגר אותו.)
+mk_transfer("LATE", 3, 2, "2026-06-18T19:59:00", status="partial")
+mk_item("LATE", "518807", "iPad", "SER-LATE", received=4)   # בומרנג שכבר נפתר
+mk_item("LATE", "p2", "Other", "SER-OTH", received=0)        # עדיין לא נקלט
+assert db.promote_fully_resolved_transfers() == 0, "must NOT promote while an item is unreceived"
+assert status("LATE") == "partial"
+# עכשיו הפריט השני נקלט (קליטה מאוחרת)
+with _conn() as c:
+    c.cursor().execute(_q("UPDATE transfer_items SET received=1 WHERE serial='SER-OTH'"))
+assert db.promote_fully_resolved_transfers() == 1, "all items resolved (1+4) → promote"
+assert status("LATE") == "received", status("LATE")
+
 print("✅ boomerang reconcile regression test PASSED")
 try:
     os.remove(_tmp.name)

@@ -847,6 +847,29 @@ def promote_resolved_closed_transfers() -> int:
         return len(ops)
 
 
+def promote_fully_resolved_transfers() -> int:
+    """העברה **פתוחה** (in_transit/partial) שכל פריטיה נפתרו — received∈{1,2,4} (נקלט/נמכר/
+    בומרנג) → 'received'. תופס את הפער הזמני: שורת בומרנג סומנה received=4 אך פריטים אחרים
+    באותה העברה נקלטו רק מאוחר יותר, ו-_recount (שסופר רק 1,2) השאיר את הכרטיס 'partial'
+    באיחור לנצח (op 13987: 6 נקלטו + iPad בומרנג=4, נתקע 6/7)."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""
+            SELECT t.op_id FROM transfers t
+            WHERE t.status IN ('in_transit', 'partial')
+              AND EXISTS (SELECT 1 FROM transfer_items ti WHERE ti.op_id = t.op_id)
+              AND EXISTS (SELECT 1 FROM transfer_items ti
+                          WHERE ti.op_id = t.op_id AND ti.received = 4)
+              AND NOT EXISTS (SELECT 1 FROM transfer_items ti
+                              WHERE ti.op_id = t.op_id AND ti.received NOT IN (1, 2, 4))
+        """))
+        ops = [r["op_id"] for r in cur.fetchall()]
+        for op in ops:
+            cur.execute(_q("""UPDATE transfers SET status='received',
+                received_at = COALESCE(received_at, ?) WHERE op_id = ?"""), (now_iso(), op))
+        return len(ops)
+
+
 def reconcile_boomerang_transfers() -> list:
     """בומרנג: מכשיר שיצא בהעברה A (X→Y, received=0) ונשלח **בחזרה למקור** בהעברה פתוחה
     מאוחרת יותר B (Y→X, received=0) — מבלי שנקלט אי-פעם בדרך. כלומר חזר למקור בלי שנסרק
