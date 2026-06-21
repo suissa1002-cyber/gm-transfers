@@ -2654,6 +2654,7 @@ function waThreadHTML(){
           <button class="btn-ghost wa-claude wa-act" onclick="waToggleUri()" title="אורי — סוכן ה-AI (טיוטות, מלאי, מחירים)">${CLAUDE_ICON}</button>
           <button class="btn-ghost wa-act wa-ico" onclick="waToggleQuick()" title="תשובות מוכנות / תבניות" ${w.in_window?'':'style="border-color:#dc2626"'}>${ico('zap')}</button>
           <button class="btn-ghost wa-act wa-ico" onclick="waToggleAttach()" title="צרף — תמונה / צילום / קובץ" ${w.in_window?'':'disabled style="opacity:.4"'}>${ico('clip')}</button>
+          <button class="btn-ghost wa-act wa-ico" onclick="waKbSwap()" title="החלף פריסת מקלדת עברית⇄אנגלית (אם יצא חירבוש)" style="font-weight:800;font-size:13px;line-height:1">א/A</button>
           <input type="file" id="waFileGal" accept="image/*,video/*" style="display:none" onchange="waSendFile(this)">
           <input type="file" id="waFileCam" accept="image/*" capture="environment" style="display:none" onchange="waSendFile(this)">
           <input type="file" id="waFileAny" style="display:none" onchange="waSendFile(this)">
@@ -4308,10 +4309,59 @@ async function waBotHandoff(on){
        S.waBotHandoff=!!(r&&r.handoff); toast(on?'הבוט הושתק — אתה בשליטה 🙋':'הוחזר לבוט 🤖',true); renderWaThread(); }
   catch(e){ toast('שגיאה',false); }
 }
+// ── 🔤 זיהוי/תיקון פריסת מקלדת הפוכה (עברית שהוקלדה ב-EN ולהפך) ──
+// כשמקלידים עברית בפריסת אנגלית כל אות יוצאת לפי מיקום המקש: "שלום"→"akuo".
+// המרה חד-חד-ערכית → אפשר לזהות וגם לתקן.
+const _EN2HE={q:'/',w:"'",e:'ק',r:'ר',t:'א',y:'ט',u:'ו',i:'ן',o:'ם',p:'פ',
+ a:'ש',s:'ד',d:'ג',f:'כ',g:'ע',h:'י',j:'ח',k:'ל',l:'ך',';':'ף',
+ z:'ז',x:'ס',c:'ב',v:'ה',b:'נ',n:'מ',m:'צ',',':'ת','.':'ץ','/':'.'};
+const _HE2EN=(()=>{const m={};for(const k in _EN2HE)m[_EN2HE[k]]=k;return m;})();
+function kbConvert(text, dir){
+  // dir='en2he' או 'he2en'
+  const map = dir==='he2en' ? _HE2EN : _EN2HE;
+  let out='';
+  for(const ch of (text||'')){ const low=ch.toLowerCase(); out += (map[low]!==undefined?map[low]:ch); }
+  return out;
+}
+function kbSwap(text){
+  // המרה דו-כיוונית אוטומטית לפי תוכן הטקסט
+  const heCount=(text.match(/[֐-׿]/g)||[]).length;
+  const enCount=(text.match(/[a-zA-Z]/g)||[]).length;
+  return heCount>=enCount ? kbConvert(text,'he2en') : kbConvert(text,'en2he');
+}
+function waKbSwap(){
+  const ta=document.getElementById('waText'); if(!ta||!(ta.value||'').trim()) return;
+  ta.value=kbSwap(ta.value); ta.focus();
+}
+const _EN_WORDS=new Set(('ok okay hi hey hello yes no thanks thank you welcome please sure bye thx lol great perfect '+
+ 'iphone apple samsung galaxy watch pro max plus ultra mini air fold flip jbl anker sony bose marshall '+
+ 'xiaomi redmi poco oppo huawei honor google pixel airpods macbook ipad mac esim sim gb tb ram anc tws '+
+ 'usb type oled amoled wifi bluetooth charger cable case link order sale new in stock').split(' '));
+function kbWrongLayout(text){
+  // מחזיר את העברית המתוקנת אם הטקסט נראה כמו עברית שהוקלדה בטעות בפריסת אנגלית:
+  // אין בו עברית, ≥4 אותיות לטיניות, לא URL, ו**אין בו מילה אנגלית/מותג מוכרים** (שזו אנגלית מכוונת).
+  const t=(text||'').trim();
+  if(/[֐-׿]/.test(t)) return null;                 // כבר יש עברית — לא הפוך
+  if(/https?:|www\.|@|\.co|\.com|\.il/i.test(t)) return null; // קישור/אימייל — לא לגעת
+  const letters=(t.match(/[a-zA-Z]/g)||[]).length;
+  if(letters<4) return null;                                 // קצר מדי (ok / JBL)
+  if(letters/Math.max(1,t.replace(/\s/g,'').length) < 0.6) return null; // רובו לא אותיות
+  const words=t.toLowerCase().split(/[^a-z]+/).filter(Boolean);
+  if(words.some(w=>_EN_WORDS.has(w))) return null;  // מילה אנגלית אמיתית → לא חירבוש
+  const fixed=kbConvert(t,'en2he');
+  return /[֐-׿]{3,}/.test(fixed) ? fixed : null;   // התוצאה אכן עברית
+}
 async function sendWaMsg(){
   const ta=document.getElementById('waText'); if(!ta) return;
   if(S.waPending){ const p=S.waPending; return waSendBlob(p.blob, p.name); }  // תמונה מצורפת → נשלחת עם הטקסט ככיתוב
-  const text=(ta.value||'').trim(); if(!text) return;
+  let text=(ta.value||'').trim(); if(!text) return;
+  // 🔤 בדיקת פריסה הפוכה לפני שליחה — תופס "חירבוש" גם כשלא שמת לב
+  const fix=kbWrongLayout(text);
+  if(fix && fix!==text){
+    if(confirm('נראה שכתבת בפריסת מקלדת הפוכה 🔤\n\nהתכוונת:\n"'+fix+'"\n\nאישור = לתקן ולשלוח · ביטול = לשלוח כמו שזה')){
+      text=fix; ta.value=fix;
+    }
+  }
   const btn=document.getElementById('waSendBtn'); if(btn) btn.disabled=true;
   const rep=S.waReplyTo||null;
   try{
