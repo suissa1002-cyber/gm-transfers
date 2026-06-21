@@ -696,6 +696,29 @@ def get_transfer(op_id: str) -> dict:
         return t
 
 
+def receive_item_manual(item_id, op_id, employee=None) -> dict:
+    """קליטה ידנית של פריט **ללא סריאל וללא ברקוד** (אין מה לסרוק — למשל מארז Corsair).
+    מסמן את השורה הספציפית כנקלטה (received=1, method=manual). ⚠️ גארד: רק פריט שאין לו
+    serial וגם אין barcode — כדי שלא יעקפו סריקה של פריט סידורי. מחזיר {matched, transfer}."""
+    received_by = (employee or "").strip() or "ידני"
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM transfer_items WHERE id = ? AND op_id = ?"),
+                    (item_id, str(op_id)))
+        item = _row_to_dict(cur.fetchone())
+        if not item:
+            return {"matched": False, "message": "הפריט לא נמצא בהעברה"}
+        if int(item.get("received") or 0) != 0:
+            return {"matched": False, "message": "הפריט כבר נקלט"}
+        if (item.get("serial") or "").strip() or (item.get("barcode") or "").strip():
+            return {"matched": False, "message": "לפריט יש סריאל/ברקוד — יש לסרוק, לא לקלוט ידנית"}
+        cur.execute(_q("""UPDATE transfer_items SET received = 1, received_at = ?,
+                          received_by = ?, received_method = 'manual' WHERE id = ?"""),
+                    (now_iso(), received_by, item["id"]))
+        _recount(cur, str(op_id))
+    return {"matched": True, "transfer": get_transfer(str(op_id)), "message": "✓ נקלט ידנית"}
+
+
 def _recount(cur, op_id: str):
     """
     מעדכן received_units/status. "נקלט" לצורך השלמה = received בערך 1 (כאן) או 2 (הופנה).

@@ -742,6 +742,21 @@ def scan(body: ScanIn):
     return res
 
 
+class ManualReceiveIn(BaseModel):
+    op_id: str
+    item_id: int
+    employee: Optional[str] = None
+
+
+@app.post("/api/scan/manual")
+def scan_manual(body: ManualReceiveIn):
+    """קליטה ידנית של פריט ללא סריאל וללא ברקוד (אין מה לסרוק). הגארד ב-db מוודא שאי
+    אפשר לעקוף סריקה של פריט סידורי."""
+    res = db.receive_item_manual(body.item_id, body.op_id, body.employee)
+    res["transfer"] = _enrich(res.get("transfer"))
+    return res
+
+
 @app.get("/api/stats")
 def stats():
     return db.stats()

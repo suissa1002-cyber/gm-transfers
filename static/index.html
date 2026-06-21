@@ -224,6 +224,9 @@
   .item.redirected .tick{background:var(--amber);border-color:var(--amber);color:#fff}
   .item.missing .tick{background:var(--red);border-color:var(--red);color:#fff}
   .item.redirected .who{color:var(--amber)} .item.missing .who{color:var(--red)}
+  .btn-manual-recv{flex:0 0 auto;background:var(--green);color:#fff;border:none;border-radius:9px;
+        padding:8px 12px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap}
+  .btn-manual-recv:active{opacity:.85}
   .pill.closed{background:rgba(148,163,184,.18);color:var(--muted)}
   .finish-btn{margin-top:12px;width:100%}
   .item .name{font-weight:600}
@@ -1571,6 +1574,7 @@ function renderScan(app){
 }
 function itemHtml(it){
   const st=Number(it.received||0);
+  const noScan = !((it.serial||'').trim()) && !((it.barcode||'').trim());  // ללא סריאל וללא ברקוד
   const sub = it.serial ? it.serial : (it.barcode?('ברקוד: '+it.barcode):'— ללא סריאל —');
   let cls='', tick='', who='';
   if(st===1){ cls='received'; tick='✓';
@@ -1584,7 +1588,19 @@ function itemHtml(it){
       <div class="sub">${sub}</div>
       ${who?`<div class="who">${who}</div>`:''}
     </div>
+    ${(st===0 && noScan) ? `<button class="btn-manual-recv" onclick="manualReceive(${it.id})">✓ קלוט ידנית</button>` : ''}
   </div>`;
+}
+async function manualReceive(itemId){
+  // קליטה ידנית לפריט ללא סריאל/ברקוד (אין מה לסרוק) — דורש שם נציג + אישור.
+  if(!S.employee){ toast('בחר/י שם נציג קודם',false); return; }
+  if(!confirm('לקלוט פריט זה ידנית (ללא סריקה)?')) return;
+  let res;
+  try{ res=await api('/api/scan/manual',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({op_id:S.op.op_id,item_id:itemId,employee:S.employee})}); }
+  catch(e){ toast('שגיאת רשת',false); return; }
+  if(res.matched){ beep(true);vibrate(true); toast('✓ נקלט ידנית',true); S.op=res.transfer; render(); }
+  else { beep(false); toast(res.message||'נכשל',false); }
 }
 async function doScan(code, method){
   if(!S.employee) return;   // לא אמור לקרות — שדה הסריקה מופיע רק אחרי שם
