@@ -5575,26 +5575,54 @@ def wa_order_paystatus(order_id: int, x_admin_key: Optional[str] = Header(None))
 
 def _wc_pos_anchor(base: str, k: str, s: str) -> int:
     """מוצר עוגן מוסתר (sku GM-POS-ITEM, פרטי) לשורות של פריטי קופה שאינם באתר.
-    נוצר חד-פעמית; ה-id נשמר ב-kv. נוצר בפועל 12/06/2026 — id 46880."""
-    v = db.sales_state_get("wc_pos_anchor")
-    if v and str(v).isdigit():
-        return int(v)
+    נוצר חד-פעמית; ה-id נשמר ב-kv. נוצר בפועל 12/06/2026 — id 46880.
+    ⚠️ ריפוי-עצמי: אם העוגן נמחק (status=trash) ב-WC — כל הזמנה עם פריט-קופה נשברת
+    (קרה 21/06: 46880 הועבר ל-Trash → 502 שקט). לכן מאמתים שהעוגן חי ומשחזרים אם נמחק."""
     import requests as _rq
+
+    def _restore_if_trashed(pid):
+        """מחזיר True אם המוצר קיים ושמיש (משחזר מ-Trash אם צריך)."""
+        try:
+            r = _rq.get(f"{base}/wp-json/wc/v3/products/{pid}", auth=(k, s), timeout=20)
+            if not r.ok:
+                return False
+            if r.json().get("status") == "trash":
+                _rq.put(f"{base}/wp-json/wc/v3/products/{pid}", auth=(k, s), timeout=25,
+                        json={"status": "private", "catalog_visibility": "hidden"})
+                logger.warning("pos anchor %s was trashed — restored to private", pid)
+            return True
+        except Exception:  # noqa: BLE001
+            return False
+
+    v = db.sales_state_get("wc_pos_anchor")
+    if v and str(v).isdigit() and _restore_if_trashed(int(v)):
+        return int(v)
     pid = None
     try:
         r = _rq.get(f"{base}/wp-json/wc/v3/products", params={"sku": "GM-POS-ITEM"},
                     auth=(k, s), timeout=30)
         if r.ok and r.json():
             pid = r.json()[0].get("id")
+        if not pid:   # ייתכן שהעוגן ב-Trash — מחפשים שם ומשחזרים (יצירה תיכשל על SKU כפול)
+            rt = _rq.get(f"{base}/wp-json/wc/v3/products",
+                         params={"sku": "GM-POS-ITEM", "status": "trash"}, auth=(k, s), timeout=20)
+            if rt.ok and rt.json():
+                pid = rt.json()[0].get("id")
+                _rq.put(f"{base}/wp-json/wc/v3/products/{pid}", auth=(k, s), timeout=25,
+                        json={"status": "private", "catalog_visibility": "hidden"})
+                logger.warning("pos anchor %s found in trash — restored", pid)
         if not pid:
             r = _rq.post(f"{base}/wp-json/wc/v3/products", auth=(k, s), timeout=40, json={
                 "name": "פריט קופה (GreenOS)", "type": "simple", "sku": "GM-POS-ITEM",
                 "regular_price": "0", "catalog_visibility": "hidden", "status": "private",
                 "description": "מוצר עוגן טכני לשורות הזמנה של פריטי קופה שאינם באתר."})
             pid = r.json().get("id") if r.ok else None
+            if not r.ok:
+                logger.warning("pos anchor create failed %s: %s", r.status_code, r.text[:200])
     except Exception as e:  # noqa: BLE001
         logger.warning("pos anchor lookup failed: %s", e)
     if not pid:
+        logger.warning("pos anchor unavailable (sku GM-POS-ITEM) — POS-line orders will fail")
         raise HTTPException(502, "מוצר העוגן לפריטי קופה לא זמין")
     db.sales_state_set("wc_pos_anchor", str(pid))
     return int(pid)
