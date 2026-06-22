@@ -413,9 +413,16 @@ def send_reply(phone: str, text: str):
     if re.search(r"\btest\b|\bping\b", text, re.IGNORECASE):
         raise WaError("ההודעה מכילה test/ping — חסום (כלל ברזל: בלי ניסויים על לקוחות)")
     _auto_human(phone)   # מסמנים אנושי (cache 30ד') — שהבוט לא יקפוץ על ההודעה הבאה
-    # ⚡ ביצועים: לא שולפים את כל השיחה מראש לבדיקת חלון 24ש (קריאת רשת איטית בכל
-    # שליחה). שולחים ישירות דרך Meta; רק אם נכשל — בודקים חלון: מחוץ ל-24ש →
-    # needs_template, אחרת ConnectOp fallback. אנחנו בעלי המספר (Meta ראשי, יציב).
+    # אכיפת חלון 24ש *לפני* שליחה: מטא מקבל טקסט חופשי מחוץ לחלון ואז מכשיל אותו
+    # אסינכרונית (131047) — בלי לזרוק חריגה, כך שבדיקה רק-בכשל לא תופסת והטקסט נשלח
+    # ונכשל אצל הלקוח. בודקים מהמאגר הנייטיב (מהיר) ומחזירים needs_template → ה-UI
+    # עוטף ב-new_message (זהה ל-send_reply_quoted).
+    try:
+        _win = _window_for(phone)
+    except Exception:  # noqa: BLE001
+        _win = None
+    if _win is not None and not _win.get("in_window"):
+        return {"sent": False, "needs_template": True, "window": _win}
     via = ""
     wamid = ""
     errs = []
