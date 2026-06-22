@@ -388,6 +388,7 @@ function onSel(ri,dow,idx,el){
   if(el.value){
     if(!arr[idx]) arr[idx] = {branch_id:0, hours:''};
     arr[idx].branch_id = parseInt(el.value);
+    if(!arr[idx].hours) arr[idx].hours = '09:00-15:00';   // ברירת מחדל: משמרת ראשונה
   } else {
     if(arr[idx]) arr.splice(idx,1);
     if(!arr.length) delete ROWS[ri].cells[dow];
