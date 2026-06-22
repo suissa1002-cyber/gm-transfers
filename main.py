@@ -1650,34 +1650,50 @@ async def shift_bot_webhook(request: Request):
         upd = await request.json()
     except Exception:  # noqa: BLE001
         return {"ok": True}
-    msg = upd.get("message") or {}
-    if str(msg.get("text") or "").startswith("/start"):
-        chat_id = (msg.get("chat") or {}).get("id")
-        kb = {"inline_keyboard": [[{"text": n, "callback_data": f"reg:{n}"}] for n in _SHIFT_NAMES]}
-        _shift_send(chat_id, "👋 ברוכים הבאים למערכת ההתראות של גרין מובייל.\n"
-                             "בחר/י את השם שלך כדי לקבל התראת העברה אישית כשאת/ה במשמרת:", kb)
-        return {"ok": True}
-    cb = upd.get("callback_query")
-    if cb and str(cb.get("data") or "").startswith("reg:"):
-        name = cb["data"][4:]
-        tg = (cb.get("from") or {}).get("id")
+    def _shift_register(name, tg, chat_id):
+        name = (name or "").strip()[:60]
         try:
             db.shift_employee_register(name, tg)
         except Exception as e:  # noqa: BLE001
             logger.warning("shift register failed: %s", e)
-        try:
-            import requests as _rq
-            _rq.post(f"https://api.telegram.org/bot{SHIFT_BOT}/answerCallbackQuery",
-                     json={"callback_query_id": cb.get("id"), "text": "נרשמת ✓"}, timeout=10)
-        except Exception:  # noqa: BLE001
-            pass
-        _shift_send((cb.get("message") or {}).get("chat", {}).get("id"),
-                    f"✅ נרשמת בהצלחה, <b>{name}</b>!\nמעכשיו תקבל/י כאן התראה אישית "
-                    "ברגע שתשודר בקשת העברה לסניף שבו את/ה במשמרת 🔔")
+        _shift_send(chat_id, f"✅ נרשמת בהצלחה, <b>{name}</b>!\nמעכשיו תקבל/י כאן התראה "
+                             "אישית ברגע שתשודר בקשת העברה לסניף שבו את/ה במשמרת 🔔")
         try:
             _tg_admin(f"🔔 עובד נרשם להתראות משמרות: {name}")
         except Exception:  # noqa: BLE001
             pass
+
+    msg = upd.get("message") or {}
+    text = str(msg.get("text") or "")
+    chat_id = (msg.get("chat") or {}).get("id")
+    from_id = (msg.get("from") or {}).get("id")
+    if text.startswith("/start"):
+        kb = {"inline_keyboard": [[{"text": n, "callback_data": f"reg:{n}"}] for n in _SHIFT_NAMES]
+              + [[{"text": "🔍 השם שלי לא ברשימה", "callback_data": "reg_other"}]]}
+        _shift_send(chat_id, "👋 ברוכים הבאים למערכת ההתראות של גרין מובייל.\n"
+                             "בחר/י את השם שלך כדי לקבל התראת העברה אישית כשאת/ה במשמרת:", kb)
+        return {"ok": True}
+    # הקלדת שם חופשי אחרי "לא ברשימה"
+    if text and from_id and db.sales_state_get(f"shift_await:{from_id}"):
+        db.sales_state_set(f"shift_await:{from_id}", "")
+        _shift_register(text, from_id, chat_id)
+        return {"ok": True}
+    cb = upd.get("callback_query")
+    if cb:
+        data = str(cb.get("data") or "")
+        tg = (cb.get("from") or {}).get("id")
+        cb_chat = (cb.get("message") or {}).get("chat", {}).get("id")
+        try:
+            import requests as _rq
+            _rq.post(f"https://api.telegram.org/bot{SHIFT_BOT}/answerCallbackQuery",
+                     json={"callback_query_id": cb.get("id")}, timeout=10)
+        except Exception:  # noqa: BLE001
+            pass
+        if data == "reg_other":
+            db.sales_state_set(f"shift_await:{tg}", "1")
+            _shift_send(cb_chat, "כתוב/י כאן את שמך המלא (כמו שמופיע בסידור) ואני ארשום אותך:")
+        elif data.startswith("reg:"):
+            _shift_register(data[4:], tg, cb_chat)
     return {"ok": True}
 
 
