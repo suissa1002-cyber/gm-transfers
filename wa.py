@@ -855,7 +855,11 @@ def send_template(phone: str, name: str, body: str):
     body = re.sub(r"\s{4,}|\t+", " ", body)
     if not body:
         raise WaError("גוף הודעה ריק")
-    mid = _meta_send_template(phone, "new_message", [name or "לקוח/ה יקר/ה", body], [])
+    # שם לא תקין (ריק / מספר טלפון) → ברכה גנרית; לעולם לא להציג טלפון ללקוח בתבנית
+    name = (name or "").strip()
+    if not name or re.sub(r"[\s\-+()]", "", name).isdigit():
+        name = "לקוח/ה יקר/ה"
+    mid = _meta_send_template(phone, "new_message", [name, body], [])
     _store_outbound(phone, (name + ": " if name else "") + body, wamid=mid, mtype="template")
     logger.info("wa send template new_message (meta) -> %s", phone)
     return {"sent": True, "via": "template", "message_id": mid}
