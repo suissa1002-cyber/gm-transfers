@@ -101,14 +101,17 @@ function logout(){ localStorage.removeItem('tr_schedule_key'); location.reload()
 function toast(t){ const e=document.getElementById('toast'); e.textContent=t; e.classList.add('show');
   setTimeout(()=>e.classList.remove('show'),1900); }
 
+// כותרות HTTP חייבות ISO-8859-1. סיסמה שהוקלדה בעברית (פריסת מקלדת) תפיל את ה-fetch —
+// לכן מסננים ערך לא-תקין לריק (→ 401 → בקשה מחדש) במקום לקרוס.
+function hdrSafe(v){ v=v||''; return /^[\x00-\xFF]*$/.test(v)?v:''; }
 async function api(path, opts){
   opts = opts||{};
   opts.headers = Object.assign({'Content-Type':'application/json',
-    'X-Schedule-Key': localStorage.getItem('tr_schedule_key')||'',
-    'X-Admin-Key': localStorage.getItem('tr_admin_key')||''}, opts.headers||{});
+    'X-Schedule-Key': hdrSafe(localStorage.getItem('tr_schedule_key')),
+    'X-Admin-Key': hdrSafe(localStorage.getItem('tr_admin_key'))}, opts.headers||{});
   const r = await fetch(API+path, opts);
   if(r.status===401){ localStorage.removeItem('tr_schedule_key');
-    document.getElementById('hint').textContent='סיסמה שגויה.'; key(true); load(); throw new Error('401'); }
+    document.getElementById('hint').textContent='סיסמה שגויה — נסה שוב (אפשר להדביק).'; key(true); load(); throw new Error('401'); }
   return r;
 }
 
