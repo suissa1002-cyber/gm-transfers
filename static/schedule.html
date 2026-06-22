@@ -58,6 +58,17 @@
   #legend{display:flex;flex-wrap:wrap;gap:6px 12px;margin:0 2px 12px}
   #legend .lg{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--mut)}
   #legend .dot{width:11px;height:11px;border-radius:3px;display:inline-block}
+  .chip{display:inline-block;border-radius:9px;padding:6px 10px;font-size:12.5px;font-weight:700;
+        text-align:center;border:1.4px solid;margin:2px 0}
+  .chip .chr{font-weight:500;font-size:11px;opacity:.9}
+  .emptyc{color:var(--mut)}
+  .chip.b1{border-color:#3b82f6;color:#2f6fe0;background:rgba(59,130,246,.12)}
+  .chip.b2{border-color:#a855f7;color:#9333ea;background:rgba(168,85,247,.12)}
+  .chip.b3{border-color:#14b8a6;color:#0d9488;background:rgba(20,184,166,.14)}
+  .chip.b4{border-color:#f59e0b;color:#d97706;background:rgba(245,158,11,.15)}
+  .chip.b5{border-color:#64748b;color:#475569;background:rgba(100,116,139,.14)}
+  body.dark .chip.b1{color:#7eb0ff} body.dark .chip.b2{color:#cd9cff}
+  body.dark .chip.b3{color:#5fe0d0} body.dark .chip.b4{color:#ffc266} body.dark .chip.b5{color:#aab6c6}
   .shift{margin-bottom:6px}
   .shift:last-of-type{margin-bottom:0}
   button.addshift{background:transparent;border:1px dashed var(--line);color:var(--mut);font-size:11px;
@@ -124,6 +135,7 @@
   </div>
   <input type="date" id="weekPick" onchange="pickWeek(this.value)" title="קפיצה לשבוע">
   <select id="empFilter" onchange="STATE.emp=this.value;renderGrid()" title="סינון לפי עובד"></select>
+  <select id="brFilter" onchange="STATE.branch=this.value;renderGrid()" title="סינון לפי סניף"></select>
   <span class="sp"></span>
   <button class="blue" onclick="openSummary()">📊 סיכומים</button>
   <button onclick="openDispatch()">📤 שיגור</button>
@@ -198,7 +210,7 @@ applyTheme();
 
 let DATA = null;                    // {branches, days, employees, week, this_week, weeks, roster}
 let ROWS = [];                      // [{employee, cells:{dow:{branch_id,hours}}}]
-const STATE = { week:null, emp:'' };
+const STATE = { week:null, emp:'', branch:'' };
 
 // ── auth ──
 function key(force){
@@ -242,6 +254,7 @@ async function loadWeek(){
     + (STATE.week===DATA.this_week?' · השבוע':'');
   document.getElementById('weekPick').value = STATE.week;
   buildEmpFilter();
+  buildBranchFilter();
   renderLegend();
   rosterToRows();
   renderGrid();
@@ -259,6 +272,11 @@ function buildEmpFilter(){
   const sel=document.getElementById('empFilter');
   sel.innerHTML='<option value="">כל העובדים</option>'+names.map(n=>'<option value="'+esc(n)+'"'+(STATE.emp===n?' selected':'')+'>'+esc(n)+'</option>').join('');
 }
+function buildBranchFilter(){
+  const sel=document.getElementById('brFilter');
+  sel.innerHTML='<option value="">כל הסניפים</option>'+(DATA.branches||[]).map(b=>'<option value="'+b.id+'"'+(String(STATE.branch)===String(b.id)?' selected':'')+'>'+esc(b.name)+'</option>').join('');
+}
+function branchName(id){ const b=(DATA.branches||[]).find(x=>String(x.id)===String(id)); return b?b.name:id; }
 function allNames(){
   const names=[]; (DATA.employees||[]).forEach(n=>{ if(names.indexOf(n)<0) names.push(n); });
   (DATA.roster||[]).forEach(r=>{ if(r.employee && names.indexOf(r.employee)<0) names.push(r.employee); });
@@ -297,6 +315,19 @@ function cellHTML(ri, dow){
     s += '<button class="addshift" onclick="addShift('+ri+','+dow+')">➕ משמרת</button>';
   return s;
 }
+function rowHasBranch(row){
+  if(!STATE.branch) return true;
+  return Object.keys(row.cells).some(dow=>(row.cells[dow]||[]).some(c=>String(c.branch_id)===String(STATE.branch)));
+}
+function cellRender(ri, dow){
+  if(!STATE.branch) return cellHTML(ri, dow);   // עריכה רגילה
+  const arr=(ROWS[ri].cells[dow]||[]).filter(c=>String(c.branch_id)===String(STATE.branch));
+  if(!arr.length) return '<span class="emptyc">—</span>';
+  return arr.map(c=>{
+    const hrs=(c.hours||'').replace('-','–');
+    return '<div class="chip b'+c.branch_id+'">'+esc(branchName(c.branch_id))+(hrs?'<br><span class="chr">🕐 '+esc(hrs)+'</span>':'')+'</div>';
+  }).join('');
+}
 function renderGrid(){
   if(!ROWS.length){
     document.getElementById('grid').innerHTML =
@@ -305,28 +336,31 @@ function renderGrid(){
   }
   isMobile() ? renderCards() : renderTable();
 }
+function visibleRows(){ return ROWS.filter(r=>(!STATE.emp||r.employee===STATE.emp) && rowHasBranch(r)); }
 function renderTable(){
-  const visible=ROWS.filter(r=>!STATE.emp||r.employee===STATE.emp), days=DATA.days;
+  const visible=visibleRows(), days=DATA.days;
+  if(!visible.length){ document.getElementById('grid').innerHTML='<div class="center">אין שיבוצים שתואמים לסינון השבוע.</div>'; return; }
   let h='<div class="tablewrap"><table><thead><tr><th class="nm">עובד</th>';
   days.forEach(d=> h+='<th>'+d+'</th>');
   h+='</tr></thead><tbody>';
   visible.forEach(row=>{
     const ri=ROWS.indexOf(row);
     h+='<tr><td class="nm">'+esc(row.employee)+'</td>';
-    for(let dow=0; dow<days.length; dow++) h+='<td class="cell">'+cellHTML(ri,dow)+'</td>';
+    for(let dow=0; dow<days.length; dow++) h+='<td class="cell">'+cellRender(ri,dow)+'</td>';
     h+='</tr>';
   });
   h+='</tbody></table></div>';
   document.getElementById('grid').innerHTML=h;
 }
 function renderCards(){
-  const visible=ROWS.filter(r=>!STATE.emp||r.employee===STATE.emp), days=DATA.days;
+  const visible=visibleRows(), days=DATA.days;
+  if(!visible.length){ document.getElementById('grid').innerHTML='<div class="center">אין שיבוצים שתואמים לסינון השבוע.</div>'; return; }
   let h='';
   visible.forEach(row=>{
     const ri=ROWS.indexOf(row);
     h+='<div class="ecard"><div class="ehd">'+esc(row.employee)+'</div>';
     for(let dow=0; dow<days.length; dow++)
-      h+='<div class="drow"><span class="dlbl">'+days[dow]+'</span><div class="dctl">'+cellHTML(ri,dow)+'</div></div>';
+      h+='<div class="drow"><span class="dlbl">'+days[dow]+'</span><div class="dctl">'+cellRender(ri,dow)+'</div></div>';
     h+='</div>';
   });
   document.getElementById('grid').innerHTML=h;
