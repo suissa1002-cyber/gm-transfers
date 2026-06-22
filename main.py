@@ -1622,6 +1622,65 @@ def _tg_admin(text: str, buttons=None):
         logger.warning("telegram send failed: %s", e)
 
 
+# ── 🔔 בוט המשמרות (@Greenm_alert_bot) — רישום עובדים + DM על שידור העברה ──
+SHIFT_BOT = os.getenv("SHIFT_BOT_TOKEN", "").strip()
+# שמות העובדים (מהסידור) — מוצגים ככפתורים ברישום להתאמה מדויקת לסידור. ניתן לעדכן ב-env.
+_SHIFT_NAMES = [n.strip() for n in os.getenv("SHIFT_EMPLOYEE_NAMES",
+                "יעקב א,יעקב ע,אירה,רוני,קטיה,שחר,יוסי,אורי,שלמה,שמואל").split(",") if n.strip()]
+
+
+def _shift_send(chat_id, text, reply_markup=None):
+    if not (SHIFT_BOT and chat_id):
+        return
+    payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML",
+               "disable_web_page_preview": True}
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
+    try:
+        import requests as _rq
+        _rq.post(f"https://api.telegram.org/bot{SHIFT_BOT}/sendMessage", json=payload, timeout=15)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("shift bot send failed: %s", e)
+
+
+@app.post("/api/shift-bot/webhook")
+async def shift_bot_webhook(request: Request):
+    """webhook של בוט המשמרות: /start → כפתורי שמות; בחירת שם → רישום ה-telegram_id."""
+    try:
+        upd = await request.json()
+    except Exception:  # noqa: BLE001
+        return {"ok": True}
+    msg = upd.get("message") or {}
+    if str(msg.get("text") or "").startswith("/start"):
+        chat_id = (msg.get("chat") or {}).get("id")
+        kb = {"inline_keyboard": [[{"text": n, "callback_data": f"reg:{n}"}] for n in _SHIFT_NAMES]}
+        _shift_send(chat_id, "👋 ברוכים הבאים למערכת ההתראות של גרין מובייל.\n"
+                             "בחר/י את השם שלך כדי לקבל התראת העברה אישית כשאת/ה במשמרת:", kb)
+        return {"ok": True}
+    cb = upd.get("callback_query")
+    if cb and str(cb.get("data") or "").startswith("reg:"):
+        name = cb["data"][4:]
+        tg = (cb.get("from") or {}).get("id")
+        try:
+            db.shift_employee_register(name, tg)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("shift register failed: %s", e)
+        try:
+            import requests as _rq
+            _rq.post(f"https://api.telegram.org/bot{SHIFT_BOT}/answerCallbackQuery",
+                     json={"callback_query_id": cb.get("id"), "text": "נרשמת ✓"}, timeout=10)
+        except Exception:  # noqa: BLE001
+            pass
+        _shift_send((cb.get("message") or {}).get("chat", {}).get("id"),
+                    f"✅ נרשמת בהצלחה, <b>{name}</b>!\nמעכשיו תקבל/י כאן התראה אישית "
+                    "ברגע שתשודר בקשת העברה לסניף שבו את/ה במשמרת 🔔")
+        try:
+            _tg_admin(f"🔔 עובד נרשם להתראות משמרות: {name}")
+        except Exception:  # noqa: BLE001
+            pass
+    return {"ok": True}
+
+
 def _ua_human(ua: str) -> str:
     ua = ua or ""
     os_n = ("iPhone" if "iPhone" in ua else "iPad" if "iPad" in ua else

@@ -379,6 +379,16 @@ _SCHEMA = [
     )
     """.format(pk=_PK),
     "CREATE INDEX IF NOT EXISTS idx_wa_shadow_phone ON wa_shadow(phone)",
+    # ── מערכת התראות משמרות: עובדים רשומים (שם ↔ telegram_id) לקבלת DM על שידור העברה ──
+    """
+    CREATE TABLE IF NOT EXISTS shift_employees (
+        id            {pk},
+        name          TEXT,
+        telegram_id   TEXT UNIQUE,
+        registered_at TEXT
+    )
+    """.format(pk=_PK),
+    "CREATE INDEX IF NOT EXISTS idx_shift_emp_name ON shift_employees(name)",
     # ── WhatsApp עצמאי (פרויקט ניתוק קונקטופ) — חנות ההודעות שלנו ──
     # מתמלאת מ-webhook ישיר של מטא. כל הודעה (נכנסת/יוצאת) + מדיה + סטטוס מסירה.
     """
@@ -1669,6 +1679,36 @@ def sales_state_set(k: str, v: str):
             INSERT INTO sales_ingest_state (k, v) VALUES (?, ?)
             ON CONFLICT(k) DO UPDATE SET v=excluded.v
         """), (k, str(v)))
+
+
+# ── 🔔 התראות משמרות: עובדים רשומים ──
+def shift_employee_register(name: str, telegram_id) -> None:
+    """רישום/עדכון עובד למערכת ההתראות (לפי telegram_id — upsert)."""
+    with _conn() as c:
+        c.cursor().execute(_q("""
+            INSERT INTO shift_employees (name, telegram_id, registered_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(telegram_id) DO UPDATE SET name=excluded.name
+        """), ((name or "").strip(), str(telegram_id), now_iso()))
+
+
+def shift_employees_all() -> list:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT name, telegram_id, registered_at FROM shift_employees ORDER BY name"))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def shift_telegram_ids_for_names(names: list) -> list:
+    """telegram_ids של עובדים לפי שמות (להפניית DM לפי הסידור). התאמה לא-רגישה לרווחים."""
+    norm = {(n or "").strip() for n in names if (n or "").strip()}
+    if not norm:
+        return []
+    out = []
+    for e in shift_employees_all():
+        if (e.get("name") or "").strip() in norm and e.get("telegram_id"):
+            out.append(e["telegram_id"])
+    return out
 
 
 # ── 💬 וואטסאפ: מטא משלנו (מעקב/הערות) ──
