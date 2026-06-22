@@ -36,13 +36,15 @@
                background:var(--card);color:var(--txt);padding:6px 7px}
   .wrap{padding:12px 12px 92px}
   .hint{color:var(--mut);font-size:12.5px;margin:2px 2px 12px;line-height:1.6}
-  .tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:14px}
+  .tablewrap{border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  .tscroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
   table{border-collapse:separate;border-spacing:0;width:100%;min-width:1040px}
   th,td{padding:7px 8px;border-bottom:1px solid var(--line);border-left:1px solid var(--line);
         text-align:center;white-space:nowrap}
   th{background:var(--head);font-size:13px;font-weight:700;position:sticky;top:0}
   th.nm,td.nm{position:sticky;right:0;background:var(--card);text-align:right;z-index:2;
-              border-left:2px solid var(--line);min-width:118px;font-weight:600}
+              border-left:2px solid var(--line);min-width:118px;font-weight:600;
+              box-shadow:-5px 0 7px -5px rgba(0,0,0,.12)}
   tr:last-child td{border-bottom:0}
   td.cell{background:var(--cell)}
   select.bsel{width:100%;min-width:96px}
@@ -348,7 +350,7 @@ function visibleRows(){ return ROWS.filter(r=>(!STATE.emp||r.employee===STATE.em
 function renderTable(){
   const visible=visibleRows(), days=DATA.days;
   if(!visible.length){ document.getElementById('grid').innerHTML='<div class="center">אין שיבוצים שתואמים לסינון השבוע.</div>'; return; }
-  let h='<div class="tablewrap"><table><thead><tr><th class="nm">עובד</th>';
+  let h='<div class="tablewrap"><div class="tscroll"><table><thead><tr><th class="nm">עובד</th>';
   days.forEach(d=> h+='<th>'+d+'</th>');
   h+='</tr></thead><tbody>';
   visible.forEach(row=>{
@@ -357,7 +359,7 @@ function renderTable(){
     for(let dow=0; dow<days.length; dow++) h+='<td class="cell">'+cellRender(ri,dow)+'</td>';
     h+='</tr>';
   });
-  h+='</tbody></table></div>';
+  h+='</tbody></table></div></div>';
   document.getElementById('grid').innerHTML=h;
 }
 function renderCards(){
