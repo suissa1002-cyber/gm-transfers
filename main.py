@@ -784,7 +784,27 @@ def admin_broadcast(body: BroadcastIn, x_admin_key: Optional[str] = Header(None)
                 raise HTTPException(403, "העברה בין סניפים אחרים — דרך אישור מנהל")
         if not body.line_ids:
             raise HTTPException(403, "שידור כללי — דרך מנהל בלבד")
+    rows_before = {ln["id"]: ln for ln in db.plan_list()}
     n = db.plan_mark_broadcast(body.branch_id, body.line_ids)
+    # 🔔 DM אישי לעובדים שבמשמרת בסניף המקור (לפי הסידור)
+    try:
+        import auto_transfer
+        if body.line_ids:
+            picked = [rows_before.get(int(l)) for l in body.line_ids]
+        else:
+            picked = [p for p in rows_before.values()
+                      if str(p.get("from_branch")) == str(body.branch_id) and not p.get("bcast")]
+        picked = [p for p in picked if p]
+        if picked:
+            lines = "\n".join(
+                f"• {p.get('name') or p.get('product_id')} ×{p.get('qty', 1)}"
+                f" → {cfg.branch_name(p.get('to_branch'))}" for p in picked[:20])
+            auto_transfer.shift_dm_branch(
+                body.branch_id,
+                f"🔔 <b>בקשת העברה חדשה — {cfg.branch_name(body.branch_id)}</b>\n{lines}"
+                f"\n\nנא להכין להעברה.")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("shift DM (manual broadcast) failed: %s", e)
     return {"ok": True, "lines": n}
 
 
@@ -969,6 +989,18 @@ def plan_action(req: str, action: str, sig: str):
         for fb in {int(l["from_branch"]) for l in data["lines"]}:
             db.plan_mark_broadcast(fb, [i for i, l in zip(ids, data["lines"])
                                         if int(l["from_branch"]) == fb])
+            # 🔔 DM אישי לעובדים שבמשמרת בסניף המקור (לפי הסידור)
+            try:
+                import auto_transfer
+                fl = [l for l in data["lines"] if int(l["from_branch"]) == fb]
+                lines = "\n".join(
+                    f"• {l.get('name') or l.get('product_id')} ×{l.get('qty', 1)}"
+                    f" → {cfg.branch_name(l.get('to_branch'))}" for l in fl[:20])
+                auto_transfer.shift_dm_branch(
+                    fb, f"🔔 <b>בקשת העברה חדשה — {cfg.branch_name(fb)}</b>\n{lines}"
+                        f"\n\nנא להכין להעברה.")
+            except Exception as e:  # noqa: BLE001
+                logger.warning("shift DM (approved plan) failed: %s", e)
     data["status"] = "approved" if action == "approve" else "denied"
     db.sales_state_set(f"plnreq:{req}", json_mod.dumps(data))
     msg = "✅ הבקשה אושרה ושודרה לסניף המקור" if action == "approve" else "❌ הבקשה נדחתה"
@@ -2047,6 +2079,56 @@ async def checks_upload(request: Request, x_admin_key: Optional[str] = Header(No
         logger.warning("checks upload non-json (%s): %s", r.status_code, r.text[:200])
         raise HTTPException(502, f"מאנדיי החזיר תשובה לא תקינה ({r.status_code})")
     return JSONResponse(j, status_code=r.status_code)
+
+
+# ── 🗓️ סידור עבודה — אפליקציה נפרדת, גישה חיצונית ממוקדת (דפוס הצ'קים) ──
+# מסדר/ת העבודה נכנס/ת עם SCHEDULE_PASSWORD (header X-Schedule-Key) לחלק הזה בלבד.
+_SHIFT_DAYS = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"]
+_SHIFT_BRANCH_IDS = [int(x) for x in os.getenv("SHIFT_BRANCH_IDS", "1,2,3,4").split(",")
+                     if x.strip().isdigit()]
+
+
+def _require_schedule(x_admin_key, x_schedule_key):
+    sched_pw = os.getenv("SCHEDULE_PASSWORD", "").strip()
+    admin_ok = (not cfg.ADMIN_PASSWORD) or (x_admin_key or "") == cfg.ADMIN_PASSWORD
+    sched_ok = bool(sched_pw) and (x_schedule_key or "") == sched_pw
+    if not (admin_ok or sched_ok):
+        raise HTTPException(401, "schedule auth required")
+
+
+@app.get("/schedule")
+def schedule_page():
+    p = os.path.join(_static_dir, "schedule.html")
+    if os.path.exists(p):
+        return FileResponse(p)
+    raise HTTPException(404)
+
+
+@app.get("/api/schedule/data")
+def schedule_data(x_admin_key: Optional[str] = Header(None),
+                  x_schedule_key: Optional[str] = Header(None)):
+    _require_schedule(x_admin_key, x_schedule_key)
+    seen = set(); employees = []
+    for e in db.shift_employees_all():
+        n = (e.get("name") or "").strip()
+        if n and n not in seen:
+            seen.add(n); employees.append(n)
+    return {
+        "branches": [{"id": b, "name": cfg.branch_name(b)} for b in _SHIFT_BRANCH_IDS],
+        "days": _SHIFT_DAYS,
+        "employees": employees,
+        "roster": db.shift_roster_all(),
+    }
+
+
+@app.post("/api/schedule/save")
+async def schedule_save(request: Request, x_admin_key: Optional[str] = Header(None),
+                        x_schedule_key: Optional[str] = Header(None)):
+    _require_schedule(x_admin_key, x_schedule_key)
+    body = await request.json()
+    rows = (body or {}).get("rows") or []
+    n = db.shift_roster_replace(rows)
+    return {"ok": True, "saved": n}
 
 
 # ── Ops Hub: משימות סוכנים (Monday proxy — הטוקן בצד השרת בלבד) ────

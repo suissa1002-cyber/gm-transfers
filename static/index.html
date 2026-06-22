@@ -1059,6 +1059,7 @@ const HUB_APPS=[
   {key:'invoices',   icon:'receipt', title:'ניהול חשבוניות (איציק)',      url:'/embed/inv',  embed:true},
   {key:'stockwatch', icon:'bell',    title:'תזכורות מלאי — Stock Watcher', url:'/embed/sw',   embed:true},
   {key:'checks',     icon:'bank',    title:'ניהול צ׳קים',                  url:'/checks'},
+  {key:'schedule',   icon:'bell',    title:'סידור עבודה',                  url:'/schedule'},
 ];
 function renderDrawer(){
   const d=document.getElementById('drawer');
@@ -1145,7 +1146,7 @@ async function hubOpen(key){
   if(!ensureAdmin(()=>hubOpen(key))) return;
   toggleDrawer(false);
   // צ'קים מתארח אצלנו (אותו origin) — ניווט מלא מובנה
-  if(key==='checks'){ window.location.href=a.url; return; }
+  if(key==='checks'||key==='schedule'){ window.location.href=a.url; return; }
   // אפליקציות מוטמעות native דרך reverse-proxy — פותחים session ואז ניווט מלא
   if(a.embed){
     showLoading('פותח אפליקציה…');

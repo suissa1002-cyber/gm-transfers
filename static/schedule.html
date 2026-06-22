@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>סידור עבודה · גרין מובייל</title>
+<style>
+  :root{
+    --bg:#0f1419; --card:#171f29; --line:#26303d; --txt:#e6edf3; --mut:#8b97a6;
+    --green:#1db954; --green-d:#159c44; --blue:#2f81f7; --warn:#f0883e;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Rubik,Arial,sans-serif;
+       background:var(--bg);color:var(--txt);-webkit-text-size-adjust:100%}
+  header{position:sticky;top:0;z-index:5;background:var(--card);border-bottom:1px solid var(--line);
+         padding:12px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  header h1{font-size:17px;margin:0;font-weight:700}
+  header .sp{flex:1}
+  button{font-family:inherit;cursor:pointer;border:0;border-radius:10px;font-size:14px;font-weight:600;
+          padding:9px 14px;color:#fff;background:var(--green)}
+  button.ghost{background:transparent;border:1px solid var(--line);color:var(--txt)}
+  button:disabled{opacity:.5;cursor:default}
+  .wrap{padding:14px 12px 90px}
+  .hint{color:var(--mut);font-size:13px;margin:4px 2px 14px;line-height:1.6}
+  .tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:14px}
+  table{border-collapse:separate;border-spacing:0;width:100%;min-width:760px}
+  th,td{padding:7px 8px;border-bottom:1px solid var(--line);border-left:1px solid var(--line);
+        text-align:center;white-space:nowrap}
+  th{background:#1c2530;font-size:13px;font-weight:700;position:sticky;top:0}
+  th.nm,td.nm{position:sticky;right:0;background:var(--card);text-align:right;z-index:2;
+              border-left:2px solid var(--line);min-width:120px;font-weight:600}
+  tr:last-child td{border-bottom:0}
+  td.cell{background:var(--bg)}
+  select{font-family:inherit;font-size:13px;border:1px solid var(--line);border-radius:8px;
+          background:var(--card);color:var(--txt);padding:6px 6px;width:100%;min-width:96px}
+  select.has{border-color:var(--green);color:#fff;font-weight:600}
+  input.hrs{font-family:inherit;font-size:12px;border:1px solid var(--line);border-radius:7px;
+            background:var(--card);color:var(--txt);padding:5px 4px;width:74px;margin-top:4px;text-align:center}
+  .savebar{position:fixed;bottom:0;right:0;left:0;background:var(--card);border-top:1px solid var(--line);
+           padding:11px 16px;display:flex;align-items:center;gap:12px;z-index:6}
+  .savebar .st{color:var(--mut);font-size:13px;flex:1}
+  .toast{position:fixed;bottom:74px;right:50%;transform:translateX(50%);background:var(--green-d);
+         color:#fff;padding:10px 18px;border-radius:22px;font-size:14px;font-weight:600;opacity:0;
+         transition:opacity .25s;pointer-events:none;z-index:9}
+  .toast.show{opacity:1}
+  .center{text-align:center;color:var(--mut);padding:50px 20px;font-size:15px}
+</style>
+</head>
+<body>
+<header>
+  <h1>🗓️ סידור עבודה</h1>
+  <span class="sp"></span>
+  <button class="ghost" id="addBtn" onclick="addEmployee()">➕ עובד</button>
+  <button class="ghost" onclick="logout()">יציאה</button>
+</header>
+
+<div class="wrap">
+  <div class="hint" id="hint">טוען…</div>
+  <div id="grid"></div>
+</div>
+
+<div class="savebar" id="savebar" style="display:none">
+  <span class="st" id="st"></span>
+  <button id="saveBtn" onclick="save()">💾 שמירת הסידור</button>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const API = '';
+let DATA = null;       // {branches, days, employees, roster}
+let ROWS = [];         // [{employee, cells:{dow:{branch_id, hours}}}]
+
+function key(force){
+  let k = localStorage.getItem('tr_schedule_key');
+  if(!k || force){ k = prompt('🔐 סיסמת גישה לסידור:') || '';
+    if(k) localStorage.setItem('tr_schedule_key', k); }
+  return k || '';
+}
+function logout(){ localStorage.removeItem('tr_schedule_key'); location.reload(); }
+function toast(t){ const e=document.getElementById('toast'); e.textContent=t; e.classList.add('show');
+  setTimeout(()=>e.classList.remove('show'),1900); }
+
+async function api(path, opts){
+  opts = opts||{};
+  opts.headers = Object.assign({'Content-Type':'application/json',
+    'X-Schedule-Key': localStorage.getItem('tr_schedule_key')||'',
+    'X-Admin-Key': localStorage.getItem('tr_admin_key')||''}, opts.headers||{});
+  const r = await fetch(API+path, opts);
+  if(r.status===401){ localStorage.removeItem('tr_schedule_key');
+    document.getElementById('hint').textContent='סיסמה שגויה.'; key(true); load(); throw new Error('401'); }
+  return r;
+}
+
+function rosterToRows(){
+  // מאחד עובדים רשומים + שמות שכבר בסידור
+  const names = [];
+  (DATA.employees||[]).forEach(n=>{ if(names.indexOf(n)<0) names.push(n); });
+  (DATA.roster||[]).forEach(r=>{ if(r.employee && names.indexOf(r.employee)<0) names.push(r.employee); });
+  ROWS = names.map(n=>({employee:n, cells:{}}));
+  const byName = {}; ROWS.forEach(r=>byName[r.employee]=r);
+  (DATA.roster||[]).forEach(r=>{
+    const row = byName[r.employee]; if(!row) return;
+    row.cells[r.dow] = {branch_id:r.branch_id, hours:r.hours||''};
+  });
+}
+
+function render(){
+  if(!ROWS.length){
+    document.getElementById('grid').innerHTML =
+      '<div class="center">אין עדיין עובדים רשומים.<br>עובדים נכנסים לבוט @Greenm_alert_bot ובוחרים שם — ואז יופיעו כאן.<br>או הוסף שם ידנית עם ➕.</div>';
+    return;
+  }
+  const days = DATA.days, branches = DATA.branches;
+  let h = '<div class="tablewrap"><table><thead><tr><th class="nm">עובד</th>';
+  days.forEach((d,i)=> h += '<th>'+d+'</th>');
+  h += '</tr></thead><tbody>';
+  ROWS.forEach((row,ri)=>{
+    h += '<tr><td class="nm">'+esc(row.employee)+'</td>';
+    for(let dow=0; dow<days.length; dow++){
+      const c = row.cells[dow]||{};
+      let sel = '<select onchange="onSel('+ri+','+dow+',this)" class="'+(c.branch_id?'has':'')+'">';
+      sel += '<option value="">—</option>';
+      branches.forEach(b=>{
+        sel += '<option value="'+b.id+'"'+(String(c.branch_id)===String(b.id)?' selected':'')+'>'+esc(b.name)+'</option>';
+      });
+      sel += '</select>';
+      const hv = c.hours?(' value="'+esc(c.hours)+'"'):'';
+      const hidden = c.branch_id?'':' style="display:none"';
+      sel += '<input class="hrs" placeholder="שעות"'+hv+hidden+' oninput="onHrs('+ri+','+dow+',this)">';
+      h += '<td class="cell">'+sel+'</td>';
+    }
+    h += '</tr>';
+  });
+  h += '</tbody></table></div>';
+  document.getElementById('grid').innerHTML = h;
+}
+
+function onSel(ri,dow,el){
+  const row = ROWS[ri];
+  const hrsInput = el.parentNode.querySelector('input.hrs');
+  if(el.value){ row.cells[dow] = {branch_id:parseInt(el.value), hours:(row.cells[dow]||{}).hours||''};
+    el.classList.add('has'); if(hrsInput) hrsInput.style.display='';
+  } else { delete row.cells[dow]; el.classList.remove('has'); if(hrsInput){hrsInput.value='';hrsInput.style.display='none';} }
+}
+function onHrs(ri,dow,el){ if(ROWS[ri].cells[dow]) ROWS[ri].cells[dow].hours = el.value.trim(); }
+
+function addEmployee(){
+  const n = (prompt('שם העובד (כפי שמופיע בסידור):')||'').trim();
+  if(!n) return;
+  if(ROWS.some(r=>r.employee===n)){ toast('כבר קיים'); return; }
+  ROWS.push({employee:n, cells:{}}); render();
+}
+
+async function save(){
+  const rows = [];
+  ROWS.forEach(r=>{ for(const dow in r.cells){ const c=r.cells[dow];
+    if(c.branch_id) rows.push({employee:r.employee, dow:parseInt(dow), branch_id:c.branch_id, hours:c.hours||''}); } });
+  const btn=document.getElementById('saveBtn'); btn.disabled=true; btn.textContent='שומר…';
+  try{
+    const r = await api('/api/schedule/save', {method:'POST', body:JSON.stringify({rows})});
+    const j = await r.json();
+    if(j.ok){ toast('✅ נשמר ('+j.saved+' שיבוצים)'); document.getElementById('st').textContent='נשמר לאחרונה: עכשיו'; }
+    else toast('שגיאה בשמירה');
+  }catch(e){ toast('שגיאה בשמירה'); }
+  btn.disabled=false; btn.textContent='💾 שמירת הסידור';
+}
+
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+async function load(){
+  try{
+    key();
+    const r = await api('/api/schedule/data');
+    DATA = await r.json();
+    rosterToRows();
+    const cnt = (DATA.employees||[]).length;
+    document.getElementById('hint').innerHTML =
+      'שבץ כל עובד לסניף בכל יום שהוא במשמרת. ההתראות נשלחות אוטומטית למי שמשובץ בסניף שאליו משודרת בקשת העברה.<br>'+
+      '<b>'+cnt+'</b> עובדים רשומים בבוט. שעות הן רשות.';
+    document.getElementById('savebar').style.display='flex';
+    render();
+  }catch(e){ if(String(e.message)!=='401') document.getElementById('hint').textContent='שגיאת טעינה: '+e.message; }
+}
+load();
+</script>
+</body>
+</html>

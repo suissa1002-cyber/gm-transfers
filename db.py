@@ -389,6 +389,18 @@ _SCHEMA = [
     )
     """.format(pk=_PK),
     "CREATE INDEX IF NOT EXISTS idx_shift_emp_name ON shift_employees(name)",
+    # ── סידור עבודה שבועי (מזין את התראות המשמרת) ──
+    """
+    CREATE TABLE IF NOT EXISTS shift_roster (
+        id         {pk},
+        branch_id  INTEGER,
+        dow        INTEGER,
+        employee   TEXT,
+        hours      TEXT,
+        updated_at TEXT
+    )
+    """.format(pk=_PK),
+    "CREATE INDEX IF NOT EXISTS idx_shift_roster_bd ON shift_roster(branch_id, dow)",
     # ── WhatsApp עצמאי (פרויקט ניתוק קונקטופ) — חנות ההודעות שלנו ──
     # מתמלאת מ-webhook ישיר של מטא. כל הודעה (נכנסת/יוצאת) + מדיה + סטטוס מסירה.
     """
@@ -1709,6 +1721,43 @@ def shift_telegram_ids_for_names(names: list) -> list:
         if (e.get("name") or "").strip() in norm and e.get("telegram_id"):
             out.append(e["telegram_id"])
     return out
+
+
+def shift_roster_all() -> list:
+    """כל שורות הסידור — [{branch_id, dow, employee, hours}]."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT branch_id, dow, employee, hours FROM shift_roster "
+                       "ORDER BY branch_id, dow, employee"))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def shift_roster_replace(rows: list) -> int:
+    """החלפה אטומית של כל הסידור. rows = [{branch_id, dow, employee, hours}]."""
+    ts = now_iso()
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("DELETE FROM shift_roster"))
+        n = 0
+        for r in (rows or []):
+            emp = (r.get("employee") or "").strip()
+            if not emp:
+                continue
+            cur.execute(_q("INSERT INTO shift_roster (branch_id, dow, employee, hours, updated_at) "
+                           "VALUES (?,?,?,?,?)"),
+                        (int(r.get("branch_id") or 0), int(r.get("dow") or 0), emp,
+                         (r.get("hours") or "").strip(), ts))
+            n += 1
+        return n
+
+
+def shift_employees_on(branch_id: int, dow: int) -> list:
+    """שמות העובדים המשובצים לסניף ביום נתון — [{employee, hours}]."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT employee, hours FROM shift_roster WHERE branch_id=? AND dow=?"),
+                    (int(branch_id), int(dow)))
+        return [dict(r) for r in cur.fetchall()]
 
 
 # ── 💬 וואטסאפ: מטא משלנו (מעקב/הערות) ──

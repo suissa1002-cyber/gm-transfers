@@ -353,8 +353,44 @@ def _handle_order(o: dict, catalog: dict) -> list:
     return created
 
 
+def _il_dow() -> int:
+    """יום בשבוע בשעון ישראל: ראשון=0 ... שבת=6 (להתאמת הסידור)."""
+    from datetime import datetime
+    try:
+        from zoneinfo import ZoneInfo
+        wd = datetime.now(ZoneInfo("Asia/Jerusalem")).weekday()
+    except Exception:  # noqa: BLE001
+        wd = datetime.utcnow().weekday()
+    return (wd + 1) % 7   # Mon=0..Sun=6 → ראשון=0..שבת=6
+
+
+def shift_dm_branch(src_branch, text) -> int:
+    """DM אישי בטלגרם לעובדים שמשובצים בסניף הזה היום (לפי הסידור). מחזיר כמה נשלחו."""
+    tok = os.getenv("SHIFT_BOT_TOKEN", "").strip()
+    if not tok:
+        return 0
+    try:
+        emps = db.shift_employees_on(int(src_branch), _il_dow())
+    except Exception:  # noqa: BLE001
+        return 0
+    names = [e.get("employee") for e in emps if e.get("employee")]
+    if not names:
+        return 0
+    ids = db.shift_telegram_ids_for_names(names)
+    import requests as _rq
+    sent = 0
+    for cid in ids:
+        try:
+            _rq.post(f"https://api.telegram.org/bot{tok}/sendMessage",
+                     json={"chat_id": cid, "text": text, "parse_mode": "HTML"}, timeout=10)
+            sent += 1
+        except Exception:  # noqa: BLE001
+            pass
+    return sent
+
+
 def _alert_created(o, created):
-    """התראות טלגרם על בקשות העברה ששודרו (אדמין + צ'אט סניף המקור)."""
+    """התראות טלגרם על בקשות העברה ששודרו (אדמין + צ'אט סניף המקור + DM אישי למשמרת)."""
     if not created:
         return
     lines = "\n".join(
@@ -370,6 +406,14 @@ def _alert_created(o, created):
         if chat:
             alerts._send(chat, f"📦 בקשת העברה חדשה לאתר: {c['name']} ×{c['qty']}\n"
                                f"(הזמנת אתר #{o.get('number')} — שודר אוטומטית)")
+    # 🔔 DM אישי לעובדים שבמשמרת בסניף המקור (לפי הסידור)
+    bysrc = {}
+    for c in created:
+        bysrc.setdefault(c["src"], []).append(c)
+    for src, items in bysrc.items():
+        body = "\n".join(f"• {c['name']} ×{c['qty']}" for c in items)
+        shift_dm_branch(src, f"🔔 <b>בקשת העברה חדשה — {cfg.branch_name(src)}</b>\n"
+                             f"הזמנת אתר #{o.get('number')}:\n{body}\n\nנא להכין להעברה.")
 
 
 def _intl_phone(raw) -> str:
