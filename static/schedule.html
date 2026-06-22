@@ -28,7 +28,7 @@
   .wrap{padding:14px 12px 90px}
   .hint{color:var(--mut);font-size:13px;margin:4px 2px 14px;line-height:1.6}
   .tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:14px}
-  table{border-collapse:separate;border-spacing:0;width:100%;min-width:760px}
+  table{border-collapse:separate;border-spacing:0;width:100%;min-width:1040px}
   th,td{padding:7px 8px;border-bottom:1px solid var(--line);border-left:1px solid var(--line);
         text-align:center;white-space:nowrap}
   th{background:var(--head);font-size:13px;font-weight:700;position:sticky;top:0}
@@ -39,8 +39,10 @@
   select{font-family:inherit;font-size:13px;border:1px solid var(--line);border-radius:8px;
           background:var(--card);color:var(--txt);padding:6px 6px;width:100%;min-width:96px}
   select.has{border-color:var(--green);color:#fff;font-weight:600}
-  input.hrs{font-family:inherit;font-size:12px;border:1px solid var(--line);border-radius:7px;
-            background:var(--card);color:var(--txt);padding:5px 4px;width:74px;margin-top:4px;text-align:center}
+  .hwrap{display:flex;align-items:center;gap:3px;margin-top:4px;justify-content:center}
+  .hwrap .dash{color:var(--mut);font-size:12px}
+  input.th{font-family:inherit;font-size:11.5px;border:1px solid var(--line);border-radius:7px;
+           background:var(--card);color:var(--txt);padding:4px 2px;width:66px;text-align:center}
   .savebar{position:fixed;bottom:0;right:0;left:0;background:var(--card);border-top:1px solid var(--line);
            padding:11px 16px;display:flex;align-items:center;gap:12px;z-index:6}
   .savebar .st{color:var(--mut);font-size:13px;flex:1}
@@ -140,9 +142,14 @@ function render(){
         sel += '<option value="'+b.id+'"'+(String(c.branch_id)===String(b.id)?' selected':'')+'>'+esc(b.name)+'</option>';
       });
       sel += '</select>';
-      const hv = c.hours?(' value="'+esc(c.hours)+'"'):'';
+      const hh = String(c.hours||'').split('-');
+      const t1v = (hh[0]||'').trim()?(' value="'+esc(hh[0].trim())+'"'):'';
+      const t2v = (hh[1]||'').trim()?(' value="'+esc(hh[1].trim())+'"'):'';
       const hidden = c.branch_id?'':' style="display:none"';
-      sel += '<input class="hrs" placeholder="שעות"'+hv+hidden+' oninput="onHrs('+ri+','+dow+',this)">';
+      sel += '<div class="hwrap"'+hidden+'>'
+           + '<input type="time" class="th" title="התחלה"'+t1v+' onchange="onTime('+ri+','+dow+',this)">'
+           + '<span class="dash">–</span>'
+           + '<input type="time" class="th" title="סיום"'+t2v+' onchange="onTime('+ri+','+dow+',this)"></div>';
       h += '<td class="cell">'+sel+'</td>';
     }
     h += '</tr>';
@@ -153,12 +160,18 @@ function render(){
 
 function onSel(ri,dow,el){
   const row = ROWS[ri];
-  const hrsInput = el.parentNode.querySelector('input.hrs');
+  const w = el.parentNode.querySelector('.hwrap');
   if(el.value){ row.cells[dow] = {branch_id:parseInt(el.value), hours:(row.cells[dow]||{}).hours||''};
-    el.classList.add('has'); if(hrsInput) hrsInput.style.display='';
-  } else { delete row.cells[dow]; el.classList.remove('has'); if(hrsInput){hrsInput.value='';hrsInput.style.display='none';} }
+    el.classList.add('has'); if(w) w.style.display='flex';
+  } else { delete row.cells[dow]; el.classList.remove('has');
+    if(w){ w.querySelectorAll('input.th').forEach(i=>i.value=''); w.style.display='none'; } }
 }
-function onHrs(ri,dow,el){ if(ROWS[ri].cells[dow]) ROWS[ri].cells[dow].hours = el.value.trim(); }
+function onTime(ri,dow,el){
+  if(!ROWS[ri].cells[dow]) return;
+  const ins = el.closest('.hwrap').querySelectorAll('input.th');
+  const a = ins[0].value, b = ins[1].value;
+  ROWS[ri].cells[dow].hours = (a||b) ? ((a||'')+'-'+(b||'')) : '';
+}
 
 function addEmployee(){
   const n = (prompt('שם העובד (כפי שמופיע בסידור):')||'').trim();
