@@ -3038,6 +3038,7 @@ function waOrdDoneOpen(r,o){
       <button class="btn-primary" id="odSend" style="flex:1" onclick="waOrdDoneSend()">${r.pay_mode==='button'?'שלח עם כפתור תשלום':'שלח בוואטסאפ ללקוח'}</button>
     </div>
     ${r.pay_mode==='button'?'':`<div class="muted" style="font-size:11px;margin-top:5px">נשלח תמיד: בתוך חלון 24ש׳ — הודעה רגילה; מחוצה לו — תבנית new_message מאושרת.</div>`}
+    ${r.pru?`<button class="btn-ghost" style="width:100%;margin-top:8px;border-color:#16a34a;color:#16a34a" onclick="waOrdDoneClose();waPayOpen({number:'${escW(String(r.number||''))}', total:${Number(r.total)||0}, pay_link:'${escW(r.pay_link||'')}', order_id:${Number(r.order_id)||0}, pru:'${escW(r.pru||'')}'})" title="הלקוח לא רוצה קישור? הקלד את הכרטיס כאן (3D Secure)">💳 עבור לחיוב טלפוני כאן</button>`:''}
     <div style="display:flex;gap:8px;margin-top:10px">
       <button class="btn-ghost" style="flex:1" onclick="window.open('${r.admin_url}','_blank')">פתח הזמנה ב-WC</button>
       <button class="btn-ghost" style="flex:1" onclick="waOrdDoneClose()">סגור</button>
@@ -3060,6 +3061,8 @@ async function waOrdDoneSend(){
     toast(r.via==='pay-template'?'נשלח ✓ עם כפתור תשלום לחיץ':
          r.via==='template'?'נשלח ✓ כתבנית מאושרת (מחוץ לחלון 24ש׳)':'נשלח ✓ בוואטסאפ',true);
     if(btn) btn.textContent='נשלח ✓';
+    // רענון השרשור כך שהקישור/התבנית שנשלחו יופיעו בשיחה (נשמרים ב-shadow log)
+    setTimeout(()=>{ try{ loadWaThread(true); }catch(e){} }, 900);
   }catch(e){
     if(btn){ btn.disabled=false; btn.textContent='נסה שוב'; }
     toast('השליחה נכשלה — בדוק את המספר',false);
