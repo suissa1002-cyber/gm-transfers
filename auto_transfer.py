@@ -374,6 +374,45 @@ def _cur_week_start() -> str:
     return (d - timedelta(days=(d.weekday() + 1) % 7)).isoformat()
 
 
+# שעות פעילות סניף: dow→(פתיחה, סגירה). ראשון=0..שבת=6. שבת סגור (לא ברשימה).
+_BRANCH_HOURS = {0: (9, 21), 1: (9, 21), 2: (9, 21), 3: (9, 21), 4: (9, 21), 5: (9, 14)}
+
+
+def _branch_open_now() -> bool:
+    """האם עכשיו בתוך שעות פעילות הסניפים (שעון ישראל)."""
+    now = _il_now_dt()
+    hrs = _BRANCH_HOURS.get((now.weekday() + 1) % 7)
+    return bool(hrs) and hrs[0] <= now.hour < hrs[1]
+
+
+def _hhmm_min(s):
+    try:
+        h, m = str(s).strip().split(":"); return int(h) * 60 + int(m)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _covers_now(hours) -> bool:
+    """האם משמרת בשעות אלה (HH:MM-HH:MM) מכסה את הרגע הנוכחי. ריק → כל היום."""
+    p = (hours or "").strip().split("-")
+    if len(p) != 2:
+        return True
+    a, b = _hhmm_min(p[0]), _hhmm_min(p[1])
+    if a is None or b is None:
+        return True
+    lo, hi = (a, b) if a <= b else (b, a)
+    now = _il_now_dt()
+    return lo <= now.hour * 60 + now.minute <= hi
+
+
+def _shift_ids_on_now(src_branch):
+    """telegram_ids של עובדים שמשובצים בסניף *עכשיו* (שעות המשמרת מכסות את הרגע)."""
+    emps = db.shift_employees_on(int(src_branch), _il_dow(), _cur_week_start())
+    names = [e.get("employee") for e in emps
+             if e.get("employee") and _covers_now(e.get("hours"))]
+    return db.shift_telegram_ids_for_names(names) if names else []
+
+
 def shift_send_chat(chat_id, text, reply_markup=None) -> bool:
     """שליחת הודעה בודדת דרך בוט המשמרות (@Greenm_alert_bot). מחזיר הצלחה."""
     tok = os.getenv("SHIFT_BOT_TOKEN", "").strip()
@@ -392,20 +431,48 @@ def shift_send_chat(chat_id, text, reply_markup=None) -> bool:
 
 
 def shift_dm_branch(src_branch, text) -> int:
-    """DM אישי בטלגרם לעובדים שמשובצים בסניף הזה היום (לפי סידור השבוע הנוכחי). מחזיר כמה נשלחו."""
+    """DM אישי לעובדים שבמשמרת *עכשיו* בסניף. מחוץ לשעות הפעילות → נדחה ונשלח בבוקר
+    הפתיחה (09:15) לצוות של אותו יום — שלא נפנה למי שכבר סיים/לפני שנפתח."""
     if not os.getenv("SHIFT_BOT_TOKEN", "").strip():
         return 0
+    if not _branch_open_now():
+        try:
+            db.shift_alert_enqueue(int(src_branch), text)   # ידחה לבוקר הפתיחה
+            logger.info("shift alert deferred (off-hours) for branch %s", src_branch)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("shift alert enqueue failed: %s", e)
+        return 0
     try:
-        emps = db.shift_employees_on(int(src_branch), _il_dow(), _cur_week_start())
+        ids = _shift_ids_on_now(src_branch)
     except Exception:  # noqa: BLE001
         return 0
-    names = [e.get("employee") for e in emps if e.get("employee")]
-    if not names:
-        return 0
     sent = 0
-    for cid in db.shift_telegram_ids_for_names(names):
+    for cid in ids:
         if shift_send_chat(cid, text):
             sent += 1
+    return sent
+
+
+def flush_pending_shift_alerts() -> int:
+    """עבודת בוקר (09:15): שולח התראות שנדחו מחוץ-לשעות לצוות הבוקר של אותו סניף.
+    רץ רק כשהסניפים פתוחים (יום עסקים). מחזיר כמה DM נשלחו."""
+    if not os.getenv("SHIFT_BOT_TOKEN", "").strip() or not _branch_open_now():
+        return 0
+    pend = db.shift_alerts_pending()
+    if not pend:
+        return 0
+    done, sent = [], 0
+    for a in pend:
+        try:
+            for cid in _shift_ids_on_now(a["branch_id"]):
+                if shift_send_chat(cid, a["text"]):
+                    sent += 1
+        except Exception as e:  # noqa: BLE001
+            logger.warning("flush shift alert %s failed: %s", a.get("id"), e)
+        done.append(a["id"])   # מסומן כטופל גם אם אין מי שבמשמרת (מונע שליחה כפולה)
+    db.shift_alerts_clear(done)
+    if sent:
+        logger.info("flushed %d deferred shift alerts (%d DMs)", len(done), sent)
     return sent
 
 

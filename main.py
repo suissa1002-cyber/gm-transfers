@@ -163,6 +163,15 @@ def _auto_transfer_job():
         logger.warning("auto_transfer failed: %s", e)
 
 
+def _shift_alert_flush_job():
+    """בוקר 09:15 — שולח התראות משמרת שנדחו מחוץ-לשעות לצוות הבוקר של אותו סניף."""
+    try:
+        import auto_transfer
+        auto_transfer.flush_pending_shift_alerts()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("shift alert flush failed: %s", e)
+
+
 def _media_backup_job():
     """מגבה מדיה נכנסת ממטא (תמונות/מסמכים) לפני שמטא מוחק (~30 יום). מוריד עד 30
     פריטים שטרם גובו בכל ריצה (rate-limit ידידותי)."""
@@ -332,6 +341,14 @@ def register_recurring_jobs():
                           max_instances=1, replace_existing=True)
     except Exception as e:  # noqa: BLE001
         logger.warning("morning digest schedule failed: %s", e)
+    # התראות משמרת שנדחו (שודרו מחוץ לשעות) — נשלחות בבוקר הפתיחה לצוות היום (09:15)
+    try:
+        from zoneinfo import ZoneInfo as _ZI2
+        scheduler.add_job(_shift_alert_flush_job, "cron", hour=9, minute=15,
+                          timezone=_ZI2(cfg.TZ), id="shift_alert_flush",
+                          max_instances=1, replace_existing=True)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("shift alert flush schedule failed: %s", e)
     # קידום ל'בהפצה' להזמנות עם משלוח Cargo (גם תוויות שהודפסו מחוץ ל-GreenOS)
     scheduler.add_job(_cargo_shipping_advance_job, "interval", minutes=3,
                       id="cargo_shipping_advance", max_instances=1, coalesce=True)

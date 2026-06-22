@@ -401,6 +401,15 @@ _SCHEMA = [
     )
     """.format(pk=_PK),
     "CREATE INDEX IF NOT EXISTS idx_shift_roster_bd ON shift_roster(branch_id, dow)",
+    # ── התראות משמרת שנדחו (שודרו מחוץ לשעות) — נשלחות בבוקר הפתיחה ──
+    """
+    CREATE TABLE IF NOT EXISTS pending_shift_alerts (
+        id         {pk},
+        branch_id  INTEGER,
+        text       TEXT,
+        created_at TEXT
+    )
+    """.format(pk=_PK),
     # ── WhatsApp עצמאי (פרויקט ניתוק קונקטופ) — חנות ההודעות שלנו ──
     # מתמלאת מ-webhook ישיר של מטא. כל הודעה (נכנסת/יוצאת) + מדיה + סטטוס מסירה.
     """
@@ -1780,6 +1789,29 @@ def shift_employees_on(branch_id: int, dow: int, week_start: str) -> list:
                        "WHERE branch_id=? AND dow=? AND week_start=?"),
                     (int(branch_id), int(dow), str(week_start)))
         return [dict(r) for r in cur.fetchall()]
+
+
+def shift_alert_enqueue(branch_id: int, text: str) -> None:
+    """דחיית התראת משמרת (שודרה מחוץ לשעות) — לשליחה בבוקר הפתיחה."""
+    with _conn() as c:
+        c.cursor().execute(_q("INSERT INTO pending_shift_alerts (branch_id, text, created_at) "
+                              "VALUES (?,?,?)"), (int(branch_id), text, now_iso()))
+
+
+def shift_alerts_pending() -> list:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT id, branch_id, text FROM pending_shift_alerts ORDER BY id"))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def shift_alerts_clear(ids: list) -> None:
+    if not ids:
+        return
+    with _conn() as c:
+        cur = c.cursor()
+        for i in ids:
+            cur.execute(_q("DELETE FROM pending_shift_alerts WHERE id=?"), (int(i),))
 
 
 # ── 💬 וואטסאפ: מטא משלנו (מעקב/הערות) ──
