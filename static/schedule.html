@@ -107,8 +107,10 @@
            align-items:flex-start;justify-content:center;padding:40px 12px;overflow:auto}
   .overlay.show{display:flex}
   .modal{background:var(--card);border:1px solid var(--line);border-radius:16px;width:100%;max-width:620px;
-         padding:16px 18px;box-shadow:0 20px 50px rgba(0,0,0,.3)}
+         padding:16px 18px;box-shadow:0 20px 50px rgba(0,0,0,.3);overflow:hidden}
   .modal.wide{max-width:880px}
+  #sumBody{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .stable{max-width:100%}
   .modal h2{margin:0 0 4px;font-size:16px}
   .modal .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0}
   .modal .x{float:left;background:transparent;border:0;color:var(--mut);font-size:20px;cursor:pointer;padding:0}
