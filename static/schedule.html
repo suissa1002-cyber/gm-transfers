@@ -105,8 +105,7 @@
 </div>
 
 <div class="savebar" id="savebar" style="display:none">
-  <span class="st" id="st"></span>
-  <button id="saveBtn" onclick="save()">💾 שמירת השבוע</button>
+  <span class="st" id="st">💾 נשמר אוטומטית</span>
 </div>
 
 <!-- summary modal -->
@@ -214,8 +213,8 @@ async function loadWeek(){
   rosterToRows();
   renderGrid();
 }
-function shiftWeek(n){ STATE.week = addDays(STATE.week, n); loadWeek(); }
-function pickWeek(v){ if(v){ STATE.week = sundayOf(v); loadWeek(); } }
+async function shiftWeek(n){ await flushSave(); STATE.week = addDays(STATE.week, n); loadWeek(); }
+async function pickWeek(v){ if(v){ await flushSave(); STATE.week = sundayOf(v); loadWeek(); } }
 
 function buildEmpFilter(){
   const names = allNames();
@@ -276,12 +275,14 @@ function onSel(ri,dow,el){
     el.classList.add('has'); if(w) w.style.display='flex';
   } else { delete row.cells[dow]; el.classList.remove('has');
     if(w){ w.querySelectorAll('input.th').forEach(i=>i.value=''); w.style.display='none'; } }
+  queueSave();
 }
 function onTime(ri,dow,el){
   if(!ROWS[ri].cells[dow]) return;
   const ins=el.closest('.hwrap').querySelectorAll('input.th');
   const a=ins[0].value, b=ins[1].value;
   ROWS[ri].cells[dow].hours=(a||b)?((a||'')+'-'+(b||'')):'';
+  queueSave();
 }
 function addEmployee(){
   const n=(prompt('שם העובד (כפי שמופיע בסידור):')||'').trim();
@@ -290,19 +291,25 @@ function addEmployee(){
   ROWS.push({employee:n, cells:{}}); buildEmpFilter(); renderGrid();
 }
 
-async function save(){
+// ── autosave (debounced, full-week replace) ──
+let saveTimer=null, saveWeek=null;
+function setStatus(t){ const e=document.getElementById('st'); if(e) e.textContent=t; }
+function queueSave(){
+  saveWeek=STATE.week; setStatus('שומר…');
+  clearTimeout(saveTimer); saveTimer=setTimeout(()=>doSave(saveWeek), 650);
+}
+async function doSave(wk){
+  saveTimer=null;
   const rows=[];
   ROWS.forEach(r=>{ for(const dow in r.cells){ const c=r.cells[dow];
     if(c.branch_id) rows.push({employee:r.employee, dow:parseInt(dow), branch_id:c.branch_id, hours:c.hours||''}); } });
-  const btn=document.getElementById('saveBtn'); btn.disabled=true; btn.textContent='שומר…';
   try{
-    const r=await api('/api/schedule/save',{method:'POST',body:JSON.stringify({week:STATE.week, rows})});
+    const r=await api('/api/schedule/save',{method:'POST',body:JSON.stringify({week:wk, rows})});
     const j=await r.json();
-    if(j.ok){ toast('✅ נשמר ('+j.saved+' שיבוצים)'); document.getElementById('st').textContent='נשמר · '+weekLabel(STATE.week); }
-    else toast('שגיאה בשמירה');
-  }catch(e){ if(String(e.message)!=='401') toast('שגיאה בשמירה'); }
-  btn.disabled=false; btn.textContent='💾 שמירת השבוע';
+    setStatus(j.ok?'✅ נשמר אוטומטית':'⚠ שגיאת שמירה');
+  }catch(e){ if(String(e.message)!=='401') setStatus('⚠ שגיאת שמירה'); }
 }
+async function flushSave(){ if(saveTimer){ clearTimeout(saveTimer); saveTimer=null; await doSave(saveWeek||STATE.week); } }
 
 // ── summary ──
 function monthBounds(){
@@ -310,7 +317,8 @@ function monthBounds(){
   const from=new Date(t.getFullYear(),t.getMonth(),1), to=new Date(t.getFullYear(),t.getMonth()+1,0);
   return [fmtISO(from), fmtISO(to)];
 }
-function openSummary(){
+async function openSummary(){
+  await flushSave();
   const [f,t]=monthBounds();
   document.getElementById('sumFrom').value=f; document.getElementById('sumTo').value=t;
   document.getElementById('sumBody').innerHTML=''; document.getElementById('sumMeta').textContent='';
@@ -345,6 +353,7 @@ function openDispatch(){
   document.getElementById('dispOv').classList.add('show');
 }
 async function dispatch(mode, employee){
+  await flushSave();
   const res=document.getElementById('dispRes'); res.innerHTML='שולח…';
   try{
     const r=await api('/api/schedule/dispatch',{method:'POST',body:JSON.stringify({week:STATE.week, mode, employee})});
