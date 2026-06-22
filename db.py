@@ -2063,7 +2063,7 @@ def wa_msg_thread(phone: str, limit: int = 80) -> list:
     with _conn() as c:
         cur = c.cursor()
         cur.execute(_q("""SELECT wamid, phone, direction, type, text, media_id, media_mime,
-                                 media_name, media_url, reply_to, ts, status
+                                 media_name, media_url, reply_to, ts, status, err
                           FROM wa_msg WHERE phone = ? ORDER BY ts DESC LIMIT ?"""),
                     (str(phone), int(limit)))
         rows = [dict(r) for r in cur.fetchall()]

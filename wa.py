@@ -344,6 +344,7 @@ def get_thread_native(phone: str, limit: int = 80):
             "ts": m.get("ts") or 0,
             "sent_by": "greenos" if m.get("direction") == "out" else None,
             "reply_to": m.get("reply_to") or None, "status": st,
+            "err": (m.get("err") or "") if st == "failed" else "",
         })
     by_id = {x["id"]: (x.get("text") or "") for x in slim if x.get("id")}
     for x in slim:
