@@ -1699,6 +1699,19 @@ async def shift_bot_webhook(request: Request):
     text = str(msg.get("text") or "")
     chat_id = (msg.get("chat") or {}).get("id")
     from_id = (msg.get("from") or {}).get("id")
+    # לכידת chat_id של קבוצת ההתראות — כשהבוט מתווסף לקבוצה או מקבל בה אות
+    cm = upd.get("my_chat_member") or {}
+    gchat = (msg.get("chat") or cm.get("chat") or {})
+    if gchat.get("type") in ("group", "supergroup"):
+        gid = gchat.get("id")
+        if gid and str(db.sales_state_get("shift_group_chat") or "") != str(gid):
+            db.sales_state_set("shift_group_chat", str(gid))
+            try:
+                _tg_admin(f"✅ קבוצת ההתראות חוברה: <b>{gchat.get('title') or ''}</b> "
+                          f"(id {gid}). הכפתור 'שגר לקבוצה' פעיל כעת.")
+            except Exception:  # noqa: BLE001
+                pass
+        return {"ok": True}
     if text.startswith("/start"):
         kb = {"inline_keyboard": [[{"text": n, "callback_data": f"reg:{n}"}] for n in _SHIFT_NAMES]
               + [[{"text": "🔍 השם שלי לא ברשימה", "callback_data": "reg_other"}]]}
@@ -2376,9 +2389,9 @@ async def schedule_dispatch(request: Request, x_admin_key: Optional[str] = Heade
     from urllib.parse import quote
     import auto_transfer
     if mode == "group":
-        chat = os.getenv("SHIFT_GROUP_CHAT", "").strip()
+        chat = os.getenv("SHIFT_GROUP_CHAT", "").strip() or (db.sales_state_get("shift_group_chat") or "").strip()
         if not chat:
-            raise HTTPException(400, "SHIFT_GROUP_CHAT לא מוגדר (chat_id של קבוצת ההתראות)")
+            raise HTTPException(400, "קבוצת ההתראות עוד לא חוברה — שלח/י בקבוצה הודעה עם /start@Greenm_alert_bot")
         link = f"{base}/schedule/view?week={wk}&sig={_schedule_view_sig(wk, '')}"
         txt = _format_week_all(wk, rows) + f"\n\n🔗 לצפייה מעוצבת בסידור המלא:\n{link}"
         ok = auto_transfer.shift_send_chat(chat, txt)
