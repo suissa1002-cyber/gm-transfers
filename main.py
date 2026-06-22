@@ -2336,6 +2336,31 @@ def schedule_view(week: str, sig: str, emp: str = ""):
     return HTMLResponse(_render_schedule_html(week, emp))
 
 
+@app.get("/api/schedule/registered")
+def schedule_registered(x_admin_key: Optional[str] = Header(None),
+                        x_schedule_key: Optional[str] = Header(None)):
+    """העובדים הרשומים בבוט + ה-username/שם המלא שלהם בטלגרם (לזיהוי/הוספה לקבוצה)."""
+    _require_schedule(x_admin_key, x_schedule_key)
+    tok = os.getenv("SHIFT_BOT_TOKEN", "").strip()
+    import requests as _rq
+    out = []
+    for e in db.shift_employees_all():
+        tid = e.get("telegram_id"); username = ""; full = ""
+        if tok and tid:
+            try:
+                j = _rq.get(f"https://api.telegram.org/bot{tok}/getChat",
+                            params={"chat_id": tid}, timeout=10).json()
+                if j.get("ok"):
+                    res = j["result"]
+                    username = res.get("username") or ""
+                    full = " ".join(x for x in [res.get("first_name"), res.get("last_name")] if x)
+            except Exception:  # noqa: BLE001
+                pass
+        out.append({"name": e.get("name"), "telegram_id": tid,
+                    "username": username, "full_name": full})
+    return {"employees": out}
+
+
 @app.post("/api/schedule/dispatch")
 async def schedule_dispatch(request: Request, x_admin_key: Optional[str] = Header(None),
                             x_schedule_key: Optional[str] = Header(None)):
