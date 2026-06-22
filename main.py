@@ -2224,6 +2224,93 @@ def _format_week_all(wk, rows) -> str:
     return "\n".join(out).strip()
 
 
+_SCHED_BCOL = {1: "#3b82f6", 2: "#a855f7", 3: "#14b8a6", 4: "#f59e0b", 5: "#64748b"}
+_SCHED_CSS = (
+    "body{margin:0;background:#eef2f7;color:#1a2230;font-family:-apple-system,BlinkMacSystemFont,"
+    "'Segoe UI',Rubik,Arial,sans-serif}.wrap{max-width:680px;margin:0 auto;padding:22px 16px 40px}"
+    ".brand{font-weight:800;font-size:15px;color:#159c44;margin-bottom:6px}h1{font-size:22px;margin:0 0 2px}"
+    ".sub{color:#64748b;font-size:14px;margin-bottom:18px}.daycard{background:#fff;border:1px solid #e2e8f0;"
+    "border-radius:16px;padding:14px 16px;margin-bottom:14px;box-shadow:0 2px 8px rgba(0,0,0,.04)}"
+    ".dhead{font-weight:800;font-size:16px;margin-bottom:10px;border-bottom:2px solid #f1f5f9;padding-bottom:7px}"
+    ".erow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;"
+    "border-bottom:1px solid #f4f6f9}.erow:last-child{border-bottom:0}.who{font-weight:600;font-size:15px}"
+    ".drow{display:flex;align-items:center;justify-content:space-between;gap:10px;background:#fff;"
+    "border:1px solid #e2e8f0;border-radius:14px;padding:13px 16px;margin-bottom:10px}"
+    ".day{font-weight:700;font-size:16px}.chip{display:inline-block;border:1.5px solid;border-radius:10px;"
+    "padding:5px 11px;font-size:13.5px;font-weight:700;white-space:nowrap}"
+    ".empty{text-align:center;color:#64748b;padding:40px;font-size:16px}"
+    ".foot{text-align:center;color:#94a3b8;font-size:12px;margin-top:24px}")
+
+
+def _schedule_view_sig(week, emp) -> str:
+    return _sig(f"{week}|{emp}", "schedview")
+
+
+def _render_schedule_html(week, emp) -> str:
+    import html as _html
+    rows = db.shift_roster_for_week(week)
+    if emp:
+        rows = [r for r in rows if (r.get("employee") or "") == emp]
+    rng = _fmt_week_range(week)
+
+    def chip(bid, hrs):
+        col = _SCHED_BCOL.get(int(bid or 0), "#64748b")
+        hh = f" · 🕐 {_html.escape(hrs)}" if hrs else ""
+        return (f'<span class="chip" style="border-color:{col};color:{col};background:{col}1f">'
+                f'{_html.escape(cfg.branch_name(bid))}{hh}</span>')
+
+    body = []
+    if emp:
+        title = f"הסידור שלך · {emp}"
+        er = sorted(rows, key=lambda r: int(r.get("dow") or 0))
+        if not er:
+            body.append('<div class="empty">אין משמרות מתוכננות השבוע 🌴</div>')
+        for r in er:
+            body.append(f'<div class="drow"><div class="day">{_SHIFT_DAYS[int(r["dow"])]}</div>'
+                        f'<div>{chip(r["branch_id"], (r.get("hours") or "").strip())}</div></div>')
+    else:
+        title = "סידור עבודה שבועי"
+        for dow in range(7):
+            drows = [r for r in rows if int(r.get("dow") or 0) == dow]
+            if not drows:
+                continue
+            drows.sort(key=lambda r: (int(r.get("branch_id") or 0), r.get("employee") or ""))
+            items = "".join(
+                f'<div class="erow"><span class="who">{_html.escape(r.get("employee") or "")}</span>'
+                f'{chip(r["branch_id"], (r.get("hours") or "").strip())}</div>' for r in drows)
+            body.append(f'<div class="daycard"><div class="dhead">{_SHIFT_DAYS[dow]}</div>{items}</div>')
+        if not body:
+            body.append('<div class="empty">אין סידור לשבוע זה.</div>')
+
+    return ('<!DOCTYPE html><html lang="he" dir="rtl"><head><meta charset="utf-8">'
+            '<meta name="viewport" content="width=device-width,initial-scale=1">'
+            f'<title>{_html.escape(title)}</title><style>{_SCHED_CSS}</style></head>'
+            '<body><div class="wrap"><div class="brand">🟢 גרין מובייל</div>'
+            f'<h1>{_html.escape(title)}</h1><div class="sub">שבוע {rng}</div>'
+            f'{"".join(body)}<div class="foot">GreenOS · סידור עבודה</div></div></body></html>')
+
+
+@app.get("/api/schedule/view-link")
+def schedule_view_link(week: str, emp: str = "", x_admin_key: Optional[str] = Header(None),
+                       x_schedule_key: Optional[str] = Header(None)):
+    """לינק ציבורי חתום לעמוד הצפייה (לתצוגה מקדימה מהממשק)."""
+    _require_schedule(x_admin_key, x_schedule_key)
+    base = (cfg.APP_BASE_URL or "https://gm-transfers.onrender.com").rstrip("/")
+    from urllib.parse import quote
+    q = f"week={week}&sig={_schedule_view_sig(week, emp)}" if not emp else \
+        f"week={week}&emp={quote(emp)}&sig={_schedule_view_sig(week, emp)}"
+    return {"url": f"{base}/schedule/view?{q}"}
+
+
+@app.get("/schedule/view")
+def schedule_view(week: str, sig: str, emp: str = ""):
+    """עמוד צפייה ציבורי מעוצב (לינק חתום) — לשיגור לעובד/לקבוצה."""
+    if not _hmac.compare_digest(sig, _schedule_view_sig(week, emp)):
+        raise HTTPException(403, "bad signature")
+    from fastapi.responses import HTMLResponse
+    return HTMLResponse(_render_schedule_html(week, emp))
+
+
 @app.post("/api/schedule/dispatch")
 async def schedule_dispatch(request: Request, x_admin_key: Optional[str] = Header(None),
                             x_schedule_key: Optional[str] = Header(None)):
@@ -2235,12 +2322,16 @@ async def schedule_dispatch(request: Request, x_admin_key: Optional[str] = Heade
     mode = (body or {}).get("mode") or "employee"
     only = ((body or {}).get("employee") or "").strip()
     rows = db.shift_roster_for_week(wk)
+    base = (cfg.APP_BASE_URL or "https://gm-transfers.onrender.com").rstrip("/")
+    from urllib.parse import quote
     import auto_transfer
     if mode == "group":
         chat = os.getenv("SHIFT_GROUP_CHAT", "").strip()
         if not chat:
             raise HTTPException(400, "SHIFT_GROUP_CHAT לא מוגדר (chat_id של קבוצת ההתראות)")
-        ok = auto_transfer.shift_send_chat(chat, _format_week_all(wk, rows))
+        link = f"{base}/schedule/view?week={wk}&sig={_schedule_view_sig(wk, '')}"
+        txt = _format_week_all(wk, rows) + f"\n\n🔗 לצפייה מעוצבת בסידור המלא:\n{link}"
+        ok = auto_transfer.shift_send_chat(chat, txt)
         return {"ok": ok, "mode": "group"}
     byemp = {}
     for r in rows:
@@ -2251,7 +2342,9 @@ async def schedule_dispatch(request: Request, x_admin_key: Optional[str] = Heade
         ids = db.shift_telegram_ids_for_names([emp])
         if not ids:
             missing.append(emp); continue
-        txt = _format_week_employee(emp, wk, byemp.get(emp, []))
+        link = f"{base}/schedule/view?week={wk}&emp={quote(emp)}&sig={_schedule_view_sig(wk, emp)}"
+        txt = (_format_week_employee(emp, wk, byemp.get(emp, []))
+               + f"\n\n🔗 לצפייה מעוצבת בסידור שלך:\n{link}")
         for cid in ids:
             if auto_transfer.shift_send_chat(cid, txt):
                 sent += 1

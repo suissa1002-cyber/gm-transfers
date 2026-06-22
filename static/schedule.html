@@ -180,12 +180,14 @@
           <button onclick="dispatch('employee','')">📨 שגר לכולם</button>
           <select id="dispEmp"></select>
           <button class="ghost" onclick="dispatch('employee',document.getElementById('dispEmp').value)">שגר לנבחר/ת</button>
+          <button class="ghost" onclick="previewView(document.getElementById('dispEmp').value)">👁 תצוגה</button>
         </div>
       </div>
       <div style="margin-top:12px;border-top:1px solid var(--line);padding-top:12px">
         <b>סידור כללי — לקבוצת ההתראות בטלגרם:</b>
         <div class="disp-emp">
           <button class="blue" onclick="dispatch('group','')">📢 שגר לקבוצה</button>
+          <button class="ghost" onclick="previewView('')">👁 תצוגה</button>
           <span style="color:var(--mut);font-size:12px">(דורש הגדרת קבוצת התראות)</span>
         </div>
       </div>
@@ -458,6 +460,13 @@ function openDispatch(){
   document.getElementById('dispEmp').innerHTML=names.map(n=>'<option value="'+esc(n)+'">'+esc(n)+'</option>').join('');
   document.getElementById('dispRes').innerHTML='';
   document.getElementById('dispOv').classList.add('show');
+}
+async function previewView(emp){
+  await flushSave();
+  try{
+    const r=await api('/api/schedule/view-link?week='+encodeURIComponent(STATE.week)+(emp?('&emp='+encodeURIComponent(emp)):''));
+    const j=await r.json(); if(j.url) window.open(j.url,'_blank');
+  }catch(e){ if(String(e.message)!=='401') toast('שגיאה'); }
 }
 async function dispatch(mode, employee){
   await flushSave();
