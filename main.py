@@ -2119,15 +2119,31 @@ def _week_start_of(d) -> str:
 
 
 def _hours_minutes(h) -> int:
-    """משך בדקות מתוך 'HH:MM-HH:MM'. 0 אם ריק/לא תקין."""
+    """משך בדקות מתוך 'HH:MM-HH:MM'. ערך מוחלט — חסין לסדר הפוך (משמרת יום)."""
     try:
         a, b = str(h or "").split("-")
         ah, am = [int(x) for x in a.strip().split(":")]
         bh, bm = [int(x) for x in b.strip().split(":")]
-        d = (bh * 60 + bm) - (ah * 60 + am)
-        return d if d > 0 else 0
+        return abs((bh * 60 + bm) - (ah * 60 + am))
     except Exception:  # noqa: BLE001
         return 0
+
+
+def _order_hours(h) -> str:
+    """מסדר 'a-b' כך שהשעה המוקדמת ראשונה (התחלה→סיום). חסין לקלט הפוך."""
+    p = str(h or "").split("-")
+    if len(p) != 2:
+        return str(h or "")
+    a, b = p[0].strip(), p[1].strip()
+    if not a or not b:
+        return f"{a}-{b}"
+
+    def _m(s):
+        try:
+            hh, mm = s.split(":"); return int(hh) * 60 + int(mm)
+        except Exception:  # noqa: BLE001
+            return 0
+    return f"{a}-{b}" if _m(a) <= _m(b) else f"{b}-{a}"
 
 
 def _schedule_employees() -> list:
@@ -2200,7 +2216,7 @@ def _format_week_employee(emp, wk, rows) -> str:
     if not rows:
         out.append("אין לך משמרות מתוכננות השבוע.")
     for r in rows:
-        hrs = (r.get("hours") or "").strip()
+        hrs = _order_hours(r.get("hours"))
         hrs = f" · 🕐 {hrs}" if hrs else ""
         out.append(f"📍 <b>{_SHIFT_DAYS[int(r['dow'])]}</b> — {cfg.branch_name(r['branch_id'])}{hrs}")
     return "\n".join(out)
@@ -2217,7 +2233,7 @@ def _format_week_all(wk, rows) -> str:
         for r in drows:
             bybr.setdefault(r["branch_id"], []).append(r)
         for bid, rs in bybr.items():
-            who = ", ".join((f"{r['employee']} ({r['hours']})" if (r.get('hours') or '').strip()
+            who = ", ".join((f"{r['employee']} ({_order_hours(r.get('hours'))})" if (r.get('hours') or '').strip()
                              else r['employee']) for r in rs)
             out.append(f"  📍 {cfg.branch_name(bid)}: {who}")
         out.append("")
@@ -2267,7 +2283,7 @@ def _render_schedule_html(week, emp) -> str:
             body.append('<div class="empty">אין משמרות מתוכננות השבוע 🌴</div>')
         for r in er:
             body.append(f'<div class="drow"><div class="day">{_SHIFT_DAYS[int(r["dow"])]}</div>'
-                        f'<div>{chip(r["branch_id"], (r.get("hours") or "").strip())}</div></div>')
+                        f'<div>{chip(r["branch_id"], _order_hours(r.get("hours")))}</div></div>')
     else:
         title = "סידור עבודה שבועי"
         for dow in range(7):
@@ -2277,7 +2293,7 @@ def _render_schedule_html(week, emp) -> str:
             drows.sort(key=lambda r: (int(r.get("branch_id") or 0), r.get("employee") or ""))
             items = "".join(
                 f'<div class="erow"><span class="who">{_html.escape(r.get("employee") or "")}</span>'
-                f'{chip(r["branch_id"], (r.get("hours") or "").strip())}</div>' for r in drows)
+                f'{chip(r["branch_id"], _order_hours(r.get("hours")))}</div>' for r in drows)
             body.append(f'<div class="daycard"><div class="dhead">{_SHIFT_DAYS[dow]}</div>{items}</div>')
         if not body:
             body.append('<div class="empty">אין סידור לשבוע זה.</div>')

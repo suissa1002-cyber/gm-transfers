@@ -245,6 +245,12 @@ function weekLabel(ws){ return 'א׳ '+ddmm(ws)+' – ש׳ '+ddmm(addDays(ws,6))
 
 function toast(t){ const e=document.getElementById('toast'); e.textContent=t; e.classList.add('show'); setTimeout(()=>e.classList.remove('show'),2200); }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function orderHours(h){ // מסדר 'a-b' כך שהמוקדם=התחלה (חסין ל-RTL/קלט הפוך)
+  const p=String(h||'').split('-'); if(p.length!==2) return String(h||'');
+  const a=p[0].trim(), b=p[1].trim(); if(!a||!b) return (a||'')+'-'+(b||'');
+  const m=s=>{const x=s.split(':'); return (+x[0]||0)*60+(+x[1]||0);};
+  return m(a)<=m(b) ? a+'-'+b : b+'-'+a;
+}
 function closeOv(id){ document.getElementById(id).classList.remove('show'); }
 
 // ── week loading ──
@@ -301,7 +307,7 @@ function shiftHTML(ri, dow, idx, c){
   s+='<option value="">—</option>';
   (DATA.branches||[]).forEach(b=>{ s+='<option value="'+b.id+'"'+(String(c.branch_id)===String(b.id)?' selected':'')+'>'+esc(b.name)+'</option>'; });
   s+='</select>';
-  const hh=String(c.hours||'').split('-');
+  const hh=orderHours(c.hours).split('-');
   const t1=(hh[0]||'').trim()?(' value="'+esc(hh[0].trim())+'"'):'';
   const t2=(hh[1]||'').trim()?(' value="'+esc(hh[1].trim())+'"'):'';
   const hide=c.branch_id?'':' style="display:none"';
@@ -326,7 +332,7 @@ function cellRender(ri, dow){
   const arr=(ROWS[ri].cells[dow]||[]).filter(c=>String(c.branch_id)===String(STATE.branch));
   if(!arr.length) return '<span class="emptyc">—</span>';
   return arr.map(c=>{
-    const hrs=(c.hours||'').replace('-','–');
+    const hrs=orderHours(c.hours).replace('-','–');
     return '<div class="chip b'+c.branch_id+'">'+esc(branchName(c.branch_id))+(hrs?'<br><span class="chr">🕐 '+esc(hrs)+'</span>':'')+'</div>';
   }).join('');
 }
@@ -386,7 +392,7 @@ function onTime(ri,dow,idx,el){
   const arr=ROWS[ri].cells[dow]; if(!arr||!arr[idx]) return;
   const ins=el.closest('.hwrap').querySelectorAll('input.th');
   const a=ins[0].value, b=ins[1].value;
-  arr[idx].hours=(a||b)?((a||'')+'-'+(b||'')):'';
+  arr[idx].hours=(a||b)?orderHours((a||'')+'-'+(b||'')):'';
   queueSave();
 }
 function addShift(ri,dow){
