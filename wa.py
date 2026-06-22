@@ -1025,6 +1025,11 @@ def _shadow(phone: str, wamid: str, text: str, reply_to: str = "", reply_preview
     try:
         import db
         db.wa_shadow_add(phone, wamid, text, reply_to, reply_preview, ts=int(time.time()))
+        # גם ב-wa_msg — התצוגה הנייטיב (WA_READ_NATIVE) קוראת **רק** משם. בלי זה תבניות
+        # יוצאות (קישור תשלום/סטטוס) לא מופיעות בשיחה (הזמנה 47336). wa_msg_upsert הוא
+        # upsert לפי wamid → אין כפילות גם אם הקורא כבר שמר. mtype=template → מסומן "📋".
+        _store_outbound(phone, text, wamid=wamid, mtype="template",
+                        reply_to=reply_to, reply_preview=reply_preview)
     except Exception as e:  # noqa: BLE001
         logger.warning("shadow log failed: %s", e)
 
