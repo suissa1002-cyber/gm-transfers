@@ -2104,20 +2104,54 @@ def schedule_page():
     raise HTTPException(404)
 
 
-@app.get("/api/schedule/data")
-def schedule_data(x_admin_key: Optional[str] = Header(None),
-                  x_schedule_key: Optional[str] = Header(None)):
-    _require_schedule(x_admin_key, x_schedule_key)
+def _il_today():
+    from datetime import datetime
+    try:
+        from zoneinfo import ZoneInfo
+        return datetime.now(ZoneInfo("Asia/Jerusalem")).date()
+    except Exception:  # noqa: BLE001
+        return datetime.utcnow().date()
+
+
+def _week_start_of(d) -> str:
+    from datetime import timedelta
+    return (d - timedelta(days=(d.weekday() + 1) % 7)).isoformat()
+
+
+def _hours_minutes(h) -> int:
+    """משך בדקות מתוך 'HH:MM-HH:MM'. 0 אם ריק/לא תקין."""
+    try:
+        a, b = str(h or "").split("-")
+        ah, am = [int(x) for x in a.strip().split(":")]
+        bh, bm = [int(x) for x in b.strip().split(":")]
+        d = (bh * 60 + bm) - (ah * 60 + am)
+        return d if d > 0 else 0
+    except Exception:  # noqa: BLE001
+        return 0
+
+
+def _schedule_employees() -> list:
     seen = set(); employees = []
     for e in db.shift_employees_all():
         n = (e.get("name") or "").strip()
         if n and n not in seen:
             seen.add(n); employees.append(n)
+    return employees
+
+
+@app.get("/api/schedule/data")
+def schedule_data(week: Optional[str] = None, x_admin_key: Optional[str] = Header(None),
+                  x_schedule_key: Optional[str] = Header(None)):
+    _require_schedule(x_admin_key, x_schedule_key)
+    wk = (week or "").strip() or _week_start_of(_il_today())
     return {
         "branches": [{"id": b, "name": cfg.branch_name(b)} for b in _SHIFT_BRANCH_IDS],
         "days": _SHIFT_DAYS,
-        "employees": employees,
-        "roster": db.shift_roster_all(),
+        "employees": _schedule_employees(),
+        "week": wk,
+        "this_week": _week_start_of(_il_today()),
+        "weeks": db.shift_roster_weeks(),
+        "roster": db.shift_roster_for_week(wk),
     }
 
 
@@ -2126,9 +2160,102 @@ async def schedule_save(request: Request, x_admin_key: Optional[str] = Header(No
                         x_schedule_key: Optional[str] = Header(None)):
     _require_schedule(x_admin_key, x_schedule_key)
     body = await request.json()
+    wk = ((body or {}).get("week") or "").strip() or _week_start_of(_il_today())
     rows = (body or {}).get("rows") or []
-    n = db.shift_roster_replace(rows)
-    return {"ok": True, "saved": n}
+    n = db.shift_roster_replace(wk, rows)
+    return {"ok": True, "saved": n, "week": wk}
+
+
+@app.get("/api/schedule/summary")
+def schedule_summary(date_from: str, date_to: str, x_admin_key: Optional[str] = Header(None),
+                     x_schedule_key: Optional[str] = Header(None)):
+    """סיכום פר עובד על טווח שבועות: מס' משמרות, סה""כ שעות, פירוט סניפים."""
+    _require_schedule(x_admin_key, x_schedule_key)
+    agg = {}
+    weeks = set()
+    for r in db.shift_roster_range(date_from, date_to):
+        weeks.add(r.get("week_start"))
+        emp = r.get("employee") or ""
+        a = agg.setdefault(emp, {"employee": emp, "shifts": 0, "minutes": 0, "branches": {}})
+        a["shifts"] += 1
+        a["minutes"] += _hours_minutes(r.get("hours"))
+        bn = cfg.branch_name(r.get("branch_id"))
+        a["branches"][bn] = a["branches"].get(bn, 0) + 1
+    out = sorted(agg.values(), key=lambda x: (-x["shifts"], x["employee"]))
+    return {"from": date_from, "to": date_to, "weeks": len(weeks), "summary": out}
+
+
+def _fmt_week_range(wk) -> str:
+    from datetime import date, timedelta
+    try:
+        d = date.fromisoformat(wk); sat = d + timedelta(days=6)
+        return f"{d.day:02d}/{d.month:02d}–{sat.day:02d}/{sat.month:02d}"
+    except Exception:  # noqa: BLE001
+        return str(wk)
+
+
+def _format_week_employee(emp, wk, rows) -> str:
+    rows = sorted(rows, key=lambda r: int(r.get("dow") or 0))
+    out = [f"🗓️ <b>הסידור שלך</b> · שבוע {_fmt_week_range(wk)}", ""]
+    if not rows:
+        out.append("אין לך משמרות מתוכננות השבוע.")
+    for r in rows:
+        hrs = (r.get("hours") or "").strip()
+        hrs = f" · 🕐 {hrs}" if hrs else ""
+        out.append(f"📍 <b>{_SHIFT_DAYS[int(r['dow'])]}</b> — {cfg.branch_name(r['branch_id'])}{hrs}")
+    return "\n".join(out)
+
+
+def _format_week_all(wk, rows) -> str:
+    out = [f"🗓️ <b>סידור עבודה</b> · שבוע {_fmt_week_range(wk)}", ""]
+    for dow in range(7):
+        drows = [r for r in rows if int(r.get("dow") or 0) == dow]
+        if not drows:
+            continue
+        out.append(f"<b>📅 {_SHIFT_DAYS[dow]}</b>")
+        bybr = {}
+        for r in drows:
+            bybr.setdefault(r["branch_id"], []).append(r)
+        for bid, rs in bybr.items():
+            who = ", ".join((f"{r['employee']} ({r['hours']})" if (r.get('hours') or '').strip()
+                             else r['employee']) for r in rs)
+            out.append(f"  📍 {cfg.branch_name(bid)}: {who}")
+        out.append("")
+    return "\n".join(out).strip()
+
+
+@app.post("/api/schedule/dispatch")
+async def schedule_dispatch(request: Request, x_admin_key: Optional[str] = Header(None),
+                            x_schedule_key: Optional[str] = Header(None)):
+    """שיגור הסידור: mode=employee (DM אישי לכל עובד את שלו / לעובד בודד) או
+    mode=group (סידור מלא לקבוצת ההתראות בטלגרם)."""
+    _require_schedule(x_admin_key, x_schedule_key)
+    body = await request.json()
+    wk = ((body or {}).get("week") or "").strip() or _week_start_of(_il_today())
+    mode = (body or {}).get("mode") or "employee"
+    only = ((body or {}).get("employee") or "").strip()
+    rows = db.shift_roster_for_week(wk)
+    import auto_transfer
+    if mode == "group":
+        chat = os.getenv("SHIFT_GROUP_CHAT", "").strip()
+        if not chat:
+            raise HTTPException(400, "SHIFT_GROUP_CHAT לא מוגדר (chat_id של קבוצת ההתראות)")
+        ok = auto_transfer.shift_send_chat(chat, _format_week_all(wk, rows))
+        return {"ok": ok, "mode": "group"}
+    byemp = {}
+    for r in rows:
+        byemp.setdefault(r["employee"], []).append(r)
+    targets = [only] if only else list(byemp.keys())
+    sent = 0; missing = []
+    for emp in targets:
+        ids = db.shift_telegram_ids_for_names([emp])
+        if not ids:
+            missing.append(emp); continue
+        txt = _format_week_employee(emp, wk, byemp.get(emp, []))
+        for cid in ids:
+            if auto_transfer.shift_send_chat(cid, txt):
+                sent += 1
+    return {"ok": True, "mode": "employee", "sent": sent, "missing": missing}
 
 
 # ── Ops Hub: משימות סוכנים (Monday proxy — הטוקן בצד השרת בלבד) ────

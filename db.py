@@ -575,6 +575,7 @@ def _migrate():
         ("transfer_plan",  "created_by", "TEXT"),
         ("transfer_plan",  "note", "TEXT"),     # הערה חופשית לסניף (רשמי/eSIM וכו')
         ("wa_msg",         "err", "TEXT"),       # סיבת כשל מסירה ממטא (code · title)
+        ("shift_roster",   "week_start", "TEXT"), # תאריך ראשון של השבוע (YYYY-MM-DD) — סידור מתוארך
         # נעילת סניף: הסניף המאושר של המכשיר — שינוי רק באישור מנהל (טלגרם)
         ("devices",        "branch_locked", "TEXT"),
         # is_stock=0 → מוצר דיגיטלי/לא-מנוהל-מלאי (גיפט קארד/קוד) — מדלגים על שידור/OOS
@@ -1723,40 +1724,61 @@ def shift_telegram_ids_for_names(names: list) -> list:
     return out
 
 
-def shift_roster_all() -> list:
-    """כל שורות הסידור — [{branch_id, dow, employee, hours}]."""
+def shift_roster_for_week(week_start: str) -> list:
+    """שורות הסידור של שבוע נתון — [{branch_id, dow, employee, hours}]."""
     with _conn() as c:
         cur = c.cursor()
         cur.execute(_q("SELECT branch_id, dow, employee, hours FROM shift_roster "
-                       "ORDER BY branch_id, dow, employee"))
+                       "WHERE week_start=? ORDER BY branch_id, dow, employee"), (str(week_start),))
         return [dict(r) for r in cur.fetchall()]
 
 
-def shift_roster_replace(rows: list) -> int:
-    """החלפה אטומית של כל הסידור. rows = [{branch_id, dow, employee, hours}]."""
+def shift_roster_replace(week_start: str, rows: list) -> int:
+    """החלפה אטומית של סידור שבוע נתון. rows = [{branch_id, dow, employee, hours}]."""
     ts = now_iso()
     with _conn() as c:
         cur = c.cursor()
-        cur.execute(_q("DELETE FROM shift_roster"))
+        cur.execute(_q("DELETE FROM shift_roster WHERE week_start=?"), (str(week_start),))
         n = 0
         for r in (rows or []):
             emp = (r.get("employee") or "").strip()
             if not emp:
                 continue
-            cur.execute(_q("INSERT INTO shift_roster (branch_id, dow, employee, hours, updated_at) "
-                           "VALUES (?,?,?,?,?)"),
+            cur.execute(_q("INSERT INTO shift_roster (branch_id, dow, employee, hours, week_start, updated_at) "
+                           "VALUES (?,?,?,?,?,?)"),
                         (int(r.get("branch_id") or 0), int(r.get("dow") or 0), emp,
-                         (r.get("hours") or "").strip(), ts))
+                         (r.get("hours") or "").strip(), str(week_start), ts))
             n += 1
         return n
 
 
-def shift_employees_on(branch_id: int, dow: int) -> list:
-    """שמות העובדים המשובצים לסניף ביום נתון — [{employee, hours}]."""
+def shift_roster_weeks() -> list:
+    """רשימת השבועות שיש להם סידור (week_start), מהחדש לישן."""
     with _conn() as c:
         cur = c.cursor()
-        cur.execute(_q("SELECT employee, hours FROM shift_roster WHERE branch_id=? AND dow=?"),
-                    (int(branch_id), int(dow)))
+        cur.execute(_q("SELECT week_start, COUNT(*) AS n FROM shift_roster "
+                       "WHERE week_start IS NOT NULL AND week_start<>'' "
+                       "GROUP BY week_start ORDER BY week_start DESC"))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def shift_roster_range(date_from: str, date_to: str) -> list:
+    """כל שורות הסידור בשבועות שתאריך-הראשון שלהם בטווח [date_from, date_to] (לסיכומים)."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT week_start, branch_id, dow, employee, hours FROM shift_roster "
+                       "WHERE week_start>=? AND week_start<=? ORDER BY week_start, branch_id, dow"),
+                    (str(date_from), str(date_to)))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def shift_employees_on(branch_id: int, dow: int, week_start: str) -> list:
+    """שמות העובדים המשובצים לסניף ביום נתון בשבוע נתון — [{employee, hours}]."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT employee, hours FROM shift_roster "
+                       "WHERE branch_id=? AND dow=? AND week_start=?"),
+                    (int(branch_id), int(dow), str(week_start)))
         return [dict(r) for r in cur.fetchall()]
 
 

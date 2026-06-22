@@ -353,39 +353,57 @@ def _handle_order(o: dict, catalog: dict) -> list:
     return created
 
 
-def _il_dow() -> int:
-    """יום בשבוע בשעון ישראל: ראשון=0 ... שבת=6 (להתאמת הסידור)."""
+def _il_now_dt():
     from datetime import datetime
     try:
         from zoneinfo import ZoneInfo
-        wd = datetime.now(ZoneInfo("Asia/Jerusalem")).weekday()
+        return datetime.now(ZoneInfo("Asia/Jerusalem"))
     except Exception:  # noqa: BLE001
-        wd = datetime.utcnow().weekday()
-    return (wd + 1) % 7   # Mon=0..Sun=6 → ראשון=0..שבת=6
+        return datetime.utcnow()
+
+
+def _il_dow() -> int:
+    """יום בשבוע בשעון ישראל: ראשון=0 ... שבת=6 (להתאמת הסידור)."""
+    return (_il_now_dt().weekday() + 1) % 7   # Mon=0..Sun=6 → ראשון=0..שבת=6
+
+
+def _cur_week_start() -> str:
+    """תאריך ראשון של השבוע הנוכחי (שעון ישראל), YYYY-MM-DD."""
+    from datetime import timedelta
+    d = _il_now_dt().date()
+    return (d - timedelta(days=(d.weekday() + 1) % 7)).isoformat()
+
+
+def shift_send_chat(chat_id, text) -> bool:
+    """שליחת הודעה בודדת דרך בוט המשמרות (@Greenm_alert_bot). מחזיר הצלחה."""
+    tok = os.getenv("SHIFT_BOT_TOKEN", "").strip()
+    if not tok or not chat_id:
+        return False
+    import requests as _rq
+    try:
+        r = _rq.post(f"https://api.telegram.org/bot{tok}/sendMessage",
+                     json={"chat_id": chat_id, "text": text, "parse_mode": "HTML",
+                           "disable_web_page_preview": True}, timeout=12)
+        return r.status_code == 200
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def shift_dm_branch(src_branch, text) -> int:
-    """DM אישי בטלגרם לעובדים שמשובצים בסניף הזה היום (לפי הסידור). מחזיר כמה נשלחו."""
-    tok = os.getenv("SHIFT_BOT_TOKEN", "").strip()
-    if not tok:
+    """DM אישי בטלגרם לעובדים שמשובצים בסניף הזה היום (לפי סידור השבוע הנוכחי). מחזיר כמה נשלחו."""
+    if not os.getenv("SHIFT_BOT_TOKEN", "").strip():
         return 0
     try:
-        emps = db.shift_employees_on(int(src_branch), _il_dow())
+        emps = db.shift_employees_on(int(src_branch), _il_dow(), _cur_week_start())
     except Exception:  # noqa: BLE001
         return 0
     names = [e.get("employee") for e in emps if e.get("employee")]
     if not names:
         return 0
-    ids = db.shift_telegram_ids_for_names(names)
-    import requests as _rq
     sent = 0
-    for cid in ids:
-        try:
-            _rq.post(f"https://api.telegram.org/bot{tok}/sendMessage",
-                     json={"chat_id": cid, "text": text, "parse_mode": "HTML"}, timeout=10)
+    for cid in db.shift_telegram_ids_for_names(names):
+        if shift_send_chat(cid, text):
             sent += 1
-        except Exception:  # noqa: BLE001
-            pass
     return sent
 
 

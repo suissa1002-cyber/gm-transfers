@@ -7,50 +7,73 @@
 <style>
   :root{
     --bg:#f5f7fa; --card:#ffffff; --line:#e2e8f0; --txt:#1a2230; --mut:#64748b;
-    --head:#f1f5f9; --cell:#fafbfc;
+    --head:#f1f5f9; --cell:#fafbfc; --soft:#eef2f7;
     --green:#1db954; --green-d:#159c44; --blue:#2f81f7; --warn:#f0883e;
   }
   body.dark{
     --bg:#0f1419; --card:#171f29; --line:#26303d; --txt:#e6edf3; --mut:#8b97a6;
-    --head:#1c2530; --cell:#0f1419;
+    --head:#1c2530; --cell:#0f1419; --soft:#1c2530;
   }
   *{box-sizing:border-box}
   body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Rubik,Arial,sans-serif;
        background:var(--bg);color:var(--txt);-webkit-text-size-adjust:100%}
-  header{position:sticky;top:0;z-index:5;background:var(--card);border-bottom:1px solid var(--line);
-         padding:12px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-  header h1{font-size:17px;margin:0;font-weight:700}
+  header{position:sticky;top:0;z-index:8;background:var(--card);border-bottom:1px solid var(--line);
+         padding:11px 14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  header h1{font-size:16px;margin:0;font-weight:700}
   header .sp{flex:1}
-  button{font-family:inherit;cursor:pointer;border:0;border-radius:10px;font-size:14px;font-weight:600;
-          padding:9px 14px;color:#fff;background:var(--green)}
+  button{font-family:inherit;cursor:pointer;border:0;border-radius:10px;font-size:13.5px;font-weight:600;
+          padding:8px 13px;color:#fff;background:var(--green)}
   button.ghost{background:transparent;border:1px solid var(--line);color:var(--txt)}
+  button.blue{background:var(--blue)}
   button:disabled{opacity:.5;cursor:default}
-  .wrap{padding:14px 12px 90px}
-  .hint{color:var(--mut);font-size:13px;margin:4px 2px 14px;line-height:1.6}
+  .controls{position:sticky;top:53px;z-index:7;background:var(--card);border-bottom:1px solid var(--line);
+            padding:9px 14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .controls .grp{display:flex;align-items:center;gap:5px;background:var(--soft);border:1px solid var(--line);
+                 border-radius:10px;padding:4px 6px}
+  .controls .wklabel{font-weight:700;font-size:13.5px;min-width:140px;text-align:center}
+  .controls .nav{background:transparent;border:0;color:var(--txt);font-size:16px;padding:2px 7px;cursor:pointer}
+  input,select{font-family:inherit;font-size:13px;border:1px solid var(--line);border-radius:8px;
+               background:var(--card);color:var(--txt);padding:6px 7px}
+  .wrap{padding:12px 12px 92px}
+  .hint{color:var(--mut);font-size:12.5px;margin:2px 2px 12px;line-height:1.6}
   .tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:14px}
   table{border-collapse:separate;border-spacing:0;width:100%;min-width:1040px}
   th,td{padding:7px 8px;border-bottom:1px solid var(--line);border-left:1px solid var(--line);
         text-align:center;white-space:nowrap}
   th{background:var(--head);font-size:13px;font-weight:700;position:sticky;top:0}
   th.nm,td.nm{position:sticky;right:0;background:var(--card);text-align:right;z-index:2;
-              border-left:2px solid var(--line);min-width:120px;font-weight:600}
+              border-left:2px solid var(--line);min-width:118px;font-weight:600}
   tr:last-child td{border-bottom:0}
   td.cell{background:var(--cell)}
-  select{font-family:inherit;font-size:13px;border:1px solid var(--line);border-radius:8px;
-          background:var(--card);color:var(--txt);padding:6px 6px;width:100%;min-width:96px}
-  select.has{border-color:var(--green);color:#fff;font-weight:600}
+  select.bsel{width:100%;min-width:96px}
+  select.bsel.has{border-color:var(--green);color:var(--green-d);font-weight:700}
   .hwrap{display:flex;align-items:center;gap:3px;margin-top:4px;justify-content:center}
   .hwrap .dash{color:var(--mut);font-size:12px}
-  input.th{font-family:inherit;font-size:11.5px;border:1px solid var(--line);border-radius:7px;
-           background:var(--card);color:var(--txt);padding:4px 2px;width:66px;text-align:center}
+  input.th{font-size:11.5px;width:66px;text-align:center;padding:4px 2px}
   .savebar{position:fixed;bottom:0;right:0;left:0;background:var(--card);border-top:1px solid var(--line);
-           padding:11px 16px;display:flex;align-items:center;gap:12px;z-index:6}
-  .savebar .st{color:var(--mut);font-size:13px;flex:1}
-  .toast{position:fixed;bottom:74px;right:50%;transform:translateX(50%);background:var(--green-d);
+           padding:10px 14px;display:flex;align-items:center;gap:10px;z-index:9;flex-wrap:wrap}
+  .savebar .st{color:var(--mut);font-size:12.5px;flex:1;min-width:120px}
+  .toast{position:fixed;bottom:76px;right:50%;transform:translateX(50%);background:var(--green-d);
          color:#fff;padding:10px 18px;border-radius:22px;font-size:14px;font-weight:600;opacity:0;
-         transition:opacity .25s;pointer-events:none;z-index:9}
+         transition:opacity .25s;pointer-events:none;z-index:20;max-width:90vw;text-align:center}
   .toast.show{opacity:1}
-  .center{text-align:center;color:var(--mut);padding:50px 20px;font-size:15px}
+  .center{text-align:center;color:var(--mut);padding:46px 20px;font-size:14.5px;line-height:1.7}
+  /* modal */
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:30;display:none;
+           align-items:flex-start;justify-content:center;padding:40px 12px;overflow:auto}
+  .overlay.show{display:flex}
+  .modal{background:var(--card);border:1px solid var(--line);border-radius:16px;width:100%;max-width:620px;
+         padding:16px 18px;box-shadow:0 20px 50px rgba(0,0,0,.3)}
+  .modal h2{margin:0 0 4px;font-size:16px}
+  .modal .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0}
+  .modal .x{float:left;background:transparent;border:0;color:var(--mut);font-size:20px;cursor:pointer;padding:0}
+  .stable{width:100%;border-collapse:collapse;margin-top:8px;font-size:13.5px}
+  .stable th,.stable td{border-bottom:1px solid var(--line);padding:8px 6px;text-align:right}
+  .stable th{color:var(--mut);font-weight:600;font-size:12.5px}
+  .stable .num{text-align:center;font-weight:700;font-variant-numeric:tabular-nums}
+  .badge{display:inline-block;background:var(--soft);border:1px solid var(--line);border-radius:20px;
+         padding:2px 9px;font-size:12px;margin:2px 2px 0}
+  .disp-emp{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px}
 </style>
 </head>
 <body>
@@ -59,9 +82,22 @@
   <h1>🗓️ סידור עבודה</h1>
   <span class="sp"></span>
   <button class="ghost" id="themeBtn" onclick="toggleTheme()" title="מצב תצוגה">🌙</button>
-  <button class="ghost" id="addBtn" onclick="addEmployee()">➕ עובד</button>
+  <button class="ghost" onclick="addEmployee()">➕ עובד</button>
   <button class="ghost" onclick="logout()">יציאה</button>
 </header>
+
+<div class="controls" id="controls" style="display:none">
+  <div class="grp">
+    <button class="nav" onclick="shiftWeek(7)" title="שבוע הבא">▶</button>
+    <span class="wklabel" id="wklabel">—</span>
+    <button class="nav" onclick="shiftWeek(-7)" title="שבוע קודם">◀</button>
+  </div>
+  <input type="date" id="weekPick" onchange="pickWeek(this.value)" title="קפיצה לשבוע">
+  <select id="empFilter" onchange="STATE.emp=this.value;renderGrid()" title="סינון לפי עובד"></select>
+  <span class="sp"></span>
+  <button class="blue" onclick="openSummary()">📊 סיכומים</button>
+  <button onclick="openDispatch()">📤 שיגור</button>
+</div>
 
 <div class="wrap">
   <div class="hint" id="hint">טוען…</div>
@@ -70,8 +106,51 @@
 
 <div class="savebar" id="savebar" style="display:none">
   <span class="st" id="st"></span>
-  <button id="saveBtn" onclick="save()">💾 שמירת הסידור</button>
+  <button id="saveBtn" onclick="save()">💾 שמירת השבוע</button>
 </div>
+
+<!-- summary modal -->
+<div class="overlay" id="sumOv">
+  <div class="modal">
+    <button class="x" onclick="closeOv('sumOv')">✕</button>
+    <h2>📊 סיכומים פר עובד</h2>
+    <div class="row">
+      <label>מ־</label><input type="date" id="sumFrom">
+      <label>עד</label><input type="date" id="sumTo">
+      <button class="blue" onclick="runSummary()">חשב</button>
+      <span id="sumMeta" style="color:var(--mut);font-size:12.5px"></span>
+    </div>
+    <div id="sumBody"></div>
+  </div>
+</div>
+
+<!-- dispatch modal -->
+<div class="overlay" id="dispOv">
+  <div class="modal">
+    <button class="x" onclick="closeOv('dispOv')">✕</button>
+    <h2>📤 שיגור הסידור</h2>
+    <div class="hint" id="dispWk" style="margin:6px 0 2px"></div>
+    <div class="row" style="flex-direction:column;align-items:stretch">
+      <div>
+        <b>לכל עובד — את הסידור שלו (DM אישי):</b>
+        <div class="disp-emp">
+          <button onclick="dispatch('employee','')">📨 שגר לכולם</button>
+          <select id="dispEmp"></select>
+          <button class="ghost" onclick="dispatch('employee',document.getElementById('dispEmp').value)">שגר לנבחר/ת</button>
+        </div>
+      </div>
+      <div style="margin-top:12px;border-top:1px solid var(--line);padding-top:12px">
+        <b>סידור כללי — לקבוצת ההתראות בטלגרם:</b>
+        <div class="disp-emp">
+          <button class="blue" onclick="dispatch('group','')">📢 שגר לקבוצה</button>
+          <span style="color:var(--mut);font-size:12px">(דורש הגדרת קבוצת התראות)</span>
+        </div>
+      </div>
+    </div>
+    <div id="dispRes" style="margin-top:10px;font-size:13px"></div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -82,15 +161,16 @@ function applyTheme(){
   const b=document.getElementById('themeBtn'); if(b) b.textContent = dark?'☀️':'🌙';
 }
 function toggleTheme(){
-  localStorage.setItem('sched_theme', localStorage.getItem('sched_theme')==='dark'?'light':'dark');
-  applyTheme();
+  localStorage.setItem('sched_theme', localStorage.getItem('sched_theme')==='dark'?'light':'dark'); applyTheme();
 }
 applyTheme();
-let DATA = null;       // {branches, days, employees, roster}
-let ROWS = [];         // [{employee, cells:{dow:{branch_id, hours}}}]
 
+let DATA = null;                    // {branches, days, employees, week, this_week, weeks, roster}
+let ROWS = [];                      // [{employee, cells:{dow:{branch_id,hours}}}]
+const STATE = { week:null, emp:'' };
+
+// ── auth ──
 function key(force){
-  // מפתח סידור שמור → ממנו. אחרת, אם נכנסים מתוך GreenOS (מפתח אדמין קיים) — בלי לבקש סיסמה.
   if(localStorage.getItem('tr_schedule_key') && !force) return localStorage.getItem('tr_schedule_key');
   let k = localStorage.getItem('tr_admin_key');
   if(!k || force){ k = prompt('🔐 סיסמת גישה לסידור:') || '';
@@ -98,11 +178,6 @@ function key(force){
   return k || '';
 }
 function logout(){ localStorage.removeItem('tr_schedule_key'); location.reload(); }
-function toast(t){ const e=document.getElementById('toast'); e.textContent=t; e.classList.add('show');
-  setTimeout(()=>e.classList.remove('show'),1900); }
-
-// כותרות HTTP חייבות ISO-8859-1. סיסמה שהוקלדה בעברית (פריסת מקלדת) תפיל את ה-fetch —
-// לכן מסננים ערך לא-תקין לריק (→ 401 → בקשה מחדש) במקום לקרוס.
 function hdrSafe(v){ v=v||''; return /^[\x00-\xFF]*$/.test(v)?v:''; }
 async function api(path, opts){
   opts = opts||{};
@@ -115,105 +190,187 @@ async function api(path, opts){
   return r;
 }
 
+// ── date helpers ──
+function parseD(s){ return new Date(s+'T12:00:00'); }
+function fmtISO(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function sundayOf(s){ const d=parseD(s); d.setDate(d.getDate()-d.getDay()); return fmtISO(d); }
+function addDays(s,n){ const d=parseD(s); d.setDate(d.getDate()+n); return fmtISO(d); }
+function ddmm(s){ const d=parseD(s); return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0'); }
+function weekLabel(ws){ return 'א׳ '+ddmm(ws)+' – ש׳ '+ddmm(addDays(ws,6)); }
+
+function toast(t){ const e=document.getElementById('toast'); e.textContent=t; e.classList.add('show'); setTimeout(()=>e.classList.remove('show'),2200); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function closeOv(id){ document.getElementById(id).classList.remove('show'); }
+
+// ── week loading ──
+async function loadWeek(){
+  const r = await api('/api/schedule/data?week='+encodeURIComponent(STATE.week));
+  DATA = await r.json();
+  STATE.week = DATA.week;
+  document.getElementById('wklabel').textContent = weekLabel(STATE.week)
+    + (STATE.week===DATA.this_week?' · השבוע':'');
+  document.getElementById('weekPick').value = STATE.week;
+  buildEmpFilter();
+  rosterToRows();
+  renderGrid();
+}
+function shiftWeek(n){ STATE.week = addDays(STATE.week, n); loadWeek(); }
+function pickWeek(v){ if(v){ STATE.week = sundayOf(v); loadWeek(); } }
+
+function buildEmpFilter(){
+  const names = allNames();
+  const sel=document.getElementById('empFilter');
+  sel.innerHTML='<option value="">כל העובדים</option>'+names.map(n=>'<option value="'+esc(n)+'"'+(STATE.emp===n?' selected':'')+'>'+esc(n)+'</option>').join('');
+}
+function allNames(){
+  const names=[]; (DATA.employees||[]).forEach(n=>{ if(names.indexOf(n)<0) names.push(n); });
+  (DATA.roster||[]).forEach(r=>{ if(r.employee && names.indexOf(r.employee)<0) names.push(r.employee); });
+  ROWS.forEach(r=>{ if(names.indexOf(r.employee)<0) names.push(r.employee); });
+  return names;
+}
 function rosterToRows(){
-  // מאחד עובדים רשומים + שמות שכבר בסידור
-  const names = [];
-  (DATA.employees||[]).forEach(n=>{ if(names.indexOf(n)<0) names.push(n); });
+  const names=[]; (DATA.employees||[]).forEach(n=>{ if(names.indexOf(n)<0) names.push(n); });
   (DATA.roster||[]).forEach(r=>{ if(r.employee && names.indexOf(r.employee)<0) names.push(r.employee); });
   ROWS = names.map(n=>({employee:n, cells:{}}));
-  const byName = {}; ROWS.forEach(r=>byName[r.employee]=r);
-  (DATA.roster||[]).forEach(r=>{
-    const row = byName[r.employee]; if(!row) return;
-    row.cells[r.dow] = {branch_id:r.branch_id, hours:r.hours||''};
-  });
+  const byName={}; ROWS.forEach(r=>byName[r.employee]=r);
+  (DATA.roster||[]).forEach(r=>{ const row=byName[r.employee]; if(row) row.cells[r.dow]={branch_id:r.branch_id, hours:r.hours||''}; });
 }
 
-function render(){
+function renderGrid(){
+  const visible = ROWS.filter(r=>!STATE.emp || r.employee===STATE.emp);
   if(!ROWS.length){
     document.getElementById('grid').innerHTML =
-      '<div class="center">אין עדיין עובדים רשומים.<br>עובדים נכנסים לבוט @Greenm_alert_bot ובוחרים שם — ואז יופיעו כאן.<br>או הוסף שם ידנית עם ➕.</div>';
+      '<div class="center">אין עדיין עובדים רשומים.<br>עובדים נכנסים לבוט <b>@Greenm_alert_bot</b>, בוחרים שם — ואז יופיעו כאן.<br>או הוסף שם ידנית עם ➕.</div>';
     return;
   }
-  const days = DATA.days, branches = DATA.branches;
-  let h = '<div class="tablewrap"><table><thead><tr><th class="nm">עובד</th>';
-  days.forEach((d,i)=> h += '<th>'+d+'</th>');
-  h += '</tr></thead><tbody>';
-  ROWS.forEach((row,ri)=>{
-    h += '<tr><td class="nm">'+esc(row.employee)+'</td>';
+  const days=DATA.days, branches=DATA.branches;
+  let h='<div class="tablewrap"><table><thead><tr><th class="nm">עובד</th>';
+  days.forEach(d=> h+='<th>'+d+'</th>');
+  h+='</tr></thead><tbody>';
+  visible.forEach(row=>{
+    const ri=ROWS.indexOf(row);
+    h+='<tr><td class="nm">'+esc(row.employee)+'</td>';
     for(let dow=0; dow<days.length; dow++){
-      const c = row.cells[dow]||{};
-      let sel = '<select onchange="onSel('+ri+','+dow+',this)" class="'+(c.branch_id?'has':'')+'">';
-      sel += '<option value="">—</option>';
-      branches.forEach(b=>{
-        sel += '<option value="'+b.id+'"'+(String(c.branch_id)===String(b.id)?' selected':'')+'>'+esc(b.name)+'</option>';
-      });
-      sel += '</select>';
-      const hh = String(c.hours||'').split('-');
-      const t1v = (hh[0]||'').trim()?(' value="'+esc(hh[0].trim())+'"'):'';
-      const t2v = (hh[1]||'').trim()?(' value="'+esc(hh[1].trim())+'"'):'';
-      const hidden = c.branch_id?'':' style="display:none"';
-      sel += '<div class="hwrap"'+hidden+'>'
-           + '<input type="time" class="th" title="התחלה"'+t1v+' onchange="onTime('+ri+','+dow+',this)">'
-           + '<span class="dash">–</span>'
-           + '<input type="time" class="th" title="סיום"'+t2v+' onchange="onTime('+ri+','+dow+',this)"></div>';
-      h += '<td class="cell">'+sel+'</td>';
+      const c=row.cells[dow]||{};
+      let sel='<select onchange="onSel('+ri+','+dow+',this)" class="bsel '+(c.branch_id?'has':'')+'">';
+      sel+='<option value="">—</option>';
+      branches.forEach(b=>{ sel+='<option value="'+b.id+'"'+(String(c.branch_id)===String(b.id)?' selected':'')+'>'+esc(b.name)+'</option>'; });
+      sel+='</select>';
+      const hh=String(c.hours||'').split('-');
+      const t1=(hh[0]||'').trim()?(' value="'+esc(hh[0].trim())+'"'):'';
+      const t2=(hh[1]||'').trim()?(' value="'+esc(hh[1].trim())+'"'):'';
+      const hide=c.branch_id?'':' style="display:none"';
+      sel+='<div class="hwrap"'+hide+'><input type="time" class="th" title="התחלה"'+t1+' onchange="onTime('+ri+','+dow+',this)">'
+         +'<span class="dash">–</span><input type="time" class="th" title="סיום"'+t2+' onchange="onTime('+ri+','+dow+',this)"></div>';
+      h+='<td class="cell">'+sel+'</td>';
     }
-    h += '</tr>';
+    h+='</tr>';
   });
-  h += '</tbody></table></div>';
-  document.getElementById('grid').innerHTML = h;
+  h+='</tbody></table></div>';
+  document.getElementById('grid').innerHTML=h;
 }
 
 function onSel(ri,dow,el){
-  const row = ROWS[ri];
-  const w = el.parentNode.querySelector('.hwrap');
-  if(el.value){ row.cells[dow] = {branch_id:parseInt(el.value), hours:(row.cells[dow]||{}).hours||''};
+  const row=ROWS[ri]; const w=el.parentNode.querySelector('.hwrap');
+  if(el.value){ row.cells[dow]={branch_id:parseInt(el.value), hours:(row.cells[dow]||{}).hours||''};
     el.classList.add('has'); if(w) w.style.display='flex';
   } else { delete row.cells[dow]; el.classList.remove('has');
     if(w){ w.querySelectorAll('input.th').forEach(i=>i.value=''); w.style.display='none'; } }
 }
 function onTime(ri,dow,el){
   if(!ROWS[ri].cells[dow]) return;
-  const ins = el.closest('.hwrap').querySelectorAll('input.th');
-  const a = ins[0].value, b = ins[1].value;
-  ROWS[ri].cells[dow].hours = (a||b) ? ((a||'')+'-'+(b||'')) : '';
+  const ins=el.closest('.hwrap').querySelectorAll('input.th');
+  const a=ins[0].value, b=ins[1].value;
+  ROWS[ri].cells[dow].hours=(a||b)?((a||'')+'-'+(b||'')):'';
 }
-
 function addEmployee(){
-  const n = (prompt('שם העובד (כפי שמופיע בסידור):')||'').trim();
+  const n=(prompt('שם העובד (כפי שמופיע בסידור):')||'').trim();
   if(!n) return;
   if(ROWS.some(r=>r.employee===n)){ toast('כבר קיים'); return; }
-  ROWS.push({employee:n, cells:{}}); render();
+  ROWS.push({employee:n, cells:{}}); buildEmpFilter(); renderGrid();
 }
 
 async function save(){
-  const rows = [];
+  const rows=[];
   ROWS.forEach(r=>{ for(const dow in r.cells){ const c=r.cells[dow];
     if(c.branch_id) rows.push({employee:r.employee, dow:parseInt(dow), branch_id:c.branch_id, hours:c.hours||''}); } });
   const btn=document.getElementById('saveBtn'); btn.disabled=true; btn.textContent='שומר…';
   try{
-    const r = await api('/api/schedule/save', {method:'POST', body:JSON.stringify({rows})});
-    const j = await r.json();
-    if(j.ok){ toast('✅ נשמר ('+j.saved+' שיבוצים)'); document.getElementById('st').textContent='נשמר לאחרונה: עכשיו'; }
+    const r=await api('/api/schedule/save',{method:'POST',body:JSON.stringify({week:STATE.week, rows})});
+    const j=await r.json();
+    if(j.ok){ toast('✅ נשמר ('+j.saved+' שיבוצים)'); document.getElementById('st').textContent='נשמר · '+weekLabel(STATE.week); }
     else toast('שגיאה בשמירה');
-  }catch(e){ toast('שגיאה בשמירה'); }
-  btn.disabled=false; btn.textContent='💾 שמירת הסידור';
+  }catch(e){ if(String(e.message)!=='401') toast('שגיאה בשמירה'); }
+  btn.disabled=false; btn.textContent='💾 שמירת השבוע';
 }
 
-function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+// ── summary ──
+function monthBounds(){
+  const t=parseD(STATE.week||fmtISO(new Date()));
+  const from=new Date(t.getFullYear(),t.getMonth(),1), to=new Date(t.getFullYear(),t.getMonth()+1,0);
+  return [fmtISO(from), fmtISO(to)];
+}
+function openSummary(){
+  const [f,t]=monthBounds();
+  document.getElementById('sumFrom').value=f; document.getElementById('sumTo').value=t;
+  document.getElementById('sumBody').innerHTML=''; document.getElementById('sumMeta').textContent='';
+  document.getElementById('sumOv').classList.add('show'); runSummary();
+}
+async function runSummary(){
+  const f=document.getElementById('sumFrom').value, t=document.getElementById('sumTo').value;
+  if(!f||!t) return;
+  document.getElementById('sumBody').innerHTML='<div class="center">מחשב…</div>';
+  try{
+    const r=await api('/api/schedule/summary?date_from='+f+'&date_to='+t);
+    const j=await r.json();
+    document.getElementById('sumMeta').textContent=(j.weeks||0)+' שבועות בטווח';
+    if(!j.summary||!j.summary.length){ document.getElementById('sumBody').innerHTML='<div class="center">אין שיבוצים בטווח הזה.</div>'; return; }
+    let h='<table class="stable"><thead><tr><th>עובד</th><th class="num">משמרות</th><th class="num">שעות</th><th>סניפים</th></tr></thead><tbody>';
+    j.summary.forEach(s=>{
+      const hrs=(s.minutes/60); const hh=hrs%1===0?hrs.toFixed(0):hrs.toFixed(1);
+      const br=Object.keys(s.branches||{}).map(k=>'<span class="badge">'+esc(k)+' ×'+s.branches[k]+'</span>').join('');
+      h+='<tr><td>'+esc(s.employee)+'</td><td class="num">'+s.shifts+'</td><td class="num">'+hh+'</td><td>'+br+'</td></tr>';
+    });
+    h+='</tbody></table>';
+    document.getElementById('sumBody').innerHTML=h;
+  }catch(e){ if(String(e.message)!=='401') document.getElementById('sumBody').innerHTML='<div class="center">שגיאה.</div>'; }
+}
 
+// ── dispatch ──
+function openDispatch(){
+  document.getElementById('dispWk').textContent='שבוע '+weekLabel(STATE.week);
+  const names=allNames();
+  document.getElementById('dispEmp').innerHTML=names.map(n=>'<option value="'+esc(n)+'">'+esc(n)+'</option>').join('');
+  document.getElementById('dispRes').innerHTML='';
+  document.getElementById('dispOv').classList.add('show');
+}
+async function dispatch(mode, employee){
+  const res=document.getElementById('dispRes'); res.innerHTML='שולח…';
+  try{
+    const r=await api('/api/schedule/dispatch',{method:'POST',body:JSON.stringify({week:STATE.week, mode, employee})});
+    const j=await r.json();
+    if(r.status!==200){ res.innerHTML='⚠ '+(j.detail||'שגיאה'); return; }
+    if(mode==='group'){ res.innerHTML=j.ok?'✅ נשלח לקבוצת ההתראות':'⚠ השליחה נכשלה'; toast(j.ok?'✅ נשלח לקבוצה':'נכשל'); }
+    else{
+      let m='✅ נשלחו '+j.sent+' הודעות';
+      if(j.missing&&j.missing.length) m+='<br>⚠ לא רשומים בבוט: '+j.missing.map(esc).join(', ');
+      res.innerHTML=m; toast('✅ נשלחו '+j.sent);
+    }
+  }catch(e){ if(String(e.message)!=='401') res.innerHTML='שגיאה.'; }
+}
+
+// ── boot ──
 async function load(){
   try{
     key();
-    const r = await api('/api/schedule/data');
-    DATA = await r.json();
-    rosterToRows();
-    const cnt = (DATA.employees||[]).length;
-    document.getElementById('hint').innerHTML =
-      'שבץ כל עובד לסניף בכל יום שהוא במשמרת. ההתראות נשלחות אוטומטית למי שמשובץ בסניף שאליו משודרת בקשת העברה.<br>'+
-      '<b>'+cnt+'</b> עובדים רשומים בבוט. שעות הן רשות.';
+    STATE.week = STATE.week || sundayOf(fmtISO(new Date()));
+    await loadWeek();
+    const cnt=(DATA.employees||[]).length;
+    document.getElementById('hint').innerHTML=
+      'שבץ כל עובד לסניף בכל יום שהוא במשמרת (תא = סניף + שעות). ההתראות נשלחות אוטומטית למי שמשובץ בסניף שאליו משודרת בקשת העברה.<br>'+
+      '<b>'+cnt+'</b> עובדים רשומים בבוט · נווט בין שבועות, סנן לפי עובד, חשב סיכומים, ושגר את הסידור.';
+    document.getElementById('controls').style.display='flex';
     document.getElementById('savebar').style.display='flex';
-    render();
   }catch(e){ if(String(e.message)!=='401') document.getElementById('hint').textContent='שגיאת טעינה: '+e.message; }
 }
 load();
