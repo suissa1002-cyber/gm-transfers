@@ -6,8 +6,13 @@
 <title>סידור עבודה · גרין מובייל</title>
 <style>
   :root{
-    --bg:#0f1419; --card:#171f29; --line:#26303d; --txt:#e6edf3; --mut:#8b97a6;
+    --bg:#f5f7fa; --card:#ffffff; --line:#e2e8f0; --txt:#1a2230; --mut:#64748b;
+    --head:#f1f5f9; --cell:#fafbfc;
     --green:#1db954; --green-d:#159c44; --blue:#2f81f7; --warn:#f0883e;
+  }
+  body.dark{
+    --bg:#0f1419; --card:#171f29; --line:#26303d; --txt:#e6edf3; --mut:#8b97a6;
+    --head:#1c2530; --cell:#0f1419;
   }
   *{box-sizing:border-box}
   body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Rubik,Arial,sans-serif;
@@ -26,11 +31,11 @@
   table{border-collapse:separate;border-spacing:0;width:100%;min-width:760px}
   th,td{padding:7px 8px;border-bottom:1px solid var(--line);border-left:1px solid var(--line);
         text-align:center;white-space:nowrap}
-  th{background:#1c2530;font-size:13px;font-weight:700;position:sticky;top:0}
+  th{background:var(--head);font-size:13px;font-weight:700;position:sticky;top:0}
   th.nm,td.nm{position:sticky;right:0;background:var(--card);text-align:right;z-index:2;
               border-left:2px solid var(--line);min-width:120px;font-weight:600}
   tr:last-child td{border-bottom:0}
-  td.cell{background:var(--bg)}
+  td.cell{background:var(--cell)}
   select{font-family:inherit;font-size:13px;border:1px solid var(--line);border-radius:8px;
           background:var(--card);color:var(--txt);padding:6px 6px;width:100%;min-width:96px}
   select.has{border-color:var(--green);color:#fff;font-weight:600}
@@ -50,6 +55,7 @@
 <header>
   <h1>🗓️ סידור עבודה</h1>
   <span class="sp"></span>
+  <button class="ghost" id="themeBtn" onclick="toggleTheme()" title="מצב תצוגה">🌙</button>
   <button class="ghost" id="addBtn" onclick="addEmployee()">➕ עובד</button>
   <button class="ghost" onclick="logout()">יציאה</button>
 </header>
@@ -67,6 +73,16 @@
 
 <script>
 const API = '';
+function applyTheme(){
+  const dark = localStorage.getItem('sched_theme')==='dark';
+  document.body.classList.toggle('dark', dark);
+  const b=document.getElementById('themeBtn'); if(b) b.textContent = dark?'☀️':'🌙';
+}
+function toggleTheme(){
+  localStorage.setItem('sched_theme', localStorage.getItem('sched_theme')==='dark'?'light':'dark');
+  applyTheme();
+}
+applyTheme();
 let DATA = null;       // {branches, days, employees, roster}
 let ROWS = [];         // [{employee, cells:{dow:{branch_id, hours}}}]
 
