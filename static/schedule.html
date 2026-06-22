@@ -46,7 +46,18 @@
   tr:last-child td{border-bottom:0}
   td.cell{background:var(--cell)}
   select.bsel{width:100%;min-width:96px}
-  select.bsel.has{border-color:var(--green);color:var(--green-d);font-weight:700}
+  select.bsel.has{font-weight:700;border-width:1.6px}
+  select.bsel.b1{border-color:#3b82f6;color:#2f6fe0;background:rgba(59,130,246,.12)}
+  select.bsel.b2{border-color:#a855f7;color:#9333ea;background:rgba(168,85,247,.12)}
+  select.bsel.b3{border-color:#14b8a6;color:#0d9488;background:rgba(20,184,166,.14)}
+  select.bsel.b4{border-color:#f59e0b;color:#d97706;background:rgba(245,158,11,.15)}
+  select.bsel.b5{border-color:#64748b;color:#475569;background:rgba(100,116,139,.14)}
+  body.dark select.bsel.b1{color:#7eb0ff} body.dark select.bsel.b2{color:#cd9cff}
+  body.dark select.bsel.b3{color:#5fe0d0} body.dark select.bsel.b4{color:#ffc266}
+  body.dark select.bsel.b5{color:#aab6c6}
+  #legend{display:flex;flex-wrap:wrap;gap:6px 12px;margin:0 2px 12px}
+  #legend .lg{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--mut)}
+  #legend .dot{width:11px;height:11px;border-radius:3px;display:inline-block}
   .shift{margin-bottom:6px}
   .shift:last-of-type{margin-bottom:0}
   button.addshift{background:transparent;border:1px dashed var(--line);color:var(--mut);font-size:11px;
@@ -120,6 +131,7 @@
 
 <div class="wrap">
   <div class="hint" id="hint">טוען…</div>
+  <div id="legend"></div>
   <div id="grid"></div>
 </div>
 
@@ -230,8 +242,14 @@ async function loadWeek(){
     + (STATE.week===DATA.this_week?' · השבוע':'');
   document.getElementById('weekPick').value = STATE.week;
   buildEmpFilter();
+  renderLegend();
   rosterToRows();
   renderGrid();
+}
+const BCOL = {1:'#3b82f6',2:'#a855f7',3:'#14b8a6',4:'#f59e0b',5:'#64748b'};
+function renderLegend(){
+  const el=document.getElementById('legend');
+  el.innerHTML=(DATA.branches||[]).map(b=>'<span class="lg"><span class="dot" style="background:'+(BCOL[b.id]||'#64748b')+'"></span>'+esc(b.name)+'</span>').join('');
 }
 async function shiftWeek(n){ await flushSave(); STATE.week = addDays(STATE.week, n); loadWeek(); }
 async function pickWeek(v){ if(v){ await flushSave(); STATE.week = sundayOf(v); loadWeek(); } }
@@ -258,7 +276,8 @@ function rosterToRows(){
 
 function isMobile(){ return window.innerWidth < 760; }
 function shiftHTML(ri, dow, idx, c){
-  let s='<div class="shift"><select onchange="onSel('+ri+','+dow+','+idx+',this)" class="bsel '+(c.branch_id?'has':'')+'">';
+  const bcls = c.branch_id ? ('has b'+c.branch_id) : '';
+  let s='<div class="shift"><select onchange="onSel('+ri+','+dow+','+idx+',this)" class="bsel '+bcls+'">';
   s+='<option value="">—</option>';
   (DATA.branches||[]).forEach(b=>{ s+='<option value="'+b.id+'"'+(String(c.branch_id)===String(b.id)?' selected':'')+'>'+esc(b.name)+'</option>'; });
   s+='</select>';
