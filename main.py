@@ -2393,8 +2393,10 @@ async def schedule_dispatch(request: Request, x_admin_key: Optional[str] = Heade
         if not chat:
             raise HTTPException(400, "קבוצת ההתראות עוד לא חוברה — שלח/י בקבוצה הודעה עם /start@Greenm_alert_bot")
         link = f"{base}/schedule/view?week={wk}&sig={_schedule_view_sig(wk, '')}"
-        txt = _format_week_all(wk, rows) + f"\n\n🔗 לצפייה מעוצבת בסידור המלא:\n{link}"
-        ok = auto_transfer.shift_send_chat(chat, txt)
+        txt = (f"🗓️ <b>סידור עבודה שבועי</b>\nשבוע {_fmt_week_range(wk)}\n\n"
+               "לצפייה בסידור המלא והמעוצב — לחצו על הכפתור 👇")
+        kb = {"inline_keyboard": [[{"text": "📋 פתח את הסידור", "url": link}]]}
+        ok = auto_transfer.shift_send_chat(chat, txt, kb)
         return {"ok": ok, "mode": "group"}
     byemp = {}
     for r in rows:
@@ -2406,10 +2408,11 @@ async def schedule_dispatch(request: Request, x_admin_key: Optional[str] = Heade
         if not ids:
             missing.append(emp); continue
         link = f"{base}/schedule/view?week={wk}&emp={quote(emp)}&sig={_schedule_view_sig(wk, emp)}"
-        txt = (_format_week_employee(emp, wk, byemp.get(emp, []))
-               + f"\n\n🔗 לצפייה מעוצבת בסידור שלך:\n{link}")
+        txt = (f"🗓️ <b>הסידור שלך</b> · {emp}\nשבוע {_fmt_week_range(wk)}\n\n"
+               "לצפייה בסידור המעוצב — לחצו על הכפתור 👇")
+        kb = {"inline_keyboard": [[{"text": "📋 הסידור שלי", "url": link}]]}
         for cid in ids:
-            if auto_transfer.shift_send_chat(cid, txt):
+            if auto_transfer.shift_send_chat(cid, txt, kb):
                 sent += 1
     return {"ok": True, "mode": "employee", "sent": sent, "missing": missing}
 

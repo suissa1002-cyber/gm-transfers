@@ -374,16 +374,18 @@ def _cur_week_start() -> str:
     return (d - timedelta(days=(d.weekday() + 1) % 7)).isoformat()
 
 
-def shift_send_chat(chat_id, text) -> bool:
+def shift_send_chat(chat_id, text, reply_markup=None) -> bool:
     """שליחת הודעה בודדת דרך בוט המשמרות (@Greenm_alert_bot). מחזיר הצלחה."""
     tok = os.getenv("SHIFT_BOT_TOKEN", "").strip()
     if not tok or not chat_id:
         return False
     import requests as _rq
+    payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML",
+               "disable_web_page_preview": True}
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
     try:
-        r = _rq.post(f"https://api.telegram.org/bot{tok}/sendMessage",
-                     json={"chat_id": chat_id, "text": text, "parse_mode": "HTML",
-                           "disable_web_page_preview": True}, timeout=12)
+        r = _rq.post(f"https://api.telegram.org/bot{tok}/sendMessage", json=payload, timeout=12)
         return r.status_code == 200
     except Exception:  # noqa: BLE001
         return False
