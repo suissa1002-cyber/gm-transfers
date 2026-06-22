@@ -2086,6 +2086,15 @@ async def checks_upload(request: Request, x_admin_key: Optional[str] = Header(No
 _SHIFT_DAYS = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"]
 _SHIFT_BRANCH_IDS = [int(x) for x in os.getenv("SHIFT_BRANCH_IDS", "1,2,3,4").split(",")
                      if x.strip().isdigit()]
+# סניף 3 = חנות "סיטי" בפועל (בקונפיג רשום "מחסן\\מרלוג") — override לתצוגת הסידור בלבד
+_SCHED_BRANCH_LABEL = {3: "סיטי"}
+
+
+def _sched_bname(bid) -> str:
+    try:
+        return _SCHED_BRANCH_LABEL.get(int(bid or 0)) or cfg.branch_name(bid)
+    except Exception:  # noqa: BLE001
+        return cfg.branch_name(bid)
 
 
 def _require_schedule(x_admin_key, x_schedule_key):
@@ -2161,7 +2170,7 @@ def schedule_data(week: Optional[str] = None, x_admin_key: Optional[str] = Heade
     _require_schedule(x_admin_key, x_schedule_key)
     wk = (week or "").strip() or _week_start_of(_il_today())
     return {
-        "branches": [{"id": b, "name": cfg.branch_name(b)} for b in _SHIFT_BRANCH_IDS],
+        "branches": [{"id": b, "name": _sched_bname(b)} for b in _SHIFT_BRANCH_IDS],
         "days": _SHIFT_DAYS,
         "employees": _schedule_employees(),
         "week": wk,
@@ -2195,7 +2204,7 @@ def schedule_summary(date_from: str, date_to: str, x_admin_key: Optional[str] = 
         a = agg.setdefault(emp, {"employee": emp, "shifts": 0, "minutes": 0, "branches": {}})
         a["shifts"] += 1
         a["minutes"] += _hours_minutes(r.get("hours"))
-        bn = cfg.branch_name(r.get("branch_id"))
+        bn = _sched_bname(r.get("branch_id"))
         a["branches"][bn] = a["branches"].get(bn, 0) + 1
     out = sorted(agg.values(), key=lambda x: (-x["shifts"], x["employee"]))
     return {"from": date_from, "to": date_to, "weeks": len(weeks), "summary": out}
@@ -2218,7 +2227,7 @@ def _format_week_employee(emp, wk, rows) -> str:
     for r in rows:
         hrs = _order_hours(r.get("hours"))
         hrs = f" · 🕐 \u200e{hrs}" if hrs else ""
-        out.append(f"📍 <b>{_SHIFT_DAYS[int(r['dow'])]}</b> — {cfg.branch_name(r['branch_id'])}{hrs}")
+        out.append(f"📍 <b>{_SHIFT_DAYS[int(r['dow'])]}</b> — {_sched_bname(r['branch_id'])}{hrs}")
     return "\n".join(out)
 
 
@@ -2235,7 +2244,7 @@ def _format_week_all(wk, rows) -> str:
         for bid, rs in bybr.items():
             who = ", ".join((f"{r['employee']} (\u200e{_order_hours(r.get('hours'))})" if (r.get('hours') or '').strip()
                              else r['employee']) for r in rs)
-            out.append(f"  📍 {cfg.branch_name(bid)}: {who}")
+            out.append(f"  📍 {_sched_bname(bid)}: {who}")
         out.append("")
     return "\n".join(out).strip()
 
@@ -2273,7 +2282,7 @@ def _render_schedule_html(week, emp) -> str:
         col = _SCHED_BCOL.get(int(bid or 0), "#64748b")
         hh = f' · 🕐 <bdi dir="ltr">{_html.escape(hrs)}</bdi>' if hrs else ""
         return (f'<span class="chip" style="border-color:{col};color:{col};background:{col}1f">'
-                f'{_html.escape(cfg.branch_name(bid))}{hh}</span>')
+                f'{_html.escape(_sched_bname(bid))}{hh}</span>')
 
     body = []
     if emp:
