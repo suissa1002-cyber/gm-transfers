@@ -2217,7 +2217,7 @@ def _format_week_employee(emp, wk, rows) -> str:
         out.append("אין לך משמרות מתוכננות השבוע.")
     for r in rows:
         hrs = _order_hours(r.get("hours"))
-        hrs = f" · 🕐 {hrs}" if hrs else ""
+        hrs = f" · 🕐 \u200e{hrs}" if hrs else ""
         out.append(f"📍 <b>{_SHIFT_DAYS[int(r['dow'])]}</b> — {cfg.branch_name(r['branch_id'])}{hrs}")
     return "\n".join(out)
 
@@ -2233,7 +2233,7 @@ def _format_week_all(wk, rows) -> str:
         for r in drows:
             bybr.setdefault(r["branch_id"], []).append(r)
         for bid, rs in bybr.items():
-            who = ", ".join((f"{r['employee']} ({_order_hours(r.get('hours'))})" if (r.get('hours') or '').strip()
+            who = ", ".join((f"{r['employee']} (\u200e{_order_hours(r.get('hours'))})" if (r.get('hours') or '').strip()
                              else r['employee']) for r in rs)
             out.append(f"  📍 {cfg.branch_name(bid)}: {who}")
         out.append("")
@@ -2271,7 +2271,7 @@ def _render_schedule_html(week, emp) -> str:
 
     def chip(bid, hrs):
         col = _SCHED_BCOL.get(int(bid or 0), "#64748b")
-        hh = f" · 🕐 {_html.escape(hrs)}" if hrs else ""
+        hh = f' · 🕐 <bdi dir="ltr">{_html.escape(hrs)}</bdi>' if hrs else ""
         return (f'<span class="chip" style="border-color:{col};color:{col};background:{col}1f">'
                 f'{_html.escape(cfg.branch_name(bid))}{hh}</span>')
 
