@@ -55,6 +55,7 @@
 </head>
 <body>
 <header>
+  <button class="ghost" onclick="location.href='/'" title="חזרה ל-GreenOS">⬅ GreenOS</button>
   <h1>🗓️ סידור עבודה</h1>
   <span class="sp"></span>
   <button class="ghost" id="themeBtn" onclick="toggleTheme()" title="מצב תצוגה">🌙</button>
@@ -89,7 +90,9 @@ let DATA = null;       // {branches, days, employees, roster}
 let ROWS = [];         // [{employee, cells:{dow:{branch_id, hours}}}]
 
 function key(force){
-  let k = localStorage.getItem('tr_schedule_key');
+  // מפתח סידור שמור → ממנו. אחרת, אם נכנסים מתוך GreenOS (מפתח אדמין קיים) — בלי לבקש סיסמה.
+  if(localStorage.getItem('tr_schedule_key') && !force) return localStorage.getItem('tr_schedule_key');
+  let k = localStorage.getItem('tr_admin_key');
   if(!k || force){ k = prompt('🔐 סיסמת גישה לסידור:') || '';
     if(k) localStorage.setItem('tr_schedule_key', k); }
   return k || '';
