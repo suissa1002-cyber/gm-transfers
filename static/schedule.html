@@ -47,6 +47,10 @@
   td.cell{background:var(--cell)}
   select.bsel{width:100%;min-width:96px}
   select.bsel.has{border-color:var(--green);color:var(--green-d);font-weight:700}
+  .shift{margin-bottom:6px}
+  .shift:last-of-type{margin-bottom:0}
+  button.addshift{background:transparent;border:1px dashed var(--line);color:var(--mut);font-size:11px;
+                  padding:3px 9px;border-radius:8px;margin-top:5px;font-weight:600}
   .hwrap{display:flex;align-items:center;gap:3px;margin-top:4px;justify-content:center}
   .hwrap .dash{color:var(--mut);font-size:12px}
   input.th{font-size:11.5px;width:66px;text-align:center;padding:4px 2px}
@@ -248,12 +252,13 @@ function rosterToRows(){
   (DATA.roster||[]).forEach(r=>{ if(r.employee && names.indexOf(r.employee)<0) names.push(r.employee); });
   ROWS = names.map(n=>({employee:n, cells:{}}));
   const byName={}; ROWS.forEach(r=>byName[r.employee]=r);
-  (DATA.roster||[]).forEach(r=>{ const row=byName[r.employee]; if(row) row.cells[r.dow]={branch_id:r.branch_id, hours:r.hours||''}; });
+  (DATA.roster||[]).forEach(r=>{ const row=byName[r.employee]; if(!row) return;
+    (row.cells[r.dow]=row.cells[r.dow]||[]).push({branch_id:r.branch_id, hours:r.hours||''}); });
 }
 
 function isMobile(){ return window.innerWidth < 760; }
-function cellHTML(ri, c, dow){
-  let s='<select onchange="onSel('+ri+','+dow+',this)" class="bsel '+(c.branch_id?'has':'')+'">';
+function shiftHTML(ri, dow, idx, c){
+  let s='<div class="shift"><select onchange="onSel('+ri+','+dow+','+idx+',this)" class="bsel '+(c.branch_id?'has':'')+'">';
   s+='<option value="">—</option>';
   (DATA.branches||[]).forEach(b=>{ s+='<option value="'+b.id+'"'+(String(c.branch_id)===String(b.id)?' selected':'')+'>'+esc(b.name)+'</option>'; });
   s+='</select>';
@@ -261,8 +266,16 @@ function cellHTML(ri, c, dow){
   const t1=(hh[0]||'').trim()?(' value="'+esc(hh[0].trim())+'"'):'';
   const t2=(hh[1]||'').trim()?(' value="'+esc(hh[1].trim())+'"'):'';
   const hide=c.branch_id?'':' style="display:none"';
-  s+='<div class="hwrap"'+hide+'><input type="time" class="th" title="התחלה"'+t1+' onchange="onTime('+ri+','+dow+',this)">'
-    +'<span class="dash">–</span><input type="time" class="th" title="סיום"'+t2+' onchange="onTime('+ri+','+dow+',this)"></div>';
+  s+='<div class="hwrap"'+hide+'><input type="time" class="th" title="התחלה"'+t1+' onchange="onTime('+ri+','+dow+','+idx+',this)">'
+    +'<span class="dash">–</span><input type="time" class="th" title="סיום"'+t2+' onchange="onTime('+ri+','+dow+','+idx+',this)"></div></div>';
+  return s;
+}
+function cellHTML(ri, dow){
+  const arr = (ROWS[ri].cells[dow] || []);
+  const list = arr.length ? arr : [{}];
+  let s = list.map((c,idx)=>shiftHTML(ri,dow,idx,c)).join('');
+  if(arr.length && arr[arr.length-1] && arr[arr.length-1].branch_id)
+    s += '<button class="addshift" onclick="addShift('+ri+','+dow+')">➕ משמרת</button>';
   return s;
 }
 function renderGrid(){
@@ -281,7 +294,7 @@ function renderTable(){
   visible.forEach(row=>{
     const ri=ROWS.indexOf(row);
     h+='<tr><td class="nm">'+esc(row.employee)+'</td>';
-    for(let dow=0; dow<days.length; dow++) h+='<td class="cell">'+cellHTML(ri,row.cells[dow]||{},dow)+'</td>';
+    for(let dow=0; dow<days.length; dow++) h+='<td class="cell">'+cellHTML(ri,dow)+'</td>';
     h+='</tr>';
   });
   h+='</tbody></table></div>';
@@ -294,7 +307,7 @@ function renderCards(){
     const ri=ROWS.indexOf(row);
     h+='<div class="ecard"><div class="ehd">'+esc(row.employee)+'</div>';
     for(let dow=0; dow<days.length; dow++)
-      h+='<div class="drow"><span class="dlbl">'+days[dow]+'</span><div class="dctl">'+cellHTML(ri,row.cells[dow]||{},dow)+'</div></div>';
+      h+='<div class="drow"><span class="dlbl">'+days[dow]+'</span><div class="dctl">'+cellHTML(ri,dow)+'</div></div>';
     h+='</div>';
   });
   document.getElementById('grid').innerHTML=h;
@@ -303,20 +316,27 @@ let _rsTimer=null, _wasMobile=isMobile();
 window.addEventListener('resize',()=>{ clearTimeout(_rsTimer); _rsTimer=setTimeout(()=>{
   if(isMobile()!==_wasMobile){ _wasMobile=isMobile(); if(DATA && ROWS.length) renderGrid(); } }, 200); });
 
-function onSel(ri,dow,el){
-  const row=ROWS[ri]; const w=el.parentNode.querySelector('.hwrap');
-  if(el.value){ row.cells[dow]={branch_id:parseInt(el.value), hours:(row.cells[dow]||{}).hours||''};
-    el.classList.add('has'); if(w) w.style.display='flex';
-  } else { delete row.cells[dow]; el.classList.remove('has');
-    if(w){ w.querySelectorAll('input.th').forEach(i=>i.value=''); w.style.display='none'; } }
-  queueSave();
+function onSel(ri,dow,idx,el){
+  const arr = ROWS[ri].cells[dow] = ROWS[ri].cells[dow] || [];
+  if(el.value){
+    if(!arr[idx]) arr[idx] = {branch_id:0, hours:''};
+    arr[idx].branch_id = parseInt(el.value);
+  } else {
+    if(arr[idx]) arr.splice(idx,1);
+    if(!arr.length) delete ROWS[ri].cells[dow];
+  }
+  renderGrid(); queueSave();
 }
-function onTime(ri,dow,el){
-  if(!ROWS[ri].cells[dow]) return;
+function onTime(ri,dow,idx,el){
+  const arr=ROWS[ri].cells[dow]; if(!arr||!arr[idx]) return;
   const ins=el.closest('.hwrap').querySelectorAll('input.th');
   const a=ins[0].value, b=ins[1].value;
-  ROWS[ri].cells[dow].hours=(a||b)?((a||'')+'-'+(b||'')):'';
+  arr[idx].hours=(a||b)?((a||'')+'-'+(b||'')):'';
   queueSave();
+}
+function addShift(ri,dow){
+  (ROWS[ri].cells[dow] = ROWS[ri].cells[dow] || []).push({});
+  renderGrid();
 }
 function addEmployee(){
   const n=(prompt('שם העובד (כפי שמופיע בסידור):')||'').trim();
@@ -335,8 +355,8 @@ function queueSave(){
 async function doSave(wk){
   saveTimer=null;
   const rows=[];
-  ROWS.forEach(r=>{ for(const dow in r.cells){ const c=r.cells[dow];
-    if(c.branch_id) rows.push({employee:r.employee, dow:parseInt(dow), branch_id:c.branch_id, hours:c.hours||''}); } });
+  ROWS.forEach(r=>{ for(const dow in r.cells){ (r.cells[dow]||[]).forEach(c=>{
+    if(c.branch_id) rows.push({employee:r.employee, dow:parseInt(dow), branch_id:c.branch_id, hours:c.hours||''}); }); } });
   try{
     const r=await api('/api/schedule/save',{method:'POST',body:JSON.stringify({week:wk, rows})});
     const j=await r.json();
