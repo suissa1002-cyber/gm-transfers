@@ -5889,7 +5889,104 @@ function pbxShowPopup(c){
 }
 function pbxOpenCall(phone){
   const e=document.getElementById('pbxPop'); if(e) e.remove();
+  const ce=document.getElementById('pbxCallPop'); if(ce) ce.remove();
   try{ S.view='admin'; S.adminTab='wa'; S.waPhone=phone; render(); if(window.loadWaThread) loadWaThread(true); }catch(err){}
+}
+
+// ── ☎️ טלפון WebRTC מוטמע (JsSIP) — שלוחה 202 מול 1com. ענה/נתק/השתק בתוך הפופאפ ──
+let _pbxUA=null, _pbxSession=null, _pbxCallTimer=null, _pbxCallStart=0, _pbxSipReg=false;
+async function startPbxSip(){
+  if(_pbxUA || !S.adminKey) return;
+  let cfg; try{ cfg=await api('/api/admin/pbx/webrtc-config'); }catch(e){ return; }
+  if(!cfg || !cfg.enabled || !cfg.wss) return;
+  if(typeof JsSIP==='undefined'){
+    const ok=await loadScript('https://cdn.jsdelivr.net/npm/jssip@3.10.1/dist/jssip.min.js');
+    if(!ok || typeof JsSIP==='undefined'){ await loadScript('https://unpkg.com/jssip@3.10.1/dist/jssip.min.js'); }
+    if(typeof JsSIP==='undefined'){ console.warn('[pbx-sip] JsSIP load failed'); return; }
+  }
+  try{
+    const socket=new JsSIP.WebSocketInterface(cfg.wss);
+    _pbxUA=new JsSIP.UA({ sockets:[socket], uri:'sip:'+cfg.user+'@'+cfg.server,
+      password:cfg.password, register:true, register_expires:300, session_timers:false });
+    _pbxUA.on('registered',()=>{ _pbxSipReg=true; console.log('[pbx-sip] registered ext202'); });
+    _pbxUA.on('unregistered',()=>{ _pbxSipReg=false; });
+    _pbxUA.on('registrationFailed',(e)=>{ _pbxSipReg=false; console.warn('[pbx-sip] reg failed',e&&e.cause); });
+    _pbxUA.on('newRTCSession',(e)=>{ if(e.session.direction==='incoming') pbxHandleIncoming(e.session); });
+    _pbxUA.start();
+  }catch(err){ console.warn('[pbx-sip] init error',err); _pbxUA=null; }
+}
+function pbxSipNumber(s){ try{ return (s.remote_identity&&s.remote_identity.uri&&s.remote_identity.uri.user)||''; }catch(e){ return ''; } }
+function pbxAudioEl(){ let a=document.getElementById('pbxRemoteAudio'); if(!a){ a=document.createElement('audio'); a.id='pbxRemoteAudio'; a.autoplay=true; a.style.display='none'; document.body.appendChild(a); } return a; }
+async function pbxHandleIncoming(session){
+  if(_pbxSession){ try{ session.terminate({status_code:486}); }catch(e){} return; }   // כבר בשיחה → תפוס
+  _pbxSession=session;
+  const num=pbxSipNumber(session);
+  let info={name:'',order_number:'',items:'',orders:0};
+  try{ info=await api('/api/admin/pbx/lookup?phone='+encodeURIComponent(num)); }catch(e){}
+  pbxShowCallPopup(num, info, 'ringing');
+  session.on('failed',()=>pbxEndCall());
+  session.on('ended',()=>pbxEndCall());
+  session.on('accepted',()=>pbxOnAccepted(session));
+  session.on('confirmed',()=>pbxOnAccepted(session));
+  try{ if(navigator.vibrate) navigator.vibrate([300,150,300]); }catch(e){}
+}
+function pbxAnswer(){
+  if(!_pbxSession) return;
+  try{ _pbxSession.answer({ mediaConstraints:{audio:true,video:false}, pcConfig:{ iceServers:[] } }); }
+  catch(e){ console.warn('[pbx-sip] answer err',e); }
+}
+function pbxOnAccepted(session){
+  try{
+    const pc=session.connection;
+    if(pc){ const ms=new MediaStream(); pc.getReceivers().forEach(r=>{ if(r.track) ms.addTrack(r.track); });
+      const a=pbxAudioEl(); a.srcObject=ms; a.play().catch(()=>{}); }
+  }catch(e){}
+  if(!_pbxCallTimer) pbxStartTimer();
+  pbxUpdateCallPopup('incall');
+}
+function pbxHangup(){ if(_pbxSession){ try{ _pbxSession.terminate(); }catch(e){} } pbxEndCall(); }
+function pbxToggleMute(){ if(!_pbxSession) return false;
+  try{ const m=_pbxSession.isMuted&&_pbxSession.isMuted().audio;
+    if(m) _pbxSession.unmute({audio:true}); else _pbxSession.mute({audio:true}); return !m; }catch(e){ return false; } }
+function pbxMuteBtn(btn){ const m=pbxToggleMute(); btn.textContent=m?'🔊 בטל השתקה':'🔇 השתק'; btn.style.background=m?'#1db954':'#64748b'; }
+function pbxEndCall(){ _pbxSession=null; pbxStopTimer();
+  const a=document.getElementById('pbxRemoteAudio'); if(a){ try{a.srcObject=null;}catch(e){} }
+  const e=document.getElementById('pbxCallPop'); if(e) e.remove(); }
+function pbxStartTimer(){ _pbxCallStart=Date.now(); pbxStopTimer();
+  _pbxCallTimer=setInterval(()=>{ const el=document.getElementById('pbxCallTime'); if(el){ const s=Math.floor((Date.now()-_pbxCallStart)/1000); el.textContent=('0'+Math.floor(s/60)).slice(-2)+':'+('0'+(s%60)).slice(-2); } },1000); }
+function pbxStopTimer(){ if(_pbxCallTimer){ clearInterval(_pbxCallTimer); _pbxCallTimer=null; } }
+function pbxShowCallPopup(num, info, state){
+  const old=document.getElementById('pbxCallPop'); if(old) old.remove();
+  const pp=document.getElementById('pbxPop'); if(pp) pp.remove();   // לא להציג גם פופאפ פולינג וגם שיחה
+  const div=document.createElement('div'); div.id='pbxCallPop';
+  div._num=num;
+  div._who=escW((info&&info.name)||('+'+num));
+  div._ord=(info&&info.order_number)?('הזמנה #'+escW(info.order_number)+(info.items?(' · '+escW(info.items)):'')):'';
+  div.style.cssText='position:fixed;bottom:20px;left:20px;z-index:100000;width:min(360px,94vw);'+
+    'background:var(--card,#fff);border:1px solid var(--line,#e2e8f0);border-radius:18px;'+
+    'box-shadow:0 18px 50px rgba(0,0,0,.32);padding:16px 18px;color:var(--txt,#1a2230)';
+  div.innerHTML='<div id="pbxCallBody"></div>';
+  document.body.appendChild(div);
+  pbxUpdateCallPopup(state);
+}
+function pbxUpdateCallPopup(state){
+  const div=document.getElementById('pbxCallPop'); if(!div) return;
+  const num=div._num, who=div._who, ord=div._ord; let head, btns;
+  if(state==='ringing'){
+    head='<div style="font-size:13px;color:var(--green,#1db954);font-weight:700">📞 שיחה נכנסת…</div>';
+    btns='<button onclick="pbxAnswer()" style="flex:1;padding:11px;border:0;border-radius:12px;background:#1db954;color:#fff;font-weight:700;cursor:pointer">✅ ענה</button>'+
+         '<button onclick="pbxHangup()" style="flex:1;padding:11px;border:0;border-radius:12px;background:#e23b3b;color:#fff;font-weight:700;cursor:pointer">✕ דחה</button>';
+  } else {
+    head='<div style="font-size:13px;color:var(--mut,#888);font-weight:700">🟢 בשיחה · <span id="pbxCallTime">00:00</span></div>';
+    btns='<button onclick="pbxMuteBtn(this)" style="flex:1;padding:11px;border:0;border-radius:12px;background:#64748b;color:#fff;font-weight:700;cursor:pointer">🔇 השתק</button>'+
+         '<button onclick="pbxHangup()" style="flex:1;padding:11px;border:0;border-radius:12px;background:#e23b3b;color:#fff;font-weight:700;cursor:pointer">📴 נתק</button>';
+  }
+  div.querySelector('#pbxCallBody').innerHTML=
+    head+'<div style="font-size:17px;font-weight:800;margin-top:6px">'+who+'</div>'+
+    (ord?'<div style="font-size:13px;color:var(--mut,#555);margin-top:3px">'+ord+'</div>':'')+
+    '<div style="font-size:11.5px;color:var(--mut,#999);direction:ltr;margin-top:3px">+'+escW(num)+'</div>'+
+    '<div style="display:flex;gap:8px;margin-top:12px">'+btns+'</div>'+
+    '<button onclick="pbxOpenCall(\''+escW(num)+'\')" style="width:100%;margin-top:8px;padding:8px;border:0;border-radius:10px;background:var(--bg2,#f1f5f9);color:var(--txt,#334);font-weight:600;cursor:pointer">💬 פתח שיחת וואטסאפ</button>';
 }
 
 async function bootApp(){
@@ -5899,6 +5996,7 @@ async function bootApp(){
   waSWReady();   // רישום service worker (PWA/push) — לא חוסם
   if(S.branchId){ startPoll(); startNotifPoll(); handleDeepLink(); navPendingApply(); waBadgeClear(); }
   startPbxPoll();   // 📞 פופאפ שיחה נכנסת מ-1com (פעיל רק כשיש מפתח אדמין)
+  startPbxSip();    // ☎️ טלפון WebRTC מוטמע (ענה/נתק מהמחשב) — admin בלבד
 }
 (async()=>{
   loadState(); applyTheme();

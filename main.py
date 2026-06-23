@@ -6130,6 +6130,50 @@ def pbx_incoming(after_id: int = 0, x_admin_key: Optional[str] = Header(None)):
     return {"calls": db.pbx_calls_since(after_id)}
 
 
+@app.get("/api/admin/pbx/webrtc-config")
+def pbx_webrtc_config(x_admin_key: Optional[str] = Header(None)):
+    """פרטי חיבור ה-WebRTC (SIP.js) לטלפון המוטמע בקונסולת האדמין — שלוחה 202 מול 1com.
+    מוגש רק לאדמין מאומת; הסיסמה מגיעה מ-env (לא בקוד)."""
+    _require_admin(x_admin_key)
+    wss = os.environ.get("PBX_SIP_WSS", "")
+    return {
+        "enabled": bool(wss),
+        "wss": wss,
+        "user": os.environ.get("PBX_SIP_USER", ""),
+        "password": os.environ.get("PBX_SIP_PASS", ""),
+        "server": os.environ.get("PBX_SIP_SERVER", ""),
+    }
+
+
+@app.get("/api/admin/pbx/lookup")
+def pbx_lookup(phone: str = "", x_admin_key: Optional[str] = Header(None)):
+    """זיהוי מתקשר לפי מספר — לשימוש הטלפון המוטמע ברגע שיחה נכנסת (INVITE).
+    מחזיר שם + מס' הזמנות + הזמנה אחרונה + פריטים."""
+    _require_admin(x_admin_key)
+    import wa
+    intl = _il_phone(phone) if phone else ""
+    name, orders, order_number, items, last_status = "", [], "", "", ""
+    if intl:
+        try:
+            orders = wa._wc_orders_by_phone(intl) or []
+            if orders:
+                name = (orders[0].get("name") or "").strip()
+                last_status = orders[0].get("status") or ""
+                order_number = str(orders[0].get("number") or "")
+                items = ", ".join(orders[0].get("items") or [])
+        except Exception:  # noqa: BLE001
+            pass
+        if not name:
+            try:
+                c = db.wa_contact_get(intl)
+                if c:
+                    name = (c.get("name") or "").strip()
+            except Exception:  # noqa: BLE001
+                pass
+    return {"phone": intl, "name": name, "orders": len(orders),
+            "order_number": order_number, "items": items, "last_status": last_status}
+
+
 @app.get("/api/pbx/wa-invite")
 def pbx_wa_invite(phone: str = "", key: str = "", uid: str = ""):
     """הקשה 1 ב-IVR ('נציג דיגיטלי בוואטסאפ') → שולח ללקוח תבנית פתיחה נייטיב ומפעיל את
