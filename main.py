@@ -6119,6 +6119,38 @@ def pbx_call(phone: str = "", key: str = "", dir: str = "", uid: str = "", name:
     return PlainTextResponse(label)
 
 
+@app.get("/api/pbx/wa-invite")
+def pbx_wa_invite(phone: str = "", key: str = "", uid: str = ""):
+    """הקשה 1 ב-IVR ('נציג דיגיטלי בוואטסאפ') → שולח ללקוח תבנית פתיחה נייטיב ומפעיל את
+    אורי (תשובת הלקוח תגיע לבוט). מחליף את ה-curl הישן (make.com→קונקטופ) שמת במעבר לנייטיב."""
+    from fastapi.responses import PlainTextResponse
+    import wa
+    pbx_key = os.getenv("PBX_KEY", "").strip()
+    if pbx_key and key != pbx_key:
+        raise HTTPException(403, "bad key")
+    import re as _re
+    intl = _il_phone(_re.sub(r"\D", "", phone or ""))
+    if len(intl) < 11:
+        return PlainTextResponse("")
+    ok = False
+    try:
+        wa.send_wa_template(intl, "opening_massege", [])   # תבנית מאושרת, עוברת גם מחוץ ל-24ש
+        ok = True
+    except Exception as e:  # noqa: BLE001
+        logger.warning("pbx wa-invite send failed for %s: %s", intl, e)
+    try:
+        from datetime import datetime, timezone
+        db.sales_state_set(f"uri_eng:{intl}", datetime.now(timezone.utc).isoformat())  # הפעלת אורי
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        db.pbx_call_log(intl, "wa-invite", uid, "", 0, "sent" if ok else "fail")
+    except Exception:  # noqa: BLE001
+        pass
+    logger.info("pbx wa-invite -> %s (sent=%s)", intl, ok)
+    return PlainTextResponse("נשלח" if ok else "")
+
+
 @app.get("/api/admin/pbx/calls")
 def pbx_calls_list(x_admin_key: Optional[str] = Header(None)):
     """יומן השיחות האחרונות שנקלטו ממרכזיית 1com (לקונסולת ניהול)."""
