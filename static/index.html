@@ -1069,7 +1069,8 @@ function renderDrawer(){
     <div class="dr-head"><span>🟢 GreenOS — ניהול אופרציה</span><button class="dr-x" onclick="toggleDrawer(false)">✕</button></div>
     <div class="dr-sec">קליטת העברות</div>
     <div class="dr-item ${S.view==='board'||S.view==='scan'?'active':''}" onclick="hubGo('board')"><span>${ico('pkg',16)}</span><span>לוח קליטה</span></div>
-    <div class="dr-item ${act('admin')}" onclick="hubGo('admin')"><span>${ico('wrench',16)}</span><span>קונסולת ניהול${lock}</span></div>
+    <div class="dr-item ${S.view==='admin'&&S.adminTab!=='crm'?'active':''}" onclick="hubGo('admin')"><span>${ico('wrench',16)}</span><span>קונסולת ניהול${lock}</span></div>
+    <div class="dr-item ${S.view==='admin'&&S.adminTab==='crm'?'active':''}" onclick="hubGoCrm()"><span>${ico('user',16)}</span><span>מוקד שיחות · CRM${lock}</span></div>
     <div class="dr-sec">מכירות</div>
     <div class="dr-item" onclick="toggleDrawer(false);if(ensureAdmin(payQuickOpen))payQuickOpen()"><span>${ico('receipt',16)}</span><span>קישור תשלום מהיר${lock}</span></div>
     <div class="dr-sec">Hub</div>
@@ -1140,6 +1141,12 @@ function hubGo(view){
     S.view='sentinel'; S.embedApp=null; loadSentinel(true); return;
   }
   S.view='board'; S.embedApp=null; render();
+}
+function hubGoCrm(){
+  toggleDrawer(false);
+  if(!ensureAdmin(hubGoCrm)) return;
+  S.view='admin'; S.adminTab='crm'; S.embedApp=null;
+  if(S.adminData) renderAdmin(); else loadAdmin(true);   // renderAdmin מכבד adminTab==='crm'
 }
 async function hubOpen(key){
   const a=HUB_APPS.find(x=>x.key===key); if(!a) return;
@@ -1694,7 +1701,6 @@ function adminTabsHTML(){
       <button class="${a('order')}" onclick="setAdminTab('order')">${ico('list',15)} טיוטת הזמנה${oc}</button>
     </div>
     <button class="${a('removals')}" onclick="setAdminTab('removals')">${ico('trendDown',15)} הורדות מרלוג</button>
-    <button class="${a('crm')}" onclick="setAdminTab('crm')">${ico('user',15)} מוקד · CRM</button>
   </div>`;
 }
 function setAdminTab(tab){
