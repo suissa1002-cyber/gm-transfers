@@ -6077,6 +6077,15 @@ def pay_done(ok: str = "1"):
 </body></html>""")
 
 
+# tokens באנגלית ב-URL של ה-curl (1com שומר ASCII בלבד באמינות + ללא בעיות קידוד),
+# וכאן ממפים לתווית עברית לתצוגה בפופאפ. נתיב היררכי נבנה ב-db.pbx_call_upsert.
+_PBX_ROUTE_LABELS = {
+    "city": "סיטי", "star": "סטאר", "ganhair": "גן העיר", "orders": "הזמנות",
+    "adhalom": "עד הלום", "shop": "חנות", "lab": "מעבדה",
+    "order_new": "הזמנה חדשה", "order_exist": "הזמנה קיימת", "wa": "וואטסאפ",
+}
+
+
 @app.get("/api/pbx/call")
 def pbx_call(phone: str = "", key: str = "", dir: str = "", uid: str = "",
              name: str = "", route: str = ""):
@@ -6087,6 +6096,7 @@ def pbx_call(phone: str = "", key: str = "", dir: str = "", uid: str = "",
     pbx_key = os.getenv("PBX_KEY", "").strip()
     if pbx_key and key != pbx_key:
         raise HTTPException(403, "bad key")
+    route = _PBX_ROUTE_LABELS.get((route or "").strip().lower(), (route or "").strip())
     import re as _re
     raw = _re.sub(r"\D", "", phone or "")
     intl = _il_phone(raw)
