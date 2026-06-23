@@ -6115,19 +6115,22 @@ def pbx_call(phone: str = "", key: str = "", dir: str = "", uid: str = "",
     else:
         label = ""   # לא מזוהה — המרכזייה תציג את המספר הגולמי
     try:
-        db.pbx_call_log(intl, dir or "in", uid, cname, n, last_status,
-                        route=route, order_number=order_number, items=items)
+        _id, _new = db.pbx_call_upsert(intl, dir or "in", uid, cname, n, last_status,
+                                       route=route, order_number=order_number, items=items)
     except Exception as e:  # noqa: BLE001
+        _new = True
         logger.warning("pbx call log failed: %s", e)
-    logger.info("pbx call %s (%s, route=%s) -> matched=%r orders=%d", intl, dir or "in", route, cname, n)
+    logger.info("pbx call %s (%s, route=%s) -> matched=%r orders=%d new=%s",
+                intl, dir or "in", route, cname, n, locals().get("_new"))
     return PlainTextResponse(label)
 
 
 @app.get("/api/admin/pbx/incoming")
 def pbx_incoming(after_id: int = 0, x_admin_key: Optional[str] = Header(None)):
-    """פולינג לפופאפ שיחה נכנסת — שיחות חדשות מאז after_id (ה-frontend מציג חלון קופץ)."""
+    """פולינג לפופאפ שיחה נכנסת — שיחות *פעילות* (חלון אחרון) כולל ה-route שנבחר ב-IVR.
+    ה-frontend מזהה שיחה חדשה וגם שינוי שלוחה על אותה שיחה (after_id נשמר לתאימות, מתעלמים)."""
     _require_admin(x_admin_key)
-    return {"calls": db.pbx_calls_since(after_id)}
+    return {"calls": db.pbx_calls_active()}
 
 
 @app.get("/api/admin/pbx/webrtc-config")

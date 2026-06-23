@@ -1867,6 +1867,72 @@ def pbx_calls_since(after_id: int = 0) -> list:
         return [dict(r) for r in cur.fetchall()]
 
 
+def pbx_call_upsert(phone, direction, uid, name, orders, last_status,
+                    route="", order_number="", items="", window_sec: int = 120) -> tuple:
+    """שיחה נכנסת מ-1com: אם קיימת שורה טרייה (תוך window_sec שניות) לאותו מספר+כיוון —
+    *מעדכן* אותה (ממזג את ה-route שנבחר ב-IVR + הזיהוי) במקום ליצור שורה חדשה. כך שיחה אחת
+    = שורה אחת = פופאפ אחד שמתעדכן כשהמתקשר בוחר שלוחה. מחזיר (id, is_new)."""
+    direction = direction or "in"
+    phone = str(phone or "")
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT id, route, matched_name, orders, last_status, order_number, items, ts "
+                       "FROM pbx_calls WHERE phone=? AND direction=? ORDER BY id DESC LIMIT 1"),
+                    (phone, direction))
+        row = cur.fetchone()
+        recent = False
+        r = dict(row) if row else {}
+        if row:
+            try:
+                ts = datetime.fromisoformat(str(r.get("ts")))
+                recent = (datetime.now(timezone.utc).astimezone() - ts).total_seconds() <= window_sec
+            except Exception:  # noqa: BLE001
+                recent = False
+        if row and recent:
+            rid = int(r["id"])
+            # מיזוג: ערך חדש לא-ריק גובר, אחרת שומרים את הקיים (כניסה גנרית לא מוחקת זיהוי/route)
+            cur.execute(_q("UPDATE pbx_calls SET route=?, matched_name=?, orders=?, last_status=?, "
+                           "order_number=?, items=?, ts=? WHERE id=?"),
+                        (str(route or "") or str(r.get("route") or ""),
+                         str(name or "") or str(r.get("matched_name") or ""),
+                         int(orders or 0) or int(r.get("orders") or 0),
+                         str(last_status or "") or str(r.get("last_status") or ""),
+                         str(order_number or "") or str(r.get("order_number") or ""),
+                         str(items or "") or str(r.get("items") or ""),
+                         now_iso(), rid))
+            return (rid, False)
+        cur.execute(_q(
+            "INSERT INTO pbx_calls (phone, direction, uid, matched_name, orders, last_status, "
+            "route, order_number, items, ts) VALUES (?,?,?,?,?,?,?,?,?,?)"),
+            (phone, direction, str(uid or ""), str(name or ""), int(orders or 0),
+             str(last_status or ""), str(route or ""), str(order_number or ""),
+             str(items or ""), now_iso()))
+        try:
+            return (int(cur.lastrowid), True)
+        except Exception:  # noqa: BLE001
+            return (0, True)
+
+
+def pbx_calls_active(window_sec: int = 150) -> list:
+    """שיחות נכנסות *פעילות* (ts בחלון האחרון) לפולינג הפופאפ — כולל ה-route העדכני.
+    מאפשר ל-frontend לזהות גם שיחה חדשה וגם שינוי שלוחה (route) על אותה שיחה."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT id, phone, direction, matched_name, orders, last_status, "
+                       "route, order_number, items, ts FROM pbx_calls "
+                       "WHERE direction='in' ORDER BY id DESC LIMIT 30"))
+        rows = [dict(r) for r in cur.fetchall()]
+    nowt = datetime.now(timezone.utc).astimezone()
+    out = []
+    for r in rows:
+        try:
+            if (nowt - datetime.fromisoformat(str(r.get("ts")))).total_seconds() <= window_sec:
+                out.append(r)
+        except Exception:  # noqa: BLE001
+            out.append(r)
+    return out
+
+
 # ── 💬 וואטסאפ: מטא משלנו (מעקב/הערות) ──
 def wa_star_set(phone: str, star: bool):
     with _conn() as c:
