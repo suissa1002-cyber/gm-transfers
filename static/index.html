@@ -5950,7 +5950,7 @@ function pbxOpenCall(phone){
 }
 
 // ── ☎️ טלפון WebRTC מוטמע (JsSIP) — שלוחה 202 מול 1com. ענה/נתק/השתק בתוך הפופאפ ──
-let _pbxUA=null, _pbxSession=null, _pbxCallTimer=null, _pbxCallStart=0, _pbxSipReg=false;
+let _pbxUA=null, _pbxSession=null, _pbxCallTimer=null, _pbxCallStart=0, _pbxSipReg=false, _pbxAnswered=false;
 async function startPbxSip(){
   if(_pbxUA || !S.adminKey) return;
   let cfg; try{ cfg=await api('/api/admin/pbx/webrtc-config'); }catch(e){ return; }
@@ -5975,7 +5975,7 @@ function pbxSipNumber(s){ try{ return (s.remote_identity&&s.remote_identity.uri&
 function pbxAudioEl(){ let a=document.getElementById('pbxRemoteAudio'); if(!a){ a=document.createElement('audio'); a.id='pbxRemoteAudio'; a.autoplay=true; a.style.display='none'; document.body.appendChild(a); } return a; }
 async function pbxHandleIncoming(session){
   if(_pbxSession){ try{ session.terminate({status_code:486}); }catch(e){} return; }   // כבר בשיחה → תפוס
-  _pbxSession=session;
+  _pbxSession=session; _pbxAnswered=false;
   const num=pbxSipNumber(session);
   let info={name:'',order_number:'',items:'',orders:0};
   try{ info=await api('/api/admin/pbx/lookup?phone='+encodeURIComponent(num)); }catch(e){}
@@ -5997,23 +5997,42 @@ function pbxOnAccepted(session){
     if(pc){ const ms=new MediaStream(); pc.getReceivers().forEach(r=>{ if(r.track) ms.addTrack(r.track); });
       const a=pbxAudioEl(); a.srcObject=ms; a.play().catch(()=>{}); }
   }catch(e){}
+  _pbxAnswered=true;
   if(!_pbxCallTimer) pbxStartTimer();
   pbxUpdateCallPopup('incall');
 }
+function pbxRestoreWrap(){ const w=document.getElementById('pbxWrap'); if(w) w.style.display=''; _pbxSig=''; }
 function pbxHangup(){ if(_pbxSession){ try{ _pbxSession.terminate(); }catch(e){} } pbxEndCall(); }
 function pbxToggleMute(){ if(!_pbxSession) return false;
   try{ const m=_pbxSession.isMuted&&_pbxSession.isMuted().audio;
     if(m) _pbxSession.unmute({audio:true}); else _pbxSession.mute({audio:true}); return !m; }catch(e){ return false; } }
 function pbxMuteBtn(btn){ const m=pbxToggleMute(); btn.textContent=m?'🔊 בטל השתקה':'🔇 השתק'; btn.style.background=m?'#1db954':'#64748b'; }
-function pbxEndCall(){ _pbxSession=null; pbxStopTimer();
+function pbxEndCall(){
+  const wasAnswered=_pbxAnswered, secs=_pbxCallStart?Math.floor((Date.now()-_pbxCallStart)/1000):0;
+  _pbxSession=null; _pbxAnswered=false; pbxStopTimer();
   const a=document.getElementById('pbxRemoteAudio'); if(a){ try{a.srcObject=null;}catch(e){} }
-  const e=document.getElementById('pbxCallPop'); if(e) e.remove(); }
+  const div=document.getElementById('pbxCallPop');
+  if(div){   // אחרי ניתוק — מציגים את המצב הסופי ~10ש' ואז נעלם
+    const num=div._num, who=div._who;
+    const dur=('0'+Math.floor(secs/60)).slice(-2)+':'+('0'+(secs%60)).slice(-2);
+    const ended = wasAnswered
+      ? '<div style="font-size:13px;color:var(--mut,#888);font-weight:800">✓ השיחה הסתיימה · '+dur+'</div>'
+      : '<div style="font-size:13px;color:#e23b3b;font-weight:800">📵 שיחה שלא נענתה</div>';
+    if(!wasAnswered) div.style.border='1px solid #e23b3b';
+    const body=div.querySelector('#pbxCallBody');
+    if(body) body.innerHTML=ended+
+      '<div style="font-size:17px;font-weight:800;margin-top:6px">'+who+'</div>'+
+      '<div style="font-size:11.5px;color:var(--mut,#999);direction:ltr;margin-top:3px">+'+escW(num)+'</div>'+
+      '<button onclick="pbxOpenCall(\''+escW(num)+'\')" style="width:100%;margin-top:12px;padding:9px;border:0;border-radius:10px;background:var(--green,#1db954);color:#fff;font-weight:700;cursor:pointer">💬 פתח שיחה</button>';
+    setTimeout(()=>{ const x=document.getElementById('pbxCallPop'); if(x) x.remove(); pbxRestoreWrap(); }, 10000);
+  } else { pbxRestoreWrap(); }
+}
 function pbxStartTimer(){ _pbxCallStart=Date.now(); pbxStopTimer();
   _pbxCallTimer=setInterval(()=>{ const el=document.getElementById('pbxCallTime'); if(el){ const s=Math.floor((Date.now()-_pbxCallStart)/1000); el.textContent=('0'+Math.floor(s/60)).slice(-2)+':'+('0'+(s%60)).slice(-2); } },1000); }
 function pbxStopTimer(){ if(_pbxCallTimer){ clearInterval(_pbxCallTimer); _pbxCallTimer=null; } }
 function pbxShowCallPopup(num, info, state){
   const old=document.getElementById('pbxCallPop'); if(old) old.remove();
-  const pp=document.getElementById('pbxPop'); if(pp) pp.remove();   // לא להציג גם פופאפ פולינג וגם שיחה
+  const w=document.getElementById('pbxWrap'); if(w) w.style.display='none';   // מסתירים את כרטיסי הפולינג בזמן שיחת SIP
   const div=document.createElement('div'); div.id='pbxCallPop';
   div._num=num;
   div._who=escW((info&&info.name)||('+'+num));
