@@ -5875,28 +5875,50 @@ async function pbxPoll(){
 }
 function pbxClosePopup(){ const e=document.getElementById('pbxPop'); if(e) e.remove(); _pbxCurId=null; }
 function pbxShowPopup(c, isUpdate){
-  const head=c.route?('📞 שיחה → '+escW(c.route)):'📞 שיחה נכנסת';   // route = הסניף/השלוחה שהמתקשר בחר
-  const who=escW(c.matched_name||('+'+c.phone));
-  const ord=c.order_number?('הזמנה #'+escW(c.order_number)+(c.items?(' · '+escW(c.items)):'')):'';
+  // ── באנר הסניף: breadcrump מהנתיב המצטבר (סיטי › מעבדה); מאיר בירוק כשנבחרה שלוחה ──
+  const segs=(c.route||'').split(' › ').filter(Boolean);
+  const routed=segs.length>0;
+  const crumb=segs.map((s,i)=>(i?'<span style="opacity:.55;margin:0 5px;font-weight:600">›</span>':'')+
+    '<span style="font-weight:'+(i===segs.length-1?'800':'600')+';opacity:'+(i===segs.length-1?'1':'.8')+'">'+escW(s)+'</span>').join('');
+  const who=escW(c.matched_name||'לקוח לא מזוהה');
+  const ordersN=c.orders||0;
+  const countChip=ordersN>1?'<span style="background:rgba(29,185,84,.14);color:var(--green,#1db954);font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;white-space:nowrap;flex-shrink:0">'+ordersN+' הזמנות</span>':'';
+  const orderBox=c.order_number
+    ? '<div style="border:1px solid var(--line,#e2e8f0);border-radius:10px;padding:8px 10px;margin-top:10px;background:rgba(0,0,0,.025)">'+
+        '<div style="font-size:11.5px;color:var(--mut,#64748b);margin-bottom:2px">🧾 הזמנה אחרונה</div>'+
+        '<div style="font-weight:800;font-size:14px;direction:ltr;text-align:right">#'+escW(c.order_number)+'</div>'+
+        (c.items?'<div style="font-size:12.5px;color:var(--mut,#475569);margin-top:3px;line-height:1.45">'+escW(c.items)+'</div>':'')+
+      '</div>'
+    : '<div style="font-size:12.5px;color:var(--mut,#94a3b8);margin-top:8px;text-align:center">— אין הזמנות במערכת —</div>';
   let div=document.getElementById('pbxPop');
   if(!div){   // יוצרים פעם אחת; מכאן ואילך רק מעדכנים תוכן → אין remove/recreate → אין הבהוב
     div=document.createElement('div'); div.id='pbxPop';
-    div.style.cssText='position:fixed;bottom:20px;left:20px;z-index:99999;width:min(350px,92vw);'+
-      'background:var(--card,#fff);border:1px solid var(--line,#e2e8f0);border-radius:16px;'+
-      'box-shadow:0 16px 44px rgba(0,0,0,.28);padding:14px 16px;font-family:inherit;color:var(--txt,#1a2230);'+
-      'transition:box-shadow .2s';
+    div.style.cssText='position:fixed;bottom:20px;left:20px;z-index:99999;width:min(340px,92vw);'+
+      'background:var(--card,#fff);border:1px solid var(--line,#e2e8f0);border-radius:16px;overflow:hidden;'+
+      'box-shadow:0 16px 44px rgba(0,0,0,.28);padding:0;font-family:inherit;color:var(--txt,#1a2230)';
     document.body.appendChild(div);
   }
   div.setAttribute('data-callid', String(c.id));
-  div.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'+
-    '<b style="font-size:14.5px">'+head+'</b>'+
-    '<button onclick="pbxClosePopup()" style="background:none;border:0;font-size:18px;cursor:pointer;color:var(--mut,#888)">✕</button></div>'+
-    '<div style="font-size:16px;font-weight:700">'+who+'</div>'+
-    (ord?'<div style="font-size:13px;color:var(--mut,#555);margin-top:3px">'+ord+'</div>'
-        :'<div style="font-size:13px;color:var(--mut,#999);margin-top:3px">לקוח לא מזוהה</div>')+
-    '<div style="font-size:11.5px;color:var(--mut,#999);direction:ltr;margin-top:3px">+'+escW(c.phone)+'</div>'+
-    '<button onclick="pbxOpenCall(\''+escW(c.phone)+'\')" style="width:100%;margin-top:10px;padding:9px;'+
-    'border:0;border-radius:10px;background:var(--green,#1db954);color:#fff;font-weight:600;cursor:pointer">💬 פתח שיחה</button>';
+  div.innerHTML=
+    '<div style="padding:9px 13px;background:'+(routed?'var(--green,#1db954)':'#334155')+';color:#fff;display:flex;justify-content:space-between;align-items:center;gap:8px;transition:background .25s">'+
+      '<div style="min-width:0">'+
+        '<div style="font-size:10.5px;opacity:.82;margin-bottom:1px">'+(routed?'📞 מיועד ל':'📞 שיחה נכנסת')+'</div>'+
+        '<div style="font-size:15px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(routed?crumb:'ממתינה לניתוב…')+'</div>'+
+      '</div>'+
+      '<button onclick="pbxClosePopup()" style="background:rgba(255,255,255,.18);border:0;width:24px;height:24px;border-radius:50%;font-size:13px;cursor:pointer;color:#fff;flex-shrink:0;line-height:1">✕</button>'+
+    '</div>'+
+    '<div style="padding:12px 14px 14px">'+
+      '<div style="display:flex;align-items:center;gap:9px">'+
+        '<div style="width:34px;height:34px;border-radius:50%;background:rgba(29,185,84,.13);display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0">👤</div>'+
+        '<div style="min-width:0;flex:1">'+
+          '<div style="font-size:15.5px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+who+'</div>'+
+          '<div style="font-size:11.5px;color:var(--mut,#94a3b8);direction:ltr;text-align:right">+'+escW(c.phone)+'</div>'+
+        '</div>'+
+        countChip+
+      '</div>'+
+      orderBox+
+      '<button onclick="pbxOpenCall(\''+escW(c.phone)+'\')" style="width:100%;margin-top:12px;padding:10px;border:0;border-radius:10px;background:var(--green,#1db954);color:#fff;font-weight:700;font-size:14px;cursor:pointer">💬 פתח שיחה</button>'+
+    '</div>';
   _pbxCurId=c.id;
   try{ if(navigator.vibrate) navigator.vibrate(isUpdate?120:200); }catch(e){}   // רטט עדין כשנבחרת שלוחה
 }
