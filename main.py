@@ -6077,6 +6077,52 @@ def pay_done(ok: str = "1"):
 </body></html>""")
 
 
+@app.get("/api/pbx/call")
+def pbx_call(phone: str = "", key: str = "", dir: str = "", uid: str = "", name: str = ""):
+    """Webhook ממרכזיית 1com (Recover an URL using Curl) — מזהה לקוח לפי מספר המתקשר,
+    מתעד את השיחה, ומחזיר טקסט קצר לתצוגה על צג הנציג (1com 'מחסן תוצאות' → CallerID name)."""
+    from fastapi.responses import PlainTextResponse
+    pbx_key = os.getenv("PBX_KEY", "").strip()
+    if pbx_key and key != pbx_key:
+        raise HTTPException(403, "bad key")
+    import re as _re
+    raw = _re.sub(r"\D", "", phone or "")
+    intl = _il_phone(raw)
+    cname = ""
+    try:
+        c = db.wa_contact_get(intl) or (db.wa_contact_get(raw) if raw != intl else None) or {}
+        cname = (c.get("name") or "").strip()
+    except Exception:  # noqa: BLE001
+        pass
+    orders, last_status = [], ""
+    try:
+        orders = wa._wc_orders_by_phone(intl) or []
+        if orders:
+            last_status = orders[0].get("status") or ""
+    except Exception:  # noqa: BLE001
+        pass
+    n = len(orders)
+    if cname:
+        label = cname + (f" · {n} הזמנות" if n else "")
+    elif n:
+        label = f"לקוח · {n} הזמנות"
+    else:
+        label = ""   # לא מזוהה — המרכזייה תציג את המספר הגולמי
+    try:
+        db.pbx_call_log(intl, dir or "in", uid, cname, n, last_status)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("pbx call log failed: %s", e)
+    logger.info("pbx call %s (%s) -> matched=%r orders=%d", intl, dir or "in", cname, n)
+    return PlainTextResponse(label)
+
+
+@app.get("/api/admin/pbx/calls")
+def pbx_calls_list(x_admin_key: Optional[str] = Header(None)):
+    """יומן השיחות האחרונות שנקלטו ממרכזיית 1com (לקונסולת ניהול)."""
+    _require_admin(x_admin_key)
+    return {"calls": db.pbx_calls_recent(150)}
+
+
 @app.get("/api/admin/wa/order/paystatus/{order_id}")
 def wa_order_paystatus(order_id: int, x_admin_key: Optional[str] = Header(None)):
     """בדיקת מצב תשלום של הזמנה — ל-polling מה-frontend בזמן שה-iframe פתוח.

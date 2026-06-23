@@ -410,6 +410,20 @@ _SCHEMA = [
         created_at TEXT
     )
     """.format(pk=_PK),
+    # ── יומן שיחות טלפון ממרכזיית 1com (webhook) — זיהוי לקוח לפי מספר ──
+    """
+    CREATE TABLE IF NOT EXISTS pbx_calls (
+        id           {pk},
+        phone        TEXT,
+        direction    TEXT,
+        uid          TEXT,
+        matched_name TEXT,
+        orders       INTEGER,
+        last_status  TEXT,
+        ts           TEXT
+    )
+    """.format(pk=_PK),
+    "CREATE INDEX IF NOT EXISTS idx_pbx_calls_phone ON pbx_calls(phone)",
     # ── WhatsApp עצמאי (פרויקט ניתוק קונקטופ) — חנות ההודעות שלנו ──
     # מתמלאת מ-webhook ישיר של מטא. כל הודעה (נכנסת/יוצאת) + מדיה + סטטוס מסירה.
     """
@@ -1812,6 +1826,24 @@ def shift_alerts_clear(ids: list) -> None:
         cur = c.cursor()
         for i in ids:
             cur.execute(_q("DELETE FROM pending_shift_alerts WHERE id=?"), (int(i),))
+
+
+def pbx_call_log(phone, direction, uid, name, orders, last_status) -> None:
+    """תיעוד שיחת טלפון ממרכזיית 1com."""
+    with _conn() as c:
+        c.cursor().execute(_q(
+            "INSERT INTO pbx_calls (phone, direction, uid, matched_name, orders, last_status, ts) "
+            "VALUES (?,?,?,?,?,?,?)"),
+            (str(phone or ""), str(direction or ""), str(uid or ""), str(name or ""),
+             int(orders or 0), str(last_status or ""), now_iso()))
+
+
+def pbx_calls_recent(limit: int = 100) -> list:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT phone, direction, uid, matched_name, orders, last_status, ts "
+                       "FROM pbx_calls ORDER BY id DESC LIMIT ?"), (int(limit),))
+        return [dict(r) for r in cur.fetchall()]
 
 
 # ── 💬 וואטסאפ: מטא משלנו (מעקב/הערות) ──
