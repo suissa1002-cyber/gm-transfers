@@ -1890,10 +1890,21 @@ def pbx_call_upsert(phone, direction, uid, name, orders, last_status,
                 recent = False
         if row and recent:
             rid = int(r["id"])
-            # מיזוג: ערך חדש לא-ריק גובר, אחרת שומרים את הקיים (כניסה גנרית לא מוחקת זיהוי/route)
+            # route מצטבר היררכי: כל רמת הקשה ב-IVR מוסיפה מקטע לנתיב ("סיטי › מעבדה").
+            # כניסה גנרית (route ריק) לא משנה; מקטע זהה לאחרון לא מוכפל.
+            existing_route = str(r.get("route") or "")
+            seg = str(route or "").strip()
+            if seg:
+                parts = [p for p in existing_route.split(" › ") if p]
+                if not parts or parts[-1] != seg:
+                    parts.append(seg)
+                new_route = " › ".join(parts)
+            else:
+                new_route = existing_route
+            # מיזוג שאר השדות: ערך חדש לא-ריק גובר, אחרת שומרים את הקיים (לא מוחקים זיהוי)
             cur.execute(_q("UPDATE pbx_calls SET route=?, matched_name=?, orders=?, last_status=?, "
                            "order_number=?, items=?, ts=? WHERE id=?"),
-                        (str(route or "") or str(r.get("route") or ""),
+                        (new_route,
                          str(name or "") or str(r.get("matched_name") or ""),
                          int(orders or 0) or int(r.get("orders") or 0),
                          str(last_status or "") or str(r.get("last_status") or ""),
