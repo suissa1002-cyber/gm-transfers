@@ -476,10 +476,26 @@ def _uri_engaged(phone, minutes=5) -> bool:
         return False
 
 
+def _uri_recently_alive(minutes=15) -> bool:
+    """heartbeat טרי-יחסית — restart/deploy חולף ולא תקלה ממושכת. המשימות נשמרות
+    בתור ומעובדות כשהשירות חוזר (~דקה), אז עדיף לתייג מאשר ליפול ל-GREET גנרי."""
+    import db
+    last = db.sales_state_get("uri_bridge_ping")
+    if not last:
+        return False
+    from datetime import datetime
+    try:
+        t = datetime.fromisoformat(str(last))
+        return (datetime.now(t.tzinfo) - t).total_seconds() < minutes * 60
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def _ask_uri(phone, question, wamid="") -> bool:
-    """מנתב שאלה לאורי (תשובה תישלח אוטומטית כשתחזור). False אם הגשר לא זמין.
-    מצרף מוצרים מועמדים מהחיפוש כדי שאורי יענה מהר — בלי סבב כלים."""
-    if not _uri_alive():
+    """מנתב שאלה לאורי (תשובה תישלח אוטומטית כשתחזור). מצרף מוצרים מועמדים מהחיפוש
+    כדי שאורי יענה מהר. False רק בתקלה ממושכת (לא restart חולף)."""
+    # restart/deploy חולף → עדיין מתורים (אורי יענה כשיחזור). רק outage >15 דק' → fallback.
+    if not _uri_alive() and not _uri_recently_alive(minutes=15):
         return False
     import main
     # "כמה רגעים, בודק עבורך" — רק בתחילת שיחה (כשעוד לא מעורב עם אורי), פעם אחת.
