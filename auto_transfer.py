@@ -313,7 +313,10 @@ def _handle_order(o: dict, catalog: dict) -> list:
         # ── איזון אוטומטי: מפזרים את עודף הסניפים (כל מה מעל 1) לסניפים הריקים (0),
         # יעד לפי BALANCE_TARGET (סטאר קודם), מקור = העודף הגדול ביותר, שומר ≥1 ──
         try:
-            if not _has_open_balance(sku):
+            # ⚠️ איזון אוטומטי **רק למכשירים סריאליים** — לא לאביזרים/לא-סריאליים
+            # (הוראת אסי). אחרת השלמה מיותרת מבלבלת את הסניף (הזמנה 47343: Anker
+            # לא-סריאלי הפיק השלמה עד הלום→סיטי ששמואל שלח בטעות).
+            if is_serial and not _has_open_balance(sku):
                 eff = {b: int(stock.get(b) or 0) for b in (1, 2, 3, 4)}
                 for b, tk in used:
                     eff[b] = eff.get(b, 0) - tk     # מה שההזמנה כבר לקחה
@@ -498,9 +501,14 @@ def _alert_created(o, created):
     for c in created:
         bysrc.setdefault(c["src"], []).append(c)
     for src, items in bysrc.items():
-        body = "\n".join(f"• {c['name']} ×{c['qty']}" for c in items)
-        shift_dm_branch(src, f"🔔 <b>בקשת העברה חדשה — {cfg.branch_name(src)}</b>\n"
-                             f"הזמנת אתר #{o.get('number')}:\n{body}\n\nנא להכין להעברה.")
+        # יעד מפורש לכל פריט: הזמנה → לאתר; השלמה → לסניף היעד (מונע שליחה למקום הלא נכון)
+        body = "\n".join(
+            f"• {c['name']} ×{c['qty']} → "
+            + (f"השלמת מלאי ל{cfg.branch_name(c.get('to'))}" if c.get('balance') else "לאתר 🌐")
+            for c in items)
+        is_bal = all(c.get('balance') for c in items)
+        head = ("🔄 <b>השלמת מלאי</b>" if is_bal else f"🔔 <b>בקשת העברה — הזמנת אתר #{o.get('number')}</b>")
+        shift_dm_branch(src, f"{head} · מ{cfg.branch_name(src)}\n{body}\n\nנא להכין להעברה ליעד המצוין.")
 
 
 def _intl_phone(raw) -> str:
