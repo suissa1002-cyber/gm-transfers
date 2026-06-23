@@ -5996,13 +5996,20 @@ def pay_landing(err: str = ""):
 
 
 @app.get("/pay/go")
-def pay_go(order: str = "", request: Request = None):
-    """מאתר את קישור PayPlus של ההזמנה ומעביר אליו. רק הזמנות GreenOS פתוחות."""
+def pay_go(order: str = "", pru: str = "", request: Request = None):
+    """מאתר את קישור PayPlus ומעביר אליו. כפתור התבנית מעביר PRU (uuid) → הפניה ישירה
+    לדף PayPlus; מספר הזמנה (ספרות) → חיפוש ההזמנה ב-WC (רק הזמנות GreenOS פתוחות)."""
     import requests as _rq
     from fastapi.responses import RedirectResponse
     ip = _client_ip(request) if request else ""
     if not _pay_rate_ok(ip):
         raise HTTPException(429, "יותר מדי ניסיונות — נסו שוב בעוד דקה")
+    # כפתור התבנית (payment_link) מעביר את ה-PRU של PayPlus כסיומת ל-URL — uuid עם
+    # מקפים. זיהוי PRU → הפניה ישירה לדף התשלום (גם לתשלום כללי בלי הזמנת WC).
+    cand = (pru or order or "").strip()
+    if cand and "-" in cand and 20 <= len(cand) <= 80 and all(c.isalnum() or c == "-" for c in cand):
+        return RedirectResponse(f"https://payments.payplus.co.il/{cand}"
+                                "?utm_source=GreenOS&utm_medium=wa-btn", status_code=302)
     oid = "".join(ch for ch in (order or "") if ch.isdigit())
     creds = _wc_creds()
     if not (oid and creds):
