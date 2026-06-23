@@ -1296,8 +1296,8 @@ function renderSentinel(){
       <button class="btn-ghost" onclick="loadSentinel(true)">🔄 רענן</button>
     </div>
     ${rows?`<table class="admin"><thead><tr><th style="width:40px"></th><th>בדיקה</th><th>פרטים</th></tr></thead><tbody>${rows}</tbody></table>`
-      :(d.available?'':'<div class="empty">הדיווח הראשון יגיע בריצה השעתית הבאה של ה-Sentinel (GitHub Actions). אפשר גם להריץ ידנית: workflow_dispatch.</div>')}
-    <div class="muted" style="font-size:12px;margin-top:12px">המוניטור רץ כל שעה ב-GitHub Actions, בודק: גשר Dvir · תוספים קריטיים · סניפטים פעילים · שגיאות WPCode · שמירת סניף בהזמנות איסוף. התראות בזמן אמת — בטלגרם.</div>`;
+      :(d.available?'':'<div class="empty">הדיווח הראשון יגיע בריצה הבאה של ה-Sentinel (צד-שרת, על תנועת admin/REST).</div>')}
+    <div class="muted" style="font-size:12px;margin-top:12px">המוניטור רץ צד-שרת בתוסף greenmobile-dvir-bridge (חסין-Imunify360), בודק: גשר Dvir · תוספים קריטיים · סניפטים פעילים · שגיאות WPCode · שמירת סניף בהזמנות איסוף. התראות בזמן אמת — בטלגרם.</div>`;
 }
 
 function renderEmbed(app){
