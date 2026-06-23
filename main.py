@@ -6082,6 +6082,7 @@ def pbx_call(phone: str = "", key: str = "", dir: str = "", uid: str = "", name:
     """Webhook ממרכזיית 1com (Recover an URL using Curl) — מזהה לקוח לפי מספר המתקשר,
     מתעד את השיחה, ומחזיר טקסט קצר לתצוגה על צג הנציג (1com 'מחסן תוצאות' → CallerID name)."""
     from fastapi.responses import PlainTextResponse
+    import wa
     pbx_key = os.getenv("PBX_KEY", "").strip()
     if pbx_key and key != pbx_key:
         raise HTTPException(403, "bad key")
