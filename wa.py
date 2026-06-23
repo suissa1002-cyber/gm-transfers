@@ -1219,6 +1219,9 @@ def _wc_orders_by_phone(phone: str, limit: int = 5):
             return None
         return [{
             "id": o.get("id"),
+            "number": o.get("number"),
+            "name": (f"{(o.get('billing') or {}).get('first_name', '')} "
+                     f"{(o.get('billing') or {}).get('last_name', '')}").strip(),
             "status": o.get("status"),
             "total": o.get("total"),
             "currency": o.get("currency_symbol") or "₪",

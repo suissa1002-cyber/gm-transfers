@@ -6088,19 +6088,21 @@ def pbx_call(phone: str = "", key: str = "", dir: str = "", uid: str = "", name:
     import re as _re
     raw = _re.sub(r"\D", "", phone or "")
     intl = _il_phone(raw)
-    cname = ""
-    try:
-        c = db.wa_contact_get(intl) or (db.wa_contact_get(raw) if raw != intl else None) or {}
-        cname = (c.get("name") or "").strip()
-    except Exception:  # noqa: BLE001
-        pass
-    orders, last_status = [], ""
+    orders, last_status, wc_name = [], "", ""
     try:
         orders = wa._wc_orders_by_phone(intl) or []
         if orders:
             last_status = orders[0].get("status") or ""
+            wc_name = (orders[0].get("name") or "").strip()   # שם החיוב — האמין ביותר
     except Exception:  # noqa: BLE001
         pass
+    cname = wc_name
+    if not cname:                                              # נפילה לשם וואטסאפ
+        try:
+            c = db.wa_contact_get(intl) or (db.wa_contact_get(raw) if raw != intl else None) or {}
+            cname = (c.get("name") or "").strip()
+        except Exception:  # noqa: BLE001
+            pass
     n = len(orders)
     if cname:
         label = cname + (f" · {n} הזמנות" if n else "")
