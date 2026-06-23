@@ -393,6 +393,23 @@ def register_recurring_jobs():
     # ה-cron של GitHub Actions (שנחסם עם מכסת הדקות).
     if os.getenv("KEEPALIVE_URLS", "https://invoice-manager-tfqj.onrender.com").strip():
         scheduler.add_job(_keepalive_job, "interval", minutes=10, id="keepalive", max_instances=1)
+    # מספור משימות Monday (שעתי) + סיכום פתוחות יומי (10:30 IL) — הועברו מ-GitHub Actions
+    # ("Dvir Sentinel"), שהושבת 16/06 בגלל בעיית חיוב. תשתית always-on במקום חינם שביר.
+    # עטוף ב-try כדי ש-import/תזמון בעייתי לעולם לא ימנע מה-worker לעלות.
+    try:
+        import dvir_tasks
+        from zoneinfo import ZoneInfo as _ZI3
+        scheduler.add_job(dvir_tasks.run_numberer, "interval", hours=1,
+                          id="dvir_numberer", max_instances=1, coalesce=True)
+        scheduler.add_job(dvir_tasks.run_summary, "cron", hour=10, minute=30,
+                          timezone=_ZI3(cfg.TZ), id="dvir_summary",
+                          max_instances=1, replace_existing=True)
+        # סבב מספור ראשוני אחרי הפעלה (אידמפוטנטי) — לא לחכות שעה אחרי כל deploy.
+        scheduler.add_job(dvir_tasks.run_numberer, "date", id="dvir_numberer_initial",
+                          run_date=datetime.now() + timedelta(seconds=75))
+        logger.info("registered dvir task numberer (hourly) + daily summary (10:30 IL)")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("could not register dvir task jobs: %s", e)
 
 
 @app.on_event("startup")
@@ -3409,6 +3426,16 @@ def admin_digest_send_now(x_admin_key: Optional[str] = Header(None)):
     _require_admin(x_admin_key)
     _morning_digest_job()
     return {"sent": True, "url": f"/digest/{_digest_token()}"}
+
+
+@app.post("/api/admin/dvir-tasks/run")
+def admin_dvir_tasks_run(job: str = "number", x_admin_key: Optional[str] = Header(None)):
+    """הרצה ידנית של מספור משימות / סיכום יומי (לבדיקה). job=number|summary."""
+    _require_admin(x_admin_key)
+    import dvir_tasks
+    if job == "summary":
+        return {"job": "summary", "open_tasks": dvir_tasks.run_summary()}
+    return {"job": "number", "numbered": dvir_tasks.run_numberer()}
 
 
 @app.post("/api/transfer/send-wa")
