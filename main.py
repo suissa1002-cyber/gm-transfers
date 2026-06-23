@@ -6078,9 +6078,10 @@ def pay_done(ok: str = "1"):
 
 
 @app.get("/api/pbx/call")
-def pbx_call(phone: str = "", key: str = "", dir: str = "", uid: str = "", name: str = ""):
+def pbx_call(phone: str = "", key: str = "", dir: str = "", uid: str = "",
+             name: str = "", route: str = ""):
     """Webhook ממרכזיית 1com (Recover an URL using Curl) — מזהה לקוח לפי מספר המתקשר,
-    מתעד את השיחה, ומחזיר טקסט קצר לתצוגה על צג הנציג (1com 'מחסן תוצאות' → CallerID name)."""
+    מתעד את השיחה (כולל היעד route — סיטי/מעבדה...), ומחזיר טקסט קצר לתצוגה על צג הנציג."""
     from fastapi.responses import PlainTextResponse
     import wa
     pbx_key = os.getenv("PBX_KEY", "").strip()
@@ -6089,12 +6090,14 @@ def pbx_call(phone: str = "", key: str = "", dir: str = "", uid: str = "", name:
     import re as _re
     raw = _re.sub(r"\D", "", phone or "")
     intl = _il_phone(raw)
-    orders, last_status, wc_name = [], "", ""
+    orders, last_status, wc_name, order_number, items = [], "", "", "", ""
     try:
         orders = wa._wc_orders_by_phone(intl) or []
         if orders:
             last_status = orders[0].get("status") or ""
             wc_name = (orders[0].get("name") or "").strip()   # שם החיוב — האמין ביותר
+            order_number = str(orders[0].get("number") or "")
+            items = ", ".join(orders[0].get("items") or [])
     except Exception:  # noqa: BLE001
         pass
     cname = wc_name
@@ -6112,11 +6115,19 @@ def pbx_call(phone: str = "", key: str = "", dir: str = "", uid: str = "", name:
     else:
         label = ""   # לא מזוהה — המרכזייה תציג את המספר הגולמי
     try:
-        db.pbx_call_log(intl, dir or "in", uid, cname, n, last_status)
+        db.pbx_call_log(intl, dir or "in", uid, cname, n, last_status,
+                        route=route, order_number=order_number, items=items)
     except Exception as e:  # noqa: BLE001
         logger.warning("pbx call log failed: %s", e)
-    logger.info("pbx call %s (%s) -> matched=%r orders=%d", intl, dir or "in", cname, n)
+    logger.info("pbx call %s (%s, route=%s) -> matched=%r orders=%d", intl, dir or "in", route, cname, n)
     return PlainTextResponse(label)
+
+
+@app.get("/api/admin/pbx/incoming")
+def pbx_incoming(after_id: int = 0, x_admin_key: Optional[str] = Header(None)):
+    """פולינג לפופאפ שיחה נכנסת — שיחות חדשות מאז after_id (ה-frontend מציג חלון קופץ)."""
+    _require_admin(x_admin_key)
+    return {"calls": db.pbx_calls_since(after_id)}
 
 
 @app.get("/api/pbx/wa-invite")

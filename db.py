@@ -599,6 +599,9 @@ def _migrate():
         ("transfer_plan",  "note", "TEXT"),     # הערה חופשית לסניף (רשמי/eSIM וכו')
         ("wa_msg",         "err", "TEXT"),       # סיבת כשל מסירה ממטא (code · title)
         ("shift_roster",   "week_start", "TEXT"), # תאריך ראשון של השבוע (YYYY-MM-DD) — סידור מתוארך
+        ("pbx_calls",      "route", "TEXT"),       # היעד בשיחה (סיטי/מעבדה/הזמנות...) מ-1com
+        ("pbx_calls",      "order_number", "TEXT"),
+        ("pbx_calls",      "items", "TEXT"),
         # נעילת סניף: הסניף המאושר של המכשיר — שינוי רק באישור מנהל (טלגרם)
         ("devices",        "branch_locked", "TEXT"),
         # is_stock=0 → מוצר דיגיטלי/לא-מנוהל-מלאי (גיפט קארד/קוד) — מדלגים על שידור/OOS
@@ -1828,21 +1831,39 @@ def shift_alerts_clear(ids: list) -> None:
             cur.execute(_q("DELETE FROM pending_shift_alerts WHERE id=?"), (int(i),))
 
 
-def pbx_call_log(phone, direction, uid, name, orders, last_status) -> None:
-    """תיעוד שיחת טלפון ממרכזיית 1com."""
+def pbx_call_log(phone, direction, uid, name, orders, last_status,
+                 route="", order_number="", items="") -> int:
+    """תיעוד שיחת טלפון ממרכזיית 1com. מחזיר את ה-id."""
     with _conn() as c:
-        c.cursor().execute(_q(
-            "INSERT INTO pbx_calls (phone, direction, uid, matched_name, orders, last_status, ts) "
-            "VALUES (?,?,?,?,?,?,?)"),
+        cur = c.cursor()
+        cur.execute(_q(
+            "INSERT INTO pbx_calls (phone, direction, uid, matched_name, orders, last_status, "
+            "route, order_number, items, ts) VALUES (?,?,?,?,?,?,?,?,?,?)"),
             (str(phone or ""), str(direction or ""), str(uid or ""), str(name or ""),
-             int(orders or 0), str(last_status or ""), now_iso()))
+             int(orders or 0), str(last_status or ""), str(route or ""),
+             str(order_number or ""), str(items or ""), now_iso()))
+        try:
+            return int(cur.lastrowid)
+        except Exception:  # noqa: BLE001
+            return 0
 
 
 def pbx_calls_recent(limit: int = 100) -> list:
     with _conn() as c:
         cur = c.cursor()
-        cur.execute(_q("SELECT phone, direction, uid, matched_name, orders, last_status, ts "
-                       "FROM pbx_calls ORDER BY id DESC LIMIT ?"), (int(limit),))
+        cur.execute(_q("SELECT id, phone, direction, uid, matched_name, orders, last_status, "
+                       "route, order_number, items, ts FROM pbx_calls ORDER BY id DESC LIMIT ?"),
+                    (int(limit),))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def pbx_calls_since(after_id: int = 0) -> list:
+    """שיחות שנכנסו אחרי id נתון (לפולינג הפופאפ ב-frontend). רק שיחות נכנסות אמיתיות."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT id, phone, direction, matched_name, orders, last_status, "
+                       "route, order_number, items, ts FROM pbx_calls "
+                       "WHERE id>? AND direction='in' ORDER BY id DESC LIMIT 20"), (int(after_id),))
         return [dict(r) for r in cur.fetchall()]
 
 
