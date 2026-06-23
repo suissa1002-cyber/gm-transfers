@@ -6088,14 +6088,16 @@ _PBX_ROUTE_LABELS = {
 
 @app.get("/api/pbx/call")
 def pbx_call(phone: str = "", key: str = "", dir: str = "", uid: str = "",
-             name: str = "", route: str = ""):
+             name: str = "", route: str = "", new: str = ""):
     """Webhook ממרכזיית 1com (Recover an URL using Curl) — מזהה לקוח לפי מספר המתקשר,
-    מתעד את השיחה (כולל היעד route — סיטי/מעבדה...), ומחזיר טקסט קצר לתצוגה על צג הנציג."""
+    מתעד את השיחה (כולל היעד route — סיטי/מעבדה...), ומחזיר טקסט קצר לתצוגה על צג הנציג.
+    new=1 (curl הכניסה) = תחילת שיחה → שורה חדשה תמיד (חיוג חוזר לא מתמזג לשיחה קודמת)."""
     from fastapi.responses import PlainTextResponse
     import wa
     pbx_key = os.getenv("PBX_KEY", "").strip()
     if pbx_key and key != pbx_key:
         raise HTTPException(403, "bad key")
+    force_new = str(new or "").strip().lower() in ("1", "true", "yes", "on")
     route = _PBX_ROUTE_LABELS.get((route or "").strip().lower(), (route or "").strip())
     import re as _re
     raw = _re.sub(r"\D", "", phone or "")
@@ -6126,7 +6128,8 @@ def pbx_call(phone: str = "", key: str = "", dir: str = "", uid: str = "",
         label = ""   # לא מזוהה — המרכזייה תציג את המספר הגולמי
     try:
         _id, _new = db.pbx_call_upsert(intl, dir or "in", uid, cname, n, last_status,
-                                       route=route, order_number=order_number, items=items)
+                                       route=route, order_number=order_number, items=items,
+                                       force_new=force_new)
     except Exception as e:  # noqa: BLE001
         _new = True
         logger.warning("pbx call log failed: %s", e)

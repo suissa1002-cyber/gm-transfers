@@ -1868,18 +1868,23 @@ def pbx_calls_since(after_id: int = 0) -> list:
 
 
 def pbx_call_upsert(phone, direction, uid, name, orders, last_status,
-                    route="", order_number="", items="", window_sec: int = 120) -> tuple:
+                    route="", order_number="", items="", window_sec: int = 120,
+                    force_new: bool = False) -> tuple:
     """שיחה נכנסת מ-1com: אם קיימת שורה טרייה (תוך window_sec שניות) לאותו מספר+כיוון —
     *מעדכן* אותה (ממזג את ה-route שנבחר ב-IVR + הזיהוי) במקום ליצור שורה חדשה. כך שיחה אחת
-    = שורה אחת = פופאפ אחד שמתעדכן כשהמתקשר בוחר שלוחה. מחזיר (id, is_new)."""
+    = שורה אחת = פופאפ אחד שמתעדכן כשהמתקשר בוחר שלוחה. מחזיר (id, is_new).
+    force_new=True (curl הכניסה, `&new=1`) → תמיד שורה חדשה, כדי שניתוק+חיוג-חוזר מאותו
+    מספר ייספר כשיחה נפרדת (ולא יתמזג לשיחה הקודמת שעדיין בחלון)."""
     direction = direction or "in"
     phone = str(phone or "")
     with _conn() as c:
         cur = c.cursor()
-        cur.execute(_q("SELECT id, route, matched_name, orders, last_status, order_number, items, ts "
-                       "FROM pbx_calls WHERE phone=? AND direction=? ORDER BY id DESC LIMIT 1"),
-                    (phone, direction))
-        row = cur.fetchone()
+        row = None
+        if not force_new:
+            cur.execute(_q("SELECT id, route, matched_name, orders, last_status, order_number, items, ts "
+                           "FROM pbx_calls WHERE phone=? AND direction=? ORDER BY id DESC LIMIT 1"),
+                        (phone, direction))
+            row = cur.fetchone()
         recent = False
         r = dict(row) if row else {}
         if row:
