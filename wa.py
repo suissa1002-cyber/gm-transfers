@@ -1217,6 +1217,15 @@ def _wc_orders_by_phone(phone: str, limit: int = 5):
                    auth=auth, timeout=25)
         if not r.ok:
             return None
+        rows = r.json() or []
+        # ⚠️ חיפוש WC הוא substring על *כל* השדות → עלול להחזיר הזמנה לא-קשורה (מספר של אדם
+        # אחד שמופיע בהזמנה של אחר) ולהציג שם שגוי. לכן מסננים להתאמת *טלפון חיוב* מדויקת
+        # לפי הליבה (בלי קידומת/תווים), שמתאימה גם 05X וגם 972X. תוקן 23/06/2026 (אודי→אסי).
+        if core:
+            def _bcore(o):
+                p = (o.get("billing") or {}).get("phone", "") or ""
+                return re.sub(r"^(?:972|0)", "", re.sub(r"\D", "", p))
+            rows = [o for o in rows if _bcore(o) == core]
         return [{
             "id": o.get("id"),
             "number": o.get("number"),
@@ -1228,7 +1237,7 @@ def _wc_orders_by_phone(phone: str, limit: int = 5):
             "date": (o.get("date_created") or "")[:16].replace("T", " "),
             "items": [i.get("name") for i in (o.get("line_items") or [])][:4],
             "admin_url": f"{base}/wp-admin/post.php?post={o.get('id')}&action=edit",
-        } for o in r.json()]
+        } for o in rows]
     except Exception as e:  # noqa: BLE001
         logger.warning("wc orders lookup failed: %s", e)
         return None
