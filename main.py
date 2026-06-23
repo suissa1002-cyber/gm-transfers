@@ -6229,6 +6229,67 @@ def pbx_calls_list(x_admin_key: Optional[str] = Header(None)):
     return {"calls": db.pbx_calls_recent(150)}
 
 
+# ── 📇 CRM פנימי — מרכז שיחות + כרטיס לקוח 360 + אנליטיקה (על המידע שלנו, ללא נטוויל) ──
+@app.get("/api/admin/crm/stats")
+def crm_stats(x_admin_key: Optional[str] = Header(None)):
+    """אנליטיקת שיחות לדשבורד ה-CRM (30 יום אחרונים)."""
+    _require_admin(x_admin_key)
+    try:
+        return db.pbx_stats(30)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("crm stats failed: %s", e)
+        return {"total": 0, "today": 0, "week": 0, "identified": 0, "identified_pct": 0,
+                "unique_callers": 0, "repeat_callers": 0, "series": [], "branches": [], "hours": []}
+
+
+@app.get("/api/admin/crm/customer")
+def crm_customer(phone: str = "", x_admin_key: Optional[str] = Header(None)):
+    """כרטיס לקוח 360 (מהיר): זיהוי + הזמנות אתר + היסטוריית שיחות + תקציר וואטסאפ.
+    התיקונים (NewOrder, איטי) נטענים בנפרד דרך /api/admin/crm/repairs."""
+    _require_admin(x_admin_key)
+    import wa
+    intl = _il_phone(phone) if phone else ""
+    if not intl:
+        return {"phone": "", "name": "", "orders": [], "calls": [], "wa": None, "wa_recent": []}
+    orders, name = [], ""
+    try:
+        orders = wa._wc_orders_by_phone(intl) or []
+        if orders:
+            name = (orders[0].get("name") or "").strip()
+    except Exception:  # noqa: BLE001
+        pass
+    contact = None
+    try:
+        contact = db.wa_contact_get(intl)
+    except Exception:  # noqa: BLE001
+        pass
+    if not name and contact:
+        name = (contact.get("name") or "").strip()
+    calls, wa_recent = [], []
+    try:
+        calls = db.pbx_calls_by_phone(intl, 50)
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        wa_recent = db.wa_msg_thread(intl, 12)
+    except Exception:  # noqa: BLE001
+        pass
+    return {"phone": intl, "name": name, "orders": orders, "calls": calls,
+            "wa": contact, "wa_recent": wa_recent}
+
+
+@app.get("/api/admin/crm/repairs")
+def crm_repairs(phone: str = "", x_admin_key: Optional[str] = Header(None)):
+    """סטטוס תיקוני מעבדה ללקוח (NewOrder /api/Fixes — איטי, נטען בנפרד בכרטיס)."""
+    _require_admin(x_admin_key)
+    intl = _il_phone(phone) if phone else ""
+    try:
+        return {"repairs": bot_repair_status(phone=intl) or []}
+    except Exception as e:  # noqa: BLE001
+        logger.warning("crm repairs failed: %s", e)
+        return {"repairs": [], "error": "unavailable"}
+
+
 @app.get("/api/admin/wa/order/paystatus/{order_id}")
 def wa_order_paystatus(order_id: int, x_admin_key: Optional[str] = Header(None)):
     """בדיקת מצב תשלום של הזמנה — ל-polling מה-frontend בזמן שה-iframe פתוח.
