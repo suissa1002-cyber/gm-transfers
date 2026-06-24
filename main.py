@@ -6258,30 +6258,33 @@ def _pbx_bg_fill(cid: str):
         from datetime import date as _date, timedelta as _td
         intl = _il_phone(cid)
         local = _pbx_local_num(cid)
+        info = {"name": "", "orders": 0, "order_number": "", "items": ""}
         try:
-            import wa
-            info = {"name": "", "orders": 0, "order_number": "", "items": ""}
+            # 1) שם מקומי מהיר (WhatsApp DB) — מופיע כמעט מיד
             try:
-                orders = wa._wc_orders_by_phone(intl) or []
-                if orders:
-                    info["name"] = (orders[0].get("name") or "").strip()
-                    info["orders"] = len(orders)
-                    info["order_number"] = str(orders[0].get("number") or "")
-                    info["items"] = ", ".join(orders[0].get("items") or [])
+                c = db.wa_contact_get(intl) or {}
+                info["name"] = (c.get("name") or "").strip()
             except Exception:  # noqa: BLE001
                 pass
-            if not info["name"]:
-                try:
-                    c = db.wa_contact_get(intl) or {}
-                    info["name"] = (c.get("name") or "").strip()
-                except Exception:  # noqa: BLE001
-                    pass
-            _PBX_IDENT[intl] = (_t.time(), info)
+            _PBX_IDENT[intl] = (_t.time(), dict(info))
+            # 2) תת-מחלקה (simplecdrs) — מהיר יחסית
             try:
                 import onecom_client
                 today = _date.today().isoformat()
                 tomorrow = (_date.today() + _td(days=1)).isoformat()
                 _PBX_TAG[local] = (_t.time(), onecom_client.recent_call_tag(local, today, tomorrow))
+            except Exception:  # noqa: BLE001
+                pass
+            # 3) העשרה מ-WooCommerce (איטי) — שם חיוב + מס' הזמנות + פריטים
+            try:
+                import wa
+                orders = wa._wc_orders_by_phone(intl) or []
+                if orders:
+                    info["name"] = (orders[0].get("name") or "").strip() or info["name"]
+                    info["orders"] = len(orders)
+                    info["order_number"] = str(orders[0].get("number") or "")
+                    info["items"] = ", ".join(orders[0].get("items") or [])
+                    _PBX_IDENT[intl] = (_t.time(), info)
             except Exception:  # noqa: BLE001
                 pass
         finally:

@@ -5929,7 +5929,7 @@ document.addEventListener('click', (e)=>{
 // ── פופאפ שיחות נכנסות מ-1com — כמה שיחות במקביל: שיחה במוקד (כרטיס מלא) + ממוזערות (באנרים מעל) ──
 let _pbxKnown={}, _pbxBooted=false, _pbxTimer=null;
 let _pbxShown={}, _pbxClosed={}, _pbxFocus=null, _pbxSig='';
-function startPbxPoll(){ if(_pbxTimer) return; pbxPoll(); _pbxTimer=setInterval(pbxPoll,2000); }
+function startPbxPoll(){ if(_pbxTimer) return; pbxPoll(); _pbxTimer=setInterval(pbxPoll,1500); }
 async function pbxPoll(){
   if(!S.adminKey) return;
   let cs;
@@ -5961,7 +5961,7 @@ function pbxRender(){
   let wrap=document.getElementById('pbxWrap');
   if(!ids.length){ if(wrap) wrap.remove(); _pbxSig=''; _pbxFocus=null; return; }
   if(_pbxFocus==null || !_pbxShown[_pbxFocus]) _pbxFocus=ids.slice().sort((a,b)=>Number(b)-Number(a))[0];
-  const sig=_pbxFocus+'|'+ids.map(id=>id+':'+(_pbxShown[id].route||'')).sort().join(',');
+  const sig=_pbxFocus+'|'+ids.map(id=>{const c=_pbxShown[id];return id+':'+(c.route||'')+':'+(c.matched_name||'')+':'+(c.orders||0)+':'+(c.order_number||'');}).sort().join(',');
   if(sig===_pbxSig) return;   // אין שינוי → לא בונים מחדש (אפס הבהוב)
   _pbxSig=sig;
   if(!wrap){
