@@ -6060,6 +6060,16 @@ function pbxOpenCall(phone){
 
 // ════════ 📇 מוקד שיחות / CRM פנימי ════════
 let _crmStats=null, _crmCalls=null, _crmView='analytics', _crmSearch='', _crmCharts=[], _crmCdr=null;
+let _crmHistFilter={kind:'',val:''};   // פילטר היסטוריה מלחיצה על כרטיסיית אנליטיקה
+const _CRM_DISPO_LBL={answered:'נענו',no_answer:'לא נענו',busy:'עסוק',abandoned:'ננטשו',failed:'נכשלו'};
+function _crmHistFilterLabel(){ const f=_crmHistFilter;
+  if(f.kind==='disposition') return _CRM_DISPO_LBL[f.val]||f.val;
+  if(f.kind==='missed') return 'לא נענו / ננטשו';
+  if(f.kind==='direction') return f.val==='out'?'שיחות יוצאות':'שיחות נכנסות';
+  if(f.kind==='branch') return crmBranchLabel(f.val);
+  return ''; }
+function crmChipFilter(kind,val){ _crmHistFilter={kind:kind,val:val}; _crmView='history'; renderCrm(); }
+function crmClearChipFilter(){ _crmHistFilter={kind:'',val:''}; renderCrm(); }
 let _crmBranch='', _crmDept='', _crmRoute='';
 let _crmDays=30, _crmFrom='', _crmTo='', _crmCalPick=null, _crmCalMonth='';
 function crmStatsQs(){
@@ -6124,9 +6134,9 @@ function crmCalPick(ds){
   crmReloadStats();
 }
 function crmBranchLabel(b){ return (!b||b==='—')?'ללא ניתוב':b; }
-function crmBarRow(label,count,max,hl){
+function crmBarRow(label,count,max,hl,onclick){
   const pct=Math.max(3,Math.round(100*count/(max||1)));
-  return '<div style="display:flex;align-items:center;gap:10px;margin:5px 0;font-size:12.5px">'+
+  return '<div'+(onclick?' onclick="'+onclick+'" title="סנן בהיסטוריה" style="cursor:pointer;':' style="')+'display:flex;align-items:center;gap:10px;margin:5px 0;font-size:12.5px">'+
     '<div style="width:118px;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'+(hl?'font-weight:800;color:var(--blue,#3b82f6)':'color:var(--txt,#e8edf4)')+'">'+escW(label)+'</div>'+
     '<div style="flex:1;background:var(--line,#2c3442);border-radius:6px;height:14px;overflow:hidden"><div style="width:'+pct+'%;height:100%;background:'+(hl?'#3b82f6':'#1fbf6b')+'"></div></div>'+
     '<div style="width:34px;text-align:left;font-weight:700">'+count+'</div></div>';
@@ -6160,19 +6170,17 @@ function renderCrm(){
     (_crmView==='analytics'?crmAnalyticsHTML(s):crmHistoryHTML());
   if(_crmView==='analytics') crmRenderCharts(s);
 }
-function crmPeriodBar(){
+// פקד התקופה בלבד (select + קלנדר + צ'יפ טווח) — בלי תווית/שורה, להצבה בשורת פילטרים
+function crmPeriodCtl(){
   const selSt='background:var(--card,#171c24);color:var(--txt,#e8edf4);border:1px solid var(--line,#2c3442);border-radius:10px;padding:8px 12px;font-size:13px;min-width:150px';
   const rangeActive=!!(_crmFrom&&_crmTo);
   const periodOpts=[[1,'יום אחרון'],[3,'3 ימים'],[7,'7 ימים'],[14,'14 ימים'],[30,'30 ימים'],[45,'45 ימים'],[60,'60 ימים'],[90,'90 ימים']];
   const periodSelect='<select onchange="crmPeriodChange(this.value)" style="'+selSt+'">'+
     periodOpts.map(o=>'<option value="'+o[0]+'"'+((!rangeActive&&_crmDays===o[0])?' selected':'')+'>'+o[1]+'</option>').join('')+
     '<option value="range"'+(rangeActive?' selected':'')+'>טווח תאריכים מותאם…</option></select>';
-  return '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px">'+
-    '<span style="font-size:13px;color:var(--muted,#94a3b8)">תקופה:</span>'+
-    '<div style="position:relative">'+periodSelect+
+  return '<div style="position:relative">'+periodSelect+
       '<div id="crmCal" style="display:none;position:absolute;top:calc(100% + 4px);inset-inline-end:0;z-index:60"></div></div>'+
-    (rangeActive?'<span style="background:rgba(59,130,246,.16);color:var(--blue,#3b82f6);font-size:12.5px;font-weight:700;padding:5px 11px;border-radius:20px">'+escW(_crmFrom)+' → '+escW(_crmTo)+' <span onclick="crmClearRange()" style="cursor:pointer;opacity:.8">✕</span></span>':'')+
-  '</div>';
+    (rangeActive?'<span style="background:rgba(59,130,246,.16);color:var(--blue,#3b82f6);font-size:12.5px;font-weight:700;padding:5px 11px;border-radius:20px;white-space:nowrap">'+escW(_crmFrom)+' → '+escW(_crmTo)+' <span onclick="crmClearRange()" style="cursor:pointer;opacity:.8">✕</span></span>':'');
 }
 function crmAnalyticsHTML(s){
   const branches=s.branches||[], paths=s.paths||[];
@@ -6188,10 +6196,10 @@ function crmAnalyticsHTML(s){
         depts.map(x=>'<option value="'+escW(x.d)+'"'+(_crmDept===x.d?' selected':'')+'>'+escW(x.d)+' · '+x.c+'</option>').join('')+'</select>';
     }
   }
-  // ── תקופה (דרופדאון) + טווח תאריכים מותאם ──
-  const periodBar=crmPeriodBar();
+  // ── תקופה + סניף + מחלקה בשורה אחת (זה לצד זה) ──
+  const periodBar='';
   const filterBar='<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">'+
-    '<span style="font-size:13px;color:var(--muted,#94a3b8)">סינון:</span>'+
+    crmPeriodCtl()+
     '<select onchange="crmSetBranch(this.value)" style="'+selSt+'">'+branchOpts+'</select>'+deptSel+
     (_crmRoute?'<span style="background:rgba(59,130,246,.16);color:var(--blue,#3b82f6);font-size:12.5px;font-weight:700;padding:5px 11px;border-radius:20px">'+escW(_crmRoute)+' <span onclick="crmSetBranch(\'\')" style="cursor:pointer;opacity:.8">✕</span></span>':'')+
   '</div>';
@@ -6208,7 +6216,7 @@ function crmAnalyticsHTML(s){
     '</div>';
   // ── נפח לפי סניף / מחלקה (bar list) ──
   const maxB=Math.max(1,...branches.map(b=>b.count));
-  let vol=branches.map(b=>crmBarRow(crmBranchLabel(b.branch),b.count,maxB,_crmBranch===b.branch)).join('')||'<div style="color:var(--muted,#94a3b8);font-size:12.5px">אין נתונים</div>';
+  let vol=branches.map(b=>crmBarRow(crmBranchLabel(b.branch),b.count,maxB,_crmBranch===b.branch,(b.branch&&b.branch!=='—')?("crmChipFilter('branch','"+b.branch.replace(/'/g,"")+"')"):'')).join('')||'<div style="color:var(--muted,#94a3b8);font-size:12.5px">אין נתונים</div>';
   if(_crmBranch){
     const pref=_crmBranch+' › ';
     const dp=paths.filter(p=>p.path.indexOf(pref)===0);
@@ -6229,15 +6237,15 @@ function crmFmtDur(sec){ sec=Number(sec)||0; const m=Math.floor(sec/60), s=sec%6
 function crmCdrHTML(){
   const c=_crmCdr; if(!c||!c.configured) return '';
   const t=c.totals||{};
-  const chip=(v,l,col)=>'<div style="flex:1;min-width:108px;background:var(--card,#171c24);border:1px solid var(--line,#2c3442);border-radius:14px;padding:13px 15px">'+
+  const chip=(v,l,col,flt)=>'<div'+(flt?' onclick="'+flt+'" title="סנן בהיסטוריה"':'')+' style="flex:1;min-width:108px;background:var(--card,#171c24);border:1px solid var(--line,#2c3442);border-radius:14px;padding:13px 15px'+(flt?';cursor:pointer':'')+'">'+
     '<div style="font-size:25px;font-weight:800;color:'+(col||'var(--txt,#e8edf4)')+'">'+v+'</div>'+
     '<div style="font-size:12px;color:var(--muted,#94a3b8);margin-top:2px">'+l+'</div></div>';
   const kpis='<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">'+
     chip((c.answer_rate||0)+'%','שיעור מענה','var(--green,#1fbf6b)')+
-    chip(t.answered||0,'נענו','var(--green,#1fbf6b)')+
-    chip((t.no_answer||0)+(t.abandoned||0),'לא נענו / ננטשו','var(--red,#e5484d)')+
-    chip(t.busy||0,'עסוק','var(--amber,#f5a524)')+
-    chip(t.out||0,'יוצאות','var(--blue,#3b82f6)')+
+    chip(t.answered||0,'נענו','var(--green,#1fbf6b)',"crmChipFilter('disposition','answered')")+
+    chip((t.no_answer||0)+(t.abandoned||0),'לא נענו / ננטשו','var(--red,#e5484d)',"crmChipFilter('missed','')")+
+    chip(t.busy||0,'עסוק','var(--amber,#f5a524)',"crmChipFilter('disposition','busy')")+
+    chip(t.out||0,'יוצאות','var(--blue,#3b82f6)',"crmChipFilter('direction','out')")+
     chip(crmFmtDur(c.talk_avg_sec),'משך ממוצע')+
   '</div>';
   const cc=(title,id,h)=>crmCard('<div style="font-size:13px;font-weight:700;color:var(--muted,#94a3b8);margin-bottom:10px">'+title+'</div><div style="position:relative;height:'+(h||200)+'px"><canvas id="'+id+'"></canvas></div>','flex:1;min-width:300px');
@@ -6279,7 +6287,8 @@ async function crmRenderCharts(s){
   }
 }
 function crmHistoryHTML(){
-  return crmPeriodBar()+
+  return '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px">'+crmPeriodCtl()+
+    (_crmHistFilter.kind?'<span style="background:rgba(59,130,246,.16);color:var(--blue,#3b82f6);font-size:12.5px;font-weight:700;padding:5px 11px;border-radius:20px;white-space:nowrap">'+escW(_crmHistFilterLabel())+' <span onclick="crmClearChipFilter()" style="cursor:pointer;opacity:.8">✕</span></span>':'')+'</div>'+
     '<div class="rebal-bar" style="margin-bottom:12px">'+
       '<input placeholder="🔎 חיפוש שם / טלפון / סניף" value="'+escW(_crmSearch)+'" oninput="_crmSearch=this.value;crmHistoryRefresh()" style="flex:1;min-width:0">'+
       '<button class="btn-ghost" onclick="loadCrm(true)">↻ רענן</button>'+
@@ -6288,6 +6297,11 @@ function crmHistoryHTML(){
 }
 function crmFilteredCalls(){
   let rows=(_crmCalls||[]);
+  const f=_crmHistFilter;
+  if(f.kind==='disposition') rows=rows.filter(c=>c.disposition===f.val);
+  else if(f.kind==='missed') rows=rows.filter(c=>c.disposition==='no_answer'||c.disposition==='abandoned');
+  else if(f.kind==='direction') rows=rows.filter(c=>c.direction===f.val);
+  else if(f.kind==='branch') rows=rows.filter(c=>(c.route||'').split(' › ')[0]===f.val);
   const q=(_crmSearch||'').trim().toLowerCase();
   if(q) rows=rows.filter(c=>((c.matched_name||'')+' '+(c.phone||'')+' '+(c.route||'')).toLowerCase().indexOf(q)>-1);
   return rows;

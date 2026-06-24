@@ -311,7 +311,7 @@ def recent_call_tag(phone_local: str, today: str, tomorrow: str) -> dict:
         return {"name": "", "who": ""}
     now = time.time()
     hit = _TAG_CACHE.get(phone_local)
-    if hit and (now - hit[0]) < 8:
+    if hit and (now - hit[0]) < 2:   # cache קצר → מעבר תת-מחלקה מהיר בפופאפ
         return hit[1]
     res = {"name": "", "who": ""}
     try:

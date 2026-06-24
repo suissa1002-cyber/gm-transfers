@@ -6339,7 +6339,7 @@ def pbx_live(x_admin_key: Optional[str] = Header(None)):
         # מטמון זיהוי+תת-מחלקה; אם חסר/ישן → מילוי-רקע (לא חוסם את התשובה)
         ident_hit = _PBX_IDENT.get(intl)
         tag_hit = _PBX_TAG.get(local)
-        if not ident_hit or (now - ident_hit[0]) > 300 or not tag_hit or (now - tag_hit[0]) > 4:
+        if not ident_hit or (now - ident_hit[0]) > 300 or not tag_hit or (now - tag_hit[0]) > 2:
             _pbx_bg_fill(cid)
         info = (ident_hit[1] if ident_hit else
                 {"name": "", "orders": 0, "order_number": "", "items": ""})
