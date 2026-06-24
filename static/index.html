@@ -6459,7 +6459,17 @@ function crmDrawerInner(c){
   // וואטסאפ אחרון
   const wr=(c.wa_recent||[]);
   const waHTML=wr.length?'<div style="display:flex;flex-direction:column;gap:5px">'+wr.slice(-6).map(function(m){ const out=m.direction==='out'; return '<div style="font-size:12.5px;padding:6px 9px;border-radius:9px;max-width:85%;'+(out?'align-self:flex-start;background:rgba(31,191,107,.13)':'align-self:flex-end;background:var(--card,#171c24);border:1px solid var(--line,#2c3442)')+'">'+escW((m.text||m.type||'').slice(0,120))+'</div>'; }).join('')+'</div>':'<div style="color:var(--muted,#94a3b8);font-size:12.5px">— אין שיחת וואטסאפ —</div>';
+  // לקוח קופה (NewOrder)
+  const no=c.neworder;
+  const noHTML=no?'<div style="background:var(--card,#171c24);border:1px solid var(--line,#2c3442);border-radius:11px;padding:10px 12px;font-size:12.5px;line-height:1.7">'+
+    '<div style="font-weight:700">'+escW(no.name||'')+'</div>'+
+    (no.last_purchase?'<div style="color:var(--muted,#94a3b8)">רכישה אחרונה: '+escW(no.last_purchase)+'</div>':'')+
+    ((no.balance!==null&&no.balance!==undefined&&Number(no.balance)!==0)?'<div style="color:'+(Number(no.balance)<0?'var(--red,#e5484d)':'var(--muted,#94a3b8)')+'">יתרה: ₪'+escW(String(no.balance))+'</div>':'')+
+    (no.city?'<div style="color:var(--muted,#94a3b8)">'+escW(no.city)+'</div>':'')+
+    (no.email?'<div style="color:var(--muted,#94a3b8);direction:ltr;text-align:right">'+escW(no.email)+'</div>':'')+
+  '</div>':'<div style="color:var(--muted,#94a3b8);font-size:12.5px">— לא נמצא לקוח בקופה —</div>';
   return head('')+
+    (no?sec(ico('user',13)+'לקוח קופה · NewOrder', noHTML):'')+
     sec(ico('receipt',13)+'הזמנות אתר ('+orders.length+')', ordersHTML)+
     sec(ico('list',13)+'היסטוריית שיחות ('+calls.length+')', callsHTML)+
     sec(ico('phone',13)+'שיחות טלפון · 1com', '<div id="crmCdrHist"><div style="color:var(--muted,#94a3b8);font-size:12.5px">טוען…</div></div>')+

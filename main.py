@@ -6343,6 +6343,38 @@ _PBX_NAME_BRANCH = {"חדשה": "הזמנות", "קיימת": "הזמנות"}
 _PBX_IDENT: dict = {}     # intl  -> (ts, {name,orders,order_number,items})
 _PBX_TAG: dict = {}       # local -> (ts, {name,who})
 _PBX_INFLIGHT: set = set()
+_NO_CUST_CACHE: dict = {}  # digits9 -> (ts, cust|None) — לקוח NewOrder לפי טלפון
+
+
+def _neworder_customer(phone: str):
+    """לקוח NewOrder (קופה) לפי טלפון — שם כפי שנשמר בקופה + רכישה אחרונה + יתרה.
+    שכבת זיהוי שנייה (אחרי הזמנת WC, לפני וואטסאפ). מטמון 10 דק'. None אם אין."""
+    import time as _t
+    d9 = "".join(c for c in str(phone or "") if c.isdigit())[-9:]
+    if not d9:
+        return None
+    hit = _NO_CUST_CACHE.get(d9)
+    if hit and (_t.time() - hit[0]) < 600:
+        return hit[1]
+    cust = None
+    try:
+        import poller
+        res = poller.client().get_customers(search="0" + d9)
+        rows = res if isinstance(res, list) else (res.get("data") or res.get("customers") or [])
+        for r in rows:
+            cd = r.get("contactDetails") or {}
+            phd = "".join(c for c in (str(cd.get("phoneNumber1") or "") + str(cd.get("phoneNumber2") or "")) if c.isdigit())
+            if d9 in phd:
+                cust = {"id": r.get("id"), "name": (r.get("name") or "").strip(),
+                        "last_purchase": r.get("lastPurchase") or "",
+                        "balance": r.get("balance"),
+                        "city": (cd.get("city") or "").strip(),
+                        "email": (cd.get("email") or "").strip()}
+                break
+    except Exception as e:  # noqa: BLE001
+        logger.warning("neworder customer lookup failed: %s", e)
+    _NO_CUST_CACHE[d9] = (_t.time(), cust)
+    return cust
 
 
 @app.get("/api/pbx/call")
@@ -6434,7 +6466,7 @@ def _pbx_bg_fill(cid: str):
                 _PBX_TAG[local] = (_t.time(), onecom_client.recent_call_tag(local, today, tomorrow))
             except Exception:  # noqa: BLE001
                 pass
-            # 3) העשרה מ-WooCommerce (איטי) — שם חיוב + מס' הזמנות + פריטים
+            # 3) עדיפות זיהוי: הזמנת WC (הכי אמין) > לקוח NewOrder > שם וואטסאפ (כבר ב-info)
             try:
                 import wa
                 orders = wa._wc_orders_by_phone(intl) or []
@@ -6443,7 +6475,11 @@ def _pbx_bg_fill(cid: str):
                     info["orders"] = len(orders)
                     info["order_number"] = str(orders[0].get("number") or "")
                     info["items"] = ", ".join(orders[0].get("items") or [])
-                    _PBX_IDENT[intl] = (_t.time(), info)
+                else:
+                    cust = _neworder_customer(intl)
+                    if cust and cust.get("name"):
+                        info["name"] = cust["name"]   # שם הקופה גובר על שם וואטסאפ
+                _PBX_IDENT[intl] = (_t.time(), info)
             except Exception:  # noqa: BLE001
                 pass
         finally:
@@ -6536,7 +6572,14 @@ def pbx_lookup(phone: str = "", x_admin_key: Optional[str] = Header(None)):
                 items = ", ".join(orders[0].get("items") or [])
         except Exception:  # noqa: BLE001
             pass
-        if not name:
+        if not name:                               # אין הזמנת WC → לקוח NewOrder (קופה)
+            try:
+                cust = _neworder_customer(intl)
+                if cust and cust.get("name"):
+                    name = cust["name"]
+            except Exception:  # noqa: BLE001
+                pass
+        if not name:                               # fallback אחרון — שם וואטסאפ
             try:
                 c = db.wa_contact_get(intl)
                 if c:
@@ -6950,6 +6993,15 @@ def crm_customer(phone: str = "", x_admin_key: Optional[str] = Header(None)):
         contact = db.wa_contact_get(intl)
     except Exception:  # noqa: BLE001
         pass
+    # לקוח NewOrder (קופה) — שכבת זיהוי שנייה + תנועות (רכישה אחרונה/יתרה)
+    nocust = None
+    try:
+        nocust = _neworder_customer(intl)
+    except Exception:  # noqa: BLE001
+        pass
+    # שם: הזמנת WC > לקוח NewOrder > שם וואטסאפ
+    if not name and nocust and nocust.get("name"):
+        name = nocust["name"]
     if not name and contact:
         name = (contact.get("name") or "").strip()
     calls, wa_recent = [], []
@@ -6962,7 +7014,7 @@ def crm_customer(phone: str = "", x_admin_key: Optional[str] = Header(None)):
     except Exception:  # noqa: BLE001
         pass
     return {"phone": intl, "name": name, "orders": orders, "calls": calls,
-            "wa": contact, "wa_recent": wa_recent}
+            "wa": contact, "wa_recent": wa_recent, "neworder": nocust}
 
 
 @app.get("/api/admin/crm/repairs")
