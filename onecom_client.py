@@ -256,19 +256,19 @@ def _digits(s: str) -> str:
 
 
 def fetch_cdrs_by_phone(phone: str, start: str, end: str) -> list:
-    """היסטוריית שיחות מלאה (info=cdrs) למספר נתון. מחזיר רשומות מנורמלות
-    עם uniqueid (להקלטה), משך (billsec), תוצאה, וכיוון מוסק יחסית ללקוח."""
+    """היסטוריית שיחות למספר נתון דרך simplecdrs (info=cdrs מחזיר JSON שבור!).
+    `phone` מסנן calleridnum/dialednum/whoanswered. מחזיר רשומות מנורמלות
+    עם uniqueid (להקלטה), משך, תוצאה, כיוון ודגל הקלטה."""
     if not is_configured() or not phone:
         return []
-    peer = _digits(phone)[-9:]
-    params = {"reqtype": "INFO", "info": "cdrs", "phone": phone,
+    params = {"reqtype": "INFO", "info": "simplecdrs", "phone": phone,
               "start": start, "end": _end_exclusive(end), "format": "json"}
     try:
         r = _get(params)
         if r.status_code != 200:
             return []
         body = (r.text or "").strip()
-        if not body or "mistaken the security api key" in body.lower():
+        if not body or body[0] != "[" or "mistaken the security api key" in body.lower():
             return []
         data = r.json()
     except Exception as e:  # noqa: BLE001
@@ -276,25 +276,9 @@ def fetch_cdrs_by_phone(phone: str, start: str, end: str) -> list:
         return []
     out = []
     for rec in (data if isinstance(data, list) else []):
-        dispo_raw = str(rec.get("disposition") or "").strip().upper()
-        try:
-            billsec = int(str(rec.get("billsec") or "0").strip() or "0")
-        except Exception:  # noqa: BLE001
-            billsec = 0
-        src = _digits(rec.get("src") or rec.get("realsrc"))
-        # יוצאת: הלקוח אינו המקור (אנחנו חייגנו אליו); נכנסת: הלקוח הוא המקור
-        direction = "in" if src.endswith(peer) else "out"
-        uid = str(rec.get("uniqueid") or "").strip()
-        out.append({
-            "ts_str": str(rec.get("start") or "").strip(),
-            "answer": str(rec.get("answer") or "").strip(),
-            "duration": billsec,
-            "disposition": _DISPO_MAP.get(dispo_raw, "other"),
-            "disposition_raw": dispo_raw,
-            "uid": uid,
-            "direction": direction,
-            "has_rec": bool(uid) and dispo_raw == "ANSWERED" and billsec > 0,
-        })
+        n = _normalize(rec)
+        n["has_rec"] = bool(n["uid"]) and n["disposition"] == "answered" and n["duration"] > 0
+        out.append(n)
     return out
 
 

@@ -6508,17 +6508,22 @@ def _pbx_cdr_route(name: str, who: str) -> str:
 
 
 @app.get("/api/admin/crm/history")
-def crm_history(days: int = 3, x_admin_key: Optional[str] = Header(None)):
+def crm_history(days: int = 3, date_from: str = "", date_to: str = "",
+                x_admin_key: Optional[str] = Header(None)):
     """היסטוריית שיחות חיה מ-1com (CDR) — מחליפה את הטבלה המקומית המתה.
-    כולל כיוון, תוצאה, משך, נתיב משוחזר, זיהוי מקומי מהיר ודגל הקלטה."""
+    days=תקופה או date_from/date_to לטווח. כולל כיוון, תוצאה, משך, נתיב, הקלטה."""
     _require_admin(x_admin_key)
     import onecom_client
     from datetime import date as _date, timedelta as _td
     if not onecom_client.is_configured():
         return {"calls": [], "configured": False}
     today = _date.today()
-    start = (today - _td(days=max(0, int(days or 3) - 1))).isoformat()
-    rows = onecom_client.fetch_simple_cdrs(start, today.isoformat())
+    if date_from and date_to:
+        start, end_d = date_from, date_to
+    else:
+        end_d = today.isoformat()
+        start = (today - _td(days=max(0, int(days or 3) - 1))).isoformat()
+    rows = onecom_client.fetch_simple_cdrs(start, end_d)
     rows = sorted(rows, key=lambda r: r.get("ts_str") or "", reverse=True)[:400]
     name_cache: dict = {}
     out = []

@@ -6076,13 +6076,14 @@ function crmClearRange(){ _crmFrom=''; _crmTo=''; crmReloadStats(); }
 function crmPeriodChange(v){ if(v==='range'){ crmCalToggle(); } else { crmSetDays(Number(v)); } }
 async function crmReloadStats(){
   try{
-    const [st,cdr]=await Promise.all([
+    const [st,cdr,hist]=await Promise.all([
       api('/api/admin/crm/stats'+crmStatsQs()),
-      api('/api/admin/crm/cdr-stats'+crmStatsQs()).catch(()=>null)
+      api('/api/admin/crm/cdr-stats'+crmStatsQs()).catch(()=>null),
+      api('/api/admin/crm/history'+crmStatsQs()).catch(()=>null)
     ]);
-    _crmStats=st; _crmCdr=cdr;
+    _crmStats=st; _crmCdr=cdr; if(hist) _crmCalls=(hist.calls)||[];
   }catch(e){}
-  if(S.view==='crm'&&_crmView==='analytics') renderCrm();
+  if(S.view==='crm') renderCrm();
 }
 // ── קלנדר טווח תאריכים (קליק ראשון = מתאריך, שני = עד) ──
 function crmCalToggle(){
@@ -6135,7 +6136,7 @@ async function loadCrm(spinner){
   try{
     const [st,cl,cdr]=await Promise.all([
       api('/api/admin/crm/stats'+crmStatsQs()).catch(()=>null),
-      api('/api/admin/crm/history').catch(()=>null),
+      api('/api/admin/crm/history'+crmStatsQs()).catch(()=>null),
       api('/api/admin/crm/cdr-stats'+crmStatsQs()).catch(()=>null)
     ]);
     _crmStats=st||{}; _crmCalls=(cl&&cl.calls)||[]; _crmCdr=cdr;
@@ -6159,6 +6160,20 @@ function renderCrm(){
     (_crmView==='analytics'?crmAnalyticsHTML(s):crmHistoryHTML());
   if(_crmView==='analytics') crmRenderCharts(s);
 }
+function crmPeriodBar(){
+  const selSt='background:var(--card,#171c24);color:var(--txt,#e8edf4);border:1px solid var(--line,#2c3442);border-radius:10px;padding:8px 12px;font-size:13px;min-width:150px';
+  const rangeActive=!!(_crmFrom&&_crmTo);
+  const periodOpts=[[1,'יום אחרון'],[3,'3 ימים'],[7,'7 ימים'],[14,'14 ימים'],[30,'30 ימים'],[45,'45 ימים'],[60,'60 ימים'],[90,'90 ימים']];
+  const periodSelect='<select onchange="crmPeriodChange(this.value)" style="'+selSt+'">'+
+    periodOpts.map(o=>'<option value="'+o[0]+'"'+((!rangeActive&&_crmDays===o[0])?' selected':'')+'>'+o[1]+'</option>').join('')+
+    '<option value="range"'+(rangeActive?' selected':'')+'>טווח תאריכים מותאם…</option></select>';
+  return '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px">'+
+    '<span style="font-size:13px;color:var(--muted,#94a3b8)">תקופה:</span>'+
+    '<div style="position:relative">'+periodSelect+
+      '<div id="crmCal" style="display:none;position:absolute;top:calc(100% + 4px);inset-inline-end:0;z-index:60"></div></div>'+
+    (rangeActive?'<span style="background:rgba(59,130,246,.16);color:var(--blue,#3b82f6);font-size:12.5px;font-weight:700;padding:5px 11px;border-radius:20px">'+escW(_crmFrom)+' → '+escW(_crmTo)+' <span onclick="crmClearRange()" style="cursor:pointer;opacity:.8">✕</span></span>':'')+
+  '</div>';
+}
 function crmAnalyticsHTML(s){
   const branches=s.branches||[], paths=s.paths||[];
   const selSt='background:var(--card,#171c24);color:var(--txt,#e8edf4);border:1px solid var(--line,#2c3442);border-radius:10px;padding:8px 12px;font-size:13px;min-width:150px';
@@ -6174,17 +6189,7 @@ function crmAnalyticsHTML(s){
     }
   }
   // ── תקופה (דרופדאון) + טווח תאריכים מותאם ──
-  const rangeActive=!!(_crmFrom&&_crmTo);
-  const periodOpts=[[1,'יום אחרון'],[7,'7 ימים'],[14,'14 ימים'],[30,'30 ימים'],[45,'45 ימים'],[60,'60 ימים'],[90,'90 ימים']];
-  const periodSelect='<select onchange="crmPeriodChange(this.value)" style="'+selSt+'">'+
-    periodOpts.map(o=>'<option value="'+o[0]+'"'+((!rangeActive&&_crmDays===o[0])?' selected':'')+'>'+o[1]+'</option>').join('')+
-    '<option value="range"'+(rangeActive?' selected':'')+'>טווח תאריכים מותאם…</option></select>';
-  const periodBar='<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px">'+
-    '<span style="font-size:13px;color:var(--muted,#94a3b8)">תקופה:</span>'+
-    '<div style="position:relative">'+periodSelect+
-      '<div id="crmCal" style="display:none;position:absolute;top:calc(100% + 4px);inset-inline-end:0;z-index:60"></div></div>'+
-    (rangeActive?'<span style="background:rgba(59,130,246,.16);color:var(--blue,#3b82f6);font-size:12.5px;font-weight:700;padding:5px 11px;border-radius:20px">'+escW(_crmFrom)+' → '+escW(_crmTo)+' <span onclick="crmClearRange()" style="cursor:pointer;opacity:.8">✕</span></span>':'')+
-  '</div>';
+  const periodBar=crmPeriodBar();
   const filterBar='<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">'+
     '<span style="font-size:13px;color:var(--muted,#94a3b8)">סינון:</span>'+
     '<select onchange="crmSetBranch(this.value)" style="'+selSt+'">'+branchOpts+'</select>'+deptSel+
@@ -6274,7 +6279,8 @@ async function crmRenderCharts(s){
   }
 }
 function crmHistoryHTML(){
-  return '<div class="rebal-bar" style="margin-bottom:12px">'+
+  return crmPeriodBar()+
+    '<div class="rebal-bar" style="margin-bottom:12px">'+
       '<input placeholder="🔎 חיפוש שם / טלפון / סניף" value="'+escW(_crmSearch)+'" oninput="_crmSearch=this.value;crmHistoryRefresh()" style="flex:1;min-width:0">'+
       '<button class="btn-ghost" onclick="loadCrm(true)">↻ רענן</button>'+
     '</div>'+
@@ -6354,34 +6360,28 @@ async function crmCdrHistLoad(phone){
   if(!cfg){ el.innerHTML='<div style="color:var(--muted,#94a3b8);font-size:12.5px">— 1com לא מוגדר —</div>'; return; }
   el.innerHTML=calls.length?calls.slice(0,20).map(crmCdrRow).join(''):'<div style="color:var(--muted,#94a3b8);font-size:12.5px">— אין שיחות —</div>';
 }
-// נגן הקלטות משותף — toggle על הכפתור, בלי להזריק אלמנט לשורה (שומר על הפריסה)
-let _crmAudio=null, _crmPlayBtn=null;
-function _crmRecLabel(btn,playing){ const long=btn.dataset.long==='1';
-  btn.innerHTML=playing?(long?'⏸ עצור':'⏸'):(long?'▶ האזן להקלטה':'▶'); }
-async function crmPlayRec(uid,btn){
-  if(!btn.dataset.long) btn.dataset.long=(btn.textContent.indexOf('האזן')>-1)?'1':'0';
-  if(_crmPlayBtn===btn && _crmAudio){   // אותו כפתור → השהה/המשך
-    if(_crmAudio.paused){ _crmAudio.play(); _crmRecLabel(btn,true); }
-    else { _crmAudio.pause(); _crmRecLabel(btn,false); }
-    return;
-  }
-  if(_crmAudio){ try{ _crmAudio.pause(); }catch(e){} }
-  if(_crmPlayBtn) _crmRecLabel(_crmPlayBtn,false);
-  let url=btn.dataset.url;
-  if(!url){
-    btn.disabled=true; btn.innerHTML='…';
-    try{
-      const h={}; if(S.adminKey) h['X-Admin-Key']=S.adminKey;
-      const r=await fetch('/api/admin/crm/recording?uid='+encodeURIComponent(uid),{headers:h});
-      if(!r.ok) throw 0;
-      url=URL.createObjectURL(await r.blob()); btn.dataset.url=url;
-    }catch(e){ btn.innerHTML='⚠️'; setTimeout(()=>{btn.disabled=false;_crmRecLabel(btn,false);},1500); return; }
-    btn.disabled=false;
-  }
-  if(!_crmAudio) _crmAudio=new Audio();
-  _crmAudio.src=url; _crmPlayBtn=btn;
-  _crmAudio.onended=function(){ _crmRecLabel(btn,false); };
-  _crmAudio.play(); _crmRecLabel(btn,true);
+// נגן הקלטות צף — <audio controls> נייטיב (בר-זמן + ווליום + 3-נקודות הורדה),
+// מחוץ לטבלה כדי לא לשבור פריסה.
+function crmClosePlayer(){ const b=document.getElementById('crmPlayer'); if(b){ try{ b.querySelector('audio').pause(); }catch(e){} b.remove(); } }
+async function crmPlayRec(uid,btn,title){
+  let bar=document.getElementById('crmPlayer');
+  if(!bar){ bar=document.createElement('div'); bar.id='crmPlayer';
+    bar.style.cssText='position:fixed;bottom:18px;left:50%;transform:translateX(-50%);z-index:100002;background:var(--card,#171c24);border:1px solid var(--line,#2c3442);border-radius:14px;box-shadow:0 14px 44px rgba(0,0,0,.4);padding:9px 12px;display:flex;align-items:center;gap:10px;max-width:min(620px,95vw)';
+    document.body.appendChild(bar); }
+  bar.innerHTML='<span style="font-size:12.5px;color:var(--muted,#94a3b8);white-space:nowrap;max-width:150px;overflow:hidden;text-overflow:ellipsis">🎧 '+escW(title||'הקלטה')+'</span>'+
+    '<audio id="crmPlayerAudio" controls controlsList="nodownload" style="height:38px;flex:1;min-width:260px"></audio>'+
+    '<a id="crmPlayerDl" download="recording.mp3" title="הורדה" style="text-decoration:none;font-size:18px;color:var(--muted,#94a3b8);padding:0 4px">⤓</a>'+
+    '<button onclick="crmClosePlayer()" title="סגור" style="background:none;border:0;font-size:18px;cursor:pointer;color:var(--muted,#94a3b8)">✕</button>';
+  const a=document.getElementById('crmPlayerAudio'), dl=document.getElementById('crmPlayerDl');
+  a.innerHTML='<span style="font-size:12px;color:var(--muted)">טוען…</span>';
+  try{
+    const h={}; if(S.adminKey) h['X-Admin-Key']=S.adminKey;
+    const r=await fetch('/api/admin/crm/recording?uid='+encodeURIComponent(uid),{headers:h});
+    if(!r.ok) throw 0;
+    const url=URL.createObjectURL(await r.blob());
+    a.src=url; if(dl){ dl.href=url; dl.download='recording_'+String(uid).replace(/[^0-9]/g,'')+'.mp3'; }
+    a.play();
+  }catch(e){ bar.querySelector('span').textContent='⚠️ אין הקלטה'; }
 }
 function crmDrawerInner(c){
   const head=function(sub){ return '<div style="position:sticky;top:0;background:var(--card,#171c24);border-bottom:1px solid var(--line,#2c3442);padding:14px 16px;display:flex;align-items:center;gap:11px;z-index:1">'+
