@@ -5687,6 +5687,27 @@ def _notify_order_status(o, enabled=None, init="__fetch__", force=False):
         except Exception as e:  # noqa: BLE001
             logger.warning("cancel notify send failed %s: %s", num, e)
         return
+    # --- נמסרה (גם משינוי סטטוס ידני בקונסולה) → בקשת חוות-דעת native ---
+    # "delivered" אינו ב-_STATUS_NOTIFY_TPL בכוונה — החוו"ד בתבנית ייעודית
+    # (order_delivered_review_request), בדדופ `review_sent:{num}` משותף עם זרימת
+    # Cargo-אוטומטי ולחיצת "קיבלתי" של הלקוח, גדור ב-WA_SEND_REVIEW.
+    if st == "delivered":
+        if os.getenv("WA_SEND_REVIEW", "0").strip() != "1":
+            return
+        if db.sales_state_get(f"review_sent:{num}"):
+            return
+        b = o.get("billing") or {}
+        phone = _il_phone(b.get("phone"))
+        if len(phone) < 11:
+            return
+        try:
+            import wa
+            wa.send_review_template(phone, (b.get("first_name") or "").strip(), num, "נמסרה")
+            db.sales_state_set(f"review_sent:{num}", "1")
+            logger.info("review notify %s (delivered manual/auto)", num)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("review notify send failed %s: %s", num, e)
+        return
     tpl = _STATUS_NOTIFY_TPL.get(st)
     if not tpl or not enabled or db.sales_state_get(f"status_sent:{num}:{st}"):
         return
