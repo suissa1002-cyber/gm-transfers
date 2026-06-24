@@ -6502,13 +6502,19 @@ def pbx_webrtc_config(x_admin_key: Optional[str] = Header(None)):
     """פרטי חיבור ה-WebRTC (SIP.js) לטלפון המוטמע בקונסולת האדמין — שלוחה 202 מול 1com.
     מוגש רק לאדמין מאומת; הסיסמה מגיעה מ-env (לא בקוד)."""
     _require_admin(x_admin_key)
-    wss = os.environ.get("PBX_SIP_WSS", "")
+    # ברירות מחדל מאומתות (24/06): שרת ה-WebRTC של 1com. enabled נגזר מ-user+pass
+    # (שמגיעים מ-env לפי השלוחה הייעודית כשתיווצר). TURN פומבי (מקונפיג ה-demo שלהם).
+    wss = os.environ.get("PBX_SIP_WSS") or "wss://webrtc.1com.co.il/ws"
+    server = os.environ.get("PBX_SIP_SERVER") or "webrtc.1com.co.il"
+    user = os.environ.get("PBX_SIP_USER", "")
+    pw = os.environ.get("PBX_SIP_PASS", "")
+    turn_url = os.environ.get("PBX_TURN_URL") or "turn:webrtc.1com.co.il:443?transport=tcp"
     return {
-        "enabled": bool(wss),
-        "wss": wss,
-        "user": os.environ.get("PBX_SIP_USER", ""),
-        "password": os.environ.get("PBX_SIP_PASS", ""),
-        "server": os.environ.get("PBX_SIP_SERVER", ""),
+        "enabled": bool(user and pw),
+        "wss": wss, "user": user, "password": pw, "server": server,
+        "ice": [{"urls": turn_url,
+                 "username": os.environ.get("PBX_TURN_USER") or "websip",
+                 "credential": os.environ.get("PBX_TURN_PASS") or "skcjlexfjckhsakjdhds"}],
     }
 
 

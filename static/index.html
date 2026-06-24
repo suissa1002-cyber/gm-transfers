@@ -6476,11 +6476,12 @@ async function crmRepairsLoad(phone){
 }
 
 // ── ☎️ טלפון WebRTC מוטמע (JsSIP) — שלוחה 202 מול 1com. ענה/נתק/השתק בתוך הפופאפ ──
-let _pbxUA=null, _pbxSession=null, _pbxCallTimer=null, _pbxCallStart=0, _pbxSipReg=false, _pbxAnswered=false;
+let _pbxUA=null, _pbxSession=null, _pbxCallTimer=null, _pbxCallStart=0, _pbxSipReg=false, _pbxAnswered=false, _pbxIce=[];
 async function startPbxSip(){
   if(_pbxUA || !S.adminKey) return;
   let cfg; try{ cfg=await api('/api/admin/pbx/webrtc-config'); }catch(e){ return; }
   if(!cfg || !cfg.enabled || !cfg.wss) return;
+  _pbxIce=(cfg.ice&&cfg.ice.length)?cfg.ice:[];   // TURN של 1com — חובה לאודיו דו-כיווני
   if(typeof JsSIP==='undefined'){
     const ok=await loadScript('https://cdn.jsdelivr.net/npm/jssip@3.10.1/dist/jssip.min.js');
     if(!ok || typeof JsSIP==='undefined'){ await loadScript('https://unpkg.com/jssip@3.10.1/dist/jssip.min.js'); }
@@ -6514,7 +6515,7 @@ async function pbxHandleIncoming(session){
 }
 function pbxAnswer(){
   if(!_pbxSession) return;
-  try{ _pbxSession.answer({ mediaConstraints:{audio:true,video:false}, pcConfig:{ iceServers:[] } }); }
+  try{ _pbxSession.answer({ mediaConstraints:{audio:true,video:false}, pcConfig:{ iceServers:_pbxIce } }); }
   catch(e){ console.warn('[pbx-sip] answer err',e); }
 }
 function pbxOnAccepted(session){
