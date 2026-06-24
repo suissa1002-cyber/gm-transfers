@@ -5793,6 +5793,77 @@ def admin_order_cargo_label(oid: int, x_admin_key: Optional[str] = Header(None))
     return {"ok": True, "pdf": j.get("pdf"), "status": new_status}
 
 
+# ── 🔀 שינוי אופן משלוח על הזמנה קיימת (איסוף ↔ משלוח) מתוך GreenOS ──
+# WooCommerce לא שומר "סוג שיטה" נקי — כל המערכת מזהה איסוף לפי המילה "איסוף"
+# בכותרת שורת המשלוח. לכן המתג = שכתוב הכותרת בלבד, עם הכותרות הקנוניות מאזור
+# המשלוח (zone 1). ⚠️ **בלי לגעת בסטטוס** → מנוע השידור (scan_orders, status=processing)
+# לא מתעורר. תווית Cargo נשארת לכפתור הנפרד הקיים.
+_SHIP_MODES = {
+    "delivery": ("flat_rate",    "משלוח (1-6 ימי עסקים) חינם להזמנות מעל 499 ש״ח", "0"),
+    "express":  ("flat_rate",    "משלוח באותו היום הזמנות שיתקבלו עד שעה 13:00 (ימים א׳-ה׳ , באזורי חלוקה באר שבע-חיפה)", "89"),
+    "heavy":    ("flat_rate",    "משלוח כבד (1–6 ימי עסקים)", "0"),
+    "pickup":   ("local_pickup", "איסוף עצמי סניפים (אנו ניצור קשר לתאום ובחירת סניף לאיסוף)", "0"),
+    "tlv":      ("local_pickup", "נקודת מסירה תל אביב - מסירה למחרת ביצוע ההזמנה ימים א׳-ה׳ בין השעות 10:00-16:00 בכתובת י.ל פרץ 35 ת״א", "0"),
+}
+
+
+class ShippingMethodIn(BaseModel):
+    mode: str
+    branch: str = ""
+    total: Optional[str] = None   # עלות משלוח; None=ברירת מחדל לפי המצב
+
+
+@app.post("/api/admin/orders/{oid}/shipping-method")
+def admin_order_shipping_method(oid: int, body: ShippingMethodIn,
+                                x_admin_key: Optional[str] = Header(None)):
+    """משנה את אופן המשלוח של הזמנה (איסוף↔משלוח) ע"י שכתוב כותרת שורת המשלוח
+    **במקום** (לפי id, לא שורה כפולה) — **בלי לגעת בסטטוס**. לא מחייב הפרשי תשלום
+    (רק מחזיר ישן↔חדש להצגה). מוסיף גארד שלא ישודר שוב + הערה פנימית."""
+    _require_admin(x_admin_key)
+    mode = (body.mode or "").strip().lower()
+    if mode not in _SHIP_MODES:
+        raise HTTPException(400, f"מצב משלוח לא מוכר: {mode}")
+    method_id, title, default_cost = _SHIP_MODES[mode]
+    cost = body.total if body.total is not None else default_cost
+    import requests as _rq
+    base, k, s = _wc_creds()
+    cur = _rq.get(f"{base}/wp-json/wc/v3/orders/{oid}",
+                  params={"_fields": "id,number,status,total,shipping_lines"},
+                  auth=(k, s), timeout=25)
+    if not cur.ok:
+        raise HTTPException(502, "ההזמנה לא נמצאה")
+    od = cur.json()
+    old_lines = od.get("shipping_lines") or []
+    old_title = (old_lines[0].get("method_title") if old_lines else "") or ""
+    old_total = od.get("total") or ""
+    sl = {"method_id": method_id, "method_title": title, "total": str(cost)}
+    if old_lines:
+        sl["id"] = old_lines[0].get("id")        # עדכון במקום (מונע שורת משלוח כפולה)
+    payload = {"shipping_lines": [sl]}            # ⚠️ ללא 'status' — לא נוגעים בסטטוס!
+    if mode in ("pickup", "tlv"):
+        payload["meta_data"] = [{"key": "_gm_pickup_branch", "value": body.branch or ""}]
+    r = _rq.put(f"{base}/wp-json/wc/v3/orders/{oid}", json=payload, auth=(k, s), timeout=30)
+    if not r.ok:
+        logger.warning("shipping-method change failed %s: %s %s", oid, r.status_code, r.text[:300])
+        raise HTTPException(502, "עדכון אופן המשלוח נכשל")
+    nj = r.json()
+    number = str(nj.get("number") or od.get("number") or oid)
+    try:                                          # גארד: לא לשדר את ההזמנה הזו שוב לעולם
+        db.sales_state_set(f"auto_tr_bcast:{number}", "1")
+    except Exception:  # noqa: BLE001
+        pass
+    try:                                          # הערה פנימית בהזמנה
+        _rq.post(f"{base}/wp-json/wc/v3/orders/{oid}/notes",
+                 json={"note": f"אופן משלוח שונה ל: {title} (דרך GreenOS)",
+                       "customer_note": False}, auth=(k, s), timeout=20)
+    except Exception:  # noqa: BLE001
+        pass
+    return {"ok": True, "mode": mode, "method_title": title,
+            "old_title": old_title, "old_total": old_total,
+            "new_total": nj.get("total") or old_total,
+            "status": nj.get("status"), "status_unchanged": True}
+
+
 class OrderNoteIn(BaseModel):
     note: str
     customer_note: bool = False

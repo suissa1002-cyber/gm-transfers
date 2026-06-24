@@ -5433,6 +5433,7 @@ function paintWcOrder(){
       ${phoneIntl.length>10?`<button class="btn-ghost" style="padding:8px 12px;border-color:#0d9488;color:#0d9488;display:inline-flex;align-items:center;gap:6px" onclick="wcoSendInvoice('${d.number}','${phoneIntl}')" title="שולח ללקוח בוואטסאפ את החשבונית של ההזמנה">📄 שלח חשבונית</button>`:''}
       ${d.cargo?`<button class="btn-ghost" style="padding:8px 12px;border-color:#0369a1;color:#0369a1;display:inline-flex;align-items:center;gap:6px" onclick="wcoCargoLabel(${d.id})">${ico('truck',14)} תווית Cargo</button>`
         :`<button class="btn-ghost" style="padding:8px 12px;border-color:#0369a1;color:#0369a1;display:inline-flex;align-items:center;gap:6px" onclick="wcoCargoCreate(${d.id},${(d.ship_tag||'').includes('tlv')?'true':'false'})">${ico('truck',14)} צור משלוח Cargo</button>`}
+      <button class="btn-ghost" style="padding:8px 12px;border-color:#ca8a04;color:#ca8a04;display:inline-flex;align-items:center;gap:6px" onclick="wcoShipMethod(${d.id})" title="שינוי איסוף↔משלוח בלי ריקוד הסטטוסים (לא מעיר את השידור)">🔀 שנה אופן משלוח</button>
       <button class="btn-ghost" style="padding:8px 12px;border-color:#15803d;color:#15803d;display:inline-flex;align-items:center;gap:6px" onclick="wcoAutoTransfer(${d.id},${d.bcast?1:0})" title="מריץ את לוגיקת השיריון/השידור להזמנה (אחרי הצמדת/תיקון מק״ט)">${ico('radio',14)} ${d.bcast?'שדר מחדש':'הרץ שיריון/שידור'}</button>
       <button class="btn-ghost" style="padding:8px 12px;border-color:#7c3aed;color:#7c3aed;display:inline-flex;align-items:center;gap:6px" onclick="wcoOpenReturn(${d.id},${d.return_open?1:0})" title="${d.return_open?'סגירת ההחזרה':'פותח החזרה: מתעד בהזמנה + מעתיק פרטי לקוח + פותח דשבורד Cargo לאיסוף'}">↩️ ${d.return_open?'סגור החזרה':'פתח החזרה'}</button>
       ${['cancelled','failed','refunded'].includes(d.status)?`<button class="btn-ghost" style="padding:8px 12px;border-color:#b91c1c;color:#b91c1c;display:inline-flex;align-items:center;gap:6px" onclick="wcoTrash(${d.id})">${ico('trash',14)} העבר לפח</button>`:''}
@@ -5559,6 +5560,45 @@ async function wcoCargoCreate(oid,pickup){
     loadWcOrders(); openWcOrder(oid);
   }catch(e){ toast('יצירת המשלוח נכשלה — ודא שתוסף הגשר מותקן',false); }
   hideLoading();
+}
+// 🔀 שינוי אופן משלוח (איסוף↔משלוח) — בורר; משנה רק את שורת המשלוח, בלי לגעת בסטטוס
+function wcoShipMethod(oid){
+  const modes=[
+    {k:'delivery',l:'📦 משלוח רגיל (חינם)'},
+    {k:'express', l:'⚡ אקספרס באותו יום (₪89)'},
+    {k:'heavy',   l:'🏋️ משלוח כבד'},
+    {k:'pickup',  l:'🏬 איסוף עצמי (סניף)'},
+    {k:'tlv',     l:'📍 נקודת מסירה ת״א'},
+  ];
+  const old=document.getElementById('shipMethodOv'); if(old) old.remove();
+  const ov=document.createElement('div'); ov.id='shipMethodOv';
+  ov.style.cssText='position:fixed;inset:0;z-index:100050;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center';
+  ov.onclick=(e)=>{ if(e.target===ov) ov.remove(); };
+  ov.innerHTML=`<div style="background:var(--card,#fff);color:var(--txt,#1a2230);border-radius:16px;padding:20px;width:min(360px,92vw);box-shadow:0 20px 60px rgba(0,0,0,.4)">
+    <div style="font-weight:800;font-size:16px;margin-bottom:4px">🔀 שנה אופן משלוח</div>
+    <div class="muted" style="font-size:12px;margin-bottom:13px">משנה רק את אופן המשלוח — בלי לגעת בסטטוס ובלי להעיר את השידור. תווית Cargo דרך הכפתור הנפרד.</div>
+    <div style="display:flex;flex-direction:column;gap:7px">
+      ${modes.map(m=>`<button class="btn-ghost" style="text-align:right;padding:11px 14px" onclick="wcoShipMethodPick(${oid},'${m.k}')">${m.l}</button>`).join('')}
+    </div>
+    <button class="btn-ghost" style="width:100%;margin-top:13px;color:var(--muted,#888)" onclick="document.getElementById('shipMethodOv').remove()">ביטול</button>
+  </div>`;
+  (document.getElementById('modalRoot')||document.body).appendChild(ov);
+}
+async function wcoShipMethodPick(oid,mode){
+  let branch='';
+  if(mode==='pickup'){ branch=prompt('סניף לאיסוף (אפשר להשאיר ריק):','')||''; }
+  const ov=document.getElementById('shipMethodOv'); if(ov) ov.remove();
+  showLoading('משנה אופן משלוח…');
+  try{
+    const r=await api('/api/admin/orders/'+oid+'/shipping-method',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({mode:mode,branch:branch})},45000);
+    hideLoading();
+    toast('אופן המשלוח שונה ✓',true);
+    if(r.old_total&&r.new_total&&String(r.old_total)!==String(r.new_total)){
+      alert('⚠️ סכום ההזמנה השתנה: '+r.old_total+' → '+r.new_total+' ₪.\nההזמנה כבר שולמה — אם נוצר הפרש, יש לגבות אותו ידנית (המערכת לא מחייבת אוטומטית).');
+    }
+    loadWcOrders(); openWcOrder(oid);
+  }catch(e){ hideLoading(); toast('שינוי אופן המשלוח נכשל',false); }
 }
 async function wcoCargoLabel(oid){
   showLoading('מביא תווית…');
