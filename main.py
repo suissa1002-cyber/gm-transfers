@@ -6366,6 +6366,15 @@ def pbx_live(x_admin_key: Optional[str] = Header(None)):
                 {"name": "", "orders": 0, "order_number": "", "items": ""})
         nm = (tag_hit[1].get("name") if tag_hit else "") or ""
         route, branch, sub = _pbx_route_of(cid, e, tag_name=nm)
+        # לכידת נתיב גם מה-web (כשהדשבורד פתוח) — לא תלוי ב-worker
+        if route or e.get("answered"):
+            try:
+                from datetime import datetime, timezone
+                db.pbx_route_upsert(e["uid"], intl, route, branch,
+                                    e.get("answered", False),
+                                    datetime.now(timezone.utc).astimezone().isoformat())
+            except Exception:  # noqa: BLE001
+                pass
         m = _re.search(r"(\d+)\.(\d+)", e["uid"])
         idnum = (m.group(1) + m.group(2)[:4]) if m else _re.sub(r"\D", "", e["uid"])
         calls.append({
@@ -6619,6 +6628,17 @@ def crm_history(days: int = 3, date_from: str = "", date_to: str = "",
             "handled": bool(stored and stored.get("handled_at")),
         })
     return {"calls": out, "configured": True}
+
+
+@app.get("/api/admin/pbx/route-debug")
+def pbx_route_debug(x_admin_key: Optional[str] = Header(None)):
+    """אבחון: כמה נתיבים נלכדו + האחרונים (לוודא ש-worker/live שומרים)."""
+    _require_admin(x_admin_key)
+    try:
+        rows = db.pbx_routes_recent(20)
+    except Exception as e:  # noqa: BLE001
+        return {"count": 0, "rows": [], "error": str(e)}
+    return {"count": len(rows), "rows": rows}
 
 
 @app.get("/api/admin/crm/mark-handled")

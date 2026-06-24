@@ -2103,6 +2103,15 @@ def pbx_routes_by_uids(uids: list) -> dict:
     return out
 
 
+def pbx_routes_recent(limit: int = 20) -> list:
+    """השורות האחרונות ב-pbx_route — לאבחון לכידת ה-worker/live."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT uid, phone, route, branch, answered, last_ts, handled_at "
+                       "FROM pbx_route ORDER BY last_ts DESC LIMIT ?"), (int(limit),))
+        return [dict(r) for r in cur.fetchall()]
+
+
 def pbx_route_mark_handled(uid: str, when: str):
     if not uid:
         return
