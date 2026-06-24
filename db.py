@@ -1959,9 +1959,12 @@ def pbx_calls_by_phone(phone, limit: int = 50) -> list:
         return [dict(r) for r in cur.fetchall()]
 
 
-def pbx_stats(days: int = 30) -> dict:
-    """אנליטיקת שיחות נכנסות לסעיף ה-CRM: סדרה יומית, פילוח לפי סניף, שעות עומס,
-    אחוז מזוהים, מתקשרים חוזרים. מחושב ב-Python מ-5000 השיחות האחרונות."""
+def pbx_stats(days: int = 30, route: str = "") -> dict:
+    """אנליטיקת שיחות נכנסות לסעיף ה-CRM. מחושב מ-5000 השיחות האחרונות.
+    `route` (אופציונלי) מסנן את המדדים/הסדרה/השעות לסניף או מחלקה ספציפיים
+    (התאמה: branch==route או נתיב מלא==route או נתיב שמתחיל ב-route › ).
+    תמיד מוחזר הפילוח המלא של סניפים (branches) ונתיבים (paths) לבניית המסננים."""
+    route = (route or "").strip()
     with _conn() as c:
         cur = c.cursor()
         cur.execute(_q("SELECT phone, matched_name, route, ts FROM pbx_calls "
@@ -1970,7 +1973,8 @@ def pbx_stats(days: int = 30) -> dict:
     now = datetime.now(timezone.utc).astimezone()
     today = now.date()
     cutoff = now - timedelta(days=days)
-    per_day, per_branch = {}, {}
+    per_day = {}
+    per_branch, per_path = {}, {}     # פילוח מלא (לא מסונן) — למסננים ולתצוגת נפח
     per_hour = {h: 0 for h in range(24)}
     seen = {}
     total = ident = today_n = week_n = 0
@@ -1981,9 +1985,17 @@ def pbx_stats(days: int = 30) -> dict:
             continue
         if ts < cutoff:
             continue
+        full = (str(r.get("route") or "")).strip()
+        branch = (full.split(" › ")[0]).strip() or "—"
+        # פילוח מלא (תמיד, לא תלוי במסנן)
+        per_branch[branch] = per_branch.get(branch, 0) + 1
+        if full:
+            per_path[full] = per_path.get(full, 0) + 1
+        # מסנן למדדים/סדרה/שעות
+        if route and not (branch == route or full == route or full.startswith(route + " › ")):
+            continue
         total += 1
-        ph = str(r.get("phone") or "")
-        seen[ph] = seen.get(ph, 0) + 1
+        seen[str(r.get("phone") or "")] = seen.get(str(r.get("phone") or ""), 0) + 1
         if str(r.get("matched_name") or "").strip():
             ident += 1
         d = ts.date()
@@ -1992,21 +2004,22 @@ def pbx_stats(days: int = 30) -> dict:
         if (today - d).days < 7:
             week_n += 1
         per_day[d.isoformat()] = per_day.get(d.isoformat(), 0) + 1
-        branch = (str(r.get("route") or "").split(" › ")[0]).strip() or "—"
-        per_branch[branch] = per_branch.get(branch, 0) + 1
         per_hour[ts.hour] = per_hour.get(ts.hour, 0) + 1
     series = [{"date": (today - timedelta(days=i)).isoformat(),
                "count": per_day.get((today - timedelta(days=i)).isoformat(), 0)}
               for i in range(13, -1, -1)]
     branches = sorted([{"branch": k, "count": v} for k, v in per_branch.items()],
                       key=lambda x: -x["count"])
+    paths = sorted([{"path": k, "count": v} for k, v in per_path.items()],
+                   key=lambda x: -x["count"])
     hours = [{"hour": h, "count": per_hour.get(h, 0)} for h in range(24)]
     return {
         "total": total, "today": today_n, "week": week_n,
         "identified": ident, "identified_pct": round(100 * ident / total) if total else 0,
         "unique_callers": len(seen),
         "repeat_callers": sum(1 for n in seen.values() if n > 1),
-        "series": series, "branches": branches, "hours": hours, "days": days,
+        "series": series, "branches": branches, "paths": paths,
+        "hours": hours, "days": days, "route": route,
     }
 
 

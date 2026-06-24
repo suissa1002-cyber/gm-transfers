@@ -5400,6 +5400,10 @@ function paintWcOrder(){
       ${(d.shipping_lines||[]).length?`<div class="muted" style="font-size:12.5px;display:flex;align-items:center;gap:5px">${ico('truck',13)} ${escW(d.shipping_lines.join(', '))}</div>`:''}
       ${phoneIntl.length>10?`<button class="btn-ghost" style="margin-top:6px;padding:4px 10px;font-size:12px" onclick="closeModal();setAdminTab('wa');setTimeout(()=>openWaConv('${phoneIntl}'),600)">${ico('chat',13)} פתח שיחה בוואטסאפ</button>`:''}
     </div>
+    ${phoneIntl.length>10?`<details style="margin-bottom:16px" ontoggle="if(this.open)wcoLoadCalls('${phoneIntl}')">
+      <summary class="muted" style="cursor:pointer;font-size:13px;display:flex;align-items:center;gap:6px">📞 שיחות טלפון של הלקוח</summary>
+      <div id="wcoCalls" style="margin-top:8px"><div class="muted" style="font-size:12.5px">טוען…</div></div>
+    </details>`:''}
     ${(d.items||[]).map(it=>`<div style="display:flex;justify-content:space-between;gap:10px;padding:11px 6px;border-bottom:1px solid var(--line);font-size:13.5px;align-items:flex-start">
       ${it.img?`<img src="${escW(it.img)}" loading="lazy" style="width:46px;height:46px;object-fit:contain;border-radius:9px;background:#fff;border:1px solid var(--line);flex:none">`:''}
       <span style="flex:1;min-width:0">${escW(it.name)}${it.sku?` <span class="muted" style="font-size:11px;direction:ltr;font-family:monospace">${escW(it.sku)}</span>`:''} ×${it.qty}
@@ -5439,6 +5443,20 @@ function paintWcOrder(){
       <button class="btn-ghost" onclick="wcoAddNote(${d.id})">➕</button>
     </div>
   </div></div>`;
+}
+async function wcoLoadCalls(phoneIntl){
+  const box=document.getElementById('wcoCalls'); if(!box || box.dataset.loaded) return;
+  box.dataset.loaded='1';
+  let calls=[];
+  try{ const r=await api('/api/admin/crm/calls-by-phone?phone='+encodeURIComponent(phoneIntl)); calls=(r&&r.calls)||[]; }catch(e){}
+  if(!calls.length){ box.innerHTML='<div class="muted" style="font-size:12.5px">— אין שיחות מתועדות —</div>'; return; }
+  const fmtT=ts=>{ const d=new Date(ts); if(isNaN(d.getTime())) return escW(ts||''); const p=n=>('0'+n).slice(-2); return p(d.getDate())+'/'+p(d.getMonth()+1)+' '+p(d.getHours())+':'+p(d.getMinutes()); };
+  box.innerHTML='<div style="display:flex;flex-direction:column">'+calls.map(c=>`<div style="display:flex;align-items:center;gap:9px;font-size:12.5px;padding:7px 2px;border-bottom:1px solid var(--line)">
+      <span class="muted" style="white-space:nowrap;min-width:78px">${fmtT(c.ts)}</span>
+      ${c.route?`<span style="background:#16a34a18;color:#16a34a;font-size:11.5px;font-weight:700;padding:2px 9px;border-radius:20px;white-space:nowrap">${escW(c.route)}</span>`:'<span class="muted">— שיחה נכנסת —</span>'}
+      ${c.matched_name?`<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(c.matched_name)}</span>`:'<span style="flex:1"></span>'}
+      ${c.order_number?`<span class="muted" style="direction:ltr">#${escW(c.order_number)}</span>`:''}
+    </div>`).join('')+'</div>';
 }
 async function wcoSendInvoice(orderNumber, phoneIntl){
   showLoading('מחפש חשבונית…');
@@ -5960,6 +5978,21 @@ function pbxOpenCall(phone){
 
 // ════════ 📇 מוקד שיחות / CRM פנימי ════════
 let _crmStats=null, _crmCalls=null, _crmView='history', _crmSearch='', _crmCharts=[];
+let _crmBranch='', _crmDept='', _crmRoute='';
+function crmApplyFilter(){ _crmRoute=_crmDept?(_crmBranch+' › '+_crmDept):_crmBranch; crmReloadStats(); }
+function crmSetBranch(b){ _crmBranch=b||''; _crmDept=''; crmApplyFilter(); }
+function crmSetDept(d){ _crmDept=d||''; crmApplyFilter(); }
+async function crmReloadStats(){
+  try{ const qs=_crmRoute?('?route='+encodeURIComponent(_crmRoute)):''; _crmStats=await api('/api/admin/crm/stats'+qs); }catch(e){}
+  if(S.view==='admin'&&S.adminTab==='crm'&&_crmView==='analytics') renderCrm();
+}
+function crmBarRow(label,count,max,hl){
+  const pct=Math.max(3,Math.round(100*count/(max||1)));
+  return '<div style="display:flex;align-items:center;gap:10px;margin:5px 0;font-size:12.5px">'+
+    '<div style="width:118px;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'+(hl?'font-weight:800;color:var(--blue,#3b82f6)':'color:var(--txt,#e8edf4)')+'">'+escW(label)+'</div>'+
+    '<div style="flex:1;background:var(--line,#2c3442);border-radius:6px;height:14px;overflow:hidden"><div style="width:'+pct+'%;height:100%;background:'+(hl?'#3b82f6':'#1fbf6b')+'"></div></div>'+
+    '<div style="width:34px;text-align:left;font-weight:700">'+count+'</div></div>';
+}
 async function loadCrm(spinner){
   if(spinner && window.showLoading){ try{ showLoading('טוען מוקד…'); }catch(e){} }
   try{
@@ -5990,22 +6023,53 @@ function renderCrm(){
   if(_crmView==='analytics') crmRenderCharts(s);
 }
 function crmAnalyticsHTML(s){
-  const chip=(v,l,c)=>'<div style="flex:1;min-width:130px;background:var(--card,#171c24);border:1px solid var(--line,#2c3442);border-radius:14px;padding:14px 16px">'+
+  const branches=s.branches||[], paths=s.paths||[];
+  const selSt='background:var(--card,#171c24);color:var(--txt,#e8edf4);border:1px solid var(--line,#2c3442);border-radius:10px;padding:8px 12px;font-size:13px;min-width:150px';
+  // ── סרגל מסננים: סניף + מחלקה ──
+  const branchOpts='<option value="">כל הסניפים</option>'+branches.map(b=>'<option value="'+escW(b.branch)+'"'+(_crmBranch===b.branch?' selected':'')+'>'+escW(b.branch)+' · '+b.count+'</option>').join('');
+  let deptSel='';
+  if(_crmBranch){
+    const pref=_crmBranch+' › ';
+    const depts=paths.filter(p=>p.path.indexOf(pref)===0).map(p=>({d:p.path.slice(pref.length),c:p.count}));
+    if(depts.length){
+      deptSel='<select onchange="crmSetDept(this.value)" style="'+selSt+'"><option value="">כל המחלקות</option>'+
+        depts.map(x=>'<option value="'+escW(x.d)+'"'+(_crmDept===x.d?' selected':'')+'>'+escW(x.d)+' · '+x.c+'</option>').join('')+'</select>';
+    }
+  }
+  const filterBar='<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">'+
+    '<span style="font-size:13px;color:var(--muted,#94a3b8)">סינון:</span>'+
+    '<select onchange="crmSetBranch(this.value)" style="'+selSt+'">'+branchOpts+'</select>'+deptSel+
+    (_crmRoute?'<span style="background:rgba(59,130,246,.16);color:var(--blue,#3b82f6);font-size:12.5px;font-weight:700;padding:5px 11px;border-radius:20px">'+escW(_crmRoute)+' <span onclick="crmSetBranch(\'\')" style="cursor:pointer;opacity:.8">✕</span></span>':'')+
+  '</div>';
+  // ── צ'יפים (משקפים את הסינון) ──
+  const chip=(v,l,c)=>'<div style="flex:1;min-width:120px;background:var(--card,#171c24);border:1px solid var(--line,#2c3442);border-radius:14px;padding:14px 16px">'+
     '<div style="font-size:27px;font-weight:800;color:'+(c||'var(--txt,#e8edf4)')+'">'+v+'</div>'+
     '<div style="font-size:12.5px;color:var(--muted,#94a3b8);margin-top:2px">'+l+'</div></div>';
+  const chips='<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px">'+
+      chip(s.total||0,'סה״כ ('+(s.days||30)+' ימים)','var(--blue,#3b82f6)')+
+      chip(s.today||0,'היום')+
+      chip(s.week||0,'בשבוע')+
+      chip((s.identified_pct||0)+'%','זוהו','var(--green,#1fbf6b)')+
+      chip(s.repeat_callers||0,'חוזרים','var(--amber,#f5a524)')+
+    '</div>';
+  // ── נפח לפי סניף / מחלקה (bar list) ──
+  const maxB=Math.max(1,...branches.map(b=>b.count));
+  let vol=branches.map(b=>crmBarRow(b.branch,b.count,maxB,_crmBranch===b.branch)).join('')||'<div style="color:var(--muted,#94a3b8);font-size:12.5px">אין נתונים</div>';
+  if(_crmBranch){
+    const pref=_crmBranch+' › ';
+    const dp=paths.filter(p=>p.path.indexOf(pref)===0);
+    if(dp.length){ const maxD=Math.max(1,...dp.map(p=>p.count));
+      vol+='<div style="margin:12px 0 4px;border-top:1px dashed var(--line,#2c3442);padding-top:10px;font-size:12px;color:var(--muted,#94a3b8)">מחלקות · '+escW(_crmBranch)+'</div>'+
+        dp.map(p=>crmBarRow(p.path.slice(pref.length),p.count,maxD,false)).join(''); }
+  }
+  const volCard=crmCard('<div style="font-size:13px;font-weight:700;color:var(--muted,#94a3b8);margin-bottom:10px">📍 נפח שיחות לפי סניף'+(_crmBranch?' / מחלקה':'')+'</div>'+vol,'margin-bottom:12px');
   const chartCard=(title,id,h)=>crmCard('<div style="font-size:13px;font-weight:700;color:var(--muted,#94a3b8);margin-bottom:10px">'+title+'</div><div style="position:relative;height:'+(h||200)+'px"><canvas id="'+id+'"></canvas></div>','flex:1;min-width:300px');
-  return '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px">'+
-      chip(s.today||0,'שיחות היום','var(--blue,#3b82f6)')+
-      chip(s.week||0,'בשבוע האחרון')+
-      chip((s.identified_pct||0)+'%','זוהו אוטומטית','var(--green,#1fbf6b)')+
-      chip(s.repeat_callers||0,'מתקשרים חוזרים','var(--amber,#f5a524)')+
-      chip(s.unique_callers||0,'מתקשרים ייחודיים')+
-    '</div>'+
+  return filterBar+chips+volCard+
     '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">'+
-      chartCard('שיחות ב-14 הימים האחרונים','crmChartDays',210)+
-      chartCard('פילוח לפי סניף','crmChartBranch',210)+
+      chartCard('שיחות ב-14 הימים האחרונים'+(_crmRoute?' · '+escW(_crmRoute):''),'crmChartDays',210)+
+      chartCard('פילוח לפי סניף (כללי)','crmChartBranch',210)+
     '</div>'+
-    chartCard('שעות עומס (לפי שעה ביום)','crmChartHours',180);
+    chartCard('שעות עומס'+(_crmRoute?' · '+escW(_crmRoute):''),'crmChartHours',180);
 }
 async function crmRenderCharts(s){
   try{

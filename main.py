@@ -6231,15 +6231,29 @@ def pbx_calls_list(x_admin_key: Optional[str] = Header(None)):
 
 # ── 📇 CRM פנימי — מרכז שיחות + כרטיס לקוח 360 + אנליטיקה (על המידע שלנו, ללא נטוויל) ──
 @app.get("/api/admin/crm/stats")
-def crm_stats(x_admin_key: Optional[str] = Header(None)):
-    """אנליטיקת שיחות לדשבורד ה-CRM (30 יום אחרונים)."""
+def crm_stats(route: str = "", x_admin_key: Optional[str] = Header(None)):
+    """אנליטיקת שיחות לדשבורד ה-CRM (30 יום). route= מסנן לסניף/מחלקה."""
     _require_admin(x_admin_key)
     try:
-        return db.pbx_stats(30)
+        return db.pbx_stats(30, route=route)
     except Exception as e:  # noqa: BLE001
         logger.warning("crm stats failed: %s", e)
         return {"total": 0, "today": 0, "week": 0, "identified": 0, "identified_pct": 0,
-                "unique_callers": 0, "repeat_callers": 0, "series": [], "branches": [], "hours": []}
+                "unique_callers": 0, "repeat_callers": 0, "series": [], "branches": [],
+                "paths": [], "hours": []}
+
+
+@app.get("/api/admin/crm/calls-by-phone")
+def crm_calls_by_phone(phone: str = "", x_admin_key: Optional[str] = Header(None)):
+    """שיחות של מספר נתון — לסקשן הנשלף בכרטיס ההזמנה."""
+    _require_admin(x_admin_key)
+    intl = _il_phone(phone) if phone else ""
+    if not intl:
+        return {"calls": []}
+    try:
+        return {"calls": db.pbx_calls_by_phone(intl, 30)}
+    except Exception:  # noqa: BLE001
+        return {"calls": []}
 
 
 @app.get("/api/admin/crm/customer")
