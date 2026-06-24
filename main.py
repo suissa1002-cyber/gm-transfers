@@ -336,9 +336,10 @@ def register_recurring_jobs():
     # לכידת נתיב שיחות חי מ-CHANNELS (מהיר עם nodename) — לתיוג היסטוריה/אנליטיקה מדויק
     scheduler.add_job(_pbx_route_poll_job, "interval", seconds=5,
                       id="pbx_route", max_instances=1, coalesce=True)
-    # סבב ראשון מיד, ואז לפי האינטרוול
+    # סבב ראשון מיד, ואז לפי האינטרוול. ⚠️ next_run_time=None ב-APScheduler = job
+    # מושהה שלא רץ לעולם! חייב datetime.now() (או להשמיט) — אחרת פולר ההעברות מת בשקט.
     scheduler.add_job(_poll_job, "interval", seconds=cfg.POLL_INTERVAL_SEC,
-                      id="poll", next_run_time=None, max_instances=1)
+                      id="poll", next_run_time=datetime.now(), max_instances=1)
     scheduler.add_job(_alerts_job, "interval", minutes=15, id="alerts", max_instances=1)
     # דוח יומי 09:00 (Sun-Thu) למנהלים
     scheduler.add_job(_digest_job, "cron", id="digest",
