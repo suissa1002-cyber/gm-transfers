@@ -147,8 +147,10 @@ def handle(phone: str, text: str, mtype: str = "text", reply_id: str = "", wamid
     # שאלה לא יישאר תקוע בלי מענה (שיחות 543159043/546619676). הרגע שאסי כותב — שקט.
     if state == "agent" and _agent_handoff_active(sess):
         human_active = bool((sess.get("data") or {}).get("human"))
-        reengage = (bool(rid) or low in _ESCAPE or _is_greeting(low)
-                    or not human_active)
+        # כשנציג חי השתלט (human=True) — רק כפתור מפורש או "תפריט/ביטול" מחזירים את
+        # הבוט. ברכה תמימה ("הי") מהלקוח **לא** תשבור את ההשתלטות (אסי, 24/06). כשאף
+        # אדם לא ענה — אורי ממשיך להגיב גם על ברכה (not human_active מכסה את זה).
+        reengage = (bool(rid) or low in _ESCAPE or not human_active)
         if not reengage:
             return
         db.bot_session_clear(phone)
