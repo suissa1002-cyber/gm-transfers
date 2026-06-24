@@ -4174,6 +4174,9 @@ def admin_orders_list(page: int = 1, status: str = "", search: str = "",
             "src": _order_source(meta),
             "ship_tag": _ship_tag(o, meta),
             "img": ((items[0].get("image") or {}).get("src") or "") if items else "",
+            "imgs": list(dict.fromkeys(  # תמונות פריטים ייחודיות (לסטאק בהזמנה רב-מוצרית), עד 4
+                (li.get("image") or {}).get("src") or "" for li in items
+                if (li.get("image") or {}).get("src")))[:4],
             "bcast": bcast_map.get(str(o.get("number"))),
             "oos": (str(o.get("number")) in oos_set) and any(
                 (_cat.get(str(li.get("sku") or ""), {}).get("is_stock", True))
