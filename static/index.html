@@ -5929,7 +5929,7 @@ document.addEventListener('click', (e)=>{
 // ── פופאפ שיחות נכנסות מ-1com — כמה שיחות במקביל: שיחה במוקד (כרטיס מלא) + ממוזערות (באנרים מעל) ──
 let _pbxKnown={}, _pbxBooted=false, _pbxTimer=null;
 let _pbxShown={}, _pbxClosed={}, _pbxFocus=null, _pbxSig='';
-function startPbxPoll(){ if(_pbxTimer) return; _pbxTimer=setInterval(pbxPoll,4000); }
+function startPbxPoll(){ if(_pbxTimer) return; pbxPoll(); _pbxTimer=setInterval(pbxPoll,2000); }
 async function pbxPoll(){
   if(!S.adminKey) return;
   let cs;

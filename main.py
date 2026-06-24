@@ -6180,7 +6180,10 @@ _PBX_EXT_BRANCH = {"203": "סטאר", "201": "גן העיר"}   # חיוג יש�
 _PBX_SUB_DEPTS = {"חדשה", "קיימת", "חנות", "מעבדה"}
 # כשהסניף עוד לא נגזר מ-CHANNELS, שם חד-משמעי מסגיר אותו (חנות/מעבדה דו-משמעי).
 _PBX_NAME_BRANCH = {"חדשה": "הזמנות", "קיימת": "הזמנות"}
-_PBX_LIVE_LOOKUP: dict = {}   # intl -> (ts, info) — מטמון זיהוי לפולינג
+# מטמוני פופאפ + מילוי-רקע (כדי ש-/live לא ייחסם על WC/simplecdrs האיטיים)
+_PBX_IDENT: dict = {}     # intl  -> (ts, {name,orders,order_number,items})
+_PBX_TAG: dict = {}       # local -> (ts, {name,who})
+_PBX_INFLIGHT: set = set()
 
 
 @app.get("/api/pbx/call")
@@ -6243,31 +6246,49 @@ def pbx_incoming(after_id: int = 0, x_admin_key: Optional[str] = Header(None)):
     return {"calls": db.pbx_calls_active()}
 
 
-def _pbx_live_lookup(intl: str) -> dict:
-    """זיהוי מתקשר ממוטמן (5 דק') — לפולינג הפופאפ, בלי להציף את WC."""
-    import time as _t
-    hit = _PBX_LIVE_LOOKUP.get(intl)
-    if hit and (_t.time() - hit[0]) < 300:
-        return hit[1]
-    import wa
-    info = {"name": "", "orders": 0, "order_number": "", "items": ""}
-    try:
-        orders = wa._wc_orders_by_phone(intl) or []
-        if orders:
-            info["name"] = (orders[0].get("name") or "").strip()
-            info["orders"] = len(orders)
-            info["order_number"] = str(orders[0].get("number") or "")
-            info["items"] = ", ".join(orders[0].get("items") or [])
-    except Exception:  # noqa: BLE001
-        pass
-    if not info["name"]:
+def _pbx_bg_fill(cid: str):
+    """מילוי-רקע (thread) של זיהוי-לקוח (WC) + תת-מחלקה (simplecdrs) למתקשר,
+    כדי ש-/live יחזיר מיד מהמטמון בלי להיחסם על קריאות איטיות."""
+    if cid in _PBX_INFLIGHT:
+        return
+    _PBX_INFLIGHT.add(cid)
+
+    def _work():
+        import time as _t
+        from datetime import date as _date, timedelta as _td
+        intl = _il_phone(cid)
+        local = _pbx_local_num(cid)
         try:
-            c = db.wa_contact_get(intl) or {}
-            info["name"] = (c.get("name") or "").strip()
-        except Exception:  # noqa: BLE001
-            pass
-    _PBX_LIVE_LOOKUP[intl] = (_t.time(), info)
-    return info
+            import wa
+            info = {"name": "", "orders": 0, "order_number": "", "items": ""}
+            try:
+                orders = wa._wc_orders_by_phone(intl) or []
+                if orders:
+                    info["name"] = (orders[0].get("name") or "").strip()
+                    info["orders"] = len(orders)
+                    info["order_number"] = str(orders[0].get("number") or "")
+                    info["items"] = ", ".join(orders[0].get("items") or [])
+            except Exception:  # noqa: BLE001
+                pass
+            if not info["name"]:
+                try:
+                    c = db.wa_contact_get(intl) or {}
+                    info["name"] = (c.get("name") or "").strip()
+                except Exception:  # noqa: BLE001
+                    pass
+            _PBX_IDENT[intl] = (_t.time(), info)
+            try:
+                import onecom_client
+                today = _date.today().isoformat()
+                tomorrow = (_date.today() + _td(days=1)).isoformat()
+                _PBX_TAG[local] = (_t.time(), onecom_client.recent_call_tag(local, today, tomorrow))
+            except Exception:  # noqa: BLE001
+                pass
+        finally:
+            _PBX_INFLIGHT.discard(cid)
+
+    import threading
+    threading.Thread(target=_work, daemon=True).start()
 
 
 @app.get("/api/admin/pbx/live")
@@ -6303,24 +6324,28 @@ def pbx_live(x_admin_key: Optional[str] = Header(None)):
             ext = em.group(1) if em else (ch[2] if str(ch[2]).isdigit() else "")
             if ext in _PBX_EXT_BRANCH:
                 e["branch"] = _PBX_EXT_BRANCH[ext]
-    today = _date.today().isoformat()
-    tomorrow = (_date.today() + _td(days=1)).isoformat()
+    import time as _t
+    now = _t.time()
     calls = []
     for cid, e in by_phone.items():
         intl = _il_phone(cid)
-        info = _pbx_live_lookup(intl)
+        local = _pbx_local_num(cid)
+        # מטמון זיהוי+תת-מחלקה; אם חסר/ישן → מילוי-רקע (לא חוסם את התשובה)
+        ident_hit = _PBX_IDENT.get(intl)
+        tag_hit = _PBX_TAG.get(local)
+        if not ident_hit or (now - ident_hit[0]) > 300 or not tag_hit or (now - tag_hit[0]) > 4:
+            _pbx_bg_fill(cid)
+        info = (ident_hit[1] if ident_hit else
+                {"name": "", "orders": 0, "order_number": "", "items": ""})
         # תת-מחלקה (חדשה/קיימת/חנות/מעבדה) משם-הקו ב-CDR
         branch = e["branch"]
         sub = ""
-        try:
-            tag = onecom_client.recent_call_tag(_pbx_local_num(cid), today, tomorrow)
-            nm = (tag.get("name") or "").strip()
-            if nm in _PBX_SUB_DEPTS:
-                sub = nm
-                if not branch:
-                    branch = _PBX_NAME_BRANCH.get(nm, "")
-        except Exception:  # noqa: BLE001
-            pass
+        nm = (tag_hit[1].get("name") if tag_hit else "") or ""
+        nm = nm.strip()
+        if nm in _PBX_SUB_DEPTS:
+            sub = nm
+            if not branch:
+                branch = _PBX_NAME_BRANCH.get(nm, "")
         route = branch + (" › " + sub if (branch and sub) else "")
         m = _re.search(r"(\d+)\.(\d+)", e["uid"])
         idnum = (m.group(1) + m.group(2)[:4]) if m else _re.sub(r"\D", "", e["uid"])
