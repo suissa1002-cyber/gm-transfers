@@ -6181,7 +6181,7 @@ function crmPeriodCtl(){
     periodOpts.map(o=>'<option value="'+o[0]+'"'+((!rangeActive&&_crmDays===o[0])?' selected':'')+'>'+o[1]+'</option>').join('')+
     '<option value="range"'+(rangeActive?' selected':'')+'>טווח תאריכים מותאם…</option></select>';
   return '<div style="position:relative">'+periodSelect+
-      '<div id="crmCal" style="display:none;position:absolute;top:calc(100% + 4px);inset-inline-end:0;z-index:60"></div></div>'+
+      '<div id="crmCal" style="display:none;position:absolute;top:calc(100% + 4px);inset-inline-start:0;z-index:60"></div></div>'+
     (rangeActive?'<span style="background:rgba(59,130,246,.16);color:var(--blue,#3b82f6);font-size:12.5px;font-weight:700;padding:5px 11px;border-radius:20px;white-space:nowrap">'+escW(_crmFrom)+' → '+escW(_crmTo)+' <span onclick="crmClearRange()" style="cursor:pointer;opacity:.8">✕</span></span>':'');
 }
 function crmAnalyticsHTML(s){
