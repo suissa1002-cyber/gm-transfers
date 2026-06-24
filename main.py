@@ -3744,6 +3744,20 @@ def bridge_answer(body: UriAnswer, x_bridge_key: Optional[str] = Header(None)):
     try:
         job = db.uri_job_get(body.id)
         if job and job.get("source") == "bot" and body.status == "done":
+            # 🤐 גארד נגד דריסת נציג חי: תשובות אורי אסינכרוניות (תור ~20-60ש) ועלולות
+            # להגיע אחרי שנציג כבר השתלט וענה ידנית. אם human handoff פעיל — לא שולחים
+            # ללקוח; שומרים כהערה פנימית כדי שאסי יראה מה אורי היה עונה.
+            _sess = db.bot_session_get(job["phone"])
+            if _sess.get("state") == "agent" and (_sess.get("data") or {}).get("human"):
+                try:
+                    db.wa_note_add(job["phone"],
+                                   "(אורי נחסם — נציג חי) " + (body.answer or "").strip()[:380],
+                                   "אורי ✨")
+                except Exception:  # noqa: BLE001
+                    pass
+                logger.info("uri bot-answer SUPPRESSED (human handoff active) %s job %s",
+                            job["phone"], body.id)
+                return {"ok": True, "suppressed": "human"}
             import re as _re
             ans = body.answer or ""
             m = _re.search(r"\[DRAFT\]\s*([\s\S]*?)\s*\[/DRAFT\]", ans)
