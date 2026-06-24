@@ -6231,11 +6231,12 @@ def pbx_calls_list(x_admin_key: Optional[str] = Header(None)):
 
 # ── 📇 CRM פנימי — מרכז שיחות + כרטיס לקוח 360 + אנליטיקה (על המידע שלנו, ללא נטוויל) ──
 @app.get("/api/admin/crm/stats")
-def crm_stats(route: str = "", x_admin_key: Optional[str] = Header(None)):
-    """אנליטיקת שיחות לדשבורד ה-CRM (30 יום). route= מסנן לסניף/מחלקה."""
+def crm_stats(route: str = "", days: int = 30, date_from: str = "", date_to: str = "",
+              x_admin_key: Optional[str] = Header(None)):
+    """אנליטיקת שיחות לדשבורד ה-CRM. days=תקופה, או from/to לטווח תאריכים; route= מסנן סניף/מחלקה."""
     _require_admin(x_admin_key)
     try:
-        return db.pbx_stats(30, route=route)
+        return db.pbx_stats(int(days or 30), route=route, date_from=date_from, date_to=date_to)
     except Exception as e:  # noqa: BLE001
         logger.warning("crm stats failed: %s", e)
         return {"total": 0, "today": 0, "week": 0, "identified": 0, "identified_pct": 0,

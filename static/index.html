@@ -5976,14 +5976,61 @@ function pbxOpenCall(phone){
 }
 
 // ════════ 📇 מוקד שיחות / CRM פנימי ════════
-let _crmStats=null, _crmCalls=null, _crmView='history', _crmSearch='', _crmCharts=[];
+let _crmStats=null, _crmCalls=null, _crmView='analytics', _crmSearch='', _crmCharts=[];
 let _crmBranch='', _crmDept='', _crmRoute='';
+let _crmDays=30, _crmFrom='', _crmTo='', _crmCalPick=null, _crmCalMonth='';
+function crmStatsQs(){
+  const p=['route='+encodeURIComponent(_crmRoute||'')];
+  if(_crmFrom&&_crmTo){ p.push('date_from='+_crmFrom,'date_to='+_crmTo); }
+  else p.push('days='+_crmDays);
+  return '?'+p.join('&');
+}
 function crmApplyFilter(){ _crmRoute=_crmDept?(_crmBranch+' › '+_crmDept):_crmBranch; crmReloadStats(); }
 function crmSetBranch(b){ _crmBranch=b||''; _crmDept=''; crmApplyFilter(); }
 function crmSetDept(d){ _crmDept=d||''; crmApplyFilter(); }
+function crmSetDays(d){ _crmDays=d; _crmFrom=''; _crmTo=''; crmReloadStats(); }
+function crmClearRange(){ _crmFrom=''; _crmTo=''; crmReloadStats(); }
 async function crmReloadStats(){
-  try{ const qs=_crmRoute?('?route='+encodeURIComponent(_crmRoute)):''; _crmStats=await api('/api/admin/crm/stats'+qs); }catch(e){}
+  try{ _crmStats=await api('/api/admin/crm/stats'+crmStatsQs()); }catch(e){}
   if(S.view==='crm'&&_crmView==='analytics') renderCrm();
+}
+// ── קלנדר טווח תאריכים (קליק ראשון = מתאריך, שני = עד) ──
+function crmCalToggle(){
+  const el=document.getElementById('crmCal'); if(!el) return;
+  if(el.style.display!=='none'){ el.style.display='none'; return; }
+  _crmCalMonth=_crmCalMonth||new Date().toISOString().slice(0,7);
+  _crmCalPick=null; el.style.display='block'; crmCalPaint();
+}
+function crmCalPaint(){
+  const el=document.getElementById('crmCal'); if(!el) return;
+  const a=_crmCalMonth.split('-').map(Number), y=a[0], m=a[1];
+  const first=new Date(y,m-1,1), days=new Date(y,m,0).getDate();
+  const pad=(first.getDay())%7;
+  const today=new Date().toISOString().slice(0,10);
+  const dstr=d=>y+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+  const inRange=ds=>_crmFrom&&_crmTo&&ds>=_crmFrom&&ds<=_crmTo;
+  let cells='';
+  for(let i=0;i<pad;i++) cells+='<span></span>';
+  for(let d=1;d<=days;d++){ const ds=dstr(d);
+    const sel=(_crmCalPick===ds)||((_crmFrom===ds||_crmTo===ds)&&!_crmCalPick);
+    cells+='<button class="wco-day '+(sel?'sel':'')+' '+((inRange(ds)&&!_crmCalPick)?'rng':'')+' '+(ds===today?'today':'')+'" onclick="crmCalPick(\''+ds+'\')">'+d+'</button>'; }
+  const mName=new Date(y,m-1,1).toLocaleDateString('he-IL',{month:'long',year:'numeric'});
+  el.innerHTML='<div style="background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.25);padding:12px;width:286px">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'+
+      '<button class="btn-ghost" style="padding:3px 10px" onclick="crmCalNav(1)">‹</button>'+
+      '<b style="font-size:14px">'+mName+'</b>'+
+      '<button class="btn-ghost" style="padding:3px 10px" onclick="crmCalNav(-1)">›</button></div>'+
+    '<div class="muted" style="display:grid;grid-template-columns:repeat(7,1fr);text-align:center;font-size:11px;margin-bottom:4px"><span>א</span><span>ב</span><span>ג</span><span>ד</span><span>ה</span><span>ו</span><span>ש</span></div>'+
+    '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px">'+cells+'</div>'+
+    '<div class="muted" style="font-size:11px;margin-top:8px;text-align:center">'+(_crmCalPick?'בחר עד-תאריך (אותו יום = יום בודד)':'בחר מ-תאריך')+'</div></div>';
+}
+function crmCalNav(dir){ const a=_crmCalMonth.split('-').map(Number); const nd=new Date(a[0],a[1]-1+dir,1); _crmCalMonth=nd.getFullYear()+'-'+String(nd.getMonth()+1).padStart(2,'0'); crmCalPaint(); }
+function crmCalPick(ds){
+  if(!_crmCalPick){ _crmCalPick=ds; crmCalPaint(); return; }
+  let a=_crmCalPick, b=ds; if(b<a){ const t=a; a=b; b=t; }
+  _crmFrom=a; _crmTo=b; _crmCalPick=null;
+  const el=document.getElementById('crmCal'); if(el) el.style.display='none';
+  crmReloadStats();
 }
 function crmBranchLabel(b){ return (!b||b==='—')?'ללא ניתוב':b; }
 function crmBarRow(label,count,max,hl){
@@ -5997,7 +6044,7 @@ async function loadCrm(spinner){
   if(spinner && window.showLoading){ try{ showLoading('טוען מוקד…'); }catch(e){} }
   try{
     const [st,cl]=await Promise.all([
-      api('/api/admin/crm/stats').catch(()=>null),
+      api('/api/admin/crm/stats'+crmStatsQs()).catch(()=>null),
       api('/api/admin/pbx/calls').catch(()=>null)
     ]);
     _crmStats=st||{}; _crmCalls=(cl&&cl.calls)||[];
@@ -6035,6 +6082,17 @@ function crmAnalyticsHTML(s){
         depts.map(x=>'<option value="'+escW(x.d)+'"'+(_crmDept===x.d?' selected':'')+'>'+escW(x.d)+' · '+x.c+'</option>').join('')+'</select>';
     }
   }
+  // ── סרגל תקופה + טווח תאריכים ──
+  const rangeActive=!!(_crmFrom&&_crmTo);
+  const pBtn=d=>'<button onclick="crmSetDays('+d+')" style="border:1px solid '+((!rangeActive&&_crmDays===d)?'var(--blue,#3b82f6);background:rgba(59,130,246,.14);color:var(--blue,#3b82f6)':'var(--line,#2c3442);background:var(--card,#171c24);color:var(--txt,#e8edf4)')+';border-radius:9px;padding:6px 11px;font-size:13px;font-weight:700;cursor:pointer">'+d+'</button>';
+  const periodBar='<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">'+
+    '<span style="font-size:13px;color:var(--muted,#94a3b8)">תקופה:</span>'+
+    [1,7,14,30,45,60,90].map(pBtn).join('')+
+    '<span style="color:var(--line,#2c3442);margin:0 2px">|</span>'+
+    '<div style="position:relative"><button onclick="crmCalToggle()" style="border:1px solid '+(rangeActive?'var(--blue,#3b82f6);background:rgba(59,130,246,.14);color:var(--blue,#3b82f6)':'var(--line,#2c3442);background:var(--card,#171c24);color:var(--txt,#e8edf4)')+';border-radius:9px;padding:6px 11px;font-size:13px;font-weight:700;cursor:pointer">📅 '+(rangeActive?(escW(_crmFrom)+' → '+escW(_crmTo)):'טווח תאריכים')+'</button>'+
+      '<div id="crmCal" style="display:none;position:absolute;top:calc(100% + 4px);inset-inline-end:0"></div></div>'+
+    (rangeActive?'<span onclick="crmClearRange()" style="cursor:pointer;color:var(--muted,#94a3b8);font-size:13px">נקה ✕</span>':'')+
+  '</div>';
   const filterBar='<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">'+
     '<span style="font-size:13px;color:var(--muted,#94a3b8)">סינון:</span>'+
     '<select onchange="crmSetBranch(this.value)" style="'+selSt+'">'+branchOpts+'</select>'+deptSel+
@@ -6045,7 +6103,7 @@ function crmAnalyticsHTML(s){
     '<div style="font-size:27px;font-weight:800;color:'+(c||'var(--txt,#e8edf4)')+'">'+v+'</div>'+
     '<div style="font-size:12.5px;color:var(--muted,#94a3b8);margin-top:2px">'+l+'</div></div>';
   const chips='<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px">'+
-      chip(s.total||0,'סה״כ ('+(s.days||30)+' ימים)','var(--blue,#3b82f6)')+
+      chip(s.total||0,rangeActive?('סה״כ · '+escW(_crmFrom)+'→'+escW(_crmTo)):('סה״כ ('+(s.span||s.days||30)+' ימים)'),'var(--blue,#3b82f6)')+
       chip(s.today||0,'היום')+
       chip(s.week||0,'בשבוע')+
       chip((s.identified_pct||0)+'%','זוהו','var(--green,#1fbf6b)')+
@@ -6063,9 +6121,9 @@ function crmAnalyticsHTML(s){
   }
   const volCard=crmCard('<div style="font-size:13px;font-weight:700;color:var(--muted,#94a3b8);margin-bottom:10px">📍 נפח שיחות לפי סניף'+(_crmBranch?' / מחלקה':'')+'</div>'+vol,'margin-bottom:12px');
   const chartCard=(title,id,h)=>crmCard('<div style="font-size:13px;font-weight:700;color:var(--muted,#94a3b8);margin-bottom:10px">'+title+'</div><div style="position:relative;height:'+(h||200)+'px"><canvas id="'+id+'"></canvas></div>','flex:1;min-width:300px');
-  return filterBar+chips+volCard+
+  return periodBar+filterBar+chips+volCard+
     '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">'+
-      chartCard('שיחות ב-14 הימים האחרונים'+(_crmRoute?' · '+escW(_crmRoute):''),'crmChartDays',210)+
+      chartCard('שיחות לפי יום'+(_crmRoute?' · '+escW(_crmRoute):''),'crmChartDays',210)+
       chartCard('פילוח לפי סניף (כללי)','crmChartBranch',210)+
     '</div>'+
     chartCard('שעות עומס'+(_crmRoute?' · '+escW(_crmRoute):''),'crmChartHours',180);

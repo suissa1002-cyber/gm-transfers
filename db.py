@@ -1959,11 +1959,11 @@ def pbx_calls_by_phone(phone, limit: int = 50) -> list:
         return [dict(r) for r in cur.fetchall()]
 
 
-def pbx_stats(days: int = 30, route: str = "") -> dict:
+def pbx_stats(days: int = 30, route: str = "", date_from: str = "", date_to: str = "") -> dict:
     """אנליטיקת שיחות נכנסות לסעיף ה-CRM. מחושב מ-5000 השיחות האחרונות.
-    `route` (אופציונלי) מסנן את המדדים/הסדרה/השעות לסניף או מחלקה ספציפיים
-    (התאמה: branch==route או נתיב מלא==route או נתיב שמתחיל ב-route › ).
-    תמיד מוחזר הפילוח המלא של סניפים (branches) ונתיבים (paths) לבניית המסננים."""
+    חלון הזמן: date_from/date_to (YYYY-MM-DD) אם ניתנו, אחרת days אחרונים.
+    `route` מסנן את המדדים/הסדרה/השעות לסניף/מחלקה. תמיד מוחזר פילוח מלא
+    (branches/paths) למסננים. הסדרה היומית נפרשת על כל החלון (שבועי אם >92 ימים)."""
     route = (route or "").strip()
     with _conn() as c:
         cur = c.cursor()
@@ -1972,7 +1972,19 @@ def pbx_stats(days: int = 30, route: str = "") -> dict:
         rows = [dict(r) for r in cur.fetchall()]
     now = datetime.now(timezone.utc).astimezone()
     today = now.date()
-    cutoff = now - timedelta(days=days)
+    start = end = None
+    if date_from and date_to:
+        try:
+            start = datetime.strptime(date_from, "%Y-%m-%d").date()
+            end = datetime.strptime(date_to, "%Y-%m-%d").date()
+        except Exception:  # noqa: BLE001
+            start = end = None
+    if not (start and end):
+        end = today
+        start = today - timedelta(days=max(0, int(days) - 1))
+    if start > end:
+        start, end = end, start
+    span = (end - start).days + 1
     per_day = {}
     per_branch, per_path = {}, {}     # פילוח מלא (לא מסונן) — למסננים ולתצוגת נפח
     per_hour = {h: 0 for h in range(24)}
@@ -1983,31 +1995,40 @@ def pbx_stats(days: int = 30, route: str = "") -> dict:
             ts = datetime.fromisoformat(str(r.get("ts")))
         except Exception:  # noqa: BLE001
             continue
-        if ts < cutoff:
+        d = ts.date()
+        if d < start or d > end:
             continue
         full = (str(r.get("route") or "")).strip()
         branch = (full.split(" › ")[0]).strip() or "—"
-        # פילוח מלא (תמיד, לא תלוי במסנן)
         per_branch[branch] = per_branch.get(branch, 0) + 1
         if full:
             per_path[full] = per_path.get(full, 0) + 1
-        # מסנן למדדים/סדרה/שעות
         if route and not (branch == route or full == route or full.startswith(route + " › ")):
             continue
         total += 1
         seen[str(r.get("phone") or "")] = seen.get(str(r.get("phone") or ""), 0) + 1
         if str(r.get("matched_name") or "").strip():
             ident += 1
-        d = ts.date()
         if d == today:
             today_n += 1
         if (today - d).days < 7:
             week_n += 1
         per_day[d.isoformat()] = per_day.get(d.isoformat(), 0) + 1
         per_hour[ts.hour] = per_hour.get(ts.hour, 0) + 1
-    series = [{"date": (today - timedelta(days=i)).isoformat(),
-               "count": per_day.get((today - timedelta(days=i)).isoformat(), 0)}
-              for i in range(13, -1, -1)]
+    # סדרה: יומית עד 92 ימים, אחרת מקבצים שבועיים
+    series = []
+    if span <= 92:
+        for i in range(span):
+            dd = (start + timedelta(days=i)).isoformat()
+            series.append({"date": dd, "count": per_day.get(dd, 0)})
+    else:
+        cur_d = start
+        while cur_d <= end:
+            wk_end = min(cur_d + timedelta(days=6), end)
+            cnt = sum(per_day.get((cur_d + timedelta(days=j)).isoformat(), 0)
+                      for j in range((wk_end - cur_d).days + 1))
+            series.append({"date": cur_d.isoformat(), "count": cnt})
+            cur_d = wk_end + timedelta(days=1)
     branches = sorted([{"branch": k, "count": v} for k, v in per_branch.items()],
                       key=lambda x: -x["count"])
     paths = sorted([{"path": k, "count": v} for k, v in per_path.items()],
@@ -2020,6 +2041,7 @@ def pbx_stats(days: int = 30, route: str = "") -> dict:
         "repeat_callers": sum(1 for n in seen.values() if n > 1),
         "series": series, "branches": branches, "paths": paths,
         "hours": hours, "days": days, "route": route,
+        "from": start.isoformat(), "to": end.isoformat(), "span": span,
     }
 
 
