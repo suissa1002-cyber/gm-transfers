@@ -147,13 +147,18 @@ def handle(phone: str, text: str, mtype: str = "text", reply_id: str = "", wamid
     # שאלה לא יישאר תקוע בלי מענה (שיחות 543159043/546619676). הרגע שאסי כותב — שקט.
     if state == "agent" and _agent_handoff_active(sess):
         human_active = bool((sess.get("data") or {}).get("human"))
-        # כשנציג חי השתלט (human=True) — רק כפתור מפורש או "תפריט/ביטול" מחזירים את
-        # הבוט. ברכה תמימה ("הי") מהלקוח **לא** תשבור את ההשתלטות (אסי, 24/06). כשאף
-        # אדם לא ענה — אורי ממשיך להגיב גם על ברכה (not human_active מכסה את זה).
-        reengage = (bool(rid) or low in _ESCAPE or not human_active)
-        if not reengage:
+        explicit = bool(rid) or low in _ESCAPE      # כפתור מפורש / "תפריט/ביטול"
+        # (1) נציג חי השתלט (human=True) → הבוט שקט תמיד, אלא אם הלקוח לחץ כפתור/תפריט
+        #     מפורש. ברכה תמימה ("הי") **לא** תשבור את ההשתלטות (אסי, 24/06).
+        if human_active and not explicit:
             return
-        db.bot_session_clear(phone)
+        if explicit:
+            # יציאה מפורשת אל הבוט (כפתור/"תפריט-ביטול") → מנקים את ההמתנה-לנציג.
+            db.bot_session_clear(phone)
+        # (2) else: ביקש נציג אך **אף אדם עוד לא ענה** + שאלה רגילה → הבוט/אורי עונה,
+        #     אבל **לא מנקים** את ה-session ב-DB → הלקוח **נשאר 'ממתין לנציג'**
+        #     (נשאר בדייג'סט/רשימת ההמתנה). הנציג יקרא את השיחה ויחליט אם צריך
+        #     התערבות; אם יענה ידנית → human=True → שקט מלא (אסי, 24/06).
         sess = {"state": None, "data": {}}
         state = None
 
