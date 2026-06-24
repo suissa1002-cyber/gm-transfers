@@ -242,6 +242,91 @@ def dial(source_ext: str, dest: str, account: str = "source",
         return {"ok": False, "originate_id": "", "raw": str(e)}
 
 
+def _digits(s: str) -> str:
+    return "".join(ch for ch in str(s or "") if ch.isdigit())
+
+
+def fetch_cdrs_by_phone(phone: str, start: str, end: str) -> list:
+    """היסטוריית שיחות מלאה (info=cdrs) למספר נתון. מחזיר רשומות מנורמלות
+    עם uniqueid (להקלטה), משך (billsec), תוצאה, וכיוון מוסק יחסית ללקוח."""
+    if not is_configured() or not phone:
+        return []
+    peer = _digits(phone)[-9:]
+    params = {"reqtype": "INFO", "info": "cdrs", "phone": phone,
+              "start": start, "end": end, "format": "json"}
+    try:
+        r = _get(params)
+        if r.status_code != 200:
+            return []
+        body = (r.text or "").strip()
+        if not body or "mistaken the security api key" in body.lower():
+            return []
+        data = r.json()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("1com cdrs-by-phone failed: %s", e)
+        return []
+    out = []
+    for rec in (data if isinstance(data, list) else []):
+        dispo_raw = str(rec.get("disposition") or "").strip().upper()
+        try:
+            billsec = int(str(rec.get("billsec") or "0").strip() or "0")
+        except Exception:  # noqa: BLE001
+            billsec = 0
+        src = _digits(rec.get("src") or rec.get("realsrc"))
+        # יוצאת: הלקוח אינו המקור (אנחנו חייגנו אליו); נכנסת: הלקוח הוא המקור
+        direction = "in" if src.endswith(peer) else "out"
+        uid = str(rec.get("uniqueid") or "").strip()
+        out.append({
+            "ts_str": str(rec.get("start") or "").strip(),
+            "answer": str(rec.get("answer") or "").strip(),
+            "duration": billsec,
+            "disposition": _DISPO_MAP.get(dispo_raw, "other"),
+            "disposition_raw": dispo_raw,
+            "uid": uid,
+            "direction": direction,
+            "has_rec": bool(uid) and dispo_raw == "ANSWERED" and billsec > 0,
+        })
+    return out
+
+
+# סיומת uniqueid חוקית (נגד הזרקה ב-proxy ההקלטה)
+import re as _re  # noqa: E402
+_UID_RE = _re.compile(r"^[A-Za-z0-9._-]{6,80}$")
+
+
+def get_recording(uid: str):
+    """שולף הקלטת MP3 לפי uniqueid. מחזיר (bytes, content_type) או None."""
+    if not is_configured() or not uid or not _UID_RE.match(uid):
+        return None
+    try:
+        r = _get({"reqtype": "INFO", "info": "recording", "id": uid}, timeout=45)
+        ctype = r.headers.get("Content-Type", "")
+        if r.status_code == 200 and "audio" in ctype and r.content:
+            return (r.content, ctype)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("1com recording fetch failed: %s", e)
+    return None
+
+
+def active_channels() -> list:
+    """שיחות פעילות עכשיו (reqtype=CHANNELS) — לפולינג הפופאפ, מחוץ לזרימה.
+    מחזיר את ה-JSON הגולמי (list) או [] (כולל כשאין שיחות)."""
+    if not is_configured():
+        return []
+    try:
+        r = _get({"reqtype": "CHANNELS", "format": "json"}, timeout=12)
+        if r.status_code != 200:
+            return []
+        body = (r.text or "").strip()
+        if not body or body[0] not in "[{":
+            return []
+        data = r.json()
+        return data if isinstance(data, list) else [data]
+    except Exception as e:  # noqa: BLE001
+        logger.warning("1com channels failed: %s", e)
+        return []
+
+
 if __name__ == "__main__":  # בדיקה ידנית מהירה: PBX_API_KEY=... python onecom_client.py
     logging.basicConfig(level=logging.INFO)
     today = date.today()

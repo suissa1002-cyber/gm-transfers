@@ -5409,7 +5409,8 @@ function paintWcOrder(){
       <div class="muted" style="font-size:12.5px">משלוח: ${escW(sAddr)}</div>`;
       })()}
       ${(d.shipping_lines||[]).length?`<div class="muted" style="font-size:12.5px;display:flex;align-items:center;gap:5px">${ico('truck',13)} ${escW(d.shipping_lines.join(', '))}</div>`:''}
-      ${phoneIntl.length>10?`<button class="btn-ghost" style="margin-top:6px;padding:4px 10px;font-size:12px" onclick="closeModal();setAdminTab('wa');setTimeout(()=>openWaConv('${phoneIntl}'),600)">${ico('chat',13)} פתח שיחה בוואטסאפ</button>`:''}
+      ${phoneIntl.length>10?`<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><button class="btn-ghost" style="padding:4px 10px;font-size:12px" onclick="closeModal();setAdminTab('wa');setTimeout(()=>openWaConv('${phoneIntl}'),600)">${ico('chat',13)} פתח שיחה בוואטסאפ</button>
+      <button class="btn-ghost" style="padding:4px 10px;font-size:12px;display:inline-flex;align-items:center;gap:5px" onclick="crmDial('${phoneIntl}',this)" title="חיוג מהמחשב — מצלצל לשלוחה שלך ואז מחבר ללקוח">${ico('phone',13)} חייג ללקוח</button></div>`:''}
     </div>
     ${phoneIntl.length>10?`<details style="margin-bottom:16px" ontoggle="if(this.open)wcoLoadCalls('${phoneIntl}')">
       <summary class="muted" style="cursor:pointer;font-size:13px;display:flex;align-items:center;gap:6px">${ico('inbox',14)} שיחות טלפון של הלקוח</summary>
@@ -5459,16 +5460,11 @@ function paintWcOrder(){
 async function wcoLoadCalls(phoneIntl){
   const box=document.getElementById('wcoCalls'); if(!box || box.dataset.loaded) return;
   box.dataset.loaded='1';
-  let calls=[];
-  try{ const r=await api('/api/admin/crm/calls-by-phone?phone='+encodeURIComponent(phoneIntl)); calls=(r&&r.calls)||[]; }catch(e){}
+  let calls=[],cfg=true;
+  try{ const r=await api('/api/admin/crm/full-history?phone='+encodeURIComponent(phoneIntl)); calls=(r&&r.calls)||[]; cfg=!r||r.configured!==false; }catch(e){}
+  if(!cfg){ box.innerHTML='<div class="muted" style="font-size:12.5px">— 1com לא מוגדר —</div>'; return; }
   if(!calls.length){ box.innerHTML='<div class="muted" style="font-size:12.5px">— אין שיחות מתועדות —</div>'; return; }
-  const fmtT=ts=>{ const d=new Date(ts); if(isNaN(d.getTime())) return escW(ts||''); const p=n=>('0'+n).slice(-2); return p(d.getDate())+'/'+p(d.getMonth()+1)+' '+p(d.getHours())+':'+p(d.getMinutes()); };
-  box.innerHTML='<div style="display:flex;flex-direction:column">'+calls.map(c=>`<div style="display:flex;align-items:center;gap:9px;font-size:12.5px;padding:7px 2px;border-bottom:1px solid var(--line)">
-      <span class="muted" style="white-space:nowrap;min-width:78px">${fmtT(c.ts)}</span>
-      ${c.route?`<span style="background:#16a34a18;color:#16a34a;font-size:11.5px;font-weight:700;padding:2px 9px;border-radius:20px;white-space:nowrap">${escW(c.route)}</span>`:'<span class="muted">— שיחה נכנסת —</span>'}
-      ${c.matched_name?`<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(c.matched_name)}</span>`:'<span style="flex:1"></span>'}
-      ${c.order_number?`<span class="muted" style="direction:ltr">#${escW(c.order_number)}</span>`:''}
-    </div>`).join('')+'</div>';
+  box.innerHTML=calls.slice(0,20).map(crmCdrRow).join('');
 }
 async function wcoSendInvoice(orderNumber, phoneIntl){
   showLoading('מחפש חשבונית…');
@@ -6272,7 +6268,7 @@ async function crmOpenCustomer(phone){
   crmShowDrawer({phone:phone, loading:true});
   try{
     const d=await api('/api/admin/crm/customer?phone='+encodeURIComponent(phone));
-    d.loading=false; crmShowDrawer(d); crmRepairsLoad(d.phone||phone);
+    d.loading=false; crmShowDrawer(d); crmRepairsLoad(d.phone||phone); crmCdrHistLoad(d.phone||phone);
   }catch(e){ crmShowDrawer({phone:phone, error:true}); }
 }
 function crmShowDrawer(c){
@@ -6285,11 +6281,53 @@ function crmShowDrawer(c){
     '<div style="position:relative;margin-inline-start:auto;width:min(420px,94vw);height:100%;overflow:auto;background:var(--bg,#0e1116);border-inline-start:1px solid var(--line,#2c3442);box-shadow:-12px 0 40px rgba(0,0,0,.4)">'+crmDrawerInner(c)+'</div>';
 }
 function crmCloseCust(){ const e=document.getElementById('crmDrawer'); if(e) e.remove(); }
+async function crmDial(phone,btn){
+  if(!phone) return;
+  if(btn){ btn.disabled=true; btn.style.opacity=.6; }
+  try{ const r=await api('/api/admin/pbx/dial?dest='+encodeURIComponent(phone));
+    toast(r&&r.ok?'☎️ מצלצל לשלוחה שלך… ענה והשיחה תתחבר':'⚠️ חיוג נכשל',!!(r&&r.ok)); }
+  catch(e){ toast('⚠️ חיוג נכשל',false); }
+  if(btn){ btn.disabled=false; btn.style.opacity=1; }
+}
+const _CRM_DISPO={answered:['נענתה','#1fbf6b'],no_answer:['לא נענתה','#e5484d'],busy:['עסוק','#f5a524'],abandoned:['ננטשה','#fb7185'],failed:['נכשלה','#8b5cf6'],other:['—','#94a3b8']};
+function crmDispoBadge(d){ const x=_CRM_DISPO[d]||_CRM_DISPO.other; return '<span style="font-size:10.5px;font-weight:700;color:'+x[1]+';background:'+x[1]+'1f;padding:1px 7px;border-radius:20px;white-space:nowrap">'+x[0]+'</span>'; }
+function crmCdrRow(x){
+  const dirIcon=x.direction==='out'?'↗':'↘';
+  const dur=x.duration?crmFmtDur(x.duration):'';
+  const rec=x.has_rec?'<button onclick="crmPlayRec(\''+escW(x.uid)+'\',this)" class="btn-ghost" style="margin-top:6px;padding:5px 10px;font-size:11.5px;display:inline-flex;align-items:center;gap:5px">▶ האזן להקלטה</button>':'';
+  return '<div style="background:var(--card,#171c24);border:1px solid var(--line,#2c3442);border-radius:11px;padding:9px 11px;margin-bottom:7px">'+
+    '<div style="display:flex;align-items:center;gap:8px;font-size:12.5px">'+
+      '<span style="color:var(--muted,#94a3b8)">'+dirIcon+'</span>'+
+      '<span style="color:var(--muted,#94a3b8);white-space:nowrap">'+crmFmtTs(x.ts_str)+'</span>'+
+      crmDispoBadge(x.disposition)+
+      (dur?'<span style="color:var(--muted,#94a3b8);margin-inline-start:auto">'+dur+'</span>':'')+
+    '</div>'+rec+'</div>';
+}
+async function crmCdrHistLoad(phone){
+  const el=document.getElementById('crmCdrHist'); if(!el) return;
+  let calls=[],cfg=true;
+  try{ const d=await api('/api/admin/crm/full-history?phone='+encodeURIComponent(phone)); calls=(d&&d.calls)||[]; cfg=!d||d.configured!==false; }catch(e){}
+  if(!cfg){ el.innerHTML='<div style="color:var(--muted,#94a3b8);font-size:12.5px">— 1com לא מוגדר —</div>'; return; }
+  el.innerHTML=calls.length?calls.slice(0,20).map(crmCdrRow).join(''):'<div style="color:var(--muted,#94a3b8);font-size:12.5px">— אין שיחות —</div>';
+}
+async function crmPlayRec(uid,btn){
+  btn.disabled=true; const old=btn.textContent; btn.textContent='טוען…';
+  try{
+    const h={}; if(S.adminKey) h['X-Admin-Key']=S.adminKey;
+    const r=await fetch('/api/admin/crm/recording?uid='+encodeURIComponent(uid),{headers:h});
+    if(!r.ok) throw 0;
+    const url=URL.createObjectURL(await r.blob());
+    const a=document.createElement('audio'); a.controls=true; a.autoplay=true; a.src=url;
+    a.style.cssText='height:34px;width:100%;margin-top:6px';
+    btn.replaceWith(a);
+  }catch(e){ btn.textContent='⚠️ אין הקלטה'; }
+}
 function crmDrawerInner(c){
   const head=function(sub){ return '<div style="position:sticky;top:0;background:var(--card,#171c24);border-bottom:1px solid var(--line,#2c3442);padding:14px 16px;display:flex;align-items:center;gap:11px;z-index:1">'+
     '<div style="width:42px;height:42px;border-radius:50%;background:rgba(59,130,246,.16);display:flex;align-items:center;justify-content:center;flex-shrink:0">'+ico('user',20,'#3b82f6')+'</div>'+
     '<div style="min-width:0;flex:1"><div style="font-size:16px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escW(c.name||'לקוח לא מזוהה')+'</div>'+
     '<div style="font-size:12px;color:var(--muted,#94a3b8);direction:ltr;text-align:right">+'+escW(c.phone||'')+'</div></div>'+
+    '<button onclick="crmDial(\''+escW(c.phone||'')+'\',this)" title="חיוג מהמחשב" style="background:var(--blue,#3b82f6);border:0;color:#fff;border-radius:9px;padding:7px 11px;cursor:pointer;display:inline-flex;align-items:center">'+ico('phone',16)+'</button>'+
     '<button onclick="crmOpenWhatsApp(\''+escW(c.phone||'')+'\')" title="וואטסאפ" style="background:var(--green,#1fbf6b);border:0;color:#fff;border-radius:9px;padding:7px 11px;cursor:pointer;display:inline-flex;align-items:center">'+ico('chat',16)+'</button>'+
     '<button onclick="crmCloseCust()" style="background:none;border:0;font-size:20px;cursor:pointer;color:var(--muted,#94a3b8)">✕</button></div>'+
     (sub||''); };
@@ -6312,6 +6350,7 @@ function crmDrawerInner(c){
   return head('')+
     sec(ico('receipt',13)+'הזמנות אתר ('+orders.length+')', ordersHTML)+
     sec(ico('list',13)+'היסטוריית שיחות ('+calls.length+')', callsHTML)+
+    sec(ico('phone',13)+'שיחות טלפון · 1com', '<div id="crmCdrHist"><div style="color:var(--muted,#94a3b8);font-size:12.5px">טוען…</div></div>')+
     sec(ico('chat',13)+'וואטסאפ אחרון', waHTML)+
     sec(ico('wrench',13)+'תיקוני מעבדה', '<div id="crmRepairs"><div style="color:var(--muted,#94a3b8);font-size:12.5px">טוען…</div></div>');
 }

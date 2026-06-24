@@ -6353,6 +6353,67 @@ def crm_cdr_stats(days: int = 30, date_from: str = "", date_to: str = "",
         return {"configured": False}
 
 
+def _pbx_local_num(phone: str) -> str:
+    """מספר בפורמט מקומי (0XXXXXXXXX) שבו 1com מסנן CDR."""
+    d = "".join(ch for ch in str(phone or "") if ch.isdigit())
+    if d.startswith("972"):
+        d = d[3:]
+    return "0" + d[-9:] if len(d) >= 9 else d
+
+
+@app.get("/api/admin/crm/full-history")
+def crm_full_history(phone: str = "", days: int = 60,
+                     x_admin_key: Optional[str] = Header(None)):
+    """היסטוריית שיחות מלאה מ-1com (CDR) למספר: תוצאה+משך+כיוון+דגל הקלטה."""
+    _require_admin(x_admin_key)
+    import onecom_client
+    from datetime import date as _date, timedelta as _td
+    if not phone:
+        return {"calls": [], "configured": onecom_client.is_configured()}
+    today = _date.today()
+    start = (today - _td(days=max(1, int(days or 60)))).isoformat()
+    try:
+        calls = onecom_client.fetch_cdrs_by_phone(_pbx_local_num(phone),
+                                                  start, today.isoformat())
+    except Exception as e:  # noqa: BLE001
+        logger.warning("crm full-history failed: %s", e)
+        calls = []
+    return {"calls": calls, "configured": onecom_client.is_configured()}
+
+
+@app.get("/api/admin/crm/recording")
+def crm_recording(uid: str = "", x_admin_key: Optional[str] = Header(None)):
+    """פרוקסי הקלטת שיחה (MP3) מ-1com לפי uniqueid — המפתח לא נחשף לדפדפן."""
+    _require_admin(x_admin_key)
+    import onecom_client
+    res = onecom_client.get_recording(uid)
+    if not res:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    content, ctype = res
+    return Response(content, media_type=ctype or "audio/mpeg",
+                    headers={"Cache-Control": "private, max-age=3600"})
+
+
+@app.get("/api/admin/pbx/dial")
+def pbx_dial(dest: str = "", source: str = "",
+             x_admin_key: Optional[str] = Header(None)):
+    """Click2call: מצלצל לשלוחה (source) ואז מחבר ל-dest. חיוג מהמחשב בלי WebRTC."""
+    _require_admin(x_admin_key)
+    import onecom_client
+    src = (source or os.getenv("PBX_DIAL_SOURCE", "202")).strip()
+    if not dest:
+        return JSONResponse({"ok": False, "error": "no dest"}, status_code=400)
+    return onecom_client.dial(src, _pbx_local_num(dest))
+
+
+@app.get("/api/admin/pbx/channels")
+def pbx_channels(x_admin_key: Optional[str] = Header(None)):
+    """שיחות פעילות עכשיו (לפופאפ דרך פולינג — מחוץ לזרימת השיחה)."""
+    _require_admin(x_admin_key)
+    import onecom_client
+    return {"channels": onecom_client.active_channels()}
+
+
 @app.get("/api/admin/crm/calls-by-phone")
 def crm_calls_by_phone(phone: str = "", x_admin_key: Optional[str] = Header(None)):
     """שיחות של מספר נתון — לסקשן הנשלף בכרטיס ההזמנה."""
