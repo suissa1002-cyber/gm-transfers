@@ -39,6 +39,30 @@ scheduler = BackgroundScheduler(timezone=cfg.TZ)
 # ──────────────────────────────────────────────────────────────
 def _poll_job():
     result = poller.poll_once()
+    # ── 🩺 ניטור בריאות ה-poller: NewOrder נופל (500) → ה-poller עיוור והעברות
+    # נתקעות בשקט. מתריעים בטלגרם אחרי 3 כשלים רצופים (~1.5 דק'), תזכורת כל ~30 דק',
+    # והודעת "חזר לעבוד" בהתאוששות. (POLL_INTERVAL_SEC=30) ──
+    try:
+        if result.get("error"):
+            streak = int(db.sales_state_get("poll_fail_streak", 0) or 0) + 1
+            db.sales_state_set("poll_fail_streak", str(streak))
+            if streak == 3 or (streak > 3 and streak % 60 == 0):
+                mins = streak * cfg.POLL_INTERVAL_SEC // 60
+                _tg_admin("🔴 <b>סנכרון ההעברות תקוע</b>\n"
+                          f"ה-poller נכשל {streak} פעמים ברצף (~{mins} דק') — NewOrder לא מגיב.\n"
+                          f"<code>{str(result.get('error'))[:200]}</code>\n\n"
+                          "⚠️ העברות לא יתנקו ולא ייווצרו כרטיסי קליטה עד שהשרת של NewOrder יחזור.")
+                db.sales_state_set("poll_alerted", "1")
+        else:
+            if (db.sales_state_get("poll_alerted") or "") == "1":
+                _tg_admin("🟢 <b>סנכרון ההעברות חזר לעבוד</b>\n"
+                          "NewOrder מגיב שוב — ה-poller ממשיך כרגיל. כדאי להריץ סריקה אם יש דרישות תקועות.")
+            db.sales_state_set("poll_fail_streak", "0")
+            db.sales_state_set("poll_alerted", "")
+            from datetime import datetime as _dt, timezone as _tz
+            db.sales_state_set("poll_last_ok", _dt.now(_tz.utc).isoformat())
+    except Exception as e:  # noqa: BLE001
+        logger.warning("poll health tracking failed: %s", e)
     if result.get("new"):
         try:
             import alerts
@@ -286,8 +310,32 @@ def _keepalive_job():
             logger.warning("keepalive ping failed %s: %s", u, e)
 
 
+def _pbx_route_poll_job():
+    """דוגם CHANNELS כל כמה שניות ושומר את הנתיב המלא (סניף › תת-מחלקה) לכל שיחה
+    פעילה — כולל שיחות שלא נענו (ש-CDR לא יכול לשחזר). מקור האמת לתיוג היסטוריה."""
+    try:
+        import onecom_client
+        if not onecom_client.is_configured():
+            return
+        raw = onecom_client.active_channels()
+        if not raw:
+            return
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).astimezone().isoformat()
+        for cid, e in _pbx_normalize_channels(raw).items():
+            route, branch, _sub = _pbx_route_of(cid, e)
+            if route or e.get("answered"):
+                db.pbx_route_upsert(e["uid"], _il_phone(cid), route, branch,
+                                    e.get("answered", False), now)
+    except Exception as ex:  # noqa: BLE001
+        logger.warning("pbx route poll failed: %s", ex)
+
+
 def register_recurring_jobs():
     """רושם את כל עבודות הרקע החוזרות. נקרא מ-_startup (אם _RUN_JOBS) או מ-worker.py."""
+    # לכידת נתיב שיחות חי מ-CHANNELS (מהיר עם nodename) — לתיוג היסטוריה/אנליטיקה מדויק
+    scheduler.add_job(_pbx_route_poll_job, "interval", seconds=5,
+                      id="pbx_route", max_instances=1, coalesce=True)
     # סבב ראשון מיד, ואז לפי האינטרוול
     scheduler.add_job(_poll_job, "interval", seconds=cfg.POLL_INTERVAL_SEC,
                       id="poll", next_run_time=None, max_instances=1)
@@ -6301,36 +6349,9 @@ def pbx_live(x_admin_key: Optional[str] = Header(None)):
     _require_admin(x_admin_key)
     import onecom_client
     import re as _re
-    from datetime import date as _date, timedelta as _td
-    raw = onecom_client.active_channels()
-    by_phone: dict = {}
-    for ch in raw:
-        if not isinstance(ch, list) or len(ch) < 14:
-            continue
-        chan, ctx, state = str(ch[0]), str(ch[1]), str(ch[4])
-        app, appdata = str(ch[5]), str(ch[6])
-        cid, uid = str(ch[7]), str(ch[13])
-        if not _re.match(r"^0\d{8,9}$", cid):   # רק מתקשר חיצוני (לא שלוחה)
-            continue
-        e = by_phone.setdefault(cid, {"uid": uid, "state": state, "branch": "", "answered": False})
-        # הרגל הטראנק (kamailio / תור / IVR) הוא הנציג היציב לשיחה
-        if chan.startswith("SIP/kamailio") or "queue" in ctx.lower() or ctx.upper() == "IVRDISA":
-            e["uid"], e["state"] = uid, state
-        # נענה: רגל שלוחה (SIP/2xx) במצב Up = נציג הרים
-        if _re.match(r"SIP/\d{3}-greenmobile", chan) and state.lower() == "up":
-            e["answered"] = True
-        # ── סניף: עדיפות תור > huntlist > חיוג-ישיר-לשלוחה ──
-        qm = _re.search(r"\b(18\d{3})\b", appdata)
-        if qm and qm.group(1) in _PBX_QUEUE_LABELS:
-            e["branch"] = _PBX_QUEUE_LABELS[qm.group(1)]
-        elif "huntlist" in (ctx + app).lower():
-            e["branch"] = e["branch"] or "עד הלום"
-        elif not e["branch"]:
-            em = _re.search(r"SIP/(\d{3})-greenmobile", appdata)
-            ext = em.group(1) if em else (ch[2] if str(ch[2]).isdigit() else "")
-            if ext in _PBX_EXT_BRANCH:
-                e["branch"] = _PBX_EXT_BRANCH[ext]
     import time as _t
+    raw = onecom_client.active_channels()
+    by_phone = _pbx_normalize_channels(raw)
     now = _t.time()
     calls = []
     for cid, e in by_phone.items():
@@ -6343,16 +6364,8 @@ def pbx_live(x_admin_key: Optional[str] = Header(None)):
             _pbx_bg_fill(cid)
         info = (ident_hit[1] if ident_hit else
                 {"name": "", "orders": 0, "order_number": "", "items": ""})
-        # תת-מחלקה (חדשה/קיימת/חנות/מעבדה) משם-הקו ב-CDR
-        branch = e["branch"]
-        sub = ""
         nm = (tag_hit[1].get("name") if tag_hit else "") or ""
-        nm = nm.strip()
-        if nm in _PBX_SUB_DEPTS:
-            sub = nm
-            if not branch:
-                branch = _PBX_NAME_BRANCH.get(nm, "")
-        route = branch + (" › " + sub if (branch and sub) else "")
+        route, branch, sub = _pbx_route_of(cid, e, tag_name=nm)
         m = _re.search(r"(\d+)\.(\d+)", e["uid"])
         idnum = (m.group(1) + m.group(2)[:4]) if m else _re.sub(r"\D", "", e["uid"])
         calls.append({
@@ -6505,6 +6518,60 @@ def _pbx_cdr_route(name: str, who: str) -> str:
     if branch and sub:
         return branch + " › " + sub
     return branch or sub
+
+
+def _pbx_normalize_channels(raw) -> dict:
+    """ערוצי CHANNELS גולמיים → {מתקשר חיצוני: {uid,state,branch,answered}}.
+    משותף לפופאפ החי (/live) ול-worker לכידת הנתיב. סניף לפי תור>huntlist>שלוחה."""
+    import re as _re
+    by_phone: dict = {}
+    for ch in raw:
+        if not isinstance(ch, list) or len(ch) < 14:
+            continue
+        chan, ctx, state = str(ch[0]), str(ch[1]), str(ch[4])
+        app, appdata = str(ch[5]), str(ch[6])
+        cid, uid = str(ch[7]), str(ch[13])
+        if not _re.match(r"^0\d{8,9}$", cid):
+            continue
+        e = by_phone.setdefault(cid, {"uid": uid, "state": state, "branch": "", "answered": False})
+        if chan.startswith("SIP/kamailio") or "queue" in ctx.lower() or ctx.upper() == "IVRDISA":
+            e["uid"], e["state"] = uid, state
+        qm = _re.search(r"\b(18\d{3})\b", appdata)
+        if qm and qm.group(1) in _PBX_QUEUE_LABELS:
+            e["branch"] = _PBX_QUEUE_LABELS[qm.group(1)]
+        elif "huntlist" in (ctx + app).lower():
+            e["branch"] = e["branch"] or "עד הלום"
+        elif not e["branch"]:
+            em = _re.search(r"SIP/(\d{3})-greenmobile", appdata)
+            ext = em.group(1) if em else (ch[2] if str(ch[2]).isdigit() else "")
+            if ext in _PBX_EXT_BRANCH:
+                e["branch"] = _PBX_EXT_BRANCH[ext]
+        if _re.match(r"SIP/\d{3}-greenmobile", chan) and state.lower() == "up":
+            e["answered"] = True
+    return by_phone
+
+
+def _pbx_route_of(cid: str, e: dict, tag_name: str = None) -> tuple:
+    """בונה (route מלא, branch, sub) משילוב סניף(CHANNELS)+תת-מחלקה(שם-קו).
+    tag_name אופציונלי — אם None, נשלף מ-simplecdrs (recent_call_tag)."""
+    import onecom_client
+    from datetime import date as _date, timedelta as _td
+    branch = e.get("branch") or ""
+    sub = ""
+    if tag_name is None:
+        try:
+            today = _date.today().isoformat()
+            tomorrow = (_date.today() + _td(days=1)).isoformat()
+            tag_name = (onecom_client.recent_call_tag(_pbx_local_num(cid), today, tomorrow).get("name") or "")
+        except Exception:  # noqa: BLE001
+            tag_name = ""
+    nm = (tag_name or "").strip()
+    if nm in _PBX_SUB_DEPTS:
+        sub = nm
+        if not branch:
+            branch = _PBX_NAME_BRANCH.get(nm, "")
+    route = branch + (" › " + sub if (branch and sub) else "")
+    return route, branch, sub
 
 
 @app.get("/api/admin/crm/history")
