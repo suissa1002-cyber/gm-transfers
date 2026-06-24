@@ -43,6 +43,11 @@ def _poll_job():
     # נתקעות בשקט. מתריעים בטלגרם אחרי 3 כשלים רצופים (~1.5 דק'), תזכורת כל ~30 דק',
     # והודעת "חזר לעבוד" בהתאוששות. (POLL_INTERVAL_SEC=30) ──
     try:
+        # חותמת "ה-job רץ" (הצלחה או כשל) — Sentinel בודק אותה כ-watchdog חיצוני:
+        # אם היא מתיישנת, ה-job עצמו מת (כמו באג next_run_time=None), מצב שהתראה
+        # שחיה בתוך ה-job עיוורת אליו.
+        from datetime import datetime as _dt0, timezone as _tz0
+        db.sales_state_set("poll_last_run", _dt0.now(_tz0.utc).isoformat())
         if result.get("error"):
             streak = int(db.sales_state_get("poll_fail_streak", 0) or 0) + 1
             db.sales_state_set("poll_fail_streak", str(streak))
@@ -2554,6 +2559,38 @@ def admin_removals_status(x_admin_key: Optional[str] = Header(None)):
     return {"summary": db.removals_summary(),
             "last_run": db.sales_state_get("removals_last_run"),
             "backfill_last_run": db.sales_state_get("removals_backfill_last_run")}
+
+
+@app.get("/api/admin/poll-health")
+def admin_poll_health(x_admin_key: Optional[str] = Header(None)):
+    """בריאות פולר ההעברות — ל-watchdog חיצוני (Sentinel). `run_age_sec` = כמה זמן
+    עבר מאז ש-_poll_job רץ (הצלחה/כשל); אם זה גדול → ה-job עצמו מת. `ok_age_sec` =
+    מאז poll מוצלח אחרון; גדול אבל run טרי → NewOrder נפול (לא ה-job)."""
+    _require_admin(x_admin_key)
+    from datetime import datetime as _dt, timezone as _tz
+
+    def _age(key):
+        v = db.sales_state_get(key)
+        if not v:
+            return None
+        try:
+            return int((_dt.now(_tz.utc) - _dt.fromisoformat(str(v))).total_seconds())
+        except Exception:  # noqa: BLE001
+            return None
+    run_age = _age("poll_last_run")
+    ok_age = _age("poll_last_ok")
+    interval = cfg.POLL_INTERVAL_SEC
+    # ה-job נחשב "מת" אם לא רץ יותר מ-6 אינטרוולים (גמיש לפספוס מזדמן)
+    job_dead = (run_age is None) or (run_age > max(300, interval * 6))
+    return {
+        "ok": not job_dead,
+        "job_dead": job_dead,                      # ⚠️ ה-job עצמו לא רץ (כמו next_run_time=None)
+        "run_age_sec": run_age, "ok_age_sec": ok_age,
+        "fail_streak": int(db.sales_state_get("poll_fail_streak", 0) or 0),
+        "interval_sec": interval,
+        "neworder_down": bool(run_age is not None and run_age <= interval * 6
+                              and (ok_age is None or ok_age > interval * 6)),
+    }
 
 
 @app.post("/api/admin/removals-ingest")
