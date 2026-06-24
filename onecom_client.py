@@ -65,7 +65,7 @@ def fetch_simple_cdrs(start: str, end: str, calleridnum: str = "",
         if hit and (now - hit[0]) < _CDR_TTL:
             return hit[1]
     params = {"reqtype": "INFO", "info": "SIMPLECDRS",
-              "start": start, "end": end, "format": "json"}
+              "start": start, "end": _end_exclusive(end), "format": "json"}
     if calleridnum:
         params["calleridnum"] = calleridnum
     try:
@@ -242,6 +242,15 @@ def dial(source_ext: str, dest: str, account: str = "source",
         return {"ok": False, "originate_id": "", "raw": str(e)}
 
 
+def _end_exclusive(end: str) -> str:
+    """1com מתייחס ל-`end` כבלעדי (חצות תחילת יום הסיום) → מוסיפים יום
+    כדי שיום הסיום ייכלל. הקוראים מעבירים תאריך כולל; כאן מתורגם לשאילתה."""
+    try:
+        return (datetime.strptime(end, "%Y-%m-%d").date() + timedelta(days=1)).isoformat()
+    except Exception:  # noqa: BLE001
+        return end
+
+
 def _digits(s: str) -> str:
     return "".join(ch for ch in str(s or "") if ch.isdigit())
 
@@ -253,7 +262,7 @@ def fetch_cdrs_by_phone(phone: str, start: str, end: str) -> list:
         return []
     peer = _digits(phone)[-9:]
     params = {"reqtype": "INFO", "info": "cdrs", "phone": phone,
-              "start": start, "end": end, "format": "json"}
+              "start": start, "end": _end_exclusive(end), "format": "json"}
     try:
         r = _get(params)
         if r.status_code != 200:

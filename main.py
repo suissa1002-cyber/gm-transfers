@@ -6488,6 +6488,56 @@ def _pbx_local_num(phone: str) -> str:
     return "0" + d[-9:] if len(d) >= 9 else d
 
 
+# שחזור נתיב מ-CDR (שלוחה שענתה → סניף; שם-הקו → תת-מחלקה)
+_PBX_WHO_BRANCH = {"200": "סיטי", "203": "סטאר", "201": "גן העיר", "202": "הזמנות"}
+
+
+def _pbx_cdr_route(name: str, who: str) -> str:
+    name = (name or "").strip()
+    who = (who or "").strip()
+    sub = name if name in _PBX_SUB_DEPTS else ""
+    branch = _PBX_WHO_BRANCH.get(who, "") or _PBX_NAME_BRANCH.get(name, "")
+    if not branch and who == "204":   # 204 משותף; הזמנות תמיד עם שם → 204 ללא שם ≈ עד הלום
+        branch = "עד הלום"
+    if branch and sub:
+        return branch + " › " + sub
+    return branch or sub
+
+
+@app.get("/api/admin/crm/history")
+def crm_history(days: int = 3, x_admin_key: Optional[str] = Header(None)):
+    """היסטוריית שיחות חיה מ-1com (CDR) — מחליפה את הטבלה המקומית המתה.
+    כולל כיוון, תוצאה, משך, נתיב משוחזר, זיהוי מקומי מהיר ודגל הקלטה."""
+    _require_admin(x_admin_key)
+    import onecom_client
+    from datetime import date as _date, timedelta as _td
+    if not onecom_client.is_configured():
+        return {"calls": [], "configured": False}
+    today = _date.today()
+    start = (today - _td(days=max(0, int(days or 3) - 1))).isoformat()
+    rows = onecom_client.fetch_simple_cdrs(start, today.isoformat())
+    rows = sorted(rows, key=lambda r: r.get("ts_str") or "", reverse=True)[:400]
+    name_cache: dict = {}
+    out = []
+    for r in rows:
+        phone_raw = r["from"] if r["direction"] == "in" else r["to"]
+        intl = _il_phone(phone_raw)
+        if intl not in name_cache:
+            try:
+                c = db.wa_contact_get(intl) or {}
+                name_cache[intl] = (c.get("name") or "").strip()
+            except Exception:  # noqa: BLE001
+                name_cache[intl] = ""
+        out.append({
+            "ts": r["ts_str"], "phone": intl, "direction": r["direction"],
+            "disposition": r["disposition"], "duration": r["duration"],
+            "route": _pbx_cdr_route(r["name"], r["answered_by"]),
+            "matched_name": name_cache[intl], "uid": r["uid"],
+            "has_rec": bool(r["uid"]) and r["disposition"] == "answered" and r["duration"] > 0,
+        })
+    return {"calls": out, "configured": True}
+
+
 @app.get("/api/admin/crm/full-history")
 def crm_full_history(phone: str = "", days: int = 60,
                      x_admin_key: Optional[str] = Header(None)):
