@@ -6599,7 +6599,8 @@ def crm_history(days: int = 3, date_from: str = "", date_to: str = "",
     else:
         end_d = today.isoformat()
         start = (today - _td(days=max(0, int(days or 3) - 1))).isoformat()
-    rows = onecom_client.fetch_simple_cdrs(start, end_d)
+    # בלי cache → "↻ רענן" מציג שיחות שזה-עתה הסתיימו (ה-CDR מוטמן אחרת 5 דק')
+    rows = onecom_client.fetch_simple_cdrs(start, end_d, use_cache=False)
     rows = sorted(rows, key=lambda r: r.get("ts_str") or "", reverse=True)[:400]
     # נתיב מדויק מהמאגר החי (worker) — מועדף על שחזור-CDR (שלא יכול לשחזר שיחה שלא נענתה)
     try:
