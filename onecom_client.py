@@ -351,7 +351,9 @@ def active_channels() -> list:
     if not is_configured():
         return []
     try:
-        r = _get({"reqtype": "CHANNELS", "format": "json"}, timeout=12)
+        # ⚡ nodename מגביל לשרת שלנו → CHANNELS צונח מ~7ש' ל~0.35ש' (קריטי לפופאפ חי)
+        node = (os.getenv("PBX_NODE") or "pbx21").strip()
+        r = _get({"reqtype": "CHANNELS", "nodename": node, "format": "json"}, timeout=12)
         if r.status_code != 200:
             return []
         body = (r.text or "").strip()
