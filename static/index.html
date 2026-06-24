@@ -5401,7 +5401,7 @@ function paintWcOrder(){
       ${phoneIntl.length>10?`<button class="btn-ghost" style="margin-top:6px;padding:4px 10px;font-size:12px" onclick="closeModal();setAdminTab('wa');setTimeout(()=>openWaConv('${phoneIntl}'),600)">${ico('chat',13)} פתח שיחה בוואטסאפ</button>`:''}
     </div>
     ${phoneIntl.length>10?`<details style="margin-bottom:16px" ontoggle="if(this.open)wcoLoadCalls('${phoneIntl}')">
-      <summary class="muted" style="cursor:pointer;font-size:13px;display:flex;align-items:center;gap:6px">📞 שיחות טלפון של הלקוח</summary>
+      <summary class="muted" style="cursor:pointer;font-size:13px;display:flex;align-items:center;gap:6px">${ico('inbox',14)} שיחות טלפון של הלקוח</summary>
       <div id="wcoCalls" style="margin-top:8px"><div class="muted" style="font-size:12.5px">טוען…</div></div>
     </details>`:''}
     ${(d.items||[]).map(it=>`<div style="display:flex;justify-content:space-between;gap:10px;padding:11px 6px;border-bottom:1px solid var(--line);font-size:13.5px;align-items:flex-start">
@@ -6061,10 +6061,10 @@ function renderCrm(){
   const app=document.getElementById('app'); if(!app) return;
   const s=_crmStats||{};
   app.innerHTML=
-    '<h1 class="title" style="display:flex;align-items:center;gap:8px">📇 מוקד שיחות · CRM</h1>'+
+    '<h1 class="title" style="display:flex;align-items:center;gap:8px">'+ico('inbox',19)+'מוקד שיחות · CRM</h1>'+
     '<div class="tabs" style="margin:6px 0 16px">'+
-      '<button class="'+(_crmView==='history'?'active':'')+'" onclick="crmSetView(\'history\')">📞 היסטוריית שיחות</button>'+
-      '<button class="'+(_crmView==='analytics'?'active':'')+'" onclick="crmSetView(\'analytics\')">📊 אנליטיקה</button>'+
+      '<button class="'+(_crmView==='history'?'active':'')+'" onclick="crmSetView(\'history\')">'+ico('list',15)+' היסטוריית שיחות</button>'+
+      '<button class="'+(_crmView==='analytics'?'active':'')+'" onclick="crmSetView(\'analytics\')">'+ico('trendDown',15)+' אנליטיקה</button>'+
     '</div>'+
     (_crmView==='analytics'?crmAnalyticsHTML(s):crmHistoryHTML());
   if(_crmView==='analytics') crmRenderCharts(s);
@@ -6088,7 +6088,7 @@ function crmAnalyticsHTML(s){
   const periodOpts=[[1,'יום אחרון'],[7,'7 ימים'],[14,'14 ימים'],[30,'30 ימים'],[45,'45 ימים'],[60,'60 ימים'],[90,'90 ימים']];
   const periodSelect='<select onchange="crmPeriodChange(this.value)" style="'+selSt+'">'+
     periodOpts.map(o=>'<option value="'+o[0]+'"'+((!rangeActive&&_crmDays===o[0])?' selected':'')+'>'+o[1]+'</option>').join('')+
-    '<option value="range"'+(rangeActive?' selected':'')+'>📅 טווח תאריכים מותאם…</option></select>';
+    '<option value="range"'+(rangeActive?' selected':'')+'>טווח תאריכים מותאם…</option></select>';
   const periodBar='<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px">'+
     '<span style="font-size:13px;color:var(--muted,#94a3b8)">תקופה:</span>'+
     '<div style="position:relative">'+periodSelect+
@@ -6121,7 +6121,7 @@ function crmAnalyticsHTML(s){
       vol+='<div style="margin:12px 0 4px;border-top:1px dashed var(--line,#2c3442);padding-top:10px;font-size:12px;color:var(--muted,#94a3b8)">מחלקות · '+escW(_crmBranch)+'</div>'+
         dp.map(p=>crmBarRow(p.path.slice(pref.length),p.count,maxD,false)).join(''); }
   }
-  const volCard=crmCard('<div style="font-size:13px;font-weight:700;color:var(--muted,#94a3b8);margin-bottom:10px">📍 נפח שיחות לפי סניף'+(_crmBranch?' / מחלקה':'')+'</div>'+vol,'margin-bottom:12px');
+  const volCard=crmCard('<div style="font-size:13px;font-weight:700;color:var(--muted,#94a3b8);margin-bottom:10px;display:flex;align-items:center;gap:6px">'+ico('pin',14)+'נפח שיחות לפי סניף'+(_crmBranch?' / מחלקה':'')+'</div>'+vol,'margin-bottom:12px');
   const chartCard=(title,id,h)=>crmCard('<div style="font-size:13px;font-weight:700;color:var(--muted,#94a3b8);margin-bottom:10px">'+title+'</div><div style="position:relative;height:'+(h||200)+'px"><canvas id="'+id+'"></canvas></div>','flex:1;min-width:300px');
   return periodBar+filterBar+chips+volCard+
     '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">'+
@@ -6168,7 +6168,7 @@ function crmTableHTML(rows){
       '<td><div style="font-weight:700">'+escW(c.matched_name||'לא מזוהה')+'</div><div style="font-size:11.5px;color:var(--muted,#94a3b8);direction:ltr;text-align:right">+'+escW(c.phone)+'</div></td>'+
       '<td>'+crmRoutePill(c.route)+'</td>'+
       '<td>'+(c.order_number?('<b>#'+escW(c.order_number)+'</b>'):'<span style="color:var(--muted,#94a3b8)">—</span>')+'</td>'+
-      '<td style="white-space:nowrap"><button class="btn-ghost" onclick="event.stopPropagation();crmOpenWhatsApp(\''+escW(c.phone)+'\')" title="פתח וואטסאפ">💬</button></td>'+
+      '<td style="white-space:nowrap"><button class="btn-ghost" style="display:inline-flex;align-items:center" onclick="event.stopPropagation();crmOpenWhatsApp(\''+escW(c.phone)+'\')" title="פתח וואטסאפ">'+ico('chat',15)+'</button></td>'+
     '</tr>').join('')+'</tbody></table>';
 }
 function crmHistoryRefresh(){ const w=document.getElementById('crmHistWrap'); if(w) w.innerHTML=crmTableHTML(crmFilteredCalls()); }
@@ -6193,15 +6193,15 @@ function crmShowDrawer(c){
 function crmCloseCust(){ const e=document.getElementById('crmDrawer'); if(e) e.remove(); }
 function crmDrawerInner(c){
   const head=function(sub){ return '<div style="position:sticky;top:0;background:var(--card,#171c24);border-bottom:1px solid var(--line,#2c3442);padding:14px 16px;display:flex;align-items:center;gap:11px;z-index:1">'+
-    '<div style="width:42px;height:42px;border-radius:50%;background:rgba(59,130,246,.16);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">👤</div>'+
+    '<div style="width:42px;height:42px;border-radius:50%;background:rgba(59,130,246,.16);display:flex;align-items:center;justify-content:center;flex-shrink:0">'+ico('user',20,'#3b82f6')+'</div>'+
     '<div style="min-width:0;flex:1"><div style="font-size:16px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escW(c.name||'לקוח לא מזוהה')+'</div>'+
     '<div style="font-size:12px;color:var(--muted,#94a3b8);direction:ltr;text-align:right">+'+escW(c.phone||'')+'</div></div>'+
-    '<button onclick="crmOpenWhatsApp(\''+escW(c.phone||'')+'\')" title="וואטסאפ" style="background:var(--green,#1fbf6b);border:0;color:#fff;border-radius:9px;padding:7px 10px;font-weight:700;cursor:pointer">💬</button>'+
+    '<button onclick="crmOpenWhatsApp(\''+escW(c.phone||'')+'\')" title="וואטסאפ" style="background:var(--green,#1fbf6b);border:0;color:#fff;border-radius:9px;padding:7px 11px;cursor:pointer;display:inline-flex;align-items:center">'+ico('chat',16)+'</button>'+
     '<button onclick="crmCloseCust()" style="background:none;border:0;font-size:20px;cursor:pointer;color:var(--muted,#94a3b8)">✕</button></div>'+
     (sub||''); };
   if(c.loading) return head('<div style="padding:30px;text-align:center;color:var(--muted,#94a3b8)">טוען…</div>');
   if(c.error) return head('<div style="padding:30px;text-align:center;color:var(--red,#e5484d)">שגיאה בטעינת הכרטיס</div>');
-  const sec=function(title,inner){ return '<div style="padding:14px 16px"><div style="font-size:12px;font-weight:700;color:var(--muted,#94a3b8);margin-bottom:8px">'+title+'</div>'+inner+'</div>'; };
+  const sec=function(title,inner){ return '<div style="padding:14px 16px"><div style="font-size:12px;font-weight:700;color:var(--muted,#94a3b8);margin-bottom:8px;display:flex;align-items:center;gap:6px">'+title+'</div>'+inner+'</div>'; };
   // הזמנות
   const orders=(c.orders||[]);
   const ordersHTML=orders.length?orders.map(function(o){ return '<div style="background:var(--card,#171c24);border:1px solid var(--line,#2c3442);border-radius:11px;padding:10px 12px;margin-bottom:8px">'+
@@ -6216,10 +6216,10 @@ function crmDrawerInner(c){
   const wr=(c.wa_recent||[]);
   const waHTML=wr.length?'<div style="display:flex;flex-direction:column;gap:5px">'+wr.slice(-6).map(function(m){ const out=m.direction==='out'; return '<div style="font-size:12.5px;padding:6px 9px;border-radius:9px;max-width:85%;'+(out?'align-self:flex-start;background:rgba(31,191,107,.13)':'align-self:flex-end;background:var(--card,#171c24);border:1px solid var(--line,#2c3442)')+'">'+escW((m.text||m.type||'').slice(0,120))+'</div>'; }).join('')+'</div>':'<div style="color:var(--muted,#94a3b8);font-size:12.5px">— אין שיחת וואטסאפ —</div>';
   return head('')+
-    sec('🧾 הזמנות אתר ('+orders.length+')', ordersHTML)+
-    sec('📞 היסטוריית שיחות ('+calls.length+')', callsHTML)+
-    sec('💬 וואטסאפ אחרון', waHTML)+
-    sec('🔧 תיקוני מעבדה', '<div id="crmRepairs"><div style="color:var(--muted,#94a3b8);font-size:12.5px">טוען…</div></div>');
+    sec(ico('receipt',13)+'הזמנות אתר ('+orders.length+')', ordersHTML)+
+    sec(ico('list',13)+'היסטוריית שיחות ('+calls.length+')', callsHTML)+
+    sec(ico('chat',13)+'וואטסאפ אחרון', waHTML)+
+    sec(ico('wrench',13)+'תיקוני מעבדה', '<div id="crmRepairs"><div style="color:var(--muted,#94a3b8);font-size:12.5px">טוען…</div></div>');
 }
 async function crmRepairsLoad(phone){
   let reps=[];
