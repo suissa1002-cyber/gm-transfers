@@ -53,10 +53,14 @@ def _ingest_range(no, start: date, end: date, skip_ops: set) -> dict:
         new_ops += 1
         when = o.get("createDate") or ""
         emp = o.get("employee") or ""
-        # ההערה אינה נחשפת כיום ב-API הציבורי (Monday 2983951787); נתפוס אותה אוטומטית
-        # ברגע שרפי יוסיף אותה — בודקים מספר שמות אפשריים ברמת הפעולה.
+        # ההערה ("תיאור פעולה" בקופה) נחשפת ב-`opDescription` (תוקן ע"י רפי, אומת 24/06/2026).
+        # ⚠️ כשלא מקלידים תיאור, opDescription מקבל כברירת מחדל את תווית-הסוג (opTypeName,
+        # למשל "הורדה מהמלאי") — זו אינה הערה אמיתית, ולכן מסננים אותה.
+        op_desc = (o.get("opDescription") or "").strip()
+        if op_desc and op_desc == (o.get("opTypeName") or "").strip():
+            op_desc = ""
         note = (o.get("note") or o.get("remark") or o.get("comment")
-                or o.get("description") or o.get("documentNumber") or "").strip()
+                or o.get("description") or op_desc or o.get("documentNumber") or "").strip()
         for i, it in enumerate(o.get("stockItems") or []):
             sers = it.get("serials") or []
             rows.append({
