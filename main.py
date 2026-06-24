@@ -6312,10 +6312,13 @@ def pbx_live(x_admin_key: Optional[str] = Header(None)):
         cid, uid = str(ch[7]), str(ch[13])
         if not _re.match(r"^0\d{8,9}$", cid):   # רק מתקשר חיצוני (לא שלוחה)
             continue
-        e = by_phone.setdefault(cid, {"uid": uid, "state": state, "branch": ""})
+        e = by_phone.setdefault(cid, {"uid": uid, "state": state, "branch": "", "answered": False})
         # הרגל הטראנק (kamailio / תור / IVR) הוא הנציג היציב לשיחה
         if chan.startswith("SIP/kamailio") or "queue" in ctx.lower() or ctx.upper() == "IVRDISA":
             e["uid"], e["state"] = uid, state
+        # נענה: רגל שלוחה (SIP/2xx) במצב Up = נציג הרים
+        if _re.match(r"SIP/\d{3}-greenmobile", chan) and state.lower() == "up":
+            e["answered"] = True
         # ── סניף: עדיפות תור > huntlist > חיוג-ישיר-לשלוחה ──
         qm = _re.search(r"\b(18\d{3})\b", appdata)
         if qm and qm.group(1) in _PBX_QUEUE_LABELS:
@@ -6356,7 +6359,7 @@ def pbx_live(x_admin_key: Optional[str] = Header(None)):
             "id": idnum or cid, "phone": intl, "route": route,
             "matched_name": info["name"], "orders": info["orders"],
             "order_number": info["order_number"], "items": info["items"],
-            "state": e["state"],
+            "state": e["state"], "status": "answered" if e["answered"] else "ringing",
         })
     return {"calls": calls}
 
