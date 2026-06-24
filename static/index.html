@@ -1069,8 +1069,8 @@ function renderDrawer(){
     <div class="dr-head"><span>🟢 GreenOS — ניהול אופרציה</span><button class="dr-x" onclick="toggleDrawer(false)">✕</button></div>
     <div class="dr-sec">קליטת העברות</div>
     <div class="dr-item ${S.view==='board'||S.view==='scan'?'active':''}" onclick="hubGo('board')"><span>${ico('pkg',16)}</span><span>לוח קליטה</span></div>
-    <div class="dr-item ${S.view==='admin'&&S.adminTab!=='crm'?'active':''}" onclick="hubGo('admin')"><span>${ico('wrench',16)}</span><span>קונסולת ניהול${lock}</span></div>
-    <div class="dr-item ${S.view==='admin'&&S.adminTab==='crm'?'active':''}" onclick="hubGoCrm()"><span>${ico('user',16)}</span><span>מוקד שיחות · CRM${lock}</span></div>
+    <div class="dr-item ${act('admin')}" onclick="hubGo('admin')"><span>${ico('wrench',16)}</span><span>קונסולת ניהול${lock}</span></div>
+    <div class="dr-item ${act('crm')}" onclick="hubGoCrm()"><span>${ico('user',16)}</span><span>מוקד שיחות · CRM${lock}</span></div>
     <div class="dr-sec">מכירות</div>
     <div class="dr-item" onclick="toggleDrawer(false);if(ensureAdmin(payQuickOpen))payQuickOpen()"><span>${ico('receipt',16)}</span><span>קישור תשלום מהיר${lock}</span></div>
     <div class="dr-sec">Hub</div>
@@ -1145,8 +1145,8 @@ function hubGo(view){
 function hubGoCrm(){
   toggleDrawer(false);
   if(!ensureAdmin(hubGoCrm)) return;
-  S.view='admin'; S.adminTab='crm'; S.embedApp=null;
-  if(S.adminData) renderAdmin(); else loadAdmin(true);   // renderAdmin מכבד adminTab==='crm'
+  S.view='crm'; S.embedApp=null;                          // דף ייעודי עצמאי, לא בתוך קונסולת הניהול
+  if(_crmStats) renderCrm(); else loadCrm(true);
 }
 async function hubOpen(key){
   const a=HUB_APPS.find(x=>x.key===key); if(!a) return;
@@ -1335,6 +1335,7 @@ function render(){
   if(S.view==='embed') return renderEmbed(app);
   if(S.view==='tasks') return S.tasksData?renderTasks():loadTasks(true);
   if(S.view==='sentinel') return S.sentinelData?renderSentinel():loadSentinel(true);
+  if(S.view==='crm') return _crmStats?renderCrm():loadCrm(true);
   if(S.view==='admin') return S.adminData?renderAdmin():loadAdmin(true);
   if(S.view==='scan')  return renderScan(app);
   if(S.branchTab==='live') return S.lsCat?renderLive():loadLiveCatalog(true);
@@ -1715,7 +1716,6 @@ function setAdminTab(tab){
   else if(tab==='removals'){ if(!S.removalsData) loadRemovals(true); else renderRemovals(); }
   else if(tab==='wcorders'){ renderWcOrders(); }
   else if(tab==='wa'){ if(!S.waConvs) loadWa(true); else renderWa(); }
-  else if(tab==='crm'){ if(!_crmStats) loadCrm(true); else renderCrm(); }
   else renderAdmin();
 }
 async function loadPlan(spinner){
@@ -5665,7 +5665,6 @@ function renderAdmin(){
   if(S.adminTab==='order') return S.orderData?renderOrder():loadOrder(true);
   if(S.adminTab==='removals') return S.removalsData?renderRemovals():loadRemovals(true);
   if(S.adminTab==='wcorders') return renderWcOrders();
-  if(S.adminTab==='crm') return _crmStats?renderCrm():loadCrm(true);
   const app=document.getElementById('app');
   const f=S.adminFilters;
   const data=S.adminData||{summary:{},transfers:[],misroutes:[]};
@@ -5984,7 +5983,7 @@ function crmSetBranch(b){ _crmBranch=b||''; _crmDept=''; crmApplyFilter(); }
 function crmSetDept(d){ _crmDept=d||''; crmApplyFilter(); }
 async function crmReloadStats(){
   try{ const qs=_crmRoute?('?route='+encodeURIComponent(_crmRoute)):''; _crmStats=await api('/api/admin/crm/stats'+qs); }catch(e){}
-  if(S.view==='admin'&&S.adminTab==='crm'&&_crmView==='analytics') renderCrm();
+  if(S.view==='crm'&&_crmView==='analytics') renderCrm();
 }
 function crmBarRow(label,count,max,hl){
   const pct=Math.max(3,Math.round(100*count/(max||1)));
@@ -6003,7 +6002,7 @@ async function loadCrm(spinner){
     _crmStats=st||{}; _crmCalls=(cl&&cl.calls)||[];
   }catch(e){ _crmStats=_crmStats||{}; _crmCalls=_crmCalls||[]; }
   if(window.hideLoading){ try{ hideLoading(); }catch(e){} }
-  if(S.view==='admin' && S.adminTab==='crm') renderCrm();
+  if(S.view==='crm') renderCrm();
 }
 function crmFmtTs(ts){ try{ const d=new Date(ts); if(isNaN(d.getTime())) return escW(ts||''); const p=n=>('0'+n).slice(-2); return p(d.getDate())+'/'+p(d.getMonth()+1)+' '+p(d.getHours())+':'+p(d.getMinutes()); }catch(e){ return escW(ts||''); } }
 function crmSetView(v){ _crmView=v; renderCrm(); }
@@ -6014,7 +6013,6 @@ function renderCrm(){
   const s=_crmStats||{};
   app.innerHTML=
     '<h1 class="title" style="display:flex;align-items:center;gap:8px">📇 מוקד שיחות · CRM</h1>'+
-    adminTabsHTML()+
     '<div class="tabs" style="margin:6px 0 16px">'+
       '<button class="'+(_crmView==='history'?'active':'')+'" onclick="crmSetView(\'history\')">📞 היסטוריית שיחות</button>'+
       '<button class="'+(_crmView==='analytics'?'active':'')+'" onclick="crmSetView(\'analytics\')">📊 אנליטיקה</button>'+
