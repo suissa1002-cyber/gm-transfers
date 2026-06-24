@@ -6172,6 +6172,10 @@ _PBX_ROUTE_LABELS = {
     "adhalom": "עד הלום", "shop": "חנות", "lab": "מעבדה",
     "order_new": "הזמנה חדשה", "order_exist": "הזמנה קיימת", "wa": "וואטסאפ",
 }
+# מיפוי מזהה-תור (queue id ב-appdata של CHANNELS) → תווית סניף, לפופאפ החי.
+# (סניפים המנותבים דרך EXT/HUNTLIST בלי תור לא יזוהו — route יישאר ריק.)
+_PBX_QUEUE_LABELS = {"18058": "הזמנות", "18078": "סיטי"}
+_PBX_LIVE_LOOKUP: dict = {}   # intl -> (ts, info) — מטמון זיהוי לפולינג
 
 
 @app.get("/api/pbx/call")
@@ -6232,6 +6236,75 @@ def pbx_incoming(after_id: int = 0, x_admin_key: Optional[str] = Header(None)):
     ה-frontend מזהה שיחה חדשה וגם שינוי שלוחה על אותה שיחה (after_id נשמר לתאימות, מתעלמים)."""
     _require_admin(x_admin_key)
     return {"calls": db.pbx_calls_active()}
+
+
+def _pbx_live_lookup(intl: str) -> dict:
+    """זיהוי מתקשר ממוטמן (5 דק') — לפולינג הפופאפ, בלי להציף את WC."""
+    import time as _t
+    hit = _PBX_LIVE_LOOKUP.get(intl)
+    if hit and (_t.time() - hit[0]) < 300:
+        return hit[1]
+    import wa
+    info = {"name": "", "orders": 0, "order_number": "", "items": ""}
+    try:
+        orders = wa._wc_orders_by_phone(intl) or []
+        if orders:
+            info["name"] = (orders[0].get("name") or "").strip()
+            info["orders"] = len(orders)
+            info["order_number"] = str(orders[0].get("number") or "")
+            info["items"] = ", ".join(orders[0].get("items") or [])
+    except Exception:  # noqa: BLE001
+        pass
+    if not info["name"]:
+        try:
+            c = db.wa_contact_get(intl) or {}
+            info["name"] = (c.get("name") or "").strip()
+        except Exception:  # noqa: BLE001
+            pass
+    _PBX_LIVE_LOOKUP[intl] = (_t.time(), info)
+    return info
+
+
+@app.get("/api/admin/pbx/live")
+def pbx_live(x_admin_key: Optional[str] = Header(None)):
+    """שיחות פעילות עכשיו לפופאפ — נגזר מ-CHANNELS של 1com (מחוץ לזרימה!).
+    מנרמל ערוצים גולמיים → שיחה אחת לכל מתקשר חיצוני, עם זיהוי+route מהתור."""
+    _require_admin(x_admin_key)
+    import onecom_client
+    import re as _re
+    raw = onecom_client.active_channels()
+    by_phone: dict = {}
+    for ch in raw:
+        if not isinstance(ch, list) or len(ch) < 14:
+            continue
+        chan, ctx, state = str(ch[0]), str(ch[1]), str(ch[4])
+        appdata, cid, uid = str(ch[6]), str(ch[7]), str(ch[13])
+        if not _re.match(r"^0\d{8,9}$", cid):   # רק מתקשר חיצוני (לא שלוחה)
+            continue
+        e = by_phone.get(cid)
+        if not e:
+            e = {"uid": uid, "state": state, "queue": ""}
+            by_phone[cid] = e
+        # הרגל הטראנק (kamailio / תור / IVR) הוא הנציג היציב לשיחה
+        if chan.startswith("SIP/kamailio") or "queue" in ctx.lower() or ctx.upper() == "IVRDISA":
+            e["uid"], e["state"] = uid, state
+        m = _re.search(r"\b(18\d{3})\b", appdata)
+        if m and not e["queue"]:
+            e["queue"] = m.group(1)
+    calls = []
+    for cid, e in by_phone.items():
+        intl = _il_phone(cid)
+        info = _pbx_live_lookup(intl)
+        m = _re.search(r"(\d+)\.(\d+)", e["uid"])
+        idnum = (m.group(1) + m.group(2)[:4]) if m else _re.sub(r"\D", "", e["uid"])
+        calls.append({
+            "id": idnum or cid, "phone": intl,
+            "route": _PBX_QUEUE_LABELS.get(e["queue"], ""),
+            "matched_name": info["name"], "orders": info["orders"],
+            "order_number": info["order_number"], "items": info["items"],
+            "state": e["state"],
+        })
+    return {"calls": calls}
 
 
 @app.get("/api/admin/pbx/webrtc-config")

@@ -5933,7 +5933,7 @@ function startPbxPoll(){ if(_pbxTimer) return; _pbxTimer=setInterval(pbxPoll,400
 async function pbxPoll(){
   if(!S.adminKey) return;
   let cs;
-  try{ const r=await api('/api/admin/pbx/incoming'); cs=(r&&r.calls)||[]; }catch(e){ return; }
+  try{ const r=await api('/api/admin/pbx/live'); cs=(r&&r.calls)||[]; }catch(e){ return; }
   if(!_pbxBooted){ cs.forEach(c=>{ _pbxKnown[c.id]=c.route||''; }); _pbxBooted=true; return; }  // בסיס — לא מציגים ישנות בטעינה
   const active={}; cs.forEach(c=>{ active[String(c.id)]=c; });
   cs.forEach(c=>{
