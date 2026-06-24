@@ -6332,6 +6332,27 @@ def crm_stats(route: str = "", days: int = 30, date_from: str = "", date_to: str
                 "paths": [], "hours": []}
 
 
+@app.get("/api/admin/crm/cdr-stats")
+def crm_cdr_stats(days: int = 30, date_from: str = "", date_to: str = "",
+                  x_admin_key: Optional[str] = Header(None)):
+    """אנליטיקת CDR מ-1com: נענה/לא-נענה/עסוק + משכים + שיחות יוצאות.
+    מקור סמכותי (החליף את curl-בזרימה שמת). days=תקופה או from/to לטווח.
+    מחזיר {configured:false} אם PBX_API_KEY לא מוגדר → ה-frontend מסתיר את הסעיף."""
+    _require_admin(x_admin_key)
+    import onecom_client
+    from datetime import date as _date, timedelta as _td
+    start, end = date_from, date_to
+    if not (start and end):
+        today = _date.today()
+        end = today.isoformat()
+        start = (today - _td(days=max(0, int(days or 30) - 1))).isoformat()
+    try:
+        return onecom_client.cdr_stats(start, end)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("crm cdr-stats failed: %s", e)
+        return {"configured": False}
+
+
 @app.get("/api/admin/crm/calls-by-phone")
 def crm_calls_by_phone(phone: str = "", x_admin_key: Optional[str] = Header(None)):
     """שיחות של מספר נתון — לסקשן הנשלף בכרטיס ההזמנה."""

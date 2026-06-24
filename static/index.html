@@ -3931,6 +3931,7 @@ const _IPATHS={
   receipt:'<path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><line x1="8" y1="8" x2="16" y2="8"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="16" x2="13" y2="16"/>',
   bank:'<line x1="3" y1="22" x2="21" y2="22"/><line x1="6" y1="18" x2="6" y2="11"/><line x1="10" y1="18" x2="10" y2="11"/><line x1="14" y1="18" x2="14" y2="11"/><line x1="18" y1="18" x2="18" y2="11"/><polygon points="12 2 20 7 4 7"/>',
   inbox:'<polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>',
+  phone:'<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>',
   trash:'<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
   radio:'<circle cx="12" cy="12" r="2"/><path d="M4.93 19.07a10 10 0 0 1 0-14.14"/><path d="M7.76 16.24a6 6 0 0 1 0-8.49"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>',
   truck:'<rect x="1" y="3" width="15" height="13" rx="1"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>',
@@ -6026,7 +6027,7 @@ function pbxOpenCall(phone){
 }
 
 // ════════ 📇 מוקד שיחות / CRM פנימי ════════
-let _crmStats=null, _crmCalls=null, _crmView='analytics', _crmSearch='', _crmCharts=[];
+let _crmStats=null, _crmCalls=null, _crmView='analytics', _crmSearch='', _crmCharts=[], _crmCdr=null;
 let _crmBranch='', _crmDept='', _crmRoute='';
 let _crmDays=30, _crmFrom='', _crmTo='', _crmCalPick=null, _crmCalMonth='';
 function crmStatsQs(){
@@ -6042,7 +6043,13 @@ function crmSetDays(d){ _crmDays=d; _crmFrom=''; _crmTo=''; crmReloadStats(); }
 function crmClearRange(){ _crmFrom=''; _crmTo=''; crmReloadStats(); }
 function crmPeriodChange(v){ if(v==='range'){ crmCalToggle(); } else { crmSetDays(Number(v)); } }
 async function crmReloadStats(){
-  try{ _crmStats=await api('/api/admin/crm/stats'+crmStatsQs()); }catch(e){}
+  try{
+    const [st,cdr]=await Promise.all([
+      api('/api/admin/crm/stats'+crmStatsQs()),
+      api('/api/admin/crm/cdr-stats'+crmStatsQs()).catch(()=>null)
+    ]);
+    _crmStats=st; _crmCdr=cdr;
+  }catch(e){}
   if(S.view==='crm'&&_crmView==='analytics') renderCrm();
 }
 // ── קלנדר טווח תאריכים (קליק ראשון = מתאריך, שני = עד) ──
@@ -6094,11 +6101,12 @@ function crmBarRow(label,count,max,hl){
 async function loadCrm(spinner){
   if(spinner && window.showLoading){ try{ showLoading('טוען מוקד…'); }catch(e){} }
   try{
-    const [st,cl]=await Promise.all([
+    const [st,cl,cdr]=await Promise.all([
       api('/api/admin/crm/stats'+crmStatsQs()).catch(()=>null),
-      api('/api/admin/pbx/calls').catch(()=>null)
+      api('/api/admin/pbx/calls').catch(()=>null),
+      api('/api/admin/crm/cdr-stats'+crmStatsQs()).catch(()=>null)
     ]);
-    _crmStats=st||{}; _crmCalls=(cl&&cl.calls)||[];
+    _crmStats=st||{}; _crmCalls=(cl&&cl.calls)||[]; _crmCdr=cdr;
   }catch(e){ _crmStats=_crmStats||{}; _crmCalls=_crmCalls||[]; }
   if(window.hideLoading){ try{ hideLoading(); }catch(e){} }
   if(S.view==='crm') renderCrm();
@@ -6173,12 +6181,32 @@ function crmAnalyticsHTML(s){
   }
   const volCard=crmCard('<div style="font-size:13px;font-weight:700;color:var(--muted,#94a3b8);margin-bottom:10px;display:flex;align-items:center;gap:6px">'+ico('pin',14)+'נפח שיחות לפי סניף'+(_crmBranch?' / מחלקה':'')+'</div>'+vol,'margin-bottom:12px');
   const chartCard=(title,id,h)=>crmCard('<div style="font-size:13px;font-weight:700;color:var(--muted,#94a3b8);margin-bottom:10px">'+title+'</div><div style="position:relative;height:'+(h||200)+'px"><canvas id="'+id+'"></canvas></div>','flex:1;min-width:300px');
-  return periodBar+filterBar+chips+volCard+
+  return periodBar+filterBar+chips+crmCdrHTML()+volCard+
     '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">'+
       chartCard('שיחות לפי יום'+(_crmRoute?' · '+escW(_crmRoute):''),'crmChartDays',210)+
       chartCard('פילוח לפי סניף (כללי)','crmChartBranch',210)+
     '</div>'+
     chartCard('שעות עומס'+(_crmRoute?' · '+escW(_crmRoute):''),'crmChartHours',180);
+}
+function crmFmtDur(sec){ sec=Number(sec)||0; const m=Math.floor(sec/60), s=sec%60; return m?(m+':'+String(s).padStart(2,'0')+' דק׳'):(s+' שנ׳'); }
+function crmCdrHTML(){
+  const c=_crmCdr; if(!c||!c.configured) return '';
+  const t=c.totals||{};
+  const chip=(v,l,col)=>'<div style="flex:1;min-width:108px;background:var(--card,#171c24);border:1px solid var(--line,#2c3442);border-radius:14px;padding:13px 15px">'+
+    '<div style="font-size:25px;font-weight:800;color:'+(col||'var(--txt,#e8edf4)')+'">'+v+'</div>'+
+    '<div style="font-size:12px;color:var(--muted,#94a3b8);margin-top:2px">'+l+'</div></div>';
+  const kpis='<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">'+
+    chip((c.answer_rate||0)+'%','שיעור מענה','var(--green,#1fbf6b)')+
+    chip(t.answered||0,'נענו','var(--green,#1fbf6b)')+
+    chip((t.no_answer||0)+(t.abandoned||0),'לא נענו / ננטשו','var(--red,#e5484d)')+
+    chip(t.busy||0,'עסוק','var(--amber,#f5a524)')+
+    chip(t.out||0,'יוצאות','var(--blue,#3b82f6)')+
+    chip(crmFmtDur(c.talk_avg_sec),'משך ממוצע')+
+  '</div>';
+  const cc=(title,id,h)=>crmCard('<div style="font-size:13px;font-weight:700;color:var(--muted,#94a3b8);margin-bottom:10px">'+title+'</div><div style="position:relative;height:'+(h||200)+'px"><canvas id="'+id+'"></canvas></div>','flex:1;min-width:300px');
+  const hdr='<div style="display:flex;align-items:center;gap:7px;margin:18px 0 10px;font-size:14px;font-weight:800">'+ico('phone',16)+'תוצאות שיחות · 1com</div>';
+  return hdr+kpis+'<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">'+
+    cc('תוצאות לפי יום','crmCdrDays',210)+cc('פילוח תוצאות','crmCdrDispo',210)+'</div>';
 }
 async function crmRenderCharts(s){
   try{
@@ -6196,6 +6224,22 @@ async function crmRenderCharts(s){
   mk('crmChartBranch',{type:'doughnut',data:{labels:br.map(b=>crmBranchLabel(b.branch)),datasets:[{data:br.map(b=>b.count),backgroundColor:['#3b82f6','#1fbf6b','#f5a524','#e5484d','#8b5cf6','#06b6d4','#94a3b8'],borderWidth:0}]},options:{plugins:{legend:{position:'right',labels:{color:txt,font:{size:11},boxWidth:12,padding:8}}},responsive:true,maintainAspectRatio:false,cutout:'58%'}});
   const hrs=s.hours||[];
   mk('crmChartHours',{type:'bar',data:{labels:hrs.map(h=>h.hour),datasets:[{data:hrs.map(h=>h.count),backgroundColor:'#1fbf6b',borderRadius:3}]},options:noLeg});
+  // ── גרפי CDR (1com): תוצאות לפי יום + פילוח תוצאות ──
+  const c=_crmCdr;
+  if(c&&c.configured){
+    const cser=c.series||[];
+    const stk={plugins:{legend:{position:'top',labels:{color:txt,font:{size:11},boxWidth:12,padding:8}}},responsive:true,maintainAspectRatio:false,
+      scales:{x:{stacked:true,ticks:{color:txt,font:{size:10}},grid:{display:false}},y:{stacked:true,ticks:{color:txt,precision:0},grid:{color:grid},beginAtZero:true}}};
+    mk('crmCdrDays',{type:'bar',data:{labels:cser.map(d=>d.date.slice(5)),datasets:[
+      {label:'נענו',data:cser.map(d=>d.answered),backgroundColor:'#1fbf6b',borderRadius:4,stack:'a'},
+      {label:'לא נענו',data:cser.map(d=>d.missed),backgroundColor:'#e5484d',borderRadius:4,stack:'a'},
+      {label:'יוצאות',data:cser.map(d=>d.out),backgroundColor:'#3b82f6',borderRadius:4,stack:'a'}
+    ]},options:stk});
+    const dp=c.dispo||[];
+    const dcol={answered:'#1fbf6b',no_answer:'#e5484d',busy:'#f5a524',abandoned:'#fb7185',failed:'#8b5cf6',other:'#94a3b8'};
+    mk('crmCdrDispo',{type:'doughnut',data:{labels:dp.map(x=>x.label),datasets:[{data:dp.map(x=>x.count),backgroundColor:dp.map(x=>dcol[x.key]||'#94a3b8'),borderWidth:0}]},
+      options:{plugins:{legend:{position:'right',labels:{color:txt,font:{size:11},boxWidth:12,padding:8}}},responsive:true,maintainAspectRatio:false,cutout:'58%'}});
+  }
 }
 function crmHistoryHTML(){
   return '<div class="rebal-bar" style="margin-bottom:12px">'+
