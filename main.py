@@ -6470,12 +6470,106 @@ def pbx_calls_list(x_admin_key: Optional[str] = Header(None)):
 
 
 # ── 📇 CRM פנימי — מרכז שיחות + כרטיס לקוח 360 + אנליטיקה (על המידע שלנו, ללא נטוויל) ──
+def _crm_stats_cdr(days: int, route: str, date_from: str, date_to: str) -> dict:
+    """אנליטיקת נפח/סניף/שעות מ-CDR (חי) + מאגר הנתיב — מחליף את pbx_stats המת.
+    מחזיר את אותו מבנה ש-db.pbx_stats מחזיר (ה-frontend לא משתנה)."""
+    import onecom_client
+    from datetime import datetime as _dt, date as _date, timedelta as _td
+    route = (route or "").strip()
+    today = _date.today()
+    start = end = None
+    if date_from and date_to:
+        try:
+            start = _dt.strptime(date_from, "%Y-%m-%d").date()
+            end = _dt.strptime(date_to, "%Y-%m-%d").date()
+        except Exception:  # noqa: BLE001
+            start = end = None
+    if not (start and end):
+        end = today
+        start = today - _td(days=max(0, int(days or 30) - 1))
+    if start > end:
+        start, end = end, start
+    span = (end - start).days + 1
+    rows = [r for r in onecom_client.fetch_simple_cdrs(start.isoformat(), end.isoformat())
+            if r["direction"] == "in"]
+    routes = db.pbx_routes_by_uids([r["uid"] for r in rows if r.get("uid")])
+    name_map = {}
+    for p in {_il_phone(r["from"]) for r in rows}:
+        try:
+            name_map[p] = bool(((db.wa_contact_get(p) or {}).get("name") or "").strip())
+        except Exception:  # noqa: BLE001
+            name_map[p] = False
+    per_day, per_branch, per_path = {}, {}, {}
+    per_hour = {h: 0 for h in range(24)}
+    seen = {}
+    total = ident = today_n = week_n = 0
+    for r in rows:
+        try:
+            ts = _dt.strptime(r["ts_str"], "%Y-%m-%d %H:%M:%S")
+        except Exception:  # noqa: BLE001
+            continue
+        d = ts.date()
+        if d < start or d > end:
+            continue
+        stored = routes.get(r["uid"] or "")
+        full = ((stored.get("route") if stored else "") or
+                _pbx_cdr_route(r["name"], r["answered_by"]) or "").strip()
+        branch = (full.split(" › ")[0]).strip() or "—"
+        per_branch[branch] = per_branch.get(branch, 0) + 1
+        if full:
+            per_path[full] = per_path.get(full, 0) + 1
+        if route and not (branch == route or full == route or full.startswith(route + " › ")):
+            continue
+        total += 1
+        ph = _il_phone(r["from"])
+        seen[ph] = seen.get(ph, 0) + 1
+        if name_map.get(ph):
+            ident += 1
+        if d == today:
+            today_n += 1
+        if (today - d).days < 7:
+            week_n += 1
+        per_day[d.isoformat()] = per_day.get(d.isoformat(), 0) + 1
+        per_hour[ts.hour] = per_hour.get(ts.hour, 0) + 1
+    series = []
+    if span <= 92:
+        for i in range(span):
+            dd = (start + _td(days=i)).isoformat()
+            series.append({"date": dd, "count": per_day.get(dd, 0)})
+    else:
+        cur = start
+        while cur <= end:
+            wk = min(cur + _td(days=6), end)
+            cnt = sum(per_day.get((cur + _td(days=j)).isoformat(), 0)
+                      for j in range((wk - cur).days + 1))
+            series.append({"date": cur.isoformat(), "count": cnt})
+            cur = wk + _td(days=1)
+    branches = sorted([{"branch": k, "count": v} for k, v in per_branch.items()],
+                      key=lambda x: -x["count"])
+    paths = sorted([{"path": k, "count": v} for k, v in per_path.items()],
+                   key=lambda x: -x["count"])
+    return {
+        "total": total, "today": today_n, "week": week_n,
+        "identified": ident, "identified_pct": round(100 * ident / total) if total else 0,
+        "unique_callers": len(seen),
+        "repeat_callers": sum(1 for n in seen.values() if n > 1),
+        "series": series, "branches": branches, "paths": paths,
+        "hours": [{"hour": h, "count": per_hour.get(h, 0)} for h in range(24)],
+        "days": days, "route": route,
+        "from": start.isoformat(), "to": end.isoformat(), "span": span,
+    }
+
+
 @app.get("/api/admin/crm/stats")
 def crm_stats(route: str = "", days: int = 30, date_from: str = "", date_to: str = "",
               x_admin_key: Optional[str] = Header(None)):
-    """אנליטיקת שיחות לדשבורד ה-CRM. days=תקופה, או from/to לטווח תאריכים; route= מסנן סניף/מחלקה."""
+    """אנליטיקת שיחות לדשבורד ה-CRM. days=תקופה, או from/to לטווח; route= מסנן סניף/מחלקה.
+    מקור: CDR+מאגר-נתיב (חי). נפילה ל-pbx_stats הישן רק אם 1com לא מוגדר."""
     _require_admin(x_admin_key)
     try:
+        import onecom_client
+        if onecom_client.is_configured():
+            return _crm_stats_cdr(int(days or 30), route, date_from, date_to)
         return db.pbx_stats(int(days or 30), route=route, date_from=date_from, date_to=date_to)
     except Exception as e:  # noqa: BLE001
         logger.warning("crm stats failed: %s", e)
