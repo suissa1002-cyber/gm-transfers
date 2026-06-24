@@ -308,6 +308,34 @@ def get_recording(uid: str):
     return None
 
 
+_TAG_CACHE: dict = {}
+
+
+def recent_call_tag(phone_local: str, today: str, tomorrow: str) -> dict:
+    """שם-הקו (sc_calleridname = תת-מחלקה, מה-CID-alter) של השיחה הנכנסת
+    האחרונה למתקשר — לתיוג היררכי בפופאפ החי. מטמון 8ש'. {name, who}."""
+    if not is_configured() or not phone_local:
+        return {"name": "", "who": ""}
+    now = time.time()
+    hit = _TAG_CACHE.get(phone_local)
+    if hit and (now - hit[0]) < 8:
+        return hit[1]
+    res = {"name": "", "who": ""}
+    try:
+        r = _get({"reqtype": "INFO", "info": "simplecdrs", "phone": phone_local,
+                  "start": today, "end": tomorrow, "format": "json"}, timeout=12)
+        data = r.json() if r.status_code == 200 and (r.text or "").strip()[:1] == "[" else []
+        ins = [x for x in data if str(x.get("sc_direction", "")).upper() == "IN"]
+        if ins:
+            last = max(ins, key=lambda x: str(x.get("sc_start") or ""))
+            res = {"name": str(last.get("sc_calleridname") or "").strip(),
+                   "who": str(last.get("sc_whoanswered") or "").strip()}
+    except Exception as e:  # noqa: BLE001
+        logger.warning("1com recent_call_tag failed: %s", e)
+    _TAG_CACHE[phone_local] = (now, res)
+    return res
+
+
 def active_channels() -> list:
     """שיחות פעילות עכשיו (reqtype=CHANNELS) — לפולינג הפופאפ, מחוץ לזרימה.
     מחזיר את ה-JSON הגולמי (list) או [] (כולל כשאין שיחות)."""

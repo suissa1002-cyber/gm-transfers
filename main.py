@@ -6172,9 +6172,14 @@ _PBX_ROUTE_LABELS = {
     "adhalom": "עד הלום", "shop": "חנות", "lab": "מעבדה",
     "order_new": "הזמנה חדשה", "order_exist": "הזמנה קיימת", "wa": "וואטסאפ",
 }
-# מיפוי מזהה-תור (queue id ב-appdata של CHANNELS) → תווית סניף, לפופאפ החי.
-# (סניפים המנותבים דרך EXT/HUNTLIST בלי תור לא יזוהו — route יישאר ריק.)
+# ── מיפוי ניתוב לפופאפ החי (נתפס חי 24/06) ──
+# סניף מ-CHANNELS: תור (queue id ב-appdata) / huntlist / חיוג ישיר לשלוחה.
 _PBX_QUEUE_LABELS = {"18058": "הזמנות", "18078": "סיטי"}
+_PBX_EXT_BRANCH = {"203": "סטאר", "201": "גן העיר"}   # חיוג ישיר → סניף
+# תת-מחלקה מ-simplecdrs.sc_calleridname (ה-CID-alter; השם שמופיע על הטלפון).
+_PBX_SUB_DEPTS = {"חדשה", "קיימת", "חנות", "מעבדה"}
+# כשהסניף עוד לא נגזר מ-CHANNELS, שם חד-משמעי מסגיר אותו (חנות/מעבדה דו-משמעי).
+_PBX_NAME_BRANCH = {"חדשה": "הזמנות", "קיימת": "הזמנות"}
 _PBX_LIVE_LOOKUP: dict = {}   # intl -> (ts, info) — מטמון זיהוי לפולינג
 
 
@@ -6272,34 +6277,55 @@ def pbx_live(x_admin_key: Optional[str] = Header(None)):
     _require_admin(x_admin_key)
     import onecom_client
     import re as _re
+    from datetime import date as _date, timedelta as _td
     raw = onecom_client.active_channels()
     by_phone: dict = {}
     for ch in raw:
         if not isinstance(ch, list) or len(ch) < 14:
             continue
         chan, ctx, state = str(ch[0]), str(ch[1]), str(ch[4])
-        appdata, cid, uid = str(ch[6]), str(ch[7]), str(ch[13])
+        app, appdata = str(ch[5]), str(ch[6])
+        cid, uid = str(ch[7]), str(ch[13])
         if not _re.match(r"^0\d{8,9}$", cid):   # רק מתקשר חיצוני (לא שלוחה)
             continue
-        e = by_phone.get(cid)
-        if not e:
-            e = {"uid": uid, "state": state, "queue": ""}
-            by_phone[cid] = e
+        e = by_phone.setdefault(cid, {"uid": uid, "state": state, "branch": ""})
         # הרגל הטראנק (kamailio / תור / IVR) הוא הנציג היציב לשיחה
         if chan.startswith("SIP/kamailio") or "queue" in ctx.lower() or ctx.upper() == "IVRDISA":
             e["uid"], e["state"] = uid, state
-        m = _re.search(r"\b(18\d{3})\b", appdata)
-        if m and not e["queue"]:
-            e["queue"] = m.group(1)
+        # ── סניף: עדיפות תור > huntlist > חיוג-ישיר-לשלוחה ──
+        qm = _re.search(r"\b(18\d{3})\b", appdata)
+        if qm and qm.group(1) in _PBX_QUEUE_LABELS:
+            e["branch"] = _PBX_QUEUE_LABELS[qm.group(1)]
+        elif "huntlist" in (ctx + app).lower():
+            e["branch"] = e["branch"] or "עד הלום"
+        elif not e["branch"]:
+            em = _re.search(r"SIP/(\d{3})-greenmobile", appdata)
+            ext = em.group(1) if em else (ch[2] if str(ch[2]).isdigit() else "")
+            if ext in _PBX_EXT_BRANCH:
+                e["branch"] = _PBX_EXT_BRANCH[ext]
+    today = _date.today().isoformat()
+    tomorrow = (_date.today() + _td(days=1)).isoformat()
     calls = []
     for cid, e in by_phone.items():
         intl = _il_phone(cid)
         info = _pbx_live_lookup(intl)
+        # תת-מחלקה (חדשה/קיימת/חנות/מעבדה) משם-הקו ב-CDR
+        branch = e["branch"]
+        sub = ""
+        try:
+            tag = onecom_client.recent_call_tag(_pbx_local_num(cid), today, tomorrow)
+            nm = (tag.get("name") or "").strip()
+            if nm in _PBX_SUB_DEPTS:
+                sub = nm
+                if not branch:
+                    branch = _PBX_NAME_BRANCH.get(nm, "")
+        except Exception:  # noqa: BLE001
+            pass
+        route = branch + (" › " + sub if (branch and sub) else "")
         m = _re.search(r"(\d+)\.(\d+)", e["uid"])
         idnum = (m.group(1) + m.group(2)[:4]) if m else _re.sub(r"\D", "", e["uid"])
         calls.append({
-            "id": idnum or cid, "phone": intl,
-            "route": _PBX_QUEUE_LABELS.get(e["queue"], ""),
+            "id": idnum or cid, "phone": intl, "route": route,
             "matched_name": info["name"], "orders": info["orders"],
             "order_number": info["order_number"], "items": info["items"],
             "state": e["state"],
