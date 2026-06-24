@@ -6449,39 +6449,42 @@ def _pbx_bg_fill(cid: str):
         from datetime import date as _date, timedelta as _td
         intl = _il_phone(cid)
         local = _pbx_local_num(cid)
-        info = {"name": "", "orders": 0, "order_number": "", "items": ""}
         try:
-            # 1) שם מקומי מהיר (WhatsApp DB) — מופיע כמעט מיד
+            # ── תת-מחלקה (simplecdrs) — זול, מתרענן תכוף (2ש') לעדכון חי של הנתיב ──
+            tag_hit = _PBX_TAG.get(local)
+            if not tag_hit or (_t.time() - tag_hit[0]) > 2:
+                try:
+                    import onecom_client
+                    today = _date.today().isoformat()
+                    tomorrow = (_date.today() + _td(days=1)).isoformat()
+                    _PBX_TAG[local] = (_t.time(), onecom_client.recent_call_tag(local, today, tomorrow))
+                except Exception:  # noqa: BLE001
+                    pass
+            # ── זיהוי לקוח — יקר, פעם אחת לשיחה (300ש'); נקבע אטומית בסוף (אפס ריצוד) ──
+            ident_hit = _PBX_IDENT.get(intl)
+            if ident_hit and (_t.time() - ident_hit[0]) <= 300:
+                return
+            info = {"name": "", "orders": 0, "order_number": "", "items": ""}
             try:
                 c = db.wa_contact_get(intl) or {}
-                info["name"] = (c.get("name") or "").strip()
+                info["name"] = (c.get("name") or "").strip()   # בסיס (fallback אחרון)
             except Exception:  # noqa: BLE001
                 pass
-            _PBX_IDENT[intl] = (_t.time(), dict(info))
-            # 2) תת-מחלקה (simplecdrs) — מהיר יחסית
-            try:
-                import onecom_client
-                today = _date.today().isoformat()
-                tomorrow = (_date.today() + _td(days=1)).isoformat()
-                _PBX_TAG[local] = (_t.time(), onecom_client.recent_call_tag(local, today, tomorrow))
-            except Exception:  # noqa: BLE001
-                pass
-            # 3) עדיפות זיהוי: הזמנת WC (הכי אמין) > לקוח NewOrder > שם וואטסאפ (כבר ב-info)
             try:
                 import wa
                 orders = wa._wc_orders_by_phone(intl) or []
-                if orders:
+                if orders:                                       # (1) הזמנת WC — הכי אמין
                     info["name"] = (orders[0].get("name") or "").strip() or info["name"]
                     info["orders"] = len(orders)
                     info["order_number"] = str(orders[0].get("number") or "")
                     info["items"] = ", ".join(orders[0].get("items") or [])
-                else:
+                else:                                            # (2) לקוח NewOrder
                     cust = _neworder_customer(intl)
                     if cust and cust.get("name"):
-                        info["name"] = cust["name"]   # שם הקופה גובר על שם וואטסאפ
-                _PBX_IDENT[intl] = (_t.time(), info)
+                        info["name"] = cust["name"]
             except Exception:  # noqa: BLE001
                 pass
+            _PBX_IDENT[intl] = (_t.time(), info)   # ← כתיבה יחידה אטומית = אפס ריצוד
         finally:
             _PBX_INFLIGHT.discard(cid)
 
