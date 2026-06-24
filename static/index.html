@@ -6256,13 +6256,17 @@ function crmTableHTML(rows){
     rows.map(function(c){
       const dir=c.direction==='out'?'↗':'↘';
       const dur=c.duration?('<span style="color:var(--muted,#94a3b8);font-size:11.5px"> · '+crmFmtDur(c.duration)+'</span>'):'';
-      const rec=c.has_rec?'<button class="btn-ghost" style="padding:3px 8px;font-size:11px" onclick="event.stopPropagation();crmPlayRec(\''+escW(c.uid)+'\',this)" title="האזן להקלטה">▶</button>':'';
+      const bstyle='width:32px;height:30px;padding:0;display:inline-flex;align-items:center;justify-content:center;flex:none';
+      const rec=c.has_rec
+        ?'<button class="btn-ghost" style="'+bstyle+'" onclick="event.stopPropagation();crmPlayRec(\''+escW(c.uid)+'\',this)" title="האזן להקלטה">▶</button>'
+        :'<span style="width:32px;flex:none"></span>';
       return '<tr style="cursor:pointer" onclick="crmOpenCustomer(\''+escW(c.phone)+'\')">'+
       '<td style="white-space:nowrap;color:var(--muted,#94a3b8);font-size:12.5px">'+dir+' '+crmFmtTs(c.ts)+'</td>'+
       '<td><div style="font-weight:700">'+escW(c.matched_name||'לא מזוהה')+'</div><div style="font-size:11.5px;color:var(--muted,#94a3b8);direction:ltr;text-align:right">+'+escW(c.phone)+'</div></td>'+
       '<td>'+crmRoutePill(c.route)+'</td>'+
       '<td style="white-space:nowrap">'+crmDispoBadge(c.disposition)+dur+'</td>'+
-      '<td style="white-space:nowrap">'+rec+'<button class="btn-ghost" style="display:inline-flex;align-items:center" onclick="event.stopPropagation();crmOpenWhatsApp(\''+escW(c.phone)+'\')" title="פתח וואטסאפ">'+ico('chat',15)+'</button></td>'+
+      '<td style="white-space:nowrap"><div style="display:flex;gap:6px;align-items:center;justify-content:flex-end">'+rec+
+        '<button class="btn-ghost" style="'+bstyle+'" onclick="event.stopPropagation();crmOpenWhatsApp(\''+escW(c.phone)+'\')" title="פתח וואטסאפ">'+ico('chat',15)+'</button></div></td>'+
     '</tr>';}).join('')+'</tbody></table>';
 }
 function crmHistoryRefresh(){ const w=document.getElementById('crmHistWrap'); if(w) w.innerHTML=crmTableHTML(crmFilteredCalls()); }
@@ -6314,17 +6318,34 @@ async function crmCdrHistLoad(phone){
   if(!cfg){ el.innerHTML='<div style="color:var(--muted,#94a3b8);font-size:12.5px">— 1com לא מוגדר —</div>'; return; }
   el.innerHTML=calls.length?calls.slice(0,20).map(crmCdrRow).join(''):'<div style="color:var(--muted,#94a3b8);font-size:12.5px">— אין שיחות —</div>';
 }
+// נגן הקלטות משותף — toggle על הכפתור, בלי להזריק אלמנט לשורה (שומר על הפריסה)
+let _crmAudio=null, _crmPlayBtn=null;
+function _crmRecLabel(btn,playing){ const long=btn.dataset.long==='1';
+  btn.innerHTML=playing?(long?'⏸ עצור':'⏸'):(long?'▶ האזן להקלטה':'▶'); }
 async function crmPlayRec(uid,btn){
-  btn.disabled=true; const old=btn.textContent; btn.textContent='טוען…';
-  try{
-    const h={}; if(S.adminKey) h['X-Admin-Key']=S.adminKey;
-    const r=await fetch('/api/admin/crm/recording?uid='+encodeURIComponent(uid),{headers:h});
-    if(!r.ok) throw 0;
-    const url=URL.createObjectURL(await r.blob());
-    const a=document.createElement('audio'); a.controls=true; a.autoplay=true; a.src=url;
-    a.style.cssText='height:34px;width:100%;margin-top:6px';
-    btn.replaceWith(a);
-  }catch(e){ btn.textContent='⚠️ אין הקלטה'; }
+  if(!btn.dataset.long) btn.dataset.long=(btn.textContent.indexOf('האזן')>-1)?'1':'0';
+  if(_crmPlayBtn===btn && _crmAudio){   // אותו כפתור → השהה/המשך
+    if(_crmAudio.paused){ _crmAudio.play(); _crmRecLabel(btn,true); }
+    else { _crmAudio.pause(); _crmRecLabel(btn,false); }
+    return;
+  }
+  if(_crmAudio){ try{ _crmAudio.pause(); }catch(e){} }
+  if(_crmPlayBtn) _crmRecLabel(_crmPlayBtn,false);
+  let url=btn.dataset.url;
+  if(!url){
+    btn.disabled=true; btn.innerHTML='…';
+    try{
+      const h={}; if(S.adminKey) h['X-Admin-Key']=S.adminKey;
+      const r=await fetch('/api/admin/crm/recording?uid='+encodeURIComponent(uid),{headers:h});
+      if(!r.ok) throw 0;
+      url=URL.createObjectURL(await r.blob()); btn.dataset.url=url;
+    }catch(e){ btn.innerHTML='⚠️'; setTimeout(()=>{btn.disabled=false;_crmRecLabel(btn,false);},1500); return; }
+    btn.disabled=false;
+  }
+  if(!_crmAudio) _crmAudio=new Audio();
+  _crmAudio.src=url; _crmPlayBtn=btn;
+  _crmAudio.onended=function(){ _crmRecLabel(btn,false); };
+  _crmAudio.play(); _crmRecLabel(btn,true);
 }
 function crmDrawerInner(c){
   const head=function(sub){ return '<div style="position:sticky;top:0;background:var(--card,#171c24);border-bottom:1px solid var(--line,#2c3442);padding:14px 16px;display:flex;align-items:center;gap:11px;z-index:1">'+
