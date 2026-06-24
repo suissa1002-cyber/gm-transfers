@@ -336,6 +336,36 @@ def _pbx_route_poll_job():
         logger.warning("pbx route poll failed: %s", ex)
 
 
+def _poll_watchdog_job():
+    """🐕 Watchdog עצמאי לפולר ההעברות — job **נפרד** מ-_poll_job, כך שהוא שורד גם
+    כש-_poll_job מושבת/מת (כמו באג next_run_time=None שהשבית את הפולר 24/06). בודק
+    את poll_last_run; אם הפולר לא רץ מעבר ל-6 דק' → מתריע (ההתראה שבתוך _poll_job
+    עצמו עיוורת למצב הזה). דדופ + הודעת התאוששות."""
+    try:
+        from datetime import datetime as _dt, timezone as _tz
+        v = db.sales_state_get("poll_last_run")
+        age = None
+        if v:
+            try:
+                age = (_dt.now(_tz.utc) - _dt.fromisoformat(str(v))).total_seconds()
+            except Exception:  # noqa: BLE001
+                age = None
+        dead = (age is None) or (age > 360)        # 6 דק' = 12 פולים שהוחמצו
+        alerted = (db.sales_state_get("poll_watchdog_alerted") or "") == "1"
+        if dead and not alerted:
+            mago = f"~{int(age // 60)} דק'" if age else "מעולם (מאז עליית השרת)"
+            _tg_admin("🚨 <b>פולר ההעברות לא רץ!</b>\n"
+                      f"ה-job <code>_poll_job</code> לא רץ {mago} — <b>ה-job עצמו מת</b> "
+                      "(לא תקלת NewOrder). ⚠️ סנכרון ההעברות מושבת לחלוטין — "
+                      "בדוק deploy / רישום jobs / next_run_time.")
+            db.sales_state_set("poll_watchdog_alerted", "1")
+        elif not dead and alerted:
+            _tg_admin("🟢 <b>פולר ההעברות חזר לרוץ</b> — ה-watchdog רגוע.")
+            db.sales_state_set("poll_watchdog_alerted", "")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("poll watchdog failed: %s", e)
+
+
 def register_recurring_jobs():
     """רושם את כל עבודות הרקע החוזרות. נקרא מ-_startup (אם _RUN_JOBS) או מ-worker.py."""
     # לכידת נתיב שיחות חי מ-CHANNELS (מהיר עם nodename) — לתיוג היסטוריה/אנליטיקה מדויק
@@ -345,6 +375,9 @@ def register_recurring_jobs():
     # מושהה שלא רץ לעולם! חייב datetime.now() (או להשמיט) — אחרת פולר ההעברות מת בשקט.
     scheduler.add_job(_poll_job, "interval", seconds=cfg.POLL_INTERVAL_SEC,
                       id="poll", next_run_time=datetime.now(), max_instances=1)
+    # 🐕 watchdog עצמאי לפולר — job נפרד, שורד גם כש-_poll_job מושבת/מת
+    scheduler.add_job(_poll_watchdog_job, "interval", minutes=5,
+                      id="poll_watchdog", max_instances=1)
     scheduler.add_job(_alerts_job, "interval", minutes=15, id="alerts", max_instances=1)
     # דוח יומי 09:00 (Sun-Thu) למנהלים
     scheduler.add_job(_digest_job, "cron", id="digest",
@@ -2059,7 +2092,26 @@ def admin_sentinel(x_admin_key: Optional[str] = Header(None)):
     except Exception:  # noqa: BLE001
         return {"available": False}
     stale = _is_stale(rep.get("received_at"), hours=2.5)   # ריצה שעתית — מעל שעתיים וחצי = לא מדווח
-    return {"available": True, "stale": stale, "report": rep}
+    return {"available": True, "stale": stale, "report": rep, "poller": _poller_health()}
+
+
+def _poller_health() -> dict:
+    """בריאות פולר ההעברות — מצורף לסטטוס Sentinel (watchdog נפרד ב-worker מתריע
+    גם בטלגרם). job_dead=ה-job עצמו לא רץ; neworder_down=רץ אך NewOrder נפול."""
+    from datetime import datetime as _dt, timezone as _tz
+
+    def _age(k):
+        v = db.sales_state_get(k)
+        try:
+            return int((_dt.now(_tz.utc) - _dt.fromisoformat(str(v))).total_seconds()) if v else None
+        except Exception:  # noqa: BLE001
+            return None
+    ra, oa = _age("poll_last_run"), _age("poll_last_ok")
+    iv = cfg.POLL_INTERVAL_SEC
+    dead = (ra is None) or (ra > max(300, iv * 6))
+    return {"job_dead": dead, "run_age_sec": ra, "ok_age_sec": oa,
+            "fail_streak": int(db.sales_state_get("poll_fail_streak", 0) or 0),
+            "neworder_down": bool(not dead and (oa is None or oa > iv * 6))}
 
 
 # ── GreenOS: הטמעת אפליקציות native (reverse proxy, לא iframe) ──────
