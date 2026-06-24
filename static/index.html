@@ -6165,9 +6165,10 @@ function renderCrm(){
     '<h1 class="title" style="display:flex;align-items:center;gap:8px">'+ico('inbox',19)+'מוקד שיחות · CRM</h1>'+
     '<div class="tabs" style="margin:6px 0 16px">'+
       '<button class="'+(_crmView==='history'?'active':'')+'" onclick="crmSetView(\'history\')">'+ico('list',15)+' היסטוריית שיחות</button>'+
+      '<button class="'+(_crmView==='missed'?'active':'')+'" onclick="crmSetView(\'missed\')">'+ico('phone',15)+' לא נענו'+(_crmMissedCount()?' · '+_crmMissedCount():'')+'</button>'+
       '<button class="'+(_crmView==='analytics'?'active':'')+'" onclick="crmSetView(\'analytics\')">'+ico('trendDown',15)+' אנליטיקה</button>'+
     '</div>'+
-    (_crmView==='analytics'?crmAnalyticsHTML(s):crmHistoryHTML());
+    (_crmView==='analytics'?crmAnalyticsHTML(s):(_crmView==='missed'?crmMissedHTML():crmHistoryHTML()));
   if(_crmView==='analytics') crmRenderCharts(s);
 }
 // פקד התקופה בלבד (select + קלנדר + צ'יפ טווח) — בלי תווית/שורה, להצבה בשורת פילטרים
@@ -6327,6 +6328,41 @@ function crmTableHTML(rows){
     '</tr>';}).join('')+'</tbody></table>';
 }
 function crmHistoryRefresh(){ const w=document.getElementById('crmHistWrap'); if(w) w.innerHTML=crmTableHTML(crmFilteredCalls()); }
+// ── מחמצות: שיחות נכנסות שלא נענו וטרם טופלו ──
+function _crmIsMissed(c){ return c.direction==='in' && (c.disposition==='no_answer'||c.disposition==='abandoned'||c.disposition==='busy'); }
+function crmMissedRows(){ return (_crmCalls||[]).filter(c=>_crmIsMissed(c)); }
+function _crmMissedCount(){ return crmMissedRows().filter(c=>!c.handled).length; }
+function crmMissedHTML(){
+  const rows=crmMissedRows();
+  const open=rows.filter(c=>!c.handled), done=rows.filter(c=>c.handled);
+  const card=c=>{
+    const dispo=crmDispoBadge(c.disposition);
+    return '<div style="display:flex;align-items:center;gap:10px;background:var(--card,#171c24);border:1px solid var(--line,#2c3442);border-radius:12px;padding:10px 13px;margin-bottom:8px'+(c.handled?';opacity:.55':'')+'">'+
+      '<div style="flex:1;min-width:0">'+
+        '<div style="font-weight:700;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escW(c.matched_name||'לא מזוהה')+'</div>'+
+        '<div style="font-size:11.5px;color:var(--muted,#94a3b8);direction:ltr;text-align:right">+'+escW(c.phone)+'</div>'+
+      '</div>'+
+      crmRoutePill(c.route)+
+      '<span style="font-size:11.5px;color:var(--muted,#94a3b8);white-space:nowrap;min-width:78px;text-align:center">'+crmFmtTs(c.ts)+'</span>'+
+      dispo+
+      (c.handled
+        ? '<span style="color:var(--green,#1fbf6b);font-size:12px;font-weight:700;white-space:nowrap">✓ טופל</span>'
+        : '<button class="btn-ghost" style="padding:6px 11px;font-size:12px;border-color:#3b82f6;color:#3b82f6;white-space:nowrap" onclick="crmDial(\''+escW(c.phone)+'\',this)">'+ico('phone',13)+' חייג</button>'+
+          '<button class="btn-ghost" style="padding:6px 11px;font-size:12px;white-space:nowrap" onclick="crmMarkHandled(\''+escW(c.uid)+'\',this)">✓ טופל</button>')+
+    '</div>';
+  };
+  return '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px">'+crmPeriodCtl()+
+      '<button class="btn-ghost" onclick="loadCrm(true)">↻ רענן</button>'+
+      '<span style="font-size:12.5px;color:var(--muted,#94a3b8)">'+open.length+' ממתינות לחזרה</span></div>'+
+    (open.length?open.map(card).join(''):'<div class="empty" style="margin-bottom:14px">🎉 אין שיחות שלא טופלו.</div>')+
+    (done.length?'<details style="margin-top:6px"><summary class="muted" style="cursor:pointer;font-size:12.5px;margin-bottom:8px">טופלו ('+done.length+')</summary>'+done.map(card).join('')+'</details>':'');
+}
+async function crmMarkHandled(uid,btn){
+  if(btn){ btn.disabled=true; btn.textContent='…'; }
+  try{ await api('/api/admin/crm/mark-handled?uid='+encodeURIComponent(uid)); }catch(e){}
+  const c=(_crmCalls||[]).find(x=>x.uid===uid); if(c) c.handled=true;
+  renderCrm();
+}
 function crmOpenWhatsApp(phone){ try{ S.view='admin'; S.adminTab='wa'; S.waPhone=phone; render(); if(window.loadWaThread) loadWaThread(true); }catch(e){} }
 // ── כרטיס לקוח 360 (מגירה צדדית) ──
 async function crmOpenCustomer(phone){

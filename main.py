@@ -6592,6 +6592,11 @@ def crm_history(days: int = 3, date_from: str = "", date_to: str = "",
         start = (today - _td(days=max(0, int(days or 3) - 1))).isoformat()
     rows = onecom_client.fetch_simple_cdrs(start, end_d)
     rows = sorted(rows, key=lambda r: r.get("ts_str") or "", reverse=True)[:400]
+    # נתיב מדויק מהמאגר החי (worker) — מועדף על שחזור-CDR (שלא יכול לשחזר שיחה שלא נענתה)
+    try:
+        routes = db.pbx_routes_by_uids([r["uid"] for r in rows if r.get("uid")])
+    except Exception:  # noqa: BLE001
+        routes = {}
     name_cache: dict = {}
     out = []
     for r in rows:
@@ -6603,14 +6608,27 @@ def crm_history(days: int = 3, date_from: str = "", date_to: str = "",
                 name_cache[intl] = (c.get("name") or "").strip()
             except Exception:  # noqa: BLE001
                 name_cache[intl] = ""
+        stored = routes.get(r["uid"] or "")
+        route = (stored.get("route") if stored else "") or _pbx_cdr_route(r["name"], r["answered_by"])
         out.append({
             "ts": r["ts_str"], "phone": intl, "direction": r["direction"],
             "disposition": r["disposition"], "duration": r["duration"],
-            "route": _pbx_cdr_route(r["name"], r["answered_by"]),
+            "route": route,
             "matched_name": name_cache[intl], "uid": r["uid"],
             "has_rec": bool(r["uid"]) and r["disposition"] == "answered" and r["duration"] > 0,
+            "handled": bool(stored and stored.get("handled_at")),
         })
     return {"calls": out, "configured": True}
+
+
+@app.get("/api/admin/crm/mark-handled")
+def crm_mark_handled(uid: str = "", x_admin_key: Optional[str] = Header(None)):
+    """סימון שיחה מוחמצת כ'טופל' (חזרנו ללקוח) — למעקב מחמצות."""
+    _require_admin(x_admin_key)
+    if uid:
+        from datetime import datetime, timezone
+        db.pbx_route_mark_handled(uid, datetime.now(timezone.utc).astimezone().isoformat())
+    return {"ok": True}
 
 
 @app.get("/api/admin/crm/full-history")

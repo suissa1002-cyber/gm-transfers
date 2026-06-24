@@ -424,6 +424,22 @@ _SCHEMA = [
     )
     """.format(pk=_PK),
     "CREATE INDEX IF NOT EXISTS idx_pbx_calls_phone ON pbx_calls(phone)",
+    # נתיב שיחה חי שנלכד מ-CHANNELS (worker רקע) — מדויק לכל שיחה כולל שלא נענו.
+    # מקור האמת לתיוג היסטוריה/אנליטיקה (CDR לבדו לא יכול לשחזר סניף לשיחה שלא נענתה).
+    # handled_at = סומן 'טופל' במעקב מחמצות; answered=1 אם נציג ענה בפועל.
+    """
+    CREATE TABLE IF NOT EXISTS pbx_route (
+        uid        TEXT PRIMARY KEY,
+        phone      TEXT,
+        route      TEXT,
+        branch     TEXT,
+        answered   INTEGER DEFAULT 0,
+        first_ts   TEXT,
+        last_ts    TEXT,
+        handled_at TEXT
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_pbx_route_phone ON pbx_route(phone)",
     # ── WhatsApp עצמאי (פרויקט ניתוק קונקטופ) — חנות ההודעות שלנו ──
     # מתמלאת מ-webhook ישיר של מטא. כל הודעה (נכנסת/יוצאת) + מדיה + סטטוס מסירה.
     """
@@ -2043,6 +2059,62 @@ def pbx_stats(days: int = 30, route: str = "", date_from: str = "", date_to: str
         "hours": hours, "days": days, "route": route,
         "from": start.isoformat(), "to": end.isoformat(), "span": span,
     }
+
+
+# ── 📞 נתיב שיחה חי (נלכד מ-CHANNELS ע"י worker רקע) ──
+def pbx_route_upsert(uid: str, phone: str, route: str, branch: str,
+                     answered: bool, ts: str):
+    """שומר/מעדכן נתיב שיחה. שומר את הנתיב הספציפי ביותר (הארוך), answered דביק."""
+    if not uid:
+        return
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT route, answered FROM pbx_route WHERE uid=?"), (uid,))
+        row = cur.fetchone()
+        if row:
+            old_route = row["route"] or ""
+            keep = route if len(route or "") >= len(old_route) else old_route
+            new_ans = 1 if (answered or (row["answered"] or 0)) else 0
+            cur.execute(_q("UPDATE pbx_route SET route=?, branch=?, answered=?, "
+                           "last_ts=?, phone=? WHERE uid=?"),
+                        (keep, branch or "", new_ans, ts, phone, uid))
+        else:
+            cur.execute(_q("INSERT INTO pbx_route(uid, phone, route, branch, answered, "
+                           "first_ts, last_ts) VALUES(?,?,?,?,?,?,?)"),
+                        (uid, phone, route or "", branch or "",
+                         1 if answered else 0, ts, ts))
+
+
+def pbx_routes_by_uids(uids: list) -> dict:
+    """מיפוי uid→{route,branch,answered,handled_at} לצירוף עם CDR בהיסטוריה."""
+    uids = [u for u in (uids or []) if u]
+    if not uids:
+        return {}
+    out = {}
+    with _conn() as c:
+        cur = c.cursor()
+        for i in range(0, len(uids), 400):
+            chunk = uids[i:i + 400]
+            ph = ",".join(["?"] * len(chunk))
+            cur.execute(_q(f"SELECT uid, route, branch, answered, handled_at "
+                           f"FROM pbx_route WHERE uid IN ({ph})"), tuple(chunk))
+            for r in cur.fetchall():
+                out[r["uid"]] = dict(r)
+    return out
+
+
+def pbx_route_mark_handled(uid: str, when: str):
+    if not uid:
+        return
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("UPDATE pbx_route SET handled_at=? WHERE uid=?"), (when, uid))
+        # שיחה שלא נלכדה ע"י ה-worker (אין שורה) — יוצרים שורה רק לסימון הטיפול
+        if not cur.rowcount:
+            try:
+                cur.execute(_q("INSERT INTO pbx_route(uid, handled_at) VALUES(?,?)"), (uid, when))
+            except Exception:  # noqa: BLE001
+                pass
 
 
 # ── 💬 וואטסאפ: מטא משלנו (מעקב/הערות) ──
