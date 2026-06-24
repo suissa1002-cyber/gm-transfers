@@ -746,6 +746,23 @@ def close_transfer(op_id: str, reason: str = "", by: str = "") -> dict:
     return get_transfer(op_id)
 
 
+def resolve_transfer_received(op_id, by: str = "") -> dict:
+    """תיקון ידני (אדמין): כרטיס שנסגר-כחוסר אך המכשיר בפועל הגיע/תקין → כל הפריטים
+    מסומנים נקלטו (received=1) וההעברה → 'received' (יוצאת מלוח 'נסגר חוסר')."""
+    op_id = str(op_id)
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("UPDATE transfer_items SET received = 1, "
+                       "received_at = COALESCE(received_at, ?) WHERE op_id = ?"),
+                    (now_iso(), op_id))
+        cur.execute(_q("SELECT COUNT(*) AS n FROM transfer_items WHERE op_id = ?"), (op_id,))
+        n = cur.fetchone()["n"]
+        cur.execute(_q("""UPDATE transfers SET status='received', received_units=?,
+                       received_at=COALESCE(received_at, ?), closed_by=? WHERE op_id = ?"""),
+                    (n, now_iso(), by, op_id))
+    return get_transfer(op_id)
+
+
 def get_transfer(op_id: str) -> dict:
     with _conn() as c:
         cur = c.cursor()

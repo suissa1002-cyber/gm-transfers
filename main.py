@@ -812,6 +812,17 @@ def close_transfer(op_id: str, body: CloseIn):
     return _enrich(db.close_transfer(op_id, body.reason or "", body.by or ""))
 
 
+@app.post("/api/transfers/{op_id}/resolve")
+def resolve_transfer(op_id: str, x_admin_key: Optional[str] = Header(None)):
+    """תיקון אדמין: כרטיס שנסגר-כחוסר אך המכשיר בפועל תקין/הגיע ליעד → מסמן 'received'
+    (יוצא מלוח 'נסגר חוסר'). לשימוש כשמתברר שהפריט במקום (כמו op 14064 בסיטי)."""
+    _require_admin(x_admin_key)
+    t = db.get_transfer(op_id)
+    if not t:
+        raise HTTPException(404, "transfer not found")
+    return _enrich(db.resolve_transfer_received(op_id, "אדמין"))
+
+
 class ScanIn(BaseModel):
     branch_id: int
     code: str
