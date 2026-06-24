@@ -6197,6 +6197,7 @@ function crmAnalyticsHTML(s){
     }
   }
   // ── תקופה + סניף + מחלקה בשורה אחת (זה לצד זה) ──
+  const rangeActive=!!(_crmFrom&&_crmTo);
   const periodBar='';
   const filterBar='<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">'+
     crmPeriodCtl()+
