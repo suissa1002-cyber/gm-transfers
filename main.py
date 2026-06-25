@@ -4668,6 +4668,13 @@ def admin_order_auto_transfer(oid: int, force: int = 0,
             except Exception:  # noqa: BLE001
                 pass
     created = auto_transfer._handle_order(o, catalog)
+    # שידור ידני ("שדר מחדש") — מפעיל גם את ההתראות (טלגרם אדמין + צ'אט סניף + **DM
+    # אישי למשמרת**), בדיוק כמו המסלול האוטומטי. עד עכשיו זה קרא רק ל-_handle_order
+    # ולכן עובד במשמרת (שלמה/גן העיר) לא קיבל DM על שידור יזום (אסי, #47395).
+    try:
+        auto_transfer._alert_created(o, created)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("manual rebroadcast alert failed for %s: %s", oid, e)
     db.sales_state_set(f"auto_tr_seen:{o.get('id')}", "rebroadcast")
     return {"ok": True, "created": created, "cleared": cleared,
             "items": [li.get("sku") for li in (o.get("line_items") or [])]}
