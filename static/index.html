@@ -6516,6 +6516,28 @@ async function startPbxSip(){
     _pbxUA.start();
   }catch(err){ console.warn('[pbx-sip] init error',err); _pbxUA=null; }
 }
+// ── רינגטון מסונתז (Web Audio) — צ'יים מודרני בלולאה, בלי קובץ חיצוני ──
+let _pbxRingCtx=null, _pbxRingTimer=null;
+function pbxRingStart(){
+  pbxRingStop();
+  try{
+    const Ctx=window.AudioContext||window.webkitAudioContext; if(!Ctx) return;
+    _pbxRingCtx=new Ctx(); const ctx=_pbxRingCtx; try{ ctx.resume(); }catch(e){}
+    const blip=(freq,at,dur)=>{ const o=ctx.createOscillator(),g=ctx.createGain();
+      o.type='sine'; o.frequency.value=freq;
+      g.gain.setValueAtTime(0,at); g.gain.linearRampToValueAtTime(.16,at+.02);
+      g.gain.setValueAtTime(.16,at+dur-.06); g.gain.linearRampToValueAtTime(0,at+dur);
+      o.connect(g); g.connect(ctx.destination); o.start(at); o.stop(at+dur); };
+    const pattern=()=>{ if(!_pbxRingCtx) return; const t=ctx.currentTime;
+      blip(880,t,.18); blip(1320,t+.22,.24);          // צ'יים עולה (A5→E6)
+      blip(880,t+.62,.18); blip(1320,t+.84,.24); };
+    pattern(); _pbxRingTimer=setInterval(pattern,2600);
+  }catch(e){}
+}
+function pbxRingStop(){
+  if(_pbxRingTimer){ clearInterval(_pbxRingTimer); _pbxRingTimer=null; }
+  if(_pbxRingCtx){ try{ _pbxRingCtx.close(); }catch(e){} _pbxRingCtx=null; }
+}
 function pbxSipNumber(s){ try{ return (s.remote_identity&&s.remote_identity.uri&&s.remote_identity.uri.user)||''; }catch(e){ return ''; } }
 function pbxAudioEl(){ let a=document.getElementById('pbxRemoteAudio'); if(!a){ a=document.createElement('audio'); a.id='pbxRemoteAudio'; a.autoplay=true; a.style.display='none'; document.body.appendChild(a); } return a; }
 async function pbxHandleIncoming(session){
@@ -6525,6 +6547,7 @@ async function pbxHandleIncoming(session){
   let info={name:'',order_number:'',items:'',orders:0};
   try{ info=await api('/api/admin/pbx/lookup?phone='+encodeURIComponent(num)); }catch(e){}
   pbxShowCallPopup(num, info, 'ringing');
+  pbxRingStart();   // 🔔 צלצול במחשב
   session.on('failed',()=>pbxEndCall());
   session.on('ended',()=>pbxEndCall());
   session.on('accepted',()=>pbxOnAccepted(session));
@@ -6532,11 +6555,13 @@ async function pbxHandleIncoming(session){
   try{ if(navigator.vibrate) navigator.vibrate([300,150,300]); }catch(e){}
 }
 function pbxAnswer(){
+  pbxRingStop();
   if(!_pbxSession) return;
   try{ _pbxSession.answer({ mediaConstraints:{audio:true,video:false}, pcConfig:{ iceServers:_pbxIce } }); }
   catch(e){ console.warn('[pbx-sip] answer err',e); }
 }
 function pbxOnAccepted(session){
+  pbxRingStop();
   try{
     const pc=session.connection;
     if(pc){ const ms=new MediaStream(); pc.getReceivers().forEach(r=>{ if(r.track) ms.addTrack(r.track); });
@@ -6553,6 +6578,7 @@ function pbxToggleMute(){ if(!_pbxSession) return false;
     if(m) _pbxSession.unmute({audio:true}); else _pbxSession.mute({audio:true}); return !m; }catch(e){ return false; } }
 function pbxMuteBtn(btn){ const m=pbxToggleMute(); btn.textContent=m?'🔊 בטל השתקה':'🔇 השתק'; btn.style.background=m?'#1db954':'#64748b'; }
 function pbxEndCall(){
+  pbxRingStop();
   const wasAnswered=_pbxAnswered, secs=_pbxCallStart?Math.floor((Date.now()-_pbxCallStart)/1000):0;
   _pbxSession=null; _pbxAnswered=false; pbxStopTimer();
   const a=document.getElementById('pbxRemoteAudio'); if(a){ try{a.srcObject=null;}catch(e){} }
