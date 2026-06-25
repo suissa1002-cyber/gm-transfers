@@ -6336,12 +6336,15 @@ function crmCard(inner,extra){ return '<div style="background:var(--card,#171c24
 function goHome(){ S.view='home'; S.adminTab=null; S.embedApp=null; render(); }
 async function loadHome(spinner){
   if(spinner){ const a=document.getElementById('app'); if(a) a.innerHTML='<div class="empty" style="margin:60px auto">טוען לוח בית… 🏠</div>'; }
+  const _ovd=new Date(Date.now()-48*3600*1000);   // הזמנות 'בטיפול' ישנות מ-48ש = באיחור
+  const _ovBefore=`${_ovd.getFullYear()}-${String(_ovd.getMonth()+1).padStart(2,'0')}-${String(_ovd.getDate()).padStart(2,'0')}`;
   const defs={ ov:'/api/admin/overview', wa:'/api/admin/wa/conversations',
                sent:'/api/admin/sentinel', rem:'/api/admin/removals?days=1',
                cdr:'/api/admin/crm/cdr-stats?days=1',          // היום בלבד (לא 30 יום)
                hist:'/api/admin/crm/history?days=1',            // שיחות היום (לרשימת לא-נענו)
                sales:'/api/admin/sales/dashboard'+_homeSalesQ(), // מכירות לפי סניף+תקופה
-               sched:'/api/schedule/data' };                    // סידור עבודה (סינון להיום ב-frontend)
+               sched:'/api/schedule/data',                      // סידור עבודה (סינון להיום ב-frontend)
+               ordover:'/api/admin/orders?status=processing&before='+_ovBefore }; // הזמנות בטיפול באיחור
   const keys=Object.keys(defs);
   const res=await Promise.all(keys.map(k=>api(defs[k]).catch(()=>null)));
   const d={}; keys.forEach((k,i)=>d[k]=res[i]); d._at=Date.now();
@@ -6489,10 +6492,12 @@ function renderHome(){
     ${homeKpi(sentOk?'תקין':'בעיה','מצב מערכת',sentOk?'#16a34a':'#dc2626')}
   </div>`;
   // ── רצועת "דורש טיפול עכשיו" ──
+  const ordsOver=(d.ordover&&d.ordover.orders)||[];
   const att=[];
   const chip=(txt,onc)=>`<button onclick="${onc}" style="background:#fff;border:1px solid rgba(220,38,38,.4);color:#dc2626;border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit">${txt}</button>`;
   if(waWaiting) att.push(chip(`💬 ${waWaiting} ממתינים לנציג`,"openWaTab()"));
   if(overdue) att.push(chip(`📦 ${overdue} העברות באיחור`,"toggleAdmin()"));
+  if(ordsOver.length) att.push(chip(`🛒 ${ordsOver.length} הזמנות באיחור`,"openOrdersTab()"));
   if(!sentOk) att.push(chip(`🛡️ סנטינל: ${sent.stale?'לא מדווח':sentIssues.length+' בעיות'}`,"hubGo('sentinel')"));
   h+= att.length
     ? `<div style="background:rgba(220,38,38,.06);border:1px solid rgba(220,38,38,.25);border-radius:14px;padding:11px 14px;margin-bottom:13px">
@@ -6533,10 +6538,7 @@ function renderHome(){
        <div style="flex:1;text-align:center"><div style="font-size:24px;font-weight:800;color:#dc2626">${_il(tt.credits)}</div><div class="muted" style="font-size:11px">זיכויים</div></div>
      </div>
      <div class="muted" style="font-size:11px;margin-bottom:4px">קצב 14 ימים · <span style="color:#16a34a;font-weight:700">השבוע</span> מול <span style="color:#94a3b8;font-weight:700">שבוע שעבר</span></div>
-     ${homeSpark(sd.weekly)}
-     ${(sd._dbg_doctype)?`<div style="margin-top:10px;padding-top:8px;border-top:1px dashed var(--line);font-size:10.5px;color:var(--muted);direction:ltr;text-align:left">
-        🔧 doc_type: ${Object.entries(sd._dbg_doctype).map(([k,v])=>`<b>${k}</b>=₪${v.rev.toLocaleString('en-US')}/${v.docs}docs`).join(' · ')}<br>
-        top: ${(sd._dbg_top||[]).slice(0,6).map(t=>`${escW(t.nm)} ₪${t.tot.toLocaleString('en-US')}(q=${t.q},${escW(t.b||'')})`).join(' · ')}</div>`:''}`,
+     ${homeSpark(sd.weekly)}`,
     'margin-bottom:13px');
   // ── רשת כרטיסים ──
   h+=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:12px">`;
@@ -6628,6 +6630,17 @@ function renderHome(){
         <span class="muted" style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:80px">${escW(c.bank||'')}</span>
         <span style="font-weight:600">${_il(c.amount)}</span>`)).join('')
      :`<div class="muted" style="font-size:13px;padding:6px 0">${S.homeChecks?'אין צ׳קים לתאריך זה':'טוען…'}</div>`));
+  // 🛒 הזמנות בטיפול באיחור (status=processing, ישנות מ-48ש)
+  const ordAge=o=>{ const t=Date.parse(o.date); return t?Math.floor((Date.now()-t)/3600000):0; };
+  const ordSorted=ordsOver.slice().sort((a,b)=>(Date.parse(a.date)||0)-(Date.parse(b.date)||0));  // הישן ביותר קודם
+  h+=crmCard(homeHead('🛒','הזמנות בטיפול באיחור',ordsOver.length?ordsOver.length+' באיחור':'',"openOrdersTab()")+
+    (ordSorted.length?ordSorted.slice(0,7).map(o=>{ const ag=ordAge(o); const dd=Math.floor(ag/24);
+      return homeRow(
+       `<span>⏰</span><b style="flex:1;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">#${escW(String(o.number||''))} ${escW(o.name||'')}</b>
+        <span class="muted" style="font-size:11px">${dd>0?dd+' י׳':ag+'ש׳'}</span>
+        <span style="font-weight:600">${_il(parseFloat(o.total)||0)}</span>`,
+       "openOrdersTab()"); }).join('')
+     :'<div class="muted" style="font-size:13px;padding:6px 0">אין הזמנות באיחור 👌</div>'));
   h+=`</div>`;
   h+=`<div class="muted" style="text-align:center;font-size:11px;margin-top:14px">עודכן ${d._at?fmtTime(new Date(d._at).toISOString()):''} · מתרענן אוטומטית כל 15ש׳</div>`;
   h+=`</div>`;
