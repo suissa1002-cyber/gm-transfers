@@ -403,9 +403,12 @@ def _covers_now(hours) -> bool:
     a, b = _hhmm_min(p[0]), _hhmm_min(p[1])
     if a is None or b is None:
         return True
-    lo, hi = (a, b) if a <= b else (b, a)
     now = _il_now_dt()
-    return lo <= now.hour * 60 + now.minute <= hi
+    cur = now.hour * 60 + now.minute
+    if a <= b:
+        return a <= cur <= b
+    # משמרת לילה החוצה חצות (start>end, למשל 20:00-09:00 בגן העיר) — לא למיין!
+    return cur >= a or cur <= b
 
 
 def _shift_ids_on_now(src_branch):
