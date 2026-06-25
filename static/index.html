@@ -6495,8 +6495,11 @@ async function startPbxSip(){
   if(!cfg || !cfg.enabled || !cfg.wss) return;
   _pbxIce=(cfg.ice&&cfg.ice.length)?cfg.ice:[];   // TURN של 1com — חובה לאודיו דו-כיווני
   if(typeof JsSIP==='undefined'){
-    const ok=await loadScript('https://cdn.jsdelivr.net/npm/jssip@3.10.1/dist/jssip.min.js');
-    if(!ok || typeof JsSIP==='undefined'){ await loadScript('https://unpkg.com/jssip@3.10.1/dist/jssip.min.js'); }
+    // npm CDN לא מפרסם bundle דפדפן ל-jssip (/dist 404). הרשמי מ-jssip.net (UMD).
+    await loadScript('https://jssip.net/download/releases/jssip-3.10.0.js');
+    if(typeof JsSIP==='undefined'){   // גיבוי: bundle +esm של jsdelivr (origin שכבר מורשה)
+      try{ const m=await import('https://cdn.jsdelivr.net/npm/jssip@3.13.8/+esm'); window.JsSIP=m.default||m.JsSIP||m; }catch(e){}
+    }
     if(typeof JsSIP==='undefined'){ console.warn('[pbx-sip] JsSIP load failed'); return; }
   }
   try{
