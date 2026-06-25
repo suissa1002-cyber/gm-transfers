@@ -389,7 +389,7 @@
              text-align:center;box-shadow:0 0 0 2px var(--card)}
   /* מצב מסך-מלא לוואטסאפ: בלי כותרת/טאבים, סרגל עליון נקי (רק 💬 + בורגר),
      והחלון נמתח עד ה-header — בלי "חלון בתוך חלון" */
-  body.wa-mode #hdr > *:not(#waBtn){display:none!important}
+  body.wa-mode #hdr > *:not(#waBtn):not(#pbxDialBtn){display:none!important}
   body.wa-mode .wrap{padding:0;max-width:none}
   /* מסך-מלא: נועלים את גלילת הדף עצמו כדי שהסרגל העליון (.wa-head) לא ייגרר עם ההודעות.
      רק אזור ההודעות (.wa-msgs) נגלל פנימית. overscroll-behavior מבטל rubber-band ב-iOS. */
