@@ -369,7 +369,7 @@ def _poll_watchdog_job():
 def register_recurring_jobs():
     """רושם את כל עבודות הרקע החוזרות. נקרא מ-_startup (אם _RUN_JOBS) או מ-worker.py."""
     # לכידת נתיב שיחות חי מ-CHANNELS (מהיר עם nodename) — לתיוג היסטוריה/אנליטיקה מדויק
-    scheduler.add_job(_pbx_route_poll_job, "interval", seconds=5,
+    scheduler.add_job(_pbx_route_poll_job, "interval", seconds=2,
                       id="pbx_route", max_instances=1, coalesce=True)
     # סבב ראשון מיד, ואז לפי האינטרוול. ⚠️ next_run_time=None ב-APScheduler = job
     # מושהה שלא רץ לעולם! חייב datetime.now() (או להשמיט) — אחרת פולר ההעברות מת בשקט.
