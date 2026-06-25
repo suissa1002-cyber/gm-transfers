@@ -5988,7 +5988,12 @@ function startNotifPoll(){ clearInterval(S.notifTimer);
 // ── polling רקע ──
 function startPoll(){ clearInterval(S.pollTimer);
   S.pollTimer=setInterval(()=>{ const a=document.getElementById('app');
-    if(S.view==='home'){ loadHome(false); return; }   // לוח בית: רענון שקט חי
+    if(S.view==='home'){   // לוח בית: רענון שקט חי — אבל לא תוך כדי אינטראקציה (בולע לחיצות)
+      const mr=document.getElementById('modalRoot');
+      const busy=S.homeSalesLoading || (mr&&mr.innerHTML.trim()) || (S.homeLastTouch&&Date.now()-S.homeLastTouch<7000);
+      if(!busy) loadHome(false);
+      return;
+    }
     if(S.view==='board'){
       if(S.branchTab==='live'||S.branchTab==='wcorders') return;   // טאבים עם חיפוש/עריכה — אין רענון לוח שידרוס
       // לא מרעננים תוך כדי הקלדה/סריקה פעילה כדי לא לשבש
@@ -6349,34 +6354,43 @@ function _homeSalesQ(){
   else if(S.homeSalesPeriod==='range'&&S.homeSalesRange){ p.push('from_date='+S.homeSalesRange.from); p.push('to_date='+S.homeSalesRange.to); }
   return p.length?('?'+p.join('&')):'';
 }
-function homeSalesBranch(b){ S.homeBranch=(b===''||b==null)?null:b; loadHomeSales(); }
-function homeSalesPeriod(p){ if(p==='range'){ homeSalesRangeOpen(); return; } S.homeSalesPeriod=p; S.homeSalesRange=null; loadHomeSales(); }
+function homeSalesBranch(b){ S.homeLastTouch=Date.now(); S.homeBranch=(b===''||b==null)?null:b; S.homeSalesLoading=true; if(S.view==='home')renderHome(); loadHomeSales(); }
+function homeSalesPeriod(p){ S.homeLastTouch=Date.now(); if(p==='range'){ homeSalesRangeOpen(); return; } S.homeSalesPeriod=p; S.homeSalesRange=null; S.homeSalesLoading=true; if(S.view==='home')renderHome(); loadHomeSales(); }
 async function loadHomeSales(){
   try{ const s=await api('/api/admin/sales/dashboard'+_homeSalesQ());
-       if(!S.homeData) S.homeData={}; S.homeData.sales=s;
-       if(S.view==='home') renderHome(); }catch(e){}
+       if(!S.homeData) S.homeData={}; S.homeData.sales=s; }
+  catch(e){}
+  S.homeSalesLoading=false;
+  if(S.view==='home') renderHome();
 }
 function homeSalesApplyRange(f,t){ if(!f||!t) return; S.homeSalesPeriod='range'; S.homeSalesRange={from:f,to:t}; closeModal(); loadHomeSales(); }
 function homeSalesRangeOpen(){
   const fmt=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   const now=new Date();
   const presets=[
+    ['היום',()=>[fmt(now),fmt(now)]],
+    ['אתמול',()=>{const a=new Date(now);a.setDate(a.getDate()-1);return[fmt(a),fmt(a)];}],
     ['7 ימים',()=>{const a=new Date(now);a.setDate(a.getDate()-6);return[fmt(a),fmt(now)];}],
     ['30 יום',()=>{const a=new Date(now);a.setDate(a.getDate()-29);return[fmt(a),fmt(now)];}],
-    ['חודש נוכחי',()=>[fmt(new Date(now.getFullYear(),now.getMonth(),1)),fmt(now)]],
-    ['חודש קודם',()=>[fmt(new Date(now.getFullYear(),now.getMonth()-1,1)),fmt(new Date(now.getFullYear(),now.getMonth(),0))]],
+    ['החודש',()=>[fmt(new Date(now.getFullYear(),now.getMonth(),1)),fmt(now)]],
+    ['חודש שעבר',()=>[fmt(new Date(now.getFullYear(),now.getMonth()-1,1)),fmt(new Date(now.getFullYear(),now.getMonth(),0))]],
   ];
   const cur=S.homeSalesRange||{from:fmt(now),to:fmt(now)};
-  document.getElementById('modalRoot').innerHTML=`<div class="overlay" onclick="closeModal()"><div class="modal" style="max-width:380px;text-align:right" onclick="event.stopPropagation()">
-    <h3 style="margin:0 0 12px;display:flex;align-items:center;gap:7px">🗓️ טווח תאריכים</h3>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
-      ${presets.map((p,i)=>`<button class="btn-ghost" style="flex:1;min-width:90px" onclick="(function(){const r=window._hsPre[${i}]();homeSalesApplyRange(r[0],r[1]);})()">${p[0]}</button>`).join('')}
+  const inp='width:100%;box-sizing:border-box;padding:11px 12px;border:1.5px solid var(--line);border-radius:11px;background:var(--bg);color:var(--txt);font-size:15px;font-family:inherit;-webkit-appearance:none';
+  const chip='padding:9px 6px;border:1.5px solid var(--line);border-radius:11px;background:var(--card2);color:var(--txt);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;text-align:center;transition:all .12s';
+  document.getElementById('modalRoot').innerHTML=`<div class="overlay" onclick="closeModal()"><div class="modal" style="max-width:340px;width:calc(100vw - 32px);text-align:right;padding:20px" onclick="event.stopPropagation()">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:15px">
+      <h3 style="margin:0;font-size:17px;display:flex;align-items:center;gap:7px">🗓️ טווח תאריכים</h3>
+      <button onclick="closeModal()" style="background:var(--card2);border:0;width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:15px;color:var(--txt)">✕</button>
     </div>
-    <div style="display:flex;gap:8px;align-items:end;margin-bottom:14px">
-      <div style="flex:1"><label class="muted" style="font-size:12px">מתאריך</label><input type="date" id="hsFrom" value="${cur.from}" style="width:100%"></div>
-      <div style="flex:1"><label class="muted" style="font-size:12px">עד תאריך</label><input type="date" id="hsTo" value="${cur.to}" style="width:100%"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px;margin-bottom:16px">
+      ${presets.map((p,i)=>`<button onmouseover="this.style.borderColor='#16a34a'" onmouseout="this.style.borderColor='var(--line)'" style="${chip}" onclick="(function(){const r=window._hsPre[${i}]();homeSalesApplyRange(r[0],r[1]);})()">${p[0]}</button>`).join('')}
     </div>
-    <button class="btn-primary" style="width:100%" onclick="homeSalesApplyRange(document.getElementById('hsFrom').value,document.getElementById('hsTo').value)">הצג</button>
+    <div style="display:flex;gap:9px;margin-bottom:16px">
+      <label style="flex:1"><span class="muted" style="font-size:12px;display:block;margin-bottom:5px">מתאריך</span><input type="date" id="hsFrom" value="${cur.from}" style="${inp}"></label>
+      <label style="flex:1"><span class="muted" style="font-size:12px;display:block;margin-bottom:5px">עד תאריך</span><input type="date" id="hsTo" value="${cur.to}" style="${inp}"></label>
+    </div>
+    <button class="btn-primary" style="width:100%;padding:12px;font-size:15px;font-weight:700" onclick="homeSalesApplyRange(document.getElementById('hsFrom').value,document.getElementById('hsTo').value)">הצג מכירות</button>
   </div></div>`;
   window._hsPre=presets.map(p=>p[1]);
 }
@@ -6485,7 +6499,7 @@ function renderHome(){
   const perLabel=per==='yesterday'?'אתמול':(per==='range'?((sd.from||'')+' – '+(sd.to||'')):'היום');
   const seg=(id,lbl)=>`<button onclick="homeSalesPeriod('${id}')" style="flex:1;background:${per===id?'#16a34a':'transparent'};color:${per===id?'#fff':'var(--txt)'};border:0;border-radius:9px;padding:7px 4px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">${lbl}</button>`;
   h+=crmCard(
-    `<div style="display:flex;align-items:center;gap:8px;margin-bottom:11px"><span style="font-size:17px">💰</span><b style="font-size:15px">מכירות · ${escW(perLabel)}</b></div>
+    `<div style="display:flex;align-items:center;gap:8px;margin-bottom:11px"><span style="font-size:17px">💰</span><b style="font-size:15px">מכירות · ${escW(perLabel)}</b>${S.homeSalesLoading?'<span class="muted" style="font-size:12px;margin-inline-start:auto">⏳ מעדכן…</span>':''}</div>
      <div style="display:flex;gap:3px;background:var(--card2);border:1px solid var(--line);border-radius:11px;padding:3px;margin-bottom:12px">${seg('today','היום')}${seg('yesterday','אתמול')}${seg('range','סינון')}</div>
      <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:13px">${branches.map(brTile).join('')}</div>
      <div style="display:flex;gap:10px;margin-bottom:13px">

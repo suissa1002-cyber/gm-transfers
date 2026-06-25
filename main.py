@@ -406,6 +406,13 @@ def register_recurring_jobs():
                           run_date=datetime.now() + timedelta(seconds=120))
     else:
         logger.info("sales ingest fresh — skipping initial run")
+    # backfill היסטוריית מכירות — כדי שטווחי לוח-הבית (אתמול/7/30/חודש שעבר) יציגו נתונים,
+    # לא רק 3 הימים של ה-incremental. יומי בלילה + ריצה ראשונית אם ההיסטוריה ישנה.
+    scheduler.add_job(lambda: _sales_backfill_job(days=45, max_new_docs=1500), "cron",
+                      hour=4, minute=25, id="sales_backfill_daily", max_instances=1)
+    if _is_stale(db.sales_state_get("backfill_last_run"), hours=20):
+        scheduler.add_job(lambda: _sales_backfill_job(days=45, max_new_docs=1500), "date",
+                          id="sales_backfill_initial", run_date=datetime.now() + timedelta(seconds=300))
     # הורדות מלאי מרלוג: כל 3 שעות. ריצה ראשונית רק אם ישן (אותו היגיון).
     scheduler.add_job(_removals_ingest_job, "interval", hours=3, id="removals_ingest", max_instances=1)
     if _is_stale(db.sales_state_get("removals_last_run"), hours=2):

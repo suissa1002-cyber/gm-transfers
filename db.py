@@ -3061,7 +3061,10 @@ def _il_today():
 
 
 # פריטי משלוח/איסוף אינם 'מכירה' — מסוננים מהמכירות/קטגוריות/אחרונות (אסי, 26/06).
-_SALES_SHIP_FILTER = " AND {a}name NOT LIKE 'משלוח%' AND {a}name NOT LIKE 'איסוף%' "
+# ⚠️ ה-LIKE דרך **פרמטרים** ('משלוח%'), לא % מילולי ב-SQL — אחרת psycopg2 שובר
+# על Postgres (ה-% מתנגש עם placeholder ה-%s ש-_q מייצר). _SALES_SHIP_PARAMS נוסף לכל שאילתה.
+_SALES_SHIP_FILTER = " AND {a}name NOT LIKE ? AND {a}name NOT LIKE ? "
+_SALES_SHIP_PARAMS = ["משלוח%", "איסוף%"]
 
 
 def sales_dashboard(branch_id=None, from_date=None, to_date=None, period=None) -> dict:
@@ -3099,7 +3102,7 @@ def sales_dashboard(branch_id=None, from_date=None, to_date=None, period=None) -
             SUM(CASE WHEN doc_type=5 THEN qty*price ELSE 0 END) AS credits,
             COUNT(DISTINCT CASE WHEN doc_type=0 THEN doc_id END) AS cnt
             FROM sales WHERE sale_date >= ? AND sale_date <= ?""" + ship + """
-            GROUP BY branch_id"""), (f, t_end))
+            GROUP BY branch_id"""), tuple([f, t_end] + _SALES_SHIP_PARAMS))
         for r in cur.fetchall():
             b = r["branch_id"]
             if b is None:
@@ -3119,13 +3122,13 @@ def sales_dashboard(branch_id=None, from_date=None, to_date=None, period=None) -
         cur.execute(_q("""SELECT COALESCE(NULLIF(c.category,''),'אחר') AS cat, SUM(s.qty*s.price) AS rev
             FROM sales s LEFT JOIN catalog c ON s.product_id = c.product_id
             WHERE s.sale_date >= ? AND s.sale_date <= ? AND s.doc_type=0""" + ship_s + bfilt + """
-            GROUP BY cat ORDER BY rev DESC LIMIT 12"""), tuple([f, t_end] + bp))
+            GROUP BY cat ORDER BY rev DESC LIMIT 12"""), tuple([f, t_end] + _SALES_SHIP_PARAMS + bp))
         out["categories"] = [{"category": r["cat"], "revenue": round(float(r["rev"] or 0))}
                              for r in cur.fetchall() if float(r["rev"] or 0) > 0]
         # מכירות אחרונות — לפי מסמך (עסקה), לא לפי שורת-פריט. שם=הפריט היקר בעסקה.
         cur.execute(_q("""SELECT doc_id, branch_id, name, qty, price, sale_date FROM sales s
             WHERE s.sale_date >= ? AND s.sale_date <= ? AND s.doc_type=0""" + ship_s + bfilt + """
-            ORDER BY sale_date DESC LIMIT 500"""), tuple([f, t_end] + bp))
+            ORDER BY sale_date DESC LIMIT 500"""), tuple([f, t_end] + _SALES_SHIP_PARAMS + bp))
         docs = {}
         for r in cur.fetchall():
             did = r["doc_id"]
@@ -3148,7 +3151,7 @@ def sales_dashboard(branch_id=None, from_date=None, to_date=None, period=None) -
         # הכנסה יומית 14 ימים (sparkline שבוע-מול-שבוע) — קבוע, לא תלוי בטווח הנבחר
         cur.execute(_q("""SELECT substr(sale_date,1,10) AS day, SUM(s.qty*s.price) AS rev FROM sales s
             WHERE s.sale_date >= ? AND s.doc_type=0""" + ship_s + bfilt + """
-            GROUP BY day ORDER BY day"""), tuple([d14] + bp))
+            GROUP BY day ORDER BY day"""), tuple([d14] + _SALES_SHIP_PARAMS + bp))
         daymap = {r["day"]: round(float(r["rev"] or 0)) for r in cur.fetchall()}
         days = [(now - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(13, -1, -1)]
         out["weekly"] = [{"day": d, "revenue": daymap.get(d, 0)} for d in days]
