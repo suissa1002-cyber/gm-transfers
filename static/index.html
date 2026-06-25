@@ -6579,13 +6579,17 @@ function renderHome(){
      :'<div class="muted" style="font-size:13px;padding:6px 0">האינבוקס ריק 👌</div>'));
   // העברות
   const trf=(d.ov&&d.ov.transfers)||[];
-  const trfOv=trf.filter(t=>t.overdue).sort((a,b)=>(b.age_hours||0)-(a.age_hours||0)).slice(0,6);
+  // מציג את כל ההעברות הפתוחות (in_transit/partial), הישנה ביותר קודם; באיחור מסומן באדום ⏰
+  const trfOpen=trf.filter(t=>t.status==='in_transit'||t.status==='partial')
+                   .sort((a,b)=>(b.age_hours||0)-(a.age_hours||0));
+  const _agT=h=>{ const d=Math.floor((h||0)/24); return d>=1?d+' י׳':Math.round(h||0)+'ש׳'; };
   h+=crmCard(homeHead('📦','העברות',open+' פתוחות · '+overdue+' באיחור',"toggleAdmin()")+
-    (trfOv.length?trfOv.map(t=>homeRow(
-       `<span>⏰</span><b style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(t.from_name||'')} → ${escW(t.to_name||'')}</b>
-        <span class="muted" style="font-size:11px">${Math.round(t.age_hours||0)}ש'</span>`,
-       "toggleAdmin()")).join('')
-     :'<div class="muted" style="font-size:13px;padding:6px 0">אין העברות באיחור 👌</div>'));
+    (trfOpen.length?`<div style="max-height:280px;overflow-y:auto;margin:0 -4px;padding:0 4px">`+trfOpen.map(t=>homeRow(
+       `<span>${t.overdue?'⏰':'📦'}</span><b style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(t.from_name||'')} → ${escW(t.to_name||'')}</b>
+        ${t.missing?`<span class="muted" style="font-size:11px">${t.missing} חסר</span>`:''}
+        <span style="font-size:11px;${t.overdue?'color:#dc2626;font-weight:700':'color:var(--muted)'}">${_agT(t.age_hours)}</span>`,
+       "toggleAdmin()")).join('')+`</div>`
+     :'<div class="muted" style="font-size:13px;padding:6px 0">אין העברות פתוחות 👌</div>'));
   // הורדות מלאי — סיטי היום (שורה מרווחת: שם המוצר למעלה, עובד מתחת)
   h+=crmCard(homeHead('📉','הורדות מלאי — סיטי היום',remRows.length+' פריטים',"S.view='admin';setAdminTab('removals')")+
     (remRows.length?remRows.slice(0,7).map(r=>
