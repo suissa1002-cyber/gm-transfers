@@ -6436,7 +6436,7 @@ async function crmPlayRec(uid,btn,title){
     const url=URL.createObjectURL(await r.blob());
     a.src=url; if(dl){ dl.href=url; dl.download='recording_'+String(uid).replace(/[^0-9]/g,'')+'.mp3'; }
     a.play();
-  }catch(e){ bar.querySelector('span').textContent='⚠️ אין הקלטה'; }
+  }catch(e){ bar.querySelector('span').textContent='⚠️ ההקלטה עדיין לא מוכנה — נסה שוב בעוד דקה'; bar.querySelector('span').style.maxWidth='none'; }
 }
 function crmDrawerInner(c){
   const head=function(sub){ return '<div style="position:sticky;top:0;background:var(--card,#171c24);border-bottom:1px solid var(--line,#2c3442);padding:14px 16px;display:flex;align-items:center;gap:11px;z-index:1">'+
