@@ -1102,6 +1102,7 @@ function renderDrawer(){
   const lock=(S.cfg.admin_required&&!S.adminKey)?' 🔒':'';
   d.innerHTML=`
     <div class="dr-head"><span>🟢 GreenOS — ניהול אופרציה</span><button class="dr-x" onclick="toggleDrawer(false)">✕</button></div>
+    <div class="dr-item ${act('home')}" onclick="hubGo('home')"><span>🏠</span><span>לוח בית</span></div>
     <div class="dr-sec">קליטת העברות</div>
     <div class="dr-item ${S.view==='board'||S.view==='scan'?'active':''}" onclick="hubGo('board')"><span>${ico('pkg',16)}</span><span>לוח קליטה</span></div>
     <div class="dr-item ${act('admin')}" onclick="hubGo('admin')"><span>${ico('wrench',16)}</span><span>קונסולת ניהול${lock}</span></div>
@@ -1163,6 +1164,10 @@ function ensureAdmin(retry){
 }
 function hubGo(view){
   toggleDrawer(false);
+  if(view==='home'){
+    if(!ensureAdmin(()=>hubGo('home'))) return;
+    S.view='home'; S.adminTab=null; S.embedApp=null; loadHome(true); return;
+  }
   if(view==='admin'){
     if(!ensureAdmin(()=>hubGo('admin'))) return;
     S.view='admin'; S.embedApp=null; loadAdmin(true); return;
@@ -1368,6 +1373,7 @@ function render(){
     (Number(S.branchId)===S.cfg.admin_branch_id)?'inline-flex':'none';
   document.getElementById('waBtn').style.display = isAdminPC?'inline-flex':'none';
   { const ob=document.getElementById('ordersBtn'); if(ob) ob.style.display=isAdminPC?'inline-flex':'none'; updateOrderBadge(); }
+  if(S.view==='home') return S.homeData?renderHome():loadHome(true);
   if(S.view==='embed') return renderEmbed(app);
   if(S.view==='tasks') return S.tasksData?renderTasks():loadTasks(true);
   if(S.view==='sentinel') return S.sentinelData?renderSentinel():loadSentinel(true);
@@ -1456,7 +1462,9 @@ async function requestBranchChange(id,name){
 }
 function finishPick(id,name){
   localStorage.setItem('tr_branch_id',id); localStorage.setItem('tr_branch_name',name);
-  S.branchId=id; S.branchName=name; S.view='board'; render(); startPoll(); startNotifPoll();
+  // מחשב הניהול (סניף אתר) נוחת על לוח הבית; שאר הסניפים על לוח הקליטה
+  const _adminPC=Number(id)===S.cfg.admin_branch_id&&(!S.cfg.admin_required||S.adminKey);
+  S.branchId=id; S.branchName=name; S.view=_adminPC?'home':'board'; render(); startPoll(); startNotifPoll();
 }
 
 // ── לוח בהעברה ──
@@ -5980,6 +5988,7 @@ function startNotifPoll(){ clearInterval(S.notifTimer);
 // ── polling רקע ──
 function startPoll(){ clearInterval(S.pollTimer);
   S.pollTimer=setInterval(()=>{ const a=document.getElementById('app');
+    if(S.view==='home'){ loadHome(false); return; }   // לוח בית: רענון שקט חי
     if(S.view==='board'){
       if(S.branchTab==='live'||S.branchTab==='wcorders') return;   // טאבים עם חיפוש/עריכה — אין רענון לוח שידרוס
       // לא מרעננים תוך כדי הקלדה/סריקה פעילה כדי לא לשבש
@@ -6315,6 +6324,126 @@ async function loadCrm(spinner){
 function crmFmtTs(ts){ try{ const d=new Date(ts); if(isNaN(d.getTime())) return escW(ts||''); const p=n=>('0'+n).slice(-2); return p(d.getDate())+'/'+p(d.getMonth()+1)+' '+p(d.getHours())+':'+p(d.getMinutes()); }catch(e){ return escW(ts||''); } }
 function crmSetView(v){ _crmView=v; renderCrm(); }
 function crmCard(inner,extra){ return '<div style="background:var(--card,#171c24);border:1px solid var(--line,#2c3442);border-radius:14px;padding:14px 16px;'+(extra||'')+'">'+inner+'</div>'; }
+
+// ═══════════════════ 🏠 לוח בית — פריוויו חי לכל המערכת ═══════════════════
+// מסך הנחיתה: רשת כרטיסים חיים שממחזרת endpoints קיימים (overview/wa/sentinel/
+// removals/cdr). כל כרטיס לחיץ → קופץ לאפליקציה/טאב המלא. רענון כל 15ש' (startPoll).
+function goHome(){ S.view='home'; S.adminTab=null; S.embedApp=null; render(); }
+async function loadHome(spinner){
+  if(spinner){ const a=document.getElementById('app'); if(a) a.innerHTML='<div class="empty" style="margin:60px auto">טוען לוח בית… 🏠</div>'; }
+  const defs={ ov:'/api/admin/overview', wa:'/api/admin/wa/conversations',
+               sent:'/api/admin/sentinel', rem:'/api/admin/removals?days=1',
+               cdr:'/api/admin/crm/cdr-stats' };
+  const keys=Object.keys(defs);
+  const res=await Promise.all(keys.map(k=>api(defs[k]).catch(()=>null)));
+  const d={}; keys.forEach((k,i)=>d[k]=res[i]); d._at=Date.now();
+  S.homeData=d;
+  if(S.view==='home') renderHome();
+}
+function homeKpi(val,label,color){
+  return `<div style="flex:1;min-width:108px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:13px 12px;text-align:center">
+    <div style="font-size:27px;font-weight:800;color:${color||'var(--txt)'};line-height:1">${val}</div>
+    <div class="muted" style="font-size:11.5px;margin-top:5px">${label}</div></div>`;
+}
+function homeHead(icon,title,sub,onclick){
+  return `<div ${onclick?`onclick="${onclick}" style="cursor:pointer"`:''} style="display:flex;align-items:center;gap:8px;margin-bottom:9px">
+    <span style="font-size:16px">${icon}</span><b style="font-size:14.5px">${title}</b>
+    ${sub?`<span class="muted" style="margin-inline-start:auto;font-size:12px">${sub}</span>`:''}
+    ${onclick?'<span class="muted" style="font-size:13px">›</span>':''}</div>`;
+}
+function homeRow(inner,onclick){
+  return `<div ${onclick?`onclick="${onclick}" style="cursor:pointer;`:'style="'}display:flex;gap:8px;align-items:center;padding:6px 0;border-top:1px solid var(--line);font-size:13px">${inner}</div>`;
+}
+function renderHome(){
+  const app=document.getElementById('app'); if(!app) return;
+  document.body.classList.remove('wa-mode');
+  try{
+  const d=S.homeData||{};
+  const waConvs=(d.wa&&d.wa.conversations)||[];
+  const waWaiting=waConvs.filter(c=>!c.archived&&c.awaiting_agent).length;
+  const ovS=(d.ov&&d.ov.summary)||{};
+  const overdue=ovS.overdue||0, open=(ovS.in_transit||0)+(ovS.partial||0);
+  const cdr=d.cdr||{}; const ansTxt=(cdr.answer_rate!=null)?Math.round(cdr.answer_rate)+'%':'—';
+  const ct=cdr.totals||{};
+  const sent=d.sent||{};
+  const sentIssues=(sent.report&&(sent.report.issues||sent.report.problems))||[];
+  const sentOk=sent.available&&!sent.stale&&!sentIssues.length;
+  const remRows=(d.rem&&d.rem.rows)||[];
+
+  let h=`<div style="max-width:1280px;margin:0 auto;padding:4px 2px 34px">`;
+  // ── רצועת KPI ──
+  h+=`<div style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:13px">
+    ${homeKpi(waWaiting,'ממתינים לנציג',waWaiting?'#dc2626':'#16a34a')}
+    ${homeKpi(overdue,'העברות באיחור',overdue?'#dc2626':'#16a34a')}
+    ${homeKpi(open,'העברות פתוחות')}
+    ${homeKpi(ansTxt,'מענה שיחות היום')}
+    ${homeKpi(sentOk?'תקין':'בעיה','מצב מערכת',sentOk?'#16a34a':'#dc2626')}
+  </div>`;
+  // ── רצועת "דורש טיפול עכשיו" ──
+  const att=[];
+  const chip=(txt,onc)=>`<button onclick="${onc}" style="background:#fff;border:1px solid rgba(220,38,38,.4);color:#dc2626;border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit">${txt}</button>`;
+  if(waWaiting) att.push(chip(`💬 ${waWaiting} ממתינים לנציג`,"openWaTab()"));
+  if(overdue) att.push(chip(`📦 ${overdue} העברות באיחור`,"toggleAdmin()"));
+  if(!sentOk) att.push(chip(`🛡️ סנטינל: ${sent.stale?'לא מדווח':sentIssues.length+' בעיות'}`,"hubGo('sentinel')"));
+  h+= att.length
+    ? `<div style="background:rgba(220,38,38,.06);border:1px solid rgba(220,38,38,.25);border-radius:14px;padding:11px 14px;margin-bottom:13px">
+        <b style="font-size:13px;color:#dc2626">🔴 דורש טיפול עכשיו</b>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">${att.join('')}</div></div>`
+    : `<div style="background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.25);border-radius:14px;padding:11px 14px;margin-bottom:13px;font-size:13px;color:#16a34a;font-weight:700">✅ הכל תחת שליטה — אין משימות דחופות כרגע</div>`;
+  // ── שורת פעולות מהירות ──
+  const qa=(txt,onc)=>`<button onclick="${onc}" style="background:var(--card);border:1px solid var(--line);color:var(--txt);border-radius:11px;padding:9px 13px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">${txt}</button>`;
+  h+=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+    ${qa('💳 קישור תשלום',"if(ensureAdmin(payQuickOpen))payQuickOpen()")}
+    ${qa('🛒 הזמנות',"openOrdersTab()")}
+    ${qa('💬 וואטסאפ',"openWaTab()")}
+    ${qa('📷 סריקת העברה',"S.view='scan';render()")}
+    ${qa('📞 מוקד שיחות',"hubGoCrm()")}
+  </div>`;
+  // ── רשת כרטיסים ──
+  h+=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:12px">`;
+  // וואטסאפ פתוחות
+  const waList=waConvs.filter(c=>!c.archived&&(c.awaiting_agent||c.unread))
+                      .sort((a,b)=>(b.ts||0)-(a.ts||0)).slice(0,6);
+  h+=crmCard(homeHead('💬','וואטסאפ פתוחות',waWaiting+' ממתינים',"openWaTab()")+
+    (waList.length?waList.map(c=>homeRow(
+       `<span>${c.awaiting_agent?'🔴':'🟡'}</span>
+        <b style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(c.name||c.phone)}</b>
+        <span class="muted" style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:130px">${escW((c.last_msg||'').slice(0,42))}</span>`,
+       "openWaTab()")).join('')
+     :'<div class="muted" style="font-size:13px;padding:6px 0">אין שיחות שממתינות 👌</div>'));
+  // העברות
+  const trf=(d.ov&&d.ov.transfers)||[];
+  const trfOv=trf.filter(t=>t.overdue).sort((a,b)=>(b.age_hours||0)-(a.age_hours||0)).slice(0,6);
+  h+=crmCard(homeHead('📦','העברות',open+' פתוחות · '+overdue+' באיחור',"toggleAdmin()")+
+    (trfOv.length?trfOv.map(t=>homeRow(
+       `<span>⏰</span><b style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(t.from_name||'')} → ${escW(t.to_name||'')}</b>
+        <span class="muted" style="font-size:11px">${Math.round(t.age_hours||0)}ש'</span>`,
+       "toggleAdmin()")).join('')
+     :'<div class="muted" style="font-size:13px;padding:6px 0">אין העברות באיחור 👌</div>'));
+  // הורדות מלאי — סיטי היום
+  h+=crmCard(homeHead('📉','הורדות מלאי — סיטי היום',remRows.length+' פריטים',"S.view='admin';setAdminTab('removals')")+
+    (remRows.length?remRows.slice(0,6).map(r=>homeRow(
+       `<b style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(r.name||'')}</b>
+        <span class="muted" style="font-size:11px">${escW(r.employee||'')}</span>`)).join('')
+     :'<div class="muted" style="font-size:13px;padding:6px 0">אין הורדות היום</div>'));
+  // שיחות מרכזיה היום
+  h+=crmCard(homeHead('📞','שיחות מרכזיה היום',ansTxt+' מענה',"hubGoCrm()")+
+    `<div style="display:flex;gap:6px;margin-top:2px">
+      <div style="flex:1;text-align:center;padding:6px 0"><div style="font-size:21px;font-weight:800;color:#16a34a">${ct.answered||0}</div><div class="muted" style="font-size:11px">נענו</div></div>
+      <div style="flex:1;text-align:center;padding:6px 0"><div style="font-size:21px;font-weight:800;color:#dc2626">${(ct.no_answer||0)+(ct.abandoned||0)}</div><div class="muted" style="font-size:11px">לא נענו</div></div>
+      <div style="flex:1;text-align:center;padding:6px 0"><div style="font-size:21px;font-weight:800">${ct.out||0}</div><div class="muted" style="font-size:11px">יוצאות</div></div>
+    </div>`);
+  // סטטוס מערכת (Sentinel)
+  h+=crmCard(homeHead(sentOk?'🟢':'🔴','סטטוס מערכת (Sentinel)',sentOk?'תקין':'בעיה',"hubGo('sentinel')")+
+    (sentOk?'<div class="muted" style="font-size:13px;padding:4px 0">כל המערכות פעילות ✓</div>'
+     :(sent.stale?'<div style="font-size:13px;padding:4px 0;color:#dc2626">⚠️ סנטינל לא מדווח (אולי כבוי)</div>'
+       :(sentIssues.slice(0,4).map(i=>homeRow(`<span>⚠️</span><span style="font-size:12.5px">${escW(typeof i==='string'?i:(i.msg||i.name||i.title||''))}</span>`)).join('')||'<div class="muted" style="font-size:13px;padding:4px 0">—</div>'))));
+  h+=`</div>`;
+  h+=`<div class="muted" style="text-align:center;font-size:11px;margin-top:14px">עודכן ${d._at?fmtTime(new Date(d._at).toISOString()):''} · מתרענן אוטומטית כל 15ש׳</div>`;
+  h+=`</div>`;
+  app.innerHTML=h;
+  }catch(e){ app.innerHTML='<div class="empty" style="margin:50px auto">שגיאה בטעינת לוח הבית · '+escW(String(e&&e.message||e))+'</div>'; }
+}
 function crmRoutePill(r){ return r?'<span style="background:rgba(31,191,107,.14);color:var(--green,#1fbf6b);font-size:11.5px;font-weight:700;padding:2px 9px;border-radius:20px;white-space:nowrap">'+escW(r)+'</span>':'<span style="color:var(--muted,#94a3b8)">—</span>'; }
 function renderCrm(){
   const app=document.getElementById('app'); if(!app) return;
