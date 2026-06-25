@@ -6477,16 +6477,46 @@ function crmTableHTML(rows){
       const rec=c.has_rec
         ?'<button class="btn-ghost" style="'+bstyle+'" onclick="event.stopPropagation();crmPlayRec(\''+escW(c.uid)+'\',this)" title="האזן להקלטה">▶</button>'
         :'<span style="width:32px;flex:none"></span>';
+      const hasNote=!!(c.note&&String(c.note).trim());
+      const noteBtn=c.uid
+        ?'<button class="btn-ghost" style="'+bstyle+';color:'+(hasNote?'var(--amber,#f5a524)':'var(--muted,#94a3b8)')+'" onclick="event.stopPropagation();crmNoteOpen(\''+escW(c.uid)+'\')" title="'+(hasNote?'הערה פנימית (קיימת)':'הוסף הערה פנימית')+'">'+ico('pencil',15)+'</button>'
+        :'<span style="width:32px;flex:none"></span>';
       return '<tr style="cursor:pointer" onclick="crmOpenCustomer(\''+escW(c.phone)+'\')">'+
       '<td style="white-space:nowrap;color:var(--muted,#94a3b8);font-size:12.5px">'+dir+' '+crmFmtTs(c.ts)+'</td>'+
       '<td><div style="font-weight:700">'+escW(c.matched_name||'לא מזוהה')+'</div><div style="font-size:11.5px;color:var(--muted,#94a3b8);direction:ltr;text-align:right">+'+escW(c.phone)+'</div></td>'+
       '<td>'+crmRoutePill(c.route)+'</td>'+
       '<td style="white-space:nowrap">'+crmDispoBadge(c.disposition)+dur+'</td>'+
-      '<td style="white-space:nowrap"><div style="display:flex;gap:6px;align-items:center;justify-content:flex-end">'+rec+
+      '<td style="white-space:nowrap"><div style="display:flex;gap:6px;align-items:center;justify-content:flex-end">'+rec+noteBtn+
         '<button class="btn-ghost" style="'+bstyle+'" onclick="event.stopPropagation();crmOpenWhatsApp(\''+escW(c.phone)+'\')" title="פתח וואטסאפ">'+ico('chat',15)+'</button></div></td>'+
     '</tr>';}).join('')+'</tbody></table>';
 }
 function crmHistoryRefresh(){ const w=document.getElementById('crmHistWrap'); if(w) w.innerHTML=crmTableHTML(crmFilteredCalls()); }
+// ── הערה פנימית על שיחה (תיעוד/איכות מענה — לא מוצגת חיצונית) ──
+function crmNoteOpen(uid){
+  if(!uid) return;
+  const c=(_crmCalls||[]).find(x=>x.uid===uid)||{};
+  let d=document.getElementById('crmNotePop'); if(d) d.remove();
+  d=document.createElement('div'); d.id='crmNotePop';
+  d.style.cssText='position:fixed;inset:0;z-index:100003;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.45)';
+  d.onclick=function(ev){ if(ev.target===d) d.remove(); };
+  d.innerHTML='<div onclick="event.stopPropagation()" style="background:var(--card,#171c24);border:1px solid var(--line,#2c3442);border-radius:16px;box-shadow:0 18px 50px rgba(0,0,0,.45);padding:16px;width:min(440px,92vw)">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><b style="font-size:14px;display:flex;align-items:center;gap:6px">'+ico('pencil',14)+'הערה פנימית</b>'+
+      '<button onclick="document.getElementById(\'crmNotePop\').remove()" style="background:none;border:0;font-size:20px;cursor:pointer;color:var(--muted,#94a3b8)">✕</button></div>'+
+    '<div style="font-size:11.5px;color:var(--muted,#94a3b8);margin-bottom:8px">'+escW(c.matched_name||'לא מזוהה')+' · '+escW(c.phone||'')+' · '+crmFmtTs(c.ts)+(c.route?' · '+escW(c.route):'')+'</div>'+
+    '<textarea id="crmNoteTxt" placeholder="תיעוד / איכות מענה — הערה פנימית בלבד (לא מוצגת ללקוח)" style="width:100%;box-sizing:border-box;min-height:120px;padding:10px;border-radius:10px;border:1px solid var(--line,#2c3442);background:var(--bg2,#0e1116);color:var(--txt,#e8edf4);font-size:13px;line-height:1.5;resize:vertical">'+escW(c.note||'')+'</textarea>'+
+    '<button onclick="crmNoteSave(\''+escW(uid)+'\')" style="width:100%;margin-top:10px;padding:10px;border:0;border-radius:10px;background:var(--green,#1fbf6b);color:#fff;font-weight:700;font-size:14px;cursor:pointer">שמור הערה</button>'+
+  '</div>';
+  document.body.appendChild(d);
+  setTimeout(()=>{ const t=document.getElementById('crmNoteTxt'); if(t){ t.focus(); t.setSelectionRange(t.value.length,t.value.length); } },50);
+}
+async function crmNoteSave(uid){
+  const t=document.getElementById('crmNoteTxt'); const txt=t?t.value.trim():'';
+  try{ await api('/api/admin/crm/note?uid='+encodeURIComponent(uid)+'&note='+encodeURIComponent(txt)); }catch(e){}
+  const c=(_crmCalls||[]).find(x=>x.uid===uid); if(c) c.note=txt;
+  const d=document.getElementById('crmNotePop'); if(d) d.remove();
+  toast(txt?'הערה נשמרה ✓':'הערה נמחקה',true);
+  crmHistoryRefresh();
+}
 // ── מחמצות: שיחות נכנסות שלא נענו וטרם טופלו ──
 function _crmIsMissed(c){ return c.direction==='in' && (c.disposition==='no_answer'||c.disposition==='abandoned'||c.disposition==='busy'); }
 function crmMissedRows(){ return (_crmCalls||[]).filter(c=>_crmIsMissed(c)); }

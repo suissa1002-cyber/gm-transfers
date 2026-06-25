@@ -436,7 +436,8 @@ _SCHEMA = [
         answered   INTEGER DEFAULT 0,
         first_ts   TEXT,
         last_ts    TEXT,
-        handled_at TEXT
+        handled_at TEXT,
+        note       TEXT
     )
     """,
     "CREATE INDEX IF NOT EXISTS idx_pbx_route_phone ON pbx_route(phone)",
@@ -626,6 +627,7 @@ def _migrate():
         ("customer_invoices", "order_number", "TEXT"),
         # מקור משימת אורי: panel (טיוטה לאסי) / bot (תשובה אוטומטית ללקוח)
         ("uri_jobs", "source", "TEXT"),
+        ("pbx_route", "note", "TEXT"),    # הערה פנימית על שיחה (תיעוד/איכות מענה)
     ]
     for table, col, typ in cols:
         try:
@@ -2113,7 +2115,7 @@ def pbx_routes_by_uids(uids: list) -> dict:
         for i in range(0, len(uids), 400):
             chunk = uids[i:i + 400]
             ph = ",".join(["?"] * len(chunk))
-            cur.execute(_q(f"SELECT uid, route, branch, answered, handled_at "
+            cur.execute(_q(f"SELECT uid, route, branch, answered, handled_at, note "
                            f"FROM pbx_route WHERE uid IN ({ph})"), tuple(chunk))
             for r in cur.fetchall():
                 out[r["uid"]] = dict(r)
@@ -2127,6 +2129,20 @@ def pbx_routes_recent(limit: int = 20) -> list:
         cur.execute(_q("SELECT uid, phone, route, branch, answered, last_ts, handled_at "
                        "FROM pbx_route ORDER BY last_ts DESC LIMIT ?"), (int(limit),))
         return [dict(r) for r in cur.fetchall()]
+
+
+def pbx_note_set(uid: str, note: str):
+    """הערה פנימית על שיחה (תיעוד/איכות). upsert — עובד גם לשיחה שלא נלכדה ע"י ה-worker."""
+    if not uid:
+        return
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("UPDATE pbx_route SET note=? WHERE uid=?"), (note, uid))
+        if not cur.rowcount:
+            try:
+                cur.execute(_q("INSERT INTO pbx_route(uid, note) VALUES(?,?)"), (uid, note))
+            except Exception:  # noqa: BLE001
+                pass
 
 
 def pbx_route_mark_handled(uid: str, when: str):

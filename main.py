@@ -6970,6 +6970,7 @@ def crm_history(days: int = 3, date_from: str = "", date_to: str = "",
             "matched_name": name_cache[intl], "uid": r["uid"],
             "has_rec": bool(r["uid"]) and r["disposition"] == "answered" and r["duration"] > 0,
             "handled": bool(stored and stored.get("handled_at")),
+            "note": (stored.get("note") if stored else "") or "",
         })
     return {"calls": out, "configured": True,
             "total": total_in_range, "capped": total_in_range > _CAP, "cap": _CAP}
@@ -6984,6 +6985,15 @@ def pbx_route_debug(x_admin_key: Optional[str] = Header(None)):
     except Exception as e:  # noqa: BLE001
         return {"count": 0, "rows": [], "error": str(e)}
     return {"count": len(rows), "rows": rows}
+
+
+@app.get("/api/admin/crm/note")
+def crm_note(uid: str = "", note: str = "", x_admin_key: Optional[str] = Header(None)):
+    """הערה פנימית על שיחה (תיעוד/איכות מענה) — נשמרת לפי uid, לא מוצגת חיצונית."""
+    _require_admin(x_admin_key)
+    if uid:
+        db.pbx_note_set(uid, (note or "").strip())
+    return {"ok": True}
 
 
 @app.get("/api/admin/crm/mark-handled")
