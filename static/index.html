@@ -6628,6 +6628,7 @@ function pbxUpdateCallPopup(state){
   } else {
     head='<div style="font-size:13px;color:var(--mut,#888);font-weight:700">🟢 בשיחה · <span id="pbxCallTime">00:00</span></div>';
     btns='<button onclick="pbxMuteBtn(this)" style="flex:1;padding:11px;border:0;border-radius:12px;background:#64748b;color:#fff;font-weight:700;cursor:pointer">🔇 השתק</button>'+
+         '<button onclick="pbxTransferUI()" style="flex:1;padding:11px;border:0;border-radius:12px;background:#3b82f6;color:#fff;font-weight:700;cursor:pointer">↪ העברה</button>'+
          '<button onclick="pbxHangup()" style="flex:1;padding:11px;border:0;border-radius:12px;background:#e23b3b;color:#fff;font-weight:700;cursor:pointer">📴 נתק</button>';
   }
   div.querySelector('#pbxCallBody').innerHTML=
@@ -6676,6 +6677,29 @@ function pbxPlaceCall(number){
   session.on('confirmed',()=>pbxOnAccepted(session));
   session.on('ended',()=>pbxEndCall());
   session.on('failed',()=>pbxEndCall());
+}
+// ── העברת שיחה (blind transfer / REFER) ──
+function pbxTransferUI(){
+  const div=document.getElementById('pbxCallPop'); if(!div||!_pbxSession) return;
+  const body=div.querySelector('#pbxCallBody'); if(!body) return;
+  const exts=[['203','מעבדה'],['200','סיטי'],['201','גן העיר'],['202','הזמנות'],['204','עד הלום']];
+  body.innerHTML='<div style="font-size:13px;font-weight:700;margin-bottom:8px">↪ העברת שיחה אל…</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">'+
+      exts.map(e=>'<button onclick="pbxDoTransfer(\''+e[0]+'\')" style="padding:9px;border:1px solid var(--line,#e2e8f0);border-radius:10px;background:var(--bg2,#f1f5f9);color:var(--txt,#222);font-weight:700;font-size:12.5px;cursor:pointer">'+e[1]+' · '+e[0]+'</button>').join('')+
+    '</div>'+
+    '<div style="display:flex;gap:6px">'+
+      '<input id="pbxXferNum" placeholder="שלוחה / מספר" inputmode="tel" onkeydown="if(event.key===\'Enter\')pbxDoTransfer(this.value)" style="flex:1;min-width:0;direction:ltr;text-align:center;padding:9px;border-radius:10px;border:1px solid var(--line,#e2e8f0);background:var(--bg2,#f1f5f9);color:var(--txt,#222)">'+
+      '<button onclick="pbxDoTransfer(document.getElementById(\'pbxXferNum\').value)" style="padding:9px 14px;border:0;border-radius:10px;background:#1db954;color:#fff;font-weight:700;cursor:pointer">העבר</button>'+
+    '</div>'+
+    '<button onclick="pbxUpdateCallPopup(\'incall\')" style="width:100%;margin-top:8px;padding:8px;border:0;border-radius:10px;background:var(--bg2,#f1f5f9);color:var(--txt,#334);font-weight:600;cursor:pointer">← חזרה לשיחה</button>';
+}
+function pbxDoTransfer(target){
+  target=String(target||'').replace(/[^0-9+*#]/g,'');
+  if(!target||!_pbxSession) return;
+  try{
+    _pbxSession.refer('sip:'+target+'@'+(_pbxServer||'webrtc.1com.co.il'));
+    toast('↪ מעביר שיחה ל-'+target+'…',true);
+  }catch(e){ console.warn('[pbx-sip] transfer err',e); toast('העברה נכשלה',false); }
 }
 async function bootApp(){
   try{ S.branchList=await (await fetchT('/api/branches',{},15000)).json(); }catch(e){}
