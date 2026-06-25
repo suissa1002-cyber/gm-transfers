@@ -388,7 +388,7 @@
              font-weight:800;min-width:17px;height:17px;line-height:17px;border-radius:999px;padding:0 4px;
              text-align:center;box-shadow:0 0 0 2px var(--card)}
   /* ── 💬 חלון WhatsApp צף — מענה מהיר מכל טאב (מארח את פאנל-השיחה הקיים) ── */
-  #wpop{position:fixed;z-index:120;bottom:0;right:18px;width:380px;max-width:calc(100vw - 24px);
+  #wpop{position:fixed;z-index:120;bottom:0;left:18px;width:380px;max-width:calc(100vw - 24px);
         background:var(--card);border:1px solid var(--line);border-bottom:0;border-radius:14px 14px 0 0;
         box-shadow:0 -8px 40px rgba(0,0,0,.28);display:flex;flex-direction:column;overflow:hidden;
         height:560px;max-height:calc(100vh - 16px);animation:wpopUp .18s ease}
@@ -408,10 +408,17 @@
   .wpop-win.ok{background:rgba(255,255,255,.22)}
   .wpop-win.no{background:rgba(0,0,0,.25)}
   .wpop-host{flex:1;min-height:0;display:flex}
-  #wpop .wa-thread{height:100%;border:0;border-radius:0;flex:1;min-height:0;max-height:none}
+  #wpop .wa-thread{height:100%;border:0;border-radius:0;flex:1;min-height:0;max-height:none;overflow:hidden}
   #wpop .wa-head{display:none}          /* הראש מוחלף בסרגל הצף שלנו */
-  #wpop .wa-msgs{padding:10px 12px}
-  @media (max-width:760px){ #wpop{inset-inline-end:0;inset-inline-start:0;width:auto;height:74vh;height:74dvh} }
+  /* החלון צר (380px) אבל המסך רחב → כללי ה"שיחה רחבה" של דסקטופ (max-width:880/68%,
+     מירכוז) מיועדים לטאב מלא וחותכים כאן. ID גובר על media-query → מאלצים פריסה צרה. */
+  #wpop .wa-body,#wpop .wa-main{min-width:0}
+  #wpop .wa-msgs{max-width:none;width:auto;margin:0;padding:10px 12px}
+  #wpop .wa-b{max-width:85%}
+  #wpop .wa-send{max-width:none;width:auto;margin:0;padding:8px 9px;gap:5px}
+  #wpop .wa-replybar{max-width:none;margin:0}
+  #wpop .wa-canned{max-width:calc(100% - 16px)}
+  @media (max-width:760px){ #wpop{left:0;right:0;width:auto;max-width:none;height:74vh;height:74dvh} }
   /* מצב מסך-מלא לוואטסאפ: בלי כותרת/טאבים, סרגל עליון נקי (רק 💬 + בורגר),
      והחלון נמתח עד ה-header — בלי "חלון בתוך חלון" */
   body.wa-mode #hdr > *:not(#waBtn):not(#pbxDialBtn):not(#ordersBtn){display:none!important}
