@@ -6826,12 +6826,15 @@ def _pbx_normalize_channels(raw) -> dict:
     משותף לפופאפ החי (/live) ול-worker לכידת הנתיב. סניף לפי תור>huntlist>שלוחה."""
     import re as _re
     by_phone: dict = {}
+    agent_up = False   # רגל שלוחה (SIP/2xx) במצב Up = נציג ענה (cid שלה=מספר השלוחה → לא עובר את סינון המתקשר החיצוני, לכן נסרק כאן בנפרד)
     for ch in raw:
         if not isinstance(ch, list) or len(ch) < 14:
             continue
         chan, ctx, state = str(ch[0]), str(ch[1]), str(ch[4])
         app, appdata = str(ch[5]), str(ch[6])
         cid, uid = str(ch[7]), str(ch[13])
+        if _re.match(r"SIP/\d{3}-greenmobile", chan) and state.lower() == "up":
+            agent_up = True
         if not _re.match(r"^0\d{8,9}$", cid):
             continue
         e = by_phone.setdefault(cid, {"uid": uid, "state": state, "branch": "", "answered": False})
@@ -6847,7 +6850,10 @@ def _pbx_normalize_channels(raw) -> dict:
             ext = em.group(1) if em else (ch[2] if str(ch[2]).isdigit() else "")
             if ext in _PBX_EXT_BRANCH:
                 e["branch"] = _PBX_EXT_BRANCH[ext]
-        if _re.match(r"SIP/\d{3}-greenmobile", chan) and state.lower() == "up":
+    # ⚠️ נציג ענה → מסומן על השיחה(ות) הפעילה(ות). מדויק לשיחה בודדת (המקרה הנפוץ);
+    # בכמה שיחות במקביל ייתכן סימון-יתר (שיחה מצלצלת תיראה כנענתה אם אחרת נענתה).
+    if agent_up:
+        for e in by_phone.values():
             e["answered"] = True
     return by_phone
 
