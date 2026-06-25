@@ -6535,7 +6535,7 @@ function renderHome(){
      ${homeSpark(sd.weekly)}
      ${(sd._dbg_doctype)?`<div style="margin-top:10px;padding-top:8px;border-top:1px dashed var(--line);font-size:10.5px;color:var(--muted);direction:ltr;text-align:left">
         🔧 doc_type: ${Object.entries(sd._dbg_doctype).map(([k,v])=>`<b>${k}</b>=₪${v.rev.toLocaleString('en-US')}/${v.docs}docs`).join(' · ')}<br>
-        top: ${(sd._dbg_top||[]).slice(0,5).map(t=>`${escW(t.nm)} ₪${t.tot.toLocaleString('en-US')}(${t.lines}ln)`).join(' · ')}</div>`:''}`,
+        top: ${(sd._dbg_top||[]).slice(0,6).map(t=>`${escW(t.nm)} ₪${t.tot.toLocaleString('en-US')}(q=${t.q},${escW(t.b||'')})`).join(' · ')}</div>`:''}`,
     'margin-bottom:13px');
   // ── רשת כרטיסים ──
   h+=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:12px">`;
