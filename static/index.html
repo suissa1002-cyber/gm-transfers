@@ -6340,10 +6340,12 @@ async function loadHome(spinner){
                sent:'/api/admin/sentinel', rem:'/api/admin/removals?days=1',
                cdr:'/api/admin/crm/cdr-stats?days=1',          // היום בלבד (לא 30 יום)
                hist:'/api/admin/crm/history?days=1',            // שיחות היום (לרשימת לא-נענו)
-               sales:'/api/admin/sales/dashboard'+_homeSalesQ() }; // מכירות לפי סניף+תקופה
+               sales:'/api/admin/sales/dashboard'+_homeSalesQ(), // מכירות לפי סניף+תקופה
+               sched:'/api/schedule/data' };                    // סידור עבודה (סינון להיום ב-frontend)
   const keys=Object.keys(defs);
   const res=await Promise.all(keys.map(k=>api(defs[k]).catch(()=>null)));
   const d={}; keys.forEach((k,i)=>d[k]=res[i]); d._at=Date.now();
+  loadHomeChecks();   // צ'קים (Monday) — נטען בנפרד (cache 5 דק'), לא חוסם את הלוח
   S.homeData=d;
   if(S.view==='home') renderHome();
 }
@@ -6413,6 +6415,27 @@ function homeDonut(cats){
         <div style="font-size:10px;color:var(--muted)">מכירות</div><div style="font-size:13px;font-weight:800">${_il(total)}</div></div>
     </div>
     <div style="flex:1;min-width:135px">${legend}</div></div>`;
+}
+// ── צ'קים (Monday board) — נטען בנפרד עם cache 5 דק', סינון תאריך-ערך ב-frontend ──
+function _checkDateFor(mode){
+  const d=new Date();
+  if(mode==='wed0'||mode==='wed1'){ const add=(3-d.getDay()+7)%7; d.setDate(d.getDate()+add+(mode==='wed1'?7:0)); }
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function homeChecksMode(m){ S.homeLastTouch=Date.now(); S.homeChecksMode=m; if(S.view==='home')renderHome(); }
+async function loadHomeChecks(){
+  if(S.homeChecksAt && Date.now()-S.homeChecksAt<300000) return;   // cache 5 דק'
+  S.homeChecksAt=Date.now();
+  const query='query { boards(ids: [1689501530]) { items_page(limit: 500) { items { id name group { id title } column_values(ids: ["date__1","dropdown_mm0gxfbd","numbers__1","dropdown__1","text7__1"]) { id text } } } } }';
+  try{
+    const r=await api('/api/checks/gql',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query})});
+    const items=((((r.data||{}).boards||[])[0]||{}).items_page||{}).items||[];
+    S.homeChecks=items.map(it=>{ const cols={}; (it.column_values||[]).forEach(c=>cols[c.id]=c.text);
+      return {id:it.id, name:it.name||'', amount:parseFloat(cols.numbers__1)||0,
+              valueDate:(cols.date__1||cols.dropdown_mm0gxfbd||'').slice(0,10),
+              bank:cols.dropdown__1||'', status:(it.group||{}).title||''}; });
+    if(S.view==='home') renderHome();
+  }catch(e){ S.homeChecksAt=0; }   // כשל → ננסה שוב בפעם הבאה
 }
 function homeSpark(days){
   // 14 ימים: 7 אחרונים = השבוע (ירוק), 7 קודמים = שבוע שעבר (אפור)
@@ -6489,8 +6512,9 @@ function renderHome(){
   const _il=n=>'₪'+Number(Math.round(n||0)).toLocaleString('en-US');
   const branches=[{id:'',n:'כל הסניפים'},{id:1,n:'גן העיר'},{id:2,n:'סטאר'},{id:3,n:'סיטי'},{id:4,n:'עד הלום'},{id:5,n:'אתר'}];
   const curB=String(S.homeBranch||'');
+  const grandTotal=Object.values(sd.by_branch||{}).reduce((s,v)=>s+(v.revenue||0),0);  // "כל הסניפים" = תמיד הסכום הכולל
   const brTile=b=>{ const sel=curB===String(b.id);
-    const rev=b.id===''?((sd.today&&sd.today.revenue)||0):(((sd.by_branch||{})[b.id]||{}).revenue||0);
+    const rev=b.id===''?grandTotal:(((sd.by_branch||{})[b.id]||{}).revenue||0);
     return `<button onclick="homeSalesBranch('${b.id}')" style="flex:1;min-width:92px;background:${sel?'#16a34a':'var(--card2)'};color:${sel?'#fff':'var(--txt)'};border:1px solid ${sel?'#16a34a':'var(--line)'};border-radius:11px;padding:8px 6px;cursor:pointer;font-family:inherit;text-align:center">
       <div style="font-size:12px;font-weight:600">${b.n}</div>
       <div style="font-size:15px;font-weight:800;margin-top:2px">${_il(rev)}</div></button>`; };
@@ -6521,9 +6545,9 @@ function renderHome(){
   const recent=(sd.recent||[]).slice(0,8);
   h+=crmCard(homeHead('🧾','מכירות אחרונות',((sd.today&&sd.today.count)||0)+' עסקאות',"hubGoCrm()")+
     (recent.length?recent.map(r=>homeRow(
-      `<b style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(r.name)}</b>
+      `<b style="flex:1;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(r.name)}</b>
        <span class="muted" style="font-size:11px;direction:ltr">${escW(_tmt(r.ts))}</span>
-       <span style="font-weight:800;color:#16a34a">${_il(r.amount)}</span>`)).join('')
+       <span style="font-weight:600;color:#16a34a">${_il(r.amount)}</span>`)).join('')
      :'<div class="muted" style="font-size:13px;padding:6px 0">אין מכירות היום</div>'));
   // וואטסאפ — אינבוקס (כל הלא-מאורכבות, כמו בטאב), לא רק ממתינים
   const inbox=waConvs.filter(c=>!c.archived).sort((a,b)=>(b.ts||0)-(a.ts||0));
@@ -6549,8 +6573,8 @@ function renderHome(){
   h+=crmCard(homeHead('📉','הורדות מלאי — סיטי היום',remRows.length+' פריטים',"S.view='admin';setAdminTab('removals')")+
     (remRows.length?remRows.slice(0,7).map(r=>
        `<div style="padding:8px 0;border-top:1px solid var(--line)">
-          <div style="font-size:13px;font-weight:600;line-height:1.3">${escW(r.name||'')}</div>
-          <div class="muted" style="font-size:11px;margin-top:2px">👤 ${escW(r.employee||'—')}</div>
+          <div style="font-size:13px;font-weight:700;line-height:1.3">${escW(r.name||'')}</div>
+          <div class="muted" style="font-size:11px;margin-top:2px;font-weight:400">👤 ${escW(r.employee||'—')}</div>
         </div>`).join('')
      :'<div class="muted" style="font-size:13px;padding:6px 0">אין הורדות היום</div>'));
   // שיחות מרכזיה היום + רשימת לא-נענו אחרונות
@@ -6574,6 +6598,32 @@ function renderHome(){
       (sent.stale?'<div style="font-size:13px;padding:4px 0;color:#dc2626">⚠️ סנטינל לא מדווח (אולי כבוי)</div>'
        :(sentIssues.slice(0,5).map(i=>homeRow(`<span>⚠️</span><span style="font-size:12.5px">${escW(typeof i==='string'?i:(i.msg||i.name||i.title||''))}</span>`)).join('')||'<div class="muted" style="font-size:13px;padding:4px 0">—</div>')));
   }
+  // 👥 עובדים היום בסניפים (סידור עבודה — סינון ליום הנוכחי)
+  const sched=d.sched||{};
+  const sdow=new Date().getDay();   // 0=ראשון … 6=שבת (תואם dow ב-roster)
+  const schedBr=sched.branches||[];
+  const rosterToday=(sched.roster||[]).filter(r=>r.dow===sdow && r.employee);
+  const byBr={}; rosterToday.forEach(r=>{ (byBr[r.branch_id]=byBr[r.branch_id]||[]).push(r); });
+  h+=crmCard(homeHead('👥','עובדים היום',rosterToday.length+' במשמרת',"window.open('/schedule','_blank')")+
+    (rosterToday.length?schedBr.map(b=>{ const emps=byBr[b.id]||[]; if(!emps.length) return '';
+      return `<div style="padding:7px 0;border-top:1px solid var(--line)">
+        <div style="font-size:13px;font-weight:700">${escW(b.name)}</div>
+        <div style="font-size:12px;margin-top:2px;line-height:1.6">${emps.map(e=>`${escW(e.employee)}${e.hours?` <span class="muted" style="font-size:11px">${escW(e.hours)}</span>`:''}`).join(' · ')}</div>
+      </div>`; }).join('')
+     :'<div class="muted" style="font-size:13px;padding:6px 0">אין שיבוץ להיום</div>'));
+  // 💳 צ'קים לפירעון (מתג: היום / רביעי הקרוב / רביעי הבא)
+  const cmode=S.homeChecksMode||'today';
+  const cdate=_checkDateFor(cmode);
+  const cks=(S.homeChecks||[]).filter(c=>c.valueDate===cdate).sort((a,b)=>(b.amount||0)-(a.amount||0));
+  const ctot=cks.reduce((s,c)=>s+(c.amount||0),0);
+  const cseg=(id,lbl)=>`<button onclick="homeChecksMode('${id}')" style="flex:1;background:${cmode===id?'#16a34a':'transparent'};color:${cmode===id?'#fff':'var(--txt)'};border:0;border-radius:8px;padding:6px 2px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit">${lbl}</button>`;
+  h+=crmCard(homeHead('💳','צ׳קים לפירעון',cks.length?_il(ctot):'',"window.open('/checks','_blank')")+
+    `<div style="display:flex;gap:3px;background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:3px;margin-bottom:9px">${cseg('today','היום')}${cseg('wed0','רביעי הקרוב')}${cseg('wed1','רביעי הבא')}</div>`+
+    (cks.length?cks.slice(0,7).map(c=>homeRow(
+       `<b style="flex:1;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(c.name||'—')}</b>
+        <span class="muted" style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:90px">${escW(c.bank||'')}</span>
+        <span style="font-weight:600">${_il(c.amount)}</span>`)).join('')
+     :`<div class="muted" style="font-size:13px;padding:6px 0">${S.homeChecks?'אין צ׳קים לתאריך זה':'טוען…'}</div>`));
   h+=`</div>`;
   h+=`<div class="muted" style="text-align:center;font-size:11px;margin-top:14px">עודכן ${d._at?fmtTime(new Date(d._at).toISOString()):''} · מתרענן אוטומטית כל 15ש׳</div>`;
   h+=`</div>`;
