@@ -6331,24 +6331,74 @@ function crmCard(inner,extra){ return '<div style="background:var(--card,#171c24
 function goHome(){ S.view='home'; S.adminTab=null; S.embedApp=null; render(); }
 async function loadHome(spinner){
   if(spinner){ const a=document.getElementById('app'); if(a) a.innerHTML='<div class="empty" style="margin:60px auto">טוען לוח בית… 🏠</div>'; }
-  const bq=S.homeBranch?('?branch_id='+encodeURIComponent(S.homeBranch)):'';
   const defs={ ov:'/api/admin/overview', wa:'/api/admin/wa/conversations',
                sent:'/api/admin/sentinel', rem:'/api/admin/removals?days=1',
                cdr:'/api/admin/crm/cdr-stats?days=1',          // היום בלבד (לא 30 יום)
                hist:'/api/admin/crm/history?days=1',            // שיחות היום (לרשימת לא-נענו)
-               sales:'/api/admin/sales/dashboard'+bq };         // מכירות היום לפי סניף + קטגוריות + sparkline
+               sales:'/api/admin/sales/dashboard'+_homeSalesQ() }; // מכירות לפי סניף+תקופה
   const keys=Object.keys(defs);
   const res=await Promise.all(keys.map(k=>api(defs[k]).catch(()=>null)));
   const d={}; keys.forEach((k,i)=>d[k]=res[i]); d._at=Date.now();
   S.homeData=d;
   if(S.view==='home') renderHome();
 }
+function _homeSalesQ(){
+  const p=[];
+  if(S.homeBranch) p.push('branch_id='+encodeURIComponent(S.homeBranch));
+  if(S.homeSalesPeriod==='yesterday') p.push('period=yesterday');
+  else if(S.homeSalesPeriod==='range'&&S.homeSalesRange){ p.push('from_date='+S.homeSalesRange.from); p.push('to_date='+S.homeSalesRange.to); }
+  return p.length?('?'+p.join('&')):'';
+}
 function homeSalesBranch(b){ S.homeBranch=(b===''||b==null)?null:b; loadHomeSales(); }
+function homeSalesPeriod(p){ if(p==='range'){ homeSalesRangeOpen(); return; } S.homeSalesPeriod=p; S.homeSalesRange=null; loadHomeSales(); }
 async function loadHomeSales(){
-  const bq=S.homeBranch?('?branch_id='+encodeURIComponent(S.homeBranch)):'';
-  try{ const s=await api('/api/admin/sales/dashboard'+bq);
+  try{ const s=await api('/api/admin/sales/dashboard'+_homeSalesQ());
        if(!S.homeData) S.homeData={}; S.homeData.sales=s;
        if(S.view==='home') renderHome(); }catch(e){}
+}
+function homeSalesApplyRange(f,t){ if(!f||!t) return; S.homeSalesPeriod='range'; S.homeSalesRange={from:f,to:t}; closeModal(); loadHomeSales(); }
+function homeSalesRangeOpen(){
+  const fmt=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  const now=new Date();
+  const presets=[
+    ['7 ימים',()=>{const a=new Date(now);a.setDate(a.getDate()-6);return[fmt(a),fmt(now)];}],
+    ['30 יום',()=>{const a=new Date(now);a.setDate(a.getDate()-29);return[fmt(a),fmt(now)];}],
+    ['חודש נוכחי',()=>[fmt(new Date(now.getFullYear(),now.getMonth(),1)),fmt(now)]],
+    ['חודש קודם',()=>[fmt(new Date(now.getFullYear(),now.getMonth()-1,1)),fmt(new Date(now.getFullYear(),now.getMonth(),0))]],
+  ];
+  const cur=S.homeSalesRange||{from:fmt(now),to:fmt(now)};
+  document.getElementById('modalRoot').innerHTML=`<div class="overlay" onclick="closeModal()"><div class="modal" style="max-width:380px;text-align:right" onclick="event.stopPropagation()">
+    <h3 style="margin:0 0 12px;display:flex;align-items:center;gap:7px">🗓️ טווח תאריכים</h3>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+      ${presets.map((p,i)=>`<button class="btn-ghost" style="flex:1;min-width:90px" onclick="(function(){const r=window._hsPre[${i}]();homeSalesApplyRange(r[0],r[1]);})()">${p[0]}</button>`).join('')}
+    </div>
+    <div style="display:flex;gap:8px;align-items:end;margin-bottom:14px">
+      <div style="flex:1"><label class="muted" style="font-size:12px">מתאריך</label><input type="date" id="hsFrom" value="${cur.from}" style="width:100%"></div>
+      <div style="flex:1"><label class="muted" style="font-size:12px">עד תאריך</label><input type="date" id="hsTo" value="${cur.to}" style="width:100%"></div>
+    </div>
+    <button class="btn-primary" style="width:100%" onclick="homeSalesApplyRange(document.getElementById('hsFrom').value,document.getElementById('hsTo').value)">הצג</button>
+  </div></div>`;
+  window._hsPre=presets.map(p=>p[1]);
+}
+function homeDonut(cats){
+  const total=cats.reduce((s,c)=>s+(c.revenue||0),0)||1;
+  const cols=['#3b82f6','#f59e0b','#ef4444','#10b981','#f97316','#8b5cf6','#a16207','#ec4899','#6b7280','#84cc16','#06b6d4','#d946ef'];
+  let off=0;
+  const segs=cats.map((c,i)=>{ const len=(c.revenue||0)/total*100;
+    const s=`<circle r="15.915" cx="21" cy="21" fill="transparent" stroke="${cols[i%cols.length]}" stroke-width="6.5" stroke-dasharray="${len.toFixed(2)} ${(100-len).toFixed(2)}" stroke-dashoffset="${(-off).toFixed(2)}" transform="rotate(-90 21 21)"><title>${escW(c.category)}: ${Math.round(len)}%</title></circle>`;
+    off+=len; return s; }).join('');
+  const _il=n=>'₪'+Number(Math.round(n||0)).toLocaleString('en-US');
+  const legend=cats.map((c,i)=>`<div style="display:flex;align-items:center;gap:6px;font-size:12px;padding:2.5px 0">
+    <span style="width:10px;height:10px;border-radius:2px;background:${cols[i%cols.length]};flex:none"></span>
+    <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(c.category)}</span>
+    <span class="muted" style="flex:none">${Math.round((c.revenue||0)/total*100)}%</span></div>`).join('');
+  return `<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+    <div style="position:relative;width:118px;height:118px;flex:none">
+      <svg viewBox="0 0 42 42" style="width:118px;height:118px;display:block">${segs}</svg>
+      <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none">
+        <div style="font-size:10px;color:var(--muted)">מכירות</div><div style="font-size:13px;font-weight:800">${_il(total)}</div></div>
+    </div>
+    <div style="flex:1;min-width:135px">${legend}</div></div>`;
 }
 function homeSpark(days){
   // 14 ימים: 7 אחרונים = השבוע (ירוק), 7 קודמים = שבוע שעבר (אפור)
@@ -6431,8 +6481,12 @@ function renderHome(){
       <div style="font-size:12px;font-weight:600">${b.n}</div>
       <div style="font-size:15px;font-weight:800;margin-top:2px">${_il(rev)}</div></button>`; };
   const tt=sd.today||{revenue:0,count:0,credits:0};
+  const per=S.homeSalesPeriod||'today';
+  const perLabel=per==='yesterday'?'אתמול':(per==='range'?((sd.from||'')+' – '+(sd.to||'')):'היום');
+  const seg=(id,lbl)=>`<button onclick="homeSalesPeriod('${id}')" style="flex:1;background:${per===id?'#16a34a':'transparent'};color:${per===id?'#fff':'var(--txt)'};border:0;border-radius:9px;padding:7px 4px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">${lbl}</button>`;
   h+=crmCard(
-    `<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><span style="font-size:17px">💰</span><b style="font-size:15px">מכירות היום</b><span class="muted" style="margin-inline-start:auto;font-size:12px">${escW(sd.date||'')}</span></div>
+    `<div style="display:flex;align-items:center;gap:8px;margin-bottom:11px"><span style="font-size:17px">💰</span><b style="font-size:15px">מכירות · ${escW(perLabel)}</b></div>
+     <div style="display:flex;gap:3px;background:var(--card2);border:1px solid var(--line);border-radius:11px;padding:3px;margin-bottom:12px">${seg('today','היום')}${seg('yesterday','אתמול')}${seg('range','סינון')}</div>
      <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:13px">${branches.map(brTile).join('')}</div>
      <div style="display:flex;gap:10px;margin-bottom:13px">
        <div style="flex:1;text-align:center"><div style="font-size:24px;font-weight:800;color:#16a34a">${_il(tt.revenue)}</div><div class="muted" style="font-size:11px">מכירות</div></div>
@@ -6444,19 +6498,14 @@ function renderHome(){
     'margin-bottom:13px');
   // ── רשת כרטיסים ──
   h+=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:12px">`;
-  // פילוח קטגוריות היום
-  const cats=(sd.categories||[]).slice(0,7);
-  const cmax=Math.max(1,...cats.map(c=>c.revenue||0));
-  h+=crmCard(homeHead('🛍️','פילוח קטגוריות היום',cats.length?'':'—',"hubGoCrm()")+
-    (cats.length?cats.map(c=>
-      `<div style="padding:5px 0">
-         <div style="display:flex;justify-content:space-between;font-size:12.5px"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(c.category)}</span><span class="muted">${_il(c.revenue)}</span></div>
-         <div style="height:6px;background:var(--line);border-radius:4px;margin-top:3px"><div style="height:100%;width:${Math.round((c.revenue||0)/cmax*100)}%;background:#3b82f6;border-radius:4px"></div></div>
-       </div>`).join('')
-     :'<div class="muted" style="font-size:13px;padding:6px 0">אין מכירות היום</div>'));
+  // פילוח קטגוריות (דונאט כמו NewOrder)
+  const cats=(sd.categories||[]).slice(0,11);
+  h+=crmCard(homeHead('🛍️','פילוח קטגוריות',perLabel,"hubGoCrm()")+
+    (cats.length?homeDonut(cats)
+     :'<div class="muted" style="font-size:13px;padding:6px 0">אין מכירות בתקופה</div>'));
   // מכירות אחרונות היום
   const recent=(sd.recent||[]).slice(0,8);
-  h+=crmCard(homeHead('🧾','מכירות אחרונות',((sd.today&&sd.today.count)||0)+' היום',"hubGoCrm()")+
+  h+=crmCard(homeHead('🧾','מכירות אחרונות',((sd.today&&sd.today.count)||0)+' עסקאות',"hubGoCrm()")+
     (recent.length?recent.map(r=>homeRow(
       `<b style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(r.name)}</b>
        <span class="muted" style="font-size:11px;direction:ltr">${escW(_tmt(r.ts))}</span>

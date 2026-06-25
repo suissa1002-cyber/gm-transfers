@@ -2683,11 +2683,14 @@ def admin_sales_status(x_admin_key: Optional[str] = Header(None)):
 
 
 @app.get("/api/admin/sales/dashboard")
-def admin_sales_dashboard(branch_id: Optional[str] = None, x_admin_key: Optional[str] = Header(None)):
-    """מכירות ללוח הבית: סך-היום-לפי-סניף + סיכום + קטגוריות + אחרונות + 14-יום (sparkline).
-    branch_id אופציונלי → מסנן קטגוריות/אחרונות/שבועי לסניף (by_branch תמיד כל הסניפים)."""
+def admin_sales_dashboard(branch_id: Optional[str] = None, period: Optional[str] = None,
+                          from_date: Optional[str] = None, to_date: Optional[str] = None,
+                          x_admin_key: Optional[str] = Header(None)):
+    """מכירות ללוח הבית: סך-לפי-סניף + סיכום + קטגוריות + אחרונות + 14-יום (sparkline).
+    period='yesterday' / from_date+to_date → טווח (ברירת מחדל: היום, שעון IL).
+    branch_id → מסנן קטגוריות/אחרונות/שבועי לסניף (by_branch תמיד כל הסניפים)."""
     _require_admin(x_admin_key)
-    out = db.sales_dashboard(branch_id)
+    out = db.sales_dashboard(branch_id, from_date, to_date, period)
     out["branch_names"] = {str(b): cfg.branch_name(b) for b in out.get("by_branch", {}).keys()}
     return out
 
