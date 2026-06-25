@@ -3097,12 +3097,14 @@ def sales_dashboard(branch_id=None, from_date=None, to_date=None, period=None) -
     with _conn() as c:
         cur = c.cursor()
         # סך לכל סניף בטווח (revenue=מכירה doc_type 0 · credits=זיכוי doc_type 5)
+        # revenue = נטו: מכירות (0) + זיכויים/ביטולים (5, qty שלילי) — תואם "מכירות בקופה" של NewOrder.
+        # כולל משלוח (NewOrder כולל אותו בסך). credits מוצג בנפרד (אינפורמטיבי).
         cur.execute(_q("""SELECT branch_id,
-            SUM(CASE WHEN doc_type=0 THEN qty*price ELSE 0 END) AS revenue,
+            SUM(CASE WHEN doc_type IN (0,5) THEN qty*price ELSE 0 END) AS revenue,
             SUM(CASE WHEN doc_type=5 THEN qty*price ELSE 0 END) AS credits,
             COUNT(DISTINCT CASE WHEN doc_type=0 THEN doc_id END) AS cnt
-            FROM sales WHERE sale_date >= ? AND sale_date <= ?""" + ship + """
-            GROUP BY branch_id"""), tuple([f, t_end] + _SALES_SHIP_PARAMS))
+            FROM sales WHERE sale_date >= ? AND sale_date <= ?
+            GROUP BY branch_id"""), (f, t_end))
         for r in cur.fetchall():
             b = r["branch_id"]
             if b is None:
@@ -3121,7 +3123,7 @@ def sales_dashboard(branch_id=None, from_date=None, to_date=None, period=None) -
         # פילוח קטגוריות (מכירות בלבד, ללא משלוחים)
         cur.execute(_q("""SELECT COALESCE(NULLIF(c.category,''),'אחר') AS cat, SUM(s.qty*s.price) AS rev
             FROM sales s LEFT JOIN catalog c ON s.product_id = c.product_id
-            WHERE s.sale_date >= ? AND s.sale_date <= ? AND s.doc_type=0""" + ship_s + bfilt + """
+            WHERE s.sale_date >= ? AND s.sale_date <= ? AND s.doc_type IN (0,5)""" + ship_s + bfilt + """
             GROUP BY cat ORDER BY rev DESC LIMIT 12"""), tuple([f, t_end] + _SALES_SHIP_PARAMS + bp))
         out["categories"] = [{"category": r["cat"], "revenue": round(float(r["rev"] or 0))}
                              for r in cur.fetchall() if float(r["rev"] or 0) > 0]
@@ -3150,8 +3152,8 @@ def sales_dashboard(branch_id=None, from_date=None, to_date=None, period=None) -
                           "branch_id": d["branch_id"], "ts": d["ts"]} for d in recent]
         # הכנסה יומית 14 ימים (sparkline שבוע-מול-שבוע) — קבוע, לא תלוי בטווח הנבחר
         cur.execute(_q("""SELECT substr(sale_date,1,10) AS day, SUM(s.qty*s.price) AS rev FROM sales s
-            WHERE s.sale_date >= ? AND s.doc_type=0""" + ship_s + bfilt + """
-            GROUP BY day ORDER BY day"""), tuple([d14] + _SALES_SHIP_PARAMS + bp))
+            WHERE s.sale_date >= ? AND s.doc_type IN (0,5)""" + bfilt + """
+            GROUP BY day ORDER BY day"""), tuple([d14] + bp))
         daymap = {r["day"]: round(float(r["rev"] or 0)) for r in cur.fetchall()}
         days = [(now - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(13, -1, -1)]
         out["weekly"] = [{"day": d, "revenue": daymap.get(d, 0)} for d in days]
