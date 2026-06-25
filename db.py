@@ -2447,6 +2447,37 @@ def bot_handoff_phones(hours: int = 12) -> set:
     return out
 
 
+def bot_awaiting_agent_phones(hours: int = 12) -> set:
+    """phones שביקשו נציג אנושי ו**טרם נענו ע"י אדם** (state='agent' בלי data.human,
+    חותמת צעירה מ-hours). זה ה'ממתין-לנציג' האמיתי — בלי קשר אם הבוט שלח את הודעת
+    ההעברה אחרונה (שמאפסת unread). משמש לחלון הצף + לבאדג' '💬'. ברגע שאדם עונה
+    (`_bot_handoff_on` מסמן human=True) הלקוח נושר מכאן אוטומטית."""
+    import json as _j
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    out = set()
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT phone, data FROM wa_bot_session WHERE state = 'agent'"))
+        for r in cur.fetchall():
+            try:
+                d = _j.loads(r["data"]) if r["data"] else {}
+            except Exception:  # noqa: BLE001
+                d = {}
+            if d.get("human"):                      # אדם כבר ענה → לא 'ממתין'
+                continue
+            ts = d.get("ts")
+            if not ts:
+                out.add(r["phone"]); continue
+            try:
+                t = datetime.fromisoformat(str(ts)).astimezone(timezone.utc)
+                if (now - t).total_seconds() < hours * 3600:
+                    out.add(r["phone"])
+            except Exception:  # noqa: BLE001
+                out.add(r["phone"])
+    return out
+
+
 def wa_set_archived(phone, archived: bool):
     """ארכוב/שחזור שיחה בחנות שלנו (מה שה-inbox ה-native קורא)."""
     with _conn() as c:

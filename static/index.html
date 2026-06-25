@@ -2600,7 +2600,7 @@ function waMarkSeen(phone, ts){ const s=waSeen(); if((s[phone]||0)<ts){ s[phone]
 function waIsUnread(c){ return !!(c.unread && c.ts>(waSeen()[c.phone]||0)); }
 function updateWaBadge(convs){
   // ארכיון לא נספר — אחרת סימון "כולל ארכיון" מקפיץ את הבאדג' על שיחות ישנות
-  const n=(convs||[]).filter(c=>!c.archived&&waIsUnread(c)).length;
+  const n=(convs||[]).filter(c=>!c.archived&&(waIsUnread(c)||c.awaiting_agent)).length;
   const el=document.getElementById('waBadge');
   if(el){ el.style.display=n?'block':'none'; el.textContent=n>9?'9+':n; }
   if(S._waBadgePrev!==undefined && n>S._waBadgePrev){
@@ -4509,7 +4509,12 @@ async function loadWaSilent(){
 //  עונה → נסגר; נפתח שוב כשהלקוח חוזר או כשלקוח אחר ממתין לאנושי.
 // ════════════════════════════════════════════════════════════════════
 function wpopInit(){ if(!S.wpop) S.wpop={open:false,phone:'',queue:[],snooze:{},min:false}; return S.wpop; }
-function wpopEligible(c){ return !!(c && !c.archived && c.handoff && waIsUnread(c)); }
+function wpopEligible(c){
+  if(!c || c.archived) return false;
+  // (א) ביקש נציג וטרם נענה ע"י אדם — גם אם הבוט שלח הודעת-העברה אחרונה (unread=false);
+  // (ב) שיחה אנושית מתמשכת שהלקוח הגיב בה מחדש (handoff + לא-נקרא).
+  return !!c.awaiting_agent || (!!c.handoff && waIsUnread(c));
+}
 function wpopQueue(convs){
   // שיחות שמצריכות אותך עכשיו: handoff + לא-נקרא, שלא הושתקו ידנית (snooze), זמן יורד
   const w=wpopInit();

@@ -368,6 +368,7 @@ def list_conversations_native(limit: int = 300):
     import db
     stars = db.wa_stars()
     handoff = db.bot_handoff_phones()
+    awaiting = db.bot_awaiting_agent_phones()    # ביקש נציג וטרם נענה ע"י אדם (לחלון הצף + באדג')
     pics = db.wa_contact_pic_phones()
     out = []
     for r in db.wa_conversations(limit):
@@ -382,6 +383,7 @@ def list_conversations_native(limit: int = 300):
             "ts": msg_ts,
             "archived": bool(r.get("archived")), "live_chat": bool(r.get("live_chat")),
             "handoff": ph in handoff,
+            "awaiting_agent": ph in awaiting,
             "unread": unread, "star": ph in stars,
             "pic": (f"/api/admin/wa/contact-pic/{ph}?t={media_token('cpic:' + ph)}" if ph in pics else ""),
         })
