@@ -2689,6 +2689,32 @@ def admin_sales_status(x_admin_key: Optional[str] = Header(None)):
             "backfill_last_run": db.sales_state_get("backfill_last_run")}
 
 
+@app.get("/api/admin/invoices-today")
+def admin_invoices_today(x_admin_key: Optional[str] = Header(None)):
+    """חשבוניות איציק להיום, מקובצות לפי סניף — proxy לשירות invoice-manager (חוצה-אפליקציה)."""
+    _require_admin(x_admin_key)
+    import requests as _rq
+    today = db._il_today().strftime("%Y-%m-%d")
+    try:
+        r = _rq.get("https://invoice-manager-tfqj.onrender.com/api/invoices",
+                    params={"date_from": today, "date_to": today, "per_page": 100}, timeout=15)
+        if not r.ok:
+            return {"by_branch": {}, "count": 0, "total": 0, "ok": False}
+        invs = (r.json() or {}).get("invoices", [])
+    except Exception:  # noqa: BLE001
+        return {"by_branch": {}, "count": 0, "total": 0, "ok": False}
+    by_branch = {}
+    for iv in invs:
+        b = iv.get("branch") or ("סניף " + str(iv.get("branch_id"))) or "—"
+        d = by_branch.setdefault(str(b), {"count": 0, "total": 0.0})
+        d["count"] += 1
+        d["total"] += float(iv.get("total") or 0)
+    for d in by_branch.values():
+        d["total"] = round(d["total"])
+    return {"by_branch": by_branch, "count": len(invs),
+            "total": round(sum(float(i.get("total") or 0) for i in invs)), "ok": True}
+
+
 @app.get("/api/admin/sales/dashboard")
 def admin_sales_dashboard(branch_id: Optional[str] = None, period: Optional[str] = None,
                           from_date: Optional[str] = None, to_date: Optional[str] = None,

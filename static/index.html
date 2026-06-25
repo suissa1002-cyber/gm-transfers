@@ -6348,7 +6348,8 @@ async function loadHome(spinner){
   const keys=Object.keys(defs);
   const res=await Promise.all(keys.map(k=>api(defs[k]).catch(()=>null)));
   const d={}; keys.forEach((k,i)=>d[k]=res[i]); d._at=Date.now();
-  loadHomeChecks();   // צ'קים (Monday) — נטען בנפרד (cache 5 דק'), לא חוסם את הלוח
+  loadHomeChecks();    // צ'קים (Monday) — נטען בנפרד (cache 5 דק'), לא חוסם את הלוח
+  loadHomeInvoices();  // חשבוניות איציק (שירות חוצה-אפליקציה) — נטען בנפרד, לא חוסם
   S.homeData=d;
   if(S.view==='home') renderHome();
 }
@@ -6440,6 +6441,12 @@ async function loadHomeChecks(){
               bank:cols.dropdown__1||'', status:(it.group||{}).title||''}; });
     if(S.view==='home') renderHome();
   }catch(e){ S.homeChecksAt=0; }   // כשל → ננסה שוב בפעם הבאה
+}
+async function loadHomeInvoices(){
+  if(S.homeInvAt && Date.now()-S.homeInvAt<300000) return;   // cache 5 דק' (שירות חוצה-אפליקציה)
+  S.homeInvAt=Date.now();
+  try{ S.homeInv=await api('/api/admin/invoices-today'); if(S.view==='home') renderHome(); }
+  catch(e){ S.homeInvAt=0; }
 }
 function homeSpark(days){
   // 14 ימים: 7 אחרונים = השבוע (ירוק), 7 קודמים = שבוע שעבר (אפור)
@@ -6641,6 +6648,15 @@ function renderHome(){
         <span style="font-weight:600">${_il(parseFloat(o.total)||0)}</span>`,
        "openOrdersTab()"); }).join('')
      :'<div class="muted" style="font-size:13px;padding:6px 0">אין הזמנות באיחור 👌</div>'));
+  // 🧾 חשבוניות איציק היום לפי סניף (שירות חוצה-אפליקציה)
+  const inv=S.homeInv||{};
+  const invBr=inv.by_branch||{};
+  h+=crmCard(homeHead('🧾','חשבוניות איציק היום',inv.count?(inv.count+' · '+_il(inv.total)):'',"hubOpen('invoices')")+
+    (Object.keys(invBr).length?Object.entries(invBr).sort((a,b)=>(b[1].total||0)-(a[1].total||0)).map(([b,v])=>homeRow(
+       `<b style="flex:1;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(b)}</b>
+        <span class="muted" style="font-size:11px">${v.count} חשבוניות</span>
+        <span style="font-weight:600">${_il(v.total)}</span>`,"hubOpen('invoices')")).join('')
+     :`<div class="muted" style="font-size:13px;padding:6px 0">${S.homeInv?(inv.ok===false?'השירות לא זמין כרגע':'אין חשבוניות היום'):'טוען…'}</div>`));
   h+=`</div>`;
   h+=`<div class="muted" style="text-align:center;font-size:11px;margin-top:14px">עודכן ${d._at?fmtTime(new Date(d._at).toISOString()):''} · מתרענן אוטומטית כל 15ש׳</div>`;
   h+=`</div>`;
