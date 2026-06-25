@@ -6686,8 +6686,8 @@ def _crm_stats_cdr(days: int, route: str, date_from: str, date_to: str) -> dict:
         if d < start or d > end:
             continue
         stored = routes.get(r["uid"] or "")
-        full = ((stored.get("route") if stored else "") or
-                _pbx_cdr_route(r["name"], r["answered_by"]) or "").strip()
+        full = _pbx_best_route(stored.get("route") if stored else "",
+                               r["name"], r["answered_by"]).strip()
         branch = (full.split(" › ")[0]).strip() or "—"
         per_branch[branch] = per_branch.get(branch, 0) + 1
         if full:
@@ -6797,6 +6797,25 @@ def _pbx_cdr_route(name: str, who: str) -> str:
     return branch or sub
 
 
+def _pbx_best_route(stored_route: str, name: str, who: str) -> str:
+    """ממזג נתיב שמור (סניף מ-CHANNELS, אמין) עם CDR (תת-מחלקה משם-הקו).
+    מתקן מקרה: שיחה שננטשה נלכדה כ'סטאר' לבד (תת-מחלקה טרם נכתבה ל-CDR בזמן השיחה),
+    אבל ל-CDR יש 'חנות' → התוצאה 'סטאר › חנות'."""
+    stored = (stored_route or "").strip()
+    name = (name or "").strip()
+    parts = stored.split(" › ")
+    stored_branch = parts[0].strip() if parts and parts[0] else ""
+    stored_sub = parts[1].strip() if len(parts) > 1 else ""
+    sub = (name if name in _PBX_SUB_DEPTS else "") or stored_sub
+    branch = (stored_branch or _PBX_WHO_BRANCH.get((who or "").strip(), "")
+              or _PBX_NAME_BRANCH.get(name, ""))
+    if not branch and (who or "").strip() == "204":
+        branch = "עד הלום"
+    if branch and sub:
+        return branch + " › " + sub
+    return branch or sub or stored
+
+
 def _pbx_normalize_channels(raw) -> dict:
     """ערוצי CHANNELS גולמיים → {מתקשר חיצוני: {uid,state,branch,answered}}.
     משותף לפופאפ החי (/live) ול-worker לכידת הנתיב. סניף לפי תור>huntlist>שלוחה."""
@@ -6890,7 +6909,7 @@ def crm_history(days: int = 3, date_from: str = "", date_to: str = "",
             except Exception:  # noqa: BLE001
                 name_cache[intl] = ""
         stored = routes.get(r["uid"] or "")
-        route = (stored.get("route") if stored else "") or _pbx_cdr_route(r["name"], r["answered_by"])
+        route = _pbx_best_route(stored.get("route") if stored else "", r["name"], r["answered_by"])
         out.append({
             "ts": r["ts_str"], "phone": intl, "direction": r["direction"],
             "disposition": r["disposition"], "duration": r["duration"],
