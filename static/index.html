@@ -6585,7 +6585,7 @@ function renderHome(){
   const _agT=h=>{ const d=Math.floor((h||0)/24); return d>=1?d+' י׳':Math.round(h||0)+'ש׳'; };
   h+=crmCard(homeHead('📦','העברות',open+' פתוחות · '+overdue+' באיחור',"toggleAdmin()")+
     (trfOpen.length?`<div style="max-height:280px;overflow-y:auto;margin:0 -4px;padding:0 4px">`+trfOpen.map(t=>homeRow(
-       `<span>${t.overdue?'⏰':'📦'}</span><b style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(t.from_name||'')} → ${escW(t.to_name||'')}</b>
+       `<span>${t.overdue?'⏰':'📦'}</span><b style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(t.from_branch_name||t.from_name||'?')} → ${escW(t.to_branch_name||t.to_name||'?')}</b>
         ${t.missing?`<span class="muted" style="font-size:11px">${t.missing} חסר</span>`:''}
         <span style="font-size:11px;${t.overdue?'color:#dc2626;font-weight:700':'color:var(--muted)'}">${_agT(t.age_hours)}</span>`,
        "toggleAdmin()")).join('')+`</div>`
