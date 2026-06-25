@@ -126,15 +126,16 @@ def _sold_reconcile_job():
         for r in rows:
             to_name = cfg.branch_name(r.get("to_branch_id"))
             sold_name = cfg.branch_name(r.get("sold_branch_id"))
+            via = r.get("via") or "נמכר"   # "נמכר" (מסמך מכירה) או "הורד מהמלאי" (סניף 3)
             if r.get("same_branch"):
-                head = "📦✅ <b>מכשיר נמכר לפני קליטה</b>"
-                where = f"נמכר בסניף היעד (<b>{to_name}</b>) לפני שבוצעה קליטה ב-GreenOS."
+                head = f"📦✅ <b>מכשיר {via} לפני קליטה</b>"
+                where = f"{via} בסניף היעד (<b>{to_name}</b>) לפני שבוצעה קליטה ב-GreenOS."
             else:
-                head = "📦↪️ <b>מכשיר נמכר בסניף שונה מהיעד</b>"
-                where = f"היעד היה <b>{to_name}</b>, אך נמכר ב<b>{sold_name}</b>."
+                head = f"📦↪️ <b>מכשיר {via} בסניף שונה מהיעד</b>"
+                where = f"היעד היה <b>{to_name}</b>, אך {via} ב<b>{sold_name}</b>."
             cleared = ("כרטיס הקליטה נסגר ונוקה מהדשבורד."
-                       if r.get("transfer_closed") else "הפריט סומן כנמכר ונוקה מהכרטיס.")
-            fixed = "\n🔧 תוקן מ'חוסר' שגוי → 'נמכר'." if r.get("was_missing") else ""
+                       if r.get("transfer_closed") else f"הפריט סומן כ{via} ונוקה מהכרטיס.")
+            fixed = f"\n🔧 תוקן מ'חוסר' שגוי → '{via}'." if r.get("was_missing") else ""
             _tg_admin(f"{head}\n{r.get('name')} (סריאלי <code>{r.get('serial')}</code>)\n"
                       f"{where}\n{cleared}{fixed}")
             logger.info("sold-reconcile: serial=%s op=%s same=%s closed=%s",

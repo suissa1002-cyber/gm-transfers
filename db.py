@@ -888,22 +888,42 @@ def reconcile_sold_transfer_items() -> list:
         items = [dict(r) for r in cur.fetchall()]
         for it in items:
             start = it.get("t_start") or ""
+            # match = {when, branch_id, via} מאחד מכירה (sales) או הורדת-מלאי (removals).
             # לא מסננים תאריך ב-SQL (השוואת מחרוזות שבירה — פורמט/אזור-זמן שונים בין
-            # createDate ל-first_seen); לוקחים את המכירה האחרונה ומסננים בזמן אמיתי למטה.
+            # createDate ל-first_seen); לוקחים את האחרונה ומסננים בזמן אמיתי עם _sale_near_or_after.
+            match = None
+            # (1) מכירה רגילה ב-NewOrder (מסמך מכירה, doc_type=0)
             cur.execute(_q("""
                 SELECT branch_id, sale_date FROM sales
                 WHERE serial = ? AND doc_type = 0 AND qty > 0
                 ORDER BY sale_date DESC LIMIT 1
             """), (it["serial"],))
             row = cur.fetchone()
-            if not row:
+            if row:
+                s = dict(row)
+                # המכירה צריכה להיות סביב/אחרי תחילת ההעברה — חלון חסד, כי מכירה בקופה
+                # ויצירת ההעברה יכולות לקרות באותה דקה (בכל סדר), כמו 13933 (פער 3 שניות).
+                if _sale_near_or_after(s.get("sale_date"), start, grace_min=180):
+                    match = {"when": s.get("sale_date"), "branch_id": s.get("branch_id"), "via": "נמכר"}
+            # (2) הורדת-מלאי ידנית (טבלת removals; סניף 3 עובד בחצי-קופה → הורדה = מכירה
+            #     בפועל). לא ב-sales/doc_type, אז (1) מפספס — בלי זה ההעברה נתקעת לנצח
+            #     (op 14119, Apple Watch, 25/06). serials מאוחסן מופרד-פסיק → LIKE כפרה-פילטר
+            #     + בדיקת-טוקן מדויקת (סיריאלי לא תת-מחרוזת של אחר).
+            if not match:
+                cur.execute(_q("""SELECT branch_id, removed_at, serials FROM removals
+                                  WHERE serials LIKE ? ORDER BY removed_at DESC"""),
+                            ("%" + it["serial"] + "%",))
+                for rr in cur.fetchall():
+                    r = dict(rr)
+                    toks = [x.strip() for x in (r.get("serials") or "").split(",")]
+                    if it["serial"] in toks and _sale_near_or_after(r.get("removed_at"), start, grace_min=180):
+                        match = {"when": r.get("removed_at"), "branch_id": r.get("branch_id"), "via": "הורד מהמלאי"}
+                        break
+            if not match:
                 continue
-            sale = dict(row)
-            # המכירה צריכה להיות סביב/אחרי תחילת ההעברה — עם חלון חסד, כי מכירה בקופה
-            # ויצירת ההעברה יכולות לקרות באותה דקה (בכל סדר), כמו 13933 (פער 3 שניות).
-            if not _sale_near_or_after(sale.get("sale_date"), start, grace_min=180):
-                continue
-            sold_b = sale.get("branch_id")
+            sold_b = match["branch_id"]
+            when = match["when"]
+            via = match["via"]
             try:
                 same = sold_b is not None and int(sold_b) == int(it["to_branch_id"])
             except (TypeError, ValueError):
@@ -913,8 +933,8 @@ def reconcile_sold_transfer_items() -> list:
                 UPDATE transfer_items
                 SET received = ?, received_at = ?, received_by = ?, received_method = ?
                 WHERE id = ?
-            """), (recv, sale.get("sale_date") or now_iso(), "נמכר (אוטומטי)",
-                   "נמכר" if same else "נמכר בסניף אחר", it["item_id"]))
+            """), (recv, when or now_iso(), f"{via} (אוטומטי)",
+                   via if same else f"{via} בסניף אחר", it["item_id"]))
             rec, total, status = _recount(cur, it["op_id"])
             # אם ההעברה נסגרה-כחוסר ועכשיו **אין יותר חוסרים** (כל הפריטים נקלטו/נמכרו,
             # received∈{1,2}) — מקדמים ל-'received' כדי שתצא מ'באיחור' ומ'נסגר(חוסר)'.
@@ -923,14 +943,14 @@ def reconcile_sold_transfer_items() -> list:
             if cur.fetchone()["n"] == 0:
                 cur.execute(_q("""UPDATE transfers
                     SET status='received', received_at=COALESCE(received_at, ?)
-                    WHERE op_id = ?"""), (sale.get("sale_date") or now_iso(), it["op_id"]))
+                    WHERE op_id = ?"""), (when or now_iso(), it["op_id"]))
                 status = "received"
             out.append({
                 "serial": it["serial"], "name": it.get("name") or "", "op_id": it["op_id"],
                 "to_branch_id": it["to_branch_id"], "sold_branch_id": sold_b,
-                "same_branch": same, "sale_date": sale.get("sale_date"),
+                "same_branch": same, "sale_date": when, "via": via,
                 "transfer_closed": status in ("received", "closed"),
-                "was_missing": it.get("received") == 3,  # תוקן מחוסר-שקרי → נמכר
+                "was_missing": it.get("received") == 3,  # תוקן מחוסר-שקרי → נמכר/הורד
             })
     return out
 
