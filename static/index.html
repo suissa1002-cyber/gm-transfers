@@ -6333,7 +6333,8 @@ async function loadHome(spinner){
   if(spinner){ const a=document.getElementById('app'); if(a) a.innerHTML='<div class="empty" style="margin:60px auto">טוען לוח בית… 🏠</div>'; }
   const defs={ ov:'/api/admin/overview', wa:'/api/admin/wa/conversations',
                sent:'/api/admin/sentinel', rem:'/api/admin/removals?days=1',
-               cdr:'/api/admin/crm/cdr-stats' };
+               cdr:'/api/admin/crm/cdr-stats?days=1',          // היום בלבד (לא 30 יום)
+               hist:'/api/admin/crm/history?days=1' };          // שיחות היום (לרשימת לא-נענו)
   const keys=Object.keys(defs);
   const res=await Promise.all(keys.map(k=>api(defs[k]).catch(()=>null)));
   const d={}; keys.forEach((k,i)=>d[k]=res[i]); d._at=Date.now();
@@ -6401,16 +6402,17 @@ function renderHome(){
   </div>`;
   // ── רשת כרטיסים ──
   h+=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:12px">`;
-  // וואטסאפ פתוחות
-  const waList=waConvs.filter(c=>!c.archived&&(c.awaiting_agent||c.unread))
-                      .sort((a,b)=>(b.ts||0)-(a.ts||0)).slice(0,6);
-  h+=crmCard(homeHead('💬','וואטסאפ פתוחות',waWaiting+' ממתינים',"openWaTab()")+
+  // וואטסאפ — אינבוקס (כל הלא-מאורכבות, כמו בטאב), לא רק ממתינים
+  const inbox=waConvs.filter(c=>!c.archived).sort((a,b)=>(b.ts||0)-(a.ts||0));
+  const waList=inbox.slice(0,7);
+  const _dot=c=>c.awaiting_agent?'🔴':(c.unread?'🟡':'🟢');
+  h+=crmCard(homeHead('💬','וואטסאפ — אינבוקס',inbox.length+' שיחות'+(waWaiting?' · '+waWaiting+' ממתינים':''),"openWaTab()")+
     (waList.length?waList.map(c=>homeRow(
-       `<span>${c.awaiting_agent?'🔴':'🟡'}</span>
+       `<span>${_dot(c)}</span>
         <b style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(c.name||c.phone)}</b>
         <span class="muted" style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:130px">${escW((c.last_msg||'').slice(0,42))}</span>`,
        "openWaTab()")).join('')
-     :'<div class="muted" style="font-size:13px;padding:6px 0">אין שיחות שממתינות 👌</div>'));
+     :'<div class="muted" style="font-size:13px;padding:6px 0">האינבוקס ריק 👌</div>'));
   // העברות
   const trf=(d.ov&&d.ov.transfers)||[];
   const trfOv=trf.filter(t=>t.overdue).sort((a,b)=>(b.age_hours||0)-(a.age_hours||0)).slice(0,6);
@@ -6420,24 +6422,36 @@ function renderHome(){
         <span class="muted" style="font-size:11px">${Math.round(t.age_hours||0)}ש'</span>`,
        "toggleAdmin()")).join('')
      :'<div class="muted" style="font-size:13px;padding:6px 0">אין העברות באיחור 👌</div>'));
-  // הורדות מלאי — סיטי היום
+  // הורדות מלאי — סיטי היום (שורה מרווחת: שם המוצר למעלה, עובד מתחת)
   h+=crmCard(homeHead('📉','הורדות מלאי — סיטי היום',remRows.length+' פריטים',"S.view='admin';setAdminTab('removals')")+
-    (remRows.length?remRows.slice(0,6).map(r=>homeRow(
-       `<b style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(r.name||'')}</b>
-        <span class="muted" style="font-size:11px">${escW(r.employee||'')}</span>`)).join('')
+    (remRows.length?remRows.slice(0,7).map(r=>
+       `<div style="padding:8px 0;border-top:1px solid var(--line)">
+          <div style="font-size:13px;font-weight:600;line-height:1.3">${escW(r.name||'')}</div>
+          <div class="muted" style="font-size:11px;margin-top:2px">👤 ${escW(r.employee||'—')}</div>
+        </div>`).join('')
      :'<div class="muted" style="font-size:13px;padding:6px 0">אין הורדות היום</div>'));
-  // שיחות מרכזיה היום
+  // שיחות מרכזיה היום + רשימת לא-נענו אחרונות
+  const hist=(d.hist&&d.hist.calls)||[];
+  const missed=hist.filter(c=>c.direction==='in'&&c.disposition&&c.disposition!=='answered').slice(0,4);
+  const _tm=ts=>{ try{ return fmtTime(String(ts).replace(' ','T')); }catch(e){ return ''; } };
   h+=crmCard(homeHead('📞','שיחות מרכזיה היום',ansTxt+' מענה',"hubGoCrm()")+
     `<div style="display:flex;gap:6px;margin-top:2px">
       <div style="flex:1;text-align:center;padding:6px 0"><div style="font-size:21px;font-weight:800;color:#16a34a">${ct.answered||0}</div><div class="muted" style="font-size:11px">נענו</div></div>
       <div style="flex:1;text-align:center;padding:6px 0"><div style="font-size:21px;font-weight:800;color:#dc2626">${(ct.no_answer||0)+(ct.abandoned||0)}</div><div class="muted" style="font-size:11px">לא נענו</div></div>
       <div style="flex:1;text-align:center;padding:6px 0"><div style="font-size:21px;font-weight:800">${ct.out||0}</div><div class="muted" style="font-size:11px">יוצאות</div></div>
-    </div>`);
-  // סטטוס מערכת (Sentinel)
-  h+=crmCard(homeHead(sentOk?'🟢':'🔴','סטטוס מערכת (Sentinel)',sentOk?'תקין':'בעיה',"hubGo('sentinel')")+
-    (sentOk?'<div class="muted" style="font-size:13px;padding:4px 0">כל המערכות פעילות ✓</div>'
-     :(sent.stale?'<div style="font-size:13px;padding:4px 0;color:#dc2626">⚠️ סנטינל לא מדווח (אולי כבוי)</div>'
-       :(sentIssues.slice(0,4).map(i=>homeRow(`<span>⚠️</span><span style="font-size:12.5px">${escW(typeof i==='string'?i:(i.msg||i.name||i.title||''))}</span>`)).join('')||'<div class="muted" style="font-size:13px;padding:4px 0">—</div>'))));
+    </div>`+
+    (missed.length?`<div class="muted" style="font-size:11px;margin:8px 0 2px;font-weight:700">📵 לא נענו אחרונות</div>`+
+      missed.map(c=>homeRow(
+        `<span>📵</span><b style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(c.matched_name||c.phone||'')}</b>
+         <span class="muted" style="font-size:11px;direction:ltr">${escW(_tm(c.ts))}</span>`,
+        "hubGoCrm()")).join('')
+     :''));
+  // סטטוס מערכת (Sentinel) — מוצג רק כשיש בעיה (ה-KPI למעלה מכסה את "תקין", בלי כפילות)
+  if(!sentOk){
+    h+=crmCard(homeHead('🔴','סטטוס מערכת (Sentinel)','דורש בדיקה',"hubGo('sentinel')")+
+      (sent.stale?'<div style="font-size:13px;padding:4px 0;color:#dc2626">⚠️ סנטינל לא מדווח (אולי כבוי)</div>'
+       :(sentIssues.slice(0,5).map(i=>homeRow(`<span>⚠️</span><span style="font-size:12.5px">${escW(typeof i==='string'?i:(i.msg||i.name||i.title||''))}</span>`)).join('')||'<div class="muted" style="font-size:13px;padding:4px 0">—</div>')));
+  }
   h+=`</div>`;
   h+=`<div class="muted" style="text-align:center;font-size:11px;margin-top:14px">עודכן ${d._at?fmtTime(new Date(d._at).toISOString()):''} · מתרענן אוטומטית כל 15ש׳</div>`;
   h+=`</div>`;
