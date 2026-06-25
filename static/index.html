@@ -6431,8 +6431,9 @@ async function loadHomeChecks(){
     const r=await api('/api/checks/gql',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query})});
     const items=((((r.data||{}).boards||[])[0]||{}).items_page||{}).items||[];
     S.homeChecks=items.map(it=>{ const cols={}; (it.column_values||[]).forEach(c=>cols[c.id]=c.text);
-      return {id:it.id, name:it.name||'', amount:parseFloat(cols.numbers__1)||0,
-              valueDate:(cols.date__1||cols.dropdown_mm0gxfbd||'').slice(0,10),
+      return {id:it.id, payee:cols.dropdown_mm0gxfbd||'', checkNum:it.name||'',  // dropdown_mm0gxfbd = "למי" (נמען)
+              amount:parseFloat(cols.numbers__1)||0,
+              valueDate:(cols.date__1||'').slice(0,10),                          // date__1 = תאריך ערך
               bank:cols.dropdown__1||'', status:(it.group||{}).title||''}; });
     if(S.view==='home') renderHome();
   }catch(e){ S.homeChecksAt=0; }   // כשל → ננסה שוב בפעם הבאה
@@ -6623,8 +6624,8 @@ function renderHome(){
   h+=crmCard(homeHead('💳','צ׳קים לפירעון',cks.length?_il(ctot):'',"window.open('/checks','_blank')")+
     `<div style="display:flex;gap:3px;background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:3px;margin-bottom:9px">${cseg('today','היום')}${cseg('wed0','רביעי הקרוב')}${cseg('wed1','רביעי הבא')}</div>`+
     (cks.length?cks.slice(0,7).map(c=>homeRow(
-       `<b style="flex:1;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(c.name||'—')}</b>
-        <span class="muted" style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:90px">${escW(c.bank||'')}</span>
+       `<b style="flex:1;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(c.payee||c.checkNum||'—')}</b>
+        <span class="muted" style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:80px">${escW(c.bank||'')}</span>
         <span style="font-weight:600">${_il(c.amount)}</span>`)).join('')
      :`<div class="muted" style="font-size:13px;padding:6px 0">${S.homeChecks?'אין צ׳קים לתאריך זה':'טוען…'}</div>`));
   h+=`</div>`;
