@@ -6952,6 +6952,8 @@ def crm_history(days: int = 3, date_from: str = "", date_to: str = "",
     out = []
     for r in rows:
         phone_raw = r["from"] if r["direction"] == "in" else r["to"]
+        if sum(c.isdigit() for c in str(phone_raw)) < 7:   # שלוחה/מספר פנימי — לא שיחת לקוח
+            continue
         intl = _il_phone(phone_raw)
         if intl not in name_cache:
             try:
