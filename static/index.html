@@ -6503,7 +6503,7 @@ function crmNoteOpen(uid){
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><b style="font-size:14px;display:flex;align-items:center;gap:6px">'+ico('pencil',14)+'הערה פנימית</b>'+
       '<button onclick="document.getElementById(\'crmNotePop\').remove()" style="background:none;border:0;font-size:20px;cursor:pointer;color:var(--muted,#94a3b8)">✕</button></div>'+
     '<div style="font-size:11.5px;color:var(--muted,#94a3b8);margin-bottom:8px">'+escW(c.matched_name||'לא מזוהה')+' · '+escW(c.phone||'')+' · '+crmFmtTs(c.ts)+(c.route?' · '+escW(c.route):'')+'</div>'+
-    '<textarea id="crmNoteTxt" placeholder="תיעוד / איכות מענה — הערה פנימית בלבד (לא מוצגת ללקוח)" style="width:100%;box-sizing:border-box;min-height:120px;padding:10px;border-radius:10px;border:1px solid var(--line,#2c3442);background:var(--bg2,#0e1116);color:var(--txt,#e8edf4);font-size:13px;line-height:1.5;resize:vertical">'+escW(c.note||'')+'</textarea>'+
+    '<textarea id="crmNoteTxt" placeholder="תיעוד / איכות מענה — הערה פנימית בלבד (לא מוצגת ללקוח)" style="width:100%;box-sizing:border-box;min-height:120px;padding:10px;border-radius:10px;border:1px solid var(--line,#cbd5e1);background:var(--bg,#fff);color:var(--txt,#1a2230);font-size:13px;line-height:1.5;resize:vertical">'+escW(c.note||'')+'</textarea>'+
     '<button onclick="crmNoteSave(\''+escW(uid)+'\')" style="width:100%;margin-top:10px;padding:10px;border:0;border-radius:10px;background:var(--green,#1fbf6b);color:#fff;font-weight:700;font-size:14px;cursor:pointer">שמור הערה</button>'+
   '</div>';
   document.body.appendChild(d);
