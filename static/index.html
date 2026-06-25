@@ -393,6 +393,10 @@
         box-shadow:0 -8px 40px rgba(0,0,0,.28);display:flex;flex-direction:column;overflow:hidden;
         height:560px;max-height:calc(100vh - 16px);animation:wpopUp .18s ease}
   @keyframes wpopUp{from{transform:translateY(30px);opacity:.4}to{transform:translateY(0);opacity:1}}
+  /* גלילה אוטומטית של "הזמנות חדשות" (שלט אלקטרוני) — התוכן משוכפל ונע ל-50%- ללולאה חלקה */
+  @keyframes homeTicker{from{transform:translateY(0)}to{transform:translateY(-50%)}}
+  .home-ticker{animation:homeTicker linear infinite}
+  .home-ticker:hover{animation-play-state:paused}
   #wpop.wpop-min{height:auto!important}
   #wpop.wpop-min .wpop-host{display:none}
   .wpop-bar{display:flex;align-items:center;gap:7px;padding:8px 11px;background:#0b6b3a;color:#fff;flex:none}
@@ -6346,7 +6350,8 @@ async function loadHome(spinner){
                hist:'/api/admin/crm/history?days=1',            // שיחות היום (לרשימת לא-נענו)
                sales:'/api/admin/sales/dashboard'+_homeSalesQ(), // מכירות לפי סניף+תקופה
                sched:'/api/schedule/data',                      // סידור עבודה (סינון להיום ב-frontend)
-               ordover:'/api/admin/orders?status=processing&before='+_ovBefore }; // הזמנות בטיפול באיחור
+               ordover:'/api/admin/orders?status=processing&before='+_ovBefore, // הזמנות בטיפול באיחור
+               ordnew:'/api/admin/orders?page=1' };             // הזמנות אחרונות (טיקר "הזמנות חדשות")
   const keys=Object.keys(defs);
   const res=await Promise.all(keys.map(k=>api(defs[k]).catch(()=>null)));
   const d={}; keys.forEach((k,i)=>d[k]=res[i]); d._at=Date.now();
@@ -6510,11 +6515,36 @@ function renderHome(){
   if(overdue) att.push(chip(`📦 ${overdue} העברות באיחור`,"toggleAdmin()"));
   if(ordsOver.length) att.push(chip(`🛒 ${ordsOver.length} הזמנות באיחור`,"openOrdersTab()"));
   if(!sentOk) att.push(chip(`🛡️ סנטינל: ${sent.stale?'לא מדווח':sentIssues.length+' בעיות'}`,"hubGo('sentinel')"));
-  h+= att.length
-    ? `<div style="background:rgba(220,38,38,.06);border:1px solid rgba(220,38,38,.25);border-radius:14px;padding:11px 14px;margin-bottom:13px">
+  const attPanel = att.length
+    ? `<div style="flex:1;min-width:240px;background:rgba(220,38,38,.06);border:1px solid rgba(220,38,38,.25);border-radius:14px;padding:11px 14px">
         <b style="font-size:13px;color:#dc2626">🔴 דורש טיפול עכשיו</b>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">${att.join('')}</div></div>`
-    : `<div style="background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.25);border-radius:14px;padding:11px 14px;margin-bottom:13px;font-size:13px;color:#16a34a;font-weight:700">✅ הכל תחת שליטה — אין משימות דחופות כרגע</div>`;
+    : `<div style="flex:1;min-width:240px;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.25);border-radius:14px;padding:11px 14px;font-size:13px;color:#16a34a;font-weight:700;display:flex;align-items:center">✅ הכל תחת שליטה — אין משימות דחופות כרגע</div>`;
+  // ── 🆕 טיקר "הזמנות חדשות" (10 אחרונות, גלילה אוטומטית אטית) ──
+  const _ils=n=>'₪'+Number(Math.round(n||0)).toLocaleString('en-US');
+  const _wcst={pending:'ממתין לתשלום',processing:'בטיפול',completed:'הושלם','on-hold':'בהמתנה',cancelled:'בוטל',refunded:'זוכה',failed:'נכשל'};
+  const _stC={pending:'#b45309',processing:'#15803d','on-hold':'#b45309',completed:'#1d4ed8',cancelled:'#dc2626',refunded:'#7c3aed',failed:'#dc2626'};
+  const _bcast=o=>o.oos?['חסר','#dc2626']:o.partial?['שודר חלקי','#d97706']:o.nosku?['ללא מק״ט','#d97706']:o.bcast?['שודר','#16a34a']:['ממתין לשידור','#94a3b8'];
+  const ordNew=((d.ordnew&&d.ordnew.orders)||[]).slice(0,10);
+  const tickerRow=o=>{ const b=_bcast(o);
+    return `<div style="padding:5px 2px;border-top:1px solid rgba(120,120,120,.13)">
+      <div style="display:flex;gap:6px;align-items:center;font-size:12px">
+        <b style="font-weight:800">#${escW(String(o.number||''))}</b>
+        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(o.items||o.item||'')}</span>
+        <span style="font-weight:700;color:#16a34a;white-space:nowrap">${_ils(parseFloat(o.total)||0)}</span></div>
+      <div style="display:flex;gap:6px;align-items:center;margin-top:1px">
+        <span class="muted" style="flex:1;min-width:0;font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(o.name||'')}</span>
+        <span style="font-size:10px;font-weight:700;color:${_stC[o.status]||'#64748b'};white-space:nowrap">${escW(_wcst[o.status]||o.status||'')}</span>
+        <span style="font-size:10px;font-weight:700;color:${b[1]};white-space:nowrap">📡${escW(b[0])}</span></div>
+    </div>`; };
+  const tickerRows=ordNew.map(tickerRow).join('');
+  const tickerDur=Math.max(18,ordNew.length*3);
+  const newOrdersPanel=`<div style="flex:1;min-width:240px;background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.28);border-radius:14px;padding:9px 12px 4px;overflow:hidden">
+    <b style="font-size:13px;color:#16a34a;display:flex;align-items:center;gap:5px">🆕 הזמנות חדשות <span class="muted" style="font-weight:400;font-size:10.5px">(${ordNew.length} אחרונות)</span></b>
+    ${ordNew.length?`<div style="height:104px;overflow:hidden;margin-top:4px">
+      <div class="home-ticker" style="animation-duration:${tickerDur}s">${tickerRows}${tickerRows}</div></div>`
+     :'<div class="muted" style="font-size:12px;padding:12px 0">אין הזמנות אחרונות</div>'}</div>`;
+  h+=`<div style="display:flex;gap:12px;margin-bottom:13px;flex-wrap:wrap">${attPanel}${newOrdersPanel}</div>`;
   // ── שורת פעולות מהירות ──
   const qa=(txt,onc)=>`<button onclick="${onc}" style="background:var(--card);border:1px solid var(--line);color:var(--txt);border-radius:11px;padding:9px 13px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">${txt}</button>`;
   h+=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
