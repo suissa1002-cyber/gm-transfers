@@ -6331,15 +6331,34 @@ function crmCard(inner,extra){ return '<div style="background:var(--card,#171c24
 function goHome(){ S.view='home'; S.adminTab=null; S.embedApp=null; render(); }
 async function loadHome(spinner){
   if(spinner){ const a=document.getElementById('app'); if(a) a.innerHTML='<div class="empty" style="margin:60px auto">טוען לוח בית… 🏠</div>'; }
+  const bq=S.homeBranch?('?branch_id='+encodeURIComponent(S.homeBranch)):'';
   const defs={ ov:'/api/admin/overview', wa:'/api/admin/wa/conversations',
                sent:'/api/admin/sentinel', rem:'/api/admin/removals?days=1',
                cdr:'/api/admin/crm/cdr-stats?days=1',          // היום בלבד (לא 30 יום)
-               hist:'/api/admin/crm/history?days=1' };          // שיחות היום (לרשימת לא-נענו)
+               hist:'/api/admin/crm/history?days=1',            // שיחות היום (לרשימת לא-נענו)
+               sales:'/api/admin/sales/dashboard'+bq };         // מכירות היום לפי סניף + קטגוריות + sparkline
   const keys=Object.keys(defs);
   const res=await Promise.all(keys.map(k=>api(defs[k]).catch(()=>null)));
   const d={}; keys.forEach((k,i)=>d[k]=res[i]); d._at=Date.now();
   S.homeData=d;
   if(S.view==='home') renderHome();
+}
+function homeSalesBranch(b){ S.homeBranch=(b===''||b==null)?null:b; loadHomeSales(); }
+async function loadHomeSales(){
+  const bq=S.homeBranch?('?branch_id='+encodeURIComponent(S.homeBranch)):'';
+  try{ const s=await api('/api/admin/sales/dashboard'+bq);
+       if(!S.homeData) S.homeData={}; S.homeData.sales=s;
+       if(S.view==='home') renderHome(); }catch(e){}
+}
+function homeSpark(days){
+  // 14 ימים: 7 אחרונים = השבוע (ירוק), 7 קודמים = שבוע שעבר (אפור)
+  if(!days||!days.length) return '';
+  const max=Math.max(1,...days.map(d=>d.revenue||0));
+  const w=100/days.length;
+  return `<svg viewBox="0 0 100 30" preserveAspectRatio="none" style="width:100%;height:38px;display:block">`+
+    days.map((d,i)=>{ const hh=Math.max(0.8,(d.revenue||0)/max*28); const recent=i>=days.length-7;
+      return `<rect x="${(i*w+0.5).toFixed(2)}" y="${(30-hh).toFixed(2)}" width="${(w-1).toFixed(2)}" height="${hh.toFixed(2)}" rx="0.5" fill="${recent?'#16a34a':'#cbd5e1'}"><title>${escW(d.day)}: ₪${(d.revenue||0).toLocaleString()}</title></rect>`;
+    }).join('')+`</svg>`;
 }
 function homeKpi(val,label,color){
   return `<div style="flex:1;min-width:108px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:13px 12px;text-align:center">
@@ -6360,6 +6379,7 @@ function renderHome(){
   document.body.classList.remove('wa-mode');
   try{
   const d=S.homeData||{};
+  const _tmt=ts=>{ try{ return fmtTime(String(ts).replace(' ','T')); }catch(e){ return ''; } };
   const waConvs=(d.wa&&d.wa.conversations)||[];
   const waWaiting=waConvs.filter(c=>!c.archived&&c.awaiting_agent).length;
   const ovS=(d.ov&&d.ov.summary)||{};
@@ -6400,8 +6420,48 @@ function renderHome(){
     ${qa('📷 סריקת העברה',"S.view='scan';render()")}
     ${qa('📞 מוקד שיחות',"hubGoCrm()")}
   </div>`;
+  // ── 💰 סקשן מכירות (היום, מעבר בין סניפים) ──
+  const sd=d.sales||{};
+  const _il=n=>'₪'+Number(Math.round(n||0)).toLocaleString('en-US');
+  const branches=[{id:'',n:'כל הסניפים'},{id:1,n:'גן העיר'},{id:2,n:'סטאר'},{id:3,n:'סיטי'},{id:4,n:'עד הלום'},{id:5,n:'אתר'}];
+  const curB=String(S.homeBranch||'');
+  const brTile=b=>{ const sel=curB===String(b.id);
+    const rev=b.id===''?((sd.today&&sd.today.revenue)||0):(((sd.by_branch||{})[b.id]||{}).revenue||0);
+    return `<button onclick="homeSalesBranch('${b.id}')" style="flex:1;min-width:92px;background:${sel?'#16a34a':'var(--card2)'};color:${sel?'#fff':'var(--txt)'};border:1px solid ${sel?'#16a34a':'var(--line)'};border-radius:11px;padding:8px 6px;cursor:pointer;font-family:inherit;text-align:center">
+      <div style="font-size:12px;font-weight:600">${b.n}</div>
+      <div style="font-size:15px;font-weight:800;margin-top:2px">${_il(rev)}</div></button>`; };
+  const tt=sd.today||{revenue:0,count:0,credits:0};
+  h+=crmCard(
+    `<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><span style="font-size:17px">💰</span><b style="font-size:15px">מכירות היום</b><span class="muted" style="margin-inline-start:auto;font-size:12px">${escW(sd.date||'')}</span></div>
+     <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:13px">${branches.map(brTile).join('')}</div>
+     <div style="display:flex;gap:10px;margin-bottom:13px">
+       <div style="flex:1;text-align:center"><div style="font-size:24px;font-weight:800;color:#16a34a">${_il(tt.revenue)}</div><div class="muted" style="font-size:11px">מכירות</div></div>
+       <div style="flex:1;text-align:center"><div style="font-size:24px;font-weight:800">${tt.count||0}</div><div class="muted" style="font-size:11px">עסקאות</div></div>
+       <div style="flex:1;text-align:center"><div style="font-size:24px;font-weight:800;color:#dc2626">${_il(tt.credits)}</div><div class="muted" style="font-size:11px">זיכויים</div></div>
+     </div>
+     <div class="muted" style="font-size:11px;margin-bottom:4px">קצב 14 ימים · <span style="color:#16a34a;font-weight:700">השבוע</span> מול <span style="color:#94a3b8;font-weight:700">שבוע שעבר</span></div>
+     ${homeSpark(sd.weekly)}`,
+    'margin-bottom:13px');
   // ── רשת כרטיסים ──
   h+=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:12px">`;
+  // פילוח קטגוריות היום
+  const cats=(sd.categories||[]).slice(0,7);
+  const cmax=Math.max(1,...cats.map(c=>c.revenue||0));
+  h+=crmCard(homeHead('🛍️','פילוח קטגוריות היום',cats.length?'':'—',"hubGoCrm()")+
+    (cats.length?cats.map(c=>
+      `<div style="padding:5px 0">
+         <div style="display:flex;justify-content:space-between;font-size:12.5px"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(c.category)}</span><span class="muted">${_il(c.revenue)}</span></div>
+         <div style="height:6px;background:var(--line);border-radius:4px;margin-top:3px"><div style="height:100%;width:${Math.round((c.revenue||0)/cmax*100)}%;background:#3b82f6;border-radius:4px"></div></div>
+       </div>`).join('')
+     :'<div class="muted" style="font-size:13px;padding:6px 0">אין מכירות היום</div>'));
+  // מכירות אחרונות היום
+  const recent=(sd.recent||[]).slice(0,8);
+  h+=crmCard(homeHead('🧾','מכירות אחרונות',((sd.today&&sd.today.count)||0)+' היום',"hubGoCrm()")+
+    (recent.length?recent.map(r=>homeRow(
+      `<b style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(r.name)}</b>
+       <span class="muted" style="font-size:11px;direction:ltr">${escW(_tmt(r.ts))}</span>
+       <span style="font-weight:800;color:#16a34a">${_il(r.amount)}</span>`)).join('')
+     :'<div class="muted" style="font-size:13px;padding:6px 0">אין מכירות היום</div>'));
   // וואטסאפ — אינבוקס (כל הלא-מאורכבות, כמו בטאב), לא רק ממתינים
   const inbox=waConvs.filter(c=>!c.archived).sort((a,b)=>(b.ts||0)-(a.ts||0));
   const waList=inbox.slice(0,7);
@@ -6433,7 +6493,6 @@ function renderHome(){
   // שיחות מרכזיה היום + רשימת לא-נענו אחרונות
   const hist=(d.hist&&d.hist.calls)||[];
   const missed=hist.filter(c=>c.direction==='in'&&c.disposition&&c.disposition!=='answered').slice(0,4);
-  const _tm=ts=>{ try{ return fmtTime(String(ts).replace(' ','T')); }catch(e){ return ''; } };
   h+=crmCard(homeHead('📞','שיחות מרכזיה היום',ansTxt+' מענה',"hubGoCrm()")+
     `<div style="display:flex;gap:6px;margin-top:2px">
       <div style="flex:1;text-align:center;padding:6px 0"><div style="font-size:21px;font-weight:800;color:#16a34a">${ct.answered||0}</div><div class="muted" style="font-size:11px">נענו</div></div>
@@ -6443,7 +6502,7 @@ function renderHome(){
     (missed.length?`<div class="muted" style="font-size:11px;margin:8px 0 2px;font-weight:700">📵 לא נענו אחרונות</div>`+
       missed.map(c=>homeRow(
         `<span>📵</span><b style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(c.matched_name||c.phone||'')}</b>
-         <span class="muted" style="font-size:11px;direction:ltr">${escW(_tm(c.ts))}</span>`,
+         <span class="muted" style="font-size:11px;direction:ltr">${escW(_tmt(c.ts))}</span>`,
         "hubGoCrm()")).join('')
      :''));
   // סטטוס מערכת (Sentinel) — מוצג רק כשיש בעיה (ה-KPI למעלה מכסה את "תקין", בלי כפילות)

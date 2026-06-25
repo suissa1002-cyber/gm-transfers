@@ -398,7 +398,7 @@ def register_recurring_jobs():
     scheduler.add_job(_rebalance_job, "cron", id="rebalance_pm", hour=21, minute=0, max_instances=1)
     # איסוף מכירות מצטבר: כל 3 שעות. ריצה ראשונית רק אם האיסוף האחרון ישן —
     # deploys תכופים לא צריכים להפעיל אותו שוב ושוב (מעמיס על הקצב המשותף).
-    scheduler.add_job(_sales_ingest_job, "interval", hours=3, id="sales_ingest", max_instances=1)
+    scheduler.add_job(_sales_ingest_job, "interval", hours=1, id="sales_ingest", max_instances=1)  # ל-לוח בית: "היום" טרי
     # סגירת כרטיסי קליטה למכשירים שנמכרו לפני קליטה — גם עצמאית (גיבוי ל-hook באיסוף)
     scheduler.add_job(_sold_reconcile_job, "interval", minutes=30, id="sold_reconcile", max_instances=1)
     if _is_stale(db.sales_state_get("last_run"), hours=2):
@@ -2680,6 +2680,16 @@ def admin_sales_status(x_admin_key: Optional[str] = Header(None)):
             "last_run": db.sales_state_get("last_run"),
             "last_date": db.sales_state_get("last_date"),
             "backfill_last_run": db.sales_state_get("backfill_last_run")}
+
+
+@app.get("/api/admin/sales/dashboard")
+def admin_sales_dashboard(branch_id: Optional[str] = None, x_admin_key: Optional[str] = Header(None)):
+    """מכירות ללוח הבית: סך-היום-לפי-סניף + סיכום + קטגוריות + אחרונות + 14-יום (sparkline).
+    branch_id אופציונלי → מסנן קטגוריות/אחרונות/שבועי לסניף (by_branch תמיד כל הסניפים)."""
+    _require_admin(x_admin_key)
+    out = db.sales_dashboard(branch_id)
+    out["branch_names"] = {str(b): cfg.branch_name(b) for b in out.get("by_branch", {}).keys()}
+    return out
 
 
 @app.post("/api/admin/sales-ingest")

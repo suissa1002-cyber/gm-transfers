@@ -3049,6 +3049,68 @@ def sales_aggregate(since_date: str, branch_id=None) -> dict:
     return out
 
 
+def sales_dashboard(branch_id=None) -> dict:
+    """נתוני מכירות ללוח הבית (מטבלת sales המקומית; qty חתום: מכירה +, זיכוי −).
+    by_branch=סך היום לכל סניף · today=סיכום (סניף נבחר/הכל) · categories=פילוח היום
+    (JOIN catalog) · recent=מכירות אחרונות היום · weekly=הכנסה יומית 14 ימים (sparkline)."""
+    from datetime import datetime, timezone, timedelta
+    now = datetime.now(timezone.utc)
+    today = now.strftime("%Y-%m-%d")
+    d14 = (now - timedelta(days=13)).strftime("%Y-%m-%d")
+    bsel = None
+    if branch_id not in (None, "", "all"):
+        try:
+            bsel = int(branch_id)
+        except (TypeError, ValueError):
+            bsel = None
+    out = {"by_branch": {}, "today": {"revenue": 0, "credits": 0, "count": 0},
+           "categories": [], "recent": [], "weekly": [], "date": today}
+    with _conn() as c:
+        cur = c.cursor()
+        # סך היום לכל סניף (revenue=מכירות doc_type 0 · credits=זיכויים doc_type 5)
+        cur.execute(_q("""SELECT branch_id,
+            SUM(CASE WHEN doc_type=0 THEN qty*price ELSE 0 END) AS revenue,
+            SUM(CASE WHEN doc_type=5 THEN qty*price ELSE 0 END) AS credits,
+            COUNT(DISTINCT CASE WHEN doc_type=0 THEN doc_id END) AS cnt
+            FROM sales WHERE sale_date >= ? GROUP BY branch_id"""), (today,))
+        for r in cur.fetchall():
+            b = r["branch_id"]
+            if b is None:
+                continue
+            out["by_branch"][int(b)] = {"revenue": round(float(r["revenue"] or 0)),
+                                        "credits": round(abs(float(r["credits"] or 0))),
+                                        "count": int(r["cnt"] or 0)}
+        if bsel is not None:
+            out["today"] = dict(out["by_branch"].get(bsel, {"revenue": 0, "credits": 0, "count": 0}))
+        else:
+            out["today"] = {"revenue": round(sum(v["revenue"] for v in out["by_branch"].values())),
+                            "credits": round(sum(v["credits"] for v in out["by_branch"].values())),
+                            "count": sum(v["count"] for v in out["by_branch"].values())}
+        bfilt = " AND s.branch_id = ?" if bsel is not None else ""
+        bparam = [bsel] if bsel is not None else []
+        # פילוח קטגוריות היום (מכירות בלבד)
+        cur.execute(_q("""SELECT COALESCE(NULLIF(c.category,''),'אחר') AS cat, SUM(s.qty*s.price) AS rev
+            FROM sales s LEFT JOIN catalog c ON s.product_id = c.product_id
+            WHERE s.sale_date >= ? AND s.doc_type=0""" + bfilt + """
+            GROUP BY cat ORDER BY rev DESC LIMIT 12"""), tuple([today] + bparam))
+        out["categories"] = [{"category": r["cat"], "revenue": round(float(r["rev"] or 0))}
+                             for r in cur.fetchall() if float(r["rev"] or 0) > 0]
+        # מכירות אחרונות היום
+        cur.execute(_q("""SELECT name, qty, price, branch_id, sale_date FROM sales s
+            WHERE s.sale_date >= ? AND s.doc_type=0""" + bfilt + """
+            ORDER BY sale_date DESC LIMIT 25"""), tuple([today] + bparam))
+        out["recent"] = [{"name": r["name"] or "", "amount": round(float(r["qty"] or 0) * float(r["price"] or 0)),
+                          "branch_id": r["branch_id"], "ts": r["sale_date"]} for r in cur.fetchall()]
+        # הכנסה יומית 14 ימים (sparkline שבוע-מול-שבוע)
+        cur.execute(_q("""SELECT substr(sale_date,1,10) AS day, SUM(s.qty*s.price) AS rev FROM sales s
+            WHERE s.sale_date >= ? AND s.doc_type=0""" + bfilt + """
+            GROUP BY day ORDER BY day"""), tuple([d14] + bparam))
+        daymap = {r["day"]: round(float(r["rev"] or 0)) for r in cur.fetchall()}
+        days = [(now - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(13, -1, -1)]
+        out["weekly"] = [{"day": d, "revenue": daymap.get(d, 0)} for d in days]
+    return out
+
+
 # ── הורדות מלאי מרלוג (removals) ───────────────────────────────────
 def removals_insert(rows: list) -> int:
     """row: {op_id,line_no,product_id,name,qty,serials,employee,branch_id,removed_at}. idempotent."""
