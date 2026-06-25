@@ -441,22 +441,25 @@ def shift_dm_branch(src_branch, text) -> int:
     הפתיחה (09:15) לצוות של אותו יום — שלא נפנה למי שכבר סיים/לפני שנפתח."""
     if not os.getenv("SHIFT_BOT_TOKEN", "").strip():
         return 0
-    if not _branch_open_now():
-        try:
-            db.shift_alert_enqueue(int(src_branch), text)   # ידחה לבוקר הפתיחה
-            logger.info("shift alert deferred (off-hours) for branch %s", src_branch)
-        except Exception as e:  # noqa: BLE001
-            logger.warning("shift alert enqueue failed: %s", e)
-        return 0
+    # ⚠️ הקריטריון הוא "מי במשמרת *עכשיו*", לא "שעות הפעילות". סניף שעובד בלילה
+    # (גן העיר 20:00-09:00) "סגור" לפי שעות העסק אבל העובד **כן** שם — חייב לקבל מיד.
     try:
         ids = _shift_ids_on_now(src_branch)
     except Exception:  # noqa: BLE001
-        return 0
-    sent = 0
-    for cid in ids:
-        if shift_send_chat(cid, text):
-            sent += 1
-    return sent
+        ids = []
+    if ids:                                   # יש מי שבמשמרת עכשיו (גם בלילה) → שולחים מיד
+        sent = 0
+        for cid in ids:
+            if shift_send_chat(cid, text):
+                sent += 1
+        return sent
+    # אף אחד לא במשמרת כרגע (מחוץ-לשעות / רווח באמצע יום) → נדחה לבוקר הפתיחה
+    try:
+        db.shift_alert_enqueue(int(src_branch), text)
+        logger.info("shift alert deferred (nobody on shift now) for branch %s", src_branch)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("shift alert enqueue failed: %s", e)
+    return 0
 
 
 def flush_pending_shift_alerts() -> int:

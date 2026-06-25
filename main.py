@@ -2690,6 +2690,30 @@ def admin_sales_ingest(x_admin_key: Optional[str] = Header(None)):
     return {"started": True}
 
 
+@app.post("/api/admin/shift-dm-test")
+def shift_dm_test(branch_id: int, send: int = 0, x_admin_key: Optional[str] = Header(None)):
+    """בדיקת התראת-משמרת בלי שידור אמיתי. dry-run (send=0): מי במשמרת *עכשיו* בסניף
+    + ה-chat_ids שלהם + אם הסניף 'פתוח' לפי שעות. send=1: שולח DM בדיקה בפועל דרך
+    המסלול האמיתי (shift_dm_branch) — אם מישהו במשמרת עכשיו יקבל מיד, אחרת יידחה."""
+    _require_admin(x_admin_key)
+    import auto_transfer
+    try:
+        ids = auto_transfer._shift_ids_on_now(int(branch_id))
+    except Exception as e:  # noqa: BLE001
+        ids = []
+        logger.warning("shift-dm-test ids failed: %s", e)
+    out = {"branch_id": branch_id, "branch": cfg.branch_name(branch_id),
+           "on_shift_now_ids": ids, "count": len(ids),
+           "branch_open_now": auto_transfer._branch_open_now()}
+    if send and str(send) not in ("0", ""):
+        out["sent"] = auto_transfer.shift_dm_branch(
+            int(branch_id),
+            "🔔 בדיקת התראות משמרת — אם קיבלת את ההודעה הזו, ההתראות עובדות. (בדיקה מאסי)")
+        out["note"] = ("נשלח מיד למי שבמשמרת עכשיו" if out["sent"]
+                       else "אף אחד לא במשמרת כרגע — נדחה לבוקר הפתיחה (או אין chat_id)")
+    return out
+
+
 @app.post("/api/admin/sold-reconcile")
 def admin_sold_reconcile(x_admin_key: Optional[str] = Header(None)):
     """הפעלה ידנית: סגירת כרטיסי קליטה למכשירים שנמכרו לפני קליטה (+התראות)."""
