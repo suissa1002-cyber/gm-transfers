@@ -6506,7 +6506,7 @@ async function startPbxSip(){
     const socket=new JsSIP.WebSocketInterface(cfg.wss);
     _pbxUA=new JsSIP.UA({ sockets:[socket], uri:'sip:'+cfg.user+'@'+cfg.server,
       password:cfg.password, register:true, register_expires:300, session_timers:false });
-    _pbxUA.on('registered',()=>{ _pbxSipReg=true; console.log('[pbx-sip] registered ext202'); });
+    _pbxUA.on('registered',()=>{ _pbxSipReg=true; console.log('[pbx-sip] registered',cfg.user); });
     _pbxUA.on('unregistered',()=>{ _pbxSipReg=false; });
     _pbxUA.on('registrationFailed',(e)=>{ _pbxSipReg=false; console.warn('[pbx-sip] reg failed',e&&e.cause); });
     _pbxUA.on('newRTCSession',(e)=>{ if(e.session.direction==='incoming') pbxHandleIncoming(e.session); });
