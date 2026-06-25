@@ -5934,6 +5934,18 @@ document.addEventListener('click', (e)=>{
 let _pbxKnown={}, _pbxBooted=false, _pbxTimer=null;
 let _pbxShown={}, _pbxClosed={}, _pbxFocus=null, _pbxSig='';
 let _pbxAnsAt={}, _pbxEnded={}, _pbxTick=null;   // נענה-מתי / הסתיימו-לאחרונה / טיק טיימר
+// צליל התראה חד-פעמי כשנכנסת שיחה חדשה לניתוב (ניטור לייב — לכל סניף)
+function pbxNotify(){
+  try{
+    const Ctx=window.AudioContext||window.webkitAudioContext; if(!Ctx) return;
+    const ctx=new Ctx(); try{ ctx.resume(); }catch(e){}
+    const blip=(f,at,d)=>{ const o=ctx.createOscillator(),g=ctx.createGain(); o.type='sine'; o.frequency.value=f;
+      g.gain.setValueAtTime(0,at); g.gain.linearRampToValueAtTime(.22,at+.02); g.gain.linearRampToValueAtTime(0,at+d);
+      o.connect(g); g.connect(ctx.destination); o.start(at); o.stop(at+d); };
+    const t=ctx.currentTime; blip(660,t,.14); blip(990,t+.16,.22);   // "דינג-דינג" עולה
+    setTimeout(()=>{ try{ ctx.close(); }catch(e){} },800);
+  }catch(e){}
+}
 function startPbxPoll(){ if(_pbxTimer) return; pbxPoll(); _pbxTimer=setInterval(pbxPoll,1500); }
 async function pbxPoll(){
   if(!S.adminKey) return;
@@ -5949,7 +5961,7 @@ async function pbxPoll(){
     _pbxKnown[id]=1;
     if(id in _pbxEnded) delete _pbxEnded[id];   // חזרה לפעילה (לא סביר)
     _pbxShown[id]=c;
-    if(fresh) _pbxFocus=id;   // שיחה חדשה תופסת מוקד; הקודמת יורדת לבאנר ממוזער
+    if(fresh){ _pbxFocus=id; pbxNotify(); }   // שיחה חדשה תופסת מוקד + צליל התראה חד-פעמי
   });
   // שיחה שיצאה מהפעילות → מצב סיום (נענתה/לא-נענתה) ל-10ש' ואז סגירה
   Object.keys(_pbxShown).forEach(id=>{
