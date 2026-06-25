@@ -174,6 +174,52 @@ def build_followup_prompt(phone: str, question: str) -> str:
 רק שורת עובדות אם נחוצה (+שורות [NOTE] אם יש מה ללמוד). בלי סיכומים."""
 
 
+# פעולות תפעוליות ישירות מאסי (stock-watch / תזכורת) — דטרמיניסטיות, לא צריכות את
+# המוח הכבד (URI_BRAIN.md / בדיקת מלאי). מזוהות לפי מילות-מפתח → מסלול fast (sonnet),
+# מ-9 turns/~5 דק' ל-~2 turns/שניות. (אסי 24/06 — "הוסף לסטוק וואצ" לקח 5 דק'.)
+_OP_KEYWORDS = ("סטוק וואצ", "סטוק-וואצ", "stock watch", "stock-watch", "רשימת המתנה",
+                "רשימת סטוק", "כשחוזר למלאי", "חוזר למלאי", "עדכן כשיחזור", "הוסף לרשימה",
+                "תזכיר", "תזכורת", "reminder")
+
+
+def _is_op_task(question: str) -> bool:
+    q = (question or "").strip().lower()
+    if q == "[warmup]":
+        return False
+    return any(k.lower() in q for k in _OP_KEYWORDS)
+
+
+def build_panel_op_prompt(phone: str, question: str) -> str:
+    """מסלול מהיר לפעולה תפעולית ישירה (stock-watch / תזכורת) — בלי קריאת קבצים,
+    בלי בדיקת מלאי/מחיר. רק לבצע דרך ה-API ולאשר בשורה אחת."""
+    thread = fetch_thread_native(phone, limit=12)
+    ctx = fetch_context(phone)
+    return f"""אסי מבקש שתבצע פעולה תפעולית ישירה על שיחת וואטסאפ ({phone}).
+בצע אותה **מיד ובמינימום צעדים** — אל תקרא קבצים (לא URI_BRAIN.md), אל תבדוק מלאי/מחיר,
+אל תחקור מעבר לנדרש. כל מה שצריך מתועד כאן למטה.
+
+## השיחה האחרונה:
+{thread}
+
+{ctx}
+
+## הבקשה של אסי:
+{question}
+
+## איך לבצע (לפי סוג):
+- **הרשמה ל-Stock Watch** (עדכון כשמוצר/צבע שאזל חוזר למלאי): השג את ה-sku מ-
+  `{BASE}/api/uri-bridge/variations/<product_id>` (קריאה אחת — בחר את הצבע ש-`in_stock=false`),
+  ואז: `curl -s -X POST {BASE}/api/uri-bridge/stock-watch -H "X-Bridge-Key: {KEY}" -H "Content-Type: application/json" -d '{{"phone":"{phone}","name":"<שם הלקוח>","sku":"<מק\"ט הוריאציה>","product_name":"<שם המוצר + צבע>","product_url":"<קישור>","notify":true}}'`.
+  `notify:true` → השרת שולח ללקוח אישור הרשמה אוטומטית; אתה רק מאשר לאסי. **שם הלקוח** —
+  השתמש בשם האמיתי מההקשר/הזמנות; אם אין שם אלפאנומרי אמיתי, השאר name ריק (השרת ישלים).
+- **תזכורת אישית**: `POST https://uri-stock-watcher.onrender.com/reminders`
+  (Authorization: Bearer <token מ-agents/uri/stock_watcher/.deploy_state.json>;
+  body: {{"due_at":"YYYY-MM-DD HH:MM" שעון ישראל,"context":"...","customer_name":"...","customer_phone":"{phone}"}}).
+
+⛔ אסור לשלוח הודעות ללקוח בעצמך / לשנות נתונים באתר/קופה. ✅ הכתיבות דרך ה-API למעלה מותרות.
+פלט: **שורה אחת בלבד לאסי** — מה בוצע (נרשם/נקבעה תזכורת) ולמה/למתי. בלי סיכומים, בלי [DRAFT]."""
+
+
 def build_bot_prompt(phone: str, question: str) -> str:
     """משימת בוט (source='bot') — התשובה נשלחת **ישירות ללקוח** אוטומטית. מהירות
     קריטית: בלי קריאת קבצי פרויקט, בלי בדיקות מלאי כבדות. הכללים החיוניים מוזרקים
@@ -400,6 +446,18 @@ def process(job: dict):
         except Exception as e:  # noqa: BLE001
             log.error("warmup answer post failed #%s: %s", jid, e)
         log.info("warmup #%s phone=%s done", jid, phone)
+        return
+    # ── ⚡ פעולה תפעולית ישירה (stock-watch/תזכורת) → מסלול מהיר (sonnet), לא המוח הכבד ──
+    if _is_op_task(job["question"]):
+        ok, text, _sid = run_claude(build_panel_op_prompt(phone, job["question"]), fast=True)
+        answer = (text or "").strip() if ok else "סליחה, תקלה רגעית בביצוע הפעולה — נסה שוב 🙏"
+        try:
+            requests.post(f"{BASE}/api/uri-bridge/answer", headers=H,
+                          json={"id": jid, "answer": answer,
+                                "status": "done" if ok else "error"}, timeout=20)
+        except Exception as e:  # noqa: BLE001
+            log.error("op answer post failed #%s: %s", jid, e)
+        log.info("op job #%s -> %s (%d chars, fast)", jid, "done" if ok else "error", len(answer))
         return
     # סשן קיים לשיחה? המשך אותו (מהיר + זוכר) — אחרת סשן חדש עם הקשר מלא
     sess = _sessions.get(phone)

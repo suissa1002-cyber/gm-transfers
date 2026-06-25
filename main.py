@@ -6148,12 +6148,17 @@ def _stock_watch_add(body: StockWatchAddIn):
     # שם הלקוח: אם הקורא (אורי/בוט) לא העביר שם אמיתי — משלימים משם איש הקשר בוואטסאפ,
     # כדי שלא יירשם "לקוח/ה" גנרי ברשימת המעקב (id 11 Amitai נרשם בלי שם).
     name = (body.name or "").strip()
-    if not name or name in ("לקוח", "לקוח/ה"):
+    import re as _re_nm
+    # ג'יבריש/אמוג'י (אין אות עברית/לטינית/ספרה) — אורי תפס פעם "👍" כשם (24/06). מתעלמים.
+    _junk = bool(name) and not _re_nm.search(r"[A-Za-zא-ת0-9]", name)
+    if not name or _junk or name in ("לקוח", "לקוח/ה"):
         try:
             c = db.wa_contact_get(phone)
             cn = (c.get("name") or "").strip() if c else ""
             if cn:
                 name = cn
+            elif _junk:
+                name = ""        # לא לשמור אמוג'י גם אם אין איש קשר
         except Exception:  # noqa: BLE001
             pass
     name = name or "לקוח/ה"
