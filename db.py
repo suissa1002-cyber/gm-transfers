@@ -3155,6 +3155,19 @@ def sales_dashboard(branch_id=None, from_date=None, to_date=None, period=None) -
         daymap = {r["day"]: round(float(r["rev"] or 0)) for r in cur.fetchall()}
         days = [(now - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(13, -1, -1)]
         out["weekly"] = [{"day": d, "revenue": daymap.get(d, 0)} for d in days]
+        # ── 🔧 אבחון זמני (ניפוח מכירות) — היסטוגרמת doc_type + מסמכים גדולים בטווח ──
+        bdbg = " AND branch_id = ?" if bsel is not None else ""
+        bpd = [bsel] if bsel is not None else []
+        cur.execute(_q("""SELECT doc_type, COUNT(DISTINCT doc_id) AS docs, COUNT(*) AS lines,
+            SUM(qty*price) AS rev FROM sales WHERE sale_date >= ? AND sale_date <= ?""" + bdbg + """
+            GROUP BY doc_type ORDER BY rev DESC"""), tuple([f, t_end] + bpd))
+        out["_dbg_doctype"] = {str(r["doc_type"]): {"docs": int(r["docs"] or 0), "lines": int(r["lines"] or 0),
+                                                    "rev": round(float(r["rev"] or 0))} for r in cur.fetchall()}
+        cur.execute(_q("""SELECT doc_id, branch_id, MAX(name) AS nm, COUNT(*) AS lines, SUM(qty*price) AS tot
+            FROM sales WHERE sale_date >= ? AND sale_date <= ? AND doc_type=0""" + bdbg + """
+            GROUP BY doc_id, branch_id ORDER BY tot DESC LIMIT 8"""), tuple([f, t_end] + bpd))
+        out["_dbg_top"] = [{"doc": str(r["doc_id"]), "b": r["branch_id"], "nm": (r["nm"] or "")[:28],
+                            "lines": int(r["lines"] or 0), "tot": round(float(r["tot"] or 0))} for r in cur.fetchall()]
     return out
 
 

@@ -6532,7 +6532,10 @@ function renderHome(){
        <div style="flex:1;text-align:center"><div style="font-size:24px;font-weight:800;color:#dc2626">${_il(tt.credits)}</div><div class="muted" style="font-size:11px">זיכויים</div></div>
      </div>
      <div class="muted" style="font-size:11px;margin-bottom:4px">קצב 14 ימים · <span style="color:#16a34a;font-weight:700">השבוע</span> מול <span style="color:#94a3b8;font-weight:700">שבוע שעבר</span></div>
-     ${homeSpark(sd.weekly)}`,
+     ${homeSpark(sd.weekly)}
+     ${(sd._dbg_doctype)?`<div style="margin-top:10px;padding-top:8px;border-top:1px dashed var(--line);font-size:10.5px;color:var(--muted);direction:ltr;text-align:left">
+        🔧 doc_type: ${Object.entries(sd._dbg_doctype).map(([k,v])=>`<b>${k}</b>=₪${v.rev.toLocaleString('en-US')}/${v.docs}docs`).join(' · ')}<br>
+        top: ${(sd._dbg_top||[]).slice(0,5).map(t=>`${escW(t.nm)} ₪${t.tot.toLocaleString('en-US')}(${t.lines}ln)`).join(' · ')}</div>`:''}`,
     'margin-bottom:13px');
   // ── רשת כרטיסים ──
   h+=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:12px">`;
