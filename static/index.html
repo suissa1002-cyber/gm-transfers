@@ -781,8 +781,10 @@ function updateOrderBadge(){
 }
 function openOrdersTab(){
   S.newOrdersCount=0; updateOrderBadge();
-  if(S.view==='admin') setAdminTab('wcorders');
-  else if(typeof isAdminCtx==='function'&&isAdminCtx()) setBranchTab('wcorders');
+  if(S.view==='admin'){ setAdminTab('wcorders'); return; }
+  // מהבית/לוח → חובה להחליף view מ-'home' ל-'board', אחרת טעינות-הרקע של הבית
+  // (צ'קים/חשבוניות שמסתיימות אחרי 5-10ש') מרנדרות בית מחדש ומבעיטות מההזמנות.
+  if(typeof isAdminCtx==='function'&&isAdminCtx()){ S.view='board'; setBranchTab('wcorders'); }
 }
 function openBroadcast(toBranch){
   const bc=S.broadcast; if(!bc) return;
@@ -7237,6 +7239,10 @@ function pbxDoTransfer(target){
 }
 async function bootApp(){
   try{ S.branchList=await (await fetchT('/api/branches',{},15000)).json(); }catch(e){}
+  // מחשב הניהול (סניף אתר) נוחת על לוח הבית כברירת מחדל גם ברענון — לא על לוח הקליטה.
+  // רק אם עדיין על ברירת המחדל ('board'); deep-link/ניווט אחר גובר (handleDeepLink רץ אחרי).
+  if(S.branchId && S.view==='board' && S.cfg && Number(S.branchId)===S.cfg.admin_branch_id
+     && (!S.cfg.admin_required||S.adminKey)){ S.view='home'; }
   try{ render(); }catch(e){ hideLoading(); }
   applyTheme();
   waSWReady();   // רישום service worker (PWA/push) — לא חוסם
