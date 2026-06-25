@@ -403,12 +403,12 @@ def _covers_now(hours) -> bool:
     a, b = _hhmm_min(p[0]), _hhmm_min(p[1])
     if a is None or b is None:
         return True
+    # ⚠️ הסידור שומר חלק מהשעות **הפוך** (באג RTL — "20:00-09:00" במקום "09:00-20:00").
+    # ממיינים כדי לנרמל את ההיפוך לטווח יום תקין. (כל המשמרות יומיות; אין משמרות לילה
+    # חוצות-חצות. אם יתווספו כאלה בעתיד — צריך לתקן את שמירת השעות בסידור, לא כאן.)
+    lo, hi = (a, b) if a <= b else (b, a)
     now = _il_now_dt()
-    cur = now.hour * 60 + now.minute
-    if a <= b:
-        return a <= cur <= b
-    # משמרת לילה החוצה חצות (start>end, למשל 20:00-09:00 בגן העיר) — לא למיין!
-    return cur >= a or cur <= b
+    return lo <= now.hour * 60 + now.minute <= hi
 
 
 def _shift_ids_on_now(src_branch):
