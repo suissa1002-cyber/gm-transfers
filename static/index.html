@@ -6634,10 +6634,10 @@ function renderHome(){
   const cseg=(id,lbl)=>`<button onclick="homeChecksMode('${id}')" style="flex:1;background:${cmode===id?'#16a34a':'transparent'};color:${cmode===id?'#fff':'var(--txt)'};border:0;border-radius:8px;padding:6px 2px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit">${lbl}</button>`;
   h+=crmCard(homeHead('💳','צ׳קים לפירעון',cks.length?_il(ctot):'',"window.open('/checks','_blank')")+
     `<div style="display:flex;gap:3px;background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:3px;margin-bottom:9px">${cseg('today','היום')}${cseg('wed0','רביעי הקרוב')}${cseg('wed1','רביעי הבא')}</div>`+
-    (cks.length?cks.slice(0,7).map(c=>homeRow(
+    (cks.length?`<div style="max-height:280px;overflow-y:auto;margin:0 -4px;padding:0 4px">`+cks.map(c=>homeRow(
        `<b style="flex:1;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(c.payee||c.checkNum||'—')}</b>
         <span class="muted" style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:80px">${escW(c.bank||'')}</span>
-        <span style="font-weight:600">${_il(c.amount)}</span>`)).join('')
+        <span style="font-weight:600">${_il(c.amount)}</span>`)).join('')+`</div>`
      :`<div class="muted" style="font-size:13px;padding:6px 0">${S.homeChecks?'אין צ׳קים לתאריך זה':'טוען…'}</div>`));
   // 🛒 הזמנות בטיפול באיחור (status=processing, ישנות מ-48ש)
   const ordAge=o=>{ const t=Date.parse(o.date); return t?Math.floor((Date.now()-t)/3600000):0; };
