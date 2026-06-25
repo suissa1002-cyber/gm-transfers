@@ -3637,17 +3637,26 @@ def transfer_send_wa(body: TransferWaIn, x_admin_key: Optional[str] = Header(Non
     total = sum(int(l.get("qty") or 0) for l in lines)
     msg = (f"📦 בקשת העברת מלאי לליקוט\nמסניף {body.from_name} ← ל{to_lbl}\n"
            f"{len(lines)} שורות · {total} יחידות\n\n👈 לרשימה המלאה:\n{url}")
+    # ⚠️ wa.send_text לא בודק חלון 24ש: Meta מקבל טקסט חופשי מחוץ לחלון (מחזיר wamid)
+    # ואז מכשיל אותו אסינכרונית (131047) — לכן ה-except לתבנית לא נתפס וההודעה לא
+    # נמסרת. בודקים את החלון *מראש*: מחוץ לחלון → ישר תבנית מאושרת (תמיד מגיעה).
     try:
-        wa.send_text(phone, msg)
-        return {"sent": True, "via": "text", "url": url}
-    except wa.WaError as e:  # מחוץ לחלון 24ש — תבנית מאושרת (הקישור קצר, נכנס)
-        logger.info("transfer send-wa text failed (%s), trying template: %s", phone, e)
+        _win = wa._window_for(phone)
+    except Exception:  # noqa: BLE001
+        _win = None
+    in_window = bool(_win and _win.get("in_window"))   # לא ידוע → תבנית (בטוח; העובד בד"כ מחוץ לחלון)
+    if in_window:
         try:
-            wa.send_template(phone, "צוות גרין מובייל", msg)
-            return {"sent": True, "via": "template", "url": url}
-        except wa.WaError as e2:
-            logger.warning("transfer send-wa template failed (%s): %s", phone, e2)
-            return {"sent": False, "error": str(e2)[:150]}
+            wa.send_text(phone, msg)
+            return {"sent": True, "via": "text", "url": url}
+        except wa.WaError as e:
+            logger.info("transfer send-wa text failed (%s), trying template: %s", phone, e)
+    try:
+        wa.send_template(phone, "צוות גרין מובייל", msg)
+        return {"sent": True, "via": "template", "url": url}
+    except wa.WaError as e2:
+        logger.warning("transfer send-wa template failed (%s): %s", phone, e2)
+        return {"sent": False, "error": str(e2)[:150]}
 
 
 # ── תשובות מוכנות (⚡ canned replies) — מנוהלות ב-GreenOS ──
