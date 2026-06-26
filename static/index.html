@@ -6465,13 +6465,16 @@ async function loadHomeInvoices(){
   catch(e){ S.homeInvAt=0; }
 }
 function homeSpark(days){
-  // 14 ימים: 7 אחרונים = השבוע (ירוק), 7 קודמים = שבוע שעבר (אפור)
+  // 14 ימים: 7 אחרונים = השבוע (ירוק), 7 קודמים = שבוע שעבר (אפור).
+  // קנה-מידה עמיד-לחריגים: לפי אחוזון 85 ולא לפי המקסימום — כך שיום חריג בודד
+  // (עסקה גדולה) לא משטח את כל השאר. ימים מעל האחוזון מגיעים לגובה מלא.
   if(!days||!days.length) return '';
-  const max=Math.max(1,...days.map(d=>d.revenue||0));
+  const pos=days.map(d=>d.revenue||0).filter(v=>v>0).sort((a,b)=>a-b);
+  const max=Math.max(1, pos.length?pos[Math.min(pos.length-1,Math.floor(pos.length*0.85))]:1);
   const w=100/days.length;
-  return `<svg viewBox="0 0 100 30" preserveAspectRatio="none" style="width:100%;height:38px;display:block">`+
-    days.map((d,i)=>{ const hh=Math.max(0.8,(d.revenue||0)/max*28); const recent=i>=days.length-7;
-      return `<rect x="${(i*w+0.5).toFixed(2)}" y="${(30-hh).toFixed(2)}" width="${(w-1).toFixed(2)}" height="${hh.toFixed(2)}" rx="0.5" fill="${recent?'#16a34a':'#cbd5e1'}"><title>${escW(d.day)}: ₪${(d.revenue||0).toLocaleString()}</title></rect>`;
+  return `<svg viewBox="0 0 100 30" preserveAspectRatio="none" style="width:100%;height:42px;display:block">`+
+    days.map((d,i)=>{ const rev=d.revenue||0; const hh=Math.max(rev>0?2:0.6,Math.min(28,rev/max*28)); const recent=i>=days.length-7;
+      return `<rect x="${(i*w+0.5).toFixed(2)}" y="${(30-hh).toFixed(2)}" width="${(w-1).toFixed(2)}" height="${hh.toFixed(2)}" rx="0.5" fill="${recent?'#16a34a':'#cbd5e1'}"><title>${escW(d.day)}: ₪${rev.toLocaleString()}</title></rect>`;
     }).join('')+`</svg>`;
 }
 function homeKpi(val,label,color){
