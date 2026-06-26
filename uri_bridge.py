@@ -134,9 +134,12 @@ def build_prompt(phone: str, question: str) -> str:
     body: {{"due_at":"YYYY-MM-DD HH:MM" שעון ישראל, "context":"...", "customer_name":"...", "customer_phone":"{phone}"}}).
     זו התזכורת שמופיעה בלוח Uri Stock Watcher ושולחת טלגרם בזמן שנקבע — זה הערוץ הנכון, לא Monday.
   • **הרשמה ל-Stock Watch** (לקוח שמבקש עדכון כשמוצר/צבע *שאזל* חוזר למלאי) →
-    `curl -s -X POST {BASE}/api/uri-bridge/stock-watch -H "X-Bridge-Key: {KEY}" -H "Content-Type: application/json" -d '{{"phone":"{phone}","name":"<שם הלקוח>","sku":"<מק\"ט הוריאציה שאזלה>","product_name":"<שם המוצר + צבע>","product_url":"<קישור>","notify":true}}'`.
-    את ה-`sku` משיגים מ-`{BASE}/api/uri-bridge/variations/<product_id>` (כל וריאציה מחזירה `sku`+`in_stock`+`color` — בחר את הצבע ש-`in_stock=false`). השרת ממיר אוטומטית SKU→neworder_id ורושם.
-    ✅ `notify:true` — השרת שולח ללקוח **אוטומטית** אישור הרשמה ("רשמתי אותך, נעדכן כשחוזר למלאי"). אתה לא צריך לשלוח הודעה נפרדת — רק לאשר לאסי שנרשם.
+    ⚠️ אל תירשם בעצמך ואל תשלח הודעה. הרישום נעשה בלחיצת כפתור דטרמיניסטית אצל אסי
+    (אמין 100%, השרת גם שולח ללקוח אישור אוטומטית). אתה רק **מזהה את הוריאציה** ופולט שורה:
+    `[SWATCH sku=<מק\"ט הוריאציה שאזלה>|product=<שם המוצר + צבע/נפח>|url=<קישור>]`.
+    את ה-`sku` משיגים מ-`{BASE}/api/uri-bridge/variations/<product_id>` (כל וריאציה מחזירה
+    `sku`+`in_stock`+`color` — בחר את זו ש-`in_stock=false` התואמת לדגם/צבע/נפח שהלקוח ביקש).
+    אם המק\"ט לא ברור — פלוט בלי sku: `[SWATCH product=<שם+צבע>|url=<קישור>]`. **בלי curl.**
   • **משימת עבודה גדולה** (לא תזכורת-זמן) → משימה במאנדיי דרך agents/shared/monday_tasks (קבוצת uri).
   אחרי יצירה — אשר לאסי מה נוצר, איפה, ולמתי.
 - מחיר ללקוח: תמיד מחיר האתר (שדה price — כולל מבצע), לעולם לא מחיר קופה. בפער קופה↔אתר — האתר מנצח.
@@ -170,8 +173,11 @@ def build_followup_prompt(phone: str, question: str) -> str:
 
 אותם כללים (כולל: תזכורות דרך ה-API של Stock Watcher; אסור לשלוח ללקוח; מחיר אתר;
 תשובת-מוצר חייבת קישור לעמוד/לוריאציה — slug עברי → TinyURL ‏gm-).
+⚠️ הרשמת לקוח ל-Stock Watch (עדכון כשוריאציה שאזלה חוזרת) — אל תירשם בעצמך; פלוט שורה
+`[SWATCH sku=<מק\"ט הוריאציה>|product=<שם+צבע>|url=<קישור>]` (sku מ-{BASE}/api/uri-bridge/variations/<id>,
+in_stock=false). אסי לוחץ כפתור שירשום וישלח אישור. בלי curl.
 פלט: נוסח ללקוח — בין [DRAFT] ל-[/DRAFT] בלבד, בלי מילה מיותרת בתוכו; מחוץ לבלוק
-רק שורת עובדות אם נחוצה (+שורות [NOTE] אם יש מה ללמוד). בלי סיכומים."""
+רק שורת עובדות אם נחוצה (+שורות [NOTE] אם יש מה ללמוד / שורת [SWATCH] אם רלוונטי). בלי סיכומים."""
 
 
 # פעולות תפעוליות ישירות מאסי (stock-watch / תזכורת) — דטרמיניסטיות, לא צריכות את
@@ -207,17 +213,22 @@ def build_panel_op_prompt(phone: str, question: str) -> str:
 {question}
 
 ## איך לבצע (לפי סוג):
-- **הרשמה ל-Stock Watch** (עדכון כשמוצר/צבע שאזל חוזר למלאי): השג את ה-sku מ-
-  `{BASE}/api/uri-bridge/variations/<product_id>` (קריאה אחת — בחר את הצבע ש-`in_stock=false`),
-  ואז: `curl -s -X POST {BASE}/api/uri-bridge/stock-watch -H "X-Bridge-Key: {KEY}" -H "Content-Type: application/json" -d '{{"phone":"{phone}","name":"<שם הלקוח>","sku":"<מק\"ט הוריאציה>","product_name":"<שם המוצר + צבע>","product_url":"<קישור>","notify":true}}'`.
-  `notify:true` → השרת שולח ללקוח אישור הרשמה אוטומטית; אתה רק מאשר לאסי. **שם הלקוח** —
-  השתמש בשם האמיתי מההקשר/הזמנות; אם אין שם אלפאנומרי אמיתי, השאר name ריק (השרת ישלים).
+- **הרשמה ל-Stock Watch** (עדכון כשמוצר/צבע שאזל חוזר למלאי): ⚠️ **אל תירשם בעצמך
+  ואל תשלח כלום** — הרישום נעשה בלחיצת כפתור דטרמיניסטית בצד אסי (אמין 100%, השרת גם
+  שולח ללקוח אישור אוטומטית). התפקיד שלך: רק **לזהות את הוריאציה המדויקת** שהלקוח רוצה
+  לעקוב אחריה, ולפלוט שורה אחת בפורמט:
+  `[SWATCH sku=<מק\"ט הוריאציה>|product=<שם המוצר + צבע/נפח>|url=<קישור לעמוד>]`
+  את ה-`sku` משיגים מקריאה **אחת** ל-`{BASE}/api/uri-bridge/variations/<product_id>`
+  (כל וריאציה מחזירה `sku`+`in_stock`+`color` — בחר את זו ש-`in_stock=false` שתואמת
+  לדגם/צבע/נפח שהלקוח ביקש). אם המק\"ט לא ברור — פלוט `[SWATCH product=<שם+צבע>|url=<קישור>]`
+  בלי sku (השרת ינסה להשלים), אבל עדיף עם sku. **בלי curl, בלי [DRAFT].**
 - **תזכורת אישית**: `POST https://uri-stock-watcher.onrender.com/reminders`
   (Authorization: Bearer <token מ-agents/uri/stock_watcher/.deploy_state.json>;
   body: {{"due_at":"YYYY-MM-DD HH:MM" שעון ישראל,"context":"...","customer_name":"...","customer_phone":"{phone}"}}).
 
-⛔ אסור לשלוח הודעות ללקוח בעצמך / לשנות נתונים באתר/קופה. ✅ הכתיבות דרך ה-API למעלה מותרות.
-פלט: **שורה אחת בלבד לאסי** — מה בוצע (נרשם/נקבעה תזכורת) ולמה/למתי. בלי סיכומים, בלי [DRAFT]."""
+⛔ אסור לשלוח הודעות ללקוח בעצמך / לשנות נתונים באתר/קופה.
+פלט: לסטוק-וואצ' — שורת `[SWATCH ...]` אחת (+אופציונלי חצי-משפט לאסי מה זוהה). לתזכורת —
+שורה אחת לאסי מה נקבע ולמתי. בלי סיכומים, בלי [DRAFT]."""
 
 
 def build_bot_prompt(phone: str, question: str) -> str:
@@ -450,8 +461,9 @@ def process(job: dict):
     # ── ⚡ פעולה תפעולית ישירה (stock-watch/תזכורת) → מסלול מהיר (sonnet), לא המוח הכבד ──
     if _is_op_task(job["question"]):
         op_prompt = build_panel_op_prompt(phone, job["question"])
-        # פעולה (חיפוש SKU + curl + סבבי-כלים) איטית מתשובה → 200ש' במקום 90, + retry על כשל רגעי.
-        ok, text, _sid = run_claude(op_prompt, fast=True, timeout_s=200)
+        # stock-watch: אורי רק מזהה וריאציה (GET variations) ופולט [SWATCH] — הכתיבה הכבדה
+        # עברה לכפתור דטרמיניסטי בקונסולה, אז זה מהיר ואמין. 150ש' + retry על כשל רגעי.
+        ok, text, _sid = run_claude(op_prompt, fast=True, timeout_s=150)
         if not ok:
             log.warning("op job #%s failed (%s) — retrying once", jid, (text or "")[:200])
             time.sleep(3)

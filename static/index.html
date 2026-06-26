@@ -3441,7 +3441,13 @@ function waUriChat(){ S.waUriChats=S.waUriChats||{}; return S.waUriChats[S.waPho
 function waUriParse(ans){
   let t=ans||''; const out={text:t};
   const dm=t.match(/\[DRAFT\]\s*([\s\S]*?)\s*\[\/DRAFT\]/);
-  if(dm){ out.draft=dm[1].trim(); out.text=t.replace(dm[0],'').trim(); }
+  if(dm){ out.draft=dm[1].trim(); t=t.replace(dm[0],'').trim(); out.text=t; }
+  // [SWATCH sku=...|product=...|url=...] — אורי זיהה ורייציה שאזלה שהלקוח רוצה לעקוב אחריה.
+  // הביצוע נעשה ישירות מהכפתור (קריאת endpoint דטרמיניסטית) — לא בריצת-AI שנייה שברירית.
+  const sm=t.match(/\[SWATCH\s+([^\]]+)\]/i);
+  if(sm){ const kv={}; sm[1].split('|').forEach(p=>{ const i=p.indexOf('='); if(i>0) kv[p.slice(0,i).trim().toLowerCase()]=p.slice(i+1).trim(); });
+    if(kv.sku||kv.product){ out.swatch={sku:kv.sku||'',product:kv.product||'',url:kv.url||''}; }
+    out.text=t.replace(sm[0],'').trim(); }
   return out;
 }
 // טעינת היסטוריית השיחה עם אורי מהשרת — להמשכיות בין מכשירים (אייפון↔מחשב)
@@ -3459,7 +3465,7 @@ async function waUriLoadHistory(phone){
     jobs.forEach(j=>{
       chat.push({role:'user', text:j.question||''});
       if(j.status==='error'){ chat.push({role:'uri', status:'error', text:j.answer||'שגיאה'}); }
-      else { const p=waUriParse(j.answer); chat.push({role:'uri', status:'done', text:p.text, draft:p.draft}); }
+      else { const p=waUriParse(j.answer); chat.push({role:'uri', status:'done', text:p.text, draft:p.draft, swatch:p.swatch}); }
     });
     // אם בינתיים המשתמש כבר התחיל לכתוב לשיחה הזו — לא דורסים
     if(!(S.waUriChats[phone]||[]).length) S.waUriChats[phone]=chat;
@@ -3489,6 +3495,10 @@ function waUriHTML(){
     </div>`;
 }
 function waUriMsgHTML(m,idx){
+  // אורי זיהה ורייציה שאזלה שהלקוח רוצה לעקוב → כפתור ביצוע ישיר (100% אמין, בלי AI שני)
+  const swBtn=(m.swatch&&!m._swdone)
+    ? `<div style="margin-top:7px"><button class="btn-primary" style="padding:6px 14px;font-size:12.5px;background:#16a34a;border-color:#16a34a"${m._swbusy?' disabled':''} onclick="waStockWatchDirect(${idx})">${m._swbusy?'⏳ רושם…':'🔔 הוסף לרשימת המתנה'+(m.swatch.product?' · '+escW(m.swatch.product):'')}</button></div>`
+    : (m._swdone ? `<div style="margin-top:6px;color:#16a34a;font-weight:700;font-size:12.5px">✓ נרשם לרשימת המתנה — הלקוח קיבל אישור</div>` : '');
   if(m.role==='user')
     return `<div class="wa-uri-q">${escW(m.text)}</div>`;
   if(m.status==='pending')
@@ -3507,12 +3517,36 @@ function waUriMsgHTML(m,idx){
         <button class="btn-ghost" style="padding:4px 9px;font-size:12px" onclick="navigator.clipboard.writeText((S.waUriChats[S.waPhone][${idx}].draft)||'');toast('הועתק ✓',true)">📋</button>
       </div>
       <div class="muted" style="font-size:10.5px;margin-top:4px">או כתוב "שלח" לשליחה · "תתקן …" לגרסה חדשה</div>
+      ${swBtn}
     </div>`;
   return `<div class="wa-uri-a">${escW(m.text)}
     <div style="display:flex;gap:6px;margin-top:7px">
       <button class="btn-ghost" style="padding:4px 9px;font-size:12px;display:inline-flex;align-items:center;gap:5px" onclick="waUriToReply(${idx})">${ico('download',13)} לתיבת המענה</button>
       <button class="btn-ghost" style="padding:4px 9px;font-size:12px" onclick="navigator.clipboard.writeText(S.waUriChats[S.waPhone][${idx}].text);toast('הועתק ✓',true)">📋</button>
-    </div></div>`;
+    </div>${swBtn}</div>`;
+}
+// ביצוע ישיר של הרשמה לרשימת המתנה — endpoint דטרמיניסטי, בלי ריצת-AI שנייה.
+// אורי כבר זיהה את הוורייציה (SKU/דגם/צבע); כאן רק מבצעים. notify:true → השרת שולח אישור ללקוח אוטומטית.
+async function waStockWatchDirect(idx){
+  const chat=waUriChat(); const m=chat[idx]; if(!m||!m.swatch||m._swdone) return;
+  const sw=m.swatch;
+  m._swbusy=true; waUriPaint();
+  const h={'Content-Type':'application/json'};
+  if(S.adminKey) h['X-Admin-Key']=S.adminKey;
+  if(S.deviceToken) h['X-Device-Token']=S.deviceToken;
+  try{
+    const r=await fetchT('/api/admin/stock-watch/add',{method:'POST',headers:h,body:JSON.stringify({
+      phone:S.waPhone, sku:sw.sku||'', product_name:sw.product||'', product_url:sw.url||'', notify:true
+    })},45000);
+    const j=await r.json().catch(()=>({}));
+    if(r.ok && j && j.ok){
+      m._swdone=true; m._swbusy=false; waUriPaint();
+      toast(j.confirmation_sent?'נרשם לרשימת המתנה — הלקוח קיבל אישור ✓':'נרשם לרשימת המתנה ✓ (אישור ללקוח לא נשלח)',true);
+    } else {
+      m._swbusy=false; waUriPaint();
+      toast((j&&j.detail)||'ההרשמה נכשלה — נסה שוב',false);
+    }
+  }catch(e){ m._swbusy=false; waUriPaint(); toast('ההרשמה נכשלה — בעיית רשת, נסה שוב',false); }
 }
 function waUriPaint(){
   const p=document.getElementById('waPanelBox');
@@ -3562,10 +3596,8 @@ async function waUriPoll(jid, msg, tries){
   try{
     const r=await api('/api/admin/wa/uri/job/'+jid);
     if(r.status==='done'){
-      let t=r.answer||'';
-      const dm=t.match(/\[DRAFT\]\s*([\s\S]*?)\s*\[\/DRAFT\]/);
-      if(dm){ msg.draft=dm[1].trim(); msg.text=t.replace(dm[0],'').trim(); }
-      else msg.text=t;
+      const p=waUriParse(r.answer||'');
+      msg.text=p.text; msg.draft=p.draft; msg.swatch=p.swatch;
       msg.status='done'; waUriPaint(); return;
     }
     if(r.status==='error'){ msg.status='error'; msg.text=r.answer||'שגיאה אצל אורי'; waUriPaint(); return; }
