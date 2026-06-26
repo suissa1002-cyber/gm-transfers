@@ -1112,7 +1112,7 @@ function renderDrawer(){
   const lock=(S.cfg.admin_required&&!S.adminKey)?' 🔒':'';
   d.innerHTML=`
     <div class="dr-head"><span>🟢 GreenOS — ניהול אופרציה</span><button class="dr-x" onclick="toggleDrawer(false)">✕</button></div>
-    <div class="dr-item ${act('home')}" onclick="hubGo('home')"><span>🏠</span><span>לוח בית</span></div>
+    <div class="dr-item ${act('home')}" onclick="hubGo('home')"><span>${ico('home',16)}</span><span>לוח בית</span></div>
     <div class="dr-sec">קליטת העברות</div>
     <div class="dr-item ${S.view==='board'||S.view==='scan'?'active':''}" onclick="hubGo('board')"><span>${ico('pkg',16)}</span><span>לוח קליטה</span></div>
     <div class="dr-item ${act('admin')}" onclick="hubGo('admin')"><span>${ico('wrench',16)}</span><span>קונסולת ניהול${lock}</span></div>
@@ -3981,6 +3981,7 @@ function waReplySet(id,preview){
 function waReplyClear(){ S.waReplyTo=null; renderWaThread(); }
 // ── סט אייקונים מודרני (סגנון Lucide): קו 2px, currentColor — אחיד בכל GreenOS ──
 const _IPATHS={
+  home:'<path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>',
   archive:'<rect x="2" y="3" width="20" height="5" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><line x1="10" y1="12" x2="14" y2="12"/>',
   restore:'<rect x="2" y="3" width="20" height="5" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M9 15l3-3 3 3"/><line x1="12" y1="12" x2="12" y2="18"/>',
   user:'<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
@@ -6378,7 +6379,7 @@ function crmCard(inner,extra){ return '<div style="background:var(--card,#171c24
 // removals/cdr). כל כרטיס לחיץ → קופץ לאפליקציה/טאב המלא. רענון כל 15ש' (startPoll).
 function goHome(){ S.view='home'; S.adminTab=null; S.embedApp=null; render(); }
 async function loadHome(spinner){
-  if(spinner){ const a=document.getElementById('app'); if(a) a.innerHTML='<div class="empty" style="margin:60px auto">טוען לוח בית… 🏠</div>'; }
+  if(spinner){ const a=document.getElementById('app'); if(a) a.innerHTML='<div class="empty" style="margin:60px auto;display:flex;align-items:center;justify-content:center;gap:7px">טוען לוח בית… <span style="display:inline-flex;color:#16a34a">'+ico('home',17)+'</span></div>'; }
   const _ovd=new Date(Date.now()-48*3600*1000);   // הזמנות 'בטיפול' ישנות מ-48ש = באיחור
   const _ovBefore=`${_ovd.getFullYear()}-${String(_ovd.getMonth()+1).padStart(2,'0')}-${String(_ovd.getDate()).padStart(2,'0')}`;
   const defs={ ov:'/api/admin/overview', wa:'/api/admin/wa/conversations',
