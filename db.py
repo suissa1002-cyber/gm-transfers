@@ -3082,6 +3082,32 @@ def _parse_removal_amount(note) -> float:
         return 0.0
 
 
+def _city_removal_sales(cur, since, until=None) -> list:
+    """הורדות-מלאי סיטי (סניף 3, חצי-קופה) כ'מכירות' — מאוחדות לפי op. ⚠️ ה-note עם הסכום
+    הוא ברמת ה-op אך מאוחסן על כל שורות-הפריט שלו, לכן סופרים את הסכום **פעם אחת לכל op**
+    (אחרת כפל-ספירה ב-op רב-פריטי). מחזיר [{op_id, product_id, name, amount, removed_at}]
+    רק לאלו עם סכום בהערה. since/until = טווח removed_at (until אופציונלי)."""
+    if until is not None:
+        cur.execute(_q("""SELECT op_id, product_id, name, note, removed_at FROM removals
+            WHERE removed_at >= ? AND removed_at <= ? ORDER BY op_id, line_no"""), (since, until))
+    else:
+        cur.execute(_q("""SELECT op_id, product_id, name, note, removed_at FROM removals
+            WHERE removed_at >= ? ORDER BY op_id, line_no"""), (since,))
+    ops = {}
+    for r in cur.fetchall():
+        amt = _parse_removal_amount(r["note"])
+        if not amt:
+            continue
+        op = ops.get(r["op_id"])
+        if op is None:
+            ops[r["op_id"]] = {"op_id": r["op_id"], "product_id": r["product_id"],
+                               "name": (r["name"] or "").strip() or "הורדת מלאי",
+                               "amount": amt, "removed_at": r["removed_at"]}
+        elif op["name"] == "הורדת מלאי" and (r["name"] or "").strip():
+            op["name"] = r["name"].strip()
+    return list(ops.values())
+
+
 def sales_dashboard(branch_id=None, from_date=None, to_date=None, period=None) -> dict:
     """מכירות ללוח הבית (טבלת sales; qty חתום: מכירה +, זיכוי −). ברירת מחדל=היום (שעון IL).
     period='yesterday' → אתמול · from_date/to_date (YYYY-MM-DD) → טווח. by_branch/today/
@@ -3128,14 +3154,9 @@ def sales_dashboard(branch_id=None, from_date=None, to_date=None, period=None) -
                                         "credits": round(abs(float(r["credits"] or 0))),
                                         "count": int(r["cnt"] or 0)}
         # סיטי (סניף 3, חצי-קופה): המכירות הן הורדות-מלאי עם הסכום בהערה — מסכמים ומשייכים כסניף 3
-        cur.execute(_q("SELECT note FROM removals WHERE removed_at >= ? AND removed_at <= ?"), (f, t_end))
-        rem_sum = 0.0
-        rem_cnt = 0
-        for r in cur.fetchall():
-            amt = _parse_removal_amount(r["note"])
-            if amt:
-                rem_sum += amt
-                rem_cnt += 1
+        city_rem = _city_removal_sales(cur, f, t_end)        # מאוחד לפי op (בלי כפל-ספירה)
+        rem_sum = sum(cr["amount"] for cr in city_rem)
+        rem_cnt = len(city_rem)
         if rem_sum:
             b3 = out["by_branch"].setdefault(3, {"revenue": 0, "credits": 0, "count": 0})
             b3["revenue"] = round(b3["revenue"] + rem_sum)
@@ -3152,9 +3173,27 @@ def sales_dashboard(branch_id=None, from_date=None, to_date=None, period=None) -
         cur.execute(_q("""SELECT COALESCE(NULLIF(c.category,''),'אחר') AS cat, SUM(s.qty*s.price) AS rev
             FROM sales s LEFT JOIN catalog c ON s.product_id = c.product_id
             WHERE s.sale_date >= ? AND s.sale_date <= ? AND s.doc_type IN (0,5)""" + ship_s + bfilt + """
-            GROUP BY cat ORDER BY rev DESC LIMIT 12"""), tuple([f, t_end] + _SALES_SHIP_PARAMS + bp))
-        out["categories"] = [{"category": r["cat"], "revenue": round(float(r["rev"] or 0))}
-                             for r in cur.fetchall() if float(r["rev"] or 0) > 0]
+            GROUP BY cat"""), tuple([f, t_end] + _SALES_SHIP_PARAMS + bp))
+        cat_rev = {}
+        for r in cur.fetchall():
+            rev = float(r["rev"] or 0)
+            if rev > 0:
+                cat_rev[r["cat"]] = cat_rev.get(r["cat"], 0.0) + rev
+        # הורדות-סיטי לפי קטגוריית המוצר (כשמציגים הכל או את סיטי) — משלים את הדונט
+        if (bsel is None or bsel == 3) and city_rem:
+            pids = [cr["product_id"] for cr in city_rem if cr["product_id"]]
+            catmap = {}
+            if pids:
+                qm = ",".join(["?"] * len(pids))
+                cur.execute(_q("SELECT product_id, category FROM catalog WHERE product_id IN (" + qm + ")"),
+                            tuple(pids))
+                catmap = {str(r["product_id"]): (r["category"] or "").strip() for r in cur.fetchall()}
+            for cr in city_rem:
+                cat = catmap.get(str(cr["product_id"])) or "אחר"
+                cat_rev[cat] = cat_rev.get(cat, 0.0) + cr["amount"]
+        out["categories"] = sorted(
+            [{"category": k, "revenue": round(v)} for k, v in cat_rev.items() if v > 0],
+            key=lambda x: x["revenue"], reverse=True)[:12]
         # מכירות אחרונות — לפי מסמך (עסקה), לא לפי שורת-פריט. שם=הפריט היקר בעסקה.
         cur.execute(_q("""SELECT doc_id, branch_id, name, qty, price, sale_date FROM sales s
             WHERE s.sale_date >= ? AND s.sale_date <= ? AND s.doc_type=0""" + ship_s + bfilt + """
@@ -3175,22 +3214,24 @@ def sales_dashboard(branch_id=None, from_date=None, to_date=None, period=None) -
             if amt > d["_top"]:
                 d["_top"] = amt
                 d["name"] = r["name"] or d["name"]
-        recent = sorted(docs.values(), key=lambda x: x["ts"] or "", reverse=True)[:25]
-        out["recent"] = [{"name": d["name"], "amount": round(d["amount"]), "items": d["items"],
-                          "branch_id": d["branch_id"], "ts": d["ts"]} for d in recent]
+        recent_items = [{"name": d["name"], "amount": round(d["amount"]), "items": d["items"],
+                         "branch_id": d["branch_id"], "ts": d["ts"]} for d in docs.values()]
+        # הורדות-סיטי כשורות-מכירה (שם המוצר הסריאלי + הסכום שחולץ מההערה) — כשמציגים הכל/סיטי
+        if (bsel is None or bsel == 3) and city_rem:
+            for cr in city_rem:
+                recent_items.append({"name": cr["name"], "amount": round(cr["amount"]), "items": 1,
+                                     "branch_id": 3, "ts": cr["removed_at"]})
+        out["recent"] = sorted(recent_items, key=lambda x: x["ts"] or "", reverse=True)[:25]
         # הכנסה יומית 14 ימים (sparkline שבוע-מול-שבוע) — קבוע, לא תלוי בטווח הנבחר
         cur.execute(_q("""SELECT substr(sale_date,1,10) AS day, SUM(s.qty*s.price) AS rev FROM sales s
             WHERE s.sale_date >= ? AND s.doc_type IN (0,5)""" + bfilt + """
             GROUP BY day ORDER BY day"""), tuple([d14] + bp))
         daymap = {r["day"]: round(float(r["rev"] or 0)) for r in cur.fetchall()}
-        # הורדות-סיטי לגרף — רק כשמציגים הכל או את סיטי (סניף 3)
+        # הורדות-סיטי לגרף — רק כשמציגים הכל או את סיטי (סניף 3); מאוחד לפי op (בלי כפל)
         if bsel is None or bsel == 3:
-            cur.execute(_q("SELECT note, removed_at FROM removals WHERE removed_at >= ?"), (d14,))
-            for r in cur.fetchall():
-                amt = _parse_removal_amount(r["note"])
-                if amt:
-                    day = (r["removed_at"] or "")[:10]
-                    daymap[day] = round(daymap.get(day, 0) + amt)
+            for cr in _city_removal_sales(cur, d14):
+                day = (cr["removed_at"] or "")[:10]
+                daymap[day] = round(daymap.get(day, 0) + cr["amount"])
         days = [(now - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(13, -1, -1)]
         out["weekly"] = [{"day": d, "revenue": daymap.get(d, 0)} for d in days]
     return out
