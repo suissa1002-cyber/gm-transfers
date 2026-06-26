@@ -397,6 +397,10 @@
   @keyframes homeTicker{from{transform:translateY(0)}to{transform:translateY(-50%)}}
   .home-ticker{animation:homeTicker linear infinite}
   .home-ticker:hover{animation-play-state:paused}
+  /* רצועת בית: ימין=[דורש-טיפול + פעולות-מהירות מוערמים], שמאל=הזמנות-חדשות (מתמתח לאותו גובה) */
+  .home-strip{display:flex;gap:12px;margin-bottom:16px;align-items:stretch}
+  .home-strip>*{flex:1;min-width:240px}
+  @media(max-width:760px){ .home-strip{flex-direction:column} }
   #wpop.wpop-min{height:auto!important}
   #wpop.wpop-min .wpop-host{display:none}
   .wpop-bar{display:flex;align-items:center;gap:7px;padding:8px 11px;background:#0b6b3a;color:#fff;flex:none}
@@ -6539,21 +6543,23 @@ function renderHome(){
     </div>`; };
   const tickerRows=ordNew.map(tickerRow).join('');
   const tickerDur=Math.max(18,ordNew.length*3);
-  const newOrdersPanel=`<div style="flex:1;min-width:240px;background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.28);border-radius:14px;padding:9px 12px 4px;overflow:hidden">
+  const newOrdersPanel=`<div style="background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.28);border-radius:14px;padding:9px 12px 8px;overflow:hidden">
     <b style="font-size:13px;color:#16a34a;display:flex;align-items:center;gap:5px">🆕 הזמנות חדשות <span class="muted" style="font-weight:400;font-size:10.5px">(${ordNew.length} אחרונות)</span></b>
-    ${ordNew.length?`<div style="height:104px;overflow:hidden;margin-top:4px">
+    ${ordNew.length?`<div style="height:160px;overflow:hidden;margin-top:5px">
       <div class="home-ticker" style="animation-duration:${tickerDur}s">${tickerRows}${tickerRows}</div></div>`
      :'<div class="muted" style="font-size:12px;padding:12px 0">אין הזמנות אחרונות</div>'}</div>`;
-  h+=`<div style="display:flex;gap:12px;margin-bottom:13px;flex-wrap:wrap">${attPanel}${newOrdersPanel}</div>`;
-  // ── שורת פעולות מהירות ──
+  // ── שורת פעולות מהירות (יושבת מתחת ל"דורש טיפול" בצד ימין; הזמנות-חדשות משתרע לגובהן משמאל) ──
   const qa=(txt,onc)=>`<button onclick="${onc}" style="background:var(--card);border:1px solid var(--line);color:var(--txt);border-radius:11px;padding:9px 13px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">${txt}</button>`;
-  h+=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+  const quickRow=`<div style="display:flex;gap:8px;flex-wrap:wrap;align-content:flex-start">
     ${qa('💳 קישור תשלום',"if(ensureAdmin(payQuickOpen))payQuickOpen()")}
     ${qa('🛒 הזמנות',"openOrdersTab()")}
     ${qa('💬 וואטסאפ',"openWaTab()")}
     ${qa('📷 סריקת העברה',"S.view='scan';render()")}
     ${qa('📞 מוקד שיחות',"hubGoCrm()")}
   </div>`;
+  // ימין: דורש-טיפול (גדל) + פעולות-מהירות מתחת · שמאל: הזמנות-חדשות שמתמתח לאותו גובה
+  const rightCol=`<div style="display:flex;flex-direction:column;gap:10px">${attPanel}${quickRow}</div>`;
+  h+=`<div class="home-strip">${rightCol}${newOrdersPanel}</div>`;
   // ── 💰 סקשן מכירות (היום, מעבר בין סניפים) ──
   const sd=d.sales||{};
   const _il=n=>'₪'+Number(Math.round(n||0)).toLocaleString('en-US');
