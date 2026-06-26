@@ -6241,41 +6241,38 @@ def _resolve_product_id(url: str = "", name: str = "") -> Optional[int]:
     return None
 
 
-def _match_oos_variation(product_id: int, color: str = "", size: str = "") -> Optional[dict]:
-    """בוחר את הוריאציה שאזלה (stock!=instock) התואמת לרמזי צבע/מידה. אם יש OOS יחיד —
-    מחזיר אותו בלי ספק. אם עמום (כמה תואמים ואין רמז) — מחזיר None (לא מנחשים)."""
+def _match_oos_variation(product_id: int, color: str = "", size: str = "",
+                         name: str = "") -> Optional[dict]:
+    """בוחר את הוריאציה שאזלה (stock!=instock) הכי-תואמת לרמזים. הרמזים נאספים מצבע/מידה
+    *וגם משם המוצר* (כי ה-uri-bridge הישן מטמיע את הצבע/נפח בתוך שם המוצר, למשל
+    'Google Pixel Watch 4 45mm Obsidian'). ניקוד לפי כמה אסימוני-רמז מופיעים בתכונות
+    הוריאציה; מילות-דגם גנריות (Google/Pixel/Watch) ממילא לא נמצאות בערכי-התכונה אז הן
+    לא מטות. OOS יחיד → נבחר בלי ספק. אם שום רמז לא תאם וריבוי OOS → None (לא מנחשים)."""
+    import re as _re3
     vs = bot_get_variations(product_id) or []
     oos = [v for v in vs if v.get("stock") != "instock"]
     if not oos:
         return None
-    if len(oos) == 1 and not (color or size):
-        return oos[0]
-
-    def _n(x):
-        return (str(x or "")).strip().lower()
-
-    c, z = _n(color), _n(size)
-
-    def _hit(v):
-        blob = _n(v.get("color")) + " " + _n(v.get("storage")) + " " + \
-            " ".join(_n(x) for x in (v.get("attrs_disp") or {}).values()) + " " + \
-            " ".join(_n(x) for x in (v.get("attrs") or {}).values())
-        ok = True
-        if c:
-            ok = ok and (c in blob or any(w in blob for w in c.split() if len(w) >= 3))
-        if z:
-            zz = z.replace(" ", "")
-            ok = ok and (z in blob or zz in blob.replace(" ", ""))
-        return ok
-
-    cand = [v for v in oos if _hit(v)]
-    if len(cand) == 1:
-        return cand[0]
-    if cand and (c or z):
-        return cand[0]            # רמז ניתן והצטמצם — הבחירה הסבירה
     if len(oos) == 1:
         return oos[0]
-    return None                   # עמום מדי — עדיף להיכשל בבירור מאשר לרשום וריאציה שגויה
+    hint = " ".join([color or "", size or "", name or ""]).lower()
+    toks = {t for t in _re3.split(r"[\s,/|\-]+", hint) if len(t) >= 2}
+
+    def _blob(v):
+        b = " ".join([str(v.get("color") or ""), str(v.get("storage") or ""),
+                      " ".join(str(x) for x in (v.get("attrs_disp") or {}).values()),
+                      " ".join(str(x) for x in (v.get("attrs") or {}).values())]).lower()
+        return b, b.replace(" ", "")
+
+    best, best_score = None, 0
+    for v in oos:
+        b, bns = _blob(v)
+        score = sum(1 for t in toks if t in b or t.replace(" ", "") in bns)
+        if score > best_score:           # מקס' ראשון מנצח (tie → הראשון, סביר לסטוק-וואצ')
+            best, best_score = v, score
+    if best and best_score > 0:
+        return best
+    return None                          # שום רמז לא תאם — עמום מדי, להיכשל בבירור
 
 
 def _stock_watch_add(body: StockWatchAddIn):
@@ -6294,7 +6291,7 @@ def _stock_watch_add(body: StockWatchAddIn):
         pid = _resolve_product_id((body.product_url or "").strip(), pname)
         if not pid:
             raise HTTPException(404, "לא מצאתי את המוצר באתר (בדוק שם/קישור)")
-        v = _match_oos_variation(pid, (body.color or "").strip(), (body.size or "").strip())
+        v = _match_oos_variation(pid, (body.color or "").strip(), (body.size or "").strip(), pname)
         if not v:
             raise HTTPException(409, "לא הצלחתי לזהות חד-משמעית איזו וריאציה אזלה — ציין צבע/מידה")
         sku = str(v.get("sku") or "").strip()
