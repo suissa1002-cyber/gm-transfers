@@ -359,9 +359,9 @@ except Exception:  # noqa: BLE001
     BOT_CWD = "/tmp"
 
 
-def run_claude(prompt: str, resume_sid: str = None, fast: bool = False) -> tuple:
+def run_claude(prompt: str, resume_sid: str = None, fast: bool = False, timeout_s: int = None) -> tuple:
     """מריץ claude headless. fast=True → תיקייה נקייה + מודל מהיר (משימת בוט/לקוח).
-    מחזיר (ok, text, session_id)."""
+    timeout_s → override ל-timeout (פעולות צריכות יותר מתשובה). מחזיר (ok, text, session_id)."""
     try:
         env = {**os.environ, "ANTHROPIC_API_KEY": ""}  # ביטחון: שלא יחויב API key בטעות
         env.pop("CLAUDECODE", None)   # מאפשר הרצה גם מתוך סשן Claude Code (בדיקות)
@@ -375,7 +375,7 @@ def run_claude(prompt: str, resume_sid: str = None, fast: bool = False) -> tuple
         if model:
             cmd += ["--model", model]
         cwd = BOT_CWD if fast else str(ROOT)
-        timeout = 90 if fast else JOB_TIMEOUT
+        timeout = timeout_s or (90 if fast else JOB_TIMEOUT)
         r = subprocess.run(
             cmd,
             cwd=cwd, capture_output=True, text=True, timeout=timeout,
@@ -449,7 +449,16 @@ def process(job: dict):
         return
     # ── ⚡ פעולה תפעולית ישירה (stock-watch/תזכורת) → מסלול מהיר (sonnet), לא המוח הכבד ──
     if _is_op_task(job["question"]):
-        ok, text, _sid = run_claude(build_panel_op_prompt(phone, job["question"]), fast=True)
+        op_prompt = build_panel_op_prompt(phone, job["question"])
+        # פעולה (חיפוש SKU + curl + סבבי-כלים) איטית מתשובה → 200ש' במקום 90, + retry על כשל רגעי.
+        ok, text, _sid = run_claude(op_prompt, fast=True, timeout_s=200)
+        if not ok:
+            log.warning("op job #%s failed (%s) — retrying once", jid, (text or "")[:200])
+            time.sleep(3)
+            ok, text, _sid = run_claude(op_prompt, fast=True, timeout_s=200)
+        if not ok:
+            # חושפים את הסיבה האמיתית בלוג (היתה מוסתרת מאחורי הודעה גנרית) — לאבחון
+            log.error("op job #%s FAILED after retry: %s", jid, (text or "no-text")[:400])
         answer = (text or "").strip() if ok else "סליחה, תקלה רגעית בביצוע הפעולה — נסה שוב 🙏"
         try:
             requests.post(f"{BASE}/api/uri-bridge/answer", headers=H,
