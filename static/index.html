@@ -6472,9 +6472,12 @@ function homeSpark(days){
   const pos=days.map(d=>d.revenue||0).filter(v=>v>0).sort((a,b)=>a-b);
   const max=Math.max(1, pos.length?pos[Math.min(pos.length-1,Math.floor(pos.length*0.85))]:1);
   const w=100/days.length;
+  const _heDow=['יום א׳','יום ב׳','יום ג׳','יום ד׳','יום ה׳','יום ו׳','שבת'];
+  const _tip=day=>{ try{ const p=String(day).split('-'); const dt=new Date(+p[0],+p[1]-1,+p[2]);
+      return `${_heDow[dt.getDay()]} · ${p[2]}/${p[1]}`; }catch(e){ return String(day); } };
   return `<svg viewBox="0 0 100 30" preserveAspectRatio="none" style="width:100%;height:42px;display:block">`+
     days.map((d,i)=>{ const rev=d.revenue||0; const hh=Math.max(rev>0?2:0.6,Math.min(28,rev/max*28)); const recent=i>=days.length-7;
-      return `<rect x="${(i*w+0.5).toFixed(2)}" y="${(30-hh).toFixed(2)}" width="${(w-1).toFixed(2)}" height="${hh.toFixed(2)}" rx="0.5" fill="${recent?'#16a34a':'#cbd5e1'}"><title>${escW(d.day)}: ₪${rev.toLocaleString()}</title></rect>`;
+      return `<rect x="${(i*w+0.5).toFixed(2)}" y="${(30-hh).toFixed(2)}" width="${(w-1).toFixed(2)}" height="${hh.toFixed(2)}" rx="0.5" fill="${recent?'#16a34a':'#cbd5e1'}"><title>${escW(_tip(d.day))} · ₪${rev.toLocaleString()}</title></rect>`;
     }).join('')+`</svg>`;
 }
 function homeKpi(val,label,color){
