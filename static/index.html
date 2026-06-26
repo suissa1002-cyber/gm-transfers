@@ -6380,6 +6380,11 @@ async function loadHomeSales(){
   S.homeSalesLoading=false;
   if(S.view==='home') renderHome();
 }
+async function homeSalesRefresh(){
+  S.homeLastTouch=Date.now(); S.homeSalesLoading=true; if(S.view==='home')renderHome();
+  try{ await api('/api/admin/sales-ingest',{method:'POST'}); }catch(e){}
+  setTimeout(()=>loadHomeSales(), 18000);   // נותן לאיסוף מ-NewOrder לרוץ ברקע, ואז טוען מחדש
+}
 function homeSalesApplyRange(f,t){ if(!f||!t) return; S.homeSalesPeriod='range'; S.homeSalesRange={from:f,to:t}; closeModal(); loadHomeSales(); }
 function homeSalesRangeOpen(){
   const fmt=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -6576,7 +6581,7 @@ function renderHome(){
   const perLabel=per==='yesterday'?'אתמול':(per==='range'?((sd.from||'')+' – '+(sd.to||'')):'היום');
   const seg=(id,lbl)=>`<button onclick="homeSalesPeriod('${id}')" style="flex:1;background:${per===id?'#16a34a':'transparent'};color:${per===id?'#fff':'var(--txt)'};border:0;border-radius:9px;padding:7px 4px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">${lbl}</button>`;
   h+=crmCard(
-    `<div style="display:flex;align-items:center;gap:8px;margin-bottom:11px"><span style="font-size:17px">💰</span><b style="font-size:15px">מכירות · ${escW(perLabel)}</b>${S.homeSalesLoading?'<span class="muted" style="font-size:12px;margin-inline-start:auto">⏳ מעדכן…</span>':''}</div>
+    `<div style="display:flex;align-items:center;gap:8px;margin-bottom:11px"><span style="font-size:17px">💰</span><b style="font-size:15px">מכירות · ${escW(perLabel)}</b>${S.homeSalesLoading?'<span class="muted" style="font-size:12px;margin-inline-start:auto">⏳ מעדכן…</span>':'<button onclick="homeSalesRefresh()" title="משוך מכירות עכשיו מ-NewOrder" style="margin-inline-start:auto;background:none;border:0;cursor:pointer;font-size:16px;color:var(--muted);padding:0 2px;line-height:1">↻</button>'}</div>
      <div style="display:flex;gap:3px;background:var(--card2);border:1px solid var(--line);border-radius:11px;padding:3px;margin-bottom:12px">${seg('today','היום')}${seg('yesterday','אתמול')}${seg('range','סינון')}</div>
      <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:13px">${branches.map(brTile).join('')}</div>
      <div style="display:flex;gap:10px;margin-bottom:13px">

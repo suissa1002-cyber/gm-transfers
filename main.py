@@ -398,7 +398,7 @@ def register_recurring_jobs():
     scheduler.add_job(_rebalance_job, "cron", id="rebalance_pm", hour=21, minute=0, max_instances=1)
     # איסוף מכירות מצטבר: כל 3 שעות. ריצה ראשונית רק אם האיסוף האחרון ישן —
     # deploys תכופים לא צריכים להפעיל אותו שוב ושוב (מעמיס על הקצב המשותף).
-    scheduler.add_job(_sales_ingest_job, "interval", hours=1, id="sales_ingest", max_instances=1)  # ל-לוח בית: "היום" טרי
+    scheduler.add_job(_sales_ingest_job, "interval", minutes=15, id="sales_ingest", max_instances=1)  # ל-לוח בית: "היום" טרי
     # סגירת כרטיסי קליטה למכשירים שנמכרו לפני קליטה — גם עצמאית (גיבוי ל-hook באיסוף)
     scheduler.add_job(_sold_reconcile_job, "interval", minutes=30, id="sold_reconcile", max_instances=1)
     if _is_stale(db.sales_state_get("last_run"), hours=2):
