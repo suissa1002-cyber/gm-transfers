@@ -6198,21 +6198,113 @@ class StockWatchAddIn(BaseModel):
     neworder_id: int = 0       # אם כבר ידוע — מדלגים על החיפוש
     product_name: str = ""
     product_url: str = ""
+    color: str = ""            # רמז צבע — לפתרון SKU של הוריאציה שאזלה בצד-שרת
+    size: str = ""             # רמז מידה/נפח — כנ"ל
     notes: str = ""
     notify: bool = True        # לשלוח ללקוח אישור הרשמה
 
 
+def _resolve_product_id(url: str = "", name: str = "") -> Optional[int]:
+    """slug מתוך permalink → product_id; fallback חיפוש WC לפי שם. דטרמיניסטי, צד-שרת
+    (יש כאן WC creds, בניגוד לסביבת אורי). ה-url יכול להיות tinyurl — אז ה-slug ייכשל
+    בשקט וניפול לחיפוש לפי שם."""
+    creds = _wc_creds()
+    if not creds:
+        return None
+    base, k, s = creds
+    import requests as _rq
+    from urllib.parse import urlsplit
+    slug = ""
+    if url:
+        path = urlsplit(url).path.rstrip("/")
+        if path and "/" in path:
+            slug = path.split("/")[-1]
+    if slug:
+        try:
+            r = _rq.get(base + "/wp-json/wc/v3/products", params={"slug": slug},
+                        auth=(k, s), timeout=15)
+            arr = r.json() if r.ok else []
+            if arr:
+                return int(arr[0]["id"])
+        except Exception:  # noqa: BLE001
+            pass
+    if name:
+        try:
+            r = _rq.get(base + "/wp-json/wc/v3/products",
+                        params={"search": name, "per_page": 5, "status": "publish"},
+                        auth=(k, s), timeout=20)
+            arr = [p for p in (r.json() if r.ok else []) if p.get("type") != "grouped"]
+            if arr:
+                return int(arr[0]["id"])
+        except Exception:  # noqa: BLE001
+            pass
+    return None
+
+
+def _match_oos_variation(product_id: int, color: str = "", size: str = "") -> Optional[dict]:
+    """בוחר את הוריאציה שאזלה (stock!=instock) התואמת לרמזי צבע/מידה. אם יש OOS יחיד —
+    מחזיר אותו בלי ספק. אם עמום (כמה תואמים ואין רמז) — מחזיר None (לא מנחשים)."""
+    vs = bot_get_variations(product_id) or []
+    oos = [v for v in vs if v.get("stock") != "instock"]
+    if not oos:
+        return None
+    if len(oos) == 1 and not (color or size):
+        return oos[0]
+
+    def _n(x):
+        return (str(x or "")).strip().lower()
+
+    c, z = _n(color), _n(size)
+
+    def _hit(v):
+        blob = _n(v.get("color")) + " " + _n(v.get("storage")) + " " + \
+            " ".join(_n(x) for x in (v.get("attrs_disp") or {}).values()) + " " + \
+            " ".join(_n(x) for x in (v.get("attrs") or {}).values())
+        ok = True
+        if c:
+            ok = ok and (c in blob or any(w in blob for w in c.split() if len(w) >= 3))
+        if z:
+            zz = z.replace(" ", "")
+            ok = ok and (z in blob or zz in blob.replace(" ", ""))
+        return ok
+
+    cand = [v for v in oos if _hit(v)]
+    if len(cand) == 1:
+        return cand[0]
+    if cand and (c or z):
+        return cand[0]            # רמז ניתן והצטמצם — הבחירה הסבירה
+    if len(oos) == 1:
+        return oos[0]
+    return None                   # עמום מדי — עדיף להיכשל בבירור מאשר לרשום וריאציה שגויה
+
+
 def _stock_watch_add(body: StockWatchAddIn):
     """לוגיקת ההרשמה ל-Stock Watcher (משותפת לאדמין/בריג'/בוט): מזהה מוצר
-    (SKU→neworder_id דרך NewOrder) → רושם ב-watcher → שולח אישור ללקוח."""
+    (SKU→neworder_id דרך NewOrder) → רושם ב-watcher → שולח אישור ללקוח.
+    אם לא ניתן SKU/neworder_id — פותר את הוריאציה שאזלה בצד-שרת מ-url/שם + צבע/מידה."""
     import requests as _rq
     phone = _il_phone(body.phone)
     if len(phone) < 11:
         raise HTTPException(400, "טלפון לא תקין")
     no_id = int(body.neworder_id or 0)
     pname = (body.product_name or "").strip()
+    sku = (body.sku or "").strip()
+    # ── פתרון SKU דטרמיניסטי בצד-שרת (כשאורי לא הצליח להשיג מק"ט) ──
+    if not no_id and not sku:
+        pid = _resolve_product_id((body.product_url or "").strip(), pname)
+        if not pid:
+            raise HTTPException(404, "לא מצאתי את המוצר באתר (בדוק שם/קישור)")
+        v = _match_oos_variation(pid, (body.color or "").strip(), (body.size or "").strip())
+        if not v:
+            raise HTTPException(409, "לא הצלחתי לזהות חד-משמעית איזו וריאציה אזלה — ציין צבע/מידה")
+        sku = str(v.get("sku") or "").strip()
+        if not pname:
+            pname = (body.product_name or "").strip()
+        logger.info("stock-watch resolved variant: pid=%s color=%s size=%s -> sku=%s",
+                    pid, body.color, body.size, sku)
+        if not sku:
+            raise HTTPException(422, "הוריאציה שאזלה ללא מק\"ט באתר — צריך לחבר מק\"ט")
     if not no_id:
-        sku = (body.sku or "").strip()
         if not sku:
             raise HTTPException(400, "צריך SKU או neworder_id")
         try:
