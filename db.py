@@ -3066,6 +3066,21 @@ def _il_today():
 _SALES_SHIP_FILTER = " AND {a}name NOT LIKE ? AND {a}name NOT LIKE ? "
 _SALES_SHIP_PARAMS = ["משלוח%", "איסוף%"]
 
+import re as _re_amt
+# סיטי (סניף 3) עובד בחצי-קופה — סכום ה"מכירה" כתוב בהערת ההורדה ("הורדה מהמלאי 1220שח").
+_REMOVAL_AMT = _re_amt.compile(r"(\d[\d,]*(?:\.\d+)?)\s*(?:ש[\"'׳״]?ח|₪)")
+
+
+def _parse_removal_amount(note) -> float:
+    """מחלץ סכום מהערת הורדת-מלאי (סיטי): 'הורדה מהמלאי 1220שח' → 1220.0. 0 אם אין."""
+    m = _REMOVAL_AMT.search(str(note or ""))
+    if not m:
+        return 0.0
+    try:
+        return float(m.group(1).replace(",", ""))
+    except (TypeError, ValueError):
+        return 0.0
+
 
 def sales_dashboard(branch_id=None, from_date=None, to_date=None, period=None) -> dict:
     """מכירות ללוח הבית (טבלת sales; qty חתום: מכירה +, זיכוי −). ברירת מחדל=היום (שעון IL).
@@ -3112,6 +3127,19 @@ def sales_dashboard(branch_id=None, from_date=None, to_date=None, period=None) -
             out["by_branch"][int(b)] = {"revenue": round(float(r["revenue"] or 0)),
                                         "credits": round(abs(float(r["credits"] or 0))),
                                         "count": int(r["cnt"] or 0)}
+        # סיטי (סניף 3, חצי-קופה): המכירות הן הורדות-מלאי עם הסכום בהערה — מסכמים ומשייכים כסניף 3
+        cur.execute(_q("SELECT note FROM removals WHERE removed_at >= ? AND removed_at <= ?"), (f, t_end))
+        rem_sum = 0.0
+        rem_cnt = 0
+        for r in cur.fetchall():
+            amt = _parse_removal_amount(r["note"])
+            if amt:
+                rem_sum += amt
+                rem_cnt += 1
+        if rem_sum:
+            b3 = out["by_branch"].setdefault(3, {"revenue": 0, "credits": 0, "count": 0})
+            b3["revenue"] = round(b3["revenue"] + rem_sum)
+            b3["count"] += rem_cnt
         if bsel is not None:
             out["today"] = dict(out["by_branch"].get(bsel, {"revenue": 0, "credits": 0, "count": 0}))
         else:
@@ -3155,6 +3183,14 @@ def sales_dashboard(branch_id=None, from_date=None, to_date=None, period=None) -
             WHERE s.sale_date >= ? AND s.doc_type IN (0,5)""" + bfilt + """
             GROUP BY day ORDER BY day"""), tuple([d14] + bp))
         daymap = {r["day"]: round(float(r["rev"] or 0)) for r in cur.fetchall()}
+        # הורדות-סיטי לגרף — רק כשמציגים הכל או את סיטי (סניף 3)
+        if bsel is None or bsel == 3:
+            cur.execute(_q("SELECT note, removed_at FROM removals WHERE removed_at >= ?"), (d14,))
+            for r in cur.fetchall():
+                amt = _parse_removal_amount(r["note"])
+                if amt:
+                    day = (r["removed_at"] or "")[:10]
+                    daymap[day] = round(daymap.get(day, 0) + amt)
         days = [(now - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(13, -1, -1)]
         out["weekly"] = [{"day": d, "revenue": daymap.get(d, 0)} for d in days]
     return out
