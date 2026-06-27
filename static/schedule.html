@@ -489,7 +489,7 @@ async function dispatch(mode, employee){
     const r=await api('/api/schedule/dispatch',{method:'POST',body:JSON.stringify({week:STATE.week, mode, employee})});
     const j=await r.json();
     if(r.status!==200){ res.innerHTML='⚠ '+(j.detail||'שגיאה'); return; }
-    if(mode==='group'){ res.innerHTML=j.ok?'✅ נשלח לקבוצת ההתראות':'⚠ השליחה נכשלה'; toast(j.ok?'✅ נשלח לקבוצה':'נכשל'); }
+    if(mode==='group'){ res.innerHTML=j.ok?'✅ נשלח לקבוצת ההתראות':('⚠ השליחה נכשלה — '+esc(j.detail||'בדקו שהבוט נמצא בקבוצה')); toast(j.ok?'✅ נשלח לקבוצה':'נכשל'); }
     else{
       let m='✅ נשלחו '+j.sent+' הודעות';
       if(j.missing&&j.missing.length) m+='<br>⚠ לא רשומים בבוט: '+j.missing.map(esc).join(', ');

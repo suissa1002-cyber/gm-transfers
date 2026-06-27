@@ -2550,13 +2550,45 @@ async def schedule_dispatch(request: Request, x_admin_key: Optional[str] = Heade
     if mode == "group":
         chat = os.getenv("SHIFT_GROUP_CHAT", "").strip() or (db.sales_state_get("shift_group_chat") or "").strip()
         if not chat:
-            raise HTTPException(400, "קבוצת ההתראות עוד לא חוברה — שלח/י בקבוצה הודעה עם /start@Greenm_alert_bot")
+            raise HTTPException(400, "קבוצת ההתראות עוד לא חוברה — הוסיפו את הבוט @Greenm_alert_bot "
+                                     "לקבוצה (או שלחו בקבוצה /start@Greenm_alert_bot) ונסו שוב")
         link = f"{base}/schedule/view?week={wk}&sig={_schedule_view_sig(wk, '')}"
         txt = (f"🗓️ <b>סידור עבודה שבועי</b>\nשבוע {_fmt_week_range(wk)}\n\n"
                "לצפייה בסידור המלא והמעוצב — לחצו על הכפתור 👇")
         kb = {"inline_keyboard": [[{"text": "📋 פתח את הסידור", "url": link}]]}
-        ok = auto_transfer.shift_send_chat(chat, txt, kb)
-        return {"ok": ok, "mode": "group"}
+        tok = os.getenv("SHIFT_BOT_TOKEN", "").strip()
+        if not tok:
+            raise HTTPException(500, "SHIFT_BOT_TOKEN לא מוגדר")
+        import requests as _rq
+
+        def _send(cid):
+            try:
+                r = _rq.post(f"https://api.telegram.org/bot{tok}/sendMessage",
+                             json={"chat_id": cid, "text": txt, "parse_mode": "HTML",
+                                   "disable_web_page_preview": True, "reply_markup": kb}, timeout=12)
+                j = {}
+                try:
+                    j = r.json()
+                except Exception:  # noqa: BLE001
+                    pass
+                return r.status_code == 200 and j.get("ok"), j
+            except Exception as e:  # noqa: BLE001
+                return False, {"description": str(e)}
+
+        ok, j = _send(chat)
+        # ריפוי-עצמי: קבוצה ששודרגה ל-supergroup מקבלת chat_id חדש; הישן נכשל עם
+        # migrate_to_chat_id. מעדכנים את המזהה השמור ושולחים שוב לחדש.
+        if not ok:
+            mig = ((j.get("parameters") or {}).get("migrate_to_chat_id"))
+            if mig:
+                db.sales_state_set("shift_group_chat", str(mig))
+                logger.info("shift group migrated %s -> %s, retrying", chat, mig)
+                chat = str(mig)
+                ok, j = _send(chat)
+        detail = "" if ok else (j.get("description") or "שגיאה לא ידועה")
+        if not ok:
+            logger.warning("shift group dispatch failed chat=%s: %s", chat, detail)
+        return {"ok": bool(ok), "mode": "group", "chat": str(chat), "detail": detail}
     byemp = {}
     for r in rows:
         byemp.setdefault(r["employee"], []).append(r)
