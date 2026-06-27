@@ -6700,8 +6700,10 @@ function renderHome(){
   const inbox=waConvs.filter(c=>!c.archived).sort((a,b)=>(b.ts||0)-(a.ts||0));
   const waList=inbox.slice(0,7);
   const _dot=c=>c.awaiting_agent?'🔴':(c.unread?'🟡':'🟢');
+  const _waLegend=`<div class="muted" style="display:flex;flex-wrap:wrap;gap:10px;font-size:10.5px;padding:0 0 7px;line-height:1.4">
+    <span>🔴 ממתין לנציג</span><span>🟡 לא נקרא</span><span>🟢 נקרא / טופל</span></div>`;
   if(homeShow('whatsapp')) h+=crmCard(homeHead('💬','וואטסאפ — אינבוקס',inbox.length+' שיחות'+(waWaiting?' · '+waWaiting+' ממתינים':''),"openWaTab()")+
-    (waList.length?waList.map(c=>homeRow(
+    (waList.length?_waLegend+waList.map(c=>homeRow(
        `<span>${_dot(c)}</span>
         <b style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(c.name||c.phone)}</b>
         <span class="muted" style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:130px">${escW((c.last_msg||'').slice(0,42))}</span>`,
