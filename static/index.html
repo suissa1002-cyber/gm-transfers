@@ -5573,6 +5573,29 @@ function paintWcOrder(){
   const stKeys=Object.keys(S.wcoStatuses||{}).filter(s=>!['checkout-draft','recsubc'].includes(s));
   const stOpts=(stKeys.length?stKeys:['pending','processing','on-hold','completed','cancelled','refunded','failed'])
     .map(s=>`<option value="${s}" ${d.status===s?'selected':''}>${escW(ordStName(s))}</option>`).join('');
+  // ── אזור פעולות ההזמנה: כפתורים אחידים ברשת רספונסיבית (אסתטיקה אחידה) ──
+  const oAct=(inner,color,onclick,title)=>`<button class="btn-ghost" style="padding:10px 12px;border-radius:10px;border-color:${color};color:${color};display:inline-flex;align-items:center;justify-content:center;gap:7px;font-size:13px;font-weight:600;width:100%;box-sizing:border-box;white-space:nowrap;cursor:pointer" onclick="${onclick}"${title?` title="${title}"`:''}>${inner}</button>`;
+  const _actBtns=[];
+  _actBtns.push(d.cargo
+    ? oAct(ico('truck',14)+' תווית Cargo','#0369a1',`wcoCargoLabel(${d.id})`)
+    : oAct(ico('truck',14)+' צור משלוח Cargo','#0369a1',`wcoCargoCreate(${d.id},${(d.ship_tag||'').includes('tlv')?'true':'false'})`));
+  _actBtns.push(oAct(ico('radio',14)+' '+(d.bcast?'שדר מחדש':'הרץ שיריון/שידור'),'#15803d',`wcoAutoTransfer(${d.id},${d.bcast?1:0})`,'מריץ את לוגיקת השיריון/השידור להזמנה (אחרי הצמדת/תיקון מק״ט)'));
+  _actBtns.push(oAct('🔀 שנה אופן משלוח','#ca8a04',`wcoShipMethod(${d.id})`,'שינוי איסוף↔משלוח בלי ריקוד הסטטוסים (לא מעיר את השידור)'));
+  if(phoneIntl.length>10) _actBtns.push(oAct('📄 שלח חשבונית','#0d9488',`wcoSendInvoice('${d.number}','${phoneIntl}')`,'שולח ללקוח בוואטסאפ את החשבונית של ההזמנה'));
+  _actBtns.push(oAct('↩️ '+(d.return_open?'סגור החזרה':'פתח החזרה'),'#7c3aed',`wcoOpenReturn(${d.id},${d.return_open?1:0})`,d.return_open?'סגירת ההחזרה':'פותח החזרה: מתעד בהזמנה + מעתיק פרטי לקוח + פותח דשבורד Cargo לאיסוף'));
+  if(['cancelled','failed','refunded'].includes(d.status)) _actBtns.push(oAct(ico('trash',14)+' העבר לפח','#b91c1c',`wcoTrash(${d.id})`));
+  const actions=`<div style="margin-top:18px;border-top:1px solid var(--line);padding-top:16px;display:flex;flex-direction:column;gap:11px">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <select id="wcoSt" style="flex:1;min-width:140px;max-width:230px;padding:9px 11px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:13px">${stOpts}</select>
+      <button class="btn-primary" style="padding:9px 18px;border-radius:10px;white-space:nowrap" onclick="wcoSetStatus(${d.id})">עדכן סטטוס</button>
+      <a class="btn-ghost" style="text-decoration:none;padding:9px 13px;border-radius:10px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;margin-inline-start:auto" target="_blank" href="${escW(d.admin_url)}">${ico('globe',14)} פתח ב-WC</a>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px">${_actBtns.join('')}</div>
+    <div style="display:flex;gap:8px">
+      <input id="wcoNote" placeholder="הוסף הערה פנימית להזמנה…" style="flex:1;min-width:0;padding:9px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:13px" onkeydown="if(event.key==='Enter')wcoAddNote(${d.id})">
+      <button class="btn-ghost" style="padding:9px 15px;border-radius:10px" onclick="wcoAddNote(${d.id})">➕</button>
+    </div>
+  </div>`;
   document.getElementById('modalRoot').innerHTML=`<div class="overlay" onclick="closeModal()"><div class="modal" style="max-width:640px;text-align:right;max-height:90vh;overflow:auto;padding:30px 30px 26px;line-height:1.55" onclick="event.stopPropagation()">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
       <b style="font-size:17px">הזמנה #${d.number}</b>
@@ -5635,23 +5658,7 @@ function paintWcOrder(){
     ${d.customer_note?`<div class="wa-note" style="margin-top:8px;display:flex;align-items:flex-start;gap:6px">${ico('pencil',13)} <span>${escW(d.customer_note)}</span></div>`:''}
     ${(d.notes||[]).length?`<details style="margin-top:8px"><summary class="muted" style="cursor:pointer;font-size:13px">הערות הזמנה (${d.notes.length})</summary>
       ${d.notes.map(n=>`<div class="wa-note" style="margin-top:5px;font-size:12px">${escW(n.note)}<div class="by"><span>${fmtD(n.date)}${n.customer?' · נשלח ללקוח':''}</span></div></div>`).join('')}</details>`:''}
-    <div style="display:flex;gap:9px;margin-top:20px;align-items:center;flex-wrap:wrap">
-      <select id="wcoSt" style="padding:8px 10px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--txt)">${stOpts}</select>
-      <button class="btn-primary" style="padding:8px 14px" onclick="wcoSetStatus(${d.id})">עדכן סטטוס</button>
-      <a class="btn-ghost" style="text-decoration:none;padding:8px 12px" target="_blank" href="${escW(d.admin_url)}">פתח ב-WC ↗</a>
-      ${phoneIntl.length>10?`<button class="btn-ghost" style="padding:8px 12px;border-color:#0d9488;color:#0d9488;display:inline-flex;align-items:center;gap:6px" onclick="wcoSendInvoice('${d.number}','${phoneIntl}')" title="שולח ללקוח בוואטסאפ את החשבונית של ההזמנה">📄 שלח חשבונית</button>`:''}
-      ${d.cargo?`<button class="btn-ghost" style="padding:8px 12px;border-color:#0369a1;color:#0369a1;display:inline-flex;align-items:center;gap:6px" onclick="wcoCargoLabel(${d.id})">${ico('truck',14)} תווית Cargo</button>`
-        :`<button class="btn-ghost" style="padding:8px 12px;border-color:#0369a1;color:#0369a1;display:inline-flex;align-items:center;gap:6px" onclick="wcoCargoCreate(${d.id},${(d.ship_tag||'').includes('tlv')?'true':'false'})">${ico('truck',14)} צור משלוח Cargo</button>`}
-      <button class="btn-ghost" style="padding:8px 12px;border-color:#ca8a04;color:#ca8a04;display:inline-flex;align-items:center;gap:6px" onclick="wcoShipMethod(${d.id})" title="שינוי איסוף↔משלוח בלי ריקוד הסטטוסים (לא מעיר את השידור)">🔀 שנה אופן משלוח</button>
-      <button class="btn-ghost" style="padding:8px 12px;border-color:#15803d;color:#15803d;display:inline-flex;align-items:center;gap:6px" onclick="wcoAutoTransfer(${d.id},${d.bcast?1:0})" title="מריץ את לוגיקת השיריון/השידור להזמנה (אחרי הצמדת/תיקון מק״ט)">${ico('radio',14)} ${d.bcast?'שדר מחדש':'הרץ שיריון/שידור'}</button>
-      <button class="btn-ghost" style="padding:8px 12px;border-color:#7c3aed;color:#7c3aed;display:inline-flex;align-items:center;gap:6px" onclick="wcoOpenReturn(${d.id},${d.return_open?1:0})" title="${d.return_open?'סגירת ההחזרה':'פותח החזרה: מתעד בהזמנה + מעתיק פרטי לקוח + פותח דשבורד Cargo לאיסוף'}">↩️ ${d.return_open?'סגור החזרה':'פתח החזרה'}</button>
-      ${['cancelled','failed','refunded'].includes(d.status)?`<button class="btn-ghost" style="padding:8px 12px;border-color:#b91c1c;color:#b91c1c;display:inline-flex;align-items:center;gap:6px" onclick="wcoTrash(${d.id})">${ico('trash',14)} העבר לפח</button>`:''}
-    </div>
-    <div style="display:flex;gap:8px;margin-top:12px">
-      <input id="wcoNote" placeholder="הוסף הערה פנימית להזמנה…" style="flex:1;min-width:0;padding:8px 10px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:13px"
-             onkeydown="if(event.key==='Enter')wcoAddNote(${d.id})">
-      <button class="btn-ghost" onclick="wcoAddNote(${d.id})">➕</button>
-    </div>
+    ${actions}
   </div></div>`;
 }
 async function wcoLoadCalls(phoneIntl){
