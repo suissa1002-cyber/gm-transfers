@@ -6485,6 +6485,17 @@ function _checkDateFor(mode){
 }
 function homeChecksMode(m){ S.homeLastTouch=Date.now(); S.homeChecksMode=m; if(S.view==='home')renderHome(); }
 function homeStaffDay(n){ S.homeLastTouch=Date.now(); S.homeStaffDay=n; if(S.view==='home')renderHome(); }
+// "מחר" כשהיום שבת → ראשון שייך לשבוע הבא; ה-roster מאוחסן לפי שבוע, אז טוענים את השבוע
+// הבא בנפרד. אם עוד לא שובץ — יוצג "אין שיבוץ" אמיתי, לא הראשון שעבר.
+async function loadHomeSchedNext(week){
+  if(S._homeSchedNextLoading===week) return;
+  S._homeSchedNextLoading=week;
+  try{ const r=await api('/api/schedule/data?week='+encodeURIComponent(week));
+    S.homeSchedNext={week, roster:(r&&r.roster)||[], branches:(r&&r.branches)||[]}; }
+  catch(e){ S.homeSchedNext={week, roster:[], branches:[]}; }
+  S._homeSchedNextLoading=null;
+  if(S.view==='home') renderHome();
+}
 async function loadHomeChecks(){
   if(S.homeChecksAt && Date.now()-S.homeChecksAt<300000) return;   // cache 5 דק'
   S.homeChecksAt=Date.now();
@@ -6765,9 +6776,20 @@ function renderHome(){
   // 👥 עובדים בסניפים (סידור עבודה) — מתג היום/מחר; היום=ברירת מחדל
   const sched=d.sched||{};
   const staffDay=S.homeStaffDay||0;  // 0=היום, 1=מחר
-  const sdow=(new Date().getDay()+staffDay)%7;   // 0=ראשון … 6=שבת (תואם dow ב-roster)
-  const schedBr=sched.branches||[];
-  const rosterToday=(sched.roster||[]).filter(r=>r.dow===sdow && r.employee);
+  const _stNow=new Date();
+  const sdow=(_stNow.getDay()+staffDay)%7;   // 0=ראשון … 6=שבת (תואם dow ב-roster)
+  // ה-roster לפי שבוע: כשהיום שבת ומבקשים "מחר" (ראשון) — זה כבר השבוע הבא, צריך roster אחר
+  const _crossWeek=staffDay===1 && _stNow.getDay()===6;
+  let _schedSrc=sched, _schedLoading=false;
+  if(_crossWeek){
+    const _tm=new Date(_stNow); _tm.setDate(_tm.getDate()+1);
+    const _p=n=>String(n).padStart(2,'0');
+    const _nextWk=`${_tm.getFullYear()}-${_p(_tm.getMonth()+1)}-${_p(_tm.getDate())}`;  // ראשון=תחילת השבוע
+    if(S.homeSchedNext && S.homeSchedNext.week===_nextWk) _schedSrc=S.homeSchedNext;
+    else { _schedSrc={roster:[], branches:sched.branches||[]}; _schedLoading=true; loadHomeSchedNext(_nextWk); }
+  }
+  const schedBr=_schedSrc.branches||sched.branches||[];
+  const rosterToday=(_schedSrc.roster||[]).filter(r=>r.dow===sdow && r.employee);
   const byBr={}; rosterToday.forEach(r=>{ (byBr[r.branch_id]=byBr[r.branch_id]||[]).push(r); });
   const stseg=(id,lbl)=>`<button onclick="homeStaffDay(${id})" style="flex:1;background:${staffDay===id?'#16a34a':'transparent'};color:${staffDay===id?'#fff':'var(--txt)'};border:0;border-radius:8px;padding:6px 2px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">${lbl}</button>`;
   if(homeShow('staff')) h+=crmCard(homeHead('👥','עובדים '+(staffDay?'מחר':'היום'),rosterToday.length+' במשמרת',"window.open('/schedule','_blank')")+
@@ -6777,7 +6799,7 @@ function renderHome(){
         <div style="font-size:13px;font-weight:700">${escW(b.name)}</div>
         <div style="font-size:12px;margin-top:2px;line-height:1.6">${emps.map(e=>`${escW(e.employee)}${e.hours?` <span class="muted" style="font-size:11px">${escW(e.hours)}</span>`:''}`).join(' · ')}</div>
       </div>`; }).join('')
-     :'<div class="muted" style="font-size:13px;padding:6px 0">אין שיבוץ '+(staffDay?'למחר':'להיום')+'</div>'));
+     :'<div class="muted" style="font-size:13px;padding:6px 0">'+(_schedLoading?'טוען…':('אין שיבוץ '+(staffDay?'למחר (טרם שובץ)':'להיום')))+'</div>'));
   // 💳 צ'קים לפירעון (מתג: היום / רביעי הקרוב / רביעי הבא)
   const cmode=S.homeChecksMode||'today';
   const cdate=_checkDateFor(cmode);
