@@ -191,6 +191,14 @@ def _auto_transfer_job():
         auto_transfer.scan_orders()
     except Exception as e:  # noqa: BLE001
         logger.warning("auto_transfer failed: %s", e)
+    finally:
+        # חותמת "ה-job רץ" (גם בכשל) — ה-watchdog בודק אותה; אם מתיישנת = ה-job מת
+        # (כמו באג next_run_time=None שהשבית את הפולר 24/06) ומריץ ריפוי-עצמי.
+        try:
+            from datetime import datetime as _dt0, timezone as _tz0
+            db.sales_state_set("auto_transfer_last_run", _dt0.now(_tz0.utc).isoformat())
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def _shift_alert_flush_job():
@@ -365,6 +373,38 @@ def _poll_watchdog_job():
             db.sales_state_set("poll_watchdog_alerted", "")
     except Exception as e:  # noqa: BLE001
         logger.warning("poll watchdog failed: %s", e)
+    # ── 🐕 בריאות שידור ההזמנות (auto_transfer) + ריפוי-עצמי ──
+    try:
+        from datetime import datetime as _dt2, timezone as _tz2
+        av = db.sales_state_get("auto_transfer_last_run")
+        aage = None
+        if av:
+            try:
+                aage = (_dt2.now(_tz2.utc) - _dt2.fromisoformat(str(av))).total_seconds()
+            except Exception:  # noqa: BLE001
+                aage = None
+        adead = (aage is None) or (aage > 900)        # 15 דק' = 3 מחזורים שהוחמצו
+        a_alerted = (db.sales_state_get("auto_transfer_watchdog_alerted") or "") == "1"
+        if adead:
+            # ריפוי-עצמי: רישום מחדש של ה-job (משחזר next_run_time=None / job שנעלם)
+            try:
+                scheduler.add_job(_auto_transfer_job, "interval", minutes=5,
+                                  id="auto_transfer", max_instances=1,
+                                  replace_existing=True, next_run_time=_dt2.now())
+                logger.warning("auto_transfer re-registered by watchdog (age=%s)", aage)
+            except Exception as e:  # noqa: BLE001
+                logger.warning("auto_transfer self-heal failed: %s", e)
+            if not a_alerted:
+                mago = f"~{int(aage // 60)} דק'" if aage else "מעולם (מאז עליית השרת)"
+                _tg_admin("🚨 <b>שידור ההזמנות נתקע!</b>\n"
+                          f"ה-job <code>auto_transfer</code> לא רץ {mago} — רשמתי אותו מחדש "
+                          "(ריפוי-עצמי). אם חוזר על עצמו — בדוק deploy / רישום jobs.")
+                db.sales_state_set("auto_transfer_watchdog_alerted", "1")
+        elif a_alerted:
+            _tg_admin("🟢 <b>שידור ההזמנות חזר לרוץ</b> — ה-watchdog רגוע.")
+            db.sales_state_set("auto_transfer_watchdog_alerted", "")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("auto_transfer watchdog failed: %s", e)
 
 
 def register_recurring_jobs():
