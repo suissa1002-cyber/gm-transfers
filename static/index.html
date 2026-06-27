@@ -4010,6 +4010,8 @@ function waReplyClear(){ S.waReplyTo=null; renderWaThread(); }
 // ── סט אייקונים מודרני (סגנון Lucide): קו 2px, currentColor — אחיד בכל GreenOS ──
 const _IPATHS={
   home:'<path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>',
+  clock:'<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+  wallet:'<path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h3v-4Z"/>',
   archive:'<rect x="2" y="3" width="20" height="5" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><line x1="10" y1="12" x2="14" y2="12"/>',
   restore:'<rect x="2" y="3" width="20" height="5" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M9 15l3-3 3 3"/><line x1="12" y1="12" x2="12" y2="18"/>',
   user:'<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
@@ -6731,7 +6733,7 @@ function renderHome(){
   const perLabel=per==='yesterday'?'אתמול':(per==='range'?((sd.from||'')+' – '+(sd.to||'')):'היום');
   const seg=(id,lbl)=>`<button onclick="homeSalesPeriod('${id}')" style="flex:1;background:${per===id?'#16a34a':'transparent'};color:${per===id?'#fff':'var(--txt)'};border:0;border-radius:9px;padding:7px 4px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">${lbl}</button>`;
   if(homeShow('sales')) h+=crmCard(
-    `<div style="display:flex;align-items:center;gap:8px;margin-bottom:11px"><span style="font-size:17px">💰</span><b style="font-size:15px">מכירות · ${escW(perLabel)}</b>${S.homeSalesLoading?'<span class="muted" style="font-size:12px;margin-inline-start:auto">⏳ מעדכן…</span>':'<button onclick="homeSalesRefresh()" title="משוך מכירות עכשיו מ-NewOrder" style="margin-inline-start:auto;background:none;border:0;cursor:pointer;font-size:16px;color:var(--muted);padding:0 2px;line-height:1">↻</button>'}</div>
+    `<div style="display:flex;align-items:center;gap:8px;margin-bottom:11px"><span style="display:inline-flex;color:#16a34a">${ico('wallet',18)}</span><b style="font-size:15px">מכירות · ${escW(perLabel)}</b>${S.homeSalesLoading?'<span class="muted" style="font-size:12px;margin-inline-start:auto">⏳ מעדכן…</span>':'<button onclick="homeSalesRefresh()" title="משוך מכירות עכשיו מ-NewOrder" style="margin-inline-start:auto;background:none;border:0;cursor:pointer;font-size:16px;color:var(--muted);padding:0 2px;line-height:1">↻</button>'}</div>
      <div style="display:flex;gap:3px;background:var(--card2);border:1px solid var(--line);border-radius:11px;padding:3px;margin-bottom:12px">${seg('today','היום')}${seg('yesterday','אתמול')}${seg('range','סינון')}</div>
      <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:13px">${branches.map(brTile).join('')}</div>
      <div style="display:flex;gap:10px;margin-bottom:13px">
@@ -6778,7 +6780,7 @@ function renderHome(){
   const _agT=h=>{ const d=Math.floor((h||0)/24); return d>=1?d+' י׳':Math.round(h||0)+'ש׳'; };
   if(homeShow('transfers')) h+=crmCard(homeHead(ico('truck',16),'העברות',open+' פתוחות · '+overdue+' באיחור',overdue?"goOverdueTransfers()":"goOpenTransfers()")+
     (trfOpen.length?`<div style="max-height:280px;overflow-y:auto;margin:0 -4px;padding:0 4px">`+trfOpen.map(t=>homeRow(
-       `<span>${t.overdue?'⏰':'📦'}</span><b style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(t.from_branch_name||t.from_name||'?')} → ${escW(t.to_branch_name||t.to_name||'?')}</b>
+       `<span style="display:inline-flex;color:${t.overdue?'#dc2626':'var(--muted)'}">${ico(t.overdue?'clock':'truck',16)}</span><b style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(t.from_branch_name||t.from_name||'?')} → ${escW(t.to_branch_name||t.to_name||'?')}</b>
         ${t.missing?`<span class="muted" style="font-size:11px">${t.missing} חסר</span>`:''}
         <span style="font-size:11px;${t.overdue?'color:#dc2626;font-weight:700':'color:var(--muted)'}">${_agT(t.age_hours)}</span>`,
        "toggleAdmin()")).join('')+`</div>`
@@ -6789,8 +6791,8 @@ function renderHome(){
        `<div style="padding:8px 0;border-top:1px solid var(--line)">
           <div style="font-size:13px;font-weight:700;line-height:1.3">${escW(r.name||'')}</div>
           <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px">
-            <span class="muted" style="font-size:11px;font-weight:400">👤 ${escW(r.employee||'—')}</span>
-            <span class="muted" style="font-size:11px;font-weight:400;direction:ltr">🕐 ${escW(_tmt(r.removed_at))}</span>
+            <span class="muted" style="font-size:11px;font-weight:400;display:inline-flex;align-items:center;gap:4px">${ico('user',12)} ${escW(r.employee||'—')}</span>
+            <span class="muted" style="font-size:11px;font-weight:400;direction:ltr;display:inline-flex;align-items:center;gap:4px">${ico('clock',12)} ${escW(_tmt(r.removed_at))}</span>
           </div>
         </div>`).join('')
      :'<div class="muted" style="font-size:13px;padding:6px 0">אין הורדות היום</div>'));
@@ -6861,7 +6863,7 @@ function renderHome(){
   if(homeShow('ordersLate')) h+=crmCard(homeHead(ico('cart',16),'הזמנות בטיפול באיחור',ordsOverN?ordsOverN+' באיחור':'',"goLateOrders()")+
     (ordSorted.length?ordSorted.slice(0,7).map(o=>{ const ag=ordAge(o); const dd=Math.floor(ag/24);
       return homeRow(
-       `<span>⏰</span><b style="flex:1;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">#${escW(String(o.number||''))} ${escW(o.name||'')}</b>
+       `<span style="display:inline-flex;color:#dc2626">${ico('clock',15)}</span><b style="flex:1;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">#${escW(String(o.number||''))} ${escW(o.name||'')}</b>
         <span class="muted" style="font-size:11px">${dd>0?dd+' י׳':ag+'ש׳'}</span>
         <span style="font-weight:600">${_il(parseFloat(o.total)||0)}</span>`,
        "openOrdersTab()"); }).join('')
