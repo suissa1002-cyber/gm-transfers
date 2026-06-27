@@ -5355,6 +5355,10 @@ function ordFlagIcons(o,sz){
   }
   if(o.nosku) h+=`<span title="פריט ללא מק״ט מחובר לקופה — לא ניתן לשריין/לשדר. הוסף מק״ט למוצר ב-WooCommerce" style="color:#d97706;display:inline-flex;vertical-align:-2px">${ico('tag',sz)}</span>`;
   if(o.return_open) h+=`<span title="נפתחה החזרה (איסוף מהלקוח)" style="display:inline-flex;vertical-align:-2px;font-size:${sz-2}px">↩️</span>`;
+  // הזמנה חדשה שעדיין לא עברה את לוגיקת השידור (הוורקר רץ כל ~5 דק׳) — חיווי "ממתין לשידור"
+  // אפור, כדי שלא תיראה חסרת-סטטוס. הופך לירוק/אדום/אמבר ברגע שהיא מעובדת.
+  if(!h && (o.status==='processing'||o.status==='on-hold'))
+    h=`<span title="טרם שודר — ממתין לעיבוד אוטומטי (כל ~5 דק׳). אם נתקע — 'הרץ שיריון/שידור' בהזמנה" style="color:#94a3b8;display:inline-flex;vertical-align:-2px">${ico('radio',sz)}</span>`;
   return h;
 }
 // תג סטטוס משלוח חי מ-Cargo (במחסן / הועבר לשליח / בדרך ללקוח / בוצע). הסטטוס גלוי, מספר המעקב בטולטיפ.
