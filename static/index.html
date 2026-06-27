@@ -795,10 +795,16 @@ function openOrdersTab(){
   if(typeof isAdminCtx==='function'&&isAdminCtx()){ S.view='board'; setBranchTab('wcorders'); }
 }
 // ── ניווט-עם-פילטור מהדשבורד: כל חיווי מוביל בדיוק לתת-הקבוצה שלו ──
-function goLateOrders(){   // הזמנות בטיפול > 48ש (processing + before ISO מדויק — זהה לספירת הדשבורד)
-  const d=new Date(Date.now()-48*3600*1000); const p=n=>String(n).padStart(2,'0');
-  const ds=`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:00`;
-  S.wco=Object.assign(S.wco||{},{status:'processing',before:ds,after:'',q:'',page:1,rows:null});
+// "באיחור" = מעל 3 ימי עסקים (ו'=5/שבת=6 לא נספרים). מחזיר חותם ISO מקומי לסינון before.
+// משותף לדשבורד (ספירה) ול-goLateOrders (טאב מסונן) כדי שיהיו זהים.
+function _overdueCutoffISO(){
+  const d=new Date(); let cnt=3;
+  while(cnt>0){ d.setDate(d.getDate()-1); const w=d.getDay(); if(w!==5&&w!==6) cnt--; }
+  const p=n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:00`;
+}
+function goLateOrders(){   // הזמנות בטיפול מעל 3 ימי עסקים (processing + before, זהה לספירת הדשבורד)
+  S.wco=Object.assign(S.wco||{},{status:'processing',before:_overdueCutoffISO(),after:'',q:'',page:1,rows:null});
   openOrdersTab();
 }
 function goOverdueTransfers(){
@@ -6415,9 +6421,8 @@ function goHome(){ S.view='home'; S.adminTab=null; S.embedApp=null; render(); }
 async function loadHome(spinner){
   if(spinner){ const a=document.getElementById('app'); if(a) a.innerHTML='<div class="empty" style="margin:60px auto;display:flex;align-items:center;justify-content:center;gap:7px">טוען לוח בית… <span style="display:inline-flex;color:#16a34a">'+ico('home',17)+'</span></div>'; }
   const _now=new Date(); const _p2=n=>String(n).padStart(2,'0');
-  const _ovd=new Date(Date.now()-48*3600*1000);   // הזמנות 'בטיפול' ישנות מ-48ש = באיחור
-  // before מדויק לשעה (ISO עם T) — לא יום-מלא — כדי שהספירה תהיה זהה לטאב המסונן (9=9, לא 15)
-  const _ovBefore=`${_ovd.getFullYear()}-${_p2(_ovd.getMonth()+1)}-${_p2(_ovd.getDate())}T${_p2(_ovd.getHours())}:${_p2(_ovd.getMinutes())}:00`;
+  // הזמנות 'בטיפול' מעל 3 ימי עסקים (ו'/שבת לא נספרים) = באיחור. ISO מדויק → ספירה זהה לטאב.
+  const _ovBefore=_overdueCutoffISO();
   const _today=`${_now.getFullYear()}-${_p2(_now.getMonth()+1)}-${_p2(_now.getDate())}`;  // היום (שעון מקומי=IL)
   const defs={ ov:'/api/admin/overview', wa:'/api/admin/wa/conversations',
                sent:'/api/admin/sentinel', rem:'/api/admin/removals?from_date='+_today+'&to_date='+_today,
