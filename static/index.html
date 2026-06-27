@@ -6514,6 +6514,48 @@ function homeSpark(days){
       return `<rect x="${(i*w+0.5).toFixed(2)}" y="${(30-hh).toFixed(2)}" width="${(w-1).toFixed(2)}" height="${hh.toFixed(2)}" rx="0.5" fill="${recent?'#16a34a':'#cbd5e1'}"><title>${escW(_tip(d.day))} · ₪${rev.toLocaleString()}</title></rect>`;
     }).join('')+`</svg>`;
 }
+// ── עריכת לוח: רשימת הסקשנים (לצ'ק-בוקסים) + העדפות תצוגה (localStorage, ברירת מחדל=הכל דלוק) ──
+const _HOME_SECTIONS=[
+  {k:'kpi',       icon:'📊', label:'רצועת מדדים (KPI)'},
+  {k:'attention', icon:'🔴', label:'דורש טיפול עכשיו'},
+  {k:'quick',     icon:'⚡', label:'פעולות מהירות'},
+  {k:'neworders', icon:'🆕', label:'הזמנות חדשות (טיקר)'},
+  {k:'sales',     icon:'💰', label:'מכירות (היום/סניפים/גרף)'},
+  {k:'categories',icon:'🛍️', label:'פילוח קטגוריות'},
+  {k:'recent',    icon:'🧾', label:'מכירות אחרונות'},
+  {k:'whatsapp',  icon:'💬', label:'וואטסאפ — אינבוקס'},
+  {k:'transfers', icon:'📦', label:'העברות'},
+  {k:'removals',  icon:'📉', label:'הורדות מלאי — סיטי'},
+  {k:'calls',     icon:'📞', label:'שיחות מרכזיה'},
+  {k:'staff',     icon:'👥', label:'עובדים היום'},
+  {k:'checks',    icon:'💳', label:'צ׳קים לפירעון'},
+  {k:'ordersLate',icon:'🛒', label:'הזמנות בטיפול באיחור'},
+  {k:'invoices',  icon:'🧾', label:'חשבוניות איציק'},
+  {k:'sentinel',  icon:'🛡️', label:'סטטוס מערכת (Sentinel)'},
+];
+function _homePrefsLoad(){ if(!S.homePrefs){ try{ S.homePrefs=JSON.parse(localStorage.getItem('gm_home_prefs')||'{}')||{}; }catch(e){ S.homePrefs={}; } } return S.homePrefs; }
+function homeShow(k){ return _homePrefsLoad()[k]!==false; }   // ברירת מחדל: מוצג
+function homeToggleSection(k,checked){ _homePrefsLoad(); S.homePrefs[k]=!!checked;
+  try{ localStorage.setItem('gm_home_prefs',JSON.stringify(S.homePrefs)); }catch(e){}
+  S.homeLastTouch=Date.now(); if(S.view==='home')renderHome(); }
+function homeSettingsToggle(){ S.homeSettingsOpen=!S.homeSettingsOpen; S.homeLastTouch=Date.now(); if(S.view==='home')renderHome(); }
+function homeSettingsReset(){ S.homePrefs={}; try{ localStorage.removeItem('gm_home_prefs'); }catch(e){}
+  S.homeLastTouch=Date.now(); if(S.view==='home')renderHome(); }
+function homeSettingsPanel(){
+  return `<div onclick="event.stopPropagation()" style="position:absolute;top:40px;inset-inline-start:0;z-index:60;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 12px 36px rgba(0,0,0,.22);padding:12px 14px;width:308px;max-width:90vw">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:9px">
+      <b style="font-size:13.5px;flex:1">עריכת לוח — מה להציג</b>
+      <button onclick="homeSettingsReset()" style="background:none;border:0;color:var(--muted);font-size:11.5px;cursor:pointer;font-family:inherit;text-decoration:underline">איפוס</button>
+    </div>
+    <div style="max-height:58vh;overflow-y:auto;display:flex;flex-direction:column;gap:1px">
+      ${_HOME_SECTIONS.map(s=>{ const on=homeShow(s.k);
+        return `<label style="display:flex;align-items:center;gap:9px;padding:7px 5px;cursor:pointer;border-radius:8px;font-size:13px">
+          <input type="checkbox" ${on?'checked':''} onchange="homeToggleSection('${s.k}',this.checked)" style="width:16px;height:16px;accent-color:#16a34a;cursor:pointer;flex-shrink:0">
+          <span style="flex:1">${s.icon} ${s.label}</span></label>`; }).join('')}
+    </div>
+    <div style="text-align:center;margin-top:9px"><button onclick="homeSettingsToggle()" style="background:#16a34a;color:#fff;border:0;border-radius:9px;padding:7px 20px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">סגור</button></div>
+  </div>`;
+}
 function homeKpi(val,label,color){
   return `<div style="flex:1;min-width:108px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:13px 12px;text-align:center">
     <div style="font-size:27px;font-weight:800;color:${color||'var(--txt)'};line-height:1">${val}</div>
@@ -6546,8 +6588,13 @@ function renderHome(){
   const remRows=(d.rem&&d.rem.rows)||[];
 
   let h=`<div style="max-width:1280px;margin:0 auto;padding:4px 2px 34px">`;
+  // ── פס עריכת לוח (גלגל-שיניים → צ'ק-בוקסים לכל סקשן) ──
+  h+=`<div style="display:flex;justify-content:flex-start;margin-bottom:9px;position:relative">
+    <button onclick="homeSettingsToggle()" title="עריכת לוח — בחר אילו סקשנים להציג" style="background:var(--card);border:1px solid var(--line);color:var(--muted);border-radius:10px;padding:6px 11px;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600">${ico('sliders',15)} עריכת לוח</button>
+    ${S.homeSettingsOpen?homeSettingsPanel():''}
+  </div>`;
   // ── רצועת KPI ──
-  h+=`<div style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:13px">
+  if(homeShow('kpi')) h+=`<div style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:13px">
     ${homeKpi(waWaiting,'ממתינים לנציג',waWaiting?'#dc2626':'#16a34a')}
     ${homeKpi(overdue,'העברות באיחור',overdue?'#dc2626':'#16a34a')}
     ${homeKpi(open,'העברות פתוחות')}
@@ -6603,8 +6650,10 @@ function renderHome(){
     ${qa('📞 מוקד שיחות',"hubGoCrm()")}
   </div>`;
   // ימין: דורש-טיפול (גדל) + פעולות-מהירות מתחת · שמאל: הזמנות-חדשות שמתמתח לאותו גובה
-  const rightCol=`<div style="display:flex;flex-direction:column;gap:10px">${attPanel}${quickRow}</div>`;
-  h+=`<div class="home-strip">${rightCol}${newOrdersPanel}</div>`;
+  const rightParts=[]; if(homeShow('attention')) rightParts.push(attPanel); if(homeShow('quick')) rightParts.push(quickRow);
+  const rightCol=rightParts.length?`<div style="display:flex;flex-direction:column;gap:10px">${rightParts.join('')}</div>`:'';
+  const stripParts=[]; if(rightCol) stripParts.push(rightCol); if(homeShow('neworders')) stripParts.push(newOrdersPanel);
+  if(stripParts.length) h+=`<div class="home-strip">${stripParts.join('')}</div>`;
   // ── 💰 סקשן מכירות (היום, מעבר בין סניפים) ──
   const sd=d.sales||{};
   const _il=n=>'₪'+Number(Math.round(n||0)).toLocaleString('en-US');
@@ -6620,7 +6669,7 @@ function renderHome(){
   const per=S.homeSalesPeriod||'today';
   const perLabel=per==='yesterday'?'אתמול':(per==='range'?((sd.from||'')+' – '+(sd.to||'')):'היום');
   const seg=(id,lbl)=>`<button onclick="homeSalesPeriod('${id}')" style="flex:1;background:${per===id?'#16a34a':'transparent'};color:${per===id?'#fff':'var(--txt)'};border:0;border-radius:9px;padding:7px 4px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">${lbl}</button>`;
-  h+=crmCard(
+  if(homeShow('sales')) h+=crmCard(
     `<div style="display:flex;align-items:center;gap:8px;margin-bottom:11px"><span style="font-size:17px">💰</span><b style="font-size:15px">מכירות · ${escW(perLabel)}</b>${S.homeSalesLoading?'<span class="muted" style="font-size:12px;margin-inline-start:auto">⏳ מעדכן…</span>':'<button onclick="homeSalesRefresh()" title="משוך מכירות עכשיו מ-NewOrder" style="margin-inline-start:auto;background:none;border:0;cursor:pointer;font-size:16px;color:var(--muted);padding:0 2px;line-height:1">↻</button>'}</div>
      <div style="display:flex;gap:3px;background:var(--card2);border:1px solid var(--line);border-radius:11px;padding:3px;margin-bottom:12px">${seg('today','היום')}${seg('yesterday','אתמול')}${seg('range','סינון')}</div>
      <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:13px">${branches.map(brTile).join('')}</div>
@@ -6636,12 +6685,12 @@ function renderHome(){
   h+=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:12px">`;
   // פילוח קטגוריות (דונאט כמו NewOrder)
   const cats=(sd.categories||[]).slice(0,11);
-  h+=crmCard(homeHead('🛍️','פילוח קטגוריות',perLabel,"hubGoCrm()")+
+  if(homeShow('categories')) h+=crmCard(homeHead('🛍️','פילוח קטגוריות',perLabel,"hubGoCrm()")+
     (cats.length?homeDonut(cats)
      :'<div class="muted" style="font-size:13px;padding:6px 0">אין מכירות בתקופה</div>'));
   // מכירות אחרונות היום
   const recent=(sd.recent||[]).slice(0,8);
-  h+=crmCard(homeHead('🧾','מכירות אחרונות',((sd.today&&sd.today.count)||0)+' עסקאות',"hubGoCrm()")+
+  if(homeShow('recent')) h+=crmCard(homeHead('🧾','מכירות אחרונות',((sd.today&&sd.today.count)||0)+' עסקאות',"hubGoCrm()")+
     (recent.length?recent.map(r=>homeRow(
       `<b style="flex:1;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(r.name)}</b>
        <span class="muted" style="font-size:11px;direction:ltr">${escW(_tmt(r.ts))}</span>
@@ -6651,7 +6700,7 @@ function renderHome(){
   const inbox=waConvs.filter(c=>!c.archived).sort((a,b)=>(b.ts||0)-(a.ts||0));
   const waList=inbox.slice(0,7);
   const _dot=c=>c.awaiting_agent?'🔴':(c.unread?'🟡':'🟢');
-  h+=crmCard(homeHead('💬','וואטסאפ — אינבוקס',inbox.length+' שיחות'+(waWaiting?' · '+waWaiting+' ממתינים':''),"openWaTab()")+
+  if(homeShow('whatsapp')) h+=crmCard(homeHead('💬','וואטסאפ — אינבוקס',inbox.length+' שיחות'+(waWaiting?' · '+waWaiting+' ממתינים':''),"openWaTab()")+
     (waList.length?waList.map(c=>homeRow(
        `<span>${_dot(c)}</span>
         <b style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(c.name||c.phone)}</b>
@@ -6664,7 +6713,7 @@ function renderHome(){
   const trfOpen=trf.filter(t=>t.status==='in_transit'||t.status==='partial')
                    .sort((a,b)=>(b.age_hours||0)-(a.age_hours||0));
   const _agT=h=>{ const d=Math.floor((h||0)/24); return d>=1?d+' י׳':Math.round(h||0)+'ש׳'; };
-  h+=crmCard(homeHead('📦','העברות',open+' פתוחות · '+overdue+' באיחור',"toggleAdmin()")+
+  if(homeShow('transfers')) h+=crmCard(homeHead('📦','העברות',open+' פתוחות · '+overdue+' באיחור',"toggleAdmin()")+
     (trfOpen.length?`<div style="max-height:280px;overflow-y:auto;margin:0 -4px;padding:0 4px">`+trfOpen.map(t=>homeRow(
        `<span>${t.overdue?'⏰':'📦'}</span><b style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(t.from_branch_name||t.from_name||'?')} → ${escW(t.to_branch_name||t.to_name||'?')}</b>
         ${t.missing?`<span class="muted" style="font-size:11px">${t.missing} חסר</span>`:''}
@@ -6672,7 +6721,7 @@ function renderHome(){
        "toggleAdmin()")).join('')+`</div>`
      :'<div class="muted" style="font-size:13px;padding:6px 0">אין העברות פתוחות 👌</div>'));
   // הורדות מלאי — סיטי היום (שורה מרווחת: שם המוצר למעלה, עובד מתחת)
-  h+=crmCard(homeHead('📉','הורדות מלאי — סיטי היום',remRows.length+' פריטים',"S.view='admin';setAdminTab('removals')")+
+  if(homeShow('removals')) h+=crmCard(homeHead('📉','הורדות מלאי — סיטי היום',remRows.length+' פריטים',"S.view='admin';setAdminTab('removals')")+
     (remRows.length?remRows.slice(0,7).map(r=>
        `<div style="padding:8px 0;border-top:1px solid var(--line)">
           <div style="font-size:13px;font-weight:700;line-height:1.3">${escW(r.name||'')}</div>
@@ -6685,7 +6734,7 @@ function renderHome(){
   // שיחות מרכזיה היום + רשימת לא-נענו אחרונות
   const hist=(d.hist&&d.hist.calls)||[];
   const missed=hist.filter(c=>c.direction==='in'&&c.disposition&&c.disposition!=='answered').slice(0,4);
-  h+=crmCard(homeHead('📞','שיחות מרכזיה היום',ansTxt+' מענה',"hubGoCrm()")+
+  if(homeShow('calls')) h+=crmCard(homeHead('📞','שיחות מרכזיה היום',ansTxt+' מענה',"hubGoCrm()")+
     `<div style="display:flex;gap:6px;margin-top:2px">
       <div style="flex:1;text-align:center;padding:6px 0"><div style="font-size:21px;font-weight:800;color:#16a34a">${ct.answered||0}</div><div class="muted" style="font-size:11px">נענו</div></div>
       <div style="flex:1;text-align:center;padding:6px 0"><div style="font-size:21px;font-weight:800;color:#dc2626">${(ct.no_answer||0)+(ct.abandoned||0)}</div><div class="muted" style="font-size:11px">לא נענו</div></div>
@@ -6698,7 +6747,7 @@ function renderHome(){
         "hubGoCrm()")).join('')
      :''));
   // סטטוס מערכת (Sentinel) — מוצג רק כשיש בעיה (ה-KPI למעלה מכסה את "תקין", בלי כפילות)
-  if(!sentOk){
+  if(!sentOk && homeShow('sentinel')){
     h+=crmCard(homeHead('🔴','סטטוס מערכת (Sentinel)','דורש בדיקה',"hubGo('sentinel')")+
       (sent.stale?'<div style="font-size:13px;padding:4px 0;color:#dc2626">⚠️ סנטינל לא מדווח (אולי כבוי)</div>'
        :(sentIssues.slice(0,5).map(i=>homeRow(`<span>⚠️</span><span style="font-size:12.5px">${escW(typeof i==='string'?i:(i.msg||i.name||i.title||''))}</span>`)).join('')||'<div class="muted" style="font-size:13px;padding:4px 0">—</div>')));
@@ -6709,7 +6758,7 @@ function renderHome(){
   const schedBr=sched.branches||[];
   const rosterToday=(sched.roster||[]).filter(r=>r.dow===sdow && r.employee);
   const byBr={}; rosterToday.forEach(r=>{ (byBr[r.branch_id]=byBr[r.branch_id]||[]).push(r); });
-  h+=crmCard(homeHead('👥','עובדים היום',rosterToday.length+' במשמרת',"window.open('/schedule','_blank')")+
+  if(homeShow('staff')) h+=crmCard(homeHead('👥','עובדים היום',rosterToday.length+' במשמרת',"window.open('/schedule','_blank')")+
     (rosterToday.length?schedBr.map(b=>{ const emps=byBr[b.id]||[]; if(!emps.length) return '';
       return `<div style="padding:7px 0;border-top:1px solid var(--line)">
         <div style="font-size:13px;font-weight:700">${escW(b.name)}</div>
@@ -6722,7 +6771,7 @@ function renderHome(){
   const cks=(S.homeChecks||[]).filter(c=>c.valueDate===cdate).sort((a,b)=>(b.amount||0)-(a.amount||0));
   const ctot=cks.reduce((s,c)=>s+(c.amount||0),0);
   const cseg=(id,lbl)=>`<button onclick="homeChecksMode('${id}')" style="flex:1;background:${cmode===id?'#16a34a':'transparent'};color:${cmode===id?'#fff':'var(--txt)'};border:0;border-radius:8px;padding:6px 2px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit">${lbl}</button>`;
-  h+=crmCard(homeHead('💳','צ׳קים לפירעון',cks.length?_il(ctot):'',"window.open('/checks','_blank')")+
+  if(homeShow('checks')) h+=crmCard(homeHead('💳','צ׳קים לפירעון',cks.length?_il(ctot):'',"window.open('/checks','_blank')")+
     `<div style="display:flex;gap:3px;background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:3px;margin-bottom:9px">${cseg('today','היום')}${cseg('wed0','רביעי הקרוב')}${cseg('wed1','רביעי הבא')}</div>`+
     (cks.length?`<div style="max-height:280px;overflow-y:auto;margin:0 -4px;padding:0 4px">`+cks.map(c=>homeRow(
        `<b style="flex:1;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(c.payee||c.checkNum||'—')}</b>
@@ -6732,7 +6781,7 @@ function renderHome(){
   // 🛒 הזמנות בטיפול באיחור (status=processing, ישנות מ-48ש)
   const ordAge=o=>{ const t=Date.parse(o.date); return t?Math.floor((Date.now()-t)/3600000):0; };
   const ordSorted=ordsOver.slice().sort((a,b)=>(Date.parse(a.date)||0)-(Date.parse(b.date)||0));  // הישן ביותר קודם
-  h+=crmCard(homeHead('🛒','הזמנות בטיפול באיחור',ordsOver.length?ordsOver.length+' באיחור':'',"openOrdersTab()")+
+  if(homeShow('ordersLate')) h+=crmCard(homeHead('🛒','הזמנות בטיפול באיחור',ordsOver.length?ordsOver.length+' באיחור':'',"openOrdersTab()")+
     (ordSorted.length?ordSorted.slice(0,7).map(o=>{ const ag=ordAge(o); const dd=Math.floor(ag/24);
       return homeRow(
        `<span>⏰</span><b style="flex:1;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">#${escW(String(o.number||''))} ${escW(o.name||'')}</b>
@@ -6743,7 +6792,7 @@ function renderHome(){
   // 🧾 חשבוניות איציק היום לפי סניף (שירות חוצה-אפליקציה)
   const inv=S.homeInv||{};
   const invBr=inv.by_branch||{};
-  h+=crmCard(homeHead('🧾','חשבוניות איציק היום',inv.count?(inv.count+' · '+_il(inv.total)):'',"hubOpen('invoices')")+
+  if(homeShow('invoices')) h+=crmCard(homeHead('🧾','חשבוניות איציק היום',inv.count?(inv.count+' · '+_il(inv.total)):'',"hubOpen('invoices')")+
     (Object.keys(invBr).length?Object.entries(invBr).sort((a,b)=>(b[1].total||0)-(a[1].total||0)).map(([b,v])=>homeRow(
        `<b style="flex:1;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(b)}</b>
         <span class="muted" style="font-size:11px">${v.count} חשבוניות</span>
