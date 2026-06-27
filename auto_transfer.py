@@ -246,7 +246,14 @@ def _handle_order(o: dict, catalog: dict) -> list:
             _mark_unmatched(o.get("number"), li.get("name") or "פריט ללא מק\"ט")
             continue
         if sku not in catalog:
-            continue                       # יש מק"ט אך לא בקטלוג הקופה (דיגיטלי/לא מסונכרן)
+            # מק"ט שלא נמצא בקטלוג הקופה. מק"ט **ג'אנק** (תבנית שכפול ליסט, '\d+(-\d+)+',
+            # למשל 123456-3-1-2-1) = לא מחובר ל-NewOrder → מסמנים לטיפול ידני כדי
+            # שההזמנה לא תיתקע אפורה בלי דגל. מק"ט רגיל שלא בקטלוג = כנראה מוצר דיגיטלי
+            # WC-only (גיפט קארד/קוד) → מדלגים בשקט כמקודם.
+            if re.fullmatch(r"\d+(-\d+)+", sku):
+                had_unmatched = True
+                _mark_unmatched(o.get("number"), li.get("name") or sku)
+            continue
         cat_it = catalog.get(sku) or {}
         if cat_it.get("is_stock") is False:
             continue                       # מוצר דיגיטלי/לא-מנוהל-מלאי (גיפט קארד/קוד) — אין שידור/OOS
