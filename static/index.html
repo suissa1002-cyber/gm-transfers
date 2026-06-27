@@ -794,6 +794,22 @@ function openOrdersTab(){
   // (צ'קים/חשבוניות שמסתיימות אחרי 5-10ש') מרנדרות בית מחדש ומבעיטות מההזמנות.
   if(typeof isAdminCtx==='function'&&isAdminCtx()){ S.view='board'; setBranchTab('wcorders'); }
 }
+// ── ניווט-עם-פילטור מהדשבורד: כל חיווי מוביל בדיוק לתת-הקבוצה שלו ──
+function goLateOrders(){   // הזמנות בטיפול > 48ש (processing + before)
+  const d=new Date(Date.now()-48*3600*1000);
+  const ds=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  S.wco=Object.assign(S.wco||{},{status:'processing',before:ds,after:'',q:'',page:1,rows:null});
+  openOrdersTab();
+}
+function goOverdueTransfers(){
+  S.adminFilters=Object.assign(S.adminFilters||{},{status:'overdue',q:'',from:'',to:'',fromDate:'',toDate:''});
+  S.view='admin'; S.adminTab='transfers'; loadAdmin(true);
+}
+function goOpenTransfers(){
+  S.adminFilters=Object.assign(S.adminFilters||{},{status:'open',q:'',from:'',to:'',fromDate:'',toDate:''});
+  S.view='admin'; S.adminTab='transfers'; loadAdmin(true);
+}
+function goWaWaiting(){ S.waFilterAwaiting=true; S.waStarred=0; S.waSearch=''; openWaTab(); }
 function openBroadcast(toBranch){
   const bc=S.broadcast; if(!bc) return;
   const g=(bc.groups||[]).find(x=>String(x.to_branch)===String(toBranch));
@@ -2570,6 +2586,7 @@ async function loadWa(spinner){
 }
 function waFiltered(){
   let rows=(S.waConvs||[]);
+  if(S.waFilterAwaiting) rows=rows.filter(c=>!c.archived&&c.awaiting_agent);  // מהדשבורד: "ממתינים לנציג"
   if(S.waStarred) rows=rows.filter(c=>c.star);
   const q=(S.waSearch||'').trim().toLowerCase();
   if(q) rows=rows.filter(c=>((c.name||'')+' '+(c.phone||'')+' '+(c.last_msg||'')).toLowerCase().includes(q));
@@ -2669,6 +2686,7 @@ function renderWa(){
           <button class="btn-ghost wa-ico ${S.waArchived?'wa-human-on':''}" title="${S.waArchived?'מציג כולל ארכיון — לחץ להסתיר':'הצג כולל ארכיון'}"
                   onclick="S.waArchived=S.waArchived?0:1;loadWa(true)">${ico('archive',16)}</button>
         </div>
+        ${S.waFilterAwaiting?`<div style="display:flex;align-items:center;gap:7px;padding:7px 10px;background:rgba(220,38,38,.08);border-bottom:1px solid var(--line);font-size:12.5px;color:#dc2626;font-weight:700">🔴 מסונן: ממתינים לנציג (${rows.length})<button class="btn-ghost" style="margin-inline-start:auto;padding:2px 9px;font-size:12px" onclick="S.waFilterAwaiting=false;renderWa()">✕ נקה</button></div>`:''}
         <div id="waListPane">${waListHTML(rows)}</div>
       </div>
       <div class="wa-thread" id="waThreadPane">${waThreadHTML()}</div>
@@ -5943,6 +5961,7 @@ function renderAdmin(){
   if(f.fromDate) rows=rows.filter(t=>(t.created_at||'').slice(0,10) >= f.fromDate);
   if(f.toDate)   rows=rows.filter(t=>(t.created_at||'').slice(0,10) <= f.toDate);
   if(f.status==='overdue') rows=rows.filter(t=>t.overdue);
+  else if(f.status==='open') rows=rows.filter(t=>t.status==='in_transit'||t.status==='partial');  // "פתוחות" מהדשבורד
   else if(f.status) rows=rows.filter(t=>t.status===f.status);
   // החדשים למעלה (לפי תאריך ההעברה, יורד)
   rows.sort((a,b)=> String(b.created_at||'').localeCompare(String(a.created_at||'')));
@@ -6585,8 +6604,8 @@ function homeSettingsPanel(){
     <div style="text-align:center;margin-top:9px"><button onclick="homeSettingsToggle()" style="background:#16a34a;color:#fff;border:0;border-radius:9px;padding:7px 20px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">סגור</button></div>
   </div>`;
 }
-function homeKpi(val,label,color){
-  return `<div style="flex:1;min-width:108px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:13px 12px;text-align:center">
+function homeKpi(val,label,color,onclick){
+  return `<div ${onclick?`onclick="${onclick}" style="cursor:pointer;`:'style="'}flex:1;min-width:108px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:13px 12px;text-align:center">
     <div style="font-size:27px;font-weight:800;color:${color||'var(--txt)'};line-height:1">${val}</div>
     <div class="muted" style="font-size:11.5px;margin-top:5px">${label}</div></div>`;
 }
@@ -6624,11 +6643,11 @@ function renderHome(){
   </div>`;
   // ── רצועת KPI ──
   if(homeShow('kpi')) h+=`<div style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:13px">
-    ${homeKpi(waWaiting,'ממתינים לנציג',waWaiting?'#dc2626':'#16a34a')}
-    ${homeKpi(overdue,'העברות באיחור',overdue?'#dc2626':'#16a34a')}
-    ${homeKpi(open,'העברות פתוחות')}
-    ${homeKpi(ansTxt,'מענה שיחות היום')}
-    ${homeKpi(sentOk?'תקין':'בעיה','מצב מערכת',sentOk?'#16a34a':'#dc2626')}
+    ${homeKpi(waWaiting,'ממתינים לנציג',waWaiting?'#dc2626':'#16a34a',waWaiting?'goWaWaiting()':'')}
+    ${homeKpi(overdue,'העברות באיחור',overdue?'#dc2626':'#16a34a',overdue?'goOverdueTransfers()':'')}
+    ${homeKpi(open,'העברות פתוחות',null,open?'goOpenTransfers()':'')}
+    ${homeKpi(ansTxt,'מענה שיחות היום',null,'hubGoCrm()')}
+    ${homeKpi(sentOk?'תקין':'בעיה','מצב מערכת',sentOk?'#16a34a':'#dc2626',sentOk?'':"hubGo('sentinel')")}
   </div>`;
   // ── רצועת "דורש טיפול עכשיו" ──
   // סינון מדויק ל-≥48ש' (ה-before בשרת הוא ברמת-יום, אז הזמנה מצהרי יום-הסף נכנסת כ"1 יום" שגוי)
@@ -6636,9 +6655,9 @@ function renderHome(){
   const ordsOver=((d.ordover&&d.ordover.orders)||[]).filter(o=>_ordH(o)>=48);
   const att=[];
   const chip=(txt,onc)=>`<button onclick="${onc}" style="background:#fff;border:1px solid rgba(220,38,38,.4);color:#dc2626;border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit">${txt}</button>`;
-  if(waWaiting) att.push(chip(`💬 ${waWaiting} ממתינים לנציג`,"openWaTab()"));
-  if(overdue) att.push(chip(`📦 ${overdue} העברות באיחור`,"toggleAdmin()"));
-  if(ordsOver.length) att.push(chip(`🛒 ${ordsOver.length} הזמנות באיחור`,"openOrdersTab()"));
+  if(waWaiting) att.push(chip(`💬 ${waWaiting} ממתינים לנציג`,"goWaWaiting()"));
+  if(overdue) att.push(chip(`📦 ${overdue} העברות באיחור`,"goOverdueTransfers()"));
+  if(ordsOver.length) att.push(chip(`🛒 ${ordsOver.length} הזמנות באיחור`,"goLateOrders()"));
   if(!sentOk) att.push(chip(`🛡️ סנטינל: ${sent.stale?'לא מדווח':sentIssues.length+' בעיות'}`,"hubGo('sentinel')"));
   const attPanel = att.length
     ? `<div style="flex:1;min-width:240px;background:rgba(220,38,38,.06);border:1px solid rgba(220,38,38,.25);border-radius:14px;padding:11px 14px">
@@ -6744,7 +6763,7 @@ function renderHome(){
   const trfOpen=trf.filter(t=>t.status==='in_transit'||t.status==='partial')
                    .sort((a,b)=>(b.age_hours||0)-(a.age_hours||0));
   const _agT=h=>{ const d=Math.floor((h||0)/24); return d>=1?d+' י׳':Math.round(h||0)+'ש׳'; };
-  if(homeShow('transfers')) h+=crmCard(homeHead('📦','העברות',open+' פתוחות · '+overdue+' באיחור',"toggleAdmin()")+
+  if(homeShow('transfers')) h+=crmCard(homeHead('📦','העברות',open+' פתוחות · '+overdue+' באיחור',overdue?"goOverdueTransfers()":"goOpenTransfers()")+
     (trfOpen.length?`<div style="max-height:280px;overflow-y:auto;margin:0 -4px;padding:0 4px">`+trfOpen.map(t=>homeRow(
        `<span>${t.overdue?'⏰':'📦'}</span><b style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(t.from_branch_name||t.from_name||'?')} → ${escW(t.to_branch_name||t.to_name||'?')}</b>
         ${t.missing?`<span class="muted" style="font-size:11px">${t.missing} חסר</span>`:''}
@@ -6826,7 +6845,7 @@ function renderHome(){
   // 🛒 הזמנות בטיפול באיחור (status=processing, ישנות מ-48ש)
   const ordAge=o=>{ const t=Date.parse(o.date); return t?Math.floor((Date.now()-t)/3600000):0; };
   const ordSorted=ordsOver.slice().sort((a,b)=>(Date.parse(a.date)||0)-(Date.parse(b.date)||0));  // הישן ביותר קודם
-  if(homeShow('ordersLate')) h+=crmCard(homeHead('🛒','הזמנות בטיפול באיחור',ordsOver.length?ordsOver.length+' באיחור':'',"openOrdersTab()")+
+  if(homeShow('ordersLate')) h+=crmCard(homeHead('🛒','הזמנות בטיפול באיחור',ordsOver.length?ordsOver.length+' באיחור':'',"goLateOrders()")+
     (ordSorted.length?ordSorted.slice(0,7).map(o=>{ const ag=ordAge(o); const dd=Math.floor(ag/24);
       return homeRow(
        `<span>⏰</span><b style="flex:1;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">#${escW(String(o.number||''))} ${escW(o.name||'')}</b>
