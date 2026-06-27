@@ -795,9 +795,9 @@ function openOrdersTab(){
   if(typeof isAdminCtx==='function'&&isAdminCtx()){ S.view='board'; setBranchTab('wcorders'); }
 }
 // ── ניווט-עם-פילטור מהדשבורד: כל חיווי מוביל בדיוק לתת-הקבוצה שלו ──
-function goLateOrders(){   // הזמנות בטיפול > 48ש (processing + before)
-  const d=new Date(Date.now()-48*3600*1000);
-  const ds=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+function goLateOrders(){   // הזמנות בטיפול > 48ש (processing + before ISO מדויק — זהה לספירת הדשבורד)
+  const d=new Date(Date.now()-48*3600*1000); const p=n=>String(n).padStart(2,'0');
+  const ds=`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:00`;
   S.wco=Object.assign(S.wco||{},{status:'processing',before:ds,after:'',q:'',page:1,rows:null});
   openOrdersTab();
 }
@@ -5373,9 +5373,9 @@ function ordFlagIcons(o,sz){
   }
   if(o.nosku) h+=`<span title="פריט ללא מק״ט מחובר לקופה — לא ניתן לשריין/לשדר. הוסף מק״ט למוצר ב-WooCommerce" style="color:#d97706;display:inline-flex;vertical-align:-2px">${ico('tag',sz)}</span>`;
   if(o.return_open) h+=`<span title="נפתחה החזרה (איסוף מהלקוח)" style="display:inline-flex;vertical-align:-2px;font-size:${sz-2}px">↩️</span>`;
-  // הזמנה חדשה שעדיין לא עברה את לוגיקת השידור (הוורקר רץ כל ~5 דק׳) — חיווי "ממתין לשידור"
-  // אפור, כדי שלא תיראה חסרת-סטטוס. הופך לירוק/אדום/אמבר ברגע שהיא מעובדת.
-  if(!h && (o.status==='processing'||o.status==='on-hold'))
+  // "ממתין לשידור" אפור — רק להזמנה שעדיין **לא עברה** את auto_transfer (אין handled).
+  // הזמנה שכבר שודרה ונקלטה (השידור נסגר → o.bcast ריק) לא תיראה אפורה בטעות.
+  if(!h && !o.handled && (o.status==='processing'||o.status==='on-hold'))
     h=`<span title="טרם שודר — ממתין לעיבוד אוטומטי (כל ~5 דק׳). אם נתקע — 'הרץ שיריון/שידור' בהזמנה" style="color:#94a3b8;display:inline-flex;vertical-align:-2px">${ico('radio',sz)}</span>`;
   return h;
 }
@@ -6414,9 +6414,10 @@ function crmCard(inner,extra){ return '<div style="background:var(--card,#171c24
 function goHome(){ S.view='home'; S.adminTab=null; S.embedApp=null; render(); }
 async function loadHome(spinner){
   if(spinner){ const a=document.getElementById('app'); if(a) a.innerHTML='<div class="empty" style="margin:60px auto;display:flex;align-items:center;justify-content:center;gap:7px">טוען לוח בית… <span style="display:inline-flex;color:#16a34a">'+ico('home',17)+'</span></div>'; }
-  const _ovd=new Date(Date.now()-48*3600*1000);   // הזמנות 'בטיפול' ישנות מ-48ש = באיחור
-  const _ovBefore=`${_ovd.getFullYear()}-${String(_ovd.getMonth()+1).padStart(2,'0')}-${String(_ovd.getDate()).padStart(2,'0')}`;
   const _now=new Date(); const _p2=n=>String(n).padStart(2,'0');
+  const _ovd=new Date(Date.now()-48*3600*1000);   // הזמנות 'בטיפול' ישנות מ-48ש = באיחור
+  // before מדויק לשעה (ISO עם T) — לא יום-מלא — כדי שהספירה תהיה זהה לטאב המסונן (9=9, לא 15)
+  const _ovBefore=`${_ovd.getFullYear()}-${_p2(_ovd.getMonth()+1)}-${_p2(_ovd.getDate())}T${_p2(_ovd.getHours())}:${_p2(_ovd.getMinutes())}:00`;
   const _today=`${_now.getFullYear()}-${_p2(_now.getMonth()+1)}-${_p2(_now.getDate())}`;  // היום (שעון מקומי=IL)
   const defs={ ov:'/api/admin/overview', wa:'/api/admin/wa/conversations',
                sent:'/api/admin/sentinel', rem:'/api/admin/removals?from_date='+_today+'&to_date='+_today,
@@ -6651,13 +6652,15 @@ function renderHome(){
   </div>`;
   // ── רצועת "דורש טיפול עכשיו" ──
   // סינון מדויק ל-≥48ש' (ה-before בשרת הוא ברמת-יום, אז הזמנה מצהרי יום-הסף נכנסת כ"1 יום" שגוי)
-  const _ordH=o=>{ const t=Date.parse(o.date); return t?(Date.now()-t)/3600000:0; };
-  const ordsOver=((d.ordover&&d.ordover.orders)||[]).filter(o=>_ordH(o)>=48);
+  // השרת כבר מסנן מדויק ל-48ש (before ISO) — בלי סינון-לקוח כפול. הספירה לפי total השרת
+  // (לא אורך עמוד-1) כדי שתהיה זהה בדיוק לטאב המסונן (9=9).
+  const ordsOver=((d.ordover&&d.ordover.orders)||[]);
+  const ordsOverN=(d.ordover&&typeof d.ordover.total==='number')?d.ordover.total:ordsOver.length;
   const att=[];
   const chip=(txt,onc)=>`<button onclick="${onc}" style="background:#fff;border:1px solid rgba(220,38,38,.4);color:#dc2626;border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit">${txt}</button>`;
   if(waWaiting) att.push(chip(`💬 ${waWaiting} ממתינים לנציג`,"goWaWaiting()"));
   if(overdue) att.push(chip(`📦 ${overdue} העברות באיחור`,"goOverdueTransfers()"));
-  if(ordsOver.length) att.push(chip(`🛒 ${ordsOver.length} הזמנות באיחור`,"goLateOrders()"));
+  if(ordsOverN) att.push(chip(`🛒 ${ordsOverN} הזמנות באיחור`,"goLateOrders()"));
   if(!sentOk) att.push(chip(`🛡️ סנטינל: ${sent.stale?'לא מדווח':sentIssues.length+' בעיות'}`,"hubGo('sentinel')"));
   const attPanel = att.length
     ? `<div style="flex:1;min-width:240px;background:rgba(220,38,38,.06);border:1px solid rgba(220,38,38,.25);border-radius:14px;padding:11px 14px">
@@ -6845,7 +6848,7 @@ function renderHome(){
   // 🛒 הזמנות בטיפול באיחור (status=processing, ישנות מ-48ש)
   const ordAge=o=>{ const t=Date.parse(o.date); return t?Math.floor((Date.now()-t)/3600000):0; };
   const ordSorted=ordsOver.slice().sort((a,b)=>(Date.parse(a.date)||0)-(Date.parse(b.date)||0));  // הישן ביותר קודם
-  if(homeShow('ordersLate')) h+=crmCard(homeHead('🛒','הזמנות בטיפול באיחור',ordsOver.length?ordsOver.length+' באיחור':'',"goLateOrders()")+
+  if(homeShow('ordersLate')) h+=crmCard(homeHead('🛒','הזמנות בטיפול באיחור',ordsOverN?ordsOverN+' באיחור':'',"goLateOrders()")+
     (ordSorted.length?ordSorted.slice(0,7).map(o=>{ const ag=ordAge(o); const dd=Math.floor(ag/24);
       return homeRow(
        `<span>⏰</span><b style="flex:1;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">#${escW(String(o.number||''))} ${escW(o.name||'')}</b>

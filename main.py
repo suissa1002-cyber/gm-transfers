@@ -4428,10 +4428,11 @@ def admin_orders_list(page: int = 1, status: str = "", search: str = "",
         params["per_page"] = 100
     elif status.strip():
         params["status"] = status.strip()
-    if after.strip():      # טווח תאריכים מהיומן — YYYY-MM-DD
-        params["after"] = f"{after.strip()}T00:00:00"
+    # YYYY-MM-DD מהיומן → יום מלא; ISO עם 'T' (מהדשבורד, "באיחור 48ש") → מועבר מדויק כמו-שהוא
+    if after.strip():
+        params["after"] = after.strip() if "T" in after else f"{after.strip()}T00:00:00"
     if before.strip():
-        params["before"] = f"{before.strip()}T23:59:59"
+        params["before"] = before.strip() if "T" in before else f"{before.strip()}T23:59:59"
     if search.strip():
         q = search.strip()
         # טלפון — מחפשים לפי הליבה בלי קידומת (תופס 05X וגם 972X)
@@ -4488,6 +4489,7 @@ def admin_orders_list(page: int = 1, status: str = "", search: str = "",
             "nosku": str(o.get("number")) in unmatched_set,   # פריט פיזי ללא מק"ט — טיפול ידני
             "partial": str(o.get("number")) in partial_set,   # חלק שודר וחלק חסר — שודר חלקי
             "return_open": str(o.get("number")) in return_set,   # נפתחה החזרה (איסוף מהלקוח)
+            "handled": bool(db.sales_state_get(f"auto_tr_seen:{o.get('id')}")),  # כבר עבר auto_transfer
             "id": o.get("id"), "number": o.get("number"), "status": o.get("status"),
             "date": o.get("date_created"), "total": o.get("total"),
             "currency": o.get("currency_symbol") or "₪",
