@@ -2624,18 +2624,21 @@ function waSeen(){ if(!S._waSeen){ try{ S._waSeen=JSON.parse(localStorage.getIte
 function waMarkSeen(phone, ts){ const s=waSeen(); if((s[phone]||0)<ts){ s[phone]=ts; localStorage.setItem('tr_wa_seen', JSON.stringify(s)); updateWaBadge(S.waConvs||[]); } }
 function waIsUnread(c){ return !!(c.unread && c.ts>(waSeen()[c.phone]||0)); }
 function updateWaBadge(convs){
-  // ארכיון לא נספר — אחרת סימון "כולל ארכיון" מקפיץ את הבאדג' על שיחות ישנות
-  const n=(convs||[]).filter(c=>!c.archived&&(waIsUnread(c)||c.awaiting_agent)).length;
+  // ארכיון לא נספר — אחרת סימון "כולל ארכיון" מקפיץ את הבאדג' על שיחות ישנות.
+  // נספר רק לא-נקרא: "ממתין לנציג" שכבר נקרא (הבוט שלח הודעה אחרונה) מטופל ע"י הפופאפ
+  // הצף + KPI "ממתינים לנציג" — הבאדג' בכותרת מתנקה בקריאה (בקשת אסי 27/06).
+  const n=(convs||[]).filter(c=>!c.archived&&waIsUnread(c)).length;
   const el=document.getElementById('waBadge');
   if(el){ el.style.display=n?'block':'none'; el.textContent=n>9?'9+':n; }
   if(S._waBadgePrev!==undefined && n>S._waBadgePrev){
     const title='💬 הודעת וואטסאפ חדשה';
-    if(window.Notification && Notification.permission==='granted'){
+    const inWaTab=(S.view==='admin'&&S.adminTab==='wa');   // בתוך הטאב — רק צליל+באדג', בלי חלון התראה
+    if(!inWaTab && window.Notification && Notification.permission==='granted'){
       try{ const ntf=new Notification(title,{body:'נכנסה הודעה חדשה ב-GreenOS', tag:'gm-wa', renotify:true});
         ntf.onclick=()=>{ window.focus(); openWaTab(); ntf.close(); };
         setTimeout(()=>{ try{ntf.close();}catch(e){} }, 12000); }catch(e){}
     }
-    alarm(); flashTitle(title);
+    alarm(); if(!inWaTab) flashTitle(title);
   }
   S._waBadgePrev=n;
 }
