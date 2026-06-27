@@ -6674,9 +6674,14 @@ function renderHome(){
     : `<div style="flex:1;min-width:240px;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.25);border-radius:14px;padding:11px 14px;font-size:13px;color:#16a34a;font-weight:700;display:flex;align-items:center">✅ הכל תחת שליטה — אין משימות דחופות כרגע</div>`;
   // ── 🆕 טיקר "הזמנות חדשות" (10 אחרונות, גלילה אוטומטית אטית) ──
   const _ils=n=>'₪'+Number(Math.round(n||0)).toLocaleString('en-US');
-  const _wcst={pending:'ממתין לתשלום',processing:'בטיפול',completed:'הושלם','on-hold':'בהמתנה',cancelled:'בוטל',refunded:'זוכה',failed:'נכשל'};
-  const _stC={pending:'#b45309',processing:'#15803d','on-hold':'#b45309',completed:'#1d4ed8',cancelled:'#dc2626',refunded:'#7c3aed',failed:'#dc2626'};
-  const _bcast=o=>o.oos?['חסר','#dc2626']:o.partial?['שודר חלקי','#d97706']:o.nosku?['ללא מק״ט','#d97706']:o.bcast?['שודר','#16a34a']:['ממתין לשידור','#94a3b8'];
+  const _wcst={pending:'ממתין לתשלום',processing:'בטיפול',completed:'הושלם','on-hold':'בהמתנה',cancelled:'בוטל',refunded:'זוכה',failed:'נכשל',
+    'shipping-stage':'בהפצה','order-ready':'מוכנה','tlv-pickup':'נק׳ ת״א',delivered:'נמסר','send-cargo':'לשליחה'};
+  const _stN=s=>_wcst[s]||ordStName(s)||s;   // שם תקין (כולל סטטוסים מותאמים), לא slug
+  const _stC={pending:'#b45309',processing:'#15803d','on-hold':'#b45309',completed:'#1d4ed8',cancelled:'#dc2626',refunded:'#7c3aed',failed:'#dc2626',
+    'shipping-stage':'#7c3aed','order-ready':'#0d9488','tlv-pickup':'#0369a1',delivered:'#1d4ed8'};
+  // תווית שידור: רק כשרלוונטי. הזמנה שכבר טופלה (handled) או בסטטוס משלוח/הושלם — לא "ממתין לשידור".
+  const _bcast=o=>o.oos?['חסר','#dc2626']:o.partial?['שודר חלקי','#d97706']:o.nosku?['ללא מק״ט','#d97706']:o.bcast?['שודר','#16a34a']
+    :((!o.handled&&(o.status==='processing'||o.status==='on-hold'))?['ממתין לשידור','#94a3b8']:null);
   const ordNew=((d.ordnew&&d.ordnew.orders)||[]).slice(0,10);
   const tickerRow=o=>{ const b=_bcast(o);
     return `<div style="padding:5px 2px;border-top:1px solid rgba(120,120,120,.13)">
@@ -6686,8 +6691,8 @@ function renderHome(){
         <span style="font-weight:700;color:#16a34a;white-space:nowrap">${_ils(parseFloat(o.total)||0)}</span></div>
       <div style="display:flex;gap:6px;align-items:center;margin-top:1px">
         <span class="muted" style="flex:1;min-width:0;font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(o.name||'')}</span>
-        <span style="font-size:10px;font-weight:700;color:${_stC[o.status]||'#64748b'};white-space:nowrap">${escW(_wcst[o.status]||o.status||'')}</span>
-        <span style="font-size:10px;font-weight:700;color:${b[1]};white-space:nowrap">📡${escW(b[0])}</span></div>
+        <span style="font-size:10px;font-weight:700;color:${_stC[o.status]||'#64748b'};white-space:nowrap">${escW(_stN(o.status))}</span>
+        ${b?`<span style="font-size:10px;font-weight:700;color:${b[1]};white-space:nowrap">📡${escW(b[0])}</span>`:''}</div>
     </div>`; };
   const tickerRows=ordNew.map(tickerRow).join('');
   const tickerDur=Math.max(18,ordNew.length*3);
