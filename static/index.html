@@ -6389,8 +6389,10 @@ async function loadHome(spinner){
   if(spinner){ const a=document.getElementById('app'); if(a) a.innerHTML='<div class="empty" style="margin:60px auto;display:flex;align-items:center;justify-content:center;gap:7px">טוען לוח בית… <span style="display:inline-flex;color:#16a34a">'+ico('home',17)+'</span></div>'; }
   const _ovd=new Date(Date.now()-48*3600*1000);   // הזמנות 'בטיפול' ישנות מ-48ש = באיחור
   const _ovBefore=`${_ovd.getFullYear()}-${String(_ovd.getMonth()+1).padStart(2,'0')}-${String(_ovd.getDate()).padStart(2,'0')}`;
+  const _now=new Date(); const _p2=n=>String(n).padStart(2,'0');
+  const _today=`${_now.getFullYear()}-${_p2(_now.getMonth()+1)}-${_p2(_now.getDate())}`;  // היום (שעון מקומי=IL)
   const defs={ ov:'/api/admin/overview', wa:'/api/admin/wa/conversations',
-               sent:'/api/admin/sentinel', rem:'/api/admin/removals?days=1',
+               sent:'/api/admin/sentinel', rem:'/api/admin/removals?from_date='+_today+'&to_date='+_today,
                cdr:'/api/admin/crm/cdr-stats?days=1',          // היום בלבד (לא 30 יום)
                hist:'/api/admin/crm/history?days=1',            // שיחות היום (לרשימת לא-נענו)
                sales:'/api/admin/sales/dashboard'+_homeSalesQ(), // מכירות לפי סניף+תקופה
