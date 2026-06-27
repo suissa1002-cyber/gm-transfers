@@ -2593,19 +2593,22 @@ async def schedule_dispatch(request: Request, x_admin_key: Optional[str] = Heade
     for r in rows:
         byemp.setdefault(r["employee"], []).append(r)
     targets = [only] if only else list(byemp.keys())
-    sent = 0; missing = []
+    sent = 0; delivered = []; missing = []; failed = []
     for emp in targets:
         ids = db.shift_telegram_ids_for_names([emp])
         if not ids:
-            missing.append(emp); continue
+            missing.append(emp); continue            # לא רשום בבוט → לא יקבל
         link = f"{base}/schedule/view?week={wk}&emp={quote(emp)}&sig={_schedule_view_sig(wk, emp)}"
         txt = (f"🗓️ <b>הסידור שלך</b> · {emp}\nשבוע {_fmt_week_range(wk)}\n\n"
                "לצפייה בסידור המעוצב — לחצו על הכפתור 👇")
         kb = {"inline_keyboard": [[{"text": "📋 הסידור שלי", "url": link}]]}
+        okemp = False
         for cid in ids:
             if auto_transfer.shift_send_chat(cid, txt, kb):
-                sent += 1
-    return {"ok": True, "mode": "employee", "sent": sent, "missing": missing}
+                sent += 1; okemp = True
+        (delivered if okemp else failed).append(emp)   # רשום אך נכשל = לא הפעיל/חסם את הבוט
+    return {"ok": True, "mode": "employee", "sent": sent,
+            "delivered": delivered, "missing": missing, "failed": failed}
 
 
 # ── Ops Hub: משימות סוכנים (Monday proxy — הטוקן בצד השרת בלבד) ────

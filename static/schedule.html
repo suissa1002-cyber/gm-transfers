@@ -491,9 +491,12 @@ async function dispatch(mode, employee){
     if(r.status!==200){ res.innerHTML='⚠ '+(j.detail||'שגיאה'); return; }
     if(mode==='group'){ res.innerHTML=j.ok?'✅ נשלח לקבוצת ההתראות':('⚠ השליחה נכשלה — '+esc(j.detail||'בדקו שהבוט נמצא בקבוצה')); toast(j.ok?'✅ נשלח לקבוצה':'נכשל'); }
     else{
-      let m='✅ נשלחו '+j.sent+' הודעות';
-      if(j.missing&&j.missing.length) m+='<br>⚠ לא רשומים בבוט: '+j.missing.map(esc).join(', ');
-      res.innerHTML=m; toast('✅ נשלחו '+j.sent);
+      const dl=j.delivered||[], ms=j.missing||[], fl=j.failed||[];
+      let m='✅ קיבלו ('+dl.length+'): '+(dl.length?dl.map(esc).join(', '):'—');
+      if(fl.length) m+='<br>⚠ נכשל — כנראה לא הפעילו את הבוט ('+fl.length+'): '+fl.map(esc).join(', ');
+      if(ms.length) m+='<br>🔕 לא רשומים בבוט ('+ms.length+'): '+ms.map(esc).join(', ');
+      if(fl.length||ms.length) m+='<br><span class="muted" style="font-size:12px">מי שלא קיבל — שישלח /start לבוט @Greenm_alert_bot, ואז "שגר לנבחר/ת".</span>';
+      res.innerHTML=m; toast('✅ קיבלו '+dl.length+(fl.length||ms.length?' · '+(fl.length+ms.length)+' לא':''));
     }
   }catch(e){ if(String(e.message)!=='401') res.innerHTML='שגיאה.'; }
 }
