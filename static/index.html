@@ -1600,6 +1600,7 @@ async function openScan(opId){ showLoading();
 function setEmployee(name){ S.employee=name; localStorage.setItem('tr_employee',name); }
 function changeEmployee(){ S.employee=null; localStorage.removeItem('tr_employee'); render(); }
 function renderScan(app){
+  if(!S.op){ S.view=S._fromAdmin?'admin':'board'; render(); return; }  // אין העברה נבחרת → ללוח הקליטה
   const t=S.op, done=t.total_units>0 && t.received_units>=t.total_units;
   const needEmp=!S.employee;   // קודם כל מזהים מי קולט — לפני סריקה
   app.innerHTML=`
@@ -6670,7 +6671,7 @@ function renderHome(){
     ${qa('💳 קישור תשלום',"if(ensureAdmin(payQuickOpen))payQuickOpen()")}
     ${qa('🛒 הזמנות',"openOrdersTab()")}
     ${qa('💬 וואטסאפ',"openWaTab()")}
-    ${qa('📷 סריקת העברה',"S.view='scan';render()")}
+    ${qa('📷 סריקת העברה',"hubGo('board')")}
     ${qa('📞 מוקד שיחות',"hubGoCrm()")}
   </div>`;
   // ימין: דורש-טיפול (גדל) + פעולות-מהירות מתחת · שמאל: הזמנות-חדשות שמתמתח לאותו גובה
