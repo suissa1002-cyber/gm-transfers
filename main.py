@@ -6603,6 +6603,10 @@ _PBX_ROUTE_LABELS = {
 # ── מיפוי ניתוב לפופאפ החי (נתפס חי 24/06) ──
 # סניף מ-CHANNELS: תור (queue id ב-appdata) / huntlist / חיוג ישיר לשלוחה.
 _PBX_QUEUE_LABELS = {"18058": "הזמנות", "18078": "סיטי"}
+# המספרים שלנו (DID) — לא להציג כ"מתקשר" בפופאפ (אחרת השיחה מופיעה גם ככרטיס של המספר שלנו)
+_PBX_OWN_DIGITS = {("".join(c for c in n if c.isdigit())[-9:])
+                   for n in ((os.getenv("PBX_OWN_NUMBERS") or "089477402,089350202,0733656401").split(","))
+                   if n.strip()}
 _PBX_EXT_BRANCH = {"203": "סטאר", "201": "גן העיר"}   # חיוג ישיר → סניף
 # תת-מחלקה מ-simplecdrs.sc_calleridname (ה-CID-alter; השם שמופיע על הטלפון).
 _PBX_SUB_DEPTS = {"חדשה", "קיימת", "חנות", "מעבדה"}
@@ -7135,6 +7139,8 @@ def _pbx_normalize_channels(raw) -> dict:
             agent_up = True
         if not _re.match(r"^0\d{8,9}$", cid):
             continue
+        if "".join(c for c in cid if c.isdigit())[-9:] in _PBX_OWN_DIGITS:
+            continue   # מספר משלנו (DID) — לא מתקשר אמיתי
         e = by_phone.setdefault(cid, {"uid": uid, "state": state, "branch": "", "answered": False})
         if chan.startswith("SIP/kamailio") or "queue" in ctx.lower() or ctx.upper() == "IVRDISA":
             e["uid"], e["state"] = uid, state

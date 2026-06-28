@@ -6199,6 +6199,8 @@ async function pbxPoll(){
     const id=String(c.id);
     if(_pbxClosed[id]) return;
     if(c.status==='answered' && !_pbxAnsAt[id]) _pbxAnsAt[id]=Date.now();   // רגע המענה → התחלת טיימר
+    // שימור נתיב: אחרי מענה/גישור ערוצי-הניתוב נעלמים מ-CHANNELS → שומרים את הנתיב האחרון הידוע
+    if(!c.route && _pbxShown[id] && _pbxShown[id].route) c.route=_pbxShown[id].route;
     const fresh=!_pbxKnown[id] && !(id in _pbxShown);
     _pbxKnown[id]=1;
     if(id in _pbxEnded) delete _pbxEnded[id];   // חזרה לפעילה (לא סביר)
