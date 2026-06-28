@@ -4024,6 +4024,14 @@ def bridge_variations(product_id: int, x_bridge_key: Optional[str] = Header(None
                            for v in vs]}
 
 
+@app.get("/api/uri-bridge/repair")
+def bridge_repair(q: str = "", x_bridge_key: Optional[str] = Header(None)):
+    """הצעת-מחיר תיקון מעבדה לאורי (מהמחירון בגיליון). q=דגם+מהות (למשל 'מסך iphone 16 pro').
+    מחזיר {found, text}. found=false → אין מחיר לדגם/מהות, להפנות לנציג."""
+    _require_bridge(x_bridge_key)
+    return _repair_quote_text(q)
+
+
 _ATTR_TERMS_CACHE = {"at": 0.0, "data": None}
 _FILTER_GENERIC = {"אוזניות", "טלפון", "סלולרי", "סלולארי", "מסך", "סוללה", "מצלמה",
                    "סמארטפון", "מכשיר", "עם", "תוך", "אוזן", "שעון", "חכם", "אלחוטיות",
@@ -5174,6 +5182,36 @@ def bot_repair_match_part(device: dict, query: str) -> list:
         if rep.lower() in q or any(s.lower() in q for s in syns):
             matched.append(rep)
     return matched
+
+
+def _repair_quote_text(q: str) -> dict:
+    """הצעת-מחיר תיקון כטקסט מוכן (לכלי של אורי). מחזיר {found, text, ambiguous}."""
+    cands = bot_repair_quote(q)
+    if not cands:
+        return {"found": False, "text": ""}
+    if len(cands) > 1:
+        names = " · ".join(c.get("display", "") for c in cands[:6])
+        return {"found": True, "ambiguous": True,
+                "text": f"נמצאו כמה דגמים תואמים: {names}. לאיזה דגם בדיוק?"}
+    dev = cands[0]
+    parts = bot_repair_match_part(dev, q) or list((dev.get("repairs") or {}).keys())
+    _tier_lbl = {"אולד": "חילופי OLED", "oled": "חילופי OLED"}
+    lines = [f"🔧 {dev.get('display', '')} — הצעת מחיר:"]
+    any_price = False
+    for rep in parts:
+        tiers = (dev.get("repairs") or {}).get(rep) or []
+        priced = sorted([t for t in tiers if t.get("price")], key=lambda t: t["price"])
+        if not priced:
+            continue
+        any_price = True
+        lines.append(f"{rep}:")
+        for t in priced:
+            label = _tier_lbl.get((t.get("tier") or "").lower(), t.get("tier") or "מחיר")
+            lines.append(f"• {label} — ₪{int(t['price']):,}")
+    if not any_price:
+        return {"found": False, "text": ""}
+    lines.append("⚠️ הערכה לפי התיאור; המחיר הסופי נקבע אחרי בדיקת מעבדה.")
+    return {"found": True, "text": "\n".join(lines)}
 
 
 def bot_create_order(product_id, variation_id, price, name, phone) -> dict:
