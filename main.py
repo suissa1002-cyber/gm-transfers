@@ -6909,6 +6909,7 @@ def pbx_live(x_admin_key: Optional[str] = Header(None)):
             "matched_name": info["name"], "orders": info["orders"],
             "order_number": info["order_number"], "items": info["items"],
             "state": e["state"], "status": "answered" if e["answered"] else "ringing",
+            "direction": "in" if e.get("inbound") else "out",
         })
     return {"calls": calls}
 
@@ -7200,12 +7201,18 @@ def _pbx_normalize_channels(raw) -> dict:
             continue
         if "".join(c for c in cid if c.isdigit())[-9:] in _PBX_OWN_DIGITS:
             continue   # מספר משלנו (DID) — לא מתקשר אמיתי
-        e = by_phone.setdefault(cid, {"uid": uid, "state": state, "branch": "", "answered": False})
+        e = by_phone.setdefault(cid, {"uid": uid, "state": state, "branch": "", "answered": False, "inbound": False})
         if chan.startswith("SIP/kamailio") or "queue" in ctx.lower() or ctx.upper() == "IVRDISA":
             e["uid"], e["state"] = uid, state
+        # זיהוי כיוון: שיחה נכנסת עוברת דרך תור/IVR/huntlist (מסלולי כניסה). שיחה יוצאת
+        # (אנחנו מחייגים ללקוח) — מספר הלקוח מופיע כ-cid אך לא עוברת את מסלולי הכניסה.
+        # ⚠️ SIP/kamailio הוא ה-trunk לשני הכיוונים — לא משמש לזיהוי כיוון.
+        if "queue" in ctx.lower() or ctx.upper() == "IVRDISA" or "huntlist" in (ctx + app).lower():
+            e["inbound"] = True
         qm = _re.search(r"\b(18\d{3})\b", appdata)
         if qm and qm.group(1) in _PBX_QUEUE_LABELS:
             e["branch"] = _PBX_QUEUE_LABELS[qm.group(1)]
+            e["inbound"] = True
         elif "huntlist" in (ctx + app).lower():
             e["branch"] = e["branch"] or "עד הלום"
         elif not e["branch"]:
