@@ -6308,12 +6308,15 @@ function pbxMainHTML(id){
   const who=escW(c.matched_name||'לקוח לא מזוהה');
   const ordersN=c.orders||0;
   const countChip=ordersN>1?'<span style="background:rgba(29,185,84,.14);color:var(--green,#1db954);font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;white-space:nowrap;flex-shrink:0">'+ordersN+' הזמנות</span>':'';
-  // כותרת לפי מצב
-  let hdrBg, statusLine;
-  if(st==='ended-no'){ hdrBg='#e5484d'; statusLine='📵 לא נענה'; }
-  else if(st==='ended-ok'){ hdrBg='#64748b'; statusLine='✓ הסתיימה · '+pbxFmtElapsed(_pbxEnded[id].dur); }
-  else if(st==='answered'){ hdrBg='var(--green,#1db954)'; statusLine='🟢 בשיחה · <span id="pbxTime_'+id+'">'+pbxFmtElapsed(Date.now()-_pbxAnsAt[id])+'</span>'; }
-  else { hdrBg='#334155'; statusLine=isOut?'📞 מחייג…':'📞 מצלצל…'; }
+  // כותרת: הכיוון תמיד גלוי בגדול; השורה הקטנה = מצב + נתיב
+  const dirLbl=isOut?'שיחה יוצאת ↗':'שיחה נכנסת ↘';
+  let hdrBg, stateTxt;
+  if(st==='ended-no'){ hdrBg='#e5484d'; stateTxt='📵 לא נענה'; }
+  else if(st==='ended-ok'){ hdrBg='#64748b'; stateTxt='✓ הסתיימה · '+pbxFmtElapsed(_pbxEnded[id].dur); }
+  else if(st==='answered'){ hdrBg='var(--green,#1db954)'; stateTxt='🟢 בשיחה · <span id="pbxTime_'+id+'">'+pbxFmtElapsed(Date.now()-_pbxAnsAt[id])+'</span>'; }
+  else { hdrBg='#334155'; stateTxt=isOut?'📞 מחייג…':'📞 מצלצל…'; }
+  const routeTxt=routed?(' · '+crumb):((!isOut&&st==='ringing')?' · ממתינה לניתוב…':'');
+  const statusLine=stateTxt+routeTxt;
   const orderBox=c.order_number
     ? '<div style="border:1px solid var(--line,#e2e8f0);border-radius:10px;padding:8px 10px;margin-top:10px;background:rgba(0,0,0,.025)">'+
         '<div style="font-size:11.5px;color:var(--mut,#64748b);margin-bottom:2px">🧾 הזמנה אחרונה</div>'+
@@ -6325,7 +6328,7 @@ function pbxMainHTML(id){
     '<div style="padding:9px 13px;background:'+hdrBg+';color:#fff;display:flex;justify-content:space-between;align-items:center;gap:8px">'+
       '<div style="min-width:0">'+
         '<div style="font-size:11px;opacity:.92;margin-bottom:2px;font-weight:700">'+statusLine+'</div>'+
-        '<div style="font-size:14px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.95">'+(isOut?(routed?crumb:'שיחה יוצאת ↗'):(routed?crumb:(st==='ringing'?'ממתינה לניתוב…':'שיחה נכנסת')))+'</div>'+
+        '<div style="font-size:14px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.95">'+dirLbl+'</div>'+
       '</div>'+
       '<button onclick="pbxClosePopup(\''+id+'\')" style="background:rgba(255,255,255,.18);border:0;width:24px;height:24px;border-radius:50%;font-size:13px;cursor:pointer;color:#fff;flex-shrink:0;line-height:1">✕</button>'+
     '</div>'+
