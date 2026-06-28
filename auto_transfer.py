@@ -575,6 +575,18 @@ def _rescan_flagged(orders, catalog):
         m = _re.search(r"הזמנת אתר #(\d+)", ln.get("created_by") or "")
         if m:
             plan_nums.add(m.group(1))
+    proc_nums = {str(o.get("number")) for o in orders}   # ההזמנות שעדיין 'בטיפול'
+    # ── ניקוי דגלים שהתיישנו: הזמנה מדוגלת (חסר/ללא-מק"ט) שכבר **התקדמה** מעבר ל'בטיפול'
+    # (שלב הפצה / מוכנה / נמסר / הושלם / בוטל) — טופלה ידנית (למשל דרופ-שיפ מהיבואן),
+    # אז הדגל לא רלוונטי. בודקים סטטוס נוכחי ומסירים. ⚠️ STATUSES ברירת-מחדל=processing
+    # בלבד, לכן הזמנה כזו כבר לא ב-orders ולא הייתה מתנקה לעולם. ──
+    _ACTIONABLE = {"processing", "on-hold", "pending"}
+    for num in (flagged - proc_nums):
+        st = _order_status_by_number(num)
+        if st and st not in _ACTIONABLE:
+            _unmark_oos(num)
+            _unmark_unmatched(num)
+            logger.info("self-heal: cleared stale flag for order %s (status=%s)", num, st)
     for o in orders:
         num = str(o.get("number"))
         if num not in flagged:
@@ -585,6 +597,24 @@ def _rescan_flagged(orders, catalog):
         if created:
             logger.info("self-heal: order %s broadcast after re-link/catalog", num)
             _alert_created(o, created)
+
+
+def _order_status_by_number(number) -> str:
+    """סטטוס WC נוכחי של הזמנה לפי מספרה (להזמנות מדוגלות שיצאו מסטטוס 'בטיפול').
+    מחזיר '' אם לא נמצא/שגיאה — אז לא נוגעים בדגל (זהירות: לא לנקות בטעות)."""
+    creds = _wc_creds()
+    if not creds:
+        return ""
+    base, k, s = creds
+    try:
+        r = requests.get(f"{base}/wp-json/wc/v3/orders",
+                         params={"search": str(number), "per_page": 10}, auth=(k, s), timeout=25)
+        for o in (r.json() if r.ok else []):
+            if str(o.get("number")) == str(number):
+                return o.get("status") or ""
+    except requests.RequestException as e:
+        logger.warning("status lookup failed for order %s: %s", number, e)
+    return ""
 
 
 def scan_orders():
