@@ -862,19 +862,24 @@ def _product_card(phone, rid, data):
         btns = [(f"buy:{pid}", "🛒 הזמן זמין"),
                 (f"notify_sku:{asked.get('sku')}:{pid}", f"💙 רק {(asked.get('color') or '')[:11]}"),
                 ("agent", "👤 נציג")]
+    elif asked and asked.get("stock") == "outofstock":
+        # שאל על צבע ספציפי שאזל ואין צבעים זמינים אחרים → נציג יבדוק מתי חוזר
+        lines.append(f"⏳ הצבע *{asked.get('color')}* אזל במלאי כרגע.")
+        btns = [(f"notify_sku:{asked.get('sku')}:{pid}", "🔔 עדכנו כשחוזר"), ("agent", "👤 נציג")]
+    elif asked:
+        # שאל על צבע ספציפי שזמין → יש במלאי
+        lines.append("✅ זמין במלאי")
+        btns = [(f"buy:{pid}", "🛒 הזמן עכשיו"), ("search_again", "🔍 מוצר אחר"), ("agent", "👤 נציג")]
     else:
-        if stock == "outofstock":
-            lines.append("⏳ אזל כרגע")
-        elif oos:
-            cols = ", ".join(v.get("color") for v in oos if v.get("color"))
-            lines.append("✅ זמין במלאי" + (f"\n⏳ אזל בצבעים: {cols}" if cols else ""))
-        elif stock == "instock":
+        # ⚠️ לא שאל על צבע ספציפי → אם יש מלאי כלשהו אומרים "זמין במלאי" בלבד, בלי לפרט
+        # צבעים שאזלו (הוראת אסי 28/06 — לא להיכנס לצבעים אם לא נשאל). אזל לגמרי → נציג.
+        if stock == "instock" or instock:
             lines.append("✅ זמין במלאי")
-        if (stock == "outofstock" and p.get("sku")) or oos:
-            btns = [(f"notify_stock:{pid}", "🔔 עדכנו כשחוזר"),
-                    (f"buy:{pid}", "🛒 הזמן"), ("agent", "👤 נציג")]
-        else:
             btns = [(f"buy:{pid}", "🛒 הזמן עכשיו"), ("search_again", "🔍 מוצר אחר"), ("agent", "👤 נציג")]
+        else:
+            lines.append("⏳ אזל כרגע")
+            btns = (([(f"notify_stock:{pid}", "🔔 עדכנו כשחוזר")] if p.get("sku") else [])
+                    + [(f"buy:{pid}", "🛒 הזמן"), ("agent", "👤 נציג")])
     if p.get("permalink"):
         # slug עברי → קישור מקוצר gm- (קישור עברי ארוך נראה שבור/חשוד); אנגלי נשאר ישיר
         lines.append(f"\n🔗 לרכישה ולפרטים:\n{_short_link(p['permalink'])}")
