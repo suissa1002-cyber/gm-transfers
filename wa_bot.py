@@ -395,13 +395,29 @@ _REPAIR_VERB_W = ("להחליף", "החלפת", "החלפה", "מחליפים", 
                   "נשבר", "סדוק", "התקלקל", "מקולקל", "דפוק", "לא עובד", "לא דולק", "נשרט")
 
 
+_REPAIR_PRICE_W = ("מחיר", "כמה עולה", "כמה זה", "כמה יעלה", "עלות", "כמה")
+_PHONE_HINT = ("אייפון", "איפון", "iphone", "גלקסי", "galaxy", "סמסונג", "samsung",
+               "שיאומי", "xiaomi", "redmi", "רדמי", "פיקסל", "pixel", "וואנפלוס",
+               "oneplus", "הואווי", "huawei", "נוקיה", "nokia", "ריאלמי", "realme",
+               "אופו", "oppo", "פולד", "flip", "fold", "נוט", "note")
+
+
 def _is_repair_quote_intent(low: str) -> bool:
     s = low or ""
     if "מגן" in s or "כיסוי" in s:        # 'מגן מסך'/'כיסוי' = מוצר, לא תיקון
         return False
     has_part = any(p in s for p in _REPAIR_PART_W)
-    has_verb = any(v in s for v in _REPAIR_VERB_W)
-    return has_part and has_verb
+    if not has_part:
+        return False
+    if any(v in s for v in _REPAIR_VERB_W):   # פועל-תיקון מפורש ('להחליף סוללה')
+        return True
+    # בלי פועל-תיקון: שאלת מחיר על חלק-תיקון ('מסך מקורי לאייפון 16 פרו מה המחיר') —
+    # הצעת מחיר תיקון, לא מוצר. דורש שאלת-מחיר + (דגם טלפון או 'מקורי') כדי לא לתפוס
+    # 'מסך מחשב מה המחיר'.
+    has_price = any(w in s for w in _REPAIR_PRICE_W)
+    has_phone = any(w in s for w in _PHONE_HINT)
+    has_orig = "מקורי" in s or "original" in s
+    return has_price and (has_phone or has_orig)
 
 
 # מילות-מילוי שיחתיות — מוסרות בנרמול שאילתה כדי לזהות שאילתה חוזרת ('אני רוצה אבל
