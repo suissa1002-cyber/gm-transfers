@@ -6462,7 +6462,7 @@ async function loadHome(spinner){
   const _ovBefore=_overdueCutoffISO();
   const _today=`${_now.getFullYear()}-${_p2(_now.getMonth()+1)}-${_p2(_now.getDate())}`;  // היום (שעון מקומי=IL)
   const defs={ ov:'/api/admin/overview', wa:'/api/admin/wa/conversations',
-               sent:'/api/admin/sentinel', rem:'/api/admin/removals?from_date='+_today+'&to_date='+_today,
+               sent:'/api/admin/sentinel', rem:'/api/admin/removals'+_homeRemQ(),
                cdr:'/api/admin/crm/cdr-stats?days=1',          // היום בלבד (לא 30 יום)
                hist:'/api/admin/crm/history?days=1',            // שיחות היום (לרשימת לא-נענו)
                sales:'/api/admin/sales/dashboard'+_homeSalesQ(), // מכירות לפי סניף+תקופה
@@ -6484,12 +6484,30 @@ function _homeSalesQ(){
   else if(S.homeSalesPeriod==='range'&&S.homeSalesRange){ p.push('from_date='+S.homeSalesRange.from); p.push('to_date='+S.homeSalesRange.to); }
   return p.length?('?'+p.join('&')):'';
 }
+// טווח תאריכים לכרטיס ההורדות, תואם למתג התקופה (היום/אתמול/סינון) — כך שלא יישאר תקוע על היום
+function _homeRemQ(){
+  const p=n=>String(n).padStart(2,'0');
+  const fmt=d=>`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
+  const now=new Date(); let f,t;
+  if(S.homeSalesPeriod==='yesterday'){ const y=new Date(now); y.setDate(y.getDate()-1); f=t=fmt(y); }
+  else if(S.homeSalesPeriod==='range'&&S.homeSalesRange){ f=S.homeSalesRange.from; t=S.homeSalesRange.to; }
+  else { f=t=fmt(now); }
+  return '?from_date='+f+'&to_date='+t;
+}
+// חילוץ סכום ההורדה מההערה ('הורדה מהמלאי 1220שח' → 1220)
+function _remAmt(n){ const m=String(n||'').match(/(\d[\d,]*(?:\.\d+)?)\s*(?:ש["'׳״]?ח|₪)/); return m?parseFloat(m[1].replace(/,/g,'')):0; }
 function homeSalesBranch(b){ S.homeLastTouch=Date.now(); S.homeBranch=(b===''||b==null)?null:b; S.homeSalesLoading=true; if(S.view==='home')renderHome(); loadHomeSales(); }
 function homeSalesPeriod(p){ S.homeLastTouch=Date.now(); if(p==='range'){ homeSalesRangeOpen(); return; } S.homeSalesPeriod=p; S.homeSalesRange=null; S.homeSalesLoading=true; if(S.view==='home')renderHome(); loadHomeSales(); }
 async function loadHomeSales(){
-  try{ const s=await api('/api/admin/sales/dashboard'+_homeSalesQ());
-       if(!S.homeData) S.homeData={}; S.homeData.sales=s; }
-  catch(e){}
+  try{
+    const [s,rem]=await Promise.all([
+      api('/api/admin/sales/dashboard'+_homeSalesQ()),
+      api('/api/admin/removals'+_homeRemQ()).catch(()=>null)   // הורדות לפי אותה תקופה
+    ]);
+    if(!S.homeData) S.homeData={};
+    S.homeData.sales=s;
+    if(rem) S.homeData.rem=rem;
+  }catch(e){}
   S.homeSalesLoading=false;
   if(S.view==='home') renderHome();
 }
@@ -6821,16 +6839,19 @@ function renderHome(){
        "toggleAdmin()")).join('')+`</div>`
      :'<div class="muted" style="font-size:13px;padding:6px 0">אין העברות פתוחות 👌</div>'));
   // הורדות מלאי — סיטי היום (שורה מרווחת: שם המוצר למעלה, עובד מתחת)
-  if(homeShow('removals')) h+=crmCard(homeHead(ico('trendDown',16),'הורדות מלאי — סיטי היום',remRows.length+' פריטים',"S.view='admin';setAdminTab('removals')")+
-    (remRows.length?remRows.slice(0,7).map(r=>
-       `<div style="padding:8px 0;border-top:1px solid var(--line)">
-          <div style="font-size:13px;font-weight:700;line-height:1.3">${escW(r.name||'')}</div>
+  if(homeShow('removals')) h+=crmCard(homeHead(ico('trendDown',16),'הורדות מלאי — סיטי · '+escW(perLabel),remRows.length+' פריטים',"S.view='admin';setAdminTab('removals')")+
+    (remRows.length?remRows.slice(0,7).map(r=>{ const ramt=_remAmt(r.note);
+       return `<div style="padding:8px 0;border-top:1px solid var(--line)">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+            <div style="font-size:13px;font-weight:700;line-height:1.3;flex:1;min-width:0">${escW(r.name||'')}</div>
+            ${ramt?`<span style="font-weight:700;color:#16a34a;white-space:nowrap">${_il(ramt)}</span>`:''}
+          </div>
           <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px">
             <span class="muted" style="font-size:11px;font-weight:400;display:inline-flex;align-items:center;gap:4px">${ico('user',12)} ${escW(r.employee||'—')}</span>
             <span class="muted" style="font-size:11px;font-weight:400;direction:ltr;display:inline-flex;align-items:center;gap:4px">${ico('clock',12)} ${escW(_tmt(r.removed_at))}</span>
           </div>
-        </div>`).join('')
-     :'<div class="muted" style="font-size:13px;padding:6px 0">אין הורדות היום</div>'));
+        </div>`; }).join('')
+     :'<div class="muted" style="font-size:13px;padding:6px 0">אין הורדות בתקופה</div>'));
   // שיחות מרכזיה היום + רשימת לא-נענו אחרונות
   const hist=(d.hist&&d.hist.calls)||[];
   const missed=hist.filter(c=>c.direction==='in'&&c.disposition&&c.disposition!=='answered').slice(0,4);
