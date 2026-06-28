@@ -1738,6 +1738,7 @@ class WcConnectIn(BaseModel):
     product_id: int
     variation_id: int = 0
     sku: str
+    force: bool = False        # המק"ט תפוס במוצר אחר → לנקות משם ולהעביר לכאן (החלפת חיבור)
 
 
 @app.post("/api/admin/wc-connect")
@@ -1765,11 +1766,19 @@ def admin_wc_connect(body: WcConnectIn, x_admin_key: Optional[str] = Header(None
             same = (e0.get("id") == body.variation_id) if body.variation_id \
                 else (e0.get("id") == body.product_id)
             if not same:
-                return JSONResponse(
-                    {"ok": False, "reason": "taken",
-                     "by": {"id": e0.get("id"), "name": e0.get("name"),
-                            "permalink": e0.get("permalink")}},
-                    status_code=409, headers={"Cache-Control": "no-store"})
+                if not body.force:
+                    return JSONResponse(
+                        {"ok": False, "reason": "taken",
+                         "by": {"id": e0.get("id"), "name": e0.get("name"),
+                                "permalink": e0.get("permalink")}},
+                        status_code=409, headers={"Cache-Control": "no-store"})
+                # force=החלפת חיבור: מנקים את המק"ט מהמוצר השגוי לפני שמצמידים לחדש
+                try:
+                    _rq.put(base + f"/wp-json/wc/v3/products/{e0.get('id')}",
+                            json={"sku": ""}, auth=(k, s), timeout=20)
+                    logger.info("wc-connect force: cleared sku %s from old id %s", sku, e0.get("id"))
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("wc-connect force clear failed for %s: %s", sku, e)
     except HTTPException:
         raise
     except Exception as e:  # noqa: BLE001
@@ -1798,6 +1807,56 @@ def admin_wc_connect(body: WcConnectIn, x_admin_key: Optional[str] = Header(None
     logger.info("wc-connect: sku %s -> id %s by %s", sku, d.get("id"), actor or "?")
     return JSONResponse({"ok": True, "id": d.get("id"),
                          "permalink": d.get("permalink"), "name": d.get("name")},
+                        headers={"Cache-Control": "no-store"})
+
+
+class WcDisconnectIn(BaseModel):
+    sku: str
+
+
+@app.post("/api/admin/wc-disconnect")
+def admin_wc_disconnect(body: WcDisconnectIn, x_admin_key: Optional[str] = Header(None),
+                        x_device_token: Optional[str] = Header(None)):
+    """מסיר את הצמדת מק"ט הקופה מהמוצר באתר (מנקה את ה-SKU מהמוצר שמחזיק אותו) —
+    לתיקון חיבור שגוי. אחרי זה הפריט יופיע 'לא מחובר' וניתן לחבר נכון."""
+    actor = _actor_name(x_admin_key, x_device_token)
+    _require_admin_or_device(x_admin_key, x_device_token)
+    creds = _wc_creds()
+    if not creds:
+        raise HTTPException(503, "wc not configured")
+    base, k, s = creds
+    sku = (body.sku or "").strip()
+    if not sku:
+        raise HTTPException(400, "missing sku")
+    import requests as _rq
+    try:
+        rc = _rq.get(base + "/wp-json/wc/v3/products", params={"sku": sku}, auth=(k, s), timeout=15)
+        ex = rc.json() if rc.ok else []
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f"wc lookup failed: {e}")
+
+    def _flush():
+        _wc_cache.pop(sku, None)
+        _sku_color_cache.pop(sku, None)
+        for kk in [kx for kx in _wc_full_cache if kx[0] == sku]:
+            _wc_full_cache.pop(kk, None)
+
+    if not (isinstance(ex, list) and ex):
+        _flush()
+        return JSONResponse({"ok": True, "already": True}, headers={"Cache-Control": "no-store"})
+    e0 = ex[0]
+    try:
+        rp = _rq.put(base + f"/wp-json/wc/v3/products/{e0.get('id')}",
+                     json={"sku": ""}, auth=(k, s), timeout=20)
+        if not rp.ok:
+            return JSONResponse({"ok": False, "detail": rp.text[:200]},
+                                status_code=502, headers={"Cache-Control": "no-store"})
+    except Exception as e:  # noqa: BLE001
+        logger.warning("wc-disconnect PUT failed for %s: %s", sku, e)
+        raise HTTPException(502, "wc write failed")
+    _flush()
+    logger.info("wc-disconnect: sku %s cleared from id %s by %s", sku, e0.get("id"), actor or "?")
+    return JSONResponse({"ok": True, "id": e0.get("id"), "name": e0.get("name")},
                         headers={"Cache-Control": "no-store"})
 
 

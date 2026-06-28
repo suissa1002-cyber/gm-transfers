@@ -5003,21 +5003,46 @@ async function wcConnDo(i){
   // מק"ט משוכפל (junk) = לא מחובר באמת → לא מבקשים אישור החלפה
   const taken=r.sku&&!r.junk&&String(r.sku)!==C.pid;
   if(taken && !confirm('המק״ט '+r.sku+' כבר מוצמד לפריט הזה. להחליף למק״ט '+C.pid+'?')) return;
+  return _wcConnect(r.product_id, r.variation_id||0, C.pid, false);
+}
+// חיבור מק"ט→מוצר. force=העברה ממוצר אחר שמחזיק את המק"ט (החלפת חיבור שגוי).
+async function _wcConnect(product_id, variation_id, sku, force){
   showLoading('מחבר…');
+  const h={'Content-Type':'application/json'};
+  if(S.adminKey) h['X-Admin-Key']=S.adminKey; if(S.deviceToken) h['X-Device-Token']=S.deviceToken;
   try{
-    const res=await api('/api/admin/wc-connect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({product_id:r.product_id,variation_id:r.variation_id||0,sku:C.pid})},30000);
+    const r=await fetchT('/api/admin/wc-connect',{method:'POST',headers:h,
+      body:JSON.stringify({product_id,variation_id,sku,force})},30000);
+    const j=await r.json().catch(()=>({}));
     hideLoading();
-    if(res&&res.ok){
-      toast('חובר ✓ '+C.pid+' → האתר',true);
-      // מדליקים את האייקון מיד (ה-cache נוקה בשרת; הפתיחה הבאה תביא נתון מלא)
-      S.lsWc[C.pid]={at:Date.now(),data:{found:true,id:res.id,permalink:res.permalink,name:res.name}};
-      lsPaintWc(C.pid);
-      closeModal();
+    if(r.ok && j.ok){
+      toast('חובר ✓ '+sku+' → האתר',true);
+      S.lsWc=S.lsWc||{}; S.lsWc[sku]={at:Date.now(),data:{found:true,id:j.id,permalink:j.permalink,name:j.name}};
+      lsPaintWc(sku); closeModal();
+    } else if(r.status===409 && j.by && !force){
+      // המק"ט כבר מחובר למוצר אחר → הצעת העברה (החלפת חיבור)
+      if(confirm('מק״ט '+sku+' כבר מחובר ל:\n'+(j.by.name||j.by.id)+'\n\nלהעביר אותו למוצר הזה?'))
+        return _wcConnect(product_id, variation_id, sku, true);
     } else {
-      const by=res&&res.by;
-      toast(by?('המק״ט כבר תפוס ב: '+(by.name||by.id)):'החיבור נכשל',false);
+      toast((j&&j.detail)||(j&&j.by?('המק״ט כבר תפוס ב: '+(j.by.name||j.by.id)):'החיבור נכשל'),false);
     }
-  }catch(e){ hideLoading(); toast('החיבור נכשל',false); }
+  }catch(e){ hideLoading(); toast('החיבור נכשל — בעיית רשת',false); }
+}
+// "החלף חיבור" מתוך הפופאפ המחובר — פותח את כלי החיפוש להצמדת מק"ט נכון
+function wcChangeConn(pid,name){ S._wcConn={pid:String(pid),name:name||'',store:'https://greenmobile.co.il'}; renderWcConnect(name||''); }
+// "הסר חיבור" — מנקה את המק"ט מהמוצר באתר (תיקון חיבור שגוי)
+async function wcRemoveConn(pid){
+  if(!confirm('להסיר את החיבור של מק״ט '+pid+' מהמוצר באתר?\nהפריט יסומן "לא מחובר" וניתן יהיה לחבר נכון.')) return;
+  showLoading('מסיר חיבור…');
+  const h={'Content-Type':'application/json'};
+  if(S.adminKey) h['X-Admin-Key']=S.adminKey; if(S.deviceToken) h['X-Device-Token']=S.deviceToken;
+  try{
+    const r=await fetchT('/api/admin/wc-disconnect',{method:'POST',headers:h,body:JSON.stringify({sku:String(pid)})},30000);
+    const j=await r.json().catch(()=>({}));
+    hideLoading();
+    if(r.ok && j.ok){ toast('החיבור הוסר ✓',true); if(S.lsWc) delete S.lsWc[String(pid)]; lsPaintWc(String(pid)); closeModal(); }
+    else toast((j&&j.detail)||'ההסרה נכשלה',false);
+  }catch(e){ hideLoading(); toast('ההסרה נכשלה — בעיית רשת',false); }
 }
 function wcQuickSel(name,opt){
   const Q=S._wcQuick; if(!Q) return;
@@ -5098,7 +5123,11 @@ function renderWcQuick(){
     <div style="display:flex;gap:8px">
       <a class="btn-primary" style="flex:1;display:flex;align-items:center;justify-content:center;text-decoration:none;padding:13px;border-radius:12px${comboMissing?';opacity:.4;pointer-events:none':''}" href="${cur.permalink}" target="_blank" rel="noopener">לעמוד המלא באתר ↗</a>
       ${isAdminCtx()?`<button class="btn-ghost" style="display:flex;align-items:center;gap:6px;border-color:#16a34a;color:#16a34a;padding:13px 16px;border-radius:12px" onclick='closeModal();waOrderOpen(${JSON.stringify(String(pid))})' title="צור הזמנה ללקוח">${ico('cart',16)} הזמנה</button>`:''}
-    </div>`;
+    </div>
+    ${isAdminCtx()?`<div style="display:flex;gap:8px;margin-top:8px">
+      <button class="btn-ghost" style="flex:1;font-size:12.5px;padding:10px;border-radius:11px;display:inline-flex;align-items:center;justify-content:center;gap:6px" onclick='wcChangeConn(${JSON.stringify(String(pid))},${JSON.stringify(d.name||"")})' title="המוצר באתר לא נכון? חפש וחבר את הנכון">${ico('repeat',14)} החלף חיבור</button>
+      <button class="btn-ghost" style="flex:1;font-size:12.5px;padding:10px;border-radius:11px;border-color:#dc2626;color:#dc2626;display:inline-flex;align-items:center;justify-content:center;gap:6px" onclick='wcRemoveConn(${JSON.stringify(String(pid))})' title="נתק את המק״ט מהמוצר באתר">${ico('trash',14)} הסר חיבור</button>
+    </div>`:''}`;
   document.getElementById('modalRoot').innerHTML=`<div class="overlay"><div class="modal" style="max-width:430px;text-align:right;position:relative;max-height:88vh;overflow:auto">
     <button class="dr-x" style="position:absolute;top:10px;inset-inline-start:10px" onclick="closeModal()">✕</button>
     ${body}
