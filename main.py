@@ -6613,6 +6613,51 @@ _PBX_IDENT: dict = {}     # intl  -> (ts, {name,orders,order_number,items})
 _PBX_TAG: dict = {}       # local -> (ts, {name,who})
 _PBX_INFLIGHT: set = set()
 _NO_CUST_CACHE: dict = {}  # digits9 -> (ts, cust|None) — לקוח NewOrder לפי טלפון
+_NO_NAME_MAP: dict = {"ts": 0.0, "map": {}, "building": False}  # טלפון9→שם, לזיהוי רשימת ההיסטוריה
+
+
+def _neworder_name_map() -> dict:
+    """מפת טלפון(9 ספרות)→שם מכל לקוחות הקופה, cached ~2ש', נבנית ברקע (לא חוסם).
+    ריקה בטעינה ראשונה (נבנית), זמינה בטעינה הבאה — לזיהוי הרשימה בלי קריאה פר-שורה."""
+    import time as _t
+    m = _NO_NAME_MAP
+    if (_t.time() - m["ts"]) > 7200 and not m["building"]:
+        m["building"] = True
+
+        def _build():
+            mp = {}
+            try:
+                import poller
+                cli = poller.client()
+                page = 1
+                while page <= 80:   # תקרת בטיחות (~40k לקוחות)
+                    res = cli.get_customers(page_size=500, page_num=page)
+                    rows = res if isinstance(res, list) else (res.get("data") or res.get("customers") or [])
+                    if not rows:
+                        break
+                    for r in rows:
+                        nm = (r.get("name") or "").strip()
+                        if not nm or nm in (".", "-", "..", "מזדמן"):
+                            continue
+                        cd = r.get("contactDetails") or {}
+                        for ph in (cd.get("phoneNumber1"), cd.get("phoneNumber2")):
+                            d9 = "".join(c for c in str(ph or "") if c.isdigit())[-9:]
+                            if len(d9) == 9 and d9 not in mp:
+                                mp[d9] = nm
+                    if len(rows) < 500:
+                        break
+                    page += 1
+                _NO_NAME_MAP["map"] = mp
+                _NO_NAME_MAP["ts"] = _t.time()
+                logger.info("neworder name map built: %d phones", len(mp))
+            except Exception as e:  # noqa: BLE001
+                logger.warning("neworder name map build failed: %s", e)
+            finally:
+                _NO_NAME_MAP["building"] = False
+
+        import threading
+        threading.Thread(target=_build, daemon=True).start()
+    return m["map"]
 
 
 def _neworder_customer(phone: str):
@@ -7162,6 +7207,7 @@ def crm_history(days: int = 3, date_from: str = "", date_to: str = "",
     except Exception:  # noqa: BLE001
         routes = {}
     name_cache: dict = {}
+    nomap = _neworder_name_map()   # מפת שמות מהקופה (cached, רקע)
     out = []
     for r in rows:
         phone_raw = r["from"] if r["direction"] == "in" else r["to"]
@@ -7169,11 +7215,14 @@ def crm_history(days: int = 3, date_from: str = "", date_to: str = "",
             continue
         intl = _il_phone(phone_raw)
         if intl not in name_cache:
+            nm = ""
             try:
-                c = db.wa_contact_get(intl) or {}
-                name_cache[intl] = (c.get("name") or "").strip()
+                nm = ((db.wa_contact_get(intl) or {}).get("name") or "").strip()
             except Exception:  # noqa: BLE001
-                name_cache[intl] = ""
+                pass
+            if not nm:                                     # נפילה לשם הקופה (NewOrder)
+                nm = nomap.get("".join(c for c in intl if c.isdigit())[-9:], "")
+            name_cache[intl] = nm
         stored = routes.get(r["uid"] or "")
         route = _pbx_best_route(stored.get("route") if stored else "",
                                 r["name"], r["answered_by"], r.get("from"))
