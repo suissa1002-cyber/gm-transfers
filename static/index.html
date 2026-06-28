@@ -6839,18 +6839,23 @@ function renderHome(){
        "toggleAdmin()")).join('')+`</div>`
      :'<div class="muted" style="font-size:13px;padding:6px 0">אין העברות פתוחות 👌</div>'));
   // הורדות מלאי — סיטי היום (שורה מרווחת: שם המוצר למעלה, עובד מתחת)
-  if(homeShow('removals')) h+=crmCard(homeHead(ico('trendDown',16),'הורדות מלאי — סיטי · '+escW(perLabel),remRows.length+' פריטים',"S.view='admin';setAdminTab('removals')")+
-    (remRows.length?remRows.slice(0,7).map(r=>{ const ramt=_remAmt(r.note);
-       return `<div style="padding:8px 0;border-top:1px solid var(--line)">
+  // איחוד לפי עסקה (op): הסכום בהערה הוא ברמת העסקה ומאוחסן על כל שורת-פריט — מציגים פעם אחת
+  const _remOps=[]; const _remSeen={};
+  remRows.forEach(r=>{ const k=r.op_id||r.id; let g=_remSeen[k];
+    if(!g){ g=_remSeen[k]={names:[],amt:_remAmt(r.note),employee:r.employee,removed_at:r.removed_at}; _remOps.push(g); }
+    if(r.name) g.names.push(r.name); });
+  if(homeShow('removals')) h+=crmCard(homeHead(ico('trendDown',16),'הורדות מלאי — סיטי · '+escW(perLabel),_remOps.length+(_remOps.length===1?' עסקה':' עסקאות'),"S.view='admin';setAdminTab('removals')")+
+    (_remOps.length?_remOps.slice(0,7).map(g=>
+       `<div style="padding:8px 0;border-top:1px solid var(--line)">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
-            <div style="font-size:13px;font-weight:700;line-height:1.3;flex:1;min-width:0">${escW(r.name||'')}</div>
-            ${ramt?`<span style="font-weight:700;color:#16a34a;white-space:nowrap">${_il(ramt)}</span>`:''}
+            <div style="font-size:13px;font-weight:700;line-height:1.35;flex:1;min-width:0">${escW(g.names.join(' · ')||'הורדת מלאי')}</div>
+            ${g.amt?`<span style="font-weight:700;color:#16a34a;white-space:nowrap">${_il(g.amt)}</span>`:''}
           </div>
           <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px">
-            <span class="muted" style="font-size:11px;font-weight:400;display:inline-flex;align-items:center;gap:4px">${ico('user',12)} ${escW(r.employee||'—')}</span>
-            <span class="muted" style="font-size:11px;font-weight:400;direction:ltr;display:inline-flex;align-items:center;gap:4px">${ico('clock',12)} ${escW(_tmt(r.removed_at))}</span>
+            <span class="muted" style="font-size:11px;font-weight:400;display:inline-flex;align-items:center;gap:4px">${ico('user',12)} ${escW(g.employee||'—')}</span>
+            <span class="muted" style="font-size:11px;font-weight:400;direction:ltr;display:inline-flex;align-items:center;gap:4px">${ico('clock',12)} ${escW(_tmt(g.removed_at))}</span>
           </div>
-        </div>`; }).join('')
+        </div>`).join('')
      :'<div class="muted" style="font-size:13px;padding:6px 0">אין הורדות בתקופה</div>'));
   // שיחות מרכזיה היום + רשימת לא-נענו אחרונות
   const hist=(d.hist&&d.hist.calls)||[];
