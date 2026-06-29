@@ -955,6 +955,49 @@ def reconcile_sold_transfer_items() -> list:
     return out
 
 
+def reconcile_sold_plan_items() -> list:
+    """מנקה שורות **בקשת-שידור** (transfer_plan) סריאליות שהמכשיר שלהן כבר נמכר/הורד —
+    הבקשה מתה (אי אפשר לשדר יחידה שכבר נמכרה/יצאה מהמלאי). זה מקביל ל-
+    reconcile_sold_transfer_items אבל על בקשות-השידור, לא על כרטיסי הקליטה.
+    (אסי 29/06: בקשת שידור סטאר→אתר נשארה אחרי שהמכשיר נמכר באתר ונקלט.)"""
+    out = []
+    with _conn() as c:
+        cur = c.cursor()
+        try:
+            cur.execute(_q("""SELECT id, product_id, name, serial, from_branch, to_branch, created_at
+                              FROM transfer_plan WHERE serial IS NOT NULL AND serial <> ''"""))
+        except Exception:  # noqa: BLE001 — אין עמודת serial (סכמה ישנה)
+            return out
+        for r in (dict(x) for x in cur.fetchall()):
+            sn = r["serial"]
+            start = r.get("created_at") or ""
+            match = None
+            cur.execute(_q("""SELECT branch_id, sale_date FROM sales
+                              WHERE serial = ? AND doc_type = 0 AND qty > 0
+                              ORDER BY sale_date DESC LIMIT 1"""), (sn,))
+            srow = cur.fetchone()
+            if srow:
+                s = dict(srow)
+                if _sale_near_or_after(s.get("sale_date"), start, grace_min=180):
+                    match = {"when": s.get("sale_date"), "branch_id": s.get("branch_id"), "via": "נמכר"}
+            if not match:
+                cur.execute(_q("""SELECT branch_id, removed_at, serials FROM removals
+                                  WHERE serials LIKE ? ORDER BY removed_at DESC"""), ("%" + sn + "%",))
+                for rr in cur.fetchall():
+                    rd = dict(rr)
+                    toks = [x.strip() for x in (rd.get("serials") or "").split(",")]
+                    if sn in toks and _sale_near_or_after(rd.get("removed_at"), start, grace_min=180):
+                        match = {"when": rd.get("removed_at"), "branch_id": rd.get("branch_id"), "via": "הורד מהמלאי"}
+                        break
+            if not match:
+                continue
+            cur.execute(_q("DELETE FROM transfer_plan WHERE id = ?"), (r["id"],))
+            out.append({"serial": sn, "name": r.get("name") or "", "product_id": r.get("product_id"),
+                        "from_branch": r.get("from_branch"), "to_branch": r.get("to_branch"),
+                        "via": match["via"], "when": match["when"], "sold_branch_id": match["branch_id"]})
+    return out
+
+
 def promote_resolved_closed_transfers() -> int:
     """העברות שנסגרו-כחוסר אך כעת **כל** פריטיהן נקלטו/נמכרו (received∈{1,2}) → 'received'
     (יוצאות מ'באיחור' ומתווית 'נסגר חוסר'). מטפל גם בהעברות שרוקנו לפני התיקון (כמו 13933)."""

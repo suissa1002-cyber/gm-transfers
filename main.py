@@ -157,6 +157,15 @@ def _sold_reconcile_job():
         np = db.promote_fully_resolved_transfers()
         if np:
             logger.info("promote-resolved: %d open transfer(s) closed (all items resolved)", np)
+        # בקשות-שידור (transfer_plan) של מכשיר שכבר נמכר/הורד → מנקים (הבקשה מתה)
+        for p in db.reconcile_sold_plan_items():
+            fn = cfg.branch_name(p.get("from_branch"))
+            tn = cfg.branch_name(p.get("to_branch"))
+            _tg_admin(f"🧹 <b>בקשת שידור נוקתה — המכשיר {p.get('via')}</b>\n"
+                      f"{p.get('name')} (סריאלי <code>{p.get('serial')}</code>)\n"
+                      f"הבקשה הייתה <b>{fn}</b>→<b>{tn}</b>, אך המכשיר כבר {p.get('via')} — הוסרה.")
+            logger.info("sold-plan-reconcile: serial=%s %s->%s via=%s",
+                        p.get("serial"), p.get("from_branch"), p.get("to_branch"), p.get("via"))
     except Exception as e:  # noqa: BLE001
         logger.warning("sold reconcile job error: %s", e)
 
@@ -2927,8 +2936,17 @@ def admin_sold_reconcile(x_admin_key: Optional[str] = Header(None)):
             _tg_admin(f"{head}\n{r.get('name')} (סריאלי <code>{r.get('serial')}</code>)\n{where}\n{cleared}")
         except Exception:  # noqa: BLE001
             pass
+    plan_cleared = db.reconcile_sold_plan_items()
+    for p in plan_cleared:
+        try:
+            _tg_admin(f"🧹 <b>בקשת שידור נוקתה — המכשיר {p.get('via')}</b>\n"
+                      f"{p.get('name')} (סריאלי <code>{p.get('serial')}</code>) — "
+                      f"<b>{cfg.branch_name(p.get('from_branch'))}</b>→<b>{cfg.branch_name(p.get('to_branch'))}</b>.")
+        except Exception:  # noqa: BLE001
+            pass
     return {"closed": len(rows), "promoted": promoted, "items": rows,
-            "boomerangs": len(booms), "boomerang_items": booms}
+            "boomerangs": len(booms), "boomerang_items": booms,
+            "plan_cleared": len(plan_cleared), "plan_items": plan_cleared}
 
 
 @app.get("/api/admin/sales/by-serial")
