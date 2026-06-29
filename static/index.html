@@ -4707,7 +4707,7 @@ async function loadLiveCatalog(spinner){
   if((S.view==='admin'&&S.adminTab==='live')||(S.view==='board'&&S.branchTab==='live')) renderLive();
 }
 function setLsQuery(v){
-  S.lsQuery=v; S.lsSerialHits=null;
+  S.lsQuery=v; S.lsSerialHits=null; S.lsLiveHits=null;
   // אם השדה כבר קיים — מעדכנים רק את התוצאות (שלא תתאפס מקלדת iOS).
   // ניקוי דרך כפתור ה-✕ (v ריק) — מאפס גם את ערך השדה.
   if(document.getElementById('lsSearch')){
@@ -4762,6 +4762,12 @@ function lsFiltered(){
       }
     });
   }
+  // fallback חי מ-NewOrder: מוצרים חדשים שעדיין לא בקטלוג המקומי (מתרענן כל 6ש') — מוצגים מיד
+  if(S.lsLiveHits&&S.lsLiveHits.length){
+    S.lsLiveHits.forEach(h=>{
+      if(h.active!==false && !items.some(x=>String(x.product_id)===String(h.product_id))) items.unshift(h);
+    });
+  }
   return items;
 }
 let _lsSerialT=null;
@@ -4779,6 +4785,22 @@ function lsMaybeSerial(q){
       }
     }catch(e){}
   },300);
+}
+let _lsLiveSearchT=null;
+// fallback חי: כשהקטלוג המקומי לא מצא — מחפשים את המוצר ישירות ב-NewOrder (מוצר חדש שטרם סונכרן)
+function lsMaybeLive(q){
+  const qq=fixHebrewLayout(q).trim();
+  if(qq.length<3) return;
+  clearTimeout(_lsLiveSearchT);
+  _lsLiveSearchT=setTimeout(async()=>{
+    if((S.lsQuery||'').trim()!==q) return;
+    try{ const d=await api('/api/admin/live-search/product?q='+encodeURIComponent(qq));
+      if((S.lsQuery||'').trim()!==q) return;
+      const cat=S.lsCat||[];
+      const fresh=((d&&d.items)||[]).filter(it=>!cat.some(c=>String(c.product_id)===String(it.product_id)));
+      if(JSON.stringify(fresh)!==JSON.stringify(S.lsLiveHits||[])){ S.lsLiveHits=fresh; lsUpdateResults(); }
+    }catch(e){}
+  },350);
 }
 function fmtClock(iso){ if(!iso) return ''; const d=new Date(iso); return isNaN(d)?'':d.toLocaleTimeString('he-IL'); }
 // קוביית סניף עם יחידה משוריינת/בהעברה — צביעה + tooltip
@@ -5185,8 +5207,10 @@ function lsUpdateResults(){
   else if(items===null)
     body=`<div class="empty">🔎 הקלד שם מוצר / מק״ט / ברקוד / סריאל — הרשימה מצטמצמת תוך כדי הקלדה</div>`;
   else if(!items.length){
-    const isNum=/^\d{3,}$/.test(fixHebrewLayout((S.lsQuery||'').trim()));
-    body=`<div class="empty">${isNum?'מחפש לפי מספר סידורי…':'לא נמצאו מוצרים מתאימים'}</div>`;
+    const q=(S.lsQuery||'').trim();
+    if(q.length>=3) lsMaybeLive(q);   // הקטלוג לא מצא → fallback חי ל-NewOrder (מוצר חדש)
+    const isNum=/^\d{3,}$/.test(fixHebrewLayout(q));
+    body=`<div class="empty">${isNum?'מחפש בקופה (מוצר/סריאל)…':'לא נמצאו מוצרים מתאימים'}</div>`;
   } else {
     const isMobile=window.matchMedia('(max-width:760px)').matches;
     const capNote=items.length>LS_LIVE_CAP?`<div class="muted" style="margin-bottom:8px;font-size:13px">⚡ מלאי חי מוצג ל-${liveCount} הראשונים — צמצם את החיפוש לתצוגה חיה מלאה</div>`:'';

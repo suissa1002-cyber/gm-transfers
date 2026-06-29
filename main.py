@@ -1333,6 +1333,31 @@ def admin_live_catalog(x_admin_key: Optional[str] = Header(None), x_device_token
             "count": meta.get("count")}
 
 
+@app.get("/api/admin/live-search/product")
+def admin_live_product(q: str, x_admin_key: Optional[str] = Header(None), x_device_token: Optional[str] = Header(None)):
+    """fallback חי: חיפוש מוצר ישירות ב-NewOrder לפי מק"ט/ברקוד/שם — למוצרים חדשים
+    שעדיין לא בקטלוג המקומי (מתרענן כל 6ש'). מחזיר בפורמט catalog_light."""
+    _require_admin_or_device(x_admin_key, x_device_token)
+    qq = (q or "").strip()
+    if len(qq) < 3:
+        return {"items": []}
+    import poller
+    try:
+        prods = poller.client().get_products(search=qq) or []
+    except Exception as e:  # noqa: BLE001
+        return {"items": [], "error": str(e)[:120]}
+    out = []
+    for p in prods[:25]:
+        sup = p.get("supplier") or {}
+        bc = (p.get("barcode") or "").strip()
+        out.append({"product_id": str(p.get("id")), "name": p.get("name") or "", "barcode": bc,
+                    "kind": "serial" if p.get("isSerial") else ("barcode" if bc else "other"),
+                    "category": ((p.get("category") or {}).get("name") or "").strip(),
+                    "supplier": (sup.get("name") or "").strip() if isinstance(sup, dict) else "",
+                    "active": bool(p.get("isActive")), "stock": p.get("currentStock") or 0, "_live": True})
+    return {"items": out}
+
+
 @app.get("/api/admin/live-search/serial")
 def admin_live_serial(q: str, x_admin_key: Optional[str] = Header(None), x_device_token: Optional[str] = Header(None)):
     """איתור מוצרים לפי מספר סידורי — גם חלקי (מאינדקס סריאל→מוצר; אין ל-NewOrder חיפוש הפוך)."""
