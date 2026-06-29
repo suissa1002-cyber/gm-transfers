@@ -729,22 +729,31 @@ def list_in_transit(to_branch_id: int) -> list[dict]:
         return [dict(r) for r in cur.fetchall()]
 
 
-def close_transfer(op_id: str, reason: str = "", by: str = "") -> dict:
-    """סגירה ידנית: פריטים שלא נסרקו → חוסר (3); ההעברה יוצאת מהלוח עם סיבה."""
+def close_transfer(op_id: str, reason: str = "", by: str = "", kept_allowed: bool = False) -> dict:
+    """סגירה ידנית: פריטים שלא נסרקו → חוסר (3); ההעברה יוצאת מהלוח עם סיבה.
+    kept_allowed (אדמין בלבד) + סיבה 'נשאר בסניף המקור' → received=5 (החלטה, **לא חוסר**) —
+    לא נספר בחוסרים, וההעברה נסגרת נקייה ('received') אם אין חוסר אמיתי אחר."""
     op_id = str(op_id)
+    kept = kept_allowed and (reason or "").startswith("נשאר בסניף המקור")
+    code = 5 if kept else 3
     with _conn() as c:
         cur = c.cursor()
         cur.execute(_q("""
-            UPDATE transfer_items SET received = 3, received_at = ?
+            UPDATE transfer_items SET received = ?, received_at = ?
             WHERE op_id = ? AND received = 0
-        """), (now_iso(), op_id))
+        """), (code, now_iso(), op_id))
         cur.execute(_q("SELECT COUNT(*) AS n FROM transfer_items WHERE op_id = ? AND received IN (1,2)"), (op_id,))
         rec = cur.fetchone()["n"]
+        # 'נשאר במקור' ללא חוסר אמיתי → 'received' (נקייה); אחרת 'closed' (חוסר)
+        status = "closed"
+        if kept:
+            cur.execute(_q("SELECT COUNT(*) AS n FROM transfer_items WHERE op_id = ? AND received = 3"), (op_id,))
+            status = "closed" if cur.fetchone()["n"] > 0 else "received"
         cur.execute(_q("""
-            UPDATE transfers SET status='closed', received_units=?,
+            UPDATE transfers SET status=?, received_units=?,
                    received_at=COALESCE(received_at, ?), close_reason=?, closed_by=?
             WHERE op_id = ?
-        """), (rec, now_iso(), reason, by, op_id))
+        """), (status, rec, now_iso(), reason, by, op_id))
     return get_transfer(op_id)
 
 

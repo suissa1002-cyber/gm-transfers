@@ -861,12 +861,15 @@ class CloseIn(BaseModel):
 
 
 @app.post("/api/transfers/{op_id}/close")
-def close_transfer(op_id: str, body: CloseIn):
-    """סגירת קליטה ידנית — פריטים שלא נסרקו נרשמים כחוסר, ההעברה יוצאת מהלוח."""
+def close_transfer(op_id: str, body: CloseIn, x_admin_key: Optional[str] = Header(None)):
+    """סגירת קליטה ידנית — פריטים שלא נסרקו נרשמים כחוסר, ההעברה יוצאת מהלוח.
+    סיבת 'נשאר בסניף המקור' (received=5, לא חוסר) מותרת **רק לאדמין** — אחרת פרצה
+    (עובד סניף יכול להסתיר חוסר אמיתי). לא-אדמין שישלח אותה → תטופל כחוסר רגיל."""
     t = db.get_transfer(op_id)
     if not t:
         raise HTTPException(404, "transfer not found")
-    return _enrich(db.close_transfer(op_id, body.reason or "", body.by or ""))
+    is_admin = (not cfg.ADMIN_PASSWORD) or (x_admin_key or "") == cfg.ADMIN_PASSWORD
+    return _enrich(db.close_transfer(op_id, body.reason or "", body.by or "", kept_allowed=is_admin))
 
 
 @app.post("/api/transfers/{op_id}/resolve")

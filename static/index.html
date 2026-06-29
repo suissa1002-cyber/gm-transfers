@@ -1716,7 +1716,7 @@ function finishReceiving(){
     <div class="muted" style="margin-bottom:6px">סיבה:</div>
     <select id="closeReason" style="width:100%;font-size:15px;padding:12px;border-radius:10px;border:1px solid var(--line);background:var(--card2);color:var(--txt);margin-bottom:14px">
       <option value="חוסר אמיתי — לא הגיע">חוסר אמיתי — לא הגיע</option>
-      <option value="נשאר בסניף המקור — לא נשלח">נשאר בסניף המקור — לא נשלח</option>
+      ${isAdminCtx()?'<option value="נשאר בסניף המקור — לא נשלח">נשאר בסניף המקור — לא נשלח (אדמין)</option>':''}
       <option value="הגיע לסניף אחר">הגיע לסניף אחר</option>
       <option value="טעות בהעברה — לא היה אמור להגיע">טעות בהעברה — לא היה אמור להגיע</option>
     </select>
