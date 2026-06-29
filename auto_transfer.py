@@ -617,6 +617,34 @@ def _order_status_by_number(number) -> str:
     return ""
 
 
+def reconcile_shipped_plans() -> list:
+    """ריפוי-עצמי: בקשת-שידור (transfer_plan) של הזמנה שכבר **התקדמה מעבר ל'בטיפול'**
+    (שלב הפצה / מוכנה / נמסר / הושלם) — הפריט כבר נקלט ובדרך ללקוח, השידור מיותר.
+    מנקה את שורות הבקשה. (אסי 29/06: #47485 בשלב הפצה אך עדיין 'שודר לסטאר'.)"""
+    import re as _re
+    actionable = {"processing", "on-hold", "pending"}
+    by_order = {}
+    for ln in db.plan_list():
+        m = _re.search(r"הזמנת אתר #(\d+)", ln.get("created_by") or "")
+        if m:
+            by_order.setdefault(m.group(1), []).append(ln)
+    cleared = []
+    for num, lns in by_order.items():
+        st = _order_status_by_number(num)
+        if not st or st in actionable:
+            continue                       # עדיין בטיפול / לא ידוע → לא נוגעים
+        for ln in lns:
+            try:
+                db.plan_delete(ln.get("id"))
+                cleared.append({"number": num, "name": ln.get("name"), "status": st,
+                                "from_branch": ln.get("from_branch"), "to_branch": ln.get("to_branch")})
+            except Exception as e:  # noqa: BLE001
+                logger.warning("plan clear failed for order %s: %s", num, e)
+    if cleared:
+        logger.info("shipped-plan-reconcile: cleared %d request line(s) for advanced orders", len(cleared))
+    return cleared
+
+
 def scan_orders():
     """הג'וב הראשי — סורק הזמנות אחרונות ומשדר העברות לחדשות בלבד."""
     orders = _fetch_recent_orders()
@@ -641,3 +669,12 @@ def scan_orders():
         _send_order_confirm(o)               # 'הזמנה התקבלה' נייטיב ללקוח (מאחורי דגל)
     # ריפוי-עצמי: הזמנות שדוגלו (חסר/ללא-מק"ט) ושעדיין לא שודר להן — אולי חובר מק"ט מאז
     _rescan_flagged(orders, catalog)
+    # ריפוי-עצמי: בקשות-שידור של הזמנות שכבר התקדמו להפצה/הושלמו → ניקוי (הפריט כבר נקלט)
+    for c in reconcile_shipped_plans():
+        try:
+            alerts._send(os.getenv("TELEGRAM_ADMIN_CHAT", "448181407"),
+                         f"🧹 <b>בקשת שידור נוקתה — ההזמנה בהפצה</b>\n"
+                         f"#{c['number']} · {c.get('name')}\n"
+                         f"ההזמנה כבר בסטטוס '{c.get('status')}' (יצאה מ'בטיפול') — השידור הוסר.")
+        except Exception:  # noqa: BLE001
+            pass
