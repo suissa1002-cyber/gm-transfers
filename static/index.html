@@ -515,7 +515,7 @@
   .wa-lb img{max-width:94vw;max-height:94vh;border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,.5)}
   .wa-lb-x{position:fixed;top:16px;inset-inline-end:20px;color:#fff;font-size:26px;cursor:pointer;opacity:.8}
   .wa-panel-uri{display:flex;flex-direction:column;min-height:0}
-  /* קופסת הצ'אט של אורי: ממוסגרת, מעוגנת לתחתית הפאנל, גלילה פנימית */
+  /* קופסת הצ'אט של אלה: ממוסגרת, מעוגנת לתחתית הפאנל, גלילה פנימית */
   .wa-uri-box{margin-top:auto;display:flex;flex-direction:column;min-height:480px;max-height:74vh;
               border:1.5px solid rgba(217,119,87,.45);border-radius:14px;padding:10px;
               background:var(--card);box-shadow:0 6px 18px rgba(0,0,0,.07)}
@@ -561,7 +561,7 @@
     /* כל שדות המודאלים (הזמנה/תשלום מהיר/סיכום) — 16px נגד זום iOS, וכפתורים שנשברים יפה */
     .wa-ord input,.wa-ord textarea,.wa-ord select{font-size:16px!important}
     .wa-ord .btn-primary,.wa-ord .btn-ghost{font-size:13.5px}
-    /* פאנל אורי במובייל: ממלא את כל השכבה, בלי חלל ריק; פונט 16 נגד זום iOS */
+    /* פאנל אלה במובייל: ממלא את כל השכבה, בלי חלל ריק; פונט 16 נגד זום iOS */
     .wa-panel-uri{padding:8px}
     .wa-uri-box{margin-top:0;height:100%;min-height:0;max-height:none}
     .wa-uri-box textarea{font-size:16px!important}
@@ -2745,7 +2745,7 @@ function waThreadHTML(){
           <div id="waPlusPop" class="wa-canned" style="display:none;width:250px"></div>
           <div id="waAttachPop" class="wa-canned" style="display:none;width:220px"></div>
           <button class="btn-ghost wa-plus" onclick="waTogglePlus()" title="פעולות">＋</button>
-          <button class="btn-ghost wa-claude wa-act" onclick="waToggleUri()" title="אורי — סוכן ה-AI (טיוטות, מלאי, מחירים)">${CLAUDE_ICON}</button>
+          <button class="btn-ghost wa-claude wa-act" onclick="waToggleUri()" title="אלה — סוכן ה-AI (טיוטות, מלאי, מחירים)">${CLAUDE_ICON}</button>
           <button class="btn-ghost wa-act wa-ico" onclick="waToggleQuick()" title="תשובות מוכנות / תבניות" ${w.in_window?'':'style="border-color:#dc2626"'}>${ico('zap')}</button>
           <button class="btn-ghost wa-act wa-ico" onclick="waToggleAttach()" title="צרף — תמונה / צילום / קובץ" ${w.in_window?'':'disabled style="opacity:.4"'}>${ico('clip')}</button>
           <button class="btn-ghost wa-act wa-ico" onclick="waKbSwap()" title="החלף פריסת מקלדת עברית⇄אנגלית (אם יצא חירבוש)" style="font-weight:800;font-size:13px;line-height:1">א/A</button>
@@ -3447,7 +3447,7 @@ function waTogglePanel(){
   S.waPanel=!S.waPanel; S.waPanelMode='info';
   renderWaThread(); if(S.waPanel) loadWaContact();
 }
-// ── ✨ אורי — צ'אט עם הסוכן לצד השיחה (רץ על המק של אסי, חיוב Max) ──
+// ── ✨ אלה — צ'אט עם הסוכן לצד השיחה (רץ על המק של אסי, חיוב Max) ──
 function waToggleUri(){
   if(S.waPanel && S.waPanelMode==='uri'){ S.waPanel=false; renderWaThread(); return; }
   S.waPanel=true; S.waPanelMode='uri';
@@ -3466,12 +3466,12 @@ function waUriWarmup(){
     body:JSON.stringify({phone:ph, question:'[WARMUP]'})}).catch(()=>{ S.waUriWarm[ph]=0; });
 }
 function waUriChat(){ S.waUriChats=S.waUriChats||{}; return S.waUriChats[S.waPhone]=S.waUriChats[S.waPhone]||[]; }
-// פענוח תשובת אורי לטקסט + טיוטה ([DRAFT]…[/DRAFT]) — משותף ל-poll ולטעינת היסטוריה
+// פענוח תשובת אלה לטקסט + טיוטה ([DRAFT]…[/DRAFT]) — משותף ל-poll ולטעינת היסטוריה
 function waUriParse(ans){
   let t=ans||''; const out={text:t};
   const dm=t.match(/\[DRAFT\]\s*([\s\S]*?)\s*\[\/DRAFT\]/);
   if(dm){ out.draft=dm[1].trim(); t=t.replace(dm[0],'').trim(); out.text=t; }
-  // [SWATCH sku=...|product=...|url=...] — אורי זיהה ורייציה שאזלה שהלקוח רוצה לעקוב אחריה.
+  // [SWATCH sku=...|product=...|url=...] — אלה זיהה ורייציה שאזלה שהלקוח רוצה לעקוב אחריה.
   // הביצוע נעשה ישירות מהכפתור (קריאת endpoint דטרמיניסטית) — לא בריצת-AI שנייה שברירית.
   const sm=t.match(/\[SWATCH\s+([^\]]+)\]/i);
   if(sm){ const kv={}; sm[1].split('|').forEach(p=>{ const i=p.indexOf('='); if(i>0) kv[p.slice(0,i).trim().toLowerCase()]=p.slice(i+1).trim(); });
@@ -3479,7 +3479,7 @@ function waUriParse(ans){
     out.text=t.replace(sm[0],'').trim(); }
   return out;
 }
-// טעינת היסטוריית השיחה עם אורי מהשרת — להמשכיות בין מכשירים (אייפון↔מחשב)
+// טעינת היסטוריית השיחה עם אלה מהשרת — להמשכיות בין מכשירים (אייפון↔מחשב)
 async function waUriLoadHistory(phone){
   phone=phone||S.waPhone; if(!phone) return;
   S.waUriLoaded=S.waUriLoaded||{};
@@ -3505,33 +3505,33 @@ function waUriHTML(){
   const chat=waUriChat();
   const alive=S.waUriAlive;
   const dot=alive===null||alive===undefined?'⚪':alive?'🟢':'🔴';
-  const note=alive===false?'<div class="wa-note" style="border-color:#dc2626;font-size:12px">⚠️ גשר אורי לא מחובר כרגע — הבקשות ימתינו בתור</div>':'';
+  const note=alive===false?'<div class="wa-note" style="border-color:#dc2626;font-size:12px">⚠️ גשר אלה לא מחובר כרגע — הבקשות ימתינו בתור</div>':'';
   return `
     <div class="wa-uri-box">
       <div class="wa-uri-head">
-        <b style="font-size:13.5px">${CLAUDE_ICON_S} אורי <span style="font-size:10px" title="${alive?'הגשר מחובר':'הגשר לא מחובר'}">${dot}</span></b>
+        <b style="font-size:13.5px">${CLAUDE_ICON_S} אלה <span style="font-size:10px" title="${alive?'הגשר מחובר':'הגשר לא מחובר'}">${dot}</span></b>
         <button class="btn-ghost" style="padding:2px 8px" onclick="S.waPanel=false;renderWaThread()">✕</button>
       </div>
       ${note}
       <div id="waUriMsgs" class="wa-uri-msgs">
-        ${chat.length?chat.map(waUriMsgHTML).join(''):'<div class="muted" style="font-size:12px;padding:4px">שאל את אורי על השיחה — מלאי, מחירים, ניסוח תשובה…<br>למשל: "בדוק אם יש במלאי ונסח תשובה"</div>'}
+        ${chat.length?chat.map(waUriMsgHTML).join(''):'<div class="muted" style="font-size:12px;padding:4px">שאל את אלה על השיחה — מלאי, מחירים, ניסוח תשובה…<br>למשל: "בדוק אם יש במלאי ונסח תשובה"</div>'}
       </div>
       <div style="display:flex;gap:6px;margin-top:8px;flex:none">
-        <textarea id="waUriInput" placeholder="בקשה לאורי…" style="flex:1;resize:none;min-height:38px;max-height:80px;padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:13.5px;font-family:inherit"
+        <textarea id="waUriInput" placeholder="בקשה לאלה…" style="flex:1;resize:none;min-height:38px;max-height:80px;padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:13.5px;font-family:inherit"
                   onkeydown="waEnterSend(event,waUriAsk)"></textarea>
         <button class="btn-primary" id="waUriSend" onclick="waUriAsk()" style="padding:8px 12px">שלח</button>
       </div>
     </div>`;
 }
 function waUriMsgHTML(m,idx){
-  // אורי זיהה ורייציה שאזלה שהלקוח רוצה לעקוב → כפתור ביצוע ישיר (100% אמין, בלי AI שני)
+  // אלה זיהה ורייציה שאזלה שהלקוח רוצה לעקוב → כפתור ביצוע ישיר (100% אמין, בלי AI שני)
   const swBtn=(m.swatch&&!m._swdone)
     ? `<div style="margin-top:7px"><button class="btn-primary" style="padding:6px 14px;font-size:12.5px;background:#16a34a;border-color:#16a34a"${m._swbusy?' disabled':''} onclick="waStockWatchDirect(${idx})">${m._swbusy?'⏳ רושם…':'🔔 הוסף לרשימת המתנה'+(m.swatch.product?' · '+escW(m.swatch.product):'')}</button></div>`
     : (m._swdone ? `<div style="margin-top:6px;color:#16a34a;font-weight:700;font-size:12.5px">✓ נרשם לרשימת המתנה — הלקוח קיבל אישור</div>` : '');
   if(m.role==='user')
     return `<div class="wa-uri-q">${escW(m.text)}</div>`;
   if(m.status==='pending')
-    return `<div class="wa-uri-a wa-uri-wait">⏳ אורי עובד על זה…</div>`;
+    return `<div class="wa-uri-a wa-uri-wait">⏳ אלה עובד על זה…</div>`;
   if(m.status==='error')
     return `<div class="wa-uri-a" style="border-color:#dc2626">❌ ${escW(m.text||'שגיאה')}</div>`;
   if(m.sys)
@@ -3555,7 +3555,7 @@ function waUriMsgHTML(m,idx){
     </div>${swBtn}</div>`;
 }
 // ביצוע ישיר של הרשמה לרשימת המתנה — endpoint דטרמיניסטי, בלי ריצת-AI שנייה.
-// אורי כבר זיהה את הוורייציה (SKU/דגם/צבע); כאן רק מבצעים. notify:true → השרת שולח אישור ללקוח אוטומטית.
+// אלה כבר זיהה את הוורייציה (SKU/דגם/צבע); כאן רק מבצעים. notify:true → השרת שולח אישור ללקוח אוטומטית.
 async function waStockWatchDirect(idx){
   const chat=waUriChat(); const m=chat[idx]; if(!m||!m.swatch||m._swdone) return;
   const sw=m.swatch;
@@ -3598,13 +3598,13 @@ async function waUriAsk(){
   const inp=document.getElementById('waUriInput');
   const q=(inp&&inp.value||'').trim(); if(!q||!S.waPhone) return;
   const chat=waUriChat();
-  // "שלח בשעה HH:MM" — תזמון שליחה בצד שרת (GreenOS תמיד פעיל), לא תלוי בסשן/אורי
+  // "שלח בשעה HH:MM" — תזמון שליחה בצד שרת (GreenOS תמיד פעיל), לא תלוי בסשן/אלה
   const tm=q.match(/^(שלח|תשלח|שגר)\b[\s\S]*?(\d{1,2}:\d{2})/);
   if(tm){
     const d=[...chat].reverse().find(m=>m.role==='uri'&&m.draft);
     if(d){ if(inp) inp.value=''; chat.push({role:'user', text:q}); waUriPaint(); waUriScheduleDraft(d.draft, tm[2]); return; }
   }
-  // "שלח" וחברותיה — שליחה מיידית של הטיוטה האחרונה, בלי סיבוב נוסף אצל אורי
+  // "שלח" וחברותיה — שליחה מיידית של הטיוטה האחרונה, בלי סיבוב נוסף אצל אלה
   if(/^(שלח|תשלח|שגר|אשר|מאשר|אשר ושלח|שלח עכשיו|שלח ללקוח)[.!]*$/.test(q)){
     const d=[...chat].reverse().find(m=>m.role==='uri'&&m.draft);
     if(d){ if(inp) inp.value=''; chat.push({role:'user', text:q}); waUriPaint(); waUriSendDraftText(d.draft); return; }
@@ -3622,7 +3622,7 @@ async function waUriAsk(){
 }
 async function waUriPoll(jid, msg, tries){
   tries=tries||0;
-  if(tries>170){ msg.status='error'; msg.text='תם הזמן (8 דק׳) — ייתכן שגשר אורי כבוי'; waUriPaint(); return; }
+  if(tries>170){ msg.status='error'; msg.text='תם הזמן (8 דק׳) — ייתכן שגשר אלה כבוי'; waUriPaint(); return; }
   try{
     const r=await api('/api/admin/wa/uri/job/'+jid);
     if(r.status==='done'){
@@ -3630,7 +3630,7 @@ async function waUriPoll(jid, msg, tries){
       msg.text=p.text; msg.draft=p.draft; msg.swatch=p.swatch;
       msg.status='done'; waUriPaint(); return;
     }
-    if(r.status==='error'){ msg.status='error'; msg.text=r.answer||'שגיאה אצל אורי'; waUriPaint(); return; }
+    if(r.status==='error'){ msg.status='error'; msg.text=r.answer||'שגיאה אצל אלה'; waUriPaint(); return; }
   }catch(e){}
   setTimeout(()=>waUriPoll(jid,msg,tries+1),3000);
 }
@@ -3655,7 +3655,7 @@ async function waUriScheduleDraft(text, hm){
   }catch(e){ chat.push({role:'uri', sys:true, text:'❌ התזמון נכשל'}); waUriPaint(); toast('תזמון נכשל',false); }
 }
 async function waUriSendDraftText(text){
-  // שליחת טיוטת אורי ללקוח — ישירות, בלי סיבוב נוסף מול המודל (מיידי)
+  // שליחת טיוטת אלה ללקוח — ישירות, בלי סיבוב נוסף מול המודל (מיידי)
   if(!text||!S.waPhone) return;
   const chat=waUriChat();
   const st={role:'uri', status:'pending', text:''};
@@ -3670,7 +3670,7 @@ async function waUriSendDraftText(text){
       st.status='done'; st.sys=true; st.text='✓ נשלח ללקוח כתבנית (מחוץ לחלון 24ש׳)';
     } else { st.status='done'; st.sys=true; st.text='✓ נשלח ללקוח'; }
     setTimeout(()=>loadWaThread(true),1200);
-    if(S.wpop&&S.wpop.open) setTimeout(wpopAfterSend,1000);   // 💬 צף: טיוטת אורי נשלחה → סגירה/מעבר
+    if(S.wpop&&S.wpop.open) setTimeout(wpopAfterSend,1000);   // 💬 צף: טיוטת אלה נשלחה → סגירה/מעבר
   }catch(e){ st.status='error'; st.text='השליחה נכשלה — '+(e.status===502?'שגיאת ConnectOp':'תקלה'); }
   waUriPaint();
 }
@@ -4061,7 +4061,7 @@ const _IPATHS={
 function ico(name, size, fill){
   return `<svg width="${size||17}" height="${size||17}" viewBox="0 0 24 24" fill="${fill?'currentColor':'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block">${_IPATHS[name]||''}</svg>`;
 }
-// אייקון Claude (הניצוץ הכתום) — מזהה את אורי
+// אייקון Claude (הניצוץ הכתום) — מזהה את אלה
 const CLAUDE_ICON=`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D97757" stroke-width="3.2" stroke-linecap="round" style="display:block">
   <line x1="12" y1="2.5" x2="12" y2="8"/><line x1="12" y1="16" x2="12" y2="21.5"/>
   <line x1="2.5" y1="12" x2="8" y2="12"/><line x1="16" y1="12" x2="21.5" y2="12"/>
@@ -4084,7 +4084,7 @@ function waToggleQuick(){
     </div>`;
   pop.style.display='block';
 }
-// ── ➕ תפריט פעולות מאוחד (מובייל): אורי / תשובות / תבניות / גלריה / צילום / קובץ ──
+// ── ➕ תפריט פעולות מאוחד (מובייל): אלה / תשובות / תבניות / גלריה / צילום / קובץ ──
 function waPlusItem(icon, title, sub, action){
   return `<div class="wa-canned-item" style="cursor:pointer" onclick="document.getElementById('waPlusPop').style.display='none';${action}">
     <span style="flex:1;display:flex;align-items:center;gap:9px">${icon}
@@ -4095,7 +4095,7 @@ function waTogglePlus(){
   ['waCannedPop','waTplPop','waQuickPop','waAttachPop'].forEach(id=>{ const p=document.getElementById(id); if(p) p.style.display='none'; });
   if(pop.style.display!=='none'){ pop.style.display='none'; return; }
   pop.innerHTML=
-    waPlusItem(CLAUDE_ICON_S,'אורי','טיוטות · מלאי · מחירים','waToggleUri()')+
+    waPlusItem(CLAUDE_ICON_S,'אלה','טיוטות · מלאי · מחירים','waToggleUri()')+
     waPlusItem(ico('zap',16),'תשובות מוכנות','קונקטופ + GreenOS','waToggleCanned()')+
     waPlusItem(ico('tpl',16),'תבניות מאושרות','שליחה מחוץ ל-24ש׳','waToggleTpl()')+
     waPlusItem(ico('image',16),'תמונה / וידאו','מהגלריה',"document.getElementById('waFileGal').click()")+
@@ -4436,7 +4436,7 @@ async function loadWaThread(silent){
   const phone=S.waPhone;
   try{ const t=await api('/api/admin/wa/thread/'+encodeURIComponent(phone));
        if(S.waPhone===phone){ S.waThread=t;
-         // פאנל אורי/מלאי פתוח → עדכון הודעות בלבד (לא דורס הפאנל); אחרת רינדור מלא
+         // פאנל אלה/מלאי פתוח → עדכון הודעות בלבד (לא דורס הפאנל); אחרת רינדור מלא
          if(silent && S.waPanel && (S.waPanelMode==='uri'||S.waPanelMode==='stock')) waRefreshMsgsOnly();
          else renderWaThread();
          const last=Math.max(0,...(t.messages||[]).map(m=>m.ts||0));
@@ -4566,7 +4566,7 @@ function waPollTick(){
   loadWaSilent();
   if(S.waPhone) loadWaThread(true);
 }
-// עדכון אזור ההודעות בלבד (כשפאנל אורי/מלאי פתוח) — בלי לרנדר מחדש את הפאנל/השדות,
+// עדכון אזור ההודעות בלבד (כשפאנל אלה/מלאי פתוח) — בלי לרנדר מחדש את הפאנל/השדות,
 // עם שימור מיקום גלילה (גלילה לתחתית רק אם המשתמש כבר היה למטה — כמו בוואטסאפ).
 function waRefreshMsgsOnly(){
   const box=document.getElementById('waMsgs'); if(!box) return;
@@ -4593,7 +4593,7 @@ async function loadWaSilent(){
 // ════════════════════════════════════════════════════════════════════
 //  💬 חלון WhatsApp צף — מענה מהיר מכל מקום במערכת (מלאי/הזמנות/...)
 //  מארח את פאנל-השיחה הקיים (#waThreadPane) בחלון צף מתחתית המסך, כך
-//  שכל הפיצ'רים (אורי ✨, מוכנות ⚡, תבניות, צירוף 📎, חלון 24ש, ציטוט,
+//  שכל הפיצ'רים (אלה ✨, מוכנות ⚡, תבניות, צירוף 📎, חלון 24ש, ציטוט,
 //  תיקון-מקלדת) עובדים מילה-במילה כמו בטאב המלא — בלי שכפול קוד.
 //  טריגר: הודעה נכנסת בשיחה עם handoff=true (צריך-אנושי / נציג חי).
 //  עונה → נסגר; נפתח שוב כשהלקוח חוזר או כשלקוח אחר ממתין לאנושי.
@@ -6494,7 +6494,7 @@ async function loadHome(spinner){
                sched:'/api/schedule/data',                      // סידור עבודה (סינון להיום ב-frontend)
                ordover:'/api/admin/orders?status=processing&before='+_ovBefore, // הזמנות בטיפול באיחור
                ordnew:'/api/admin/orders?page=1',                // הזמנות אחרונות (טיקר "הזמנות חדשות")
-               uricost:'/api/admin/uri-cost?days=7' };           // מד-עלות אורי (מדידה לפני API)
+               uricost:'/api/admin/uri-cost?days=7' };           // מד-עלות אלה (מדידה לפני API)
   const keys=Object.keys(defs);
   const res=await Promise.all(keys.map(k=>api(defs[k]).catch(()=>null)));
   const d={}; keys.forEach((k,i)=>d[k]=res[i]); d._at=Date.now();
@@ -6964,9 +6964,9 @@ function renderHome(){
         <span class="muted" style="font-size:11px">${v.count} חשבוניות</span>
         <span style="font-weight:600">${_il(v.total)}</span>`,"hubOpen('invoices')")).join('')
      :`<div class="muted" style="font-size:13px;padding:6px 0">${S.homeInv?(inv.ok===false?'השירות לא זמין כרגע':'אין חשבוניות היום'):'טוען…'}</div>`));
-  // 💸 מד-עלות אורי (מדידה אמיתית לפני החלטת API) — סוכם total_cost_usd של כל ריצה
+  // 💸 מד-עלות אלה (מדידה אמיתית לפני החלטת API) — סוכם total_cost_usd של כל ריצה
   const uc=d.uricost||{};
-  if(homeShow('uricost')) h+=crmCard(homeHead(ico('wallet',16),'מד-עלות אורי (API-שקול)',(uc.today_runs||0)+' ריצות היום',"")+
+  if(homeShow('uricost')) h+=crmCard(homeHead(ico('wallet',16),'מד-עלות אלה (API-שקול)',(uc.today_runs||0)+' ריצות היום',"")+
     `<div style="display:flex;gap:8px;text-align:center;margin-top:4px">
       <div style="flex:1;background:var(--card2);border-radius:10px;padding:9px 6px"><div style="font-size:19px;font-weight:800">$${(uc.today||0).toFixed(2)}</div><div class="muted" style="font-size:10.5px">היום</div></div>
       <div style="flex:1;background:var(--card2);border-radius:10px;padding:9px 6px"><div style="font-size:19px;font-weight:800">$${(uc.total||0).toFixed(2)}</div><div class="muted" style="font-size:10.5px">7 ימים</div></div>
