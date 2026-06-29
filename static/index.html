@@ -3531,7 +3531,7 @@ function waUriMsgHTML(m,idx){
   if(m.role==='user')
     return `<div class="wa-uri-q">${escW(m.text)}</div>`;
   if(m.status==='pending')
-    return `<div class="wa-uri-a wa-uri-wait">⏳ אלה עובד על זה…</div>`;
+    return `<div class="wa-uri-a wa-uri-wait">⏳ אלה עובדת על זה…</div>`;
   if(m.status==='error')
     return `<div class="wa-uri-a" style="border-color:#dc2626">❌ ${escW(m.text||'שגיאה')}</div>`;
   if(m.sys)
