@@ -6468,7 +6468,8 @@ async function loadHome(spinner){
                sales:'/api/admin/sales/dashboard'+_homeSalesQ(), // מכירות לפי סניף+תקופה
                sched:'/api/schedule/data',                      // סידור עבודה (סינון להיום ב-frontend)
                ordover:'/api/admin/orders?status=processing&before='+_ovBefore, // הזמנות בטיפול באיחור
-               ordnew:'/api/admin/orders?page=1' };             // הזמנות אחרונות (טיקר "הזמנות חדשות")
+               ordnew:'/api/admin/orders?page=1',                // הזמנות אחרונות (טיקר "הזמנות חדשות")
+               uricost:'/api/admin/uri-cost?days=7' };           // מד-עלות אורי (מדידה לפני API)
   const keys=Object.keys(defs);
   const res=await Promise.all(keys.map(k=>api(defs[k]).catch(()=>null)));
   const d={}; keys.forEach((k,i)=>d[k]=res[i]); d._at=Date.now();
@@ -6938,6 +6939,15 @@ function renderHome(){
         <span class="muted" style="font-size:11px">${v.count} חשבוניות</span>
         <span style="font-weight:600">${_il(v.total)}</span>`,"hubOpen('invoices')")).join('')
      :`<div class="muted" style="font-size:13px;padding:6px 0">${S.homeInv?(inv.ok===false?'השירות לא זמין כרגע':'אין חשבוניות היום'):'טוען…'}</div>`));
+  // 💸 מד-עלות אורי (מדידה אמיתית לפני החלטת API) — סוכם total_cost_usd של כל ריצה
+  const uc=d.uricost||{};
+  if(homeShow('uricost')) h+=crmCard(homeHead(ico('wallet',16),'מד-עלות אורי (API-שקול)',(uc.today_runs||0)+' ריצות היום',"")+
+    `<div style="display:flex;gap:8px;text-align:center;margin-top:4px">
+      <div style="flex:1;background:var(--card2);border-radius:10px;padding:9px 6px"><div style="font-size:19px;font-weight:800">$${(uc.today||0).toFixed(2)}</div><div class="muted" style="font-size:10.5px">היום</div></div>
+      <div style="flex:1;background:var(--card2);border-radius:10px;padding:9px 6px"><div style="font-size:19px;font-weight:800">$${(uc.total||0).toFixed(2)}</div><div class="muted" style="font-size:10.5px">7 ימים</div></div>
+      <div style="flex:1;background:rgba(34,197,94,.1);border-radius:10px;padding:9px 6px"><div style="font-size:19px;font-weight:800;color:#16a34a">$${(uc.projected_monthly||0).toFixed(0)}</div><div class="muted" style="font-size:10.5px">חיזוי חודשי</div></div>
+    </div>
+    <div class="muted" style="font-size:10.5px;margin-top:7px;line-height:1.4">${(uc.measured_days||0)} ימים נמדדו · ${uc.runs||0} ריצות · ${uc.avg_day!=null?'$'+uc.avg_day.toFixed(2)+' ליום בממוצע':''}<br>החיזוי מתבסס רק על ימים שכבר נמדדו — מדויק יותר ככל שעובר זמן.</div>`);
   h+=`</div>`;
   h+=`<div class="muted" style="text-align:center;font-size:11px;margin-top:14px">עודכן ${d._at?fmtTime(new Date(d._at).toISOString()):''} · מתרענן אוטומטית כל 15ש׳</div>`;
   h+=`</div>`;

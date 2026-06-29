@@ -4024,6 +4024,55 @@ def bridge_variations(product_id: int, x_bridge_key: Optional[str] = Header(None
                            for v in vs]}
 
 
+class UriCostIn(BaseModel):
+    cost: float
+    fast: bool = True
+
+
+@app.post("/api/uri-bridge/cost")
+def bridge_cost(body: UriCostIn, x_bridge_key: Optional[str] = Header(None)):
+    """מד-עלות אורי: צובר את ה-total_cost_usd (API-שקול) של כל ריצה, לפי יום (שעון IL).
+    מאפשר לדעת עלות חודשית אמיתית לפני מעבר ל-API."""
+    _require_bridge(x_bridge_key)
+    day = _il_today().isoformat()
+    try:
+        c = float(db.sales_state_get(f"uri_cost:{day}") or 0) + float(body.cost or 0)
+        db.sales_state_set(f"uri_cost:{day}", str(round(c, 6)))
+        n = int(db.sales_state_get(f"uri_cost_runs:{day}") or 0) + 1
+        db.sales_state_set(f"uri_cost_runs:{day}", str(n))
+        if not body.fast:   # ספירת ריצות כבדות (פאנל/Opus) בנפרד — להבנת הפילוח
+            nh = int(db.sales_state_get(f"uri_cost_heavy:{day}") or 0) + 1
+            db.sales_state_set(f"uri_cost_heavy:{day}", str(nh))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("uri cost accrue failed: %s", e)
+    return {"ok": True}
+
+
+@app.get("/api/admin/uri-cost")
+def admin_uri_cost(days: int = 7, x_admin_key: Optional[str] = Header(None)):
+    """סיכום מד-עלות אורי: היום, פירוט ימים, סך, וחיזוי חודשי לפי ממוצע יומי נמדד."""
+    _require_admin(x_admin_key)
+    from datetime import timedelta
+    today = _il_today()
+    rows = []
+    total = 0.0
+    runs = 0
+    for i in range(max(1, int(days))):
+        d = (today - timedelta(days=i)).isoformat()
+        c = float(db.sales_state_get(f"uri_cost:{d}") or 0)
+        r = int(db.sales_state_get(f"uri_cost_runs:{d}") or 0)
+        rows.append({"day": d, "cost": round(c, 4), "runs": r})
+        total += c
+        runs += r
+    # חיזוי לפי ממוצע **ימים שכבר נמדדו** (לא כולל ימים עם 0 ריצות — מדידה חלקית)
+    measured = [x for x in rows if x["runs"] > 0]
+    avg = (sum(x["cost"] for x in measured) / len(measured)) if measured else 0.0
+    return {"today": rows[0]["cost"] if rows else 0, "today_runs": rows[0]["runs"] if rows else 0,
+            "days": rows, "total": round(total, 4), "runs": runs,
+            "measured_days": len(measured), "avg_day": round(avg, 4),
+            "projected_monthly": round(avg * 30, 2)}
+
+
 @app.get("/api/uri-bridge/repair")
 def bridge_repair(q: str = "", x_bridge_key: Optional[str] = Header(None)):
     """הצעת-מחיר תיקון מעבדה לאורי (מהמחירון בגיליון). q=דגם+מהות (למשל 'מסך iphone 16 pro').

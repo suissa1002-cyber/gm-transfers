@@ -408,6 +408,14 @@ def run_claude(prompt: str, resume_sid: str = None, fast: bool = False, timeout_
             log.info("claude metrics: turns=%s dur=%sms api=%sms cost=$%s fast=%s",
                      j.get("num_turns"), j.get("duration_ms"),
                      j.get("duration_api_ms"), j.get("total_cost_usd"), fast)
+            # מד-עלות: מדווח את העלות ה-API-שקולה לצבירה בשרת (גם על Max — לא מחויב, רק נמדד)
+            _cost = j.get("total_cost_usd")
+            if _cost:
+                try:
+                    requests.post(f"{BASE}/api/uri-bridge/cost", headers=H,
+                                  json={"cost": float(_cost), "fast": bool(fast)}, timeout=8)
+                except Exception:  # noqa: BLE001
+                    pass
             return True, (j.get("result") or "").strip(), j.get("session_id")
         except Exception:  # noqa: BLE001
             return True, out, None
