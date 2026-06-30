@@ -1238,9 +1238,24 @@ class RerouteIn(BaseModel):
 
 @app.post("/api/admin/plan/reroute")
 def admin_plan_reroute(body: RerouteIn, x_admin_key: Optional[str] = Header(None)):
-    """שינוי שידור של שורת בקשה לסניף מקור אחר (מבטל בקיים, משדר לחדש)."""
+    """שינוי שידור של שורת בקשה לסניף מקור אחר. אם הבקשה סריאלית — בודקים בקופה אם
+    אותו סריאל **באמת בסניף החדש**: כן → שומרים (בקשה ספציפית, אחריות/פיצ'ר); לא →
+    מנקים את הסריאל (בקשה גנרית — הסניף החדש ישלח את שלו)."""
     _require_admin(x_admin_key)
-    return {"ok": db.plan_reroute(body.line_id, body.from_branch)}
+    line = db.plan_get(body.line_id)
+    keep = False
+    sn = ((line or {}).get("serial") or "").strip()
+    if sn:
+        try:
+            import poller
+            units = poller.client().get_product_serials(str(line.get("product_id"))) or []
+            keep = any(str(u.get("serial")) == sn and int(u.get("status") or 0) == 1
+                       and int(u.get("branchId") or 0) == int(body.from_branch) for u in units)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("reroute serial check failed: %s", e)
+            keep = False
+    ok = db.plan_reroute(body.line_id, body.from_branch, clear_serial=not keep)
+    return {"ok": ok, "kept_serial": keep}
 
 
 class PlanNoteIn(BaseModel):

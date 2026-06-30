@@ -1633,14 +1633,27 @@ def plan_set_note(product_id, note, from_branch=None, to_branch=None, name="") -
         return {"product_id": pid, "note": note, "added": 1}
 
 
-def plan_reroute(line_id, new_from_branch) -> bool:
-    """שינוי שידור לסניף אחר: מעדכן את סניף-המקור ומדליק שידור מחדש (bcast=1). היעד נשאר.
-    ⚠️ **מנקה את הסריאל** — הסריאל הספציפי שייך לסניף הישן ולא קיים בחדש; הבקשה הופכת
-    לבקשת-כמות ('יחידה אחת מהמוצר'), והסניף החדש ישלח את הסריאל שאצלו (אסי 30/06)."""
+def plan_get(line_id):
     with _conn() as c:
         cur = c.cursor()
-        cur.execute(_q("UPDATE transfer_plan SET from_branch = ?, bcast = 1, serial = NULL WHERE id = ?"),
-                    (int(new_from_branch), int(line_id)))
+        cur.execute(_q("SELECT * FROM transfer_plan WHERE id = ?"), (int(line_id),))
+        r = cur.fetchone()
+        return dict(r) if r else None
+
+
+def plan_reroute(line_id, new_from_branch, clear_serial: bool = True) -> bool:
+    """שינוי שידור לסניף אחר: מעדכן את סניף-המקור ומדליק שידור מחדש (bcast=1). היעד נשאר.
+    clear_serial=True (ברירת מחדל) → מנקה את הסריאל (בקשה גנרית, הסניף החדש ישלח את שלו).
+    clear_serial=False → שומר את הסריאל (בקשה ספציפית — הסריאל המבוקש באמת בסניף החדש,
+    למשל אחריות/פיצ'ר ספציפי; אסי 30/06). הקורא מחליט לפי מיקום הסריאל בקופה."""
+    with _conn() as c:
+        cur = c.cursor()
+        if clear_serial:
+            cur.execute(_q("UPDATE transfer_plan SET from_branch = ?, bcast = 1, serial = NULL WHERE id = ?"),
+                        (int(new_from_branch), int(line_id)))
+        else:
+            cur.execute(_q("UPDATE transfer_plan SET from_branch = ?, bcast = 1 WHERE id = ?"),
+                        (int(new_from_branch), int(line_id)))
         return (cur.rowcount or 0) > 0 if hasattr(cur, "rowcount") else True
 
 
