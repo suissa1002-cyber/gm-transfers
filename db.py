@@ -3134,11 +3134,29 @@ def _parse_removal_amount(note) -> float:
         return 0.0
 
 
+def removal_amount_set(op_id, amount) -> None:
+    """סכום ידני להורדת-מלאי (op) — כשהעובד שכח לרשום בהערה. נשמר אצלנו (לא בקופה)."""
+    sales_state_set(f"rem_amt:{op_id}", str(round(float(amount or 0), 2)))
+
+
+def removal_amount_get(op_id) -> float:
+    v = sales_state_get(f"rem_amt:{op_id}")
+    try:
+        return float(v) if v not in (None, "") else 0.0
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def removal_effective_amount(note, op_id) -> float:
+    """סכום הורדה אפקטיבי: מההערה אם יש, אחרת הסכום הידני שהוזן אצלנו."""
+    return _parse_removal_amount(note) or removal_amount_get(op_id)
+
+
 def _city_removal_sales(cur, since, until=None) -> list:
     """הורדות-מלאי סיטי (סניף 3, חצי-קופה) כ'מכירות' — מאוחדות לפי op. ⚠️ ה-note עם הסכום
     הוא ברמת ה-op אך מאוחסן על כל שורות-הפריט שלו, לכן סופרים את הסכום **פעם אחת לכל op**
-    (אחרת כפל-ספירה ב-op רב-פריטי). מחזיר [{op_id, product_id, name, amount, removed_at}]
-    רק לאלו עם סכום בהערה. since/until = טווח removed_at (until אופציונלי)."""
+    (אחרת כפל-ספירה ב-op רב-פריטי). הסכום: מההערה, ואם העובד שכח — מהסכום הידני שהוזן אצלנו.
+    מחזיר [{op_id, product_id, name, amount, removed_at}]. since/until = טווח removed_at."""
     if until is not None:
         cur.execute(_q("""SELECT op_id, product_id, name, note, removed_at FROM removals
             WHERE removed_at >= ? AND removed_at <= ? ORDER BY op_id, line_no"""), (since, until))
@@ -3147,17 +3165,24 @@ def _city_removal_sales(cur, since, until=None) -> list:
             WHERE removed_at >= ? ORDER BY op_id, line_no"""), (since,))
     ops = {}
     for r in cur.fetchall():
-        amt = _parse_removal_amount(r["note"])
-        if not amt:
-            continue
         op = ops.get(r["op_id"])
         if op is None:
             ops[r["op_id"]] = {"op_id": r["op_id"], "product_id": r["product_id"],
                                "name": (r["name"] or "").strip() or "הורדת מלאי",
-                               "amount": amt, "removed_at": r["removed_at"]}
-        elif op["name"] == "הורדת מלאי" and (r["name"] or "").strip():
-            op["name"] = r["name"].strip()
-    return list(ops.values())
+                               "note_amt": _parse_removal_amount(r["note"]), "removed_at": r["removed_at"]}
+        else:
+            if not op["note_amt"]:
+                op["note_amt"] = _parse_removal_amount(r["note"])
+            if op["name"] == "הורדת מלאי" and (r["name"] or "").strip():
+                op["name"] = r["name"].strip()
+    out = []
+    for op in ops.values():
+        amt = op["note_amt"] or removal_amount_get(op["op_id"])   # נפילה לסכום ידני
+        if not amt:
+            continue
+        out.append({"op_id": op["op_id"], "product_id": op["product_id"],
+                    "name": op["name"], "amount": amt, "removed_at": op["removed_at"]})
+    return out
 
 
 def sales_dashboard(branch_id=None, from_date=None, to_date=None, period=None) -> dict:

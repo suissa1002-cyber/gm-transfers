@@ -2534,7 +2534,7 @@ function renderRemovals(){
       <span class="muted" style="margin-inline-start:auto">${rows.length} שורות · <b>${totalQty}</b> יח׳ · מתוך ${total}</span>
     </div>
     ${rows.length?`<table class="admin"><thead><tr>
-      <th>מס׳ פעולה</th><th>מק״ט</th><th>מוצר</th><th>יצרן</th><th>כמות</th><th>סריאל</th><th>עובד</th><th>הערה</th><th>תאריך</th>
+      <th>מס׳ פעולה</th><th>מק״ט</th><th>מוצר</th><th>יצרן</th><th>כמות</th><th>סכום</th><th>סריאל</th><th>עובד</th><th>הערה</th><th>תאריך</th>
     </tr></thead><tbody>${rows.map(removalRow).join('')}</tbody></table>`
     :`<div class="empty">${sm.ops?'אין הורדות מתאימות לסינון/טווח':'אין נתוני הורדות עדיין — לחץ "🔄 אסוף הורדות" (או המתן לאיסוף האוטומטי)'}</div>`}`;
   if(S._refocusRemovals){ const el=document.getElementById('removalsSearch'); if(el){ el.focus(); const v=el.value; el.value=''; el.value=v; } S._refocusRemovals=false; }
@@ -2546,11 +2546,21 @@ function removalRow(r){
     <td>${r.name||''}</td>
     <td>${brandOf(r.name)||'—'}</td>
     <td style="font-weight:700;text-align:center">${r.qty}</td>
+    <td style="text-align:center;white-space:nowrap">${Number(r.amount)>0
+      ? `<b style="color:#16a34a">₪${Number(r.amount).toLocaleString('he-IL')}</b>${r.amount_manual?' <span class="muted" style="font-size:10px">(ידני)</span>':''}`
+      : `<span style="display:inline-flex;gap:4px;align-items:center;justify-content:center"><input id="ramt_${r.id}" type="number" inputmode="numeric" placeholder="₪" style="width:74px;padding:4px 6px;border:1px solid var(--line);border-radius:7px;text-align:center;font-size:13px" onkeydown="if(event.key==='Enter')saveRemovalAmount('${r.id}','${escW(String(r.op_id||''))}')"><button class="btn-ghost" style="padding:3px 8px" title="הוסף סכום" onclick="saveRemovalAmount('${r.id}','${escW(String(r.op_id||''))}')">✓</button></span>`}</td>
     <td style="direction:ltr;text-align:right;font-family:monospace;font-size:12px">${r.serials||'—'}</td>
     <td>${r.employee||'—'}</td>
     <td>${r.note?r.note:'<span class="muted">—</span>'}</td>
     <td class="muted">${fmtTime(r.removed_at)}</td>
   </tr>`;
+}
+async function saveRemovalAmount(rid, op){
+  const el=document.getElementById('ramt_'+rid); if(!el) return;
+  const amt=parseFloat(el.value); if(!(amt>0)){ toast('הזן סכום תקין',false); return; }
+  try{ await api('/api/admin/removals/amount',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({op_id:String(op),amount:amt})});
+    toast('הסכום נשמר ✓',true); loadRemovals(false);
+  }catch(e){ toast('שמירה נכשלה',false); }
 }
 async function runRemovalsIngest(){
   showLoading('אוסף הורדות מלאי…');
@@ -6868,7 +6878,8 @@ function renderHome(){
   // איחוד לפי עסקה (op): הסכום בהערה הוא ברמת העסקה ומאוחסן על כל שורת-פריט — מציגים פעם אחת
   const _remOps=[]; const _remSeen={};
   remRows.forEach(r=>{ const k=r.op_id||r.id; let g=_remSeen[k];
-    if(!g){ g=_remSeen[k]={names:[],amt:_remAmt(r.note),employee:r.employee,removed_at:r.removed_at}; _remOps.push(g); }
+    if(!g){ g=_remSeen[k]={names:[],amt:(Number(r.amount)||_remAmt(r.note)),employee:r.employee,removed_at:r.removed_at}; _remOps.push(g); }
+    else if(!g.amt){ g.amt=(Number(r.amount)||_remAmt(r.note)); }   // סכום ה-op מכל שורה שיש לה
     if(r.name) g.names.push(r.name); });
   if(homeShow('removals')) h+=crmCard(homeHead(ico('trendDown',16),'הורדות מלאי — סיטי · '+escW(perLabel),_remOps.length+(_remOps.length===1?' עסקה':' עסקאות'),"S.view='admin';setAdminTab('removals')")+
     (_remOps.length?_remOps.slice(0,7).map(g=>

@@ -2791,8 +2791,32 @@ def admin_removals(days: int = 30, from_date: Optional[str] = None, to_date: Opt
     else:
         since = (_date.today() - _td(days=int(days or 30))).isoformat()
         rows = db.removals_list(since)
+    # סכום אפקטיבי לכל שורה: מההערה אם יש, אחרת הסכום הידני שהוזן אצלנו (op). manual=הוזן ידנית.
+    for r in rows:
+        note_amt = db._parse_removal_amount(r.get("note"))
+        manual = db.removal_amount_get(r.get("op_id")) if not note_amt else 0.0
+        r["amount"] = note_amt or manual
+        r["amount_manual"] = bool(manual)
+        r["note_amount"] = note_amt
     return {"rows": rows, "summary": db.removals_summary(),
             "branch_name": cfg.branch_name(3)}
+
+
+class RemovalAmountIn(BaseModel):
+    op_id: str
+    amount: float
+
+
+@app.post("/api/admin/removals/amount")
+def admin_removal_amount(body: RemovalAmountIn, x_admin_key: Optional[str] = Header(None)):
+    """שמירת סכום ידני להורדת-מלאי (op) — למקרה שהעובד שכח לרשום בהערה. נשמר אצלנו בלבד
+    (לא בקופה), ומשמש בטבלת ההורדות ובדשבורד. amount=0 מנקה."""
+    _require_admin(x_admin_key)
+    op = (body.op_id or "").strip()
+    if not op:
+        raise HTTPException(400, "missing op_id")
+    db.removal_amount_set(op, body.amount)
+    return {"ok": True, "op_id": op, "amount": round(float(body.amount or 0), 2)}
 
 
 @app.get("/api/admin/removals-status")
