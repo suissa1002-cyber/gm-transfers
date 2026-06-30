@@ -6980,7 +6980,7 @@ function renderHome(){
   if(homeShow('uricost')) h+=crmCard(homeHead(ico('wallet',16),'מד-עלות אלה (API-שקול)',(uc.today_runs||0)+' ריצות היום',"")+
     `<div style="display:flex;gap:8px;text-align:center;margin-top:4px">
       <div style="flex:1;background:var(--card2);border-radius:10px;padding:9px 6px"><div style="font-size:19px;font-weight:800">$${(uc.today||0).toFixed(2)}</div><div class="muted" style="font-size:10.5px">היום</div></div>
-      <div style="flex:1;background:var(--card2);border-radius:10px;padding:9px 6px"><div style="font-size:19px;font-weight:800">$${(uc.total||0).toFixed(2)}</div><div class="muted" style="font-size:10.5px">7 ימים</div></div>
+      <div style="flex:1;background:var(--card2);border-radius:10px;padding:9px 6px"><div style="font-size:19px;font-weight:800">$${(uc.total||0).toFixed(2)}</div><div class="muted" style="font-size:10.5px">סך נמדד · ${uc.measured_days||0} ימים</div></div>
       <div style="flex:1;background:rgba(34,197,94,.1);border-radius:10px;padding:9px 6px"><div style="font-size:19px;font-weight:800;color:#16a34a">$${(uc.projected_monthly||0).toFixed(0)}</div><div class="muted" style="font-size:10.5px">חיזוי חודשי</div></div>
     </div>
     <div class="muted" style="font-size:10.5px;margin-top:7px;line-height:1.4">${(uc.measured_days||0)} ימים נמדדו · ${uc.runs||0} ריצות · ${uc.avg_day!=null?'$'+uc.avg_day.toFixed(2)+' ליום בממוצע':''}<br>החיזוי מתבסס רק על ימים שכבר נמדדו — מדויק יותר ככל שעובר זמן.</div>`);
