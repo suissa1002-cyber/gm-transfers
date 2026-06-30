@@ -7361,14 +7361,20 @@ def _pbx_normalize_channels(raw) -> dict:
     import re as _re
     by_phone: dict = {}
     agent_up = False   # רגל שלוחה (SIP/2xx) במצב Up = נציג ענה (cid שלה=מספר השלוחה → לא עובר את סינון המתקשר החיצוני, לכן נסרק כאן בנפרד)
+    agent_ext = ""     # מספר השלוחה הפעילה — לסניף בשיחה יוצאת (מקור) או נכנסת-שנענתה
     for ch in raw:
         if not isinstance(ch, list) or len(ch) < 14:
             continue
         chan, ctx, state = str(ch[0]), str(ch[1]), str(ch[4])
         app, appdata = str(ch[5]), str(ch[6])
         cid, uid = str(ch[7]), str(ch[13])
-        if _re.match(r"SIP/\d{3}-greenmobile", chan) and state.lower() == "up":
-            agent_up = True
+        am = _re.match(r"SIP/(\d{3})-greenmobile", chan)
+        if am:                              # רגל שלוחה (נציג/מקור) — cid שלה=מספר השלוחה
+            if state.lower() == "up":
+                agent_up = True             # נציג ענה / מקור פעיל
+                agent_ext = am.group(1)
+            elif not agent_ext:
+                agent_ext = am.group(1)
         if not _re.match(r"^0\d{8,9}$", cid):
             continue
         if "".join(c for c in cid if c.isdigit())[-9:] in _PBX_OWN_DIGITS:
@@ -7401,6 +7407,11 @@ def _pbx_normalize_channels(raw) -> dict:
     if agent_up:
         for e in by_phone.values():
             e["answered"] = True
+    # סניף משלוחת המקור/נציג — בעיקר לשיחה יוצאת (אין מסלול-כניסה שייתן סניף)
+    if agent_ext in _PBX_WHO_BRANCH:
+        for e in by_phone.values():
+            if not e["branch"]:
+                e["branch"] = _PBX_WHO_BRANCH[agent_ext]
     return by_phone
 
 
