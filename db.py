@@ -3121,17 +3121,32 @@ _SALES_SHIP_PARAMS = ["משלוח%", "איסוף%"]
 import re as _re_amt
 # סיטי (סניף 3) עובד בחצי-קופה — סכום ה"מכירה" כתוב בהערת ההורדה ("הורדה מהמלאי 1220שח").
 _REMOVAL_AMT = _re_amt.compile(r"(\d[\d,]*(?:\.\d+)?)\s*(?:ש[\"'׳״]?ח|₪)")
+# נפילה: 'הורדה מהמלאי 1350' (ספרות בלי מילת מטבע — אורי לפעמים שוכח את 'ש"ח')
+_REMOVAL_AMT_PREFIX = _re_amt.compile(r"הורד[הת]?\s*(?:מ|מה)?המלאי\s*(\d[\d,]*(?:\.\d+)?)")
+_REMOVAL_AMT_BARE = _re_amt.compile(r"(?<![\d.])(\d[\d,]*(?:\.\d+)?)(?![\d.])")
 
 
 def _parse_removal_amount(note) -> float:
-    """מחלץ סכום מהערת הורדת-מלאי (סיטי): 'הורדה מהמלאי 1220שח' → 1220.0. 0 אם אין."""
-    m = _REMOVAL_AMT.search(str(note or ""))
-    if not m:
-        return 0.0
-    try:
-        return float(m.group(1).replace(",", ""))
-    except (TypeError, ValueError):
-        return 0.0
+    """מחלץ סכום מהערת הורדת-מלאי (סיטי): 'הורדה מהמלאי 1220שח' → 1220.0. 0 אם אין.
+    תופס גם ספרות-בלבד (בלי 'ש"ח'): אחרי 'הורדה מהמלאי', או מספר-מחיר יחיד בהערה."""
+    s = str(note or "")
+    m = _REMOVAL_AMT.search(s) or _REMOVAL_AMT_PREFIX.search(s)
+    if m:
+        try:
+            return float(m.group(1).replace(",", ""))
+        except (TypeError, ValueError):
+            return 0.0
+    # נפילה אחרונה: מספר בודד בטווח-מחיר (100–50000) — מק"טים (5xxxxx) וכמויות קטנות מסוננים.
+    # רק כשיש **מספר יחיד** סביר; ריבוי מספרים = עמום → 0 (אסי ימלא ידנית).
+    nums = []
+    for x in _REMOVAL_AMT_BARE.findall(s):
+        try:
+            v = float(x.replace(",", ""))
+        except (TypeError, ValueError):
+            continue
+        if 100 <= v <= 50000:
+            nums.append(v)
+    return nums[0] if len(nums) == 1 else 0.0
 
 
 def removal_amount_set(op_id, amount) -> None:
