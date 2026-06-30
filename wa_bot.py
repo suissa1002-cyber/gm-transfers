@@ -343,7 +343,11 @@ def handle(phone: str, text: str, mtype: str = "text", reply_id: str = "", wamid
             question_like = bool(_re.search(
                 r"\?|מה ההבדל|הבדל בין|השוואה|עדיף|מה מתאים|כדאי|להמליץ|המלצ|תקציב|עד \d|"
                 r"יבואן|אחריות|האם|כמה עולה|מה יותר", text))
-            if question_like and _ask_uri(phone, text, wamid):
+            # Ella (uri_bridge, חשבון Max — עלות אינה שיקול): שאלה, **או** כל טקסט
+            # שיחתי/עמום שאינו שאילתת-מוצר נקייה ('מעוניין ב17 פרומקס', '512' בהקשר
+            # 17 Pro Max) → Ella מבינה הקשר ומחלצת דגם. רק שאילתת-מוצר נקייה (prod)
+            # ממשיכה לחיפוש הדטרמיניסטי המהיר. אם הגשר נפול — _ask_uri=False → fallback.
+            if (question_like or not prod) and _ask_uri(phone, text, wamid):
                 return
             return _new_order_results(phone, text)
     _menu(phone)
