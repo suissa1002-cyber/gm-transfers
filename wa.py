@@ -541,10 +541,58 @@ def send_typing(message_id: str) -> bool:
         return False
 
 
+# ── קיצור אוטומטי של קישורי-מוצר עם slug עברי (תיקון קבוע 30/06/2026) ──
+# הבוט אינו מקצר/ממציא alias gm- (זה יצר קישורי 404). הוא פולט permalink מלא,
+# וכאן — בנקודת השליחה היחידה — מקצרים כל קישור-מוצר greenmobile עם slug עברי
+# ל-TinyURL אמיתי. slug אנגלי / לא-מוצר נשאר כמו שהוא. כשל קיצור → קישור מקורי.
+_SHORTEN_CACHE: dict = {}
+_SHORTEN_LOCK = Lock()
+_GM_PRODUCT_RE = re.compile(r'https?://(?:www\.)?greenmobile\.co\.il/product/[^\s)>\]"\']+')
+
+
+def _slug_is_hebrew(url: str) -> bool:
+    low = url.lower()
+    return ('%d7' in low) or ('%d6' in low) or any(ord(c) > 127 for c in url)
+
+
+def _tinyurl(long_url: str) -> str:
+    with _SHORTEN_LOCK:
+        if long_url in _SHORTEN_CACHE:
+            return _SHORTEN_CACHE[long_url]
+    try:
+        import requests as _rq
+        import urllib.parse as _up
+        r = _rq.get("https://tinyurl.com/api-create.php?url=" + _up.quote(long_url, safe=""),
+                    timeout=8)
+        if r.status_code == 200 and r.text.strip().startswith("http"):
+            short = r.text.strip()
+            with _SHORTEN_LOCK:
+                _SHORTEN_CACHE[long_url] = short
+            return short
+    except Exception:
+        logger.warning("tinyurl shorten failed: %s", long_url[:70])
+    return long_url   # fail-safe: עדיף קישור ארוך מקישור שבור
+
+
+def _shorten_he_product_links(text: str) -> str:
+    if not text or "greenmobile.co.il/product/" not in text:
+        return text
+
+    def _repl(m):
+        url, trail = m.group(0), ""
+        while url and url[-1] in ".,;)]\"'":
+            trail = url[-1] + trail
+            url = url[:-1]
+        return (_tinyurl(url) + trail) if _slug_is_hebrew(url) else m.group(0)
+
+    return _GM_PRODUCT_RE.sub(_repl, text)
+
+
 def _meta_send_text(phone: str, text: str) -> str:
     """שליחת טקסט חופשי ישירות דרך WhatsApp Cloud API של מטא. מחזיר wamid."""
     if not meta_direct_ready():
         raise WaError("Meta ישיר לא מוגדר")
+    text = _shorten_he_product_links(text)   # slug עברי → TinyURL אמיתי, לפני השליחה
     import os as _os
     import requests as _rq
     r = _rq.post(f"{META_GRAPH}/{_os.getenv('META_WA_PHONE_ID').strip()}/messages",
