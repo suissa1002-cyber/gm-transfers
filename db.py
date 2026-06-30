@@ -1634,11 +1634,12 @@ def plan_set_note(product_id, note, from_branch=None, to_branch=None, name="") -
 
 
 def plan_reroute(line_id, new_from_branch) -> bool:
-    """שינוי שידור לסניף אחר: מעדכן את סניף-המקור של שורת הבקשה ומדליק שידור מחדש
-    (bcast=1). היעד (to_branch) נשאר. מבטל בפועל את השידור בסניף הקודם (השורה עוברת)."""
+    """שינוי שידור לסניף אחר: מעדכן את סניף-המקור ומדליק שידור מחדש (bcast=1). היעד נשאר.
+    ⚠️ **מנקה את הסריאל** — הסריאל הספציפי שייך לסניף הישן ולא קיים בחדש; הבקשה הופכת
+    לבקשת-כמות ('יחידה אחת מהמוצר'), והסניף החדש ישלח את הסריאל שאצלו (אסי 30/06)."""
     with _conn() as c:
         cur = c.cursor()
-        cur.execute(_q("UPDATE transfer_plan SET from_branch = ?, bcast = 1 WHERE id = ?"),
+        cur.execute(_q("UPDATE transfer_plan SET from_branch = ?, bcast = 1, serial = NULL WHERE id = ?"),
                     (int(new_from_branch), int(line_id)))
         return (cur.rowcount or 0) > 0 if hasattr(cur, "rowcount") else True
 
@@ -1738,8 +1739,10 @@ def plan_match_transfer(from_branch, to_branch, items) -> int:
                     if hit:
                         cleaned += hit
                     else:
-                        # אין בקשה על הסריאל הספציפי — יחידה סריאלית שהועברה מספקת גם בקשה כמותית על המוצר
-                        cleaned += _plan_decrement(cur, fb, tb, pid, 1)
+                        # אין בקשה על הסריאל הזה — יחידה שהועברה מספקת בקשה כלשהי על אותו מוצר:
+                        # כמותית, **או סריאלית עם סריאל אחר** (למשל אחרי reroute / סריאל-פנטום
+                        # בסניף המקור והסניף שלח סריאל אחר — אסי 30/06). מנקים שורה אחת.
+                        cleaned += _plan_satisfy_one(cur, fb, tb, pid)
             else:
                 qty = int(it.get("qty") or 0)
                 if qty > 0 and pid:
@@ -1766,6 +1769,23 @@ def _plan_decrement(cur, fb, tb, pid, qty) -> int:
         else:
             cur.execute(_q("UPDATE transfer_plan SET qty = ? WHERE id = ?"), (left, r["id"]))
     return cleaned
+
+
+def _plan_satisfy_one(cur, fb, tb, pid) -> int:
+    """העברת יחידה של מוצר מ-fb→tb מספקת בקשה אחת על אותו מוצר: קודם שורת-כמות (הפחתה),
+    ואם אין — מוחקת שורה **סריאלית** כלשהי של אותו מוצר (סריאל הבקשה כבר לא רלוונטי —
+    reroute / סריאל-פנטום בסניף המקור)."""
+    n = _plan_decrement(cur, fb, tb, pid, 1)
+    if n:
+        return n
+    cur.execute(_q("""SELECT id FROM transfer_plan
+                      WHERE from_branch = ? AND to_branch = ? AND product_id = ?
+                      ORDER BY id LIMIT 1"""), (fb, tb, str(pid)))
+    row = cur.fetchone()
+    if row:
+        cur.execute(_q("DELETE FROM transfer_plan WHERE id = ?"), (row["id"],))
+        return 1
+    return 0
 
 
 # legacy (טבלת broadcasts הישנה) — נשמר לקריאת מצב ישן בלבד בזמן מעבר גרסה
