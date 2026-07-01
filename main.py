@@ -4571,6 +4571,90 @@ def _pp_view_tx(tuid: str) -> Optional[dict]:
     return None
 
 
+def _pp_card_bin(tuid: str, order_iso: str = "") -> str:
+    """BIN (6 ספרות ראשונות של הכרטיס) לעסקה — מ-TransactionReports/TransactionsHistory
+    בחלון תאריכים סביב ההזמנה (Transactions/view לא נותן BIN, ופילטר transaction_uid
+    לא אמין). מטמון קבוע לכל tuid (גם ריק, למניעת חזרה)."""
+    tuid = (tuid or "").strip()
+    if not tuid:
+        return ""
+    ck = f"ppbin:{tuid}"
+    try:
+        cached = db.sales_state_get(ck)
+        if cached:
+            return cached
+    except Exception:  # noqa: BLE001
+        pass
+    import requests as _rq
+    import datetime as _dt
+    # חלון ±2 ימים סביב ההזמנה (ברירת מחדל: 4 ימים אחרונים)
+    try:
+        base_d = _dt.datetime.fromisoformat((order_iso or "").replace("Z", "")[:19]) \
+            if order_iso else _dt.datetime.utcnow()
+    except Exception:  # noqa: BLE001
+        base_d = _dt.datetime.utcnow()
+    frm = (base_d - _dt.timedelta(days=2)).strftime("%Y-%m-%d 00:00:00")
+    to = (base_d + _dt.timedelta(days=1)).strftime("%Y-%m-%d 23:59:59")
+    bin6 = ""
+    try:
+        for page in range(1, 5):   # עד 4 עמודים (בטיחות)
+            r = _rq.post(f"{PAYPLUS_BASE}/TransactionReports/TransactionsHistory",
+                         headers=_payplus_headers(),
+                         json={"terminal_uid": os.getenv("PAYPLUS_TERMINAL_UID", ""),
+                               "from_date": frm, "to_date": to,
+                               "page": page, "page_size": 100}, timeout=30)
+            j = r.json()
+            txs = j.get("transactions") or []
+            hit = next((t for t in txs if t.get("uuid") == tuid), None)
+            if hit:
+                bin6 = str((hit.get("information") or {}).get("card_bin") or "")
+                break
+            if page >= int(j.get("pages") or 1) or not txs:
+                break
+    except Exception as e:  # noqa: BLE001
+        logger.warning("payplus bin fetch error: %s", e)
+    try:
+        db.sales_state_set(ck, bin6)
+    except Exception:  # noqa: BLE001
+        pass
+    return bin6
+
+
+def _bin_lookup(bin6: str) -> dict:
+    """מודיעין BIN (binlist חינם): סוג כרטיס (prepaid/debit/credit) + מדינה + בנק + מותג.
+    מטמון קבוע לכל BIN (לא משתנה) → חוסך בקשות ורייט-לימיט."""
+    import json as _json
+    bin6 = "".join(ch for ch in str(bin6 or "") if ch.isdigit())[:8]
+    if len(bin6) < 6:
+        return {}
+    ck = f"bin:{bin6}"
+    try:
+        cached = db.sales_state_get(ck)
+        if cached:
+            return _json.loads(cached)
+    except Exception:  # noqa: BLE001
+        pass
+    import requests as _rq
+    out = {}
+    try:
+        r = _rq.get(f"https://lookup.binlist.net/{bin6}",
+                    headers={"Accept-Version": "3"}, timeout=12)
+        if r.status_code == 200:
+            j = r.json()
+            out = {"scheme": j.get("scheme"), "type": j.get("type"),
+                   "brand": j.get("brand"),
+                   "country": (j.get("country") or {}).get("alpha2"),
+                   "country_name": (j.get("country") or {}).get("name"),
+                   "bank": (j.get("bank") or {}).get("name")}
+            try:
+                db.sales_state_set(ck, _json.dumps(out, ensure_ascii=False))
+            except Exception:  # noqa: BLE001
+                pass
+    except Exception as e:  # noqa: BLE001
+        logger.warning("bin lookup error: %s", e)
+    return out
+
+
 def _norm_name(s: str) -> str:
     """נרמול שם להשוואה: פריקת ישויות HTML, הסרת פיסוק, lower, איחוד רווחים."""
     import html as _html
@@ -4877,6 +4961,15 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
         card_issuer = card_issuer or str(ci.get("issuer_name") or ci.get("clearing_name") or "")
     paid = bool(tuid)
 
+    # ── מודיעין BIN (6 ספרות → binlist): סוג כרטיס (נטען!) + מדינה + בנק ──
+    card_bin = _pp_card_bin(
+        tuid, str(o.get("date_created_gmt") or o.get("date_created") or "")) if tuid else ""
+    binf = _bin_lookup(card_bin) if card_bin else {}
+    card_type = str(binf.get("type") or "")          # credit / debit / prepaid
+    bin_country = binf.get("country")                # קוד מדינה אמין יותר מ-card_foreign
+    if bin_country and bin_country != "IL":          # ממזג: BIN חושף כרטיס זר גם כש-card_foreign פספס
+        foreign = True
+
     is_card = bool(method) and ("card" in method.lower() or "אשראי" in method
                                 or method.lower() in ("credit-card", "credit card"))
     is_wallet = any(w in method.lower() for w in ("bit", "google", "apple", "wallet"))
@@ -4905,10 +4998,15 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
     # כרטיס זר + IP זר = צירוף עקבי-הונאה; כרטיס זר לבד (IP ישראלי) = חלש יותר
     if foreign and ip_cc and ip_cc != "IL":
         risk += 2; hard_fraud = True
-        reasons.append("כרטיס זר + IP זר (צירוף עקבי-הונאה)")
+        reasons.append(f"כרטיס זר ({bin_country or '?'}) + IP זר ({ip_cc}) — צירוף עקבי-הונאה")
     elif foreign:
         risk += 1
-        reasons.append("כרטיס זר (IP ישראלי — יכול להיות תושב/עולה)")
+        reasons.append(f"כרטיס זר ({bin_country or 'card_foreign'}) — IP ישראלי (יכול להיות תושב/עולה)")
+    # כרטיס נטען/prepaid — אנונימי, קשה לקשור לבעלים (וקטור 46847/45571)
+    if card_type == "prepaid":
+        risk += 2
+        reasons.append(f"כרטיס נטען/prepaid ({binf.get('brand') or ''}{' · '+binf.get('bank') if binf.get('bank') else ''}) "
+                       "— אנונימי, קשה לקשור לבעל ההזמנה")
 
     # ── 2) גרף: אותו כרטיס/IP על פני זהויות שונות = בדיקת-כרטיסים ──
     if c4:
@@ -5122,6 +5220,11 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
             "card_foreign": foreign,
             "card_last4": c4 or None,
             "card_issuer": card_issuer or None,
+            "card_bin": card_bin or None,
+            "card_type": card_type or None,
+            "bin_country": bin_country,
+            "bin_bank": binf.get("bank"),
+            "bin_brand": binf.get("brand"),
             "ip": ip or None,
             "ip_country": ip_cc,
             "ip_vpn": bool(geo.get("proxy") or geo.get("hosting")) if geo else None,
