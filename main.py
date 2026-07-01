@@ -4856,6 +4856,7 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None) -> Optional
     method = (str(meta.get("payplus_method") or meta.get("payplus_clearing_name") or "")).strip()
     c4 = str(meta.get("payplus_four_digits") or "")
     brand = str(meta.get("payplus_brand_name") or "")
+    card_issuer = str(meta.get("payplus_issuer_name") or "")
     s3d = None
     foreign = None
     view = _pp_view_tx(tuid) if tuid else None
@@ -4867,6 +4868,7 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None) -> Optional
         foreign = fv not in ("0", "", "None")
         c4 = c4 or str(ci.get("four_digits") or "")
         brand = brand or str(ci.get("brand_name") or "")
+        card_issuer = card_issuer or str(ci.get("issuer_name") or ci.get("clearing_name") or "")
     paid = bool(tuid)
 
     is_card = bool(method) and ("card" in method.lower() or "אשראי" in method
@@ -4994,8 +4996,9 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None) -> Optional
         risk = max(0, risk - 1)
         reasons.append("מספר WhatsApp פעיל לפני ההזמנה — reachability אמיתי")
     elif wa["contacted_after"]:
-        reasons.append("⚠️ הלקוח יצר קשר בוואטסאפ רק *אחרי* ההזמנה (לא reachability — "
-                       "גם רמאי רודף אחרי קוד ששילם עליו)")
+        risk += 1
+        reasons.append("⚠️ הלקוח יצר קשר בוואטסאפ רק *אחרי* ההזמנה — חשוד לקוד דיגיטלי "
+                       "(קונה אמיתי שלא קיבל קוד יקר תוך דקות היה פונה מיד; לא ימתין ימים)")
 
     # ── 7) כרטיס צד-שלישי: המזמין קוהרנטי (חיוב≈WhatsApp) אבל הכרטיס של מישהו אחר.
     # סיגנל חזק יותר מ"שם לא תואם" גנרי: שני מקורות בלתי-תלויים מאשרים את זהות
@@ -5039,10 +5042,15 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None) -> Optional
             headline = ("Bit/ארנק — אימות באפליקציה (לא 3DS של הכרטיס); אנחנו נושאים בסיכון"
                         if is_wallet else "אשראי ללא 3DS — אנחנו נושאים בסיכון")
 
+    # תזכורת מלכודת-הצילום (מהזמנה 46847): צילום כרטיס/ת"ז לא מאמת בעלות אלא אם
+    # 4 הספרות בצילום = הכרטיס שחויב, והכרטיס נושא שם (לא נטען/אנונימי).
+    card_check = (f" ⚠️ אם הלקוח שולח צילום כרטיס — ודא ש-4 הספרות = הכרטיס שחויב "
+                  f"(****{c4}{' · '+card_issuer if card_issuer else ''}) ושהכרטיס נושא שם "
+                  f"(כרטיס נטען/אנונימי אינו מאמת זהות)." if c4 else "")
     action = {
         "green": "נתונים נקיים — אפשר לספק את הקוד",
-        "yellow": "בדיקה ידנית לפני שליחת הקוד (וואטסאפ פעיל + אימות זהות; אפשר לבקש צילום ת\"ז)",
-        "red": "לא לספק לפני אימות זהות מלא (ת\"ז + בעלות על הכרטיס); שקול ביטול/החזר",
+        "yellow": "בדיקה ידנית לפני שליחת הקוד (אימות זהות)." + card_check,
+        "red": "לא לספק לפני אימות זהות מלא ובעלות על הכרטיס; שקול ביטול/החזר." + card_check,
         "gray": "להמתין להשלמת התשלום",
     }[level]
 
@@ -5060,6 +5068,7 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None) -> Optional
             "secure3D": s3d,
             "card_foreign": foreign,
             "card_last4": c4 or None,
+            "card_issuer": card_issuer or None,
             "ip": ip or None,
             "ip_country": ip_cc,
             "ip_vpn": bool(geo.get("proxy") or geo.get("hosting")) if geo else None,

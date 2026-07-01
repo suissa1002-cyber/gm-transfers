@@ -5455,7 +5455,7 @@ function fraudBanner(f){
   const chips=[];
   if(s.method) chips.push(`אמצעי: <b>${escW(s.method)}</b>`);
   if(s.secure3D!==null&&s.secure3D!==undefined) chips.push(`3DS: <b>${s.secure3D?'כן ✓':'לא'}</b>`);
-  if(s.card_foreign!==null&&s.card_foreign!==undefined) chips.push(`כרטיס: <b>${s.card_foreign?'זר ⚠':'ישראלי'}</b>${s.card_last4?` ****${escW(s.card_last4)}`:''}`);
+  if(s.card_foreign!==null&&s.card_foreign!==undefined) chips.push(`כרטיס שחויב: <b>****${escW(s.card_last4||'')}</b>${s.card_issuer?` ${escW(s.card_issuer)}`:''}${s.card_foreign?' · <b style="color:#dc2626">זר ⚠</b>':''}`);
   if(s.ip_country) chips.push(`IP: <b>${escW(s.ip_country)}${s.ip_vpn?' · VPN/פרוקסי ⚠':''}</b>${s.ip_isp?` <span style="opacity:.7">(${escW(s.ip_isp)})</span>`:''}`);
   if(s.device) chips.push(`מכשיר: <b>${escW(s.device)}</b>`);
   if(s.third_party_card) chips.push(`<b style="color:#dc2626">כרטיס צד-שלישי ⚠</b>`);
