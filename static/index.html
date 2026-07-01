@@ -5488,14 +5488,18 @@ function fraudBanner(f,orderNum){
     else if(s.ipqs_email_score>=85) ev=`<b style="color:${RED}">סיכון ${s.ipqs_email_score} ⚠</b>`;
     else ev=`<span style="color:${GRN}">תקין ✓</span>${s.ipqs_email_score!=null?` <span style="opacity:.65">(סיכון ${s.ipqs_email_score})</span>`:''}`;
     if(s.ipqs_email_first_seen&&!s.ipqs_email_real_abuse){
-      const age=String(s.ipqs_email_first_seen)
-        .replace('years ago','שנים').replace('year ago','שנה')
-        .replace('months ago','חודשים').replace('month ago','חודש')
-        .replace('weeks ago','שבועות').replace('week ago','שבוע')
-        .replace('days ago','ימים').replace('day ago','יום')
-        .replace('hours ago','שעות').replace('hour ago','שעה')
-        .replace('minutes ago','דקות').replace('minute ago','דקה').replace('ago','').trim();
-      ev+=` · קיים <b style="color:${s.ipqs_email_established?GRN:'inherit'}">${escW(age)}</b>${s.ipqs_email_established?' ✓':''}`;
+      const raw=String(s.ipqs_email_first_seen);
+      if(raw.toLowerCase().includes('now')){ ev+=` · <span style="color:${MUT}">לא מוכר ל-IPQS (חדש?)</span>`; }
+      else{
+        const age=raw
+          .replace('years ago','שנים').replace('year ago','שנה')
+          .replace('months ago','חודשים').replace('month ago','חודש')
+          .replace('weeks ago','שבועות').replace('week ago','שבוע')
+          .replace('days ago','ימים').replace('day ago','יום')
+          .replace('hours ago','שעות').replace('hour ago','שעה')
+          .replace('minutes ago','דקות').replace('minute ago','דקה').replace('ago','').trim();
+        ev+=` · קיים <b style="color:${s.ipqs_email_established?GRN:'inherit'}">${escW(age)}</b>${s.ipqs_email_established?' ✓':''}`;
+      }
     }
     R('✉ מייל (IPQS)',ev);
   }

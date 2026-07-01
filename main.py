@@ -5069,7 +5069,13 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
             any(w in fs_human for w in ("hour", "minute", "day"))
         email_established = (("year" in fs_human) or (isinstance(fsd, int) and fsd >= 365)) \
             and not email_real_abuse
-        if email_fresh and not disposable:
+        # "just now"/"from now" = IPQS פגש את המייל לראשונה בבדיקה שלנו — לא מוכר לו
+        ipqs_unknown = ("now" in fs_human.lower())
+        if ipqs_unknown and not disposable:
+            risk += 1
+            reasons.append("מייל לא מוכר ל-IPQS (נצפה לראשונה רק עכשיו, בבדיקה שלנו) — "
+                           "ייתכן חדש; סימן קל")
+        elif email_fresh and not disposable:
             risk += 1
             reasons.append(f"מייל חדש מאוד (נראה לראשונה: {fs_human or f'{fsd} ימים'})")
 
