@@ -5133,7 +5133,45 @@ def admin_fraud_triage(order: str = "", x_admin_key: Optional[str] = Header(None
                 "note": "אין בהזמנה פריט קוד דיגיטלי — אין טריאז'."}
     tri.update({"order": num, "digital": True, "status": o.get("status")})
     _fraud_cache_set(num, tri.get("level"))
+    _fraud_log_write(num, tri, o.get("status") or "")
     return tri
+
+
+@app.get("/api/admin/fraud/log")
+def admin_fraud_log(limit: int = 200, level: str = "", outcome: str = "",
+                    x_admin_key: Optional[str] = Header(None)):
+    """לוג הטריאז' + אגרגציה לכיול (דיוק ירוק/צהוב/אדום מול תיוג אנושי)."""
+    _require_admin(x_admin_key)
+    import json as _json
+    rows = db.fraud_log_list(limit=limit, level=level, outcome=outcome)
+    for r in rows:
+        try:
+            r["reasons"] = _json.loads(r.get("reasons") or "[]")
+        except Exception:  # noqa: BLE001
+            r["reasons"] = []
+        r.pop("signals", None)   # לא צריך את כל הסיגנלים ברשימה
+        r["protected"] = bool(r.get("protected"))
+    return {"rows": rows, "stats": db.fraud_log_stats()}
+
+
+class FraudOutcome(BaseModel):
+    order: str
+    outcome: str = ""   # fraud / legit / chargeback / '' (ניקוי)
+
+
+@app.post("/api/admin/fraud/log/outcome")
+def admin_fraud_outcome(body: FraudOutcome, x_admin_key: Optional[str] = Header(None)):
+    """תיוג אנושי של תוצאת הזמנה (ground-truth) — הבסיס לכיול ולהכשרת אוטומציה."""
+    _require_admin(x_admin_key)
+    valid = {"fraud", "legit", "chargeback", ""}
+    oc = (body.outcome or "").strip()
+    if oc not in valid:
+        raise HTTPException(400, "outcome לא חוקי (fraud/legit/chargeback/ריק)")
+    n = db.fraud_log_set_outcome(str(body.order).strip().lstrip("#"), oc,
+                                 by=_actor_name(x_admin_key, None))
+    if not n:
+        raise HTTPException(404, "ההזמנה לא נמצאה בלוג (פתח אותה פעם אחת כדי לתעד)")
+    return {"ok": True, "order": body.order, "outcome": oc}
 
 
 def _order_has_digital(items) -> bool:
@@ -5174,6 +5212,23 @@ def _fraud_cache_map() -> dict:
         return {}
 
 
+def _fraud_log_write(order_number, tri, wc_status=""):
+    """רושם את הוורדיקט ללוג הטריאז' (לכיול והכשרת אוטומציה). לא נוגע ב-outcome."""
+    if not tri:
+        return
+    import json as _json
+    import time as _t
+    try:
+        s = tri.get("signals") or {}
+        db.fraud_log_upsert(
+            order_number, tri.get("level"), tri.get("risk"), tri.get("protected"),
+            s.get("method"), s.get("total"),
+            _json.dumps(tri.get("reasons") or [], ensure_ascii=False),
+            _json.dumps(s, ensure_ascii=False), int(_t.time()), wc_status or "")
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def _fraud_triage_job():
     """רקע: בונה אינדקס גרף-זהות מ-100 הזמנות אחרונות, ואז מחשב+מטמן רמת טריאז'
     לכל הזמנת קוד דיגיטלי (הגרף מאפשר זיהוי שכפול-כרטיס/IP על פני זהויות)."""
@@ -5206,6 +5261,7 @@ def _fraud_triage_job():
                 tri = None
             if tri:
                 _fraud_cache_set(o.get("number"), tri.get("level"))
+                _fraud_log_write(o.get("number"), tri, o.get("status") or "")
                 n += 1
         if n:
             logger.info("fraud triage job: graph %d cards / %d ips, cached %d digital orders",
@@ -5583,6 +5639,11 @@ def admin_order_detail(oid: int, x_admin_key: Optional[str] = Header(None)):
         fraud = _fraud_triage(o, meta)   # None אם אין פריט קוד דיגיטלי
         if fraud:
             _fraud_cache_set(o.get("number"), fraud.get("level"))
+            _fraud_log_write(o.get("number"), fraud, o.get("status") or "")
+            try:   # לצרף את התיוג האנושי הקיים (אם כבר סומן) לתצוגה
+                fraud["outcome"] = db.fraud_log_get(o.get("number")).get("outcome")
+            except Exception:  # noqa: BLE001
+                pass
     except Exception:  # noqa: BLE001
         pass
     return {

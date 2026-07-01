@@ -585,6 +585,26 @@ _SCHEMA = [
         created_at  TEXT
     )
     """,
+    # לוג טריאז' הונאות — ורדיקט לכל הזמנת קוד + התוצאה בפועל (לכיול והכשרת אוטומציה)
+    """
+    CREATE TABLE IF NOT EXISTS fraud_log (
+        order_number  TEXT PRIMARY KEY,
+        level         TEXT,
+        risk          INTEGER,
+        protected     INTEGER,
+        method        TEXT,
+        total         REAL,
+        reasons       TEXT,
+        signals       TEXT,
+        triaged_at    BIGINT,
+        wc_status     TEXT,
+        outcome       TEXT,
+        outcome_at    BIGINT,
+        outcome_by    TEXT
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_fraud_log_level ON fraud_log(level)",
+    "CREATE INDEX IF NOT EXISTS idx_fraud_log_outcome ON fraud_log(outcome)",
 ]
 
 
@@ -2711,6 +2731,77 @@ def wa_first_inbound_ts(phone: str) -> int:
                     (str(phone),))
         r = cur.fetchone()
         return int((r["t"] if r and r["t"] else 0) or 0)
+
+
+# ── לוג טריאז' הונאות ─────────────────────────────────────────────────────
+def fraud_log_upsert(order_number, level, risk, protected, method, total,
+                     reasons_json, signals_json, ts, wc_status=""):
+    """רושם/מעדכן את הוורדיקט להזמנה. לא נוגע ב-outcome (התיוג האנושי) אם קיים."""
+    with _conn() as c:
+        c.cursor().execute(_q("""
+            INSERT INTO fraud_log (order_number, level, risk, protected, method, total,
+                                   reasons, signals, triaged_at, wc_status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(order_number) DO UPDATE SET
+                level=excluded.level, risk=excluded.risk, protected=excluded.protected,
+                method=excluded.method, total=excluded.total, reasons=excluded.reasons,
+                signals=excluded.signals, triaged_at=excluded.triaged_at,
+                wc_status=excluded.wc_status
+        """), (str(order_number), level, int(risk or 0), 1 if protected else 0,
+               method or "", float(total or 0), reasons_json, signals_json,
+               int(ts or 0), wc_status or ""))
+
+
+def fraud_log_set_outcome(order_number, outcome, by=""):
+    """תיוג אנושי של התוצאה: fraud / legit / chargeback / '' (ניקוי). ground-truth."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""UPDATE fraud_log SET outcome=?, outcome_by=?,
+                          outcome_at=? WHERE order_number=?"""),
+                    (outcome or None, by or "", 0, str(order_number)))
+        return cur.rowcount
+
+
+def fraud_log_get(order_number) -> dict:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM fraud_log WHERE order_number = ?"),
+                    (str(order_number),))
+        r = cur.fetchone()
+        return dict(r) if r else {}
+
+
+def fraud_log_list(limit: int = 200, level: str = "", outcome: str = "") -> list:
+    q = "SELECT * FROM fraud_log"
+    conds, args = [], []
+    if level:
+        conds.append("level = ?"); args.append(level)
+    if outcome == "__none__":
+        conds.append("(outcome IS NULL OR outcome = '')")
+    elif outcome:
+        conds.append("outcome = ?"); args.append(outcome)
+    if conds:
+        q += " WHERE " + " AND ".join(conds)
+    q += " ORDER BY triaged_at DESC LIMIT ?"
+    args.append(int(limit))
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q(q), tuple(args))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def fraud_log_stats() -> dict:
+    """אגרגציה לכיול: לכל רמה — כמה סה""כ, כמה תויגו הונאה/תקין/צ'ארג'בק."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""SELECT level,
+                            COUNT(*) AS n,
+                            SUM(CASE WHEN outcome='fraud' THEN 1 ELSE 0 END) AS fraud,
+                            SUM(CASE WHEN outcome='legit' THEN 1 ELSE 0 END) AS legit,
+                            SUM(CASE WHEN outcome='chargeback' THEN 1 ELSE 0 END) AS cb,
+                            SUM(CASE WHEN outcome IS NULL OR outcome='' THEN 1 ELSE 0 END) AS pending
+                          FROM fraud_log GROUP BY level"""))
+        return {r["level"]: dict(r) for r in cur.fetchall()}
 
 
 def wa_msg_get(wamid: str):

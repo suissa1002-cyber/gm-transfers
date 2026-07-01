@@ -5449,7 +5449,7 @@ function fraudPill(f,sz){   // אייקון מגן צבעוני קטן לשור�
   const m=_FRAUD_META[f.level]||_FRAUD_META.gray;
   return `<span title="טריאז' קוד דיגיטלי — ${m.t}${f.reasons&&f.reasons.length?': '+f.reasons.join('; '):''}" style="color:${m.c};display:inline-flex;vertical-align:-2px">${ico('shield',sz||13)}</span>`;
 }
-function fraudBanner(f){
+function fraudBanner(f,orderNum){
   const m=_FRAUD_META[f.level]||_FRAUD_META.gray;
   const s=f.signals||{};
   const chips=[];
@@ -5490,8 +5490,55 @@ function fraudBanner(f){
       ${(f.reasons&&f.reasons.length)?`<ul style="margin:0 0 8px;padding-inline-start:20px;font-size:12.5px;line-height:1.6">${f.reasons.map(r=>`<li>${escW(r)}</li>`).join('')}</ul>`:''}
       ${chips.length?`<div style="display:flex;flex-wrap:wrap;gap:5px 14px;font-size:12px;margin-bottom:8px">${chips.map(c=>`<span class="muted">${c}</span>`).join('')}</div>`:''}
       <div style="display:flex;align-items:flex-start;gap:6px;font-size:13px;color:${m.c};font-weight:600">${ico('info',14)} <span>${escW(f.action||'')}</span></div>
+      ${orderNum?(function(){const oc=f.outcome||'';const B=(v,lbl,col)=>`<button onclick="markFraudOutcome('${orderNum}','${v}')" style="padding:4px 10px;font-size:12px;border-radius:8px;cursor:pointer;border:1px solid ${col}55;background:${oc===v?col+'22':'transparent'};color:${col};font-weight:${oc===v?'700':'500'}">${lbl}${oc===v?' ✓':''}</button>`;
+        return `<div style="margin-top:11px;padding-top:10px;border-top:1px dashed ${m.c}33;display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+          <span class="muted" style="font-size:11.5px">תיוג תוצאה (לכיול):</span>
+          ${B('legit','תקין','#16a34a')}${B('fraud','הונאה','#dc2626')}${B('chargeback','צ׳ארג׳בק','#b45309')}
+          ${oc?B('','נקה','#6b7280'):''}
+          <button onclick="openFraudStats()" style="margin-inline-start:auto;padding:4px 10px;font-size:12px;border-radius:8px;cursor:pointer;border:1px solid var(--line);background:transparent;color:var(--muted)">📊 מדד</button>
+        </div>`;})():''}
     </div>
   </details>`;
+}
+async function markFraudOutcome(orderNum,outcome){
+  try{ await api('/api/admin/fraud/log/outcome',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({order:String(orderNum),outcome})});
+    toast(outcome?'תויג: '+({legit:'תקין',fraud:'הונאה',chargeback:'צ׳ארג׳בק'}[outcome]||outcome):'התיוג נוקה',true);
+    openWcOrder(orderNum);   // רענון הכרטיס
+  }catch(e){ toast('שמירת התיוג נכשלה',false); }
+}
+async function openFraudStats(){
+  let d; try{ d=await api('/api/admin/fraud/log?limit=100'); }catch(e){ toast('טעינת המדד נכשלה',false); return; }
+  const st=d.stats||{}; const M={green:['🟢 ירוק','#16a34a'],yellow:['🟡 צהוב','#d97706'],red:['🔴 אדום','#dc2626'],gray:['⚪ טרם שולם','#6b7280']};
+  const row=(k)=>{const s=st[k];if(!s)return '';const c=M[k];return `<tr>
+    <td style="padding:6px 10px;color:${c[1]};font-weight:700">${c[0]}</td>
+    <td style="padding:6px 10px;text-align:center">${s.n}</td>
+    <td style="padding:6px 10px;text-align:center;color:#dc2626">${s.fraud||0}</td>
+    <td style="padding:6px 10px;text-align:center;color:#16a34a">${s.legit||0}</td>
+    <td style="padding:6px 10px;text-align:center;color:#b45309">${s.cb||0}</td>
+    <td style="padding:6px 10px;text-align:center;color:var(--muted)">${s.pending||0}</td></tr>`;};
+  const g=st.green||{}; const greenBad=(g.fraud||0)+(g.cb||0);
+  const verdict=g.n?`<div style="margin:10px 0;padding:10px 12px;border-radius:10px;background:${greenBad?'#dc26260f':'#16a34a0f'};border:1px solid ${greenBad?'#dc262655':'#16a34a55'};font-size:13px">
+    <b>דיוק הירוק:</b> מתוך ${g.n} ירוקים — <b style="color:${greenBad?'#dc2626':'#16a34a'}">${greenBad} התבררו כהונאה/צ׳ארג׳בק</b>. ${greenBad?'⚠️ עדיין לא בשל לאוטומציה.':(g.legit>=10?'✅ נראה יציב — אפשר לשקול אוטומציה לירוק.':'צריך עוד תיוגים (יעד ~10+ ירוקים מתויגים) לפני אוטומציה.')}</div>`:'';
+  const rows=(d.rows||[]).slice(0,40).map(r=>{const c=(M[r.level]||['',''])[1];const oc={legit:'תקין',fraud:'הונאה',chargeback:'צ׳ארג׳בק'}[r.outcome]||'—';
+    return `<tr style="border-top:1px solid var(--line);cursor:pointer" onclick="closeModal();openWcOrder('${r.order_number}')">
+      <td style="padding:5px 8px">#${r.order_number}</td>
+      <td style="padding:5px 8px;color:${c};font-weight:700">${(M[r.level]||['?'])[0]}</td>
+      <td style="padding:5px 8px;text-align:center">${r.risk}</td>
+      <td style="padding:5px 8px">${escW(r.method||'')}</td>
+      <td style="padding:5px 8px;white-space:nowrap">₪${Math.round(r.total||0)}</td>
+      <td style="padding:5px 8px;color:${r.outcome==='fraud'||r.outcome==='chargeback'?'#dc2626':r.outcome==='legit'?'#16a34a':'var(--muted)'}">${oc}</td></tr>`;}).join('');
+  document.getElementById('modalRoot').innerHTML=`<div class="dr-wrap" onclick="if(event.target===this)closeModal()" style="position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:1000;padding:16px">
+    <div style="background:var(--card);border-radius:16px;max-width:680px;width:100%;max-height:88vh;overflow:auto;padding:20px">
+      <div style="display:flex;align-items:center;gap:9px;margin-bottom:6px"><span style="color:#16a34a;display:inline-flex">${ico('shield',20)}</span><b style="font-size:16px;flex:1">מדד טריאז' הונאות</b><button class="dr-x" onclick="closeModal()">✕</button></div>
+      ${verdict}
+      <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:14px">
+        <tr style="color:var(--muted);font-size:11.5px"><td style="padding:4px 10px">רמה</td><td style="padding:4px 10px;text-align:center">סה״כ</td><td style="padding:4px 10px;text-align:center">הונאה</td><td style="padding:4px 10px;text-align:center">תקין</td><td style="padding:4px 10px;text-align:center">צ׳ארג׳בק</td><td style="padding:4px 10px;text-align:center">ללא תיוג</td></tr>
+        ${row('green')}${row('yellow')}${row('red')}${row('gray')}
+      </table>
+      <div class="muted" style="font-size:12px;margin-bottom:5px">הזמנות אחרונות (לחיצה פותחת):</div>
+      <table style="width:100%;border-collapse:collapse;font-size:12.5px">${rows||'<tr><td class="muted" style="padding:8px">אין עדיין רשומות</td></tr>'}</table>
+    </div></div>`;
 }
 function ordFlagIcons(o,sz){
   let h='';
@@ -5772,7 +5819,7 @@ function paintWcOrder(){
         ? `<span class="ord-st" style="color:#d97706;border-color:#d9770655;background:#d977060f;display:inline-flex;align-items:center;gap:6px">${ico('radio',14)} שודר חלקי — חלק מההזמנה שודר${d.bcast?` ל: ${escW(bcastBranches(d.bcast))}`:''}, פריט אחר חסר במלאי (להשיג מהספק)</span>`
         : `${d.oos?`<span class="ord-st" style="color:#dc2626;border-color:#dc262655;background:#dc26260f;display:inline-flex;align-items:center;gap:6px">${ico('pkgx',14)} חסר במלאי בכל הסניפים — להשיג מהספק</span>`:''}${d.bcast?`<span class="ord-st" style="color:${d.bcast.status==='live'?'#15803d':'var(--muted)'};border-color:${d.bcast.status==='live'?'#15803d':'var(--muted)'}55;background:${d.bcast.status==='live'?'#15803d':'#6b7280'}0f;display:inline-flex;align-items:center;gap:6px">${ico('radio',14)} בקשת העברה שודרה ל: ${escW(bcastBranches(d.bcast))}${d.bcast.status==='live'?'':' — נסגרה בסניף'}</span>`:''}`}
     </div>`:''}
-    ${d.fraud?fraudBanner(d.fraud):''}
+    ${d.fraud?fraudBanner(d.fraud,d.number):''}
     ${d.cargo_status&&d.cargo_status.text?(function(){const cs=d.cargo_status;let col='#6b7280';const t=cs.text;
       if(/בוצע|נמסר|סופק/.test(t))col='#16a34a';else if(/בדרך|ללקוח|שליח|חלוקה/.test(t))col='#2563eb';else if(/מחסן/.test(t))col='#d97706';
       return `<div style="margin-bottom:16px;display:flex;gap:7px;flex-wrap:wrap;align-items:center"><span class="ord-st" style="color:${col};border-color:${col}55;background:${col}14;display:inline-flex;align-items:center;gap:6px">${ico('truck',14)} משלוח Cargo · <b>${escW(t)}</b>${cs.tracking?` · מעקב ${escW(cs.tracking)}`:''}${cs.line?` · ${escW(cs.line)}`:''}</span>${cs.track_url?`<button class="btn-ghost" style="padding:5px 10px;font-size:12px;display:inline-flex;align-items:center;gap:5px" onclick="copyCargoTrack('${escW(cs.track_url)}')">🔗 העתק קישור מעקב</button><a class="btn-ghost" style="padding:5px 10px;font-size:12px;text-decoration:none" target="_blank" href="${escW(cs.track_url)}">פתח ↗</a>`:''}</div>`;})():''}
