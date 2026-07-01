@@ -4947,6 +4947,23 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
     # הזמנת אתר: מפתחות payplus_* (התוסף). הזמנת GreenOS (קישור תשלום): greenos_payplus_*
     tuid = str(meta.get("payplus_transaction_uid")
                or meta.get("greenos_payplus_tx") or "")
+    # GreenOS ישן: יש רק pru (בלי tx) — ממירים דרך אימות IPN (במטמון pputx:<pru>)
+    if not tuid:
+        pru = str(meta.get("greenos_payplus_pru") or "")
+        if pru:
+            try:
+                tuid = db.sales_state_get(f"pputx:{pru}") or ""
+            except Exception:  # noqa: BLE001
+                tuid = ""
+            if not tuid:
+                ipn = _payplus_ipn_check(pru)
+                if ipn:
+                    tuid = str(_pp_tx_fields(ipn).get("tx") or "")
+                    if tuid:
+                        try:
+                            db.sales_state_set(f"pputx:{pru}", tuid)
+                        except Exception:  # noqa: BLE001
+                            pass
     method = (str(meta.get("payplus_method") or meta.get("payplus_clearing_name") or "")).strip()
     c4 = str(meta.get("payplus_four_digits") or meta.get("greenos_payplus_4digits") or "")
     brand = str(meta.get("payplus_brand_name") or meta.get("greenos_payplus_brand") or "")
@@ -4968,7 +4985,9 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
             method = "Bit" if "bit" in cn.lower() else "credit-card"
     if not method and tuid:
         method = str(o.get("payment_method_title") or "credit-card")
-    paid = bool(tuid)
+    # שולם גם בלי עסקת PayPlus מזוהה (חיוב ידני/היסטורי) — לפי date_paid של WC
+    paid = bool(tuid) or bool(o.get("date_paid"))
+    paid_no_tx = paid and not tuid
 
     # ── מודיעין BIN (6 ספרות → binlist): סוג כרטיס (נטען!) + מדינה + בנק ──
     card_bin = _pp_card_bin(
@@ -4991,6 +5010,9 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
     risk = 0
     reasons = []
     hard_fraud = False   # אינדיקציית-הונאה אמיתית (לא רק סיכון-כספי) — גוברת על "מוגן"
+    if paid_no_tx:
+        reasons.append("ℹ️ ההזמנה שולמה אך אין עסקת PayPlus מזוהה בנתונים "
+                       "(חיוב ידני/היסטורי) — אין נתוני 3DS/כרטיס לבדיקה")
 
     # ── 1) רשת: VPN/פרוקסי/דאטה-סנטר + מדינת IP (הכי קשה לזיוף) ──
     geo = _ip_geo(ip) if ip else {}
@@ -5204,7 +5226,10 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
             headline = "טרם שולם — הזהות נראית נקייה (כנראה תקלת תשלום של לקוח אמיתי)"
     else:
         base_level = "green" if risk == 0 else ("yellow" if risk <= 3 else "red")
-        if protected and not hard_fraud:
+        if paid_no_tx:
+            level = base_level
+            headline = "שולם — ללא פרטי עסקת PayPlus (חיוב ידני/היסטורי); אין נתוני 3DS/כרטיס"
+        elif protected and not hard_fraud:
             # הכסף מוגן מצ'ארג'בק ואין אינדיקציית-הונאה קשה → תקרה צהוב
             level = "yellow" if base_level == "red" else base_level
             headline = "אשראי + 3DS — מוגן מצ'ארג'בק"
