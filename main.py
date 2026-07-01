@@ -4626,6 +4626,9 @@ def _names_consistent(a: str, b: str) -> bool:
 
 
 # דומיינים של מייל חד-פעמי/זבל (סימן חזק להונאה בקודים דיגיטליים)
+import re as _re_fraud
+_re_pickup = _re_fraud.compile(r"נקודת\s*מסירה|איסוף\s*עצמי|מסירה\s*עצמית|pickup", _re_fraud.I)
+
 _DISPOSABLE_DOMAINS = {
     "mailinator.com", "guerrillamail.com", "10minutemail.com", "tempmail.com",
     "temp-mail.org", "yopmail.com", "trashmail.com", "getnada.com", "sharklasers.com",
@@ -4823,8 +4826,10 @@ def _distinct_identities(entries: list, self_num: str):
     return names, emails, others
 
 
-def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None) -> Optional[dict]:
-    """טריאז' הונאות מבוסס-סיגנלים-קשים-לזיוף. None אם אין פריט קוד דיגיטלי.
+def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
+                  force: bool = False) -> Optional[dict]:
+    """טריאז' הונאות מבוסס-סיגנלים-קשים-לזיוף. None אם אין פריט קוד דיגיטלי (אלא אם
+    force=True — סריקה לפי-דרישה גם למוצר פיזי, עם סיגנלי כתובת/נקודת-מסירה).
     רשת(IP/VPN/geo) · גרף שכפול-כרטיס/IP · שלמות תשלום(3DS) · מייל חד-פעמי · ערך/כמות.
     שם = סימן שולי בלבד (מי שיש לו אשראי גנוב יודע את שם בעל הכרטיס). חיווי-בלבד."""
     items = o.get("line_items") or []
@@ -4832,7 +4837,8 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None) -> Optional
         nm = str(li.get("name") or "").lower()
         return any(m.lower() in nm for m in _DIGITAL_MARKERS)
     digital = [li for li in items if _is_digital(li)]
-    if not digital:
+    is_digital_order = bool(digital)
+    if not is_digital_order and not force:
         return None
     if graph is None:
         graph = _fraud_graph_map()
@@ -4969,6 +4975,24 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None) -> Optional
     elif code_qty == 2:
         risk += 1; reasons.append("2 קודים דיגיטליים בהזמנה")
 
+    # ── 4b) סיגנלים ייחודיים למוצר פיזי: נקודת-מסירה + אי-התאמת כתובת ──
+    sh = o.get("shipping") or {}
+    ship_titles = " ".join(str(sl.get("method_title") or "")
+                           for sl in (o.get("shipping_lines") or []))
+    pickup = (not is_digital_order) and bool(
+        _re_pickup.search(ship_titles) or str(_ship_tag(o, meta)).startswith(("tlv", "pickup")))
+    if pickup:
+        risk += 1
+        reasons.append("איסוף מנקודת מסירה (ללא משלוח לכתובת מגורים עקיבה) — "
+                       "מוריד עקיבות; דגל קל למוצר פיזי בערך גבוה")
+    b_addr = _norm_name(f"{b.get('address_1','')} {b.get('city','')}")
+    s_addr = _norm_name(f"{sh.get('address_1','')} {sh.get('city','')}")
+    addr_mismatch = bool((not is_digital_order) and not pickup and b_addr and s_addr
+                         and b_addr != s_addr)
+    if addr_mismatch:
+        risk += 1
+        reasons.append("כתובת החיוב שונה מכתובת המשלוח")
+
     # ── 5) שם החיוב מול בעל הכרטיס — רק כשידוע בעל הכרטיס (Bit/ארנק). מנוקד בסעיף 6 ──
     name_mismatch = bool(card_owner_known and pay_name and billing_name
                          and not _names_consistent(billing_name, pay_name))
@@ -5051,10 +5075,12 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None) -> Optional
     card_check = (f" ⚠️ אם הלקוח שולח צילום כרטיס — ודא ש-4 הספרות = הכרטיס שחויב "
                   f"(****{c4}{' · '+card_issuer if card_issuer else ''}) ושהכרטיס נושא שם "
                   f"(כרטיס נטען/אנונימי אינו מאמת זהות)." if c4 else "")
+    _obj = "הקוד" if is_digital_order else "ההזמנה"
+    _pickup_hint = (" באיסוף — ודא ת\"ז ע\"ש בעל ההזמנה." if pickup else "")
     action = {
-        "green": "נתונים נקיים — אפשר לספק את הקוד",
-        "yellow": "בדיקה ידנית לפני שליחת הקוד (אימות זהות)." + card_check,
-        "red": "לא לספק לפני אימות זהות מלא ובעלות על הכרטיס; שקול ביטול/החזר." + card_check,
+        "green": f"נתונים נקיים — אפשר לספק את {_obj}",
+        "yellow": f"בדיקה ידנית לפני שחרור {_obj} (אימות זהות).{_pickup_hint}" + card_check,
+        "red": f"לא לספק את {_obj} לפני אימות זהות מלא ובעלות על הכרטיס; שקול ביטול/החזר." + card_check,
         "gray": "להמתין להשלמת התשלום",
     }[level]
 
@@ -5107,14 +5133,21 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None) -> Optional
             "wa_first_in_days": wa["first_in_days"],
             "total": total,
             "code_qty": code_qty,
-            "digital_items": [str(li.get("name") or "") for li in digital],
+            "is_digital": is_digital_order,
+            "pickup": pickup,
+            "addr_mismatch": addr_mismatch,
+            "shipping_method": ship_titles or None,
+            "digital_items": [str(li.get("name") or "")
+                              for li in (digital or items)],
         },
     }
 
 
 @app.get("/api/admin/fraud/triage")
-def admin_fraud_triage(order: str = "", x_admin_key: Optional[str] = Header(None)):
-    """טריאז' הונאות להזמנת קוד דיגיטלי לפי מספר הזמנה. קריאה-בלבד."""
+def admin_fraud_triage(order: str = "", force: int = 0,
+                       x_admin_key: Optional[str] = Header(None)):
+    """טריאז' הונאות לפי מספר הזמנה. קוד דיגיטלי → תמיד; מוצר פיזי → רק עם force=1
+    (סריקה לפי-דרישה). קריאה-בלבד."""
     _require_admin(x_admin_key)
     import requests as _rq
     base, k, s = _wc_creds()
@@ -5127,13 +5160,18 @@ def admin_fraud_triage(order: str = "", x_admin_key: Optional[str] = Header(None
     if not o:
         raise HTTPException(404, "הזמנה לא נמצאה")
     meta = {m.get("key"): m.get("value") for m in (o.get("meta_data") or [])}
-    tri = _fraud_triage(o, meta)
+    tri = _fraud_triage(o, meta, force=bool(force))
     if tri is None:
         return {"order": num, "digital": False,
-                "note": "אין בהזמנה פריט קוד דיגיטלי — אין טריאז'."}
-    tri.update({"order": num, "digital": True, "status": o.get("status")})
+                "note": "אין בהזמנה פריט קוד דיגיטלי — לחץ 'בדוק' לסריקה לפי-דרישה."}
+    tri.update({"order": num, "digital": tri.get("signals", {}).get("is_digital", True),
+                "status": o.get("status")})
     _fraud_cache_set(num, tri.get("level"))
     _fraud_log_write(num, tri, o.get("status") or "")
+    try:
+        tri["outcome"] = db.fraud_log_get(num).get("outcome")
+    except Exception:  # noqa: BLE001
+        pass
     return tri
 
 
@@ -5635,8 +5673,9 @@ def admin_order_detail(oid: int, x_admin_key: Optional[str] = Header(None)):
     except Exception:  # noqa: BLE001
         pass
     fraud = None
+    fraud_scannable = False
     try:
-        fraud = _fraud_triage(o, meta)   # None אם אין פריט קוד דיגיטלי
+        fraud = _fraud_triage(o, meta)   # None אם אין פריט קוד דיגיטלי (לא force)
         if fraud:
             _fraud_cache_set(o.get("number"), fraud.get("level"))
             _fraud_log_write(o.get("number"), fraud, o.get("status") or "")
@@ -5644,10 +5683,21 @@ def admin_order_detail(oid: int, x_admin_key: Optional[str] = Header(None)):
                 fraud["outcome"] = db.fraud_log_get(o.get("number")).get("outcome")
             except Exception:  # noqa: BLE001
                 pass
+        else:
+            # מוצר פיזי ששולם → סריקה לפי-דרישה (מגן אפור בקונסולה)
+            paid_status = o.get("status") in ("processing", "completed",
+                                              "on-hold", "shipping-stage", "order-ready")
+            fraud_scannable = bool((o.get("line_items") or []) and paid_status)
+            if fraud_scannable:   # אם כבר נסרק בעבר — נצרף את הרמה/תיוג שנשמרו
+                _row = db.fraud_log_get(o.get("number"))
+                if _row:
+                    fraud = {"level": _row.get("level"), "cached": True,
+                             "outcome": _row.get("outcome")}
     except Exception:  # noqa: BLE001
         pass
     return {
         "src": _order_source(meta),
+        "fraud_scannable": fraud_scannable,
         "ship_tag": _ship_tag(o, meta),
         "bcast": bcast,
         "fraud": fraud,
