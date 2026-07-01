@@ -5471,6 +5471,16 @@ function fraudBanner(f,orderNum){
     else if(s.ipqs_email_score>=85) chips.push(`<b style="color:#dc2626">✉ IPQS מייל: סיכון ${s.ipqs_email_score} ⚠</b>`);
     else chips.push(`<span style="color:#16a34a">✉ IPQS מייל: תקין ✓${s.ipqs_email_score!=null?` (סיכון ${s.ipqs_email_score})`:''}</span>`);
   } else if(s.disposable_email){ chips.push(`<b style="color:#dc2626">✉ מייל חד-פעמי ⚠</b>`); }
+  if(s.ipqs_email_first_seen){
+    const age=String(s.ipqs_email_first_seen)
+      .replace('years ago','שנים').replace('year ago','שנה')
+      .replace('months ago','חודשים').replace('month ago','חודש')
+      .replace('weeks ago','שבועות').replace('week ago','שבוע')
+      .replace('days ago','ימים').replace('day ago','יום')
+      .replace('hours ago','שעות').replace('hour ago','שעה')
+      .replace('minutes ago','דקות').replace('minute ago','דקה').replace('ago','');
+    chips.push(`<span style="color:${s.ipqs_email_established?'#16a34a':'var(--muted)'}">📅 מייל קיים: <b>${escW(age.trim())}</b>${s.ipqs_email_established?' ✓ (זהות ותיקה)':''}</span>`);
+  }
   if(s.cardholder_verified) chips.push(`<b style="color:#16a34a">בעל הכרטיס אישר בטלפון (3DS) ✓</b>`);
   if(s.prior_clean>0) chips.push(`<b style="color:#16a34a">לקוח חוזר: ${s.prior_clean} ✓</b>`);
   if(s.wa_known) chips.push(`<b style="color:#16a34a">WhatsApp פעיל לפני ההזמנה ✓</b>${s.wa_name?` <span style="opacity:.7">(${escW(s.wa_name)}${s.wa_name_match===false?' — שם לא תואם':''})</span>`:''}`);

@@ -4929,8 +4929,10 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
             risk += 2
             reasons.append(f"אותו IP שימש {len(emails_s)} מיילים / {len(names)} שמות שונים")
 
-    # ── 3) מייל: חד-פעמי (רשימה סטטית + IPQS) + ציון סיכון + abuse ──
+    # ── 3) מייל: חד-פעמי (רשימה סטטית + IPQS) + ציון סיכון + abuse + גיל ──
     ipqs_email = _ipqs_get("email", email)
+    email_established = False
+    fs_human = ""
     disposable = bool(dom and dom in _DISPOSABLE_DOMAINS) or bool(ipqs_email.get("disposable"))
     if disposable:
         risk += 3; hard_fraud = True
@@ -4944,9 +4946,14 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
             risk += 2
             reasons.append(f"ציון סיכון מייל גבוה ב-IPQS ({efs})")
         fsd = ipqs_email.get("first_seen_days")
-        if isinstance(fsd, int) and 0 <= fsd <= 30 and not disposable:
+        fs_human = str(ipqs_email.get("first_seen") or "")
+        # מייל טרי (שעות/ימים/עד חודש) = חשוד; מייל ותיק (שנים) = זהות מבוססת
+        email_fresh = (isinstance(fsd, int) and 0 <= fsd <= 30) or \
+            any(w in fs_human for w in ("hour", "minute", "day"))
+        email_established = ("year" in fs_human) or (isinstance(fsd, int) and fsd >= 365)
+        if email_fresh and not disposable:
             risk += 1
-            reasons.append(f"מייל חדש מאוד (נראה לראשונה לפני {fsd} ימים)")
+            reasons.append(f"מייל חדש מאוד (נראה לראשונה: {fs_human or f'{fsd} ימים'})")
 
     # ── 3.5) טלפון: VoIP/מספר וירטואלי + ציון + abuse (IPQS) ──
     ipqs_phone = _ipqs_get("phone", _il_phone(b.get("phone") or ""))
@@ -5013,6 +5020,9 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
     elif prior_clean == 1:
         risk = max(0, risk - 1)
         reasons.append("הזמנה תקינה אחת בעבר")
+    if email_established:   # מייל ותיק (שנים) = זהות מבוססת (פרודן משתמש במייל טרי)
+        risk = max(0, risk - 1)
+        reasons.append(f"✅ מייל מבוסס — קיים {fs_human} (זהות ותיקה, לא טרייה)")
     order_ts = 0
     try:
         import datetime as _dt
@@ -5113,6 +5123,8 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
             "ipqs_email_valid": ipqs_email.get("valid") if ipqs_email else None,
             "ipqs_email_score": ipqs_email.get("fraud_score") if ipqs_email else None,
             "ipqs_email_deliverability": ipqs_email.get("deliverability") if ipqs_email else None,
+            "ipqs_email_first_seen": (ipqs_email.get("first_seen") or None) if ipqs_email else None,
+            "ipqs_email_established": email_established,
             "ipqs_phone_checked": bool(ipqs_phone),
             "ipqs_phone_valid": ipqs_phone.get("valid") if ipqs_phone else None,
             "ipqs_phone_voip": ipqs_phone.get("voip") if ipqs_phone else None,
