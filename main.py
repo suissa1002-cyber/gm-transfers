@@ -4635,6 +4635,59 @@ def _ip_geo(ip: str) -> dict:
     return out
 
 
+def _canon_email(email: str) -> str:
+    """נרמול מייל לזיהוי כפילות-זהות: הסרת +תגית, ולג'ימייל גם הסרת נקודות
+    (a.b+x@gmail = ab@gmail) — טריק נפוץ ליצירת 'מיילים שונים' שהם אותה תיבה."""
+    e = (email or "").strip().lower()
+    if "@" not in e:
+        return e
+    local, dom = e.rsplit("@", 1)
+    local = local.split("+", 1)[0]
+    if dom in ("gmail.com", "googlemail.com"):
+        local = local.replace(".", "")
+        dom = "gmail.com"
+    return f"{local}@{dom}"
+
+
+def _wa_signal(phone: str, order_name: str) -> dict:
+    """סיגנל WhatsApp מ-DB שלנו: האם המספר פנה אלינו בעבר (reachability אמיתי) +
+    pushname. ⚠️ התאמת-שם חלשה (ניתן לזייף), אבל reachability = legitimizer מועיל."""
+    out = {"known": False, "wa_name": None, "name_match": None, "last_in_days": None}
+    try:
+        c = db.wa_contact_get(_il_phone(phone))
+        if c:
+            lin = c.get("last_in_ts") or 0
+            out["known"] = bool(lin)
+            out["wa_name"] = c.get("name") or None
+            if lin:
+                import time as _t
+                out["last_in_days"] = int((_t.time() - float(lin)) / 86400)
+            if out["wa_name"] and order_name:
+                out["name_match"] = _names_consistent(order_name, out["wa_name"])
+    except Exception:  # noqa: BLE001
+        pass
+    return out
+
+
+def _repeat_customer(email: str, exclude_id) -> int:
+    """כמה הזמנות *שהושלמו* בעבר לאותו מייל — עוגן-ירוק חזק (לקוח חוזר נקי)."""
+    if not email:
+        return 0
+    try:
+        base, k, s = _wc_creds()
+        import requests as _rq
+        r = _rq.get(f"{base}/wp-json/wc/v3/orders",
+                    params={"search": email, "per_page": 20, "status": "completed"},
+                    auth=(k, s), timeout=25)
+        if r.ok:
+            ce = _canon_email(email)
+            return sum(1 for x in r.json() if str(x.get("id")) != str(exclude_id)
+                       and _canon_email((x.get("billing") or {}).get("email") or "") == ce)
+    except Exception:  # noqa: BLE001
+        pass
+    return 0
+
+
 def _fraud_graph_build(orders: list) -> dict:
     """אינדקס גרף-זהות מ-N הזמנות אחרונות: כרטיס/IP → זהויות (שם+מייל+מספר).
     משמש לזיהוי 'אותו כרטיס/IP על פני שמות ומיילים שונים' = בדיקת-כרטיסים/כנופייה."""
@@ -4644,7 +4697,7 @@ def _fraud_graph_build(orders: list) -> dict:
         b = o.get("billing") or {}
         num = str(o.get("number"))
         name = _norm_name(f"{b.get('first_name','')} {b.get('last_name','')}")
-        email = str(b.get("email") or "").lower()
+        email = _canon_email(b.get("email") or "")
         ip = str(o.get("customer_ip_address") or "")
         c4 = str(meta.get("payplus_four_digits") or "")
         brand = str(meta.get("payplus_brand_name") or "")
@@ -4764,7 +4817,7 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None) -> Optional
     if ip:
         ents = (graph.get("ips") or {}).get(ip, [])
         names, emails_s, others = _distinct_identities(ents, num)
-        names.add(_norm_name(billing_name)); emails_s.add(email.lower())
+        names.add(_norm_name(billing_name)); emails_s.add(_canon_email(email))
         # IP משותף רגיש ל-CGNAT סלולרי → דורש גם שמות וגם מיילים שונים, ולא סלולרי
         if others and len(names) >= 2 and len(emails_s) >= 2 and not geo.get("mobile"):
             risk += 2
@@ -4791,6 +4844,24 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None) -> Optional
     if name_mismatch:
         risk += 1
         reasons.append(f"שם החיוב ('{billing_name}') שונה משם המשלם ('{pay_name}') — סימן חלש")
+
+    # ── 6) לגיטימיזרים (מורידים risk רך; לעולם לא גוברים על hard_fraud) ──
+    prior_clean = _repeat_customer(email, o.get("id"))
+    if prior_clean >= 3:
+        risk = max(0, risk - 3)
+        reasons.append(f"לקוח חוזר — {prior_clean} הזמנות שהושלמו בעבר")
+    elif prior_clean == 2:
+        risk = max(0, risk - 2)
+        reasons.append("לקוח חוזר — 2 הזמנות שהושלמו בעבר")
+    elif prior_clean == 1:
+        risk = max(0, risk - 1)
+        reasons.append("הזמנה תקינה אחת בעבר")
+    # WhatsApp = עוגן-חיובי בלבד (רוב הלקוחות הלגיטימיים לא כותבים לנו לפני הזמנה,
+    # אז היעדר עקבות אינו סימן שלילי). נוכחות = reachability אמיתי → מוריד risk.
+    wa = _wa_signal(b.get("phone") or "", billing_name)
+    if wa["known"]:
+        risk = max(0, risk - 1)
+        reasons.append("מספר WhatsApp פעיל (פנה אלינו בעבר) — reachability")
 
     # ── רמה סופית ──
     if not paid:
@@ -4841,6 +4912,11 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None) -> Optional
             "billing_name": billing_name,
             "pay_name": pay_name or None,
             "name_mismatch": name_mismatch,
+            "prior_clean": prior_clean,
+            "wa_known": wa["known"],
+            "wa_name": wa["wa_name"],
+            "wa_name_match": wa["name_match"],
+            "wa_last_in_days": wa["last_in_days"],
             "total": total,
             "code_qty": code_qty,
             "digital_items": [str(li.get("name") or "") for li in digital],

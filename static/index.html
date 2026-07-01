@@ -5455,6 +5455,9 @@ function fraudBanner(f){
   if(s.ip_country) chips.push(`IP: <b>${escW(s.ip_country)}${s.ip_vpn?' · VPN/פרוקסי ⚠':''}</b>${s.ip_isp?` <span style="opacity:.7">(${escW(s.ip_isp)})</span>`:''}`);
   if(s.device) chips.push(`מכשיר: <b>${escW(s.device)}</b>`);
   if(s.disposable_email) chips.push(`<b style="color:#dc2626">מייל חד-פעמי ⚠</b>`);
+  if(s.prior_clean>0) chips.push(`<b style="color:#16a34a">לקוח חוזר: ${s.prior_clean} ✓</b>`);
+  if(s.wa_known) chips.push(`<b style="color:#16a34a">WhatsApp פעיל ✓</b>${s.wa_name?` <span style="opacity:.7">(${escW(s.wa_name)}${s.wa_name_match===false?' — שם לא תואם':''})</span>`:''}`);
+  else if(s.wa_known===false) chips.push(`<span class="muted">אין עקבות WhatsApp</span>`);
   if(s.code_qty) chips.push(`קודים: <b>${s.code_qty}</b>`);
   return `<div style="border:1.5px solid ${m.c}55;background:${m.c}0e;border-radius:14px;padding:13px 16px;margin-bottom:16px">
     <div style="display:flex;align-items:center;gap:9px;margin-bottom:6px">
