@@ -4593,23 +4593,25 @@ def _pp_card_bin(tuid: str, order_iso: str = "") -> str:
             if order_iso else _dt.datetime.utcnow()
     except Exception:  # noqa: BLE001
         base_d = _dt.datetime.utcnow()
-    frm = (base_d - _dt.timedelta(days=2)).strftime("%Y-%m-%d 00:00:00")
-    to = (base_d + _dt.timedelta(days=1)).strftime("%Y-%m-%d 23:59:59")
+    frm = (base_d - _dt.timedelta(days=2)).strftime("%Y-%m-%d")
+    to = (base_d + _dt.timedelta(days=1)).strftime("%Y-%m-%d")
     bin6 = ""
     try:
-        for page in range(1, 5):   # עד 4 עמודים (בטיחות)
+        # ⚠️ הפורמט הנכון של TransactionReports: filter:{fromDate,untilDate}+skip/take —
+        # לא from_date/page (שמוחזר עליהם count=0 בשקט; נראה כמו rate-limit אבל זה פורמט)
+        for skip in range(0, 1500, 500):
             r = _rq.post(f"{PAYPLUS_BASE}/TransactionReports/TransactionsHistory",
                          headers=_payplus_headers(),
                          json={"terminal_uid": os.getenv("PAYPLUS_TERMINAL_UID", ""),
-                               "from_date": frm, "to_date": to,
-                               "page": page, "page_size": 100}, timeout=30)
+                               "filter": {"fromDate": frm, "untilDate": to},
+                               "skip": skip, "take": 500}, timeout=40)
             j = r.json()
             txs = j.get("transactions") or []
             hit = next((t for t in txs if t.get("uuid") == tuid), None)
             if hit:
                 bin6 = str((hit.get("information") or {}).get("card_bin") or "")
                 break
-            if page >= int(j.get("pages") or 1) or not txs:
+            if len(txs) < 500:
                 break
     except Exception as e:  # noqa: BLE001
         logger.warning("payplus bin fetch error: %s", e)
@@ -4995,8 +4997,10 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
     binf = _bin_lookup(card_bin) if card_bin else {}
     card_type = str(binf.get("type") or "")          # credit / debit / prepaid
     bin_country = binf.get("country")                # קוד מדינה אמין יותר מ-card_foreign
-    if bin_country and bin_country != "IL":          # ממזג: BIN חושף כרטיס זר גם כש-card_foreign פספס
+    if bin_country and bin_country != "IL":          # BIN חושף כרטיס זר גם כש-card_foreign פספס
         foreign = True
+    elif bin_country == "IL":                        # BIN ישראלי גובר על דגל card_foreign שגוי
+        foreign = False                              # (47322: הפועלים-IL סומן 'זר' ע"י PayPlus)
 
     is_card = bool(method) and ("card" in method.lower() or "אשראי" in method
                                 or method.lower() in ("credit-card", "credit card"))
