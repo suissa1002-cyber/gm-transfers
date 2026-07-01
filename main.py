@@ -5068,8 +5068,15 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
 
     # ── רמה סופית ──
     if not paid:
+        # ניסיון שלא-שולם/נכשל: כישלון תשלום כשלעצמו אינו הונאה. מציגים את קריאת-הזהות
+        # כדי להבחין "לקוח אמיתי שנכשל" מ-"card-testing" (זהות עם דגלים קשים).
         level = "gray"
-        headline = "טרם שולם — אין נתוני עסקה לבדיקה"
+        if hard_fraud:
+            headline = "טרם שולם — ⚠️ אך הזהות מראה אינדיקציית-הונאה (ייתכן ניסיון card-testing)"
+        elif risk >= 2:
+            headline = "טרם שולם — בזהות יש כמה דגלים; בדוק אם ניסיון חוזר/card-testing"
+        else:
+            headline = "טרם שולם — הזהות נראית נקייה (כנראה תקלת תשלום של לקוח אמיתי)"
     else:
         base_level = "green" if risk == 0 else ("yellow" if risk <= 3 else "red")
         if protected and not hard_fraud:
@@ -5095,7 +5102,9 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
         "green": f"נתונים נקיים — אפשר לספק את {_obj}",
         "yellow": f"בדיקה ידנית לפני שחרור {_obj} (אימות זהות).{_pickup_hint}" + card_check,
         "red": f"לא לספק את {_obj} לפני אימות זהות מלא ובעלות על הכרטיס; שקול ביטול/החזר." + card_check,
-        "gray": "להמתין להשלמת התשלום",
+        "gray": ("⚠️ ניסיון שלא הושלם עם זהות חשודה — עקוב אחר ניסיונות חוזרים (card-testing)"
+                 if hard_fraud else
+                 "כישלון תשלום אינו הונאה כשלעצמו — הזהות נקייה, כנראה תקלת תשלום; אין פעולה"),
     }[level]
 
     return {
