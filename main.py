@@ -4944,10 +4944,12 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
     code_qty = sum(int(li.get("quantity") or 0) for li in digital)
 
     # ── עסקה חיה מ-PayPlus (3DS + כרטיס זר) ──
-    tuid = str(meta.get("payplus_transaction_uid") or "")
+    # הזמנת אתר: מפתחות payplus_* (התוסף). הזמנת GreenOS (קישור תשלום): greenos_payplus_*
+    tuid = str(meta.get("payplus_transaction_uid")
+               or meta.get("greenos_payplus_tx") or "")
     method = (str(meta.get("payplus_method") or meta.get("payplus_clearing_name") or "")).strip()
-    c4 = str(meta.get("payplus_four_digits") or "")
-    brand = str(meta.get("payplus_brand_name") or "")
+    c4 = str(meta.get("payplus_four_digits") or meta.get("greenos_payplus_4digits") or "")
+    brand = str(meta.get("payplus_brand_name") or meta.get("greenos_payplus_brand") or "")
     card_issuer = str(meta.get("payplus_issuer_name") or "")
     s3d = None
     foreign = None
@@ -4961,6 +4963,11 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
         c4 = c4 or str(ci.get("four_digits") or "")
         brand = brand or str(ci.get("brand_name") or "")
         card_issuer = card_issuer or str(ci.get("issuer_name") or ci.get("clearing_name") or "")
+        if not method:   # GreenOS לא שומר method — גוזרים מהסולק בעסקה החיה
+            cn = str(ci.get("clearing_name") or "")
+            method = "Bit" if "bit" in cn.lower() else "credit-card"
+    if not method and tuid:
+        method = str(o.get("payment_method_title") or "credit-card")
     paid = bool(tuid)
 
     # ── מודיעין BIN (6 ספרות → binlist): סוג כרטיס (נטען!) + מדינה + בנק ──
