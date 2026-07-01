@@ -4957,6 +4957,13 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None) -> Optional
         risk += 1
         reasons.append(f"שם החיוב ('{billing_name}') שונה משם המשלם ('{pay_name}') — סימן חלש")
 
+    # אימות "הטלפון תואם לכרטיס": 3DS = המנפיק שלח OTP לטלפון/אפליקציה הרשומים של בעל
+    # הכרטיס, וההוא אישר → זו האינדיקציה הלגיטימית היחידה ש"בעל הכרטיס = מי שמשלם".
+    cardholder_verified = bool(s3d)
+    if cardholder_verified:
+        reasons.append("✅ 3DS: בעל הכרטיס אישר דרך OTP לטלפון הרשום אצל המנפיק "
+                       "(אינדיקציית 'טלפון תואם לכרטיס')")
+
     # ── רמה סופית ──
     if not paid:
         level = "gray"
@@ -5011,6 +5018,7 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None) -> Optional
             "pay_name": pay_name or None,
             "name_mismatch": name_mismatch,
             "third_party_card": third_party_card,
+            "cardholder_verified": cardholder_verified,
             "prior_clean": prior_clean,
             "wa_known": wa["known"],
             "wa_name": wa["wa_name"],
