@@ -5433,6 +5433,39 @@ function bcastBranches(bc){
   const bs=(bc.branches&&bc.branches.length)?bc.branches:[{name:bc.branch||'סניף',qty:1}];
   return bs.map(b=>`${b.name} (${b.qty} יח׳)`).join(' · ');
 }
+// חיווי טריאז' הונאות להזמנת קוד דיגיטלי — צבע+כותרת+נימוקים+פעולה מומלצת
+const _FRAUD_META={
+  green:{c:'#16a34a',t:'סיכון נמוך',e:'🟢'},
+  yellow:{c:'#d97706',t:'דורש בדיקה',e:'🟡'},
+  red:{c:'#dc2626',t:'סיכון גבוה',e:'🔴'},
+  gray:{c:'#6b7280',t:'טרם שולם',e:'⚪'},
+};
+function fraudPill(f,sz){   // אייקון מגן צבעוני קטן לשורת ההזמנה ברשימה
+  if(!f) return '';
+  const m=_FRAUD_META[f.level]||_FRAUD_META.gray;
+  return `<span title="טריאז' קוד דיגיטלי — ${m.t}${f.reasons&&f.reasons.length?': '+f.reasons.join('; '):''}" style="color:${m.c};display:inline-flex;vertical-align:-2px">${ico('shield',sz||13)}</span>`;
+}
+function fraudBanner(f){
+  const m=_FRAUD_META[f.level]||_FRAUD_META.gray;
+  const s=f.signals||{};
+  const chips=[];
+  if(s.method) chips.push(`אמצעי: <b>${escW(s.method)}</b>`);
+  if(s.secure3D!==null&&s.secure3D!==undefined) chips.push(`3DS: <b>${s.secure3D?'כן ✓':'לא'}</b>`);
+  if(s.card_foreign!==null&&s.card_foreign!==undefined) chips.push(`כרטיס: <b>${s.card_foreign?'זר ⚠':'ישראלי'}</b>`);
+  if(s.code_qty) chips.push(`קודים: <b>${s.code_qty}</b>`);
+  if(s.velocity) chips.push(`הזמנות נוספות 48ש': <b>${s.velocity}</b>`);
+  return `<div style="border:1.5px solid ${m.c}55;background:${m.c}0e;border-radius:14px;padding:13px 16px;margin-bottom:16px">
+    <div style="display:flex;align-items:center;gap:9px;margin-bottom:6px">
+      <span style="color:${m.c};display:inline-flex">${ico('shield',20)}</span>
+      <b style="color:${m.c};font-size:15px">${m.e} טריאז' קוד דיגיטלי — ${m.t}</b>
+      ${f.protected?`<span class="ord-st" style="color:#16a34a;border-color:#16a34a55;background:#16a34a14;font-size:11px">מוגן מצ'ארג'בק</span>`:''}
+    </div>
+    <div class="muted" style="font-size:12.5px;margin-bottom:${f.reasons&&f.reasons.length?'8px':'6px'}">${escW(f.headline||'')}</div>
+    ${(f.reasons&&f.reasons.length)?`<ul style="margin:0 0 8px;padding-inline-start:20px;font-size:12.5px;line-height:1.6">${f.reasons.map(r=>`<li>${escW(r)}</li>`).join('')}</ul>`:''}
+    ${chips.length?`<div style="display:flex;flex-wrap:wrap;gap:5px 14px;font-size:12px;margin-bottom:8px">${chips.map(c=>`<span class="muted">${c}</span>`).join('')}</div>`:''}
+    <div style="display:flex;align-items:flex-start;gap:6px;font-size:13px;color:${m.c};font-weight:600">${ico('info',14)} <span>${escW(f.action||'')}</span></div>
+  </div>`;
+}
 function ordFlagIcons(o,sz){
   let h='';
   const partial = o.partial || (o.bcast&&o.oos);   // חלק שודר וחלק חסר (דגל יציב או שידור פעיל+חוסר)
@@ -5708,6 +5741,7 @@ function paintWcOrder(){
         ? `<span class="ord-st" style="color:#d97706;border-color:#d9770655;background:#d977060f;display:inline-flex;align-items:center;gap:6px">${ico('radio',14)} שודר חלקי — חלק מההזמנה שודר${d.bcast?` ל: ${escW(bcastBranches(d.bcast))}`:''}, פריט אחר חסר במלאי (להשיג מהספק)</span>`
         : `${d.oos?`<span class="ord-st" style="color:#dc2626;border-color:#dc262655;background:#dc26260f;display:inline-flex;align-items:center;gap:6px">${ico('pkgx',14)} חסר במלאי בכל הסניפים — להשיג מהספק</span>`:''}${d.bcast?`<span class="ord-st" style="color:${d.bcast.status==='live'?'#15803d':'var(--muted)'};border-color:${d.bcast.status==='live'?'#15803d':'var(--muted)'}55;background:${d.bcast.status==='live'?'#15803d':'#6b7280'}0f;display:inline-flex;align-items:center;gap:6px">${ico('radio',14)} בקשת העברה שודרה ל: ${escW(bcastBranches(d.bcast))}${d.bcast.status==='live'?'':' — נסגרה בסניף'}</span>`:''}`}
     </div>`:''}
+    ${d.fraud?fraudBanner(d.fraud):''}
     ${d.cargo_status&&d.cargo_status.text?(function(){const cs=d.cargo_status;let col='#6b7280';const t=cs.text;
       if(/בוצע|נמסר|סופק/.test(t))col='#16a34a';else if(/בדרך|ללקוח|שליח|חלוקה/.test(t))col='#2563eb';else if(/מחסן/.test(t))col='#d97706';
       return `<div style="margin-bottom:16px;display:flex;gap:7px;flex-wrap:wrap;align-items:center"><span class="ord-st" style="color:${col};border-color:${col}55;background:${col}14;display:inline-flex;align-items:center;gap:6px">${ico('truck',14)} משלוח Cargo · <b>${escW(t)}</b>${cs.tracking?` · מעקב ${escW(cs.tracking)}`:''}${cs.line?` · ${escW(cs.line)}`:''}</span>${cs.track_url?`<button class="btn-ghost" style="padding:5px 10px;font-size:12px;display:inline-flex;align-items:center;gap:5px" onclick="copyCargoTrack('${escW(cs.track_url)}')">🔗 העתק קישור מעקב</button><a class="btn-ghost" style="padding:5px 10px;font-size:12px;text-decoration:none" target="_blank" href="${escW(cs.track_url)}">פתח ↗</a>`:''}</div>`;})():''}

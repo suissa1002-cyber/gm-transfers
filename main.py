@@ -4539,6 +4539,224 @@ def _pp_mark_paid(order_id: int, f: dict) -> bool:
     return False
 
 
+# ── טריאז' הונאות להזמנות קוד דיגיטלי ───────────────────────────────────────
+# מושך את נתוני העסקה החיים מ-PayPlus (3DS, כרטיס זר) שאינם ב-meta של WC,
+# ומשקלל אותם עם עקביות-שם / ערך / כמות / velocity לציון 🟢/🟡/🔴 + נימוקים.
+# הכל קריאה-בלבד; לעולם לא מבצע פעולה — רק מספק חיווי לאדם.
+
+_DIGITAL_MARKERS = ("קוד דיגיטלי", "גיפט", "gift", "psn", "playstation store",
+                    "xbox", "steam", "ארנק דיגיטלי", "voucher", "שובר")
+
+
+def _pp_view_tx(tuid: str) -> Optional[dict]:
+    """נתוני עסקה מלאים מ-PayPlus לפי transaction_uid (מה ש-WC לא חושף:
+    secure3D + card_foreign). מחזיר את data[0] או None."""
+    import requests as _rq
+    if not tuid:
+        return None
+    try:
+        r = _rq.post(f"{PAYPLUS_BASE}/Transactions/view",
+                     headers=_payplus_headers(),
+                     json={"transaction_uid": tuid}, timeout=30)
+        j = r.json()
+        if (j.get("results") or {}).get("status") == "success":
+            data = j.get("data") or []
+            return data[0] if data else None
+    except Exception as e:  # noqa: BLE001
+        logger.warning("payplus view tx error: %s", e)
+    return None
+
+
+def _norm_name(s: str) -> str:
+    """נרמול שם להשוואה: פריקת ישויות HTML, הסרת פיסוק, lower, איחוד רווחים."""
+    import html as _html
+    import re as _re
+    s = _html.unescape(str(s or ""))
+    s = _re.sub(r"[^\w֐-׿]+", " ", s)   # אותיות/ספרות/עברית בלבד
+    return " ".join(s.lower().split())
+
+
+def _names_consistent(a: str, b: str) -> bool:
+    """שני שמות עקביים אם יש להם לפחות טוקן משמעותי משותף (או שאחד מכיל את השני)."""
+    na, nb = _norm_name(a), _norm_name(b)
+    if not na or not nb:
+        return True   # חסר מידע — לא מסמנים כחוסר-עקביות
+    if na in nb or nb in na:
+        return True
+    ta = {t for t in na.split() if len(t) >= 2}
+    tb = {t for t in nb.split() if len(t) >= 2}
+    return bool(ta & tb)
+
+
+def _fraud_triage(o: dict, meta: dict) -> Optional[dict]:
+    """מחשב טריאז' הונאות להזמנה. מחזיר None אם אין בה פריט קוד דיגיטלי.
+    level: green/yellow/red · protected: מוגן מצ'ארג'בק (אשראי+3DS) · reasons/signals."""
+    items = o.get("line_items") or []
+    def _is_digital(li):
+        nm = str(li.get("name") or "").lower()
+        return any(m.lower() in nm for m in _DIGITAL_MARKERS)
+    digital = [li for li in items if _is_digital(li)]
+    if not digital:
+        return None
+
+    b = o.get("billing") or {}
+    billing_name = f"{b.get('first_name','')} {b.get('last_name','')}".strip()
+    pay_name = str(meta.get("payplus_customer_name") or "").strip()
+    email = str(b.get("email") or "")
+    try:
+        total = float(o.get("total") or 0)
+    except Exception:  # noqa: BLE001
+        total = 0.0
+    code_qty = sum(int(li.get("quantity") or 0) for li in digital)
+
+    # ── עסקה חיה מ-PayPlus (3DS + כרטיס זר) ──
+    tuid = str(meta.get("payplus_transaction_uid") or "")
+    method = (str(meta.get("payplus_method") or meta.get("payplus_clearing_name") or "")).strip()
+    s3d = None
+    foreign = None
+    view = _pp_view_tx(tuid) if tuid else None
+    if view:
+        tr = view.get("transaction") or {}
+        ci = (view.get("data") or {}).get("card_information") or {}
+        s3d = bool((tr.get("secure3D") or {}).get("status"))
+        fv = str(ci.get("card_foreign") or "0")
+        foreign = fv not in ("0", "", "None")
+    paid = bool(tuid)
+
+    is_card = bool(method) and ("card" in method.lower() or "אשראי" in method
+                                or method.lower() in ("credit-card", "credit card"))
+    is_wallet = any(w in method.lower() for w in ("bit", "google", "apple", "wallet")) \
+        or "bit" in method.lower()
+    # מוגן מצ'ארג'בק רק כשזו עסקת אשראי שעברה 3DS בפועל
+    protected = bool(is_card and s3d)
+
+    risk = 0
+    reasons = []
+    # 1) עקביות שם — האות הכי חזקה
+    if pay_name and billing_name and not _names_consistent(billing_name, pay_name):
+        risk += 3
+        reasons.append(f"שם החיוב ('{billing_name}') שונה משם המשלם ב-PayPlus ('{pay_name}')")
+    # 2) כרטיס זר
+    if foreign:
+        risk += 2
+        reasons.append("כרטיס זר (card_foreign≠0) על מוצר דיגיטלי")
+    # 3) ערך העסקה
+    if total >= 1000:
+        risk += 2
+        reasons.append(f"סכום גבוה (₪{int(total)})")
+    elif total >= 500:
+        risk += 1
+        reasons.append(f"סכום בינוני-גבוה (₪{int(total)})")
+    # 4) כמות קודים (סחיר, בלתי-הפיך)
+    if code_qty >= 3:
+        risk += 2
+        reasons.append(f"{code_qty} קודים דיגיטליים בהזמנה")
+    elif code_qty == 2:
+        risk += 1
+        reasons.append("2 קודים דיגיטליים בהזמנה")
+    # 5) velocity — הזמנות נוספות מאותו מייל בחלון קצר
+    vel = 0
+    try:
+        base, k, s = _wc_creds()
+        import requests as _rq
+        from datetime import datetime, timedelta
+        if email:
+            rv = _rq.get(f"{base}/wp-json/wc/v3/orders",
+                         params={"search": email, "per_page": 20},
+                         auth=(k, s), timeout=25)
+            if rv.ok:
+                od = str(o.get("date_created") or "")[:10]
+                base_d = datetime.fromisoformat(od) if od else None
+                for x in rv.json():
+                    if str(x.get("id")) == str(o.get("id")):
+                        continue
+                    xe = str((x.get("billing") or {}).get("email") or "").lower()
+                    if xe != email.lower():
+                        continue
+                    xd = str(x.get("date_created") or "")[:10]
+                    try:
+                        if base_d and xd and abs((datetime.fromisoformat(xd) - base_d).days) <= 2:
+                            vel += 1
+                    except Exception:  # noqa: BLE001
+                        vel += 1
+    except Exception:  # noqa: BLE001
+        pass
+    if vel >= 3:
+        risk += 2
+        reasons.append(f"{vel} הזמנות נוספות מאותו מייל ב-48ש' (velocity)")
+    elif vel >= 1:
+        risk += 1
+        reasons.append(f"{vel} הזמנה נוספת מאותו מייל ב-48ש'")
+
+    # ── רמה סופית ──
+    if not paid:
+        level = "gray"
+        headline = "טרם שולם — אין נתוני עסקה לבדיקה"
+    elif protected:
+        # הכסף מוגן מצ'ארג'בק; דגלי-זהות עדיין מעלים לצהוב
+        level = "green" if risk < 4 else "yellow"
+        if foreign and level == "green":
+            level = "yellow"
+        headline = "אשראי + 3DS — מוגן מצ'ארג'בק"
+    else:
+        # אנחנו נושאים בסיכון (Bit / ארנק / אשראי ללא 3DS)
+        level = "green" if risk == 0 else ("yellow" if risk <= 3 else "red")
+        headline = ("Bit/ארנק — אימות בתוך האפליקציה (לא 3DS של הכרטיס); אנחנו נושאים בסיכון"
+                    if is_wallet else "אשראי ללא 3DS — אנחנו נושאים בסיכון")
+
+    action = {
+        "green": "אפשר לספק את הקוד",
+        "yellow": "בדיקה ידנית לפני שליחת הקוד (וואטסאפ + תאימות שם; אפשר לבקש צילום ת\"ז)",
+        "red": "לא לספק לפני אימות זהות מלא (ת\"ז + כרטיס); שקול ביטול/החזר",
+        "gray": "להמתין להשלמת התשלום",
+    }[level]
+
+    return {
+        "level": level,
+        "protected": protected,
+        "risk": risk,
+        "headline": headline,
+        "action": action,
+        "reasons": reasons,
+        "signals": {
+            "paid": paid,
+            "method": method or None,
+            "secure3D": s3d,
+            "card_foreign": foreign,
+            "billing_name": billing_name,
+            "pay_name": pay_name or None,
+            "email": email or None,
+            "total": total,
+            "code_qty": code_qty,
+            "velocity": vel,
+            "digital_items": [str(li.get("name") or "") for li in digital],
+        },
+    }
+
+
+@app.get("/api/admin/fraud/triage")
+def admin_fraud_triage(order: str = "", x_admin_key: Optional[str] = Header(None)):
+    """טריאז' הונאות להזמנת קוד דיגיטלי לפי מספר הזמנה. קריאה-בלבד."""
+    _require_admin(x_admin_key)
+    import requests as _rq
+    base, k, s = _wc_creds()
+    num = str(order).strip().lstrip("#")
+    if not num:
+        raise HTTPException(400, "חסר מספר הזמנה")
+    r = _rq.get(f"{base}/wp-json/wc/v3/orders",
+                params={"search": num, "per_page": 5}, auth=(k, s), timeout=40)
+    o = next((x for x in (r.json() if r.ok else []) if str(x.get("number")) == num), None)
+    if not o:
+        raise HTTPException(404, "הזמנה לא נמצאה")
+    meta = {m.get("key"): m.get("value") for m in (o.get("meta_data") or [])}
+    tri = _fraud_triage(o, meta)
+    if tri is None:
+        return {"order": num, "digital": False,
+                "note": "אין בהזמנה פריט קוד דיגיטלי — אין טריאז'."}
+    tri.update({"order": num, "digital": True, "status": o.get("status")})
+    return tri
+
+
 @app.post("/api/payplus/ipn")
 async def payplus_ipn(request: Request):
     """Callback שרת-לשרת מ-PayPlus בסיום תשלום (refURL_callback).
@@ -4899,10 +5117,16 @@ def admin_order_detail(oid: int, x_admin_key: Optional[str] = Header(None)):
                           for x in (_json2.loads(rawr) if rawr else []))
     except Exception:  # noqa: BLE001
         pass
+    fraud = None
+    try:
+        fraud = _fraud_triage(o, meta)   # None אם אין פריט קוד דיגיטלי
+    except Exception:  # noqa: BLE001
+        pass
     return {
         "src": _order_source(meta),
         "ship_tag": _ship_tag(o, meta),
         "bcast": bcast,
+        "fraud": fraud,
         "oos": oos,
         "partial": partial,
         "nosku": nosku,
