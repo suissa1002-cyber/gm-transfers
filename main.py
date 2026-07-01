@@ -4826,8 +4826,9 @@ def _wa_signal(phone: str, order_name: str, order_ts: float = 0) -> dict:
     """סיגנל WhatsApp מ-DB שלנו + pushname. reachability נחשב legitimizer רק אם הלקוח
     היה מוכר **לפני** ההזמנה (הודעה נכנסת ראשונה ≤ מועד ההזמנה). קשר שנוצר רק *אחרי*
     ההזמנה (רדף אחרי הקוד) אינו reachability — גם רמאי עושה זאת. ⚠️ שם ניתן לזייף."""
-    out = {"known": False, "contacted_after": False, "wa_name": None,
-           "name_match": None, "last_in_days": None, "first_in_days": None}
+    out = {"known": False, "contacted_after": False, "after_hours": None,
+           "wa_name": None, "name_match": None, "last_in_days": None,
+           "first_in_days": None}
     try:
         import time as _t
         now = _t.time()
@@ -4849,6 +4850,7 @@ def _wa_signal(phone: str, order_name: str, order_ts: float = 0) -> dict:
                 out["known"] = True                   # ⚠️ בלי grace — אחרת תשובה לאישור-הזמנה
             else:                                     # האוטומטי (דקות אחרי) נספרת בטעות כ"לפני"
                 out["contacted_after"] = True
+                out["after_hours"] = round((float(first_in) - order_ts) / 3600, 1)
     except Exception:  # noqa: BLE001
         pass
     return out
@@ -5187,11 +5189,17 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
     # קשר *לפני* ההזמנה אינו מפחית סיכון: קל לזייף ("יש במלאי?") ואינו מעיד על לגיטימיות
     # (45571 — לקוח שכתב לפני ההזמנה והתברר כהונאה). הלגיטימייזר האמיתי = prior_clean.
     if wa["contacted_after"] and is_digital_order:
-        # רק לקוד דיגיטלי (מיידי) — פנייה מאוחרת חשודה. למוצר פיזי בדיקת-סטטוס אחרי
-        # הזמנה היא נורמלית (נשלח ימים אחרי) ואינה סימן.
-        risk += 1
-        reasons.append("⚠️ הלקוח יצר קשר בוואטסאפ רק *אחרי* ההזמנה — חשוד לקוד דיגיטלי "
-                       "(קונה אמיתי שלא קיבל קוד יקר תוך דקות היה פונה מיד; לא ימתין ימים)")
+        # רק לקוד דיגיטלי (מיידי), ורק פנייה *מאוחרת* חשודה (46847: אחרי יומיים).
+        # פנייה תוך שעות = התנהגות קונה אמיתי שרודף אחרי הקוד (47431: "כמה זמן ייקח?"
+        # אחרי 10 דק') — לא עונש. למוצר פיזי בדיקת-סטטוס מאוחרת נורמלית ממילא.
+        ah = wa.get("after_hours")
+        if ah is not None and ah >= 24:
+            risk += 1
+            reasons.append(f"⚠️ הלקוח יצר קשר בוואטסאפ לראשונה רק ~{int(ah//24)} ימים אחרי "
+                           "ההזמנה — חשוד לקוד דיגיטלי (קונה אמיתי שלא קיבל קוד יקר פונה מיד)")
+        else:
+            reasons.append("ℹ️ הלקוח פנה בוואטסאפ זמן קצר אחרי ההזמנה (רודף אחרי הקוד) — "
+                           "התנהגות קונה רגילה")
 
     # ── 7) כרטיס צד-שלישי: המזמין קוהרנטי (חיוב≈WhatsApp) אבל הכרטיס של מישהו אחר.
     # סיגנל חזק יותר מ"שם לא תואם" גנרי: שני מקורות בלתי-תלויים מאשרים את זהות
@@ -5313,6 +5321,7 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
             "prior_clean": prior_clean,
             "wa_known": wa["known"],
             "wa_contacted_after": wa["contacted_after"],
+            "wa_after_hours": wa.get("after_hours"),
             "wa_name": wa["wa_name"],
             "wa_name_match": wa["name_match"],
             "wa_last_in_days": wa["last_in_days"],

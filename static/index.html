@@ -5504,7 +5504,7 @@ function fraudBanner(f,orderNum){
     R('✉ מייל (IPQS)',ev);
   }
   R('WhatsApp', s.wa_known?`<span style="color:${GRN}">פעיל לפני ההזמנה ✓</span>${s.wa_name?` <span style="opacity:.65">(${escW(s.wa_name)}${s.wa_name_match===false?' — שם לא תואם':''})</span>`:''}`
-    :(s.wa_contacted_after?`<span style="color:${MUT}">יצר קשר אחרי ההזמנה${s.wa_name?` (${escW(s.wa_name)})`:''}</span>`
+    :(s.wa_contacted_after?`<span style="color:${MUT}">יצר קשר ${s.wa_after_hours!=null?(s.wa_after_hours<24?(s.wa_after_hours<1?Math.round(s.wa_after_hours*60)+' דק׳':Math.round(s.wa_after_hours)+' שע׳'):Math.round(s.wa_after_hours/24)+' ימים')+' אחרי ההזמנה':'אחרי ההזמנה'}${s.wa_name?` (${escW(s.wa_name)})`:''}</span>`
     :`<span style="color:${MUT}">אין עקבות</span>`));
   if(s.prior_clean>0) R('לקוח חוזר',`<b style="color:${GRN}">${s.prior_clean} הזמנות שהושלמו ✓</b>`);
   if(s.code_qty&&s.is_digital!==false) R('קודים בהזמנה',`<b>${s.code_qty}</b>`);
