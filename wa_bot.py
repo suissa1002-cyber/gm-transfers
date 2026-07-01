@@ -563,10 +563,15 @@ def _ask_uri(phone, question, wamid="") -> bool:
                     return
         threading.Thread(target=_keepalive, daemon=True).start()
     q = question or ""
-    try:                                         # מועמדים מהמנוע החכם (אותו מוח כמו הבוט)
-        cands = (main.bot_smart_search(question, limit=6) or {}).get("results") or []
-    except Exception:  # noqa: BLE001
-        cands = []
+    # מצרפים מוצרים מועמדים רק כששאילתה נראית שם-מוצר. המשך-שיחה ('אפשר פרטים?',
+    # 'כמה זה?') → בלי מועמדים: אלה עונה מה-thread. חיפוש על פראגמנט-המשך החזיר
+    # מוצרים לא-רלוונטיים (טליה שאלה על AirPods, קיבלה JBL/Samsung Watch, 01/07).
+    cands = []
+    if _product_query((question or "").lower()):
+        try:                                     # מועמדים מהמנוע החכם (אותו מוח כמו הבוט)
+            cands = (main.bot_smart_search(question, limit=6) or {}).get("results") or []
+        except Exception:  # noqa: BLE001
+            cands = []
     if cands:
         lines = "\n".join(
             f"- {c.get('name')} | ₪{c.get('price')} | "
