@@ -5472,13 +5472,15 @@ function fraudBanner(f,orderNum){
     else if(s.ipqs_phone_score>=75) chips.push(`<b style="color:#dc2626">📞 IPQS טלפון: סיכון ${s.ipqs_phone_score} ⚠</b>`);
     else chips.push(`<span style="color:#16a34a">📞 IPQS טלפון: תקין ✓${s.ipqs_phone_line_type?` (${escW(s.ipqs_phone_line_type)}${s.ipqs_phone_carrier?' · '+escW(s.ipqs_phone_carrier):''})`:''}</span>`);
   }
-  // IPQS מייל — מוצג תמיד כשנבדק
+  // IPQS מייל — מוצג תמיד כשנבדק. abuse אמיתי=אדום; ציון גבוה ממייל עסקי/גנרי=ניטרלי
   if(s.ipqs_email_checked){
     if(s.disposable_email) chips.push(`<b style="color:#dc2626">✉ IPQS מייל: חד-פעמי ⚠</b>`);
+    else if(s.ipqs_email_real_abuse) chips.push(`<b style="color:#dc2626">✉ IPQS מייל: פעילות זדונית ⚠</b>`);
+    else if(s.ipqs_email_role) chips.push(`<span class="muted">✉ מייל עסקי/גנרי (office@ / catch-all)${s.ipqs_email_score!=null?` · ציון IPQS ${s.ipqs_email_score} (רעש, לא הונאה)`:''}</span>`);
     else if(s.ipqs_email_score>=85) chips.push(`<b style="color:#dc2626">✉ IPQS מייל: סיכון ${s.ipqs_email_score} ⚠</b>`);
     else chips.push(`<span style="color:#16a34a">✉ IPQS מייל: תקין ✓${s.ipqs_email_score!=null?` (סיכון ${s.ipqs_email_score})`:''}</span>`);
   } else if(s.disposable_email){ chips.push(`<b style="color:#dc2626">✉ מייל חד-פעמי ⚠</b>`); }
-  if(s.ipqs_email_first_seen){
+  if(s.ipqs_email_first_seen&&!s.ipqs_email_real_abuse){
     const age=String(s.ipqs_email_first_seen)
       .replace('years ago','שנים').replace('year ago','שנה')
       .replace('months ago','חודשים').replace('month ago','חודש')

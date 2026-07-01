@@ -4763,7 +4763,7 @@ def _ipqs_get(kind: str, value: str) -> dict:
     if not (key and value):
         return {}
     import json as _json
-    ck = f"ipqs_{kind}:{value.lower()}"
+    ck = f"ipqs2_{kind}:{value.lower()}"   # v2 — כולל generic/catch_all (רענון חד-פעמי)
     try:
         raw = db.sales_state_get(ck)
         if raw:
@@ -4792,7 +4792,9 @@ def _ipqs_get(kind: str, value: str) -> dict:
                        "first_seen": (j.get("first_seen") or {}).get("human"),
                        "first_seen_days": (j.get("first_seen") or {}).get("days"),
                        "deliverability": j.get("deliverability"),
-                       "suspect": j.get("suspect")}
+                       "suspect": j.get("suspect"),
+                       "generic": j.get("generic"), "catch_all": j.get("catch_all"),
+                       "spam_trap": str(j.get("spam_trap_score") or "none")}
             try:
                 db.sales_state_set(ck, _json.dumps(out, ensure_ascii=False))
             except Exception:  # noqa: BLE001
@@ -5035,20 +5037,31 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
     if disposable:
         risk += 3; hard_fraud = True
         reasons.append("כתובת מייל חד-פעמית")
+    email_real_abuse = False
+    email_role = False
     if ipqs_email:
         efs = ipqs_email.get("fraud_score") or 0
-        if ipqs_email.get("recent_abuse"):
+        # abuse אמיתי (recent_abuse/honeypot/spam-trap) = חזק. לעומת "ציון גבוה" שנובע
+        # מ-generic/catch_all (office@, דומיין עסקי) = false-positive שכיח, לא הונאה.
+        email_real_abuse = bool(ipqs_email.get("recent_abuse") or ipqs_email.get("honeypot")
+                                or str(ipqs_email.get("spam_trap") or "none") not in ("none", ""))
+        email_role = bool(ipqs_email.get("generic") or ipqs_email.get("catch_all"))
+        if email_real_abuse:
             risk += 2; hard_fraud = True
-            reasons.append("המייל סומן ב-IPQS כפעילות זדונית לאחרונה (recent abuse)")
-        elif efs >= 85:
+            reasons.append("המייל סומן ב-IPQS כפעילות זדונית/מלכודת-ספאם (recent abuse)")
+        elif efs >= 85 and not email_role:
             risk += 2
-            reasons.append(f"ציון סיכון מייל גבוה ב-IPQS ({efs})")
+            reasons.append(f"ציון סיכון מייל גבוה ב-IPQS ({efs}) — לא מייל עסקי/גנרי")
+        elif email_role and efs >= 75:
+            reasons.append("ℹ️ מייל עסקי/גנרי (office@ / דומיין catch-all) — IPQS נותן ציון "
+                           "גבוה, אך זו תבנית עסקית שכיחה, לא בהכרח הונאה")
         fsd = ipqs_email.get("first_seen_days")
         fs_human = str(ipqs_email.get("first_seen") or "")
-        # מייל טרי (שעות/ימים/עד חודש) = חשוד; מייל ותיק (שנים) = זהות מבוססת
+        # מייל טרי (שעות/ימים/עד חודש) = חשוד; מייל ותיק (שנים) = זהות מבוססת (אם אין abuse)
         email_fresh = (isinstance(fsd, int) and 0 <= fsd <= 30) or \
             any(w in fs_human for w in ("hour", "minute", "day"))
-        email_established = ("year" in fs_human) or (isinstance(fsd, int) and fsd >= 365)
+        email_established = (("year" in fs_human) or (isinstance(fsd, int) and fsd >= 365)) \
+            and not email_real_abuse
         if email_fresh and not disposable:
             risk += 1
             reasons.append(f"מייל חדש מאוד (נראה לראשונה: {fs_human or f'{fsd} ימים'})")
@@ -5239,6 +5252,8 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
             "ipqs_email_deliverability": ipqs_email.get("deliverability") if ipqs_email else None,
             "ipqs_email_first_seen": (ipqs_email.get("first_seen") or None) if ipqs_email else None,
             "ipqs_email_established": email_established,
+            "ipqs_email_real_abuse": email_real_abuse,
+            "ipqs_email_role": email_role,
             "ipqs_phone_checked": bool(ipqs_phone),
             "ipqs_phone_valid": ipqs_phone.get("valid") if ipqs_phone else None,
             "ipqs_phone_voip": ipqs_phone.get("voip") if ipqs_phone else None,
