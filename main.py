@@ -4592,9 +4592,94 @@ def _names_consistent(a: str, b: str) -> bool:
     return bool(ta & tb)
 
 
-def _fraud_triage(o: dict, meta: dict) -> Optional[dict]:
-    """מחשב טריאז' הונאות להזמנה. מחזיר None אם אין בה פריט קוד דיגיטלי.
-    level: green/yellow/red · protected: מוגן מצ'ארג'בק (אשראי+3DS) · reasons/signals."""
+# דומיינים של מייל חד-פעמי/זבל (סימן חזק להונאה בקודים דיגיטליים)
+_DISPOSABLE_DOMAINS = {
+    "mailinator.com", "guerrillamail.com", "10minutemail.com", "tempmail.com",
+    "temp-mail.org", "yopmail.com", "trashmail.com", "getnada.com", "sharklasers.com",
+    "maildrop.cc", "dispostable.com", "fakeinbox.com", "mohmal.com", "emailondeck.com",
+    "throwawaymail.com", "mintemail.com", "tempinbox.com", "33mail.com", "spamgourmet.com",
+    "guerrillamail.info", "grr.la", "moakt.com", "tempr.email", "burnermail.io",
+}
+
+
+def _ip_geo(ip: str) -> dict:
+    """גיאו + זיהוי VPN/פרוקסי/דאטה-סנטר ל-IP (ip-api חינם), מטמון קבוע ב-sales_state."""
+    ip = (ip or "").strip()
+    if not ip:
+        return {}
+    import json as _json
+    key = f"ipgeo:{ip}"
+    try:
+        raw = db.sales_state_get(key)
+        if raw:
+            return _json.loads(raw)
+    except Exception:  # noqa: BLE001
+        pass
+    import requests as _rq
+    out = {}
+    try:
+        r = _rq.get(f"http://ip-api.com/json/{ip}",
+                    params={"fields": "status,country,countryCode,proxy,hosting,mobile,isp"},
+                    timeout=10)
+        j = r.json()
+        if j.get("status") == "success":
+            out = {"cc": j.get("countryCode"), "country": j.get("country"),
+                   "proxy": bool(j.get("proxy")), "hosting": bool(j.get("hosting")),
+                   "mobile": bool(j.get("mobile")), "isp": j.get("isp")}
+            try:
+                db.sales_state_set(key, _json.dumps(out, ensure_ascii=False))
+            except Exception:  # noqa: BLE001
+                pass
+    except Exception as e:  # noqa: BLE001
+        logger.warning("ip geo error: %s", e)
+    return out
+
+
+def _fraud_graph_build(orders: list) -> dict:
+    """אינדקס גרף-זהות מ-N הזמנות אחרונות: כרטיס/IP → זהויות (שם+מייל+מספר).
+    משמש לזיהוי 'אותו כרטיס/IP על פני שמות ומיילים שונים' = בדיקת-כרטיסים/כנופייה."""
+    cards, ips = {}, {}
+    for o in orders:
+        meta = {m.get("key"): m.get("value") for m in (o.get("meta_data") or [])}
+        b = o.get("billing") or {}
+        num = str(o.get("number"))
+        name = _norm_name(f"{b.get('first_name','')} {b.get('last_name','')}")
+        email = str(b.get("email") or "").lower()
+        ip = str(o.get("customer_ip_address") or "")
+        c4 = str(meta.get("payplus_four_digits") or "")
+        brand = str(meta.get("payplus_brand_name") or "")
+        ent = [num, name, email]
+        if c4:
+            cards.setdefault(f"{c4}|{brand}", []).append(ent)
+        if ip:
+            ips.setdefault(ip, []).append(ent)
+    cards = {k: v[:12] for k, v in cards.items()}
+    ips = {k: v[:12] for k, v in ips.items()}
+    return {"cards": cards, "ips": ips}
+
+
+def _fraud_graph_map() -> dict:
+    import json as _json
+    try:
+        raw = db.sales_state_get("fraud_graph")
+        g = _json.loads(raw) if raw else {}
+        return g if isinstance(g, dict) else {}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _distinct_identities(entries: list, self_num: str):
+    """מתוך רשימת [num,name,email] — כמה שמות/מיילים *שונים* (כולל ההזמנה הנוכחית)."""
+    names = {e[1] for e in entries if e[1]}
+    emails = {e[2] for e in entries if e[2]}
+    others = [e for e in entries if e[0] != self_num]
+    return names, emails, others
+
+
+def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None) -> Optional[dict]:
+    """טריאז' הונאות מבוסס-סיגנלים-קשים-לזיוף. None אם אין פריט קוד דיגיטלי.
+    רשת(IP/VPN/geo) · גרף שכפול-כרטיס/IP · שלמות תשלום(3DS) · מייל חד-פעמי · ערך/כמות.
+    שם = סימן שולי בלבד (מי שיש לו אשראי גנוב יודע את שם בעל הכרטיס). חיווי-בלבד."""
     items = o.get("line_items") or []
     def _is_digital(li):
         nm = str(li.get("name") or "").lower()
@@ -4602,11 +4687,17 @@ def _fraud_triage(o: dict, meta: dict) -> Optional[dict]:
     digital = [li for li in items if _is_digital(li)]
     if not digital:
         return None
+    if graph is None:
+        graph = _fraud_graph_map()
 
     b = o.get("billing") or {}
+    num = str(o.get("number"))
     billing_name = f"{b.get('first_name','')} {b.get('last_name','')}".strip()
     pay_name = str(meta.get("payplus_customer_name") or "").strip()
     email = str(b.get("email") or "")
+    dom = email.split("@")[-1].lower() if "@" in email else ""
+    ip = str(o.get("customer_ip_address") or "")
+    device = str(meta.get("_wc_order_attribution_device_type") or "")
     try:
         total = float(o.get("total") or 0)
     except Exception:  # noqa: BLE001
@@ -4616,6 +4707,8 @@ def _fraud_triage(o: dict, meta: dict) -> Optional[dict]:
     # ── עסקה חיה מ-PayPlus (3DS + כרטיס זר) ──
     tuid = str(meta.get("payplus_transaction_uid") or "")
     method = (str(meta.get("payplus_method") or meta.get("payplus_clearing_name") or "")).strip()
+    c4 = str(meta.get("payplus_four_digits") or "")
+    brand = str(meta.get("payplus_brand_name") or "")
     s3d = None
     foreign = None
     view = _pp_view_tx(tuid) if tuid else None
@@ -4625,99 +4718,109 @@ def _fraud_triage(o: dict, meta: dict) -> Optional[dict]:
         s3d = bool((tr.get("secure3D") or {}).get("status"))
         fv = str(ci.get("card_foreign") or "0")
         foreign = fv not in ("0", "", "None")
+        c4 = c4 or str(ci.get("four_digits") or "")
+        brand = brand or str(ci.get("brand_name") or "")
     paid = bool(tuid)
 
     is_card = bool(method) and ("card" in method.lower() or "אשראי" in method
                                 or method.lower() in ("credit-card", "credit card"))
-    is_wallet = any(w in method.lower() for w in ("bit", "google", "apple", "wallet")) \
-        or "bit" in method.lower()
-    # מוגן מצ'ארג'בק רק כשזו עסקת אשראי שעברה 3DS בפועל
-    protected = bool(is_card and s3d)
+    is_wallet = any(w in method.lower() for w in ("bit", "google", "apple", "wallet"))
+    protected = bool(is_card and s3d)   # מוגן מצ'ארג'בק רק אשראי+3DS בפועל
 
     risk = 0
     reasons = []
-    # 1) עקביות שם — האות הכי חזקה
-    if pay_name and billing_name and not _names_consistent(billing_name, pay_name):
-        risk += 3
-        reasons.append(f"שם החיוב ('{billing_name}') שונה משם המשלם ב-PayPlus ('{pay_name}')")
-    # 2) כרטיס זר
-    if foreign:
+    hard_fraud = False   # אינדיקציית-הונאה אמיתית (לא רק סיכון-כספי) — גוברת על "מוגן"
+
+    # ── 1) רשת: VPN/פרוקסי/דאטה-סנטר + מדינת IP (הכי קשה לזיוף) ──
+    geo = _ip_geo(ip) if ip else {}
+    ip_cc = geo.get("cc")
+    if geo.get("proxy"):
+        risk += 3; hard_fraud = True
+        reasons.append("ההזמנה בוצעה דרך VPN/פרוקסי")
+    if geo.get("hosting"):
+        risk += 3; hard_fraud = True
+        reasons.append("IP של שרת/דאטה-סנטר (לא גולש רגיל)")
+    if ip_cc and ip_cc != "IL":
         risk += 2
-        reasons.append("כרטיס זר (card_foreign≠0) על מוצר דיגיטלי")
-    # 3) ערך העסקה
+        reasons.append(f"IP ממדינה זרה ({ip_cc})")
+    # כרטיס זר + IP זר = צירוף עקבי-הונאה; כרטיס זר לבד (IP ישראלי) = חלש יותר
+    if foreign and ip_cc and ip_cc != "IL":
+        risk += 2; hard_fraud = True
+        reasons.append("כרטיס זר + IP זר (צירוף עקבי-הונאה)")
+    elif foreign:
+        risk += 1
+        reasons.append("כרטיס זר (IP ישראלי — יכול להיות תושב/עולה)")
+
+    # ── 2) גרף: אותו כרטיס/IP על פני זהויות שונות = בדיקת-כרטיסים ──
+    if c4:
+        ck = f"{c4}|{brand}"
+        ents = (graph.get("cards") or {}).get(ck, [])
+        names, emails_s, others = _distinct_identities(ents, num)
+        names.add(_norm_name(billing_name)); emails_s.add(email.lower())
+        if others and (len(names) >= 2 or len(emails_s) >= 2):
+            risk += 4; hard_fraud = True
+            reasons.append(f"אותו כרטיס (****{c4}) שימש ליותר מזהות אחת "
+                           f"({len(names)} שמות / {len(emails_s)} מיילים)")
+    if ip:
+        ents = (graph.get("ips") or {}).get(ip, [])
+        names, emails_s, others = _distinct_identities(ents, num)
+        names.add(_norm_name(billing_name)); emails_s.add(email.lower())
+        # IP משותף רגיש ל-CGNAT סלולרי → דורש גם שמות וגם מיילים שונים, ולא סלולרי
+        if others and len(names) >= 2 and len(emails_s) >= 2 and not geo.get("mobile"):
+            risk += 2
+            reasons.append(f"אותו IP שימש {len(emails_s)} מיילים / {len(names)} שמות שונים")
+
+    # ── 3) מייל חד-פעמי ──
+    if dom and dom in _DISPOSABLE_DOMAINS:
+        risk += 3; hard_fraud = True
+        reasons.append(f"כתובת מייל חד-פעמית ({dom})")
+
+    # ── 4) ערך + כמות קודים (סחיר, בלתי-הפיך) ──
     if total >= 1000:
-        risk += 2
-        reasons.append(f"סכום גבוה (₪{int(total)})")
+        risk += 2; reasons.append(f"סכום גבוה (₪{int(total)})")
     elif total >= 500:
-        risk += 1
-        reasons.append(f"סכום בינוני-גבוה (₪{int(total)})")
-    # 4) כמות קודים (סחיר, בלתי-הפיך)
+        risk += 1; reasons.append(f"סכום בינוני-גבוה (₪{int(total)})")
     if code_qty >= 3:
-        risk += 2
-        reasons.append(f"{code_qty} קודים דיגיטליים בהזמנה")
+        risk += 2; reasons.append(f"{code_qty} קודים דיגיטליים בהזמנה")
     elif code_qty == 2:
+        risk += 1; reasons.append("2 קודים דיגיטליים בהזמנה")
+
+    # ── 5) שם — סימן שולי בלבד (לא ראיה; מי שיש לו אשראי גנוב יודע את השם) ──
+    name_mismatch = bool(pay_name and billing_name
+                         and not _names_consistent(billing_name, pay_name))
+    if name_mismatch:
         risk += 1
-        reasons.append("2 קודים דיגיטליים בהזמנה")
-    # 5) velocity — הזמנות נוספות מאותו מייל בחלון קצר
-    vel = 0
-    try:
-        base, k, s = _wc_creds()
-        import requests as _rq
-        from datetime import datetime, timedelta
-        if email:
-            rv = _rq.get(f"{base}/wp-json/wc/v3/orders",
-                         params={"search": email, "per_page": 20},
-                         auth=(k, s), timeout=25)
-            if rv.ok:
-                od = str(o.get("date_created") or "")[:10]
-                base_d = datetime.fromisoformat(od) if od else None
-                for x in rv.json():
-                    if str(x.get("id")) == str(o.get("id")):
-                        continue
-                    xe = str((x.get("billing") or {}).get("email") or "").lower()
-                    if xe != email.lower():
-                        continue
-                    xd = str(x.get("date_created") or "")[:10]
-                    try:
-                        if base_d and xd and abs((datetime.fromisoformat(xd) - base_d).days) <= 2:
-                            vel += 1
-                    except Exception:  # noqa: BLE001
-                        vel += 1
-    except Exception:  # noqa: BLE001
-        pass
-    if vel >= 3:
-        risk += 2
-        reasons.append(f"{vel} הזמנות נוספות מאותו מייל ב-48ש' (velocity)")
-    elif vel >= 1:
-        risk += 1
-        reasons.append(f"{vel} הזמנה נוספת מאותו מייל ב-48ש'")
+        reasons.append(f"שם החיוב ('{billing_name}') שונה משם המשלם ('{pay_name}') — סימן חלש")
 
     # ── רמה סופית ──
     if not paid:
         level = "gray"
         headline = "טרם שולם — אין נתוני עסקה לבדיקה"
-    elif protected:
-        # הכסף מוגן מצ'ארג'בק; דגלי-זהות עדיין מעלים לצהוב
-        level = "green" if risk < 4 else "yellow"
-        if foreign and level == "green":
-            level = "yellow"
-        headline = "אשראי + 3DS — מוגן מצ'ארג'בק"
     else:
-        # אנחנו נושאים בסיכון (Bit / ארנק / אשראי ללא 3DS)
-        level = "green" if risk == 0 else ("yellow" if risk <= 3 else "red")
-        headline = ("Bit/ארנק — אימות בתוך האפליקציה (לא 3DS של הכרטיס); אנחנו נושאים בסיכון"
-                    if is_wallet else "אשראי ללא 3DS — אנחנו נושאים בסיכון")
+        base_level = "green" if risk == 0 else ("yellow" if risk <= 3 else "red")
+        if protected and not hard_fraud:
+            # הכסף מוגן מצ'ארג'בק ואין אינדיקציית-הונאה קשה → תקרה צהוב
+            level = "yellow" if base_level == "red" else base_level
+            headline = "אשראי + 3DS — מוגן מצ'ארג'בק"
+        elif protected and hard_fraud:
+            level = "red"
+            headline = "אשראי+3DS מוגן מצ'ארג'בק — אבל יש אינדיקציית-הונאה קשה (לא להיות צינור)"
+        else:
+            level = base_level
+            headline = ("Bit/ארנק — אימות באפליקציה (לא 3DS של הכרטיס); אנחנו נושאים בסיכון"
+                        if is_wallet else "אשראי ללא 3DS — אנחנו נושאים בסיכון")
 
     action = {
-        "green": "אפשר לספק את הקוד",
-        "yellow": "בדיקה ידנית לפני שליחת הקוד (וואטסאפ + תאימות שם; אפשר לבקש צילום ת\"ז)",
-        "red": "לא לספק לפני אימות זהות מלא (ת\"ז + כרטיס); שקול ביטול/החזר",
+        "green": "נתונים נקיים — אפשר לספק את הקוד",
+        "yellow": "בדיקה ידנית לפני שליחת הקוד (וואטסאפ פעיל + אימות זהות; אפשר לבקש צילום ת\"ז)",
+        "red": "לא לספק לפני אימות זהות מלא (ת\"ז + בעלות על הכרטיס); שקול ביטול/החזר",
         "gray": "להמתין להשלמת התשלום",
     }[level]
 
     return {
         "level": level,
         "protected": protected,
+        "hard_fraud": hard_fraud,
         "risk": risk,
         "headline": headline,
         "action": action,
@@ -4727,12 +4830,19 @@ def _fraud_triage(o: dict, meta: dict) -> Optional[dict]:
             "method": method or None,
             "secure3D": s3d,
             "card_foreign": foreign,
+            "card_last4": c4 or None,
+            "ip": ip or None,
+            "ip_country": ip_cc,
+            "ip_vpn": bool(geo.get("proxy") or geo.get("hosting")) if geo else None,
+            "ip_isp": geo.get("isp"),
+            "device": device or None,
+            "email": email or None,
+            "disposable_email": bool(dom in _DISPOSABLE_DOMAINS) if dom else None,
             "billing_name": billing_name,
             "pay_name": pay_name or None,
-            "email": email or None,
+            "name_mismatch": name_mismatch,
             "total": total,
             "code_qty": code_qty,
-            "velocity": vel,
             "digital_items": [str(li.get("name") or "") for li in digital],
         },
     }
@@ -4801,33 +4911,41 @@ def _fraud_cache_map() -> dict:
 
 
 def _fraud_triage_job():
-    """רקע: מחשב טריאז' להזמנות קוד דיגיטליות אחרונות ומאחסן רמה למרקר ברשימה."""
+    """רקע: בונה אינדקס גרף-זהות מ-100 הזמנות אחרונות, ואז מחשב+מטמן רמת טריאז'
+    לכל הזמנת קוד דיגיטלי (הגרף מאפשר זיהוי שכפול-כרטיס/IP על פני זהויות)."""
     import requests as _rq
+    import json as _json
     try:
         base, k, s = _wc_creds()
     except Exception:  # noqa: BLE001
         return
     try:
         r = _rq.get(f"{base}/wp-json/wc/v3/orders",
-                    params={"per_page": 40, "orderby": "date", "order": "desc"},
-                    auth=(k, s), timeout=45)
+                    params={"per_page": 100, "orderby": "date", "order": "desc"},
+                    auth=(k, s), timeout=60)
         if not r.ok:
             return
+        orders = r.json()
+        graph = _fraud_graph_build(orders)
+        try:
+            db.sales_state_set("fraud_graph", _json.dumps(graph, ensure_ascii=False))
+        except Exception:  # noqa: BLE001
+            pass
         n = 0
-        for o in r.json():
-            items = o.get("line_items") or []
-            if not _order_has_digital(items):
+        for o in orders:
+            if not _order_has_digital(o.get("line_items") or []):
                 continue
             meta = {m.get("key"): m.get("value") for m in (o.get("meta_data") or [])}
             try:
-                tri = _fraud_triage(o, meta)
+                tri = _fraud_triage(o, meta, graph)
             except Exception:  # noqa: BLE001
                 tri = None
             if tri:
                 _fraud_cache_set(o.get("number"), tri.get("level"))
                 n += 1
         if n:
-            logger.info("fraud triage job: cached %d digital-code orders", n)
+            logger.info("fraud triage job: graph %d cards / %d ips, cached %d digital orders",
+                        len(graph.get("cards", {})), len(graph.get("ips", {})), n)
     except Exception as e:  # noqa: BLE001
         logger.warning("fraud triage job error: %s", e)
 

@@ -5451,9 +5451,11 @@ function fraudBanner(f){
   const chips=[];
   if(s.method) chips.push(`אמצעי: <b>${escW(s.method)}</b>`);
   if(s.secure3D!==null&&s.secure3D!==undefined) chips.push(`3DS: <b>${s.secure3D?'כן ✓':'לא'}</b>`);
-  if(s.card_foreign!==null&&s.card_foreign!==undefined) chips.push(`כרטיס: <b>${s.card_foreign?'זר ⚠':'ישראלי'}</b>`);
+  if(s.card_foreign!==null&&s.card_foreign!==undefined) chips.push(`כרטיס: <b>${s.card_foreign?'זר ⚠':'ישראלי'}</b>${s.card_last4?` ****${escW(s.card_last4)}`:''}`);
+  if(s.ip_country) chips.push(`IP: <b>${escW(s.ip_country)}${s.ip_vpn?' · VPN/פרוקסי ⚠':''}</b>${s.ip_isp?` <span style="opacity:.7">(${escW(s.ip_isp)})</span>`:''}`);
+  if(s.device) chips.push(`מכשיר: <b>${escW(s.device)}</b>`);
+  if(s.disposable_email) chips.push(`<b style="color:#dc2626">מייל חד-פעמי ⚠</b>`);
   if(s.code_qty) chips.push(`קודים: <b>${s.code_qty}</b>`);
-  if(s.velocity) chips.push(`הזמנות נוספות 48ש': <b>${s.velocity}</b>`);
   return `<div style="border:1.5px solid ${m.c}55;background:${m.c}0e;border-radius:14px;padding:13px 16px;margin-bottom:16px">
     <div style="display:flex;align-items:center;gap:9px;margin-bottom:6px">
       <span style="color:${m.c};display:inline-flex">${ico('shield',20)}</span>
