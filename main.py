@@ -450,6 +450,10 @@ def register_recurring_jobs():
     scheduler.add_job(_sales_ingest_job, "interval", minutes=15, id="sales_ingest", max_instances=1)  # ל-לוח בית: "היום" טרי
     # סגירת כרטיסי קליטה למכשירים שנמכרו לפני קליטה — גם עצמאית (גיבוי ל-hook באיסוף)
     scheduler.add_job(_sold_reconcile_job, "interval", minutes=30, id="sold_reconcile", max_instances=1)
+    # טריאז' הונאות להזמנות קוד דיגיטלי — מטמון רמות למרקר ברשימה (הבאנר בפירוט חי תמיד)
+    scheduler.add_job(_fraud_triage_job, "interval", minutes=30, id="fraud_triage", max_instances=1)
+    scheduler.add_job(_fraud_triage_job, "date", id="fraud_triage_initial",
+                      run_date=datetime.now() + timedelta(seconds=90))
     if _is_stale(db.sales_state_get("last_run"), hours=2):
         scheduler.add_job(_sales_ingest_job, "date", id="sales_ingest_initial",
                           run_date=datetime.now() + timedelta(seconds=120))
@@ -4754,7 +4758,78 @@ def admin_fraud_triage(order: str = "", x_admin_key: Optional[str] = Header(None
         return {"order": num, "digital": False,
                 "note": "אין בהזמנה פריט קוד דיגיטלי — אין טריאז'."}
     tri.update({"order": num, "digital": True, "status": o.get("status")})
+    _fraud_cache_set(num, tri.get("level"))
     return tri
+
+
+def _order_has_digital(items) -> bool:
+    for li in (items or []):
+        nm = str(li.get("name") or "").lower()
+        if any(m.lower() in nm for m in _DIGITAL_MARKERS):
+            return True
+    return False
+
+
+def _fraud_cache_set(number, level):
+    """שומר את רמת הטריאז' האחרונה להזמנה — למרקר ברשימה בלי קריאת PayPlus לכל שורה."""
+    import json as _json
+    try:
+        raw = db.sales_state_get("fraud_levels")
+        m = _json.loads(raw) if raw else {}
+    except Exception:  # noqa: BLE001
+        m = {}
+    if not isinstance(m, dict):
+        m = {}
+    m[str(number)] = level
+    if len(m) > 500:                       # cap — dict שומר סדר הכנסה
+        for kk in list(m.keys())[:len(m) - 500]:
+            m.pop(kk, None)
+    try:
+        db.sales_state_set("fraud_levels", _json.dumps(m, ensure_ascii=False))
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _fraud_cache_map() -> dict:
+    import json as _json
+    try:
+        raw = db.sales_state_get("fraud_levels")
+        m = _json.loads(raw) if raw else {}
+        return m if isinstance(m, dict) else {}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _fraud_triage_job():
+    """רקע: מחשב טריאז' להזמנות קוד דיגיטליות אחרונות ומאחסן רמה למרקר ברשימה."""
+    import requests as _rq
+    try:
+        base, k, s = _wc_creds()
+    except Exception:  # noqa: BLE001
+        return
+    try:
+        r = _rq.get(f"{base}/wp-json/wc/v3/orders",
+                    params={"per_page": 40, "orderby": "date", "order": "desc"},
+                    auth=(k, s), timeout=45)
+        if not r.ok:
+            return
+        n = 0
+        for o in r.json():
+            items = o.get("line_items") or []
+            if not _order_has_digital(items):
+                continue
+            meta = {m.get("key"): m.get("value") for m in (o.get("meta_data") or [])}
+            try:
+                tri = _fraud_triage(o, meta)
+            except Exception:  # noqa: BLE001
+                tri = None
+            if tri:
+                _fraud_cache_set(o.get("number"), tri.get("level"))
+                n += 1
+        if n:
+            logger.info("fraud triage job: cached %d digital-code orders", n)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("fraud triage job error: %s", e)
 
 
 @app.post("/api/payplus/ipn")
@@ -4890,11 +4965,15 @@ def admin_orders_list(page: int = 1, status: str = "", search: str = "",
     # מוצרים דיגיטליים (גיפט קארד/קוד, is_stock=False) לא יציגו OOS — סינון בתצוגה
     # (גם מנקה סימונים ישנים שנוצרו לפני התיקון). מפת is_stock מהקטלוג המקומי.
     _cat = db.catalog_load() if oos_set else {}
+    _fmap = _fraud_cache_map()
     out = []
     for o in r.json():
         meta = {m.get("key"): m.get("value") for m in (o.get("meta_data") or [])}
         items = o.get("line_items") or []
+        _digital = _order_has_digital(items)
         out.append({
+            "digital": _digital,                                   # הזמנת קוד דיגיטלי
+            "fraud_level": _fmap.get(str(o.get("number"))) if _digital else None,
             "src": _order_source(meta),
             "ship_tag": _ship_tag(o, meta),
             "img": ((items[0].get("image") or {}).get("src") or "") if items else "",
@@ -5120,6 +5199,8 @@ def admin_order_detail(oid: int, x_admin_key: Optional[str] = Header(None)):
     fraud = None
     try:
         fraud = _fraud_triage(o, meta)   # None אם אין פריט קוד דיגיטלי
+        if fraud:
+            _fraud_cache_set(o.get("number"), fraud.get("level"))
     except Exception:  # noqa: BLE001
         pass
     return {

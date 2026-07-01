@@ -5477,6 +5477,10 @@ function ordFlagIcons(o,sz){
     if(o.oos) h+=`<span title="המוצר חסר במלאי בכל הסניפים — יש להשיג מהספק" style="color:#dc2626;display:inline-flex;vertical-align:-2px">${ico('pkgx',sz)}</span>`;
   }
   if(o.nosku) h+=`<span title="פריט ללא מק״ט מחובר לקופה — לא ניתן לשריין/לשדר. הוסף מק״ט למוצר ב-WooCommerce" style="color:#d97706;display:inline-flex;vertical-align:-2px">${ico('tag',sz)}</span>`;
+  if(o.digital){   // הזמנת קוד דיגיטלי — מגן טריאז' הונאות (צבע לפי מטמון, אפור=טרם חושב)
+    const m=_FRAUD_META[o.fraud_level]||_FRAUD_META.gray;
+    h+=`<span title="הזמנת קוד דיגיטלי · טריאז' הונאות: ${o.fraud_level?m.t:'טרם חושב — פתח לפירוט'} — פתח את ההזמנה לפרטים" style="color:${m.c};display:inline-flex;vertical-align:-2px">${ico('shield',sz)}</span>`;
+  }
   if(o.return_open) h+=`<span title="נפתחה החזרה (איסוף מהלקוח)" style="display:inline-flex;vertical-align:-2px;font-size:${sz-2}px">↩️</span>`;
   // "ממתין לשידור" אפור — רק להזמנה שעדיין **לא עברה** את auto_transfer (אין handled).
   // הזמנה שכבר שודרה ונקלטה (השידור נסגר → o.bcast ריק) לא תיראה אפורה בטעות.
