@@ -4875,6 +4875,10 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None) -> Optional
                                 or method.lower() in ("credit-card", "credit card"))
     is_wallet = any(w in method.lower() for w in ("bit", "google", "apple", "wallet"))
     protected = bool(is_card and s3d)   # מוגן מצ'ארג'בק רק אשראי+3DS בפועל
+    # ⚠️ שם בעל הכרטיס האמיתי ידוע רק ל-Bit/ארנק (payplus_customer_name = בעל החשבון).
+    # לאשראי payplus_customer_name הוא השם שהוזן בצ'קאאוט — לא בעל הכרטיס. לכן השוואת-שם
+    # (name_mismatch/third_party) תקפה רק ל-Bit/ארנק; לאשראי חובה להצליב מול צילום הכרטיס.
+    card_owner_known = bool(is_wallet)
 
     risk = 0
     reasons = []
@@ -4965,9 +4969,12 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None) -> Optional
     elif code_qty == 2:
         risk += 1; reasons.append("2 קודים דיגיטליים בהזמנה")
 
-    # ── 5) שם החיוב מול בעל הכרטיס — מחושב כאן, מנוקד בסעיף 6 (צריך את שם ה-WhatsApp) ──
-    name_mismatch = bool(pay_name and billing_name
+    # ── 5) שם החיוב מול בעל הכרטיס — רק כשידוע בעל הכרטיס (Bit/ארנק). מנוקד בסעיף 6 ──
+    name_mismatch = bool(card_owner_known and pay_name and billing_name
                          and not _names_consistent(billing_name, pay_name))
+    if is_card and not card_owner_known:
+        reasons.append("ℹ️ שם בעל הכרטיס אינו זמין בנתונים (אשראי — 'שם המשלם' הוא מה "
+                       "שהוזן בצ'קאאוט, לא בעל הכרטיס). אמת מול צילום הכרטיס: שם + 4 ספרות")
 
     # ── 6) לגיטימיזרים (מורידים risk רך; לעולם לא גוברים על hard_fraud) ──
     prior_clean = _repeat_customer(email, o.get("id"))
@@ -4980,8 +4987,6 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None) -> Optional
     elif prior_clean == 1:
         risk = max(0, risk - 1)
         reasons.append("הזמנה תקינה אחת בעבר")
-    # WhatsApp = עוגן-חיובי בלבד (רוב הלקוחות הלגיטימיים לא כותבים לנו לפני הזמנה,
-    # אז היעדר עקבות אינו סימן שלילי). נוכחות = reachability אמיתי → מוריד risk.
     order_ts = 0
     try:
         import datetime as _dt
@@ -4992,10 +4997,9 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None) -> Optional
     except Exception:  # noqa: BLE001
         pass
     wa = _wa_signal(b.get("phone") or "", billing_name, order_ts)
-    if wa["known"]:
-        risk = max(0, risk - 1)
-        reasons.append("מספר WhatsApp פעיל לפני ההזמנה — reachability אמיתי")
-    elif wa["contacted_after"]:
+    # קשר *לפני* ההזמנה אינו מפחית סיכון: קל לזייף ("יש במלאי?") ואינו מעיד על לגיטימיות
+    # (45571 — לקוח שכתב לפני ההזמנה והתברר כהונאה). הלגיטימייזר האמיתי = prior_clean.
+    if wa["contacted_after"]:
         risk += 1
         reasons.append("⚠️ הלקוח יצר קשר בוואטסאפ רק *אחרי* ההזמנה — חשוד לקוד דיגיטלי "
                        "(קונה אמיתי שלא קיבל קוד יקר תוך דקות היה פונה מיד; לא ימתין ימים)")
@@ -5004,7 +5008,7 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None) -> Optional
     # סיגנל חזק יותר מ"שם לא תואם" גנרי: שני מקורות בלתי-תלויים מאשרים את זהות
     # המזמין, והיא שונה מבעל הכרטיס = פרופיל צ'ארג'בק ("לא ביצעתי").
     third_party_card = False
-    if pay_name and billing_name and wa.get("wa_name"):
+    if card_owner_known and pay_name and billing_name and wa.get("wa_name"):
         buyer_coherent = _names_consistent(billing_name, wa["wa_name"])
         card_is_other = (not _names_consistent(billing_name, pay_name)
                          and not _names_consistent(wa["wa_name"], pay_name))
@@ -5092,6 +5096,7 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None) -> Optional
             "pay_name": pay_name or None,
             "name_mismatch": name_mismatch,
             "third_party_card": third_party_card,
+            "card_owner_known": card_owner_known,
             "cardholder_verified": cardholder_verified,
             "prior_clean": prior_clean,
             "wa_known": wa["known"],
