@@ -4918,12 +4918,9 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None) -> Optional
     elif code_qty == 2:
         risk += 1; reasons.append("2 קודים דיגיטליים בהזמנה")
 
-    # ── 5) שם — סימן שולי בלבד (לא ראיה; מי שיש לו אשראי גנוב יודע את השם) ──
+    # ── 5) שם החיוב מול בעל הכרטיס — מחושב כאן, מנוקד בסעיף 6 (צריך את שם ה-WhatsApp) ──
     name_mismatch = bool(pay_name and billing_name
                          and not _names_consistent(billing_name, pay_name))
-    if name_mismatch:
-        risk += 1
-        reasons.append(f"שם החיוב ('{billing_name}') שונה משם המשלם ('{pay_name}') — סימן חלש")
 
     # ── 6) לגיטימיזרים (מורידים risk רך; לעולם לא גוברים על hard_fraud) ──
     prior_clean = _repeat_customer(email, o.get("id"))
@@ -4942,6 +4939,23 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None) -> Optional
     if wa["known"]:
         risk = max(0, risk - 1)
         reasons.append("מספר WhatsApp פעיל (פנה אלינו בעבר) — reachability")
+
+    # ── 7) כרטיס צד-שלישי: המזמין קוהרנטי (חיוב≈WhatsApp) אבל הכרטיס של מישהו אחר.
+    # סיגנל חזק יותר מ"שם לא תואם" גנרי: שני מקורות בלתי-תלויים מאשרים את זהות
+    # המזמין, והיא שונה מבעל הכרטיס = פרופיל צ'ארג'בק ("לא ביצעתי").
+    third_party_card = False
+    if pay_name and billing_name and wa.get("wa_name"):
+        buyer_coherent = _names_consistent(billing_name, wa["wa_name"])
+        card_is_other = (not _names_consistent(billing_name, pay_name)
+                         and not _names_consistent(wa["wa_name"], pay_name))
+        third_party_card = bool(buyer_coherent and card_is_other)
+    if third_party_card:
+        risk += 2
+        reasons.append(f"כרטיס צד-שלישי: המזמין (חיוב+WhatsApp='{billing_name}') שונה "
+                       f"מבעל הכרטיס ('{pay_name}') — אמת שבעל הכרטיס אישר את החיוב")
+    elif name_mismatch:
+        risk += 1
+        reasons.append(f"שם החיוב ('{billing_name}') שונה משם המשלם ('{pay_name}') — סימן חלש")
 
     # ── רמה סופית ──
     if not paid:
@@ -4996,6 +5010,7 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None) -> Optional
             "billing_name": billing_name,
             "pay_name": pay_name or None,
             "name_mismatch": name_mismatch,
+            "third_party_card": third_party_card,
             "prior_clean": prior_clean,
             "wa_known": wa["known"],
             "wa_name": wa["wa_name"],

@@ -5455,6 +5455,7 @@ function fraudBanner(f){
   if(s.ip_country) chips.push(`IP: <b>${escW(s.ip_country)}${s.ip_vpn?' · VPN/פרוקסי ⚠':''}</b>${s.ip_isp?` <span style="opacity:.7">(${escW(s.ip_isp)})</span>`:''}`);
   if(s.device) chips.push(`מכשיר: <b>${escW(s.device)}</b>`);
   if(s.disposable_email) chips.push(`<b style="color:#dc2626">מייל חד-פעמי ⚠</b>`);
+  if(s.third_party_card) chips.push(`<b style="color:#dc2626">כרטיס צד-שלישי ⚠</b>`);
   if(s.ipqs_phone_voip) chips.push(`<b style="color:#dc2626">טלפון VoIP ⚠</b>`);
   if(s.ipqs_phone_score!=null&&s.ipqs_phone_score>=75) chips.push(`<b style="color:#dc2626">סיכון טלפון IPQS: ${s.ipqs_phone_score}</b>`);
   if(s.ipqs_email_score!=null&&s.ipqs_email_score>=85) chips.push(`<b style="color:#dc2626">סיכון מייל IPQS: ${s.ipqs_email_score}</b>`);
