@@ -4635,6 +4635,55 @@ def _ip_geo(ip: str) -> dict:
     return out
 
 
+def _ipqs_get(kind: str, value: str) -> dict:
+    """קריאת IPQS (phone/email) עם מטמון קבוע — קריטי לחיסכון בקרדיטים (חינם=1000/חודש).
+    פעיל רק כש-IPQS_API_KEY מוגדר; אחרת מחזיר {} והמנוע ממשיך כרגיל."""
+    key = os.getenv("IPQS_API_KEY", "").strip()
+    value = (value or "").strip()
+    if not (key and value):
+        return {}
+    import json as _json
+    ck = f"ipqs_{kind}:{value.lower()}"
+    try:
+        raw = db.sales_state_get(ck)
+        if raw:
+            return _json.loads(raw)
+    except Exception:  # noqa: BLE001
+        pass
+    import requests as _rq
+    import urllib.parse as _up
+    out = {}
+    try:
+        url = f"https://ipqualityscore.com/api/json/{kind}/{key}/{_up.quote(value)}"
+        params = {"country[]": "IL"} if kind == "phone" else {}
+        r = _rq.get(url, params=params, timeout=15)
+        j = r.json()
+        if j.get("success"):
+            if kind == "phone":
+                out = {"valid": j.get("valid"), "voip": j.get("VOIP"),
+                       "active": j.get("active"), "fraud_score": j.get("fraud_score"),
+                       "recent_abuse": j.get("recent_abuse"), "line_type": j.get("line_type"),
+                       "carrier": j.get("carrier"), "leaked": j.get("leaked"),
+                       "risky": j.get("risky"), "prepaid": j.get("prepaid")}
+            else:
+                out = {"valid": j.get("valid"), "disposable": j.get("disposable"),
+                       "fraud_score": j.get("fraud_score"), "recent_abuse": j.get("recent_abuse"),
+                       "honeypot": j.get("honeypot"), "leaked": j.get("leaked"),
+                       "first_seen": (j.get("first_seen") or {}).get("human"),
+                       "first_seen_days": (j.get("first_seen") or {}).get("days"),
+                       "deliverability": j.get("deliverability"),
+                       "suspect": j.get("suspect")}
+            try:
+                db.sales_state_set(ck, _json.dumps(out, ensure_ascii=False))
+            except Exception:  # noqa: BLE001
+                pass
+        else:
+            logger.warning("ipqs %s not success: %s", kind, str(j.get("message"))[:120])
+    except Exception as e:  # noqa: BLE001
+        logger.warning("ipqs %s error: %s", kind, e)
+    return out
+
+
 def _canon_email(email: str) -> str:
     """נרמול מייל לזיהוי כפילות-זהות: הסרת +תגית, ולג'ימייל גם הסרת נקודות
     (a.b+x@gmail = ab@gmail) — טריק נפוץ ליצירת 'מיילים שונים' שהם אותה תיבה."""
@@ -4823,10 +4872,41 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None) -> Optional
             risk += 2
             reasons.append(f"אותו IP שימש {len(emails_s)} מיילים / {len(names)} שמות שונים")
 
-    # ── 3) מייל חד-פעמי ──
-    if dom and dom in _DISPOSABLE_DOMAINS:
+    # ── 3) מייל: חד-פעמי (רשימה סטטית + IPQS) + ציון סיכון + abuse ──
+    ipqs_email = _ipqs_get("email", email)
+    disposable = bool(dom and dom in _DISPOSABLE_DOMAINS) or bool(ipqs_email.get("disposable"))
+    if disposable:
         risk += 3; hard_fraud = True
-        reasons.append(f"כתובת מייל חד-פעמית ({dom})")
+        reasons.append("כתובת מייל חד-פעמית")
+    if ipqs_email:
+        efs = ipqs_email.get("fraud_score") or 0
+        if ipqs_email.get("recent_abuse"):
+            risk += 2; hard_fraud = True
+            reasons.append("המייל סומן ב-IPQS כפעילות זדונית לאחרונה (recent abuse)")
+        elif efs >= 85:
+            risk += 2
+            reasons.append(f"ציון סיכון מייל גבוה ב-IPQS ({efs})")
+        fsd = ipqs_email.get("first_seen_days")
+        if isinstance(fsd, int) and 0 <= fsd <= 30 and not disposable:
+            risk += 1
+            reasons.append(f"מייל חדש מאוד (נראה לראשונה לפני {fsd} ימים)")
+
+    # ── 3.5) טלפון: VoIP/מספר וירטואלי + ציון + abuse (IPQS) ──
+    ipqs_phone = _ipqs_get("phone", _il_phone(b.get("phone") or ""))
+    if ipqs_phone:
+        if ipqs_phone.get("voip"):
+            risk += 3; hard_fraud = True
+            reasons.append("מספר VoIP/וירטואלי (לא סלולרי אמיתי) — דגל חזק לקוד דיגיטלי")
+        pfs = ipqs_phone.get("fraud_score") or 0
+        if ipqs_phone.get("recent_abuse"):
+            risk += 2; hard_fraud = True
+            reasons.append("המספר סומן ב-IPQS כפעילות זדונית לאחרונה")
+        elif pfs >= 85:
+            risk += 2
+            reasons.append(f"ציון סיכון טלפון גבוה ב-IPQS ({pfs})")
+        if ipqs_phone.get("active") is False:
+            risk += 1
+            reasons.append("קו הטלפון לא פעיל")
 
     # ── 4) ערך + כמות קודים (סחיר, בלתי-הפיך) ──
     if total >= 1000:
@@ -4908,7 +4988,11 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None) -> Optional
             "ip_isp": geo.get("isp"),
             "device": device or None,
             "email": email or None,
-            "disposable_email": bool(dom in _DISPOSABLE_DOMAINS) if dom else None,
+            "disposable_email": disposable,
+            "ipqs_email_score": ipqs_email.get("fraud_score") if ipqs_email else None,
+            "ipqs_phone_voip": ipqs_phone.get("voip") if ipqs_phone else None,
+            "ipqs_phone_score": ipqs_phone.get("fraud_score") if ipqs_phone else None,
+            "ipqs_active": bool(os.getenv("IPQS_API_KEY")),
             "billing_name": billing_name,
             "pay_name": pay_name or None,
             "name_mismatch": name_mismatch,
