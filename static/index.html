@@ -5452,70 +5452,79 @@ function fraudPill(f,sz){   // אייקון מגן צבעוני קטן לשור�
 function fraudBanner(f,orderNum){
   const m=_FRAUD_META[f.level]||_FRAUD_META.gray;
   const s=f.signals||{};
-  const chips=[];
-  if(s.method) chips.push(`אמצעי: <b>${escW(s.method)}</b>`);
-  if(s.secure3D!==null&&s.secure3D!==undefined) chips.push(`3DS: <b>${s.secure3D?'כן ✓':'לא'}</b>`);
-  if(s.card_foreign!==null&&s.card_foreign!==undefined) chips.push(`כרטיס שחויב: <b>****${escW(s.card_last4||'')}</b>${s.card_issuer?` ${escW(s.card_issuer)}`:''}${(s.card_foreign&&!s.bin_country)?' · <b style="color:#dc2626">זר ⚠</b>':''}`);
-  // שורת BIN ייעודית (6 ספרות → binlist): סוג כרטיס / מדינה / בנק
+  const GRN='#16a34a', RED='#dc2626', MUT='var(--muted)';
+  // ── ממצאים: מיון לפי סוג — אזהרות (⚠/סיכון) → חיובי (✅) → מידע (ℹ️) ──
+  const warns=[],goods=[],infos=[];
+  (f.reasons||[]).forEach(r=>{
+    const t=String(r);
+    if(t.startsWith('✅')) goods.push(t.replace(/^✅\s*/,''));
+    else if(t.startsWith('ℹ️')) infos.push(t.replace(/^ℹ️\s*/,''));
+    else warns.push(t.replace(/^⚠️\s*/,''));
+  });
+  const frow=(txt,col,mark)=>`<div style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px;line-height:1.55;padding:2px 0">
+      <span style="color:${col};flex:none;font-weight:700;width:14px;text-align:center">${mark}</span><span style="color:${col==='var(--muted)'?MUT:'var(--txt)'}">${escW(txt)}</span></div>`;
+  // ── פרטי הבדיקה: טבלת תווית→ערך מיושרת (במקום צ'יפים צפופים) ──
+  const rows=[];
+  const R=(lbl,val)=>{ if(val) rows.push(`<span style="color:${MUT};white-space:nowrap">${lbl}</span><span>${val}</span>`); };
+  if(s.method) R('אמצעי תשלום',`<b>${escW(s.method)}</b>${s.secure3D!==null&&s.secure3D!==undefined?(s.secure3D?` · <span style="color:${GRN}">3DS ✓</span>`:' · <span>ללא 3DS</span>'):''}`);
+  if(s.card_last4) R('כרטיס שחויב',`<b style="direction:ltr;unicode-bidi:embed">****${escW(s.card_last4)}</b>${s.card_issuer?` · ${escW(s.card_issuer)}`:''}${(s.card_foreign&&!s.bin_country)?` · <b style="color:${RED}">זר ⚠</b>`:''}`);
   if(s.card_bin){
     const typeHe={credit:'אשראי',debit:'חיוב',prepaid:'נטען'}[String(s.card_type||'').toLowerCase()]||s.card_type||'';
     const prepaid=String(s.card_type||'').toLowerCase()==='prepaid';
-    const foreign=s.bin_country&&s.bin_country!=='IL';
-    chips.push(`🏦 BIN ${escW(s.card_bin)}: ${s.bin_brand?escW(s.bin_brand)+' ':''}`
-      +(typeHe?(prepaid?'<b style="color:#dc2626">נטען ⚠</b>':escW(typeHe)):'')
-      +(s.bin_country?` · ${foreign?'<b style="color:#dc2626">'+escW(s.bin_country)+' ⚠</b>':'🇮🇱 IL'}`:'')
-      +(s.bin_bank?` <span style="opacity:.7">(${escW(s.bin_bank)})</span>`:''));
+    const forgn=s.bin_country&&s.bin_country!=='IL';
+    R('🏦 BIN '+escW(s.card_bin),`${s.bin_brand?escW(s.bin_brand):''}${typeHe?` · ${prepaid?`<b style="color:${RED}">נטען ⚠</b>`:escW(typeHe)}`:''}${s.bin_country?` · ${forgn?`<b style="color:${RED}">${escW(s.bin_country)} ⚠</b>`:'🇮🇱 IL'}`:''}${s.bin_bank?` <span style="opacity:.65">(${escW(s.bin_bank)})</span>`:''}`);
   }
-  if(s.ip_country) chips.push(`IP: <b>${escW(s.ip_country)}${s.ip_vpn?' · VPN/פרוקסי ⚠':''}</b>${s.ip_isp?` <span style="opacity:.7">(${escW(s.ip_isp)})</span>`:''}`);
-  if(s.device) chips.push(`מכשיר: <b>${escW(s.device)}</b>`);
-  if(s.third_party_card) chips.push(`<b style="color:#dc2626">כרטיס צד-שלישי ⚠</b>`);
-  // IPQS טלפון — מוצג תמיד כשנבדק (נקי=ירוק / בעייתי=אדום), כדי לראות שהבדיקה רצה
+  if(s.ip_country) R('רשת (IP)',`<b>${escW(s.ip_country)}</b>${s.ip_vpn?` · <b style="color:${RED}">VPN/פרוקסי ⚠</b>`:''}${s.ip_isp?` <span style="opacity:.65">(${escW(s.ip_isp)})</span>`:''}${s.device?` · ${escW(s.device)}`:''}`);
   if(s.ipqs_phone_checked){
-    if(s.ipqs_phone_voip) chips.push(`<b style="color:#dc2626">📞 IPQS טלפון: VoIP/וירטואלי ⚠${s.ipqs_phone_score?' · '+s.ipqs_phone_score:''}</b>`);
-    else if(s.ipqs_phone_score>=75) chips.push(`<b style="color:#dc2626">📞 IPQS טלפון: סיכון ${s.ipqs_phone_score} ⚠</b>`);
-    else chips.push(`<span style="color:#16a34a">📞 IPQS טלפון: תקין ✓${s.ipqs_phone_line_type?` (${escW(s.ipqs_phone_line_type)}${s.ipqs_phone_carrier?' · '+escW(s.ipqs_phone_carrier):''})`:''}</span>`);
+    R('📞 טלפון (IPQS)', s.ipqs_phone_voip?`<b style="color:${RED}">VoIP/וירטואלי ⚠${s.ipqs_phone_score?' · '+s.ipqs_phone_score:''}</b>`
+      :(s.ipqs_phone_score>=75?`<b style="color:${RED}">סיכון ${s.ipqs_phone_score} ⚠</b>`
+      :`<span style="color:${GRN}">תקין ✓</span>${s.ipqs_phone_line_type?` <span style="opacity:.65">(${escW(s.ipqs_phone_line_type)}${s.ipqs_phone_carrier?' · '+escW(s.ipqs_phone_carrier):''})</span>`:''}`));
   }
-  // IPQS מייל — מוצג תמיד כשנבדק. abuse אמיתי=אדום; ציון גבוה ממייל עסקי/גנרי=ניטרלי
-  if(s.ipqs_email_checked){
-    if(s.disposable_email) chips.push(`<b style="color:#dc2626">✉ IPQS מייל: חד-פעמי ⚠</b>`);
-    else if(s.ipqs_email_real_abuse) chips.push(`<b style="color:#dc2626">✉ IPQS מייל: פעילות זדונית ⚠</b>`);
-    else if(s.ipqs_email_role) chips.push(`<span class="muted">✉ מייל עסקי/גנרי (office@ / catch-all)${s.ipqs_email_score!=null?` · ציון IPQS ${s.ipqs_email_score} (רעש, לא הונאה)`:''}</span>`);
-    else if(s.ipqs_email_score>=85) chips.push(`<b style="color:#dc2626">✉ IPQS מייל: סיכון ${s.ipqs_email_score} ⚠</b>`);
-    else chips.push(`<span style="color:#16a34a">✉ IPQS מייל: תקין ✓${s.ipqs_email_score!=null?` (סיכון ${s.ipqs_email_score})`:''}</span>`);
-  } else if(s.disposable_email){ chips.push(`<b style="color:#dc2626">✉ מייל חד-פעמי ⚠</b>`); }
-  if(s.ipqs_email_first_seen&&!s.ipqs_email_real_abuse){
-    const age=String(s.ipqs_email_first_seen)
-      .replace('years ago','שנים').replace('year ago','שנה')
-      .replace('months ago','חודשים').replace('month ago','חודש')
-      .replace('weeks ago','שבועות').replace('week ago','שבוע')
-      .replace('days ago','ימים').replace('day ago','יום')
-      .replace('hours ago','שעות').replace('hour ago','שעה')
-      .replace('minutes ago','דקות').replace('minute ago','דקה').replace('ago','');
-    chips.push(`<span style="color:${s.ipqs_email_established?'#16a34a':'var(--muted)'}">📅 מייל קיים: <b>${escW(age.trim())}</b>${s.ipqs_email_established?' ✓ (זהות ותיקה)':''}</span>`);
+  if(s.ipqs_email_checked||s.disposable_email){
+    let ev;
+    if(s.disposable_email) ev=`<b style="color:${RED}">חד-פעמי ⚠</b>`;
+    else if(s.ipqs_email_real_abuse) ev=`<b style="color:${RED}">פעילות זדונית ⚠</b>`;
+    else if(s.ipqs_email_role) ev=`<span style="color:${MUT}">עסקי/גנרי (office@/catch-all) · ציון ${s.ipqs_email_score!=null?s.ipqs_email_score:'?'} = רעש</span>`;
+    else if(s.ipqs_email_score>=85) ev=`<b style="color:${RED}">סיכון ${s.ipqs_email_score} ⚠</b>`;
+    else ev=`<span style="color:${GRN}">תקין ✓</span>${s.ipqs_email_score!=null?` <span style="opacity:.65">(סיכון ${s.ipqs_email_score})</span>`:''}`;
+    if(s.ipqs_email_first_seen&&!s.ipqs_email_real_abuse){
+      const age=String(s.ipqs_email_first_seen)
+        .replace('years ago','שנים').replace('year ago','שנה')
+        .replace('months ago','חודשים').replace('month ago','חודש')
+        .replace('weeks ago','שבועות').replace('week ago','שבוע')
+        .replace('days ago','ימים').replace('day ago','יום')
+        .replace('hours ago','שעות').replace('hour ago','שעה')
+        .replace('minutes ago','דקות').replace('minute ago','דקה').replace('ago','').trim();
+      ev+=` · קיים <b style="color:${s.ipqs_email_established?GRN:'inherit'}">${escW(age)}</b>${s.ipqs_email_established?' ✓':''}`;
+    }
+    R('✉ מייל (IPQS)',ev);
   }
-  if(s.cardholder_verified) chips.push(`<b style="color:#16a34a">בעל הכרטיס אישר בטלפון (3DS) ✓</b>`);
-  if(s.prior_clean>0) chips.push(`<b style="color:#16a34a">לקוח חוזר: ${s.prior_clean} ✓</b>`);
-  if(s.wa_known) chips.push(`<b style="color:#16a34a">WhatsApp פעיל לפני ההזמנה ✓</b>${s.wa_name?` <span style="opacity:.7">(${escW(s.wa_name)}${s.wa_name_match===false?' — שם לא תואם':''})</span>`:''}`);
-  else if(s.wa_contacted_after) chips.push(`<span class="muted">WhatsApp: יצר קשר אחרי ההזמנה${s.wa_name?` (${escW(s.wa_name)})`:''}</span>`);
-  else chips.push(`<span class="muted">אין עקבות WhatsApp</span>`);
-  if(s.code_qty) chips.push(`קודים: <b>${s.code_qty}</b>`);
+  R('WhatsApp', s.wa_known?`<span style="color:${GRN}">פעיל לפני ההזמנה ✓</span>${s.wa_name?` <span style="opacity:.65">(${escW(s.wa_name)}${s.wa_name_match===false?' — שם לא תואם':''})</span>`:''}`
+    :(s.wa_contacted_after?`<span style="color:${MUT}">יצר קשר אחרי ההזמנה${s.wa_name?` (${escW(s.wa_name)})`:''}</span>`
+    :`<span style="color:${MUT}">אין עקבות</span>`));
+  if(s.prior_clean>0) R('לקוח חוזר',`<b style="color:${GRN}">${s.prior_clean} הזמנות שהושלמו ✓</b>`);
+  if(s.code_qty&&s.is_digital!==false) R('קודים בהזמנה',`<b>${s.code_qty}</b>`);
+  const sect=(t)=>`<div style="font-size:10.5px;font-weight:700;letter-spacing:.5px;color:${MUT};margin:12px 0 4px">${t}</div>`;
   // collapse: מקופל כברירת מחדל (רק שורת הדגל בצבע), אדום נפתח אוטומטית. לחיצה מרחיבה.
   return `<details class="frb"${f.level==='red'?' open':''} style="border:1.5px solid ${m.c}55;background:${m.c}0e;border-radius:14px;margin-bottom:16px">
     <summary style="display:flex;align-items:center;gap:9px;padding:12px 15px">
       <span style="color:${m.c};display:inline-flex">${ico('shield',20)}</span>
       <b style="color:${m.c};font-size:15px;flex:1">${m.e} טריאז' ${(f.signals&&f.signals.is_digital===false)?'הזמנה':'קוד דיגיטלי'} — ${m.t}</b>
-      ${f.protected?`<span class="ord-st" style="color:#16a34a;border-color:#16a34a55;background:#16a34a14;font-size:11px">מוגן מצ'ארג'בק</span>`:''}
+      ${f.protected?`<span class="ord-st" style="color:${GRN};border-color:${GRN}55;background:${GRN}14;font-size:11px">מוגן מצ'ארג'בק</span>`:''}
       <span class="frb-car" style="color:${m.c};opacity:.65;font-size:12px">▼</span>
     </summary>
-    <div style="padding:0 15px 13px">
-      <div class="muted" style="font-size:12.5px;margin-bottom:${f.reasons&&f.reasons.length?'8px':'6px'}">${escW(f.headline||'')}</div>
-      ${(f.reasons&&f.reasons.length)?`<ul style="margin:0 0 8px;padding-inline-start:20px;font-size:12.5px;line-height:1.6">${f.reasons.map(r=>`<li>${escW(r)}</li>`).join('')}</ul>`:''}
-      ${chips.length?`<div style="display:flex;flex-wrap:wrap;gap:5px 14px;font-size:12px;margin-bottom:8px">${chips.map(c=>`<span class="muted">${c}</span>`).join('')}</div>`:''}
-      <div style="display:flex;align-items:flex-start;gap:6px;font-size:13px;color:${m.c};font-weight:600">${ico('info',14)} <span>${escW(f.action||'')}</span></div>
+    <div style="padding:2px 15px 14px">
+      ${f.headline?`<div style="font-size:13px;color:var(--txt);opacity:.85;line-height:1.5">${escW(f.headline)}</div>`:''}
+      ${(warns.length||goods.length||infos.length)?sect('ממצאים'):''}
+      ${warns.map(t=>frow(t,RED,'⚠')).join('')}
+      ${goods.map(t=>frow(t,GRN,'✓')).join('')}
+      ${infos.map(t=>frow(t,MUT,'ℹ')).join('')}
+      ${rows.length?sect('פרטי הבדיקה')+`<div style="display:grid;grid-template-columns:max-content 1fr;gap:5px 14px;font-size:12.5px;line-height:1.5;background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:10px 13px">${rows.join('')}</div>`:''}
+      <div style="margin-top:12px;background:${m.c}14;border-radius:10px;padding:9px 12px;display:flex;align-items:flex-start;gap:7px;font-size:13px;color:${m.c};font-weight:600;line-height:1.5">${ico('info',15)} <span>${escW(f.action||'')}</span></div>
       ${orderNum?(function(){const oc=f.outcome||'';const B=(v,lbl,col)=>`<button onclick="markFraudOutcome('${orderNum}','${v}')" style="padding:4px 10px;font-size:12px;border-radius:8px;cursor:pointer;border:1px solid ${col}55;background:${oc===v?col+'22':'transparent'};color:${col};font-weight:${oc===v?'700':'500'}">${lbl}${oc===v?' ✓':''}</button>`;
         return `<div style="margin-top:11px;padding-top:10px;border-top:1px dashed ${m.c}33;display:flex;align-items:center;gap:7px;flex-wrap:wrap">
           <span class="muted" style="font-size:11.5px">תיוג תוצאה (לכיול):</span>
-          ${B('legit','תקין','#16a34a')}${B('fraud','הונאה','#dc2626')}${B('chargeback','צ׳ארג׳בק','#b45309')}
+          ${B('legit','תקין',GRN)}${B('fraud','הונאה',RED)}${B('chargeback','צ׳ארג׳בק','#b45309')}
           ${oc?B('','נקה','#6b7280'):''}
           ${f.cached?`<button onclick="scanOrderFraud('${orderNum}')" title="הרצה מחדש (IPQS במטמון — לא מבזבז קרדיטים)" style="margin-inline-start:auto;padding:4px 10px;font-size:12px;border-radius:8px;cursor:pointer;border:1px solid var(--line);background:transparent;color:var(--muted)">↻ סרוק מחדש</button>`:''}
           <button onclick="openFraudStats()" style="${f.cached?'':'margin-inline-start:auto;'}padding:4px 10px;font-size:12px;border-radius:8px;cursor:pointer;border:1px solid var(--line);background:transparent;color:var(--muted)">📊 מדד</button>
