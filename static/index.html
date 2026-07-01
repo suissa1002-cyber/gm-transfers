@@ -182,6 +182,10 @@
   .bcast .bc-x{background:rgba(255,255,255,.2);color:#fff;border:none;border-radius:10px;
                width:34px;height:34px;font-size:16px;cursor:pointer}
   .bcast .bc-x:hover{background:rgba(255,255,255,.35)}
+  /* באנר טריאז' הונאות — collapsible */
+  details.frb>summary{list-style:none;cursor:pointer;outline:none}
+  details.frb>summary::-webkit-details-marker{display:none}
+  details.frb>summary .frb-car{transition:transform .15s} details.frb[open]>summary .frb-car{transform:rotate(180deg)}
   /* סורק מצלמה (מובייל) */
   .btn-cam{margin-top:12px;width:100%;background:var(--blue);color:#fff;border-radius:12px;
            padding:13px 18px;font-size:16px;font-weight:700}
@@ -5472,17 +5476,21 @@ function fraudBanner(f){
   if(s.wa_known) chips.push(`<b style="color:#16a34a">WhatsApp פעיל ✓</b>${s.wa_name?` <span style="opacity:.7">(${escW(s.wa_name)}${s.wa_name_match===false?' — שם לא תואם':''})</span>`:''}`);
   else if(s.wa_known===false) chips.push(`<span class="muted">אין עקבות WhatsApp</span>`);
   if(s.code_qty) chips.push(`קודים: <b>${s.code_qty}</b>`);
-  return `<div style="border:1.5px solid ${m.c}55;background:${m.c}0e;border-radius:14px;padding:13px 16px;margin-bottom:16px">
-    <div style="display:flex;align-items:center;gap:9px;margin-bottom:6px">
+  // collapse: מקופל כברירת מחדל (רק שורת הדגל בצבע), אדום נפתח אוטומטית. לחיצה מרחיבה.
+  return `<details class="frb"${f.level==='red'?' open':''} style="border:1.5px solid ${m.c}55;background:${m.c}0e;border-radius:14px;margin-bottom:16px">
+    <summary style="display:flex;align-items:center;gap:9px;padding:12px 15px">
       <span style="color:${m.c};display:inline-flex">${ico('shield',20)}</span>
-      <b style="color:${m.c};font-size:15px">${m.e} טריאז' קוד דיגיטלי — ${m.t}</b>
+      <b style="color:${m.c};font-size:15px;flex:1">${m.e} טריאז' קוד דיגיטלי — ${m.t}</b>
       ${f.protected?`<span class="ord-st" style="color:#16a34a;border-color:#16a34a55;background:#16a34a14;font-size:11px">מוגן מצ'ארג'בק</span>`:''}
+      <span class="frb-car" style="color:${m.c};opacity:.65;font-size:12px">▼</span>
+    </summary>
+    <div style="padding:0 15px 13px">
+      <div class="muted" style="font-size:12.5px;margin-bottom:${f.reasons&&f.reasons.length?'8px':'6px'}">${escW(f.headline||'')}</div>
+      ${(f.reasons&&f.reasons.length)?`<ul style="margin:0 0 8px;padding-inline-start:20px;font-size:12.5px;line-height:1.6">${f.reasons.map(r=>`<li>${escW(r)}</li>`).join('')}</ul>`:''}
+      ${chips.length?`<div style="display:flex;flex-wrap:wrap;gap:5px 14px;font-size:12px;margin-bottom:8px">${chips.map(c=>`<span class="muted">${c}</span>`).join('')}</div>`:''}
+      <div style="display:flex;align-items:flex-start;gap:6px;font-size:13px;color:${m.c};font-weight:600">${ico('info',14)} <span>${escW(f.action||'')}</span></div>
     </div>
-    <div class="muted" style="font-size:12.5px;margin-bottom:${f.reasons&&f.reasons.length?'8px':'6px'}">${escW(f.headline||'')}</div>
-    ${(f.reasons&&f.reasons.length)?`<ul style="margin:0 0 8px;padding-inline-start:20px;font-size:12.5px;line-height:1.6">${f.reasons.map(r=>`<li>${escW(r)}</li>`).join('')}</ul>`:''}
-    ${chips.length?`<div style="display:flex;flex-wrap:wrap;gap:5px 14px;font-size:12px;margin-bottom:8px">${chips.map(c=>`<span class="muted">${c}</span>`).join('')}</div>`:''}
-    <div style="display:flex;align-items:flex-start;gap:6px;font-size:13px;color:${m.c};font-weight:600">${ico('info',14)} <span>${escW(f.action||'')}</span></div>
-  </div>`;
+  </details>`;
 }
 function ordFlagIcons(o,sz){
   let h='';
