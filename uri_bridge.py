@@ -420,7 +420,20 @@ def run_claude(prompt: str, resume_sid: str = None, fast: bool = False, timeout_
                     pass
             return True, (j.get("result") or "").strip(), j.get("session_id")
         except Exception:  # noqa: BLE001
-            return True, out, None
+            # json parse נכשל (פלט חתוך/מלוכלך) — ⛔ אסור להחזיר את המעטפת הגולמית
+            # כתשובה (דלף JSON טלמטריה לקונסולה/לקוח, 01/07/2026). מנסים לחלץ את
+            # שדה result מתוך אובייקט תקין חלקי; אחרת שגיאה נקייה (בלי דליפה).
+            try:
+                salv = out[out.find("{"): out.rfind("}") + 1] if ("{" in out and "}" in out) else ""
+                if salv:
+                    jj = json.loads(salv)
+                    res = (jj.get("result") or "").strip()
+                    if res:
+                        return True, res, jj.get("session_id")
+            except Exception:  # noqa: BLE001
+                pass
+            log.error("uri_bridge json parse failed; suppressed raw leak (%d chars)", len(out))
+            return False, "סליחה, תקלה רגעית — נסו/י שוב עוד רגע 🙏", None
     except subprocess.TimeoutExpired:
         return False, "תם הזמן (claude לא סיים תוך ~7 דקות)", None
     except Exception as e:  # noqa: BLE001
