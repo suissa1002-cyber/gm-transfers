@@ -5481,7 +5481,7 @@ function fraudBanner(f,orderNum){
   return `<details class="frb"${f.level==='red'?' open':''} style="border:1.5px solid ${m.c}55;background:${m.c}0e;border-radius:14px;margin-bottom:16px">
     <summary style="display:flex;align-items:center;gap:9px;padding:12px 15px">
       <span style="color:${m.c};display:inline-flex">${ico('shield',20)}</span>
-      <b style="color:${m.c};font-size:15px;flex:1">${m.e} טריאז' קוד דיגיטלי — ${m.t}</b>
+      <b style="color:${m.c};font-size:15px;flex:1">${m.e} טריאז' ${(f.signals&&f.signals.is_digital===false)?'הזמנה':'קוד דיגיטלי'} — ${m.t}</b>
       ${f.protected?`<span class="ord-st" style="color:#16a34a;border-color:#16a34a55;background:#16a34a14;font-size:11px">מוגן מצ'ארג'בק</span>`:''}
       <span class="frb-car" style="color:${m.c};opacity:.65;font-size:12px">▼</span>
     </summary>

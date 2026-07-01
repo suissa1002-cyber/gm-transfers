@@ -4965,26 +4965,28 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
             risk += 1
             reasons.append("קו הטלפון לא פעיל")
 
-    # ── 4) ערך + כמות קודים (סחיר, בלתי-הפיך) ──
-    if total >= 1000:
-        risk += 2; reasons.append(f"סכום גבוה (₪{int(total)})")
-    elif total >= 500:
-        risk += 1; reasons.append(f"סכום בינוני-גבוה (₪{int(total)})")
-    if code_qty >= 3:
-        risk += 2; reasons.append(f"{code_qty} קודים דיגיטליים בהזמנה")
-    elif code_qty == 2:
-        risk += 1; reasons.append("2 קודים דיגיטליים בהזמנה")
+    # ── 4) ערך + כמות קודים — משוקלל רק לקוד דיגיטלי (סחיר/בלתי-הפיך; ₪ גבוה=חשוד).
+    # למוצר פיזי סכום גבוה הוא נורמלי לחנות טלפונים ואינו סיגנל הונאה.
+    if is_digital_order:
+        if total >= 1000:
+            risk += 2; reasons.append(f"סכום גבוה (₪{int(total)})")
+        elif total >= 500:
+            risk += 1; reasons.append(f"סכום בינוני-גבוה (₪{int(total)})")
+        if code_qty >= 3:
+            risk += 2; reasons.append(f"{code_qty} קודים דיגיטליים בהזמנה")
+        elif code_qty == 2:
+            risk += 1; reasons.append("2 קודים דיגיטליים בהזמנה")
 
-    # ── 4b) סיגנלים ייחודיים למוצר פיזי: נקודת-מסירה + אי-התאמת כתובת ──
+    # ── 4b) סיגנלים למוצר פיזי: איסוף = הערה שגרתית (ודא ת"ז), לא ניקוד;
+    # חיוב≠משלוח = אנומליה אמיתית (+1). ─────────────────────────────────────
     sh = o.get("shipping") or {}
     ship_titles = " ".join(str(sl.get("method_title") or "")
                            for sl in (o.get("shipping_lines") or []))
     pickup = (not is_digital_order) and bool(
         _re_pickup.search(ship_titles) or str(_ship_tag(o, meta)).startswith(("tlv", "pickup")))
     if pickup:
-        risk += 1
-        reasons.append("איסוף מנקודת מסירה (ללא משלוח לכתובת מגורים עקיבה) — "
-                       "מוריד עקיבות; דגל קל למוצר פיזי בערך גבוה")
+        reasons.append("ℹ️ איסוף מנקודת מסירה — ודא ת\"ז ע\"ש בעל ההזמנה במסירה "
+                       "(שגרתי, לא חשד כשלעצמו)")
     b_addr = _norm_name(f"{b.get('address_1','')} {b.get('city','')}")
     s_addr = _norm_name(f"{sh.get('address_1','')} {sh.get('city','')}")
     addr_mismatch = bool((not is_digital_order) and not pickup and b_addr and s_addr
