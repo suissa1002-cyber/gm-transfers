@@ -4757,9 +4757,9 @@ def _wa_signal(phone: str, order_name: str, order_ts: float = 0) -> dict:
             out["first_in_days"] = int((now - float(first_in)) / 86400)
             if not order_ts:                          # אין תאריך — נסיגה להתנהגות הישנה
                 out["known"] = True
-            elif first_in <= order_ts + 3600:         # מוכר לפני/בזמן ההזמנה (חלון חסד שעה)
-                out["known"] = True
-            else:                                     # יצר קשר רק אחרי ההזמנה
+            elif first_in <= order_ts:                # פנייה אמיתית *לפני* ההזמנה (בלי חלון קדימה)
+                out["known"] = True                   # ⚠️ בלי grace — אחרת תשובה לאישור-הזמנה
+            else:                                     # האוטומטי (דקות אחרי) נספרת בטעות כ"לפני"
                 out["contacted_after"] = True
     except Exception:  # noqa: BLE001
         pass
@@ -5035,7 +5035,9 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
     wa = _wa_signal(b.get("phone") or "", billing_name, order_ts)
     # קשר *לפני* ההזמנה אינו מפחית סיכון: קל לזייף ("יש במלאי?") ואינו מעיד על לגיטימיות
     # (45571 — לקוח שכתב לפני ההזמנה והתברר כהונאה). הלגיטימייזר האמיתי = prior_clean.
-    if wa["contacted_after"]:
+    if wa["contacted_after"] and is_digital_order:
+        # רק לקוד דיגיטלי (מיידי) — פנייה מאוחרת חשודה. למוצר פיזי בדיקת-סטטוס אחרי
+        # הזמנה היא נורמלית (נשלח ימים אחרי) ואינה סימן.
         risk += 1
         reasons.append("⚠️ הלקוח יצר קשר בוואטסאפ רק *אחרי* ההזמנה — חשוד לקוד דיגיטלי "
                        "(קונה אמיתי שלא קיבל קוד יקר תוך דקות היה פונה מיד; לא ימתין ימים)")
