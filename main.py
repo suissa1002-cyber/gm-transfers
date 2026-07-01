@@ -5881,10 +5881,13 @@ def admin_order_detail(oid: int, x_admin_key: Optional[str] = Header(None)):
             except Exception:  # noqa: BLE001
                 pass
         else:
-            # מוצר פיזי ששולם → סריקה לפי-דרישה (מגן אפור בקונסולה)
-            paid_status = o.get("status") in ("processing", "completed",
-                                              "on-hold", "shipping-stage", "order-ready")
-            fraud_scannable = bool((o.get("line_items") or []) and paid_status)
+            # מוצר פיזי ששולם → סריקה לפי-דרישה (מגן אפור בקונסולה).
+            # רשימה שלילית: כל סטטוס חוץ מטרם-שולם/בוטל — כולל סטטוסים מותאמים
+            # (נמסרה/נק' ת"א/מוכנה וכו', שנפלו קודם בין הכיסאות ברשימה החיובית)
+            not_paid_status = o.get("status") in ("pending", "cancelled", "failed",
+                                                  "refunded", "trash", "checkout-draft")
+            fraud_scannable = bool((o.get("line_items") or [])
+                                   and (not not_paid_status or o.get("date_paid")))
             if fraud_scannable:   # אם כבר נסרק בעבר — משחזרים את הבאנר המלא מהמטמון (בלי סריקה מחדש)
                 _row = db.fraud_log_get(o.get("number"))
                 if _row and _row.get("reasons"):
