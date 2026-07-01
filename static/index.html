@@ -5455,12 +5455,15 @@ function fraudBanner(f,orderNum){
   const chips=[];
   if(s.method) chips.push(`אמצעי: <b>${escW(s.method)}</b>`);
   if(s.secure3D!==null&&s.secure3D!==undefined) chips.push(`3DS: <b>${s.secure3D?'כן ✓':'לא'}</b>`);
-  if(s.card_foreign!==null&&s.card_foreign!==undefined){
-    const typeHe={credit:'אשראי',debit:'חיוב',prepaid:'נטען'}[String(s.card_type||'').toLowerCase()]||s.card_type;
+  if(s.card_foreign!==null&&s.card_foreign!==undefined) chips.push(`כרטיס שחויב: <b>****${escW(s.card_last4||'')}</b>${s.card_issuer?` ${escW(s.card_issuer)}`:''}${(s.card_foreign&&!s.bin_country)?' · <b style="color:#dc2626">זר ⚠</b>':''}`);
+  // שורת BIN ייעודית (6 ספרות → binlist): סוג כרטיס / מדינה / בנק
+  if(s.card_bin){
+    const typeHe={credit:'אשראי',debit:'חיוב',prepaid:'נטען'}[String(s.card_type||'').toLowerCase()]||s.card_type||'';
     const prepaid=String(s.card_type||'').toLowerCase()==='prepaid';
-    chips.push(`כרטיס שחויב: <b>****${escW(s.card_last4||'')}</b>${s.bin_brand?` ${escW(s.bin_brand)}`:(s.card_issuer?` ${escW(s.card_issuer)}`:'')}`
-      +(typeHe?` · ${prepaid?'<b style="color:#dc2626">נטען ⚠</b>':escW(typeHe)}`:'')
-      +(s.bin_country?` · ${s.bin_country==='IL'?'🇮🇱':'<b style="color:#dc2626">'+escW(s.bin_country)+' ⚠</b>'}`:(s.card_foreign?' · <b style="color:#dc2626">זר ⚠</b>':''))
+    const foreign=s.bin_country&&s.bin_country!=='IL';
+    chips.push(`🏦 BIN ${escW(s.card_bin)}: ${s.bin_brand?escW(s.bin_brand)+' ':''}`
+      +(typeHe?(prepaid?'<b style="color:#dc2626">נטען ⚠</b>':escW(typeHe)):'')
+      +(s.bin_country?` · ${foreign?'<b style="color:#dc2626">'+escW(s.bin_country)+' ⚠</b>':'🇮🇱 IL'}`:'')
       +(s.bin_bank?` <span style="opacity:.7">(${escW(s.bin_bank)})</span>`:''));
   }
   if(s.ip_country) chips.push(`IP: <b>${escW(s.ip_country)}${s.ip_vpn?' · VPN/פרוקסי ⚠':''}</b>${s.ip_isp?` <span style="opacity:.7">(${escW(s.ip_isp)})</span>`:''}`);
