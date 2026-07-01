@@ -4580,8 +4580,33 @@ def _norm_name(s: str) -> str:
     return " ".join(s.lower().split())
 
 
+# תעתיק עברית↔לטינית לזיהוי "אותו שם בשני כתבים" (יעקב↔Yakov, וקנין↔Vaknin).
+# ממפה אות עברית לעיצור לטיני ומצמצם לשלד-עיצורים (בלי תנועות), עם שקילויות b=v/p=f/k=c.
+_HEB2LAT = {
+    'א': '', 'ב': 'b', 'ג': 'g', 'ד': 'd', 'ה': '', 'ו': 'v', 'ז': 'z',
+    'ח': 'h', 'ט': 't', 'י': 'y', 'כ': 'k', 'ך': 'k', 'ל': 'l', 'מ': 'm',
+    'ם': 'm', 'נ': 'n', 'ן': 'n', 'ס': 's', 'ע': '', 'פ': 'p', 'ף': 'p',
+    'צ': 'z', 'ץ': 'z', 'ק': 'k', 'ר': 'r', 'ש': 's', 'ת': 't',
+}
+_NAME_EQUIV = str.maketrans({'v': 'b', 'w': 'b', 'q': 'k', 'c': 'k', 'f': 'p'})
+
+
+def _name_skel(tok: str) -> str:
+    """שלד-עיצורים של טוקן: עברית→לטינית, שקילויות, הסרת תנועות/חלשים, כיווץ כפולים."""
+    import re as _re
+    if any('֐' <= ch <= '׿' for ch in tok):
+        tok = "".join(_HEB2LAT.get(ch, ch) for ch in tok)
+    s = _re.sub(r"[^a-z]", "", tok.lower()).translate(_NAME_EQUIV)
+    s = _re.sub(r"[aeiouyhw]", "", s)
+    return _re.sub(r"(.)\1+", r"\1", s)
+
+
+def _name_skels(name: str) -> set:
+    return {sk for t in _norm_name(name).split() if len(sk := _name_skel(t)) >= 2}
+
+
 def _names_consistent(a: str, b: str) -> bool:
-    """שני שמות עקביים אם יש להם לפחות טוקן משמעותי משותף (או שאחד מכיל את השני)."""
+    """עקבי אם: טוקן משותף באותו כתב, או הכלה, או שלד-עיצורים משותף (חוצה-כתב)."""
     na, nb = _norm_name(a), _norm_name(b)
     if not na or not nb:
         return True   # חסר מידע — לא מסמנים כחוסר-עקביות
@@ -4589,7 +4614,15 @@ def _names_consistent(a: str, b: str) -> bool:
         return True
     ta = {t for t in na.split() if len(t) >= 2}
     tb = {t for t in nb.split() if len(t) >= 2}
-    return bool(ta & tb)
+    if ta & tb:
+        return True
+    # נסיגת תעתיק: שלד-עיצורים משותף (יעקב↔Yakov). ≥3 עיצורים, או התאמת-הכלה.
+    sa, sb = _name_skels(a), _name_skels(b)
+    for x in sa:
+        for y in sb:
+            if x == y or (len(x) >= 3 and x in y) or (len(y) >= 3 and y in x):
+                return True
+    return False
 
 
 # דומיינים של מייל חד-פעמי/זבל (סימן חזק להונאה בקודים דיגיטליים)
