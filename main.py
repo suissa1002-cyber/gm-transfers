@@ -5271,7 +5271,9 @@ def _fraud_log_write(order_number, tri, wc_status=""):
     import json as _json
     import time as _t
     try:
-        s = tri.get("signals") or {}
+        s = dict(tri.get("signals") or {})
+        s["_headline"] = tri.get("headline")   # מוטמע כדי לשחזר את הבאנר המלא מהמטמון
+        s["_action"] = tri.get("action")
         db.fraud_log_upsert(
             order_number, tri.get("level"), tri.get("risk"), tri.get("protected"),
             s.get("method"), s.get("total"),
@@ -5702,11 +5704,25 @@ def admin_order_detail(oid: int, x_admin_key: Optional[str] = Header(None)):
             paid_status = o.get("status") in ("processing", "completed",
                                               "on-hold", "shipping-stage", "order-ready")
             fraud_scannable = bool((o.get("line_items") or []) and paid_status)
-            if fraud_scannable:   # אם כבר נסרק בעבר — נצרף את הרמה/תיוג שנשמרו
+            if fraud_scannable:   # אם כבר נסרק בעבר — משחזרים את הבאנר המלא מהמטמון (בלי סריקה מחדש)
                 _row = db.fraud_log_get(o.get("number"))
-                if _row:
-                    fraud = {"level": _row.get("level"), "cached": True,
-                             "outcome": _row.get("outcome")}
+                if _row and _row.get("reasons"):
+                    import json as _jr
+                    try:
+                        _sig = _jr.loads(_row.get("signals") or "{}")
+                    except Exception:  # noqa: BLE001
+                        _sig = {}
+                    _hl = _sig.pop("_headline", "") or (
+                        "אשראי + 3DS — מוגן מצ'ארג'בק" if _row.get("protected") else "טריאז' הזמנה")
+                    _ac = _sig.pop("_action", "")
+                    try:
+                        _reasons = _jr.loads(_row.get("reasons") or "[]")
+                    except Exception:  # noqa: BLE001
+                        _reasons = []
+                    fraud = {"level": _row.get("level"), "protected": bool(_row.get("protected")),
+                             "risk": _row.get("risk"), "headline": _hl, "action": _ac,
+                             "reasons": _reasons, "signals": _sig,
+                             "outcome": _row.get("outcome"), "cached": True}
     except Exception:  # noqa: BLE001
         pass
     return {
