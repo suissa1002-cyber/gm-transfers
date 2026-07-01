@@ -5473,8 +5473,9 @@ function fraudBanner(f){
   } else if(s.disposable_email){ chips.push(`<b style="color:#dc2626">✉ מייל חד-פעמי ⚠</b>`); }
   if(s.cardholder_verified) chips.push(`<b style="color:#16a34a">בעל הכרטיס אישר בטלפון (3DS) ✓</b>`);
   if(s.prior_clean>0) chips.push(`<b style="color:#16a34a">לקוח חוזר: ${s.prior_clean} ✓</b>`);
-  if(s.wa_known) chips.push(`<b style="color:#16a34a">WhatsApp פעיל ✓</b>${s.wa_name?` <span style="opacity:.7">(${escW(s.wa_name)}${s.wa_name_match===false?' — שם לא תואם':''})</span>`:''}`);
-  else if(s.wa_known===false) chips.push(`<span class="muted">אין עקבות WhatsApp</span>`);
+  if(s.wa_known) chips.push(`<b style="color:#16a34a">WhatsApp פעיל לפני ההזמנה ✓</b>${s.wa_name?` <span style="opacity:.7">(${escW(s.wa_name)}${s.wa_name_match===false?' — שם לא תואם':''})</span>`:''}`);
+  else if(s.wa_contacted_after) chips.push(`<b style="color:#d97706">WhatsApp: יצר קשר רק אחרי ההזמנה ⚠</b>${s.wa_name?` <span style="opacity:.7">(${escW(s.wa_name)})</span>`:''}`);
+  else chips.push(`<span class="muted">אין עקבות WhatsApp</span>`);
   if(s.code_qty) chips.push(`קודים: <b>${s.code_qty}</b>`);
   // collapse: מקופל כברירת מחדל (רק שורת הדגל בצבע), אדום נפתח אוטומטית. לחיצה מרחיבה.
   return `<details class="frb"${f.level==='red'?' open':''} style="border:1.5px solid ${m.c}55;background:${m.c}0e;border-radius:14px;margin-bottom:16px">

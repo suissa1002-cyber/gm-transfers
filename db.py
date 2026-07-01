@@ -2702,6 +2702,17 @@ def wa_msg_count() -> int:
         return cur.fetchone()["n"]
 
 
+def wa_first_inbound_ts(phone: str) -> int:
+    """זמן ההודעה הנכנסת הראשונה מהמספר (epoch). 0 אם מעולם לא כתב לנו.
+    משמש להבחין 'לקוח מוכר לפני ההזמנה' מ'יצר קשר אחרי' (רדף אחרי קוד)."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT MIN(ts) AS t FROM wa_msg WHERE phone = ? AND direction = 'in'"),
+                    (str(phone),))
+        r = cur.fetchone()
+        return int((r["t"] if r and r["t"] else 0) or 0)
+
+
 def wa_msg_get(wamid: str):
     with _conn() as c:
         cur = c.cursor()

@@ -4731,21 +4731,33 @@ def _canon_email(email: str) -> str:
     return f"{local}@{dom}"
 
 
-def _wa_signal(phone: str, order_name: str) -> dict:
-    """סיגנל WhatsApp מ-DB שלנו: האם המספר פנה אלינו בעבר (reachability אמיתי) +
-    pushname. ⚠️ התאמת-שם חלשה (ניתן לזייף), אבל reachability = legitimizer מועיל."""
-    out = {"known": False, "wa_name": None, "name_match": None, "last_in_days": None}
+def _wa_signal(phone: str, order_name: str, order_ts: float = 0) -> dict:
+    """סיגנל WhatsApp מ-DB שלנו + pushname. reachability נחשב legitimizer רק אם הלקוח
+    היה מוכר **לפני** ההזמנה (הודעה נכנסת ראשונה ≤ מועד ההזמנה). קשר שנוצר רק *אחרי*
+    ההזמנה (רדף אחרי הקוד) אינו reachability — גם רמאי עושה זאת. ⚠️ שם ניתן לזייף."""
+    out = {"known": False, "contacted_after": False, "wa_name": None,
+           "name_match": None, "last_in_days": None, "first_in_days": None}
     try:
-        c = db.wa_contact_get(_il_phone(phone))
+        import time as _t
+        now = _t.time()
+        p = _il_phone(phone)
+        c = db.wa_contact_get(p)
+        first_in = db.wa_first_inbound_ts(p)
         if c:
-            lin = c.get("last_in_ts") or 0
-            out["known"] = bool(lin)
             out["wa_name"] = c.get("name") or None
+            lin = c.get("last_in_ts") or 0
             if lin:
-                import time as _t
-                out["last_in_days"] = int((_t.time() - float(lin)) / 86400)
+                out["last_in_days"] = int((now - float(lin)) / 86400)
             if out["wa_name"] and order_name:
                 out["name_match"] = _names_consistent(order_name, out["wa_name"])
+        if first_in:
+            out["first_in_days"] = int((now - float(first_in)) / 86400)
+            if not order_ts:                          # אין תאריך — נסיגה להתנהגות הישנה
+                out["known"] = True
+            elif first_in <= order_ts + 3600:         # מוכר לפני/בזמן ההזמנה (חלון חסד שעה)
+                out["known"] = True
+            else:                                     # יצר קשר רק אחרי ההזמנה
+                out["contacted_after"] = True
     except Exception:  # noqa: BLE001
         pass
     return out
@@ -4968,10 +4980,22 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None) -> Optional
         reasons.append("הזמנה תקינה אחת בעבר")
     # WhatsApp = עוגן-חיובי בלבד (רוב הלקוחות הלגיטימיים לא כותבים לנו לפני הזמנה,
     # אז היעדר עקבות אינו סימן שלילי). נוכחות = reachability אמיתי → מוריד risk.
-    wa = _wa_signal(b.get("phone") or "", billing_name)
+    order_ts = 0
+    try:
+        import datetime as _dt
+        oiso = str(o.get("date_created_gmt") or o.get("date_created") or "").replace("Z", "")
+        if oiso:
+            order_ts = _dt.datetime.fromisoformat(oiso).replace(
+                tzinfo=_dt.timezone.utc).timestamp()
+    except Exception:  # noqa: BLE001
+        pass
+    wa = _wa_signal(b.get("phone") or "", billing_name, order_ts)
     if wa["known"]:
         risk = max(0, risk - 1)
-        reasons.append("מספר WhatsApp פעיל (פנה אלינו בעבר) — reachability")
+        reasons.append("מספר WhatsApp פעיל לפני ההזמנה — reachability אמיתי")
+    elif wa["contacted_after"]:
+        reasons.append("⚠️ הלקוח יצר קשר בוואטסאפ רק *אחרי* ההזמנה (לא reachability — "
+                       "גם רמאי רודף אחרי קוד ששילם עליו)")
 
     # ── 7) כרטיס צד-שלישי: המזמין קוהרנטי (חיוב≈WhatsApp) אבל הכרטיס של מישהו אחר.
     # סיגנל חזק יותר מ"שם לא תואם" גנרי: שני מקורות בלתי-תלויים מאשרים את זהות
@@ -5062,9 +5086,11 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None) -> Optional
             "cardholder_verified": cardholder_verified,
             "prior_clean": prior_clean,
             "wa_known": wa["known"],
+            "wa_contacted_after": wa["contacted_after"],
             "wa_name": wa["wa_name"],
             "wa_name_match": wa["name_match"],
             "wa_last_in_days": wa["last_in_days"],
+            "wa_first_in_days": wa["first_in_days"],
             "total": total,
             "code_qty": code_qty,
             "digital_items": [str(li.get("name") or "") for li in digital],
