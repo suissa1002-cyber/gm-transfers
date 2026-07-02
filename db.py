@@ -2747,8 +2747,14 @@ def kb_add(lesson: str, by: str = "") -> int:
     import datetime as _dt
     with _conn() as c:
         cur = c.cursor()
+        args = (lesson.strip(), by or "", _dt.datetime.now().isoformat(timespec="seconds"))
+        if _USE_PG:   # ל-psycopg2 אין lastrowid — משתמשים ב-RETURNING
+            cur.execute(_q("INSERT INTO service_kb (lesson, created_by, created_at) "
+                           "VALUES (?, ?, ?) RETURNING id"), args)
+            row = cur.fetchone()
+            return int(row["id"] if row else 0)
         cur.execute(_q("INSERT INTO service_kb (lesson, created_by, created_at) VALUES (?, ?, ?)"),
-                    (lesson.strip(), by or "", _dt.datetime.now().isoformat(timespec="seconds")))
+                    args)
         return cur.lastrowid or 0
 
 
