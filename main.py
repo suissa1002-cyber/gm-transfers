@@ -5100,6 +5100,28 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
     is_digital_order = bool(digital)
     if not is_digital_order and not force:
         return None
+
+    # ── Blender Pay: חברת מימון חיצונית — הבדיקות והסיכון אצלם, משלמים לנו אחרי
+    # אישור. אין מה לאמת מצידנו (ולא שורפים IPQS/PayPlus על זה). (אסי, 02/07)
+    pm = (str(o.get("payment_method") or "") + " "
+          + str(o.get("payment_method_title") or "")).lower()
+    if "blender" in pm:
+        _paid_b = bool(o.get("date_paid"))
+        return {
+            "level": "green" if _paid_b else "gray",
+            "protected": True, "hard_fraud": False, "risk": 0,
+            "headline": ("Blender Pay — מימון חיצוני: הבדיקות והסיכון אצל Blender"
+                         + ("" if _paid_b else " (העסקה טרם אושרה/שולמה)")),
+            "action": ("אין צורך באימות מצידנו — Blender מאשרים ומשלמים לנו אחרי הבדיקות שלהם"
+                       if _paid_b else
+                       "ניסיון Blender שלא הושלם — אם יאושר, Blender נושאים בסיכון; אין פעולה"),
+            "reasons": ["ℹ️ תשלום דרך Blender Pay (הוראת קבע/מימון) — האימות והסיכון "
+                        "בצד Blender, לא אצלנו"],
+            "signals": {"paid": _paid_b, "method": "Blender Pay",
+                        "is_digital": is_digital_order,
+                        "total": float(o.get("total") or 0)},
+        }
+
     if graph is None:
         graph = _fraud_graph_map()
 
