@@ -403,7 +403,17 @@ def run_claude(prompt: str, resume_sid: str = None, fast: bool = False, timeout_
         )
         out = (r.stdout or "").strip()
         if r.returncode != 0 or not out:
-            return False, (r.stderr or out or "claude נכשל")[-400:], None
+            # כשל claude: מחלצים סיבה אנושית מה-envelope אם יש (result/error), ולוג מלא
+            # לאבחון. ⛔ לא מחזירים זנב גולמי — הוא דלף לקונסולה כתשובה (01-02/07).
+            reason = ""
+            try:
+                je = json.loads(out) if out else {}
+                reason = (je.get("result") or je.get("error") or "")[:300]
+            except Exception:  # noqa: BLE001
+                pass
+            log.error("claude failed rc=%s reason=%r stderr=%r out_head=%r",
+                      r.returncode, reason[:200], (r.stderr or "")[:300], out[:200])
+            return False, reason or (r.stderr or "").strip()[:300] or "claude נכשל", None
         try:
             j = json.loads(out)
             # מדידה (אפס שינוי התנהגות): turns גבוה = הרבה סבבי-כלים = איטי
@@ -540,7 +550,11 @@ def process(job: dict):
         ok, text, new_sid = run_claude(prompt, resume_sid=sid)
     if ok and new_sid:
         _sessions[phone] = {"sid": new_sid, "at": time.time()}
-    answer, notes = (_extract_notes(text) if ok else (text, []))
+    if not ok:
+        # ⛔ לא מדליפים את טקסט הכשל הגולמי לפאנל (JSON/stderr הופיעו כתשובה בקונסולה).
+        log.error("panel job #%s FAILED: %s", jid, (text or "no-text")[:400])
+    answer, notes = (_extract_notes(text) if ok
+                     else ("סליחה, יש לי תקלה רגעית — נסה/י לשלוח שוב 🙏", []))
     try:
         requests.post(f"{BASE}/api/uri-bridge/answer", headers=H,
                       json={"id": jid, "answer": answer,
