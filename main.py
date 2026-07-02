@@ -4335,6 +4335,46 @@ def bridge_context(phone: str, x_bridge_key: Optional[str] = Header(None)):
             "star": phone in db.wa_stars()}
 
 
+@app.get("/api/uri-bridge/playbook")
+def bridge_playbook(x_bridge_key: Optional[str] = Header(None)):
+    """פלייבוק שירותי חי לאלה — לקחים שנצברים מהעבודה (דביט 3000₪, eSIM וכו').
+    מוזרק לפרומפט בשני המסלולים (בוט + פאנל). עדכון = שורה ב-DB, בלי deploy."""
+    _require_bridge(x_bridge_key)
+    rows = db.kb_list()
+    text = "\n".join(f"- {r.get('lesson')}" for r in rows if (r.get("lesson") or "").strip())
+    return {"text": text, "count": len(rows)}
+
+
+@app.get("/api/admin/ella/lessons")
+def admin_ella_lessons(x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    return {"rows": db.kb_list()}
+
+
+class EllaLesson(BaseModel):
+    lesson: str
+
+
+@app.post("/api/admin/ella/lessons")
+def admin_ella_lesson_add(body: EllaLesson, x_admin_key: Optional[str] = Header(None)):
+    """הוספת לקח לפלייבוק של אלה ('כשלקוח שואל X — תעני Y'). נכנס מיד לכל תשובה."""
+    _require_admin(x_admin_key)
+    txt = (body.lesson or "").strip()
+    if len(txt) < 5:
+        raise HTTPException(400, "לקח קצר מדי")
+    kb_id = db.kb_add(txt, by=_actor_name(x_admin_key, None))
+    return {"ok": True, "id": kb_id}
+
+
+@app.delete("/api/admin/ella/lessons/{kb_id}")
+def admin_ella_lesson_del(kb_id: int, x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    n = db.kb_delete(kb_id)
+    if not n:
+        raise HTTPException(404, "לא נמצא")
+    return {"ok": True}
+
+
 @app.get("/api/uri-bridge/order")
 def bridge_order(phone: str = "", number: str = "", name: str = "",
                  x_bridge_key: Optional[str] = Header(None)):

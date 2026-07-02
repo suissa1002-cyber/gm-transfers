@@ -106,11 +106,39 @@ def fetch_context(phone: str) -> str:
         return ""
 
 
+_PB_CACHE = {"at": 0.0, "text": ""}
+
+
+def fetch_playbook() -> str:
+    """פלייבוק שירותי חי — לקחים שאסי/העבודה צוברים (דביט 3000₪, eSIM וכו').
+    מוזרק לשני המסלולים (בוט + פאנל). מטמון 5 דק' — לא מוסיף קריאה לכל הודעה."""
+    import time as _t
+    if _t.time() - _PB_CACHE["at"] < 300:
+        return _PB_CACHE["text"]
+    try:
+        r = requests.get(f"{BASE}/api/uri-bridge/playbook", headers=H, timeout=15)
+        if r.ok:
+            _PB_CACHE["text"] = (r.json().get("text") or "").strip()
+            _PB_CACHE["at"] = _t.time()
+    except Exception as e:  # noqa: BLE001
+        log.warning("playbook fetch failed: %s", e)
+    return _PB_CACHE["text"]
+
+
+def _playbook_section() -> str:
+    pb = fetch_playbook()
+    if not pb:
+        return ""
+    return ("\n## 💡 לקחים שירותיים מצטברים (פלייבוק חי — הנחיות עדכניות מאסי, "
+            "עדיפות גבוהה):\n" + pb + "\n")
+
+
 def build_prompt(phone: str, question: str) -> str:
     thread = fetch_thread_native(phone, limit=20)   # native (GreenOS) — לא ConnectOp
     ctx = fetch_context(phone)
     return f"""את אלה — סוכנת שירות הלקוחות של Green Mobile, בדיוק כמו בסשנים הרגילים שלך.
 אסי פנה אליך מתוך מערכת GreenOS לגבי שיחת וואטסאפ עם לקוח.
+{_playbook_section()}
 
 ## חובה לפני שאתה עונה — טען את ההקשר שלך:
 1. קרא את URI_BRAIN.md (כללי הברזל, סגנון, משלוחים, מחיר מבצע).
@@ -241,6 +269,7 @@ def build_bot_prompt(phone: str, question: str) -> str:
     return f"""את אלה, שירות הלקוחות של Green Mobile. את עונה **ישירות ללקוח** בוואטסאפ —
 הטקסט שתחזיר נשלח אליו כמו-שהוא, מיד. ענה **קצר וענייני**, ו**תמיד** תחבר את התשובה
 למוצרים אמיתיים עם מחיר וקישור.
+{_playbook_section()}
 
 ## מה אתה כבר יודע על הלקוח הזה (היכרות והמשכיות — השתמש בזה כשרלוונטי):
 {ctx if ctx else "אין מידע קודם — לקוח חדש או בלי הזמנות/הערות."}

@@ -1146,6 +1146,7 @@ function renderDrawer(){
     <div class="dr-sec">מכירות</div>
     <div class="dr-item" onclick="toggleDrawer(false);if(ensureAdmin(payQuickOpen))payQuickOpen()"><span>${ico('receipt',16)}</span><span>קישור תשלום מהיר${lock}</span></div>
     <div class="dr-sec">Hub</div>
+    <div class="dr-item" onclick="toggleDrawer(false);if(ensureAdmin(ellaLessonsOpen))ellaLessonsOpen()"><span>${ico('chat',16)}</span><span>💡 למד את אלה${lock}</span></div>
     <div class="dr-item ${S.view==='tasks'?'active':''}" onclick="hubGo('tasks')"><span>${ico('list',16)}</span><span>משימות סוכנים${lock}</span></div>
     <div class="dr-item ${S.view==='sentinel'?'active':''}" onclick="hubGo('sentinel')"><span>${ico('shield',16)}</span><span>סטטוס Sentinel${lock}</span></div>
     <div class="dr-sec">אפליקציות</div>
@@ -5627,6 +5628,37 @@ async function wcoImporterDelivery(oid,on){
   try{ await api('/api/admin/orders/'+oid+'/importer-delivery?on='+(on?1:0),{method:'POST'});
     toast(on?'סומן: הפצת יבואן→לקוח':'בוטל סימון הפצת יבואן',true); openWcOrder(oid);
   }catch(e){ toast('העדכון נכשל',false); }
+}
+// 💡 פלייבוק אלה — לקחים שירותיים שמוזרקים לכל תשובה שלה (בוט + פאנל)
+async function ellaLessonsOpen(){
+  let d; try{ d=await api('/api/admin/ella/lessons'); }catch(e){ toast('טעינה נכשלה',false); return; }
+  const rows=(d.rows||[]).map(r=>`<div style="display:flex;gap:8px;align-items:flex-start;padding:8px 4px;border-bottom:1px solid var(--line);font-size:13px;line-height:1.5">
+      <span style="flex:1">${escW(r.lesson||'')}</span>
+      <span class="muted" style="font-size:10.5px;white-space:nowrap">${escW((r.created_at||'').slice(0,10))}</span>
+      <button onclick="ellaLessonDel(${r.id})" title="מחק" style="background:none;border:none;cursor:pointer;color:var(--muted);padding:2px">${ico('trash',14)}</button>
+    </div>`).join('');
+  document.getElementById('modalRoot').innerHTML=`<div class="dr-wrap" onclick="if(event.target===this)closeModal()" style="position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:1000;padding:16px">
+    <div style="background:var(--card);border-radius:16px;max-width:640px;width:100%;max-height:88vh;overflow:auto;padding:20px">
+      <div style="display:flex;align-items:center;gap:9px;margin-bottom:4px"><span style="font-size:18px">💡</span><b style="font-size:16px;flex:1">למד את אלה — פלייבוק שירותי</b><button class="dr-x" onclick="closeModal()">✕</button></div>
+      <div class="muted" style="font-size:12.5px;margin-bottom:12px">כל לקח נכנס מיד לכל תשובה של אלה — גם אוטומטית ללקוח וגם בטיוטות בקונסולה. נסח כהנחיה: "כשלקוח שואל/קורה X — תעני Y".</div>
+      <div style="display:flex;gap:8px;margin-bottom:14px">
+        <textarea id="ellaLessonTxt" rows="2" placeholder='למשל: תשלום בכרטיס דביט מוגבל ל-3,000 ₪ לפעימה — בהזמנה גדולה מזה להציע פיצול ל-2 קישורי תשלום (נציג מפיק)' style="flex:1;padding:9px 12px;border-radius:10px;border:1px solid var(--line);background:var(--card2);color:var(--txt);font-size:13px;resize:vertical"></textarea>
+        <button class="btn-ghost" style="align-self:flex-end;padding:8px 16px;color:#16a34a;border-color:#16a34a55" onclick="ellaLessonAdd()">הוסף</button>
+      </div>
+      <div class="muted" style="font-size:11px;font-weight:700;letter-spacing:.4px;margin-bottom:2px">לקחים פעילים (${(d.rows||[]).length})</div>
+      ${rows||'<div class="muted" style="font-size:12.5px;padding:10px 0">אין עדיין לקחים — הוסף את הראשון 🙂</div>'}
+    </div></div>`;
+}
+async function ellaLessonAdd(){
+  const el=document.getElementById('ellaLessonTxt'); const txt=(el&&el.value||'').trim();
+  if(txt.length<5){ toast('נסח לקח קצת יותר מפורט',false); return; }
+  try{ await api('/api/admin/ella/lessons',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({lesson:txt})});
+    toast('הלקח נוסף — אלה תשתמש בו מהתשובה הבאה',true); ellaLessonsOpen();
+  }catch(e){ toast('ההוספה נכשלה',false); }
+}
+async function ellaLessonDel(id){
+  try{ await api('/api/admin/ella/lessons/'+id,{method:'DELETE'}); toast('נמחק',true); ellaLessonsOpen(); }
+  catch(e){ toast('המחיקה נכשלה',false); }
 }
 function cargoStTag(cs){
   if(!cs || !cs.text) return '';

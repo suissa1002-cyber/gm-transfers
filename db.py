@@ -585,6 +585,15 @@ _SCHEMA = [
         created_at  TEXT
     )
     """,
+    # פלייבוק שירותי לאלה — לקחים שנצברים מהעבודה (מוזרק לפרומפט הבוט והפאנל)
+    """
+    CREATE TABLE IF NOT EXISTS service_kb (
+        id          {pk},
+        lesson      TEXT,
+        created_by  TEXT,
+        created_at  TEXT
+    )
+    """.format(pk=_PK),
     # לוג טריאז' הונאות — ורדיקט לכל הזמנת קוד + התוצאה בפועל (לכיול והכשרת אוטומציה)
     """
     CREATE TABLE IF NOT EXISTS fraud_log (
@@ -2731,6 +2740,30 @@ def wa_first_inbound_ts(phone: str) -> int:
                     (str(phone),))
         r = cur.fetchone()
         return int((r["t"] if r and r["t"] else 0) or 0)
+
+
+# ── פלייבוק שירותי לאלה ───────────────────────────────────────────────────
+def kb_add(lesson: str, by: str = "") -> int:
+    import datetime as _dt
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("INSERT INTO service_kb (lesson, created_by, created_at) VALUES (?, ?, ?)"),
+                    (lesson.strip(), by or "", _dt.datetime.now().isoformat(timespec="seconds")))
+        return cur.lastrowid or 0
+
+
+def kb_list() -> list:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute("SELECT * FROM service_kb ORDER BY id")
+        return [dict(r) for r in cur.fetchall()]
+
+
+def kb_delete(kb_id: int) -> int:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("DELETE FROM service_kb WHERE id = ?"), (int(kb_id),))
+        return cur.rowcount
 
 
 # ── לוג טריאז' הונאות ─────────────────────────────────────────────────────
