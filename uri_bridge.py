@@ -133,6 +133,29 @@ def _playbook_section() -> str:
             "עדיפות גבוהה):\n" + pb + "\n")
 
 
+def _business_facts() -> str:
+    """עובדות עסק (סניפים/כתובות/טלפון/שעות) — מקור אמת יחיד: התשובה המוכנה
+    'סניפים' ב-wa_static.py (אותו תוכן שכפתור התפריט שולח). מוזרק לפרומפט כדי
+    שאלה לעולם לא תגיד 'אין לי את הטלפון/כתובת' (קרה 02/07)."""
+    try:
+        import wa_static
+        for c in getattr(wa_static, "CANNED_REPLIES", []):
+            if (c.get("title") or "").strip() == "סניפים":
+                return c.get("text") or ""
+    except Exception:  # noqa: BLE001
+        pass
+    return ""
+
+
+def _facts_block() -> str:
+    facts = _business_facts()
+    if not facts:
+        return ""
+    return (f"\n## 📍 עובדות עסק — סניפים/טלפון/שעות (מקור אמת, השתמשי בזה!):\n"
+            f"{facts}\n"
+            f"⚠️ לעולם אל תגידי 'אין לי את המספר/הכתובת' — הכל כאן למעלה.\n")
+
+
 def build_prompt(phone: str, question: str) -> str:
     thread = fetch_thread_native(phone, limit=20)   # native (GreenOS) — לא ConnectOp
     ctx = fetch_context(phone)
@@ -150,6 +173,7 @@ def build_prompt(phone: str, question: str) -> str:
    שלוף: `curl -s "{BASE}/api/uri-bridge/repair?q=<דגם+מהות>" -H "X-Bridge-Key: {KEY}"`
    (`q=מסך iphone 16 pro`). found=true → ענה עם ה-`text` שחזר; found=false → רק אז נציג/אבדוק.
 
+{_facts_block()}
 ## השיחה האחרונה עם הלקוח ({phone}):
 {thread}
 
@@ -379,6 +403,7 @@ def build_bot_prompt(phone: str, question: str) -> str:
   העברה לא קורית** — אז לעולם אל תכתוב "מעביר לנציג"/"נציג יחזור" בלי לסיים ב-[HANDOFF],
   ואחרי שכתבת [HANDOFF] אל תמשיך לענות בהודעות הבאות (אתה כבר העברת).
 
+{_facts_block()}
 ## השיחה האחרונה ({phone}):
 {thread}
 
