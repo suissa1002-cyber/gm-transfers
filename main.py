@@ -454,6 +454,9 @@ def register_recurring_jobs():
     scheduler.add_job(_fraud_triage_job, "interval", minutes=30, id="fraud_triage", max_instances=1)
     # 🎓 למידת אלה משיחות שאסי ענה בהן (learn_pending → משימת learn לגשר)
     scheduler.add_job(_ella_learn_job, "interval", minutes=30, id="ella_learn", max_instances=1)
+    # 🪑 תג "בית לקוח" ↔ מלאי קופה (כיסאות כבדים): אזל→תיוג, חזר→הסרה
+    scheduler.add_job(_beit_lakoach_sync_job, "interval", hours=6,
+                      id="beit_lakoach_sync", max_instances=1, coalesce=True)
     scheduler.add_job(_fraud_triage_job, "date", id="fraud_triage_initial",
                       run_date=datetime.now() + timedelta(seconds=90))
     if _is_stale(db.sales_state_get("last_run"), hours=2):
@@ -4380,6 +4383,87 @@ def admin_ella_lesson_del(kb_id: int, x_admin_key: Optional[str] = Header(None))
     if not n:
         raise HTTPException(404, "לא נמצא")
     return {"ok": True}
+
+
+# ── 🪑 בית לקוח: סנכרון תג לפי מלאי קופה (כיסאות/מוצרים כבדים) ──────────────
+_HEAVY_CLASS_ID = 2850          # קלאס משלוח "משלוח כבד"
+_BEIT_LAKOACH_TAG = 3630        # תג "בית לקוח" — הפצה ישירה מהיבואן (בלי איסוף)
+_PHYS_BRANCHES = {1, 2, 3, 4}   # סניפים פיזיים (5=אתר)
+
+
+def _beit_lakoach_sync_job():
+    """התג "בית לקוח" = אין מלאי פיזי → הפצת-יבואן בלבד (הסניפט באתר מסתיר איסוף).
+    הכשל שהיה: שכחו לתייג כשאזל (47880). הג'וב סוגר את הלולאה לשני הכיוונים:
+    כיסא כבד בלי מלאי קופה (סניפים 1-4) → מתייג; חזר מלאי (בד"כ גן העיר) → מסיר
+    את התג ואיסוף עצמי חוזר. טלגרם על כל שינוי."""
+    import requests as _rq
+    try:
+        base, k, s = _wc_creds()
+        no = poller.client()
+    except Exception:  # noqa: BLE001
+        return
+    try:
+        page = 1
+        prods = []
+        while True:
+            r = _rq.get(f"{base}/wp-json/wc/v3/products",
+                        params={"shipping_class": _HEAVY_CLASS_ID, "per_page": 100,
+                                "page": page, "status": "publish"},
+                        auth=(k, s), timeout=45)
+            if not r.ok:
+                return
+            batch = r.json() or []
+            prods += batch
+            if len(batch) < 100:
+                break
+            page += 1
+        for p in prods:
+            try:
+                pid = p.get("id")
+                name = str(p.get("name") or "")
+                tags = [t["id"] for t in (p.get("tags") or [])]
+                tagged = _BEIT_LAKOACH_TAG in tags
+                is_chair = any(w in name for w in ("כיסא", "כסא", "מושב"))
+                if not (is_chair or tagged):     # לא-כיסא ולא-מתויג — לא נוגעים (החלטת אסי)
+                    continue
+                skus = []
+                if p.get("type") == "variable":
+                    rv = _rq.get(f"{base}/wp-json/wc/v3/products/{pid}/variations",
+                                 params={"per_page": 50}, auth=(k, s), timeout=40)
+                    skus = [v.get("sku") for v in (rv.json() if rv.ok else []) if v.get("sku")]
+                elif p.get("sku"):
+                    skus = [p.get("sku")]
+                if not skus:
+                    continue                     # אין חיבור לקופה — לא מנחשים
+                qty = 0.0
+                known = False
+                for sk in skus:
+                    try:
+                        st = no.get_product_stock(sk) or {}
+                        qty += sum((st.get(b) or 0) for b in _PHYS_BRANCHES)
+                        known = True
+                    except Exception:  # noqa: BLE001
+                        continue
+                if not known:
+                    continue
+                if qty <= 0 and not tagged:
+                    _rq.put(f"{base}/wp-json/wc/v3/products/{pid}", auth=(k, s),
+                            json={"tags": [{"id": t} for t in tags] + [{"id": _BEIT_LAKOACH_TAG}]},
+                            timeout=40)
+                    _tg_admin(f"🪑🏷️ <b>בית לקוח</b>\n{name[:60]} אזל מהמלאי הפיזי → "
+                              "תויג אוטומטית 'בית לקוח' (איסוף עצמי הוסתר, הפצת-יבואן בלבד).")
+                    logger.info("beit-lakoach: tagged %s (%s)", pid, name[:40])
+                elif qty > 0 and tagged:
+                    _rq.put(f"{base}/wp-json/wc/v3/products/{pid}", auth=(k, s),
+                            json={"tags": [{"id": t} for t in tags if t != _BEIT_LAKOACH_TAG]},
+                            timeout=40)
+                    _tg_admin(f"🪑✂️ <b>בית לקוח</b>\n{name[:60]} חזר למלאי פיזי "
+                              f"({int(qty)} יח׳, בד\"כ גן העיר) → התג הוסר, איסוף עצמי זמין שוב.")
+                    logger.info("beit-lakoach: untagged %s (%s)", pid, name[:40])
+            except Exception as e:  # noqa: BLE001
+                logger.warning("beit-lakoach product %s: %s", p.get("id"), e)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("beit-lakoach sync error: %s", e)
 
 
 # ── 🎓 למידה-מהשיחות: אלה קוראת שיחות שאסי ענה בהן, מציעה לקח או שואלת ──────
