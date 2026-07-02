@@ -5751,6 +5751,7 @@ def _cargo_status(meta: dict, email: str = ""):
     return {"tracking": str(sid), "text": str(st.get("text") or "").strip(),
             "num": st.get("number"), "line": str(sh.get("line_number") or "").strip(),
             "driver": str(sh.get("driver_name") or "").strip(),
+            "created_at": str(sh.get("created_at") or "").strip(),
             "track_url": track_url}
 
 
@@ -7273,10 +7274,17 @@ def _cargo_delivery_sync_job():
                 if not cs or int(cs.get("num") or 0) != 3:     # 3 = נמסר
                     continue
                 oid, onum = o.get("id"), o.get("number")
+                # ישן/טרי לפי תאריך יצירת המשלוח — לא date_modified: הרענון החי שלנו
+                # מעדכן את ההזמנה ומזיז את date_modified, כך שכל תקועה הייתה נראית
+                # "טרייה" ומקבלת חוו"ד בטעות. משלוח שנוצר ≤5 ימים = מסירה טרייה.
                 recent = False
                 try:
-                    dmt = datetime.fromisoformat((o.get("date_modified_gmt") or "").replace("Z", ""))
-                    recent = (now_utc - dmt).total_seconds() < 2 * 86400
+                    ca = str(cs.get("created_at") or "")[:19]
+                    if ca:
+                        recent = (now_utc - datetime.fromisoformat(ca)).total_seconds() < 5 * 86400
+                    else:
+                        dmt = datetime.fromisoformat((o.get("date_modified_gmt") or "").replace("Z", ""))
+                        recent = (now_utc - dmt).total_seconds() < 2 * 86400
                 except Exception:  # noqa: BLE001
                     pass
                 if recent:
