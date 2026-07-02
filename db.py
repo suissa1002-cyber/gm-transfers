@@ -594,6 +594,17 @@ _SCHEMA = [
         created_at  TEXT
     )
     """.format(pk=_PK),
+    # למידה-מהשיחות של אלה: טיוטות לקחים ושאלות לאסי — ממתינים לאישור/תשובה
+    """
+    CREATE TABLE IF NOT EXISTS kb_pending (
+        id          {pk},
+        kind        TEXT,
+        phone       TEXT,
+        case_txt    TEXT,
+        text        TEXT,
+        created_at  TEXT
+    )
+    """.format(pk=_PK),
     # לוג טריאז' הונאות — ורדיקט לכל הזמנת קוד + התוצאה בפועל (לכיול והכשרת אוטומציה)
     """
     CREATE TABLE IF NOT EXISTS fraud_log (
@@ -1881,6 +1892,15 @@ def sales_state_get(k: str, default=None):
         return r["v"] if r else default
 
 
+def sales_state_prefix(prefix: str) -> list:
+    """כל המפתחות שמתחילים ב-prefix — [(k, v), ...] (למשל learn_pending:*)."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT k, v FROM sales_ingest_state WHERE k LIKE ?"),
+                    (prefix + "%",))
+        return [(r["k"], r["v"]) for r in cur.fetchall()]
+
+
 def sales_state_set(k: str, v: str):
     with _conn() as c:
         c.cursor().execute(_q("""
@@ -2769,6 +2789,45 @@ def kb_delete(kb_id: int) -> int:
     with _conn() as c:
         cur = c.cursor()
         cur.execute(_q("DELETE FROM service_kb WHERE id = ?"), (int(kb_id),))
+        return cur.rowcount
+
+
+def kbp_add(kind: str, phone: str, case_txt: str, text: str) -> int:
+    """טיוטת למידה: kind='lesson' (לקח מוצע) או 'question' (שאלה לאסי)."""
+    import datetime as _dt
+    with _conn() as c:
+        cur = c.cursor()
+        args = (kind, str(phone or ""), (case_txt or "").strip(), (text or "").strip(),
+                _dt.datetime.now().isoformat(timespec="seconds"))
+        if _USE_PG:
+            cur.execute(_q("INSERT INTO kb_pending (kind, phone, case_txt, text, created_at) "
+                           "VALUES (?, ?, ?, ?, ?) RETURNING id"), args)
+            row = cur.fetchone()
+            return int(row["id"] if row else 0)
+        cur.execute(_q("INSERT INTO kb_pending (kind, phone, case_txt, text, created_at) "
+                       "VALUES (?, ?, ?, ?, ?)"), args)
+        return cur.lastrowid or 0
+
+
+def kbp_list() -> list:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute("SELECT * FROM kb_pending ORDER BY id")
+        return [dict(r) for r in cur.fetchall()]
+
+
+def kbp_get(pid: int):
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM kb_pending WHERE id = ?"), (int(pid),))
+        r = cur.fetchone()
+        return dict(r) if r else None
+
+
+def kbp_delete(pid: int) -> int:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("DELETE FROM kb_pending WHERE id = ?"), (int(pid),))
         return cur.rowcount
 
 

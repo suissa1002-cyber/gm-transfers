@@ -491,10 +491,52 @@ def _extract_notes(text: str):
     return "\n".join(clean).strip(), notes[:2]
 
 
+def build_learn_prompt(phone: str) -> str:
+    """משימת למידה פנימית: אסי ענה ידנית בשיחה — אלה מסיקה לקח כללי או שואלת אותו.
+    הפלט לא נשלח ללקוח לעולם — נקלט ב-learn-result וממתין לאישור אסי."""
+    thread = fetch_thread_native(phone, limit=30)
+    pb = fetch_playbook()
+    return f"""את אלה — סוכנת שירות הלקוחות של Green Mobile. זו משימת **למידה פנימית** (לא ללקוח!).
+אסי (נציג אנושי) ענה בשיחה הזו. קראי אותה, הביני את המקרה ולמה אסי ענה כפי שענה.
+
+## השיחה ({phone}):
+{thread}
+
+## הפלייבוק הקיים שלך (אל תציעי לקח שכבר מכוסה בו):
+{pb or '(ריק)'}
+
+## הפלט שלך — שורה אחת בדיוק, באחד משלושת הפורמטים:
+1. יש כאן לקח שירותי **כללי וחדש** שישפר את התשובות שלך בעתיד →
+[LESSON] <הלקח כהנחיה כללית, בלי פרטים מזהים של הלקוח (בלי שם/טלפון/מס' הזמנה)>
+2. המקרה מעניין אבל לא ברור לך למה אסי פעל כך, ותרצי ללמוד →
+[ASK] מקרה: <תיאור קצר וכללי של המקרה> | שאלה: <שאלה אחת ממוקדת לאסי>
+3. אין מה ללמוד (סמול-טוק / חד-פעמי / כבר מכוסה) →
+[SKIP] <סיבה במילים ספורות>
+
+חשוב: אל תוסיפי שום טקסט מעבר לשורת הפלט."""
+
+
 def process(job: dict):
     jid = job["id"]
     phone = job["phone"]
     log.info("job #%s phone=%s src=%s q=%r", jid, phone, job.get("source"), job["question"][:60])
+    # ── 🎓 משימת למידה: ניתוח שיחה שאסי ענה בה → לקח/שאלה (לעולם לא ללקוח) ──
+    if job.get("source") == "learn":
+        ok, text, _sid = run_claude(build_learn_prompt(phone), fast=True, timeout_s=150)
+        try:
+            requests.post(f"{BASE}/api/uri-bridge/learn-result", headers=H,
+                          json={"id": jid, "phone": phone, "raw": text or "",
+                                "ok": bool(ok)}, timeout=20)
+        except Exception as e:  # noqa: BLE001
+            log.error("learn-result post failed #%s: %s", jid, e)
+        try:   # סוגרים את המשימה (draft פנימי בלבד — source!='bot' לא נשלח ללקוח)
+            requests.post(f"{BASE}/api/uri-bridge/answer", headers=H,
+                          json={"id": jid, "answer": "[LEARN-DONE]",
+                                "status": "done" if ok else "error"}, timeout=20)
+        except Exception:  # noqa: BLE001
+            pass
+        log.info("learn job #%s -> %s: %r", jid, "done" if ok else "error", (text or "")[:80])
+        return
     # ── משימת בוט: מסלול מהיר, תשובה ישירה ללקוח (בלי קריאת מסמכים/מלאי כבד) ──
     if job.get("source") == "bot":
         bp = build_bot_prompt(phone, job["question"])

@@ -452,6 +452,8 @@ def register_recurring_jobs():
     scheduler.add_job(_sold_reconcile_job, "interval", minutes=30, id="sold_reconcile", max_instances=1)
     # טריאז' הונאות להזמנות קוד דיגיטלי — מטמון רמות למרקר ברשימה (הבאנר בפירוט חי תמיד)
     scheduler.add_job(_fraud_triage_job, "interval", minutes=30, id="fraud_triage", max_instances=1)
+    # 🎓 למידת אלה משיחות שאסי ענה בהן (learn_pending → משימת learn לגשר)
+    scheduler.add_job(_ella_learn_job, "interval", minutes=30, id="ella_learn", max_instances=1)
     scheduler.add_job(_fraud_triage_job, "date", id="fraud_triage_initial",
                       run_date=datetime.now() + timedelta(seconds=90))
     if _is_stale(db.sales_state_get("last_run"), hours=2):
@@ -3181,6 +3183,11 @@ def wa_send(body: WaSend, x_admin_key: Optional[str] = Header(None)):
     _require_admin(x_admin_key)
     import wa
     _bot_handoff_on(body.phone)
+    try:  # 🎓 מענה ידני = חומר למידה לאלה — הג'וב ירים את השיחה כשתירגע
+        import time as _t
+        db.sales_state_set(f"learn_pending:{_il_phone(body.phone)}", str(int(_t.time())))
+    except Exception:  # noqa: BLE001
+        pass
     if body.reply_to and wa.meta_direct_ready():
         return _wa_guard(wa.send_reply_quoted, body.phone, body.text,
                          body.reply_to, body.reply_preview)
@@ -4370,6 +4377,129 @@ def admin_ella_lesson_add(body: EllaLesson, x_admin_key: Optional[str] = Header(
 def admin_ella_lesson_del(kb_id: int, x_admin_key: Optional[str] = Header(None)):
     _require_admin(x_admin_key)
     n = db.kb_delete(kb_id)
+    if not n:
+        raise HTTPException(404, "לא נמצא")
+    return {"ok": True}
+
+
+# ── 🎓 למידה-מהשיחות: אלה קוראת שיחות שאסי ענה בהן, מציעה לקח או שואלת ──────
+def _ella_learn_job():
+    """מרים שיחות שסומנו learn_pending (מענה ידני מהקונסולה) אחרי שנרגעו (שעה),
+    ותוחם ל-5 לכל ריצה. כל שיחה → משימת 'learn' לאלה בגשר."""
+    import time as _t
+    try:
+        picked = 0
+        for k, v in db.sales_state_prefix("learn_pending:"):
+            if picked >= 5:
+                break
+            if not (v or "").strip():
+                continue
+            phone = k.split(":", 1)[1]
+            try:
+                ts = int(v)
+            except Exception:  # noqa: BLE001
+                ts = 0
+            if _t.time() - ts < 3600:      # השיחה עוד חמה — נחכה שתירגע
+                continue
+            db.sales_state_set(k, "")      # נצרך
+            last = int(db.sales_state_get(f"learned:{phone}") or 0)
+            if ts <= last:
+                continue
+            db.sales_state_set(f"learned:{phone}", str(ts))
+            db.uri_job_add(phone, "[LEARN]", source="learn")
+            picked += 1
+            logger.info("ella learn queued for %s", phone)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("ella learn job error: %s", e)
+
+
+class LearnResult(BaseModel):
+    id: int = 0
+    phone: str = ""
+    raw: str = ""
+    ok: bool = True
+
+
+@app.post("/api/uri-bridge/learn-result")
+def bridge_learn_result(body: LearnResult, x_bridge_key: Optional[str] = Header(None)):
+    """תוצאת ניתוח-למידה מאלה: [LESSON] → טיוטת לקח לאישור אסי; [ASK] → שאלה לאסי;
+    [SKIP] → כלום. שום דבר לא נכנס לפלייבוק בלי אישור אנושי."""
+    _require_bridge(x_bridge_key)
+    import re as _re
+    raw = (body.raw or "").strip()
+    added = []
+    m = _re.search(r"\[LESSON\]\s*(.+)", raw, _re.S)
+    if m:
+        lesson = m.group(1).strip().split("\n")[0][:500]
+        db.kbp_add("lesson", body.phone, "", lesson)
+        added.append("lesson")
+    elif (m := _re.search(r"\[ASK\]\s*(.+)", raw, _re.S)):
+        blob = m.group(1).strip()
+        case, q = "", blob.split("\n")[0][:400]
+        mm = _re.search(r"מקרה:\s*(.+?)\s*\|\s*שאלה:\s*(.+)", blob, _re.S)
+        if mm:
+            case = mm.group(1).strip()[:300]
+            q = mm.group(2).strip().split("\n")[0][:400]
+        db.kbp_add("question", body.phone, case, q)
+        added.append("question")
+    if added:
+        try:
+            _tg_admin("🎓 <b>אלה למדה משיחה</b>\n"
+                      + ("הציעה לקח חדש" if added[0] == "lesson" else "יש לה שאלה אליך")
+                      + " — ממתין לך בתפריט 💡 למד את אלה.")
+        except Exception:  # noqa: BLE001
+            pass
+    return {"ok": True, "added": added}
+
+
+@app.get("/api/admin/ella/pending")
+def admin_ella_pending(x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    return {"rows": db.kbp_list()}
+
+
+class EllaPendingIn(BaseModel):
+    text: str = ""
+
+
+@app.post("/api/admin/ella/pending/{pid}/approve")
+def admin_ella_pending_approve(pid: int, body: EllaPendingIn,
+                               x_admin_key: Optional[str] = Header(None)):
+    """אישור טיוטת לקח (אפשר עם עריכה) → נכנס לפלייבוק."""
+    _require_admin(x_admin_key)
+    row = db.kbp_get(pid)
+    if not row:
+        raise HTTPException(404, "לא נמצא")
+    lesson = (body.text or "").strip() or (row.get("text") or "").strip()
+    if len(lesson) < 5:
+        raise HTTPException(400, "לקח ריק")
+    db.kb_add(lesson, by="אלה (למידה) + אישור אסי")
+    db.kbp_delete(pid)
+    return {"ok": True}
+
+
+@app.post("/api/admin/ella/pending/{pid}/answer")
+def admin_ella_pending_answer(pid: int, body: EllaPendingIn,
+                              x_admin_key: Optional[str] = Header(None)):
+    """תשובת אסי לשאלת-למידה של אלה → הופכת ללקח בפלייבוק (מקרה — תשובה)."""
+    _require_admin(x_admin_key)
+    row = db.kbp_get(pid)
+    if not row:
+        raise HTTPException(404, "לא נמצא")
+    ans = (body.text or "").strip()
+    if len(ans) < 3:
+        raise HTTPException(400, "תשובה קצרה מדי")
+    case = (row.get("case_txt") or "").strip()
+    lesson = (f"{case} — {ans}" if case else ans)[:600]
+    db.kb_add(lesson, by="אסי (תשובה לשאלת אלה)")
+    db.kbp_delete(pid)
+    return {"ok": True, "lesson": lesson}
+
+
+@app.delete("/api/admin/ella/pending/{pid}")
+def admin_ella_pending_del(pid: int, x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    n = db.kbp_delete(pid)
     if not n:
         raise HTTPException(404, "לא נמצא")
     return {"ok": True}

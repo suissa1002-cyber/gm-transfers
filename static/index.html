@@ -5631,7 +5631,25 @@ async function wcoImporterDelivery(oid,on){
 }
 // 💡 פלייבוק אלה — לקחים שירותיים שמוזרקים לכל תשובה שלה (בוט + פאנל)
 async function ellaLessonsOpen(){
-  let d; try{ d=await api('/api/admin/ella/lessons'); }catch(e){ toast('טעינה נכשלה',false); return; }
+  let d,p; try{ d=await api('/api/admin/ella/lessons'); p=await api('/api/admin/ella/pending'); }catch(e){ toast('טעינה נכשלה',false); return; }
+  const pend=(p&&p.rows)||[];
+  const pendHTML=pend.map(r=>{
+    if(r.kind==='question') return `<div style="border:1px solid #7c3aed44;background:#7c3aed0a;border-radius:10px;padding:10px 12px;margin-bottom:8px;font-size:13px;line-height:1.55">
+      <div style="font-size:11px;color:#7c3aed;font-weight:700;margin-bottom:3px">❓ אלה שואלת אותך${r.case_txt?` · <span style="font-weight:500">${escW(r.case_txt)}</span>`:''}</div>
+      <div style="margin-bottom:7px">${escW(r.text||'')}</div>
+      <div style="display:flex;gap:6px"><input id="ellaAns${r.id}" placeholder="התשובה שלך — תהפוך ללקח בפלייבוק" style="flex:1;padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:var(--card2);color:var(--txt);font-size:12.5px">
+      <button class="btn-ghost" style="padding:6px 12px;color:#16a34a;border-color:#16a34a55" onclick="ellaPendingAnswer(${r.id})">ענה</button>
+      <button class="btn-ghost" style="padding:6px 10px;color:var(--muted)" onclick="ellaPendingDel(${r.id})">דחה</button></div>
+    </div>`;
+    return `<div style="border:1px solid #16a34a44;background:#16a34a0a;border-radius:10px;padding:10px 12px;margin-bottom:8px;font-size:13px;line-height:1.55">
+      <div style="font-size:11px;color:#16a34a;font-weight:700;margin-bottom:3px">💡 אלה מציעה לקח (משיחה שענית בה)</div>
+      <textarea id="ellaPend${r.id}" rows="2" style="width:100%;box-sizing:border-box;padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:var(--card2);color:var(--txt);font-size:12.5px;resize:vertical;margin-bottom:6px">${escW(r.text||'')}</textarea>
+      <div style="display:flex;gap:6px;justify-content:flex-end">
+      <button class="btn-ghost" style="padding:6px 10px;color:var(--muted)" onclick="ellaPendingDel(${r.id})">דחה</button>
+      <button class="btn-ghost" style="padding:6px 14px;color:#16a34a;border-color:#16a34a55;font-weight:700" onclick="ellaPendingApprove(${r.id})">אשר לפלייבוק ✓</button></div>
+    </div>`;
+  }).join('');
+  window._ellaPendHTML=pendHTML?`<div class="muted" style="font-size:11px;font-weight:700;letter-spacing:.4px;margin:2px 0 6px">🎓 מהלמידה — ממתין לך (${pend.length})</div>${pendHTML}<div style="border-top:1px dashed var(--line);margin:12px 0"></div>`:'';
   const rows=(d.rows||[]).map(r=>`<div style="display:flex;gap:8px;align-items:flex-start;padding:8px 4px;border-bottom:1px solid var(--line);font-size:13px;line-height:1.5">
       <span style="flex:1">${escW(r.lesson||'')}</span>
       <span class="muted" style="font-size:10.5px;white-space:nowrap">${escW((r.created_at||'').slice(0,10))}</span>
@@ -5640,7 +5658,8 @@ async function ellaLessonsOpen(){
   document.getElementById('modalRoot').innerHTML=`<div class="dr-wrap" onclick="if(event.target===this)closeModal()" style="position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:1000;padding:16px">
     <div style="background:var(--card);border-radius:16px;max-width:640px;width:100%;max-height:88vh;overflow:auto;padding:20px">
       <div style="display:flex;align-items:center;gap:9px;margin-bottom:4px"><span style="font-size:18px">💡</span><b style="font-size:16px;flex:1">למד את אלה — פלייבוק שירותי</b><button class="dr-x" onclick="closeModal()">✕</button></div>
-      <div class="muted" style="font-size:12.5px;margin-bottom:12px">כל לקח נכנס מיד לכל תשובה של אלה — גם אוטומטית ללקוח וגם בטיוטות בקונסולה. נסח כהנחיה: "כשלקוח שואל/קורה X — תעני Y".</div>
+      <div class="muted" style="font-size:12.5px;margin-bottom:12px">כל לקח נכנס מיד לכל תשובה של אלה — גם אוטומטית ללקוח וגם בטיוטות בקונסולה. בנוסף, אלה לומדת לבד משיחות שענית בהן ידנית — ההצעות והשאלות שלה מופיעות כאן לאישורך.</div>
+      ${window._ellaPendHTML||''}
       <div style="display:flex;gap:8px;margin-bottom:14px">
         <textarea id="ellaLessonTxt" rows="2" placeholder='למשל: תשלום בכרטיס דביט מוגבל ל-3,000 ₪ לפעימה — בהזמנה גדולה מזה להציע פיצול ל-2 קישורי תשלום (נציג מפיק)' style="flex:1;padding:9px 12px;border-radius:10px;border:1px solid var(--line);background:var(--card2);color:var(--txt);font-size:13px;resize:vertical"></textarea>
         <button class="btn-ghost" style="align-self:flex-end;padding:8px 16px;color:#16a34a;border-color:#16a34a55" onclick="ellaLessonAdd()">הוסף</button>
@@ -5659,6 +5678,24 @@ async function ellaLessonAdd(){
 async function ellaLessonDel(id){
   try{ await api('/api/admin/ella/lessons/'+id,{method:'DELETE'}); toast('נמחק',true); ellaLessonsOpen(); }
   catch(e){ toast('המחיקה נכשלה',false); }
+}
+// 🎓 טיוטות מהלמידה: אישור לקח (עם עריכה) / תשובה לשאלת אלה / דחייה
+async function ellaPendingApprove(id){
+  const el=document.getElementById('ellaPend'+id); const txt=(el&&el.value||'').trim();
+  try{ await api('/api/admin/ella/pending/'+id+'/approve',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:txt})});
+    toast('הלקח אושר — נכנס לפלייבוק',true); ellaLessonsOpen();
+  }catch(e){ toast('האישור נכשל',false); }
+}
+async function ellaPendingAnswer(id){
+  const el=document.getElementById('ellaAns'+id); const txt=(el&&el.value||'').trim();
+  if(txt.length<3){ toast('כתוב תשובה קצת יותר מפורטת',false); return; }
+  try{ await api('/api/admin/ella/pending/'+id+'/answer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:txt})});
+    toast('התשובה שלך הפכה ללקח בפלייבוק ✓',true); ellaLessonsOpen();
+  }catch(e){ toast('השליחה נכשלה',false); }
+}
+async function ellaPendingDel(id){
+  try{ await api('/api/admin/ella/pending/'+id,{method:'DELETE'}); toast('נדחה',true); ellaLessonsOpen(); }
+  catch(e){ toast('הדחייה נכשלה',false); }
 }
 function cargoStTag(cs){
   if(!cs || !cs.text) return '';
