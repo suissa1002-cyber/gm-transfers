@@ -5531,9 +5531,26 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
 
     # תזכורת מלכודת-הצילום (מהזמנה 46847): צילום כרטיס/ת"ז לא מאמת בעלות אלא אם
     # 4 הספרות בצילום = הכרטיס שחויב, והכרטיס נושא שם (לא נטען/אנונימי).
-    card_check = (f" ⚠️ אם הלקוח שולח צילום כרטיס — ודא ש-4 הספרות = הכרטיס שחויב "
-                  f"(****{c4}{' · '+card_issuer if card_issuer else ''}) ושהכרטיס נושא שם "
-                  f"(כרטיס נטען/אנונימי אינו מאמת זהות)." if c4 else "")
+    # ⚠️ חריג Apple/Google Pay (לקח 47879): המספר שאנחנו רואים הוא DPAN — token
+    # וירטואלי שהארנק מייצר; הוא *לעולם לא* יתאים לכרטיס הפיזי בצילום. שם ההשוואה
+    # הנכונה: שם + אותו בנק/מנפיק, או 'מספר חשבון המכשיר' ב-Wallet.
+    wallet_pay = any(w in (str(o.get("payment_method_title") or "").lower())
+                     for w in ("אפל פיי", "גוגל פיי", "apple pay", "google pay"))
+    if wallet_pay and paid:
+        reasons.append("ℹ️ שולם דרך Apple/Google Pay — 4 הספרות אצלנו הן מספר וירטואלי "
+                       "(token); צילום הכרטיס הפיזי לא אמור להתאים להן")
+    if not c4:
+        card_check = ""
+    elif wallet_pay:
+        card_check = (f" ⚠️ שולם ב-Apple/Google Pay: ‏****{c4} הוא token וירטואלי — "
+                      "אל תשווה אותו לצילום הכרטיס הפיזי (לעולם לא יתאים)! אימות נכון: "
+                      "שם על הכרטיס + אותו בנק/מנפיק"
+                      + (f" ({card_issuer})" if card_issuer else "")
+                      + ", או צילום 'מספר חשבון המכשיר' מתוך ה-Wallet (הוא זה שיתאים).")
+    else:
+        card_check = (f" ⚠️ אם הלקוח שולח צילום כרטיס — ודא ש-4 הספרות = הכרטיס שחויב "
+                      f"(****{c4}{' · '+card_issuer if card_issuer else ''}) ושהכרטיס נושא שם "
+                      f"(כרטיס נטען/אנונימי אינו מאמת זהות).")
     _obj = "הקוד" if is_digital_order else "ההזמנה"
     _pickup_hint = (" באיסוף — ודא ת\"ז ע\"ש בעל ההזמנה." if pickup else "")
     action = {
@@ -5562,6 +5579,7 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
             "card_issuer": card_issuer or None,
             "card_bin": card_bin or None,
             "card_type": card_type or None,
+            "wallet_pay": wallet_pay,
             "bin_country": bin_country,
             "bin_bank": binf.get("bank"),
             "bin_brand": binf.get("brand"),

@@ -5517,7 +5517,7 @@ function fraudBanner(f,orderNum){
   const rows=[];
   const R=(lbl,val)=>{ if(val) rows.push(`<span style="color:${MUT};white-space:nowrap">${lbl}</span><span>${val}</span>`); };
   if(s.method) R('אמצעי תשלום',`<b>${escW(s.method)}</b>${s.secure3D!==null&&s.secure3D!==undefined?(s.secure3D?` · <span style="color:${GRN}">3DS ✓</span>`:' · <span>ללא 3DS</span>'):''}`);
-  if(s.card_last4) R('כרטיס שחויב',`<b style="direction:ltr;unicode-bidi:embed">****${escW(s.card_last4)}</b>${s.card_issuer?` · ${escW(s.card_issuer)}`:''}${(s.card_foreign&&!s.bin_country)?` · <b style="color:${RED}">זר ⚠</b>`:''}`);
+  if(s.card_last4) R('כרטיס שחויב',`<b style="direction:ltr;unicode-bidi:embed">****${escW(s.card_last4)}</b>${s.card_issuer?` · ${escW(s.card_issuer)}`:''}${s.wallet_pay?` · <span style="color:${MUT}">Apple/Google Pay — token וירטואלי</span>`:''}${(s.card_foreign&&!s.bin_country)?` · <b style="color:${RED}">זר ⚠</b>`:''}`);
   if(s.card_bin){
     const typeHe={credit:'אשראי',debit:'חיוב',prepaid:'נטען'}[String(s.card_type||'').toLowerCase()]||s.card_type||'';
     const prepaid=String(s.card_type||'').toLowerCase()==='prepaid';
