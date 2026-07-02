@@ -1146,7 +1146,6 @@ function renderDrawer(){
     <div class="dr-sec">מכירות</div>
     <div class="dr-item" onclick="toggleDrawer(false);if(ensureAdmin(payQuickOpen))payQuickOpen()"><span>${ico('receipt',16)}</span><span>קישור תשלום מהיר${lock}</span></div>
     <div class="dr-sec">Hub</div>
-    <div class="dr-item" onclick="toggleDrawer(false);if(ensureAdmin(ellaLessonsOpen))ellaLessonsOpen()"><span>${ico('chat',16)}</span><span>💡 למד את אלה${lock}</span></div>
     <div class="dr-item ${S.view==='tasks'?'active':''}" onclick="hubGo('tasks')"><span>${ico('list',16)}</span><span>משימות סוכנים${lock}</span></div>
     <div class="dr-item ${S.view==='sentinel'?'active':''}" onclick="hubGo('sentinel')"><span>${ico('shield',16)}</span><span>סטטוס Sentinel${lock}</span></div>
     <div class="dr-sec">אפליקציות</div>
@@ -3569,7 +3568,10 @@ function waUriHTML(){
     <div class="wa-uri-box">
       <div class="wa-uri-head">
         <b style="font-size:13.5px">${CLAUDE_ICON_S} אלה <span style="font-size:10px" title="${alive?'הגשר מחובר':'הגשר לא מחובר'}">${dot}</span></b>
-        <button class="btn-ghost" style="padding:2px 8px" onclick="S.waPanel=false;renderWaThread()">✕</button>
+        <span style="display:flex;gap:4px">
+          <button class="btn-ghost" style="padding:2px 8px" title="למד את אלה — פלייבוק ולקחים" onclick="if(ensureAdmin(ellaLessonsOpen))ellaLessonsOpen()">💡</button>
+          <button class="btn-ghost" style="padding:2px 8px" onclick="S.waPanel=false;renderWaThread()">✕</button>
+        </span>
       </div>
       ${note}
       ${waEllaPendingHTML()}
