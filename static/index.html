@@ -2760,7 +2760,7 @@ function waThreadHTML(){
           <div id="waPlusPop" class="wa-canned" style="display:none;width:250px"></div>
           <div id="waAttachPop" class="wa-canned" style="display:none;width:220px"></div>
           <button class="btn-ghost wa-plus" onclick="waTogglePlus()" title="פעולות">＋</button>
-          <button class="btn-ghost wa-claude wa-act" onclick="waToggleUri()" title="אלה — סוכן ה-AI (טיוטות, מלאי, מחירים)">${CLAUDE_ICON}</button>
+          <button class="btn-ghost wa-claude wa-act" onclick="waToggleUri()" title="אלה — סוכן ה-AI (טיוטות, מלאי, מחירים)" style="position:relative">${CLAUDE_ICON}${(S.ellaPending||[]).length?`<span style="position:absolute;top:-4px;inset-inline-end:-4px;background:#7c3aed;color:#fff;border-radius:99px;font-size:9.5px;font-weight:700;padding:1px 5px;line-height:1.4">${S.ellaPending.length}</span>`:''}</button>
           <button class="btn-ghost wa-act wa-ico" onclick="waToggleQuick()" title="תשובות מוכנות / תבניות" ${w.in_window?'':'style="border-color:#dc2626"'}>${ico('zap')}</button>
           <button class="btn-ghost wa-act wa-ico" onclick="waToggleAttach()" title="צרף — תמונה / צילום / קובץ" ${w.in_window?'':'disabled style="opacity:.4"'}>${ico('clip')}</button>
           <button class="btn-ghost wa-act wa-ico" onclick="waKbSwap()" title="החלף פריסת מקלדת עברית⇄אנגלית (אם יצא חירבוש)" style="font-weight:800;font-size:13px;line-height:1">א/A</button>
@@ -3468,8 +3468,53 @@ function waToggleUri(){
   S.waPanel=true; S.waPanelMode='uri';
   renderWaThread(); waUriCheckBridge();
   waUriLoadHistory(S.waPhone);
+  waEllaPendingLoad(true);
   waUriWarmup();
   setTimeout(()=>{ const i=document.getElementById('waUriInput'); if(i) i.focus(); },150);
+}
+// 🎓 טיוטות למידה של אלה — נטענות לפאנל הצ'אט שלה (שאלות אליך + לקחים מוצעים)
+async function waEllaPendingLoad(repaint){
+  try{ const r=await api('/api/admin/ella/pending'); S.ellaPending=(r&&r.rows)||[]; }
+  catch(e){ S.ellaPending=S.ellaPending||[]; }
+  if(repaint && S.waPanel && S.waPanelMode==='uri') renderWaThread();
+}
+function waEllaPendingHTML(){
+  const pend=S.ellaPending||[];
+  if(!pend.length) return '';
+  return pend.map(r=>{
+    if(r.kind==='question') return `<div class="wa-uri-a" style="border-inline-start:3px solid #7c3aed">
+      <div style="font-size:10.5px;color:#7c3aed;font-weight:700;margin-bottom:3px">🎓 למדתי משיחה ויש לי שאלה${r.case_txt?` · ${escW(r.case_txt)}`:''}</div>
+      <div style="font-size:12.5px;line-height:1.5;margin-bottom:6px">${escW(r.text||'')}</div>
+      <div style="display:flex;gap:5px">
+        <input id="waEllaAns${r.id}" placeholder="ענה לי — התשובה תיכנס לפלייבוק שלי" style="flex:1;min-width:0;padding:6px 9px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:12px" onkeydown="if(event.key==='Enter'){event.preventDefault();waEllaAnswer(${r.id})}">
+        <button class="btn-ghost" style="padding:5px 10px;font-size:11.5px;color:#16a34a;border-color:#16a34a55" onclick="waEllaAnswer(${r.id})">ענה</button>
+        <button class="btn-ghost" style="padding:5px 8px;font-size:11.5px;color:var(--muted)" onclick="waEllaDel(${r.id})">✕</button>
+      </div></div>`;
+    return `<div class="wa-uri-a" style="border-inline-start:3px solid #16a34a">
+      <div style="font-size:10.5px;color:#16a34a;font-weight:700;margin-bottom:3px">🎓 למדתי משיחה שענית בה — לקח מוצע לאישורך</div>
+      <textarea id="waEllaPend${r.id}" rows="2" style="width:100%;box-sizing:border-box;padding:6px 9px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:12px;resize:vertical;margin-bottom:5px">${escW(r.text||'')}</textarea>
+      <div style="display:flex;gap:5px;justify-content:flex-end">
+        <button class="btn-ghost" style="padding:5px 8px;font-size:11.5px;color:var(--muted)" onclick="waEllaDel(${r.id})">דחה</button>
+        <button class="btn-ghost" style="padding:5px 12px;font-size:11.5px;color:#16a34a;border-color:#16a34a55;font-weight:700" onclick="waEllaApprove(${r.id})">אשר ✓</button>
+      </div></div>`;
+  }).join('');
+}
+async function waEllaAnswer(id){
+  const el=document.getElementById('waEllaAns'+id); const txt=(el&&el.value||'').trim();
+  if(txt.length<3){ toast('כתוב תשובה קצת יותר מפורטת',false); return; }
+  try{ await api('/api/admin/ella/pending/'+id+'/answer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:txt})});
+    toast('תודה! התשובה נכנסה לפלייבוק של אלה ✓',true); waEllaPendingLoad(true);
+  }catch(e){ toast('השליחה נכשלה',false); }
+}
+async function waEllaApprove(id){
+  const el=document.getElementById('waEllaPend'+id); const txt=(el&&el.value||'').trim();
+  try{ await api('/api/admin/ella/pending/'+id+'/approve',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:txt})});
+    toast('הלקח אושר — נכנס לפלייבוק ✓',true); waEllaPendingLoad(true);
+  }catch(e){ toast('האישור נכשל',false); }
+}
+async function waEllaDel(id){
+  try{ await api('/api/admin/ella/pending/'+id,{method:'DELETE'}); toast('נדחה',true); waEllaPendingLoad(true); }
+  catch(e){ toast('הדחייה נכשלה',false); }
 }
 function waUriWarmup(){
   // ברגע שהפאנל נפתח — הגשר טוען את ההקשר ברקע; השאלה האמיתית תרוץ על סשן חם (מהיר)
@@ -3528,6 +3573,7 @@ function waUriHTML(){
         <button class="btn-ghost" style="padding:2px 8px" onclick="S.waPanel=false;renderWaThread()">✕</button>
       </div>
       ${note}
+      ${waEllaPendingHTML()}
       <div id="waUriMsgs" class="wa-uri-msgs">
         ${chat.length?chat.map(waUriMsgHTML).join(''):'<div class="muted" style="font-size:12px;padding:4px">שאל את אלה על השיחה — מלאי, מחירים, ניסוח תשובה…<br>למשל: "בדוק אם יש במלאי ונסח תשובה"</div>'}
       </div>
@@ -4434,6 +4480,7 @@ async function openWaConv(phone){
     const r=((S.waSrvResults||{}).rows||[]).find(c=>c.phone===phone);
     if(r){ S.waConvs=S.waConvs||[]; S.waConvs.unshift(r); }
   }
+  if(S.ellaPending===undefined) waEllaPendingLoad(true);   // 🎓 באדג' על ✨ כשמשהו מחכה
   S.waPhone=phone; S.waThread=null; S.waContact=null; S.waReplyTo=null;
   const lay=document.getElementById('waLayout'); if(lay) lay.classList.add('thread-open');
   const bar=document.getElementById('waBar'); if(bar&&window.innerWidth<=760) bar.classList.add('wa-bar-hidden');
