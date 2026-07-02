@@ -5417,7 +5417,7 @@ async function lsSendTransfer(){
 
 // ── 🧾 טאב הזמנות: חלון מלא להזמנות האתר (קריאה/עריכה דרך WC REST, בלי אחסון אצלנו) ──
 const WC_ST_COLORS={pending:'#b45309',processing:'#15803d','on-hold':'#b45309',completed:'#1d4ed8',
-                    cancelled:'#6b7280',refunded:'#6b7280',failed:'#b91c1c',
+                    cancelled:'#6b7280',refunded:'#6b7280',failed:'#b91c1c',trash:'#9ca3af',
                     'shipping-stage':'#7c3aed','order-ready':'#0d9488','tlv-pickup':'#0369a1','delivered':'#1d4ed8'};
 function shipTagHTML(t,size){
   if(!t) return '';
@@ -5425,7 +5425,7 @@ function shipTagHTML(t,size){
   const icon={tlv:'pkg',pickup:'pin',express:'zap'}[k]||'truck';
   return `<span style="display:inline-flex;align-items:center;gap:4px;white-space:nowrap">${ico(icon,size||12)} ${escW(label)}</span>`;
 }
-function ordStName(st){ return (S.wcoStatuses||{})[st]||WA_STATUS[st]||st; }
+function ordStName(st){ if(st==='trash')return '🗑 בפח'; return (S.wcoStatuses||{})[st]||WA_STATUS[st]||st; }
 function ordTag(st){
   const c=WC_ST_COLORS[st]||'#6b7280';
   return `<span class="ord-st" style="color:${c};border-color:${c}55;background:${c}14">${escW(ordStName(st))}</span>`;
@@ -5650,7 +5650,7 @@ function renderWcOrders(){
   const W=S.wco;
   const chips=[['','הכל'],['express','⚡ אקספרס'],['processing','בטיפול'],['on-hold','בהמתנה'],
                ['shipping-stage','בהפצה'],['order-ready','מוכנה'],['tlv-pickup','נק׳ ת״א'],
-               ['completed','הושלם'],['cancelled','בוטל'],['refunded','זוכה']]
+               ['completed','הושלם'],['cancelled','בוטל'],['refunded','זוכה'],['trash','🗑 פח']]
     .map(([k,t])=>`<button class="btn-ghost" style="padding:6px 12px;font-size:13px${W.status===k?';border-color:#16a34a;color:#16a34a;font-weight:700':''}"
       onclick="S.wco.status='${k}';S.wco.page=1;loadWcOrders()">${t}</button>`).join('');
   // נפתח גם מקונסולת הניהול וגם מלוח הקליטה של סניף אתר — כותרת לפי ההקשר
