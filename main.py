@@ -5206,13 +5206,13 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
     prior_clean = _repeat_customer(email, o.get("id"))
     if prior_clean >= 3:
         risk = max(0, risk - 3)
-        reasons.append(f"לקוח חוזר — {prior_clean} הזמנות שהושלמו בעבר")
+        reasons.append(f"✅ לקוח חוזר — {prior_clean} הזמנות שהושלמו בעבר")
     elif prior_clean == 2:
         risk = max(0, risk - 2)
-        reasons.append("לקוח חוזר — 2 הזמנות שהושלמו בעבר")
+        reasons.append("✅ לקוח חוזר — 2 הזמנות שהושלמו בעבר")
     elif prior_clean == 1:
         risk = max(0, risk - 1)
-        reasons.append("הזמנה תקינה אחת בעבר")
+        reasons.append("✅ הזמנה תקינה אחת בעבר — לקוח מוכר")
     if email_established:   # מייל ותיק (שנים) = זהות מבוססת (פרודן משתמש במייל טרי)
         risk = max(0, risk - 1)
         reasons.append(f"✅ מייל מבוסס — קיים {fs_human} (זהות ותיקה, לא טרייה)")
