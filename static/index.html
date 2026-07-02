@@ -5425,10 +5425,11 @@ function shipTagHTML(t,size){
   const icon={tlv:'pkg',pickup:'pin',express:'zap'}[k]||'truck';
   return `<span style="display:inline-flex;align-items:center;gap:4px;white-space:nowrap">${ico(icon,size||12)} ${escW(label)}</span>`;
 }
-function ordStName(st){ if(st==='trash')return '🗑 בפח'; return (S.wcoStatuses||{})[st]||WA_STATUS[st]||st; }
+function ordStName(st){ if(st==='trash')return 'בפח'; return (S.wcoStatuses||{})[st]||WA_STATUS[st]||st; }
 function ordTag(st){
   const c=WC_ST_COLORS[st]||'#6b7280';
-  return `<span class="ord-st" style="color:${c};border-color:${c}55;background:${c}14">${escW(ordStName(st))}</span>`;
+  const nm=st==='trash'?`${ico('trash',12)} בפח`:escW(ordStName(st));
+  return `<span class="ord-st" style="color:${c};border-color:${c}55;background:${c}14;display:inline-flex;align-items:center;gap:4px">${nm}</span>`;
 }
 // אייקוני סטטוס שיריון/מלאי על שורת הזמנה: שודר / חסר / שודר חלקי (גם שודר וגם חסר) / מק״ט חסר
 // פירוט סניפי השידור + כמויות (הזמנה רב-יחידתית מתפצלת בין סניפים): "גן העיר (1) · סיטי (1)"
@@ -5650,7 +5651,8 @@ function renderWcOrders(){
   const W=S.wco;
   const chips=[['','הכל'],['express','⚡ אקספרס'],['processing','בטיפול'],['on-hold','בהמתנה'],
                ['shipping-stage','בהפצה'],['order-ready','מוכנה'],['tlv-pickup','נק׳ ת״א'],
-               ['completed','הושלם'],['cancelled','בוטל'],['refunded','זוכה'],['trash','🗑 פח']]
+               ['completed','הושלם'],['cancelled','בוטל'],['refunded','זוכה'],
+               ['trash',`<span style="display:inline-flex;align-items:center;gap:4px;vertical-align:-2px">${ico('trash',13)} פח</span>`]]
     .map(([k,t])=>`<button class="btn-ghost" style="padding:6px 12px;font-size:13px${W.status===k?';border-color:#16a34a;color:#16a34a;font-weight:700':''}"
       onclick="S.wco.status='${k}';S.wco.page=1;loadWcOrders()">${t}</button>`).join('');
   // נפתח גם מקונסולת הניהול וגם מלוח הקליטה של סניף אתר — כותרת לפי ההקשר
@@ -5763,7 +5765,7 @@ function wcoListHTML(){
   if(!(W.rows||[]).length) return '<div class="empty">אין הזמנות תואמות</div>';
   const fmtD=d=>{ const x=new Date(d); return isNaN(x)?'':x.toLocaleDateString('he-IL')+' '+x.toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'}); };
   const rows=W.rows.map(o=>`
-    <tr class="ls-row" onclick="openWcOrder(${o.id})">
+    <tr class="ls-row" onclick="openWcOrder(${o.id})"${o.status==='trash'?' style="opacity:.5;filter:grayscale(1)" title="הזמנה בפח"':''}>
       <td><b>#${o.number}</b>${o.greenos?' <span title="נוצרה ב-GreenOS" style="color:#16a34a">●</span>':''}</td>
       <td class="muted" style="font-size:12px;white-space:nowrap">${fmtD(o.date)}${o.ship_tag?`<div style="font-size:10.5px;margin-top:2px">${shipTagHTML(o.ship_tag,11)}</div>`:''}</td>
       <td><b>${escW(o.name||'—')}</b><div class="muted" style="font-size:11.5px;direction:ltr;text-align:end">${escW(o.phone||'')}</div></td>
@@ -5775,7 +5777,7 @@ function wcoListHTML(){
 
     </tr>`).join('');
   const cards=W.rows.map(o=>`
-    <div class="ls-card" onclick="openWcOrder(${o.id})">
+    <div class="ls-card" onclick="openWcOrder(${o.id})"${o.status==='trash'?' style="opacity:.5;filter:grayscale(1)"':''}>
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
         <b>#${o.number} · ${escW(o.name||'—')}</b><div style="display:inline-flex;align-items:center;gap:6px;flex:none;flex-wrap:wrap;justify-content:flex-end">${impDeliveryTag(o.importer_delivery)}${cargoStTag(o.cargo_status)}${ordFlagIcons(o,15)}${ordTag(o.status)}</div>
       </div>
