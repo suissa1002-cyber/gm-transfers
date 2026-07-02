@@ -5674,6 +5674,7 @@ def admin_orders_list(page: int = 1, status: str = "", search: str = "",
             "greenos": bool(meta.get("greenos_source")),
             "cargo": bool(meta.get("cslfw_shipping")),
             "cargo_status": _cargo_status(meta, (o.get("billing") or {}).get("email") or ""),
+            "importer_delivery": bool(meta.get("greenos_importer_delivery")),
         })
     if express:               # רק הזמנות אקספרס (מכל הסטטוסים, מתוך 100 האחרונות)
         out = [o for o in out if (o.get("ship_tag") or "").startswith("express")]
@@ -5937,9 +5938,34 @@ def admin_order_detail(oid: int, x_admin_key: Optional[str] = Header(None)):
         "greenos": {kk: vv for kk, vv in meta.items() if str(kk).startswith("greenos")},
         "cargo": meta.get("cslfw_shipping") or None,
         "cargo_status": _cargo_status(meta, (o.get("billing") or {}).get("email") or ""),
+        "importer_delivery": bool(meta.get("greenos_importer_delivery")),
         "notes": notes,
         "admin_url": f"{base}/wp-admin/post.php?post={oid}&action=edit",
     }
+
+
+@app.post("/api/admin/orders/{oid}/importer-delivery")
+def admin_order_importer_delivery(oid: int, on: int = 1,
+                                  x_admin_key: Optional[str] = Header(None)):
+    """סימון/ביטול 'הפצה ישירה מהיבואן לבית הלקוח' (dropship — למשל כיסאות שאין
+    במלאי). תג מובחן לצד הסטטוס, כמו תג ה-Cargo. on=1 מסמן, on=0 מבטל."""
+    _require_admin(x_admin_key)
+    import requests as _rq
+    base, k, s = _wc_creds()
+    r = _rq.put(f"{base}/wp-json/wc/v3/orders/{oid}",
+                json={"meta_data": [{"key": "greenos_importer_delivery",
+                                     "value": "1" if on else ""}]},
+                auth=(k, s), timeout=30)
+    if not r.ok:
+        raise HTTPException(502, f"עדכון נכשל ({r.status_code})")
+    try:
+        note = ("🚚 סומן: הפצה ישירה מהיבואן לבית הלקוח — דרך GreenOS" if on
+                else "🚚 בוטל סימון הפצת יבואן — דרך GreenOS")
+        _rq.post(f"{base}/wp-json/wc/v3/orders/{oid}/notes", auth=(k, s),
+                 json={"note": note, "customer_note": False}, timeout=20)
+    except Exception:  # noqa: BLE001
+        pass
+    return {"ok": True, "importer_delivery": bool(on)}
 
 
 @app.post("/api/admin/orders/{oid}/return")
