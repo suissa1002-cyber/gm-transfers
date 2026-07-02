@@ -7256,6 +7256,20 @@ def _cargo_delivery_sync_job():
             try:
                 meta = {m.get("key"): m.get("value") for m in (o.get("meta_data") or [])}
                 cs = _cargo_status(meta)
+                if cs and int(cs.get("num") or 0) != 3:
+                    # סטטוס תקוע? התוסף באתר מתעדכן רק בקרון שלו (לא אמין) — מרעננים
+                    # חי מול Cargo API דרך הגשר (gm-cargo/v1/refresh, מגרסה 1.1.0).
+                    # נכשל/404 (תוסף ישן) → ממשיכים עם ה-meta הקיים כמו קודם.
+                    try:
+                        rr = _rq.post(f"{base}/wp-json/gm-cargo/v1/refresh/{o.get('id')}",
+                                      auth=_wp_app_auth(), headers={"User-Agent": _PP_UA},
+                                      timeout=60)
+                        if rr.ok and (rr.json() or {}).get("ok"):
+                            fresh = rr.json().get("shipments") or {}
+                            if fresh:
+                                cs = _cargo_status({"cslfw_shipping": fresh})
+                    except Exception:  # noqa: BLE001
+                        pass
                 if not cs or int(cs.get("num") or 0) != 3:     # 3 = נמסר
                     continue
                 oid, onum = o.get("id"), o.get("number")
