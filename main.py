@@ -1427,11 +1427,13 @@ _repairs_sum_cache = {"at": 0.0, "data": None}
 
 @app.get("/api/admin/repairs/summary")
 def admin_repairs_summary(fresh: int = 0, x_admin_key: Optional[str] = Header(None)):
-    """סיכום תיקוני מעבדה להיום, לפי סניף (ספרה ראשונה של fixId = סניף):
+    """סיכום תיקוני מעבדה, לפי סניף (ספרה ראשונה של fixId = סניף):
     • התקבלו ושוחררו היום (כמות+סכום) • התקבלו היום וטרם שוחררו (כמות)
-    • שוחררו היום מהמתנה קודמת (כמות+סכום) • פתוחים במעבדה (כמות+ותיק ביותר).
+    • שוחררו היום מהמתנה קודמת (כמות+סכום) • פתוחים במעבדה (כמות+ותיק ביותר)
+    • תקועים 7+ ימים • מוכנים (fixedDate) וממתינים לאיסוף • תיקונים חוזרים
+    (אותו טלפון תוך 30 יום משחרור קודם) • זמן טיפול ממוצע • הכנסות חודש/חודש-שעבר.
     NewOrder /api/Fixes מסונן לפי creationDate ומוגבל ~100 לתשובה → מושכים
-    בפרוסות שבועיות 56 ימים אחורה (תיקון ותיק מזה כמעט לא משתחרר). cache 5 דק'."""
+    בפרוסות שבועיות 70 יום אחורה (מכסה חודש קלנדרי קודם מלא). cache 5 דק'."""
     _require_admin(x_admin_key)
     import time as _t
     from datetime import datetime as _dt, timedelta as _td
@@ -1455,7 +1457,7 @@ def admin_repairs_summary(fresh: int = 0, x_admin_key: Optional[str] = Header(No
             return None
 
     fixes = {}
-    for i in range(8):                                   # 8 פרוסות של 7 ימים = 56 יום
+    for i in range(10):                                  # 10 פרוסות של 7 ימים = 70 יום
         frm = today - _td(days=7 * (i + 1) - 1)
         to = today - _td(days=7 * i - (1 if i == 0 else 0))
         try:
@@ -1468,12 +1470,21 @@ def admin_repairs_summary(fresh: int = 0, x_admin_key: Optional[str] = Header(No
     def _empty():
         return {"rec_rel": {"count": 0, "sum": 0.0}, "rec_open": {"count": 0},
                 "rel_old": {"count": 0, "sum": 0.0},
-                "open": {"count": 0, "oldest_days": 0}}
+                "open": {"count": 0, "oldest_days": 0},
+                "stuck7": {"count": 0}, "awaiting": {"count": 0},
+                "repeat": {"count": 0},
+                "turnaround": {"days": 0, "count": 0},
+                "month": {"cur": {"sum": 0.0, "count": 0}, "prev": {"sum": 0.0, "count": 0}}}
     out = {str(b): _empty() for b in (1, 2, 3, 4)}
     out["all"] = _empty()
+    m_cur = (today.year, today.month)
+    m_prev = (today.year - 1, 12) if today.month == 1 else (today.year, today.month - 1)
+
+    def _charge(f):
+        return float(f.get("invoiceCharge") or 0) or float(f.get("estimatedCharge") or 0)
 
     def _bump(bucket, f, created, delivered):
-        charge = float(f.get("invoiceCharge") or 0) or float(f.get("estimatedCharge") or 0)
+        charge = _charge(f)
         st = str(f.get("statusName") or "")
         cancelled = "בוטל" in st
         if created == today and delivered == today:
@@ -1490,18 +1501,86 @@ def admin_repairs_summary(fresh: int = 0, x_admin_key: Optional[str] = Header(No
             if age > bucket["open"]["oldest_days"]:
                 bucket["open"]["oldest_days"] = age
 
+    # 🔁 תיקון חוזר: אותו טלפון לקוח פותח תיקון חדש תוך 30 יום משחרור תיקון קודם
+    by_phone = {}
+    for f in fixes.values():
+        ph = str(((f.get("customer") or {}).get("phoneNumber")) or "").strip()
+        if ph:
+            by_phone.setdefault(ph, []).append(f)
+
+    def _prev_delivered(f, created):
+        ph = str(((f.get("customer") or {}).get("phoneNumber")) or "").strip()
+        if not ph or not created:
+            return None
+        best = None
+        for g in by_phone.get(ph, []):
+            if g.get("fixId") == f.get("fixId"):
+                continue
+            gd = _pd(g.get("deliveredDate"))
+            if gd and 0 <= (created - gd).days <= 30:
+                if best is None or gd > best[0]:
+                    best = (gd, g)
+        return best
+
+    def _row(f, br, days):
+        cust = f.get("customer") or {}
+        dev = f.get("deviceInfo") or {}
+        return {"id": f.get("fixId"), "br": br, "days": days,
+                "name": (cust.get("name") or "").strip(),
+                "phone": (cust.get("phoneNumber") or "").strip(),
+                "model": (dev.get("model") or "").strip(),
+                "status": str(f.get("statusName") or "").strip(),
+                "charge": _charge(f)}
+
+    rows = {"stuck": [], "awaiting": [], "repeat": []}
     for f in fixes.values():
         created = _pd(f.get("creationDate"))
         delivered = _pd(f.get("deliveredDate"))
+        fixed = _pd(f.get("fixedDate"))
+        cancelled = "בוטל" in str(f.get("statusName") or "")
         try:
             br = int(str(f.get("fixId"))[0])
         except Exception:  # noqa: BLE001
             br = 0
-        if str(br) in out:
-            _bump(out[str(br)], f, created, delivered)
-        _bump(out["all"], f, created, delivered)
+        rep = _prev_delivered(f, created)
+        buckets = ([out[str(br)]] if str(br) in out else []) + [out["all"]]
+        for b in buckets:
+            _bump(b, f, created, delivered)
+            if delivered and created and delivered >= created:
+                b["turnaround"]["days"] += (delivered - created).days
+                b["turnaround"]["count"] += 1
+            if delivered:
+                ym = (delivered.year, delivered.month)
+                mk = "cur" if ym == m_cur else ("prev" if ym == m_prev else None)
+                if mk:
+                    b["month"][mk]["sum"] += _charge(f)
+                    b["month"][mk]["count"] += 1
+            if not delivered and not cancelled:
+                if created and (today - created).days > 7:
+                    b["stuck7"]["count"] += 1
+                if fixed:
+                    b["awaiting"]["count"] += 1
+            if rep:
+                b["repeat"]["count"] += 1
+        if not delivered and not cancelled:
+            if created and (today - created).days > 7:
+                rows["stuck"].append(_row(f, br, (today - created).days))
+            if fixed:
+                rows["awaiting"].append(_row(f, br, (today - fixed).days))
+        if rep:
+            r = _row(f, br, (created - rep[0]).days)
+            r["prev_id"] = rep[1].get("fixId")
+            rows["repeat"].append(r)
 
-    data = {"date": str(today), "branches": out, "scanned": len(fixes)}
+    for k in rows:
+        rows[k].sort(key=lambda r: -r["days"])
+        rows[k] = rows[k][:80]
+    for b in out.values():
+        t = b["turnaround"]
+        b["turnaround"] = {"avg_days": round(t["days"] / t["count"], 1) if t["count"] else None,
+                           "count": t["count"]}
+
+    data = {"date": str(today), "branches": out, "rows": rows, "scanned": len(fixes)}
     _repairs_sum_cache["data"] = data
     _repairs_sum_cache["at"] = _t.time()
     return data

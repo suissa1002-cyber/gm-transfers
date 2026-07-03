@@ -6904,6 +6904,33 @@ async function loadHomeRepairs(force){
   S.homeRepairsLoading=false;
   if(S.view==='home')renderHome();
 }
+// רשימות פירוט מעבדה (תקועים / ממתינים לאיסוף / חוזרים) — מסונן לסניף הנבחר, ממוין לפי ימים
+function repairsListOpen(kind){
+  const rp=S.homeRepairs; if(!rp||!rp.rows){ toast('הנתונים עוד נטענים…',true); return; }
+  S.homeLastTouch=Date.now();
+  const rb=String(S.homeRepBranch||'all');
+  const brName={'1':'גן העיר','2':'סטאר','3':'סיטי','4':'עד הלום'};
+  const meta={ stuck:   {t:'🔥 תקועים במעבדה 7+ ימים', d:'ימים במעבדה'},
+               awaiting:{t:'📦 מוכנים וממתינים לאיסוף', d:'ימים מאז שתוקן'},
+               repeat:  {t:'🔁 תיקונים חוזרים (30 יום)', d:'ימים משחרור קודם'} }[kind];
+  let list=(rp.rows[kind]||[]); if(rb!=='all') list=list.filter(r=>String(r.br)===rb);
+  const rows=list.map(r=>`<div style="display:flex;gap:9px;padding:9px 2px;border-bottom:1px solid var(--line);align-items:center">
+      <span style="flex:none;background:var(--card2);border-radius:8px;padding:3px 8px;font-size:12px;font-weight:800">${r.days} י׳</span>
+      <span style="flex:1;min-width:0">
+        <b style="font-size:13px">${escW(r.name||'ללא שם')}</b>${r.model?` <span class="muted" style="font-size:12px">· ${escW(r.model)}</span>`:''}<br>
+        <span class="muted" style="font-size:11.5px">#${escW(String(r.id||''))} · ${brName[String(r.br)]||('סניף '+r.br)}${r.status?` · ${escW(r.status)}`:''}${r.charge?` · ${_il(r.charge)}`:''}${kind==='repeat'&&r.prev_id?` · תיקון קודם #${escW(String(r.prev_id))}`:''}</span>
+      </span>
+      ${r.phone?`<a href="tel:${escW(r.phone)}" onclick="event.stopPropagation()" style="flex:none;text-decoration:none;font-size:16px" title="${escW(r.phone)}">📞</a>`:''}
+    </div>`).join('')||'<div class="empty" style="padding:18px 0">אין רשומות 🙂</div>';
+  document.getElementById('modalRoot').innerHTML=`<div class="overlay" onclick="closeModal()"><div class="modal" style="max-width:440px;width:calc(100vw - 32px);text-align:right;padding:18px;max-height:80vh;display:flex;flex-direction:column" onclick="event.stopPropagation()">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <h3 style="margin:0;font-size:16px">${meta.t}</h3>
+      <button onclick="closeModal()" style="background:var(--card2);border:0;width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:15px;color:var(--txt)">✕</button>
+    </div>
+    <div class="muted" style="font-size:12px;margin-bottom:8px">${list.length} רשומות · ${rb==='all'?'כל הסניפים':brName[rb]} · ממוין לפי ${meta.d}</div>
+    <div style="overflow-y:auto;flex:1;min-height:0">${rows}</div>
+  </div></div>`;
+}
 function homeSalesPeriod(p){ S.homeLastTouch=Date.now(); if(p==='range'){ homeSalesRangeOpen(); return; } S.homeSalesPeriod=p; S.homeSalesRange=null; S.homeSalesLoading=true; if(S.view==='home')renderHome(); loadHomeSales(); }
 async function loadHomeSales(){
   try{
@@ -7224,7 +7251,21 @@ function renderHome(){
          <div style="flex:1;min-width:130px;text-align:center;background:var(--card2);border:1px solid var(--line);border-radius:11px;padding:10px 6px"><div style="font-size:22px;font-weight:800;color:#d97706">${rd.rec_open.count}</div><div class="muted" style="font-size:11px">התקבלו היום · בטיפול</div><div class="muted" style="font-size:12px;margin-top:2px">—</div></div>
          <div style="flex:1;min-width:130px;text-align:center;background:var(--card2);border:1px solid var(--line);border-radius:11px;padding:10px 6px"><div style="font-size:22px;font-weight:800;color:#2563eb">${rd.rel_old.count}</div><div class="muted" style="font-size:11px">שוחררו היום מהמתנה</div><div style="font-size:12px;font-weight:700;color:#2563eb;margin-top:2px">${_il(rd.rel_old.sum)}</div></div>
        </div>
-       <div class="muted" style="font-size:12px">🔧 פתוחים במעבדה כרגע: <b>${rd.open.count}</b>${rd.open.count?` · הוותיק ביותר ממתין <b>${rd.open.oldest_days}</b> ימים`:''}</div>`
+       <div class="muted" style="font-size:12px;margin-bottom:11px">🔧 פתוחים במעבדה כרגע: <b>${rd.open.count}</b>${rd.open.count?` · הוותיק ביותר ממתין <b>${rd.open.oldest_days}</b> ימים`:''}</div>
+       ${(()=>{ // שורת מדדי עומק — קליק על תקועים/ממתינים/חוזרים פותח רשימה מפורטת
+         const st=(rd.stuck7||{}).count||0, aw=(rd.awaiting||{}).count||0, rp=(rd.repeat||{}).count||0;
+         const ta=rd.turnaround||{}; const mo=rd.month||{cur:{},prev:{}};
+         const chip=(icon,val,label,sub,kind,warn)=>`<div ${kind?`onclick="repairsListOpen('${kind}')"`:''} style="flex:1;min-width:105px;background:var(--card2);border:1px solid ${warn?'#f59e0b55':'var(--line)'};border-radius:11px;padding:8px 6px;text-align:center${kind?';cursor:pointer':''}">
+           <div style="font-size:16px;font-weight:800;${warn?'color:#d97706':''}">${icon} ${val}</div>
+           <div class="muted" style="font-size:10.5px;margin-top:1px">${label}</div>
+           ${sub?`<div class="muted" style="font-size:10px">${sub}</div>`:''}</div>`;
+         return `<div style="display:flex;gap:8px;flex-wrap:wrap">
+           ${chip('⏱',ta.avg_days!=null?ta.avg_days+' י׳':'—','זמן טיפול ממוצע',ta.count?`על ${ta.count} תיקונים · 70 יום`:'','')}
+           ${chip('🔥',st,'תקועים 7+ ימים',st?'לחץ לרשימה':'','stuck',st>0)}
+           ${chip('📦',aw,'מוכנים · ממתינים לאיסוף',aw?'לחץ לרשימה':'','awaiting')}
+           ${chip('🔁',rp,'תיקונים חוזרים (30 י׳)',rp?'לחץ לרשימה':'','repeat')}
+           ${chip('💰',_il((mo.cur||{}).sum||0),'הכנסות מעבדה החודש',`חודש שעבר: ${_il((mo.prev||{}).sum||0)}`,'')}
+         </div>`; })()}`
        :'<div class="muted" style="font-size:13px;padding:6px 0">⏳ טוען נתוני מעבדה…</div>'}`,
       'margin-bottom:13px');
   }
