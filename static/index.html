@@ -7235,7 +7235,7 @@ function renderHome(){
     return `<button onclick="homeSalesBranch('${b.id}')" style="flex:1;min-width:92px;background:${sel?'#16a34a':'var(--card2)'};color:${sel?'#fff':'var(--txt)'};border:1px solid ${sel?'#16a34a':'var(--line)'};border-radius:11px;padding:8px 6px;cursor:pointer;font-family:inherit;text-align:center">
       <div style="font-size:12px;font-weight:600">${b.n}</div>
       <div style="font-size:15px;font-weight:800;margin-top:2px">${_il(rev)}</div>
-      ${rep>0?`<div style="font-size:10px;margin-top:1px;color:${sel?'#d1fae5':'var(--muted)'}">🛠 מעבדה ${_il(rep)}</div>`:''}</button>`; };
+      ${rep>0?`<div style="font-size:10px;margin-top:1px;color:${sel?'#d1fae5':'var(--muted)'}">כולל מעבדה ${_il(rep)}</div>`:''}</button>`; };
   const tt=sd.today||{revenue:0,count:0,credits:0};
   const per=S.homeSalesPeriod||'today';
   const perLabel=per==='yesterday'?'אתמול':(per==='range'?((sd.from||'')+' – '+(sd.to||'')):'היום');
@@ -7246,7 +7246,7 @@ function renderHome(){
      <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:13px">${branches.map(brTile).join('')}</div>
      <div style="display:flex;gap:10px;margin-bottom:13px">
        ${(()=>{ const curRep=(d.reprev&&d.reprev.sum)||0;  // מעבדה לחתך הנוכחי (סניף+תקופה)
-         return `<div style="flex:1;text-align:center"><div style="font-size:24px;font-weight:800;color:#16a34a">${_il((tt.revenue||0)+curRep)}</div><div class="muted" style="font-size:11px">מכירות${curRep?` · מזה מעבדה ${_il(curRep)}`:''}</div></div>`; })()}
+         return `<div style="flex:1;text-align:center"><div style="font-size:24px;font-weight:800;color:#16a34a">${_il((tt.revenue||0)+curRep)}</div><div class="muted" style="font-size:11px">מכירות${curRep?` · כולל מעבדה ${_il(curRep)}`:''}</div></div>`; })()}
        <div style="flex:1;text-align:center"><div style="font-size:24px;font-weight:800">${tt.count||0}</div><div class="muted" style="font-size:11px">עסקאות</div></div>
        <div style="flex:1;text-align:center"><div style="font-size:24px;font-weight:800;color:#dc2626">${_il(tt.credits)}</div><div class="muted" style="font-size:11px">זיכויים</div></div>
      </div>
