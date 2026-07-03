@@ -1546,7 +1546,7 @@ async function renderBoard(app, silent){
   app.innerHTML=`
     ${branchTabsHTML()}
     <h1 class="title" style="display:flex;align-items:center;gap:8px">${ico('inbox',19)} קליטת מכשירים נכנסים</h1>
-    <div style="text-align:center">${notifBtn}</div>
+    <div style="text-align:center">${notifBtn} <button class="btn-ghost" style="margin-bottom:12px;display:inline-flex;align-items:center;gap:6px;color:#7c3aed;border-color:#7c3aed55" onclick="stellrPosOpen()">🎫 הנפקת קוד דיגיטלי</button></div>
     ${bcHtml}
     <div class="panel board-scan">
       ${needEmp
@@ -5736,6 +5736,78 @@ async function stellrIssue(num,opts){
     else toast('הונפקו '+(r.issued||0)+' קודים ✓',true);
   }catch(e){ toast('שגיאה בהנפקה',false); }
   stellrBoxLoad(num);
+}
+// ── 🎫 הנפקת קוד בקופה (עמוד הסניפים) — קבלה+טלפון → וואטסאפ / הדפסה / שחזור ──
+function stellrPosOpen(){
+  const inp='width:100%;box-sizing:border-box;padding:12px;border:1.5px solid var(--line);border-radius:11px;background:var(--bg);color:var(--txt);font-size:16px;font-family:inherit';
+  const btn=(txt,col,oc)=>`<button onclick="${oc}" style="flex:1;min-width:130px;padding:12px 10px;border-radius:11px;border:1.5px solid ${col};background:${col}14;color:${col};font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">${txt}</button>`;
+  document.getElementById('modalRoot').innerHTML=`<div class="overlay" onclick="closeModal()"><div class="modal" style="max-width:400px;width:calc(100vw - 32px);text-align:right;padding:20px" onclick="event.stopPropagation()">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <h3 style="margin:0;font-size:17px">🎫 הנפקת קוד דיגיטלי</h3>
+      <button onclick="closeModal()" style="background:var(--card2);border:0;width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:15px;color:var(--txt)">✕</button>
+    </div>
+    <div class="muted" style="font-size:12.5px;line-height:1.5;margin-bottom:12px">חייבו את הלקוח בקופה קודם. הזינו את מספר הקבלה שהרגע הופקה — המערכת תאתר אותה, תוודא תשלום ותנפיק את הקוד.</div>
+    <label class="muted" style="font-size:12px">מספר קבלה מהקופה</label>
+    <input id="spBill" style="${inp};margin:4px 0 12px" inputmode="numeric" placeholder="למשל 50001194">
+    <label class="muted" style="font-size:12px">טלפון הלקוח (לשליחה בוואטסאפ)</label>
+    <input id="spPhone" style="${inp};margin:4px 0 16px" inputmode="tel" placeholder="050-0000000">
+    <div style="display:flex;gap:9px;flex-wrap:wrap">
+      ${btn('💬 הנפק ושלח בוואטסאפ','#16a34a',"stellrPosGo('wa')")}
+      ${btn('🖨 הנפק והדפס','#2563eb',"stellrPosGo('print')")}
+    </div>
+    <div style="margin-top:12px;text-align:center"><a onclick="stellrPosGo('recover')" style="font-size:12.5px;color:var(--muted);text-decoration:underline;cursor:pointer">שחזור קוד שכבר הונפק (אבד/לא הודפס)</a></div>
+    <div id="spMsg" style="margin-top:10px;font-size:13px"></div>
+  </div></div>`;
+  setTimeout(()=>{ const b=document.getElementById('spBill'); if(b) b.focus(); },100);
+}
+async function stellrPosGo(mode){
+  const bill=(document.getElementById('spBill')||{}).value||'';
+  const phone=(document.getElementById('spPhone')||{}).value||'';
+  const msg=document.getElementById('spMsg');
+  const say=(t,col)=>{ if(msg){ msg.style.color=col||'var(--txt)'; msg.innerHTML=t; } };
+  if(!bill.trim()){ say('⚠️ הזינו מספר קבלה','#dc2626'); return; }
+  const recover=(mode==='recover');
+  const sendWa=(mode==='wa');
+  if(sendWa && phone.replace(/\D/g,'').length<9){ say('⚠️ הזינו טלפון תקין לשליחה','#dc2626'); return; }
+  let rMode=sendWa?'wa':'print';
+  if(recover){ rMode=phone.replace(/\D/g,'').length>=9?'wa':'print'; }
+  say(recover?'⏳ מאתר את הקוד שהונפק…':'⏳ מאתר את הקבלה ומנפיק…','var(--muted)');
+  let r;
+  try{
+    const headers={'Content-Type':'application/json'};
+    if(S.adminKey) headers['X-Admin-Key']=S.adminKey;
+    if(S.deviceToken) headers['X-Device-Token']=S.deviceToken;
+    const resp=await fetchT('/api/board/stellr/issue',{method:'POST',headers,
+      body:JSON.stringify({bill:bill.trim(),phone,mode:rMode,resend:recover?1:0})},90000);
+    const j=await resp.json().catch(()=>({}));
+    if(!resp.ok){ say('❌ '+escW(j.detail||'הפעולה נכשלה — בדקו את מספר הקבלה או פנו לאסי'),'#dc2626'); return; }
+    r=j;
+  }catch(e){ say('❌ בעיית תקשורת — נסו שוב','#dc2626'); return; }
+  const uat=r.is_uat?' <b style="color:#d97706">(UAT — קוד בדיקה!)</b>':'';
+  if(rMode==='wa'){
+    say((r.sent?'✅ הקוד '+(r.recovered?'שוחזר ו':'הונפק ו')+'נשלח בוואטסאפ ל-'+escW(phone):'⚠️ הקוד הונפק אך השליחה נכשלה — הדפיסו במקום')+uat, r.sent?'#16a34a':'#d97706');
+  }else{
+    say('✅ '+(r.recovered?'שוחזר':'הונפק')+' — נפתח חלון הדפסה'+uat,'#16a34a');
+    stellrPosPrint(r);
+  }
+}
+function stellrPosPrint(r){
+  // דף הדפסה בפורמט מדפסת-קופה (80מ"מ) — הדפדפן שולח למדפסת ברירת המחדל של העמדה
+  const rows=(r.codes||[]).map(c=>`
+    <div style="margin:6mm 0 2mm;font-weight:700">${escW(c.name||'')}</div>
+    <div style="font-size:15pt;font-weight:800;letter-spacing:1px;direction:ltr">${escW(c.pan||'')}</div>
+    ${c.pin?`<div style="direction:ltr">PIN: <b>${escW(c.pin)}</b></div>`:''}`).join('');
+  const w=window.open('','_blank','width=380,height=560');
+  if(!w){ toast('חסימת חלונות קופצים — אפשרו popup',false); return; }
+  w.document.write(`<!doctype html><html dir="rtl"><head><meta charset="utf-8"><title>קוד דיגיטלי</title>
+    <style>body{font-family:Arial,sans-serif;width:72mm;margin:0 auto;padding:4mm 2mm;text-align:center;font-size:10pt}</style></head><body>
+    <div style="font-size:13pt;font-weight:800">Green Mobile 💚</div>
+    <div>קוד דיגיטלי · קבלה ${escW(String(r.bill||''))}</div>
+    ${r.is_uat?'<div style="font-weight:800;border:1px solid #000;margin:2mm 0;padding:1mm">*** בדיקה — UAT — לא קוד אמיתי ***</div>':''}
+    ${rows}
+    <div style="margin-top:5mm;font-size:8.5pt">הקוד אישי וחד-פעמי — שמרו על הפתק!<br>גרין מובייל · greenmobile.co.il</div>
+    <script>window.onload=()=>{window.print();};<\/script></body></html>`);
+  w.document.close();
 }
 async function openFraudStats(){
   let d; try{ d=await api('/api/admin/fraud/log?limit=100'); }catch(e){ toast('טעינת המדד נכשלה',false); return; }

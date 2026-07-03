@@ -6187,6 +6187,141 @@ def admin_stellr_issue(payload: dict, x_admin_key: Optional[str] = Header(None))
                                force=bool(payload.get("force")))
 
 
+def _stellr_pos_find_doc(no, branch, bill):
+    """איתור קבלה טרייה (יומיים) לפי מספר קבלה/מסמך בסניף. מחזיר (doc, now)."""
+    from datetime import datetime as _dt, timedelta as _td
+    try:
+        from zoneinfo import ZoneInfo
+        now = _dt.now(ZoneInfo(cfg.TZ)).replace(tzinfo=None)
+    except Exception:  # noqa: BLE001
+        now = _dt.now()
+    bill = str(bill).strip().lstrip("#")
+    docs = no.get_documents(branch_id=int(branch),
+                            from_date=(now - _td(days=1)).strftime("%d/%m/%Y"),
+                            to_date=now.strftime("%d/%m/%Y"), page_size=200) or []
+    for d in docs:
+        if (str(d.get("billNumber") or "").lstrip("0") == bill.lstrip("0")
+                or str(d.get("documentNumber") or "") == bill):
+            return d, now
+    return None, now
+
+
+@app.post("/api/board/stellr/issue")
+def board_stellr_issue(payload: dict, x_admin_key: Optional[str] = Header(None),
+                       x_device_token: Optional[str] = Header(None)):
+    """🎫 הנפקת קוד בקופה — לעובדי הסניפים, בלי גישה ל-Stellr:
+    body: {bill, mode: 'wa'|'print', phone (חובה ל-wa), resend: 0/1, branch_id (admin בלבד)}.
+    שרשרת אימות: מכשיר מאושר → הקבלה קיימת בסניף שלו וטרייה (24ש) → שולמה במלואה →
+    יש פריט קוד ממופה (pos:<מקט>) → לא הונפק כבר (line_ref) → תקרות. שחזור (resend)
+    מחזיר/שולח את הקוד הקיים — לעולם לא מנפיק חדש."""
+    import re as _re
+    dev = _caller_device(x_admin_key, x_device_token)
+    branch = _device_branch(dev) if dev else str(payload.get("branch_id") or "")
+    if not str(branch).strip():
+        raise HTTPException(400, "המכשיר לא משויך לסניף — פנה לאסי")
+    branch = str(branch).strip()
+    if not stellr.enabled():
+        raise HTTPException(400, "מודול הקודים כבוי כרגע")
+    bill = str(payload.get("bill") or "").strip()
+    mode = str(payload.get("mode") or "print")
+    phone = _re.sub(r"\D", "", str(payload.get("phone") or ""))
+    if not bill:
+        raise HTTPException(400, "חסר מספר קבלה")
+    if mode == "wa" and len(phone) < 9:
+        raise HTTPException(400, "מספר טלפון לא תקין לשליחה")
+    no = poller.client()
+    doc, now = _stellr_pos_find_doc(no, branch, bill)
+    if not doc:
+        raise HTTPException(404, f"קבלה {bill} לא נמצאה בסניף ביומיים האחרונים — ודא מספר קבלה")
+    okey = f"pos-{branch}-{doc.get('billNumber') or doc.get('documentNumber')}"
+    existing = [c for c in db.stellr_codes_for_order(okey)
+                if c.get("status") in ("issued", "sent")]
+    recovered = bool(existing)
+    if payload.get("resend") and not existing:
+        raise HTTPException(404, "לא נמצא קוד שהונפק לקבלה הזו — שחזור אף פעם לא מנפיק קוד חדש")
+    if not existing:
+        from datetime import datetime as _dt
+        try:
+            age_h = (now - _dt.fromisoformat(str(doc.get("createDate"))[:19])).total_seconds() / 3600
+        except Exception:  # noqa: BLE001
+            age_h = 0
+        if age_h > 24:
+            raise HTTPException(400, "הקבלה ישנה מדי (מעל 24 שעות) — לשחזור קוד ישן פנה לאסי")
+        paid = sum(float(v or 0) for v in (doc.get("paidValues") or {}).values())
+        total = float(doc.get("totalBill") or 0)
+        if total <= 0 or paid + 0.01 < total:
+            raise HTTPException(400, "הקבלה לא שולמה במלואה")
+        lines = no._get("/api/Documents/line-items", {"invoiceId": doc.get("id")}) or []
+        plan = []
+        for li in lines:
+            m = db.stellr_map_get(f"pos:{li.get('id')}")
+            if not m or not m.get("active"):
+                continue
+            if float(m.get("value") or 0) > stellr.MAX_VALUE:
+                raise HTTPException(400, "ערך הקוד מעל התקרה המותרת — פנה לאסי")
+            for i in range(int(float(li.get("quantity") or 1))):
+                plan.append({"line_ref": f"pos-{doc.get('id')}-{li.get('id')}-{i}",
+                             "wc_name": str(li.get("name") or ""),
+                             "product_ref": m["product_ref"],
+                             "value": float(m.get("value") or 0)})
+        if not plan:
+            raise HTTPException(400, "לא נמצא בקבלה פריט קוד דיגיטלי (ייתכן שהפריט לא ממופה — פנה לאסי)")
+        if len(plan) > stellr.MAX_QTY:
+            raise HTTPException(400, f"יותר מ-{stellr.MAX_QTY} קודים בקבלה אחת — פנה לאסי")
+        cap = int(os.environ.get("STELLR_POS_DAILY_CAP", "30"))
+        if db.stellr_pos_count_today(branch) + len(plan) > cap:
+            raise HTTPException(429, "הסניף הגיע לתקרת ההנפקות היומית — פנה לאסי")
+        for p in plan:
+            if db.stellr_code_exists(p["line_ref"]):
+                continue
+            res = stellr.activate(p["product_ref"], p["value"], p["line_ref"])
+            if not res.get("ok"):
+                db.stellr_code_add(okey, p["line_ref"], p["wc_name"], p["product_ref"],
+                                   p["value"], stellr.CURRENCY, "pos", "error",
+                                   error=f"HTTP {res.get('http')}: {res.get('error')}")
+                try:
+                    _tg_admin(f"🎫⚠️ <b>קופה — הנפקה נכשלה</b>\nסניף {cfg.branch_name(int(branch))} · "
+                              f"קבלה {bill}\nHTTP {res.get('http')}: {str(res.get('error'))[:120]}")
+                except Exception:  # noqa: BLE001
+                    pass
+                raise HTTPException(502, "ההנפקה נכשלה מול הספק — נסו שוב בעוד רגע או פנו לאסי")
+            db.stellr_code_add(okey, p["line_ref"], p["wc_name"], p["product_ref"],
+                               p["value"], stellr.CURRENCY, "pos", "issued",
+                               tx_id=res.get("tx_id", ""), pan=res.get("pan", ""),
+                               pin=res.get("pin", ""))
+        existing = [c for c in db.stellr_codes_for_order(okey)
+                    if c.get("status") in ("issued", "sent")]
+    cust = doc.get("customer") or {}
+    sent = False
+    if mode == "wa":
+        import wa
+        import time as _t
+        parts = []
+        for c in existing:
+            parts.append(f"{c['wc_name']}: {c['pan']}" + (f" (PIN: {c['pin']})" if c.get("pin") else ""))
+        body = "הקוד הדיגיטלי שלך מ-Green Mobile 🎁 — " + " · ".join(parts) + \
+               " — הקוד אישי וחד-פעמי, שמרו עליו!"
+        try:
+            wa.send_template(phone, str(cust.get("name") or ""), body)
+            sent = True
+            for c in existing:
+                db.stellr_code_update(c["id"], status="sent", sent_at=int(_t.time()))
+        except Exception as e:  # noqa: BLE001
+            logger.warning("stellr pos wa send failed: %s", e)
+    try:
+        _tg_admin(f"🎫 <b>קופה — {'שחזור' if recovered else 'הנפקת'} קוד</b>\n"
+                  f"סניף <b>{cfg.branch_name(int(branch))}</b> · קבלה {bill} · "
+                  f"{len(existing)} קודים · {'וואטסאפ ל-' + phone if mode == 'wa' else 'הדפסה'}"
+                  f"{' · ⚠️ שליחה נכשלה' if mode == 'wa' and not sent else ''}"
+                  f"{' · UAT' if stellr.is_uat() else ''}")
+    except Exception:  # noqa: BLE001
+        pass
+    return {"ok": True, "recovered": recovered, "sent": sent, "is_uat": stellr.is_uat(),
+            "bill": bill, "customer": cust.get("name") or "",
+            "codes": [{"name": c["wc_name"], "value": c["value"], "pan": c["pan"],
+                       "pin": c["pin"]} for c in existing]}
+
+
 @app.post("/api/admin/stellr/test-activate")
 def admin_stellr_test(payload: dict, x_admin_key: Optional[str] = Header(None)):
     """בדיקת צינור מול UAT בלבד (חסום בפרודקשן): הפעלה ישירה של productRef."""

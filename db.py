@@ -3017,6 +3017,21 @@ def stellr_codes_for_order(order_number) -> list:
         return [dict(r) for r in cur.fetchall()]
 
 
+def stellr_pos_count_today(branch) -> int:
+    """כמה קודים הנפיק סניף היום (תקרה יומית) — לפי קידומת order_number של קופה."""
+    import time as _t
+    from datetime import datetime as _dt
+    midnight = int(_dt.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""SELECT COUNT(*) AS n FROM stellr_codes
+                          WHERE order_number LIKE ? AND created_at >= ?
+                            AND status IN ('issued','sent')"""),
+                    (f"pos-{branch}-%", midnight))
+        r = cur.fetchone()
+        return int(r["n"] if r else 0)
+
+
 def stellr_codes_list(limit: int = 100) -> list:
     with _conn() as c:
         cur = c.cursor()

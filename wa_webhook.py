@@ -114,6 +114,13 @@ def process(raw: bytes) -> dict:
         return {"ok": False, "err": "bad json"}
     n_msg = n_stat = 0
     for entry in data.get("entry", []):
+        # לכידת מזהה ה-WABA (entry.id) — נחוץ לניהול תבניות דרך Graph API
+        try:
+            eid = str(entry.get("id") or "")
+            if eid and db.sales_state_get("wa_waba_id") != eid:
+                db.sales_state_set("wa_waba_id", eid)
+        except Exception:  # noqa: BLE001
+            pass
         for ch in entry.get("changes", []):
             v = ch.get("value", {}) or {}
             names = {c.get("wa_id"): (c.get("profile") or {}).get("name")
