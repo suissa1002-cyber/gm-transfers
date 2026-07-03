@@ -1665,17 +1665,25 @@ def admin_repairs_revenue(branch_id: Optional[str] = None, period: Optional[str]
         cur = nxt + _td(days=1)
     s = 0.0
     n = 0
+    bb = {str(b): {"sum": 0.0, "count": 0} for b in (1, 2, 3, 4)}
     want = str(branch_id or "").strip()
     for f in fixes.values():
         delivered = _pd(f.get("deliveredDate"))
         if not delivered or delivered < frm or delivered > to:
             continue
-        if want and str(f.get("fixId"))[:1] != want:
+        chg = float(f.get("invoiceCharge") or 0) or float(f.get("estimatedCharge") or 0)
+        d1 = str(f.get("fixId"))[:1]
+        if d1 in bb:                               # פילוח סניפים — תמיד מלא (לא מסונן)
+            bb[d1]["sum"] += chg
+            bb[d1]["count"] += 1
+        if want and d1 != want:
             continue
-        s += float(f.get("invoiceCharge") or 0) or float(f.get("estimatedCharge") or 0)
+        s += chg
         n += 1
+    for v in bb.values():
+        v["sum"] = round(v["sum"], 2)
     data = {"from": str(frm), "to": str(to), "branch_id": want or None,
-            "sum": round(s, 2), "count": n}
+            "sum": round(s, 2), "count": n, "by_branch": bb}
     if len(_repairs_rev_cache) > 24:
         _repairs_rev_cache.clear()
     _repairs_rev_cache[ck] = (_t.time(), data)

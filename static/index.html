@@ -7226,11 +7226,16 @@ function renderHome(){
   const branches=[{id:'',n:'כל הסניפים'},{id:1,n:'גן העיר'},{id:2,n:'סטאר'},{id:3,n:'סיטי'},{id:4,n:'עד הלום'},{id:5,n:'אתר'}];
   const curB=String(S.homeBranch||'');
   const grandTotal=Object.values(sd.by_branch||{}).reduce((s,v)=>s+(v.revenue||0),0);  // "כל הסניפים" = תמיד הסכום הכולל
+  // 🛠 מעבדה לאותו חתך — מתווסף למכירות בכל אריח (by_branch תמיד מלא, לא תלוי בסינון)
+  const rrB=((d.reprev||{}).by_branch)||{};
+  const repFor=id=>id===''?Object.values(rrB).reduce((s,v)=>s+(v.sum||0),0):((rrB[String(id)]||{}).sum||0);
   const brTile=b=>{ const sel=curB===String(b.id);
-    const rev=b.id===''?grandTotal:(((sd.by_branch||{})[b.id]||{}).revenue||0);
+    const rev=(b.id===''?grandTotal:(((sd.by_branch||{})[b.id]||{}).revenue||0))+repFor(b.id);
+    const rep=repFor(b.id);
     return `<button onclick="homeSalesBranch('${b.id}')" style="flex:1;min-width:92px;background:${sel?'#16a34a':'var(--card2)'};color:${sel?'#fff':'var(--txt)'};border:1px solid ${sel?'#16a34a':'var(--line)'};border-radius:11px;padding:8px 6px;cursor:pointer;font-family:inherit;text-align:center">
       <div style="font-size:12px;font-weight:600">${b.n}</div>
-      <div style="font-size:15px;font-weight:800;margin-top:2px">${_il(rev)}</div></button>`; };
+      <div style="font-size:15px;font-weight:800;margin-top:2px">${_il(rev)}</div>
+      ${rep>0?`<div style="font-size:10px;margin-top:1px;color:${sel?'#d1fae5':'var(--muted)'}">🛠 מעבדה ${_il(rep)}</div>`:''}</button>`; };
   const tt=sd.today||{revenue:0,count:0,credits:0};
   const per=S.homeSalesPeriod||'today';
   const perLabel=per==='yesterday'?'אתמול':(per==='range'?((sd.from||'')+' – '+(sd.to||'')):'היום');
@@ -7240,7 +7245,8 @@ function renderHome(){
      <div style="display:flex;gap:3px;background:var(--card2);border:1px solid var(--line);border-radius:11px;padding:3px;margin-bottom:12px">${seg('today','היום')}${seg('yesterday','אתמול')}${seg('range','סינון')}</div>
      <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:13px">${branches.map(brTile).join('')}</div>
      <div style="display:flex;gap:10px;margin-bottom:13px">
-       <div style="flex:1;text-align:center"><div style="font-size:24px;font-weight:800;color:#16a34a">${_il(tt.revenue)}</div><div class="muted" style="font-size:11px">מכירות</div></div>
+       ${(()=>{ const curRep=(d.reprev&&d.reprev.sum)||0;  // מעבדה לחתך הנוכחי (סניף+תקופה)
+         return `<div style="flex:1;text-align:center"><div style="font-size:24px;font-weight:800;color:#16a34a">${_il((tt.revenue||0)+curRep)}</div><div class="muted" style="font-size:11px">מכירות${curRep?` · מזה מעבדה ${_il(curRep)}`:''}</div></div>`; })()}
        <div style="flex:1;text-align:center"><div style="font-size:24px;font-weight:800">${tt.count||0}</div><div class="muted" style="font-size:11px">עסקאות</div></div>
        <div style="flex:1;text-align:center"><div style="font-size:24px;font-weight:800;color:#dc2626">${_il(tt.credits)}</div><div class="muted" style="font-size:11px">זיכויים</div></div>
      </div>
