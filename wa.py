@@ -896,6 +896,26 @@ def _store_outbound(phone: str, text: str, wamid: str = "", mtype: str = "text",
             pass
 
 
+CODE_TEMPLATE = "gm_digital_code"   # תבנית ייעודית מרובת-שורות לקוד דיגיטלי (Stellr)
+
+
+def send_code(phone: str, label: str, code: str):
+    """שליחת קוד דיגיטלי ללקוח — הודעה נקייה אחת לכל קוד.
+    מנסה את התבנית הייעודית (שורות מסודרות); אם עוד לא אושרה — fallback ל-new_message."""
+    # פרמטרי תבנית של Meta אסורים בירידות-שורה — מקפלים למפריד
+    label = re.sub(r"\s*\n+\s*", " · ", (label or "").strip())[:120]
+    code = re.sub(r"\s*\n+\s*", " · ", (code or "").strip())[:180]
+    try:
+        mid = _meta_send_template(phone, CODE_TEMPLATE, [label, code], [])
+        _store_outbound(phone, f"🎁 {label}\nהקוד שלך: {code}\nהקוד אישי וחד-פעמי — שמרו עליו 💚",
+                        wamid=mid, mtype="template")
+        logger.info("wa send code template -> %s", phone)
+        return {"sent": True, "via": CODE_TEMPLATE, "message_id": mid}
+    except Exception as e:  # noqa: BLE001
+        logger.warning("code template failed (%s) — fallback to new_message", e)
+        return send_template(phone, "", f"🎁 {label} — הקוד שלך: {code} — אישי וחד-פעמי, שמרו עליו!")
+
+
 def send_template(phone: str, name: str, body: str):
     """
     שליחה מחוץ לחלון: template `new_message` (מאושר מטא) עם [שם, גוף].

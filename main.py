@@ -6299,18 +6299,16 @@ def board_stellr_issue(payload: dict, x_admin_key: Optional[str] = Header(None),
     if mode == "wa":
         import wa
         import time as _t
-        parts = []
-        for c in existing:
-            parts.append(f"{c['wc_name']}: {c['pan']}" + (f" (PIN: {c['pin']})" if c.get("pin") else ""))
-        body = "הקוד הדיגיטלי שלך מ-Green Mobile 🎁 — " + " · ".join(parts) + \
-               " — הקוד אישי וחד-פעמי, שמרו עליו!"
-        try:
-            wa.send_template(phone, str(cust.get("name") or ""), body)
-            sent = True
-            for c in existing:
+        sent_n = 0
+        for c in existing:   # הודעה נקייה נפרדת לכל קוד — לא מערבבים קודים בשורה אחת
+            code_str = c["pan"] + (f" · PIN: {c['pin']}" if c.get("pin") else "")
+            try:
+                wa.send_code(phone, c["wc_name"], code_str)
                 db.stellr_code_update(c["id"], status="sent", sent_at=int(_t.time()))
-        except Exception as e:  # noqa: BLE001
-            logger.warning("stellr pos wa send failed: %s", e)
+                sent_n += 1
+            except Exception as e:  # noqa: BLE001
+                logger.warning("stellr pos wa send failed: %s", e)
+        sent = sent_n == len(existing) and sent_n > 0
     try:
         _tg_admin(f"🎫 <b>קופה — {'שחזור' if recovered else 'הנפקת'} קוד</b>\n"
                   f"סניף <b>{cfg.branch_name(int(branch))}</b> · קבלה {bill} · "
@@ -6323,6 +6321,36 @@ def board_stellr_issue(payload: dict, x_admin_key: Optional[str] = Header(None),
             "bill": bill, "customer": cust.get("name") or "",
             "codes": [{"name": c["wc_name"], "value": c["value"], "pan": c["pan"],
                        "pin": c["pin"]} for c in existing]}
+
+
+@app.post("/api/admin/wa/template/create-code")
+def admin_wa_create_code_template(x_admin_key: Optional[str] = Header(None)):
+    """יצירת תבנית gm_digital_code ב-Meta (Utility, he) — הודעת קוד מרובת-שורות.
+    ה-WABA id נלכד אוטומטית מה-webhook (sales_state: wa_waba_id). idempotent."""
+    _require_admin(x_admin_key)
+    import requests as _rq
+    waba = str(db.sales_state_get("wa_waba_id") or "")
+    if not waba:
+        raise HTTPException(400, "WABA id טרם נלכד — שלח/קבל הודעת וואטסאפ אחת ונסה שוב")
+    tok = os.getenv("META_WA_TOKEN", "").strip()
+    if not tok:
+        raise HTTPException(400, "META_WA_TOKEN לא מוגדר")
+    body = ("תודה שקנית ב-Green Mobile! 🎁\n\n{{1}}\nהקוד שלך:\n{{2}}\n\n"
+            "הקוד אישי וחד-פעמי — שמרו עליו 💚")
+    r = _rq.post(f"https://graph.facebook.com/v23.0/{waba}/message_templates",
+                 headers={"Authorization": f"Bearer {tok}"},
+                 json={"name": "gm_digital_code", "language": "he", "category": "UTILITY",
+                       "components": [{"type": "BODY", "text": body,
+                                       "example": {"body_text": [["Sony PlayStation ₪200",
+                                                                  "ABCD-1234-EFGH-5678"]]}}]},
+                 timeout=30)
+    j = r.json()
+    if r.ok:
+        return {"ok": True, "waba": waba, "id": j.get("id"), "status": j.get("status")}
+    err = (j.get("error") or {})
+    if "already exists" in str(err.get("error_user_msg") or err.get("message") or "").lower():
+        return {"ok": True, "waba": waba, "note": "התבנית כבר קיימת"}
+    raise HTTPException(502, f"Meta סירבה: {err.get('error_user_msg') or err.get('message')}")
 
 
 # ── קופה ידנית (סיטי): בורר מותג+סכום → בקשת אישור בטלגרם → הנפקה ──
@@ -6439,17 +6467,16 @@ def _stellr_req_issue(req: dict) -> dict:
     if req.get("mode") == "wa" and req.get("phone"):
         import wa
         codes = [c for c in db.stellr_codes_for_order(okey) if c.get("status") == "issued"]
-        parts = [f"{c['wc_name']}: {c['pan']}" + (f" (PIN: {c['pin']})" if c.get("pin") else "")
-                 for c in codes]
-        body = "הקוד הדיגיטלי שלך מ-Green Mobile 🎁 — " + " · ".join(parts) + \
-               " — הקוד אישי וחד-פעמי, שמרו עליו!"
-        try:
-            wa.send_template(req["phone"], "", body)
-            sent = True
-            for c in codes:
+        sent_n = 0
+        for c in codes:      # הודעה נקייה נפרדת לכל קוד
+            code_str = c["pan"] + (f" · PIN: {c['pin']}" if c.get("pin") else "")
+            try:
+                wa.send_code(req["phone"], c["wc_name"], code_str)
                 db.stellr_code_update(c["id"], status="sent", sent_at=int(_t.time()))
-        except Exception as e:  # noqa: BLE001
-            logger.warning("stellr req wa send failed: %s", e)
+                sent_n += 1
+            except Exception as e:  # noqa: BLE001
+                logger.warning("stellr req wa send failed: %s", e)
+        sent = sent_n == len(codes) and sent_n > 0
     db.stellr_req_set(rid, "issued")
     return {"ok": True, "issued": len(issued), "sent": sent}
 
