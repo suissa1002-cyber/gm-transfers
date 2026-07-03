@@ -6906,16 +6906,21 @@ async function loadHomeRepairs(force){
 }
 // רשימות פירוט מעבדה (תקועים / ממתינים לאיסוף / חוזרים) — מסונן לסניף הנבחר, ממוין לפי ימים
 function repairsListOpen(kind){
-  const rp=S.homeRepairs; if(!rp||!rp.rows){ toast('הנתונים עוד נטענים…',true); return; }
+  const rp=S.homeRepairs; if(!rp||!rp.rows||!rp.rows[kind]){ toast('הנתונים עוד נטענים…',true); return; }
   S.homeLastTouch=Date.now();
+  const _il=n=>'₪'+Number(Math.round(n||0)).toLocaleString('en-US');
   const rb=String(S.homeRepBranch||'all');
   const brName={'1':'גן העיר','2':'סטאר','3':'סיטי','4':'עד הלום'};
   const meta={ stuck:   {t:'🔥 תקועים במעבדה 7+ ימים', d:'ימים במעבדה'},
                awaiting:{t:'📦 מוכנים וממתינים לאיסוף', d:'ימים מאז שתוקן'},
-               repeat:  {t:'🔁 תיקונים חוזרים (30 יום)', d:'ימים משחרור קודם'} }[kind];
+               repeat:  {t:'🔁 תיקונים חוזרים (30 יום)', d:'ימים משחרור קודם'},
+               rec_rel: {t:'🟢 התקבלו ושוחררו היום', d:'', noDays:true},
+               rec_open:{t:'🟠 התקבלו היום · בטיפול', d:'', noDays:true},
+               rel_old: {t:'🔵 שוחררו היום מהמתנה', d:'ימים שהמתינו'},
+               open:    {t:'🔧 פתוחים במעבדה כרגע', d:'ימים במעבדה'} }[kind];
   let list=(rp.rows[kind]||[]); if(rb!=='all') list=list.filter(r=>String(r.br)===rb);
   const rows=list.map(r=>`<div style="display:flex;gap:9px;padding:9px 2px;border-bottom:1px solid var(--line);align-items:center">
-      <span style="flex:none;background:var(--card2);border-radius:8px;padding:3px 8px;font-size:12px;font-weight:800">${r.days} י׳</span>
+      ${meta.noDays?'':`<span style="flex:none;background:var(--card2);border-radius:8px;padding:3px 8px;font-size:12px;font-weight:800">${r.days} י׳</span>`}
       <span style="flex:1;min-width:0">
         <b style="font-size:13px">${escW(r.name||'ללא שם')}</b>${r.model?` <span class="muted" style="font-size:12px">· ${escW(r.model)}</span>`:''}<br>
         <span class="muted" style="font-size:11.5px">#${escW(String(r.id||''))} · ${brName[String(r.br)]||('סניף '+r.br)}${r.status?` · ${escW(r.status)}`:''}${r.charge?` · ${_il(r.charge)}`:''}${kind==='repeat'&&r.prev_id?` · תיקון קודם #${escW(String(r.prev_id))}`:''}</span>
@@ -6927,7 +6932,7 @@ function repairsListOpen(kind){
       <h3 style="margin:0;font-size:16px">${meta.t}</h3>
       <button onclick="closeModal()" style="background:var(--card2);border:0;width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:15px;color:var(--txt)">✕</button>
     </div>
-    <div class="muted" style="font-size:12px;margin-bottom:8px">${list.length} רשומות · ${rb==='all'?'כל הסניפים':brName[rb]} · ממוין לפי ${meta.d}</div>
+    <div class="muted" style="font-size:12px;margin-bottom:8px">${list.length} רשומות · ${rb==='all'?'כל הסניפים':brName[rb]}${meta.d?` · ממוין לפי ${meta.d}`:''}</div>
     <div style="overflow-y:auto;flex:1;min-height:0">${rows}</div>
   </div></div>`;
 }
@@ -7247,11 +7252,11 @@ function renderHome(){
       `<div style="display:flex;align-items:center;gap:8px;margin-bottom:11px"><span style="display:inline-flex;color:#0d9488">${ico('wrench',18)}</span><b style="font-size:15px">תיקוני מעבדה · היום</b>${S.homeRepairsLoading?'<span class="muted" style="font-size:12px;margin-inline-start:auto">⏳ מעדכן…</span>':'<button onclick="homeRepairsRefresh()" title="משוך תיקונים עכשיו מ-NewOrder" style="margin-inline-start:auto;background:none;border:0;cursor:pointer;font-size:16px;color:var(--muted);padding:0 2px;line-height:1">↻</button>'}</div>
        <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:13px">${rBr.map(rTile).join('')}</div>
        ${rd?`<div style="display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap">
-         <div style="flex:1;min-width:130px;text-align:center;background:var(--card2);border:1px solid var(--line);border-radius:11px;padding:10px 6px"><div style="font-size:22px;font-weight:800;color:#16a34a">${rd.rec_rel.count}</div><div class="muted" style="font-size:11px">התקבלו ושוחררו היום</div><div style="font-size:12px;font-weight:700;color:#16a34a;margin-top:2px">${_il(rd.rec_rel.sum)}</div></div>
-         <div style="flex:1;min-width:130px;text-align:center;background:var(--card2);border:1px solid var(--line);border-radius:11px;padding:10px 6px"><div style="font-size:22px;font-weight:800;color:#d97706">${rd.rec_open.count}</div><div class="muted" style="font-size:11px">התקבלו היום · בטיפול</div><div class="muted" style="font-size:12px;margin-top:2px">—</div></div>
-         <div style="flex:1;min-width:130px;text-align:center;background:var(--card2);border:1px solid var(--line);border-radius:11px;padding:10px 6px"><div style="font-size:22px;font-weight:800;color:#2563eb">${rd.rel_old.count}</div><div class="muted" style="font-size:11px">שוחררו היום מהמתנה</div><div style="font-size:12px;font-weight:700;color:#2563eb;margin-top:2px">${_il(rd.rel_old.sum)}</div></div>
+         <div onclick="repairsListOpen('rec_rel')" style="flex:1;min-width:130px;text-align:center;background:var(--card2);border:1px solid var(--line);border-radius:11px;padding:10px 6px;cursor:pointer"><div style="font-size:22px;font-weight:800;color:#16a34a">${rd.rec_rel.count}</div><div class="muted" style="font-size:11px">התקבלו ושוחררו היום</div><div style="font-size:12px;font-weight:700;color:#16a34a;margin-top:2px">${_il(rd.rec_rel.sum)}</div></div>
+         <div onclick="repairsListOpen('rec_open')" style="flex:1;min-width:130px;text-align:center;background:var(--card2);border:1px solid var(--line);border-radius:11px;padding:10px 6px;cursor:pointer"><div style="font-size:22px;font-weight:800;color:#d97706">${rd.rec_open.count}</div><div class="muted" style="font-size:11px">התקבלו היום · בטיפול</div><div class="muted" style="font-size:12px;margin-top:2px">—</div></div>
+         <div onclick="repairsListOpen('rel_old')" style="flex:1;min-width:130px;text-align:center;background:var(--card2);border:1px solid var(--line);border-radius:11px;padding:10px 6px;cursor:pointer"><div style="font-size:22px;font-weight:800;color:#2563eb">${rd.rel_old.count}</div><div class="muted" style="font-size:11px">שוחררו היום מהמתנה</div><div style="font-size:12px;font-weight:700;color:#2563eb;margin-top:2px">${_il(rd.rel_old.sum)}</div></div>
        </div>
-       <div class="muted" style="font-size:12px;margin-bottom:11px">🔧 פתוחים במעבדה כרגע: <b>${rd.open.count}</b>${rd.open.count?` · הוותיק ביותר ממתין <b>${rd.open.oldest_days}</b> ימים`:''}</div>
+       <div class="muted" onclick="repairsListOpen('open')" style="font-size:12px;margin-bottom:11px;cursor:pointer">🔧 פתוחים במעבדה כרגע: <b>${rd.open.count}</b>${rd.open.count?` · הוותיק ביותר ממתין <b>${rd.open.oldest_days}</b> ימים`:''} <span style="text-decoration:underline">לרשימה</span></div>
        ${(()=>{ // שורת מדדי עומק — קליק על תקועים/ממתינים/חוזרים פותח רשימה מפורטת
          const st=(rd.stuck7||{}).count||0, aw=(rd.awaiting||{}).count||0, rp=(rd.repeat||{}).count||0;
          const ta=rd.turnaround||{}; const mo=rd.month||{cur:{},prev:{}};

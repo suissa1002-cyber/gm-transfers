@@ -1532,7 +1532,8 @@ def admin_repairs_summary(fresh: int = 0, x_admin_key: Optional[str] = Header(No
                 "status": str(f.get("statusName") or "").strip(),
                 "charge": _charge(f)}
 
-    rows = {"stuck": [], "awaiting": [], "repeat": []}
+    rows = {"stuck": [], "awaiting": [], "repeat": [],
+            "rec_rel": [], "rec_open": [], "rel_old": [], "open": []}
     for f in fixes.values():
         created = _pd(f.get("creationDate"))
         delivered = _pd(f.get("deliveredDate"))
@@ -1567,10 +1568,19 @@ def admin_repairs_summary(fresh: int = 0, x_admin_key: Optional[str] = Header(No
                 rows["stuck"].append(_row(f, br, (today - created).days))
             if fixed:
                 rows["awaiting"].append(_row(f, br, (today - fixed).days))
+            if created:
+                rows["open"].append(_row(f, br, (today - created).days))
         if rep:
             r = _row(f, br, (created - rep[0]).days)
             r["prev_id"] = rep[1].get("fixId")
             rows["repeat"].append(r)
+        # רשימות למדדי "היום" — אותם תנאים בדיוק כמו _bump, כדי שהפירוט יתאם 1:1
+        if created == today and delivered == today:
+            rows["rec_rel"].append(_row(f, br, 0))
+        elif created == today and not delivered and not cancelled:
+            rows["rec_open"].append(_row(f, br, 0))
+        elif delivered == today and created and created < today:
+            rows["rel_old"].append(_row(f, br, (delivered - created).days))
 
     # בלי קטימה — הרשימה חייבת להתאים 1:1 לספירה בצ'יפ בכל סינון סניף (סדרי גודל: עשרות)
     for k in rows:
