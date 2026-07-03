@@ -625,6 +625,37 @@ _SCHEMA = [
     """,
     "CREATE INDEX IF NOT EXISTS idx_fraud_log_level ON fraud_log(level)",
     "CREATE INDEX IF NOT EXISTS idx_fraud_log_outcome ON fraud_log(outcome)",
+    # Stellr — מיפוי מוצרי WC → productRef, ולוג קודים שהונפקו (line_ref ייחודי = חסם כפל-הנפקה)
+    """
+    CREATE TABLE IF NOT EXISTS stellr_map (
+        wc_key      TEXT PRIMARY KEY,
+        wc_name     TEXT,
+        product_ref TEXT,
+        value       REAL,
+        active      INTEGER DEFAULT 1,
+        updated_at  BIGINT
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS stellr_codes (
+        id           {pk},
+        order_number TEXT,
+        line_ref     TEXT UNIQUE,
+        wc_name      TEXT,
+        product_ref  TEXT,
+        value        REAL,
+        currency     TEXT,
+        mode         TEXT,
+        status       TEXT,
+        tx_id        TEXT,
+        pan          TEXT,
+        pin          TEXT,
+        error        TEXT,
+        created_at   BIGINT,
+        sent_at      BIGINT
+    )
+    """.format(pk=_PK),
+    "CREATE INDEX IF NOT EXISTS idx_stellr_codes_order ON stellr_codes(order_number)",
 ]
 
 
@@ -2900,6 +2931,97 @@ def fraud_log_stats() -> dict:
                             SUM(CASE WHEN outcome IS NULL OR outcome='' THEN 1 ELSE 0 END) AS pending
                           FROM fraud_log GROUP BY level"""))
         return {r["level"]: dict(r) for r in cur.fetchall()}
+
+
+# ── Stellr — קודים דיגיטליים (מיפוי + לוג הנפקות) ──
+def stellr_map_upsert(wc_key, wc_name, product_ref, value, active=1):
+    import time as _t
+    with _conn() as c:
+        c.cursor().execute(_q("""
+            INSERT INTO stellr_map (wc_key, wc_name, product_ref, value, active, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(wc_key) DO UPDATE SET wc_name=excluded.wc_name,
+                product_ref=excluded.product_ref, value=excluded.value,
+                active=excluded.active, updated_at=excluded.updated_at
+        """), (str(wc_key), wc_name or "", str(product_ref), float(value or 0),
+               1 if active else 0, int(_t.time())))
+
+
+def stellr_map_list() -> list:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM stellr_map ORDER BY wc_name"))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def stellr_map_get(wc_key) -> dict:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM stellr_map WHERE wc_key = ?"), (str(wc_key),))
+        r = cur.fetchone()
+        return dict(r) if r else {}
+
+
+def stellr_map_delete(wc_key) -> int:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("DELETE FROM stellr_map WHERE wc_key = ?"), (str(wc_key),))
+        return cur.rowcount
+
+
+def stellr_code_exists(line_ref) -> bool:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT 1 FROM stellr_codes WHERE line_ref = ?"), (str(line_ref),))
+        return cur.fetchone() is not None
+
+
+def stellr_code_add(order_number, line_ref, wc_name, product_ref, value,
+                    currency, mode, status, tx_id="", pan="", pin="", error="") -> int:
+    import time as _t
+    with _conn() as c:
+        cur = c.cursor()
+        args = (str(order_number), str(line_ref), wc_name or "", str(product_ref or ""),
+                float(value or 0), currency or "", mode or "", status or "",
+                tx_id or "", pan or "", pin or "", error or "", int(_t.time()))
+        if _USE_PG:
+            cur.execute(_q("""INSERT INTO stellr_codes
+                (order_number, line_ref, wc_name, product_ref, value, currency,
+                 mode, status, tx_id, pan, pin, error, created_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id"""), args)
+            return int(cur.fetchone()["id"])
+        cur.execute(_q("""INSERT INTO stellr_codes
+            (order_number, line_ref, wc_name, product_ref, value, currency,
+             mode, status, tx_id, pan, pin, error, created_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)"""), args)
+        return int(cur.lastrowid)
+
+
+def stellr_code_update(code_id, **kw):
+    allowed = {"status", "tx_id", "pan", "pin", "error", "sent_at"}
+    sets = {k: v for k, v in kw.items() if k in allowed}
+    if not sets:
+        return 0
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q(f"UPDATE stellr_codes SET {', '.join(k+'=?' for k in sets)} WHERE id=?"),
+                    (*sets.values(), int(code_id)))
+        return cur.rowcount
+
+
+def stellr_codes_for_order(order_number) -> list:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM stellr_codes WHERE order_number = ? ORDER BY id"),
+                    (str(order_number),))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def stellr_codes_list(limit: int = 100) -> list:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM stellr_codes ORDER BY id DESC LIMIT ?"), (int(limit),))
+        return [dict(r) for r in cur.fetchall()]
 
 
 def wa_msg_get(wamid: str):

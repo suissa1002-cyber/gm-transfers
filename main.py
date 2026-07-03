@@ -19,6 +19,7 @@ import config as cfg
 import db
 import poller
 import misroute
+import stellr
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -454,6 +455,8 @@ def register_recurring_jobs():
     scheduler.add_job(_fraud_triage_job, "interval", minutes=30, id="fraud_triage", max_instances=1)
     # 🎓 למידת אלה משיחות שאסי ענה בהן (learn_pending → משימת learn לגשר)
     scheduler.add_job(_ella_learn_job, "interval", minutes=30, id="ella_learn", max_instances=1)
+    # 🎫 Stellr — הנפקה אוטומטית לירוק מוחלט (STELLR_AUTO=dry/on; off=לא עושה כלום)
+    scheduler.add_job(_stellr_auto_job, "interval", minutes=5, id="stellr_auto", max_instances=1)
     # 🪑 תג "בית לקוח" ↔ מלאי קופה (כיסאות כבדים): אזל→תיוג, חזר→הסרה
     scheduler.add_job(_beit_lakoach_sync_job, "interval", hours=6,
                       id="beit_lakoach_sync", max_instances=1, coalesce=True)
@@ -5999,6 +6002,208 @@ def _order_has_digital(items) -> bool:
         if any(m.lower() in nm for m in _DIGITAL_MARKERS):
             return True
     return False
+
+
+# ═══════════════ 🎫 Stellr — הנפקת קודים דיגיטליים ═══════════════
+def _stellr_fetch_order(num: str):
+    """הזמנת WC לפי מספר (אותו נתיב כמו הטריאז')."""
+    import requests as _rq
+    base, k, s = _wc_creds()
+    r = _rq.get(f"{base}/wp-json/wc/v3/orders",
+                params={"search": num, "per_page": 5}, auth=(k, s), timeout=40)
+    return next((x for x in (r.json() if r.ok else [])
+                 if str(x.get("number")) == num), None)
+
+
+def _stellr_issue_order(num: str, dry: bool, actor: str, force: bool = False) -> dict:
+    """הנפקת קודים להזמנה — הליבה המשותפת לכפתור הידני ולג'וב האוטומטי.
+    בטיחות: מתג ראשי, תשלום מאומת, ורדיקט ירוק (אלא אם force ידני), תקרות ערך
+    וכמות, מיפוי מלא לפני הנפקה ראשונה, line_ref ייחודי נגד כפל, עצירה בשגיאה."""
+    num = str(num).strip().lstrip("#")
+    if not stellr.enabled():
+        return {"ok": False, "error": "Stellr כבוי (STELLR_ENABLED/מפתח חסרים)"}
+    o = _stellr_fetch_order(num)
+    if not o:
+        return {"ok": False, "error": "הזמנה לא נמצאה"}
+    items = o.get("line_items") or []
+    digital = [li for li in items
+               if any(m.lower() in str(li.get("name") or "").lower()
+                      for m in _DIGITAL_MARKERS)]
+    if not digital:
+        return {"ok": False, "error": "אין בהזמנה פריט קוד דיגיטלי"}
+    meta = {m.get("key"): m.get("value") for m in (o.get("meta_data") or [])}
+    paid = bool(o.get("date_paid") or meta.get("greenos_payplus_tx")
+                or o.get("status") in ("processing", "completed"))
+    if not paid:
+        return {"ok": False, "error": "ההזמנה לא שולמה — אין הנפקה"}
+    level = (db.fraud_log_get(num) or {}).get("level")
+    if level != "green" and not force:
+        return {"ok": False, "error": f"ורדיקט הטריאז' אינו ירוק ({level or 'לא נסרק'}) — "
+                                      "הנפקה ידנית בלבד עם force"}
+    # מיפוי מלא לפני הנפקה ראשונה — לא מנפיקים חלקית
+    plan, unmapped, total_qty = [], [], 0
+    for li in digital:
+        key_v = f"{li.get('product_id')}:{li.get('variation_id') or 0}"
+        m = db.stellr_map_get(key_v) or db.stellr_map_get(str(li.get("product_id")))
+        if not m or not m.get("active"):
+            unmapped.append(str(li.get("name") or li.get("product_id")))
+            continue
+        if float(m.get("value") or 0) > stellr.MAX_VALUE:
+            return {"ok": False, "error": f"ערך {m.get('value')} מעל תקרת "
+                                          f"STELLR_MAX_VALUE={stellr.MAX_VALUE}"}
+        qty = int(li.get("quantity") or 1)
+        total_qty += qty
+        for i in range(qty):
+            plan.append({"line_ref": f"gm-{num}-{li.get('id')}-{i}",
+                         "wc_name": str(li.get("name") or ""),
+                         "product_ref": m["product_ref"],
+                         "value": float(m.get("value") or 0)})
+    if unmapped:
+        return {"ok": False, "error": "פריטים ללא מיפוי Stellr: " + ", ".join(unmapped),
+                "unmapped": unmapped}
+    if total_qty > stellr.MAX_QTY and not force:
+        return {"ok": False, "error": f"{total_qty} קודים מעל תקרת STELLR_MAX_QTY={stellr.MAX_QTY}"}
+    issued, skipped, errors = [], 0, []
+    for p in plan:
+        if db.stellr_code_exists(p["line_ref"]):
+            skipped += 1
+            continue
+        if dry:
+            db.stellr_code_add(num, p["line_ref"], p["wc_name"], p["product_ref"],
+                               p["value"], stellr.CURRENCY, "dry", "dry")
+            issued.append({**p, "dry": True})
+            continue
+        res = stellr.activate(p["product_ref"], p["value"], p["line_ref"])
+        if res.get("ok"):
+            cid = db.stellr_code_add(num, p["line_ref"], p["wc_name"], p["product_ref"],
+                                     p["value"], stellr.CURRENCY,
+                                     "auto" if actor == "auto" else "manual", "issued",
+                                     tx_id=res.get("tx_id", ""), pan=res.get("pan", ""),
+                                     pin=res.get("pin", ""))
+            issued.append({**p, "id": cid, "tx_id": res.get("tx_id")})
+        else:
+            # שגיאה (504/507/אחר) — עוצרים מיד, לא ממשיכים להנפיק
+            db.stellr_code_add(num, p["line_ref"], p["wc_name"], p["product_ref"],
+                               p["value"], stellr.CURRENCY,
+                               "auto" if actor == "auto" else "manual", "error",
+                               error=f"HTTP {res.get('http')}: {res.get('error')}")
+            errors.append(f"{p['wc_name']}: HTTP {res.get('http')}")
+            break
+    if issued and not dry:
+        try:
+            _tg_admin(f"🎫 <b>Stellr — הונפקו {len(issued)} קודים</b>\n"
+                      f"הזמנה #{num} · {actor} · {'UAT' if stellr.is_uat() else 'PRODUCTION'}")
+        except Exception:  # noqa: BLE001
+            pass
+    if errors:
+        try:
+            _tg_admin(f"🎫⚠️ <b>Stellr — שגיאת הנפקה</b>\nהזמנה #{num}: {'; '.join(errors)}\n"
+                      "ההנפקה נעצרה — טיפול ידני.")
+        except Exception:  # noqa: BLE001
+            pass
+    return {"ok": not errors, "order": num, "dry": dry, "issued": len(issued),
+            "skipped_existing": skipped, "errors": errors,
+            "codes": db.stellr_codes_for_order(num)}
+
+
+def _stellr_auto_job():
+    """אוטומציה לירוק מוחלט: הזמנות קוד ששולמו + ורדיקט ירוק + טרם הונפקו.
+    STELLR_AUTO=dry → רק רושם מה היה מונפק (שלב ההוכחה); on → מנפיק בפועל."""
+    mode = stellr.auto_mode()
+    if mode == "off" or not stellr.enabled():
+        return
+    import time as _t
+    for r in db.fraud_log_list(limit=40, level="green"):
+        num = r.get("order_number")
+        if _t.time() - (r.get("triaged_at") or 0) > 3 * 86400:
+            continue                      # ירוקים טריים בלבד
+        if db.stellr_codes_for_order(num):
+            continue                      # כבר טופל (הונפק/dry/שגיאה)
+        try:
+            res = _stellr_issue_order(num, dry=(mode == "dry"), actor="auto")
+        except Exception as e:  # noqa: BLE001
+            logger.warning("stellr auto %s: %s", num, e)
+            continue
+        if res.get("dry") and res.get("issued"):
+            try:
+                _tg_admin(f"🎫💡 <b>Stellr dry-run</b>\nהזמנה #{num} — האוטומציה הייתה "
+                          f"מנפיקה {res['issued']} קודים (ירוק מוחלט). לא הונפק בפועל.")
+            except Exception:  # noqa: BLE001
+                pass
+
+
+@app.get("/api/admin/stellr/status")
+def admin_stellr_status(x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    out = stellr.status()
+    out["map"] = db.stellr_map_list()
+    return out
+
+
+@app.get("/api/admin/stellr/catalog")
+def admin_stellr_catalog(fresh: int = 0, x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    if not stellr.API_KEY:
+        raise HTTPException(400, "STELLR_API_KEY לא מוגדר")
+    return {"is_uat": stellr.is_uat(), "products": stellr.catalog(fresh=bool(fresh))}
+
+
+@app.post("/api/admin/stellr/map")
+def admin_stellr_map_set(payload: dict, x_admin_key: Optional[str] = Header(None)):
+    """מיפוי מוצר WC → Stellr. body: {wc_key, wc_name, product_ref, value, active}
+    wc_key = product_id או 'product_id:variation_id'."""
+    _require_admin(x_admin_key)
+    if not payload.get("wc_key") or not payload.get("product_ref"):
+        raise HTTPException(400, "חסר wc_key / product_ref")
+    db.stellr_map_upsert(payload["wc_key"], payload.get("wc_name", ""),
+                         payload["product_ref"], payload.get("value", 0),
+                         payload.get("active", 1))
+    return {"ok": True, "map": db.stellr_map_list()}
+
+
+@app.delete("/api/admin/stellr/map/{wc_key}")
+def admin_stellr_map_del(wc_key: str, x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    return {"ok": True, "deleted": db.stellr_map_delete(wc_key)}
+
+
+@app.get("/api/admin/stellr/codes")
+def admin_stellr_codes(order: str = "", x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    rows = (db.stellr_codes_for_order(str(order).strip().lstrip("#"))
+            if order else db.stellr_codes_list(100))
+    return {"rows": rows}
+
+
+@app.post("/api/admin/stellr/issue")
+def admin_stellr_issue(payload: dict, x_admin_key: Optional[str] = Header(None)):
+    """הנפקה ידנית מהקונסולה. body: {order, dry: 0/1, force: 0/1}."""
+    _require_admin(x_admin_key)
+    num = str(payload.get("order") or "").strip().lstrip("#")
+    if not num:
+        raise HTTPException(400, "חסר מספר הזמנה")
+    return _stellr_issue_order(num, dry=bool(payload.get("dry")),
+                               actor=_actor_name(x_admin_key, None),
+                               force=bool(payload.get("force")))
+
+
+@app.post("/api/admin/stellr/test-activate")
+def admin_stellr_test(payload: dict, x_admin_key: Optional[str] = Header(None)):
+    """בדיקת צינור מול UAT בלבד (חסום בפרודקשן): הפעלה ישירה של productRef."""
+    _require_admin(x_admin_key)
+    if not stellr.is_uat():
+        raise HTTPException(400, "בדיקה ישירה מותרת רק מול UAT")
+    if not stellr.API_KEY:
+        raise HTTPException(400, "STELLR_API_KEY לא מוגדר")
+    import time as _t
+    res = stellr.activate(str(payload.get("product_ref") or ""),
+                          float(payload.get("value") or 0),
+                          f"gm-test-{int(_t.time())}",
+                          currency=str(payload.get("currency") or ""))
+    if res.get("ok"):  # בתשובת בדיקה מחזירים רק סימון שהקוד התקבל, לא את הקוד עצמו
+        res["pan"] = ("***" + res["pan"][-4:]) if res.get("pan") else ""
+        res["pin"] = "***" if res.get("pin") else ""
+    return res
 
 
 def _fraud_cache_set(number, level):
