@@ -6335,11 +6335,16 @@ def admin_wa_create_code_template(x_admin_key: Optional[str] = Header(None)):
     tok = os.getenv("META_WA_TOKEN", "").strip()
     if not tok:
         raise HTTPException(400, "META_WA_TOKEN לא מוגדר")
-    body = ("תודה שקנית ב-Green Mobile! 🎁\n\n{{1}}\nהקוד שלך:\n{{2}}\n\n"
-            "הקוד אישי וחד-פעמי — שמרו עליו 💚")
+    # ניסוח "מסירת רכישה" מובהק — "הקוד שלך" לבד מסווג בטעות כ-OTP (INCORRECT_CATEGORY).
+    # allow_category_change: אם המסווג של מטא מתעקש — שיבחר קטגוריה בעצמו ולא ידחה.
+    body = ("שלום! תודה על הרכישה ב-Green Mobile 🎁\n\n"
+            "פרטי המוצר הדיגיטלי שרכשת:\n{{1}}\n\n"
+            "שובר המימוש שלך:\n{{2}}\n\n"
+            "השובר אישי וחד-פעמי — מומלץ לשמור את ההודעה. לכל שאלה פשוט השיבו כאן 💚")
     r = _rq.post(f"https://graph.facebook.com/v23.0/{waba}/message_templates",
                  headers={"Authorization": f"Bearer {tok}"},
-                 json={"name": "gm_digital_code", "language": "he", "category": "UTILITY",
+                 json={"name": "gm_code_delivery", "language": "he", "category": "UTILITY",
+                       "allow_category_change": True,
                        "components": [{"type": "BODY", "text": body,
                                        "example": {"body_text": [["Sony PlayStation ₪200",
                                                                   "ABCD-1234-EFGH-5678"]]}}]},
