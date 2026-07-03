@@ -1607,6 +1607,21 @@ def admin_repairs_summary(fresh: int = 0, x_admin_key: Optional[str] = Header(No
     return data
 
 
+@app.get("/api/admin/egress-ip")
+def admin_egress_ip(x_admin_key: Optional[str] = Header(None)):
+    """כתובת ה-IP היוצאת של השירות (ל-whitelisting אצל ספקים כמו Stellr).
+    הערה: ב-Render יש לרוב כמה כתובות outbound קבועות — הרשימה המלאה בדשבורד."""
+    _require_admin(x_admin_key)
+    import requests as _rq
+    out = {}
+    for u in ("https://api.ipify.org", "https://ifconfig.me/ip"):
+        try:
+            out[u.split("//")[1].split("/")[0]] = _rq.get(u, timeout=8).text.strip()
+        except Exception as e:  # noqa: BLE001
+            out[u] = f"err: {e}"
+    return out
+
+
 _repairs_rev_cache: dict = {}
 
 
