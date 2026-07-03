@@ -6857,6 +6857,7 @@ async function loadHome(spinner){
                cdr:'/api/admin/crm/cdr-stats?days=1',          // היום בלבד (לא 30 יום)
                hist:'/api/admin/crm/history?days=1',            // שיחות היום (לרשימת לא-נענו)
                sales:'/api/admin/sales/dashboard'+_homeSalesQ(), // מכירות לפי סניף+תקופה
+               reprev:'/api/admin/repairs/revenue'+_homeSalesQ(),// הכנסות מעבדה לאותו חתך (פרוסת דונאט)
                sched:'/api/schedule/data',                      // סידור עבודה (סינון להיום ב-frontend)
                ordover:'/api/admin/orders?status=processing&before='+_ovBefore, // הזמנות בטיפול באיחור
                ordnew:'/api/admin/orders?page=1',                // הזמנות אחרונות (טיקר "הזמנות חדשות")
@@ -6946,13 +6947,15 @@ function repairsListOpen(kind){
 function homeSalesPeriod(p){ S.homeLastTouch=Date.now(); if(p==='range'){ homeSalesRangeOpen(); return; } S.homeSalesPeriod=p; S.homeSalesRange=null; S.homeSalesLoading=true; if(S.view==='home')renderHome(); loadHomeSales(); }
 async function loadHomeSales(){
   try{
-    const [s,rem]=await Promise.all([
+    const [s,rem,rr]=await Promise.all([
       api('/api/admin/sales/dashboard'+_homeSalesQ()),
-      api('/api/admin/removals'+_homeRemQ()).catch(()=>null)   // הורדות לפי אותה תקופה
+      api('/api/admin/removals'+_homeRemQ()).catch(()=>null),  // הורדות לפי אותה תקופה
+      api('/api/admin/repairs/revenue'+_homeSalesQ()).catch(()=>null) // מעבדה לאותו חתך
     ]);
     if(!S.homeData) S.homeData={};
     S.homeData.sales=s;
     if(rem) S.homeData.rem=rem;
+    if(rr) S.homeData.reprev=rr;
   }catch(e){}
   S.homeSalesLoading=false;
   if(S.view==='home') renderHome();
@@ -7009,7 +7012,7 @@ function homeDonut(cats){
     <div style="position:relative;width:118px;height:118px;flex:none">
       <svg viewBox="0 0 42 42" style="width:118px;height:118px;display:block">${segs}</svg>
       <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none">
-        <div style="font-size:10px;color:var(--muted)">מכירות</div><div style="font-size:13px;font-weight:800">${_il(total)}</div></div>
+        <div style="font-size:10px;color:var(--muted)">הכנסות</div><div style="font-size:13px;font-weight:800">${_il(total)}</div></div>
     </div>
     <div style="flex:1;min-width:135px">${legend}</div></div>`;
 }
@@ -7283,8 +7286,12 @@ function renderHome(){
   }
   // ── רשת כרטיסים ──
   h+=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:12px">`;
-  // פילוח קטגוריות (דונאט כמו NewOrder)
-  const cats=(sd.categories||[]).slice(0,11);
+  // פילוח קטגוריות (דונאט כמו NewOrder) + פרוסת תיקוני מעבדה לאותו חתך תקופה/סניף
+  let catsAll=(sd.categories||[]).slice();
+  const rrev=d.reprev;
+  if(rrev&&rrev.sum>0) catsAll.push({category:'🛠 תיקוני מעבדה',revenue:rrev.sum});
+  catsAll.sort((a,b)=>(b.revenue||0)-(a.revenue||0));
+  const cats=catsAll.slice(0,11);
   if(homeShow('categories')) h+=crmCard(homeHead(ico('tag',16),'פילוח קטגוריות',perLabel,"hubGoCrm()")+
     (cats.length?homeDonut(cats)
      :'<div class="muted" style="font-size:13px;padding:6px 0">אין מכירות בתקופה</div>'));

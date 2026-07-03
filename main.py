@@ -1607,6 +1607,81 @@ def admin_repairs_summary(fresh: int = 0, x_admin_key: Optional[str] = Header(No
     return data
 
 
+_repairs_rev_cache: dict = {}
+
+
+@app.get("/api/admin/repairs/revenue")
+def admin_repairs_revenue(branch_id: Optional[str] = None, period: Optional[str] = None,
+                          from_date: Optional[str] = None, to_date: Optional[str] = None,
+                          x_admin_key: Optional[str] = Header(None)):
+    """הכנסות מעבדה לחתך תקופה/סניף — לפרוסת הדונאט בלוח הבית. אותם פרמטרים
+    כמו sales/dashboard (period=yesterday / from_date+to_date / ברירת מחדל היום).
+    הכנסה נספרת לפי תאריך שחרור (deliveredDate); כדי לתפוס שחרורים של תיקונים
+    ותיקים מושכים creationDate עד 70 יום לפני תחילת הטווח. cache 5 דק' לכל חתך."""
+    _require_admin(x_admin_key)
+    import time as _t
+    from datetime import datetime as _dt, timedelta as _td
+    try:
+        from zoneinfo import ZoneInfo
+        today = _dt.now(ZoneInfo(cfg.TZ)).date()
+    except Exception:  # noqa: BLE001
+        today = _dt.now().date()
+    if period == "yesterday":
+        frm = to = today - _td(days=1)
+    elif from_date and to_date:
+        try:
+            frm = _dt.strptime(from_date[:10], "%Y-%m-%d").date()
+            to = _dt.strptime(to_date[:10], "%Y-%m-%d").date()
+        except Exception:  # noqa: BLE001
+            frm = to = today
+    else:
+        frm = to = today
+    ck = (str(frm), str(to), str(branch_id or ""))
+    hit = _repairs_rev_cache.get(ck)
+    if hit and _t.time() - hit[0] < 300:
+        return hit[1]
+
+    def _pd(s):
+        s = str(s or "").strip()
+        if not s:
+            return None
+        try:
+            return _dt.strptime(s[:10], "%d/%m/%Y").date()
+        except Exception:  # noqa: BLE001
+            return None
+
+    no = poller.client()
+    scan_from = frm - _td(days=70)
+    fixes = {}
+    cur = scan_from
+    while cur <= to:
+        nxt = min(cur + _td(days=6), to)
+        try:
+            for f in (no.get_fixes(from_date=str(cur), to_date=str(nxt)) or []):
+                if f.get("fixId"):
+                    fixes[f["fixId"]] = f
+        except Exception as e:  # noqa: BLE001
+            logger.warning("repairs revenue slice %s: %s", cur, e)
+        cur = nxt + _td(days=1)
+    s = 0.0
+    n = 0
+    want = str(branch_id or "").strip()
+    for f in fixes.values():
+        delivered = _pd(f.get("deliveredDate"))
+        if not delivered or delivered < frm or delivered > to:
+            continue
+        if want and str(f.get("fixId"))[:1] != want:
+            continue
+        s += float(f.get("invoiceCharge") or 0) or float(f.get("estimatedCharge") or 0)
+        n += 1
+    data = {"from": str(frm), "to": str(to), "branch_id": want or None,
+            "sum": round(s, 2), "count": n}
+    if len(_repairs_rev_cache) > 24:
+        _repairs_rev_cache.clear()
+    _repairs_rev_cache[ck] = (_t.time(), data)
+    return data
+
+
 @app.get("/api/admin/live-stock/{pid}")
 def admin_live_stock(pid: str, serials: int = 0, fresh: int = 0,
                      x_admin_key: Optional[str] = Header(None), x_device_token: Optional[str] = Header(None)):
