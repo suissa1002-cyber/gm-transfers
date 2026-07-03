@@ -5742,7 +5742,9 @@ async function stellrPosOpen(){
   // סיטי (קופה ידנית, בלי קבלות NewOrder) → בורר מותג+סכומים עם אישור אסי בטלגרם
   try{ if(!S.stellrDenoms) S.stellrDenoms=await api('/api/board/stellr/denoms'); }catch(e){}
   const dn=S.stellrDenoms||{};
-  if((dn.manual_branches||[]).includes(String(dn.branch||''))){ stellrPosManualOpen(dn); return; }
+  // סניף: מהמכשיר (עמדות סניפיות) או מהבחירה במסך (מנהל) — סיטי=קופה ידנית
+  const br=String(dn.branch||S.branchId||'');
+  if((dn.manual_branches||[]).includes(br)){ stellrPosManualOpen(dn); return; }
   stellrPosReceiptOpen();
 }
 function stellrPosReceiptOpen(){
@@ -5785,7 +5787,7 @@ async function stellrPosGo(mode){
     if(S.adminKey) headers['X-Admin-Key']=S.adminKey;
     if(S.deviceToken) headers['X-Device-Token']=S.deviceToken;
     const resp=await fetchT('/api/board/stellr/issue',{method:'POST',headers,
-      body:JSON.stringify({bill:bill.trim(),phone,mode:rMode,resend:recover?1:0})},90000);
+      body:JSON.stringify({bill:bill.trim(),phone,mode:rMode,resend:recover?1:0,branch_id:String(S.branchId||'')})},90000);
     const j=await resp.json().catch(()=>({}));
     if(!resp.ok){ say('❌ '+escW(j.detail||'הפעולה נכשלה — בדקו את מספר הקבלה או פנו לאסי'),'#dc2626'); return; }
     r=j;
@@ -5874,7 +5876,7 @@ async function stellrPosRequest(mode){
     if(S.adminKey) headers['X-Admin-Key']=S.adminKey;
     if(S.deviceToken) headers['X-Device-Token']=S.deviceToken;
     const resp=await fetchT('/api/board/stellr/request',{method:'POST',headers,
-      body:JSON.stringify({items:sel,phone,mode,employee:S.employee||''})},60000);
+      body:JSON.stringify({items:sel,phone,mode,employee:S.employee||'',branch_id:String(S.branchId||'')})},60000);
     const j=await resp.json().catch(()=>({}));
     if(!resp.ok){ say('❌ '+escW(j.detail||'הבקשה נכשלה — פנו לאסי'),'#dc2626'); return; }
     r=j;
