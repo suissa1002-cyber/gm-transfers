@@ -5738,7 +5738,14 @@ async function stellrIssue(num,opts){
   stellrBoxLoad(num);
 }
 // ── 🎫 הנפקת קוד בקופה (עמוד הסניפים) — קבלה+טלפון → וואטסאפ / הדפסה / שחזור ──
-function stellrPosOpen(){
+async function stellrPosOpen(){
+  // סיטי (קופה ידנית, בלי קבלות NewOrder) → בורר מותג+סכומים עם אישור אסי בטלגרם
+  try{ if(!S.stellrDenoms) S.stellrDenoms=await api('/api/board/stellr/denoms'); }catch(e){}
+  const dn=S.stellrDenoms||{};
+  if((dn.manual_branches||[]).includes(String(dn.branch||''))){ stellrPosManualOpen(dn); return; }
+  stellrPosReceiptOpen();
+}
+function stellrPosReceiptOpen(){
   const inp='width:100%;box-sizing:border-box;padding:12px;border:1.5px solid var(--line);border-radius:11px;background:var(--bg);color:var(--txt);font-size:16px;font-family:inherit';
   const btn=(txt,col,oc)=>`<button onclick="${oc}" style="flex:1;min-width:130px;padding:12px 10px;border-radius:11px;border:1.5px solid ${col};background:${col}14;color:${col};font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">${txt}</button>`;
   document.getElementById('modalRoot').innerHTML=`<div class="overlay" onclick="closeModal()"><div class="modal" style="max-width:400px;width:calc(100vw - 32px);text-align:right;padding:20px" onclick="event.stopPropagation()">
@@ -5808,6 +5815,96 @@ function stellrPosPrint(r){
     <div style="margin-top:5mm;font-size:8.5pt">הקוד אישי וחד-פעמי — שמרו על הפתק!<br>גרין מובייל · greenmobile.co.il</div>
     <script>window.onload=()=>{window.print();};<\/script></body></html>`);
   w.document.close();
+}
+// ── 🎫 קופה ידנית (סיטי): בורר מותג+סכומים → בקשת אישור מאסי בטלגרם → הנפקה ──
+function stellrPosManualOpen(dn){
+  S.spSel=[]; S.spBrand=Object.keys(dn.denoms||{})[0]||'sony';
+  document.getElementById('modalRoot').innerHTML=`<div class="overlay" onclick="closeModal()"><div class="modal" style="max-width:420px;width:calc(100vw - 32px);text-align:right;padding:20px" onclick="event.stopPropagation()">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <h3 style="margin:0;font-size:17px">🎫 הנפקת קוד דיגיטלי</h3>
+      <button onclick="closeModal()" style="background:var(--card2);border:0;width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:15px;color:var(--txt)">✕</button>
+    </div>
+    <div class="muted" style="font-size:12.5px;line-height:1.5;margin-bottom:12px">חייבו את הלקוח בקופה קודם. בחרו את הקודים שנמכרו — הבקשה תישלח לאישור אסי ותונפק מיד כשיאשר.</div>
+    <div id="spManBody"></div>
+  </div></div>`;
+  stellrPosManualPaint(dn);
+}
+function stellrPosManualPaint(dn){
+  const box=document.getElementById('spManBody'); if(!box) return;
+  dn=dn||S.stellrDenoms||{};
+  const P='#7c3aed';
+  const bLbl={sony:'🎮 קוד Sony',xbox:'🟢 קוד Xbox'};
+  const brands=Object.keys(dn.denoms||{});
+  const sel=S.spSel||[];
+  const brandBtn=b=>`<button onclick="S.spBrand='${b}';stellrPosManualPaint()" style="flex:1;padding:11px 8px;border-radius:11px;border:1.5px solid ${S.spBrand===b?P:'var(--line)'};background:${S.spBrand===b?P+'18':'var(--card2)'};color:${S.spBrand===b?P:'var(--txt)'};font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">${bLbl[b]||b}</button>`;
+  const amtBtn=v=>`<button onclick="stellrPosManualAdd('${S.spBrand}',${v})" ${sel.length>=3?'disabled style="opacity:.4;cursor:not-allowed;':'style="cursor:pointer;'}flex:1;min-width:70px;padding:11px 6px;border-radius:11px;border:1.5px solid var(--line);background:var(--card2);color:var(--txt);font-size:15px;font-weight:800;font-family:inherit">₪${v}</button>`;
+  const chip=(c,i)=>`<span style="display:inline-flex;align-items:center;gap:6px;background:${P}14;border:1px solid ${P}44;color:${P};border-radius:9px;padding:5px 10px;font-size:13px;font-weight:700">${c.brand==='sony'?'Sony':'Xbox'} ₪${c.value} <a onclick="S.spSel.splice(${i},1);stellrPosManualPaint()" style="cursor:pointer;font-weight:800">✕</a></span>`;
+  const total=sel.reduce((s,c)=>s+c.value,0);
+  const btn=(txt,col,oc,dis)=>`<button onclick="${oc}" ${dis?'disabled':''} style="flex:1;min-width:130px;padding:12px 10px;border-radius:11px;border:1.5px solid ${col};background:${col}14;color:${col};font-size:14px;font-weight:700;cursor:${dis?'not-allowed':'pointer'};opacity:${dis?'.45':'1'};font-family:inherit">${txt}</button>`;
+  box.innerHTML=`
+    <div style="display:flex;gap:8px;margin-bottom:10px">${brands.map(brandBtn).join('')}</div>
+    <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px">${((dn.denoms||{})[S.spBrand]||[]).map(amtBtn).join('')}</div>
+    ${sel.length?`<div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:6px">${sel.map(chip).join('')}</div>
+    <div class="muted" style="font-size:12px;margin-bottom:12px">סה"כ: <b>₪${total}</b> · עד 3 קודים לבקשה</div>`:''}
+    <label class="muted" style="font-size:12px">טלפון הלקוח (לשליחה בוואטסאפ)</label>
+    <input id="spPhone" style="width:100%;box-sizing:border-box;padding:12px;border:1.5px solid var(--line);border-radius:11px;background:var(--bg);color:var(--txt);font-size:16px;font-family:inherit;margin:4px 0 14px" inputmode="tel" placeholder="050-0000000">
+    <div style="display:flex;gap:9px;flex-wrap:wrap">
+      ${btn('💬 הנפק ושלח בוואטסאפ','#16a34a',"stellrPosRequest('wa')",!sel.length)}
+      ${btn('🖨 הנפק והדפס','#2563eb',"stellrPosRequest('print')",!sel.length)}
+    </div>
+    <div id="spMsg" style="margin-top:10px;font-size:13px"></div>`;
+}
+function stellrPosManualAdd(brand,v){
+  S.spSel=S.spSel||[];
+  if(S.spSel.length>=3) return;
+  S.spSel.push({brand,value:v});
+  stellrPosManualPaint();
+}
+async function stellrPosRequest(mode){
+  const sel=S.spSel||[];
+  const phone=(document.getElementById('spPhone')||{}).value||'';
+  const msg=document.getElementById('spMsg');
+  const say=(t,col)=>{ if(msg){ msg.style.color=col||'var(--txt)'; msg.innerHTML=t; } };
+  if(!sel.length){ say('⚠️ בחרו לפחות קוד אחד','#dc2626'); return; }
+  if(mode==='wa'&&phone.replace(/\D/g,'').length<9){ say('⚠️ הזינו טלפון תקין לשליחה','#dc2626'); return; }
+  say('⏳ שולח בקשה לאישור אסי…','var(--muted)');
+  let r;
+  try{
+    const headers={'Content-Type':'application/json'};
+    if(S.adminKey) headers['X-Admin-Key']=S.adminKey;
+    if(S.deviceToken) headers['X-Device-Token']=S.deviceToken;
+    const resp=await fetchT('/api/board/stellr/request',{method:'POST',headers,
+      body:JSON.stringify({items:sel,phone,mode,employee:S.employee||''})},60000);
+    const j=await resp.json().catch(()=>({}));
+    if(!resp.ok){ say('❌ '+escW(j.detail||'הבקשה נכשלה — פנו לאסי'),'#dc2626'); return; }
+    r=j;
+  }catch(e){ say('❌ בעיית תקשורת — נסו שוב','#dc2626'); return; }
+  say('📨 הבקשה נשלחה לאסי — ממתין לאישור… <span class="muted">(אפשר להשאיר את החלון פתוח)</span>','#d97706');
+  stellrPosPoll(r.id, mode, 0);
+}
+async function stellrPosPoll(rid, mode, tries){
+  const msg=document.getElementById('spMsg');
+  if(!msg) return;   // החלון נסגר — מפסיקים לרנדר (הקוד יחכה; שחזור דרך אסי)
+  const say=(t,col)=>{ msg.style.color=col||'var(--txt)'; msg.innerHTML=t; };
+  if(tries>225){ say('⌛ לא התקבל אישור תוך 15 דק׳ — נסו שוב או פנו לאסי','#dc2626'); return; }
+  let r;
+  try{
+    const headers={};
+    if(S.adminKey) headers['X-Admin-Key']=S.adminKey;
+    if(S.deviceToken) headers['X-Device-Token']=S.deviceToken;
+    const resp=await fetchT('/api/board/stellr/request/'+rid,{headers},20000);
+    r=await resp.json().catch(()=>({}));
+  }catch(e){ setTimeout(()=>stellrPosPoll(rid,mode,tries+1),4000); return; }
+  if(r.status==='denied'){ say('❌ אסי דחה את הבקשה — בדקו איתו טלפונית','#dc2626'); return; }
+  if(r.status==='error'){ say('⚠️ אושר אך ההנפקה נכשלה — פנו לאסי','#dc2626'); return; }
+  if(r.status==='issued'){
+    const uat=r.is_uat?' <b style="color:#d97706">(UAT — קוד בדיקה!)</b>':'';
+    if(mode==='wa'&&r.sent){ say('✅ אושר! הקוד הונפק ונשלח ללקוח בוואטסאפ'+uat,'#16a34a'); }
+    else if(mode==='wa'){ say('⚠️ אושר והונפק אך השליחה נכשלה — מדפיסים במקום'+uat,'#d97706'); stellrPosPrint(r); }
+    else{ say('✅ אושר! נפתח חלון הדפסה'+uat,'#16a34a'); stellrPosPrint(r); }
+    return;
+  }
+  setTimeout(()=>stellrPosPoll(rid,mode,tries+1),4000);
 }
 async function openFraudStats(){
   let d; try{ d=await api('/api/admin/fraud/log?limit=100'); }catch(e){ toast('טעינת המדד נכשלה',false); return; }

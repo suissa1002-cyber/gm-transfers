@@ -462,6 +462,9 @@ def register_recurring_jobs():
                       id="beit_lakoach_sync", max_instances=1, coalesce=True)
     scheduler.add_job(_fraud_triage_job, "date", id="fraud_triage_initial",
                       run_date=datetime.now() + timedelta(seconds=90))
+    # 🎫 כפתורי אישור/דחייה בטלגרם (הנפקת קודים בקופה ידנית) — רישום webhook לבוט האדמין
+    scheduler.add_job(_tg_register_webhook, "date", id="tg_webhook_reg",
+                      run_date=datetime.now() + timedelta(seconds=20))
     if _is_stale(db.sales_state_get("last_run"), hours=2):
         scheduler.add_job(_sales_ingest_job, "date", id="sales_ingest_initial",
                           run_date=datetime.now() + timedelta(seconds=120))
@@ -6320,6 +6323,238 @@ def board_stellr_issue(payload: dict, x_admin_key: Optional[str] = Header(None),
             "bill": bill, "customer": cust.get("name") or "",
             "codes": [{"name": c["wc_name"], "value": c["value"], "pan": c["pan"],
                        "pin": c["pin"]} for c in existing]}
+
+
+# ── קופה ידנית (סיטי): בורר מותג+סכום → בקשת אישור בטלגרם → הנפקה ──
+def _stellr_manual_branches() -> set:
+    return {b.strip() for b in os.environ.get("STELLR_MANUAL_BRANCHES", "3").split(",") if b.strip()}
+
+
+def _stellr_denoms() -> dict:
+    """עריכים (מותג→סכומים) מתוך stellr_map עם מפתחות den:<brand>:<value>."""
+    out = {}
+    for m in db.stellr_map_list():
+        k = str(m.get("wc_key") or "")
+        if not k.startswith("den:") or not m.get("active"):
+            continue
+        try:
+            _, brand, val = k.split(":", 2)
+            out.setdefault(brand, []).append(float(val))
+        except Exception:  # noqa: BLE001
+            continue
+    return {b: sorted(v) for b, v in out.items()}
+
+
+@app.get("/api/board/stellr/denoms")
+def board_stellr_denoms(x_admin_key: Optional[str] = Header(None),
+                        x_device_token: Optional[str] = Header(None)):
+    dev = _caller_device(x_admin_key, x_device_token)
+    branch = _device_branch(dev) if dev else ""
+    return {"manual_branches": sorted(_stellr_manual_branches()),
+            "branch": branch, "denoms": _stellr_denoms(),
+            "enabled": stellr.enabled(), "is_uat": stellr.is_uat()}
+
+
+@app.post("/api/board/stellr/request")
+def board_stellr_request(payload: dict, x_admin_key: Optional[str] = Header(None),
+                         x_device_token: Optional[str] = Header(None)):
+    """בקשת הנפקה מקופה ידנית: {items:[{brand,value}...], phone, mode, employee}.
+    לא מנפיק כלום — יוצר בקשה וממתין לאישור אסי בטלגרם (כפתורי אשר/דחה)."""
+    import json as _json
+    import re as _re
+    dev = _caller_device(x_admin_key, x_device_token)
+    branch = _device_branch(dev) if dev else str(payload.get("branch_id") or "")
+    if not str(branch).strip():
+        raise HTTPException(400, "המכשיר לא משויך לסניף — פנה לאסי")
+    branch = str(branch).strip()
+    if not stellr.enabled():
+        raise HTTPException(400, "מודול הקודים כבוי כרגע")
+    mode = str(payload.get("mode") or "print")
+    phone = _re.sub(r"\D", "", str(payload.get("phone") or ""))
+    if mode == "wa" and len(phone) < 9:
+        raise HTTPException(400, "מספר טלפון לא תקין לשליחה")
+    denoms = _stellr_denoms()
+    items = payload.get("items") or []
+    if not items:
+        raise HTTPException(400, "לא נבחרו קודים")
+    if len(items) > stellr.MAX_QTY:
+        raise HTTPException(400, f"עד {stellr.MAX_QTY} קודים לבקשה")
+    clean = []
+    for it in items:
+        brand = str(it.get("brand") or "")
+        val = float(it.get("value") or 0)
+        if brand not in denoms or val not in denoms[brand]:
+            raise HTTPException(400, f"סכום לא מוכר: {brand} {val}")
+        clean.append({"brand": brand, "value": val})
+    cap = int(os.environ.get("STELLR_POS_DAILY_CAP", "30"))
+    if db.stellr_pos_count_today(branch) + len(clean) > cap:
+        raise HTTPException(429, "הסניף הגיע לתקרת ההנפקות היומית — פנה לאסי")
+    emp = str(payload.get("employee") or "")[:40]
+    rid = db.stellr_req_add(branch, _json.dumps(clean, ensure_ascii=False), phone, mode, emp)
+    bname = {"sony": "Sony PlayStation", "xbox": "Xbox"}
+    lines = " + ".join(f"{bname.get(c['brand'], c['brand'])} ₪{int(c['value'])}" for c in clean)
+    total = sum(c["value"] for c in clean)
+    _tg_admin(f"🎫 <b>בקשת הנפקת קוד — קופה ידנית</b>\n"
+              f"סניף <b>{cfg.branch_name(int(branch))}</b>{' · ' + emp if emp else ''}\n"
+              f"{lines} · סה\"כ <b>₪{int(total)}</b>\n"
+              f"מסירה: {'וואטסאפ ל-' + phone if mode == 'wa' else '🖨 הדפסה בעמדה'}"
+              f"{' · UAT' if stellr.is_uat() else ''}",
+              buttons=[{"text": "✅ אשר והנפק", "callback_data": f"stlr:ok:{rid}"},
+                       {"text": "❌ דחה", "callback_data": f"stlr:no:{rid}"}])
+    return {"ok": True, "id": rid, "status": "pending"}
+
+
+def _stellr_req_issue(req: dict) -> dict:
+    """הנפקה בפועל אחרי אישור — נקרא מה-webhook של טלגרם."""
+    import json as _json
+    import time as _t
+    rid = req["id"]
+    branch = req["branch"]
+    items = _json.loads(req.get("items") or "[]")
+    okey = f"req-{branch}-{rid}"
+    issued = []
+    for i, it in enumerate(items):
+        ref_row = db.stellr_map_get(f"den:{it['brand']}:{int(it['value'])}") \
+            or db.stellr_map_get(f"den:{it['brand']}:{it['value']}")
+        if not ref_row:
+            db.stellr_req_set(rid, "error", f"אין מיפוי den:{it['brand']}:{it['value']}")
+            return {"ok": False, "error": "אין מיפוי"}
+        line_ref = f"req-{rid}-{i}"
+        if db.stellr_code_exists(line_ref):
+            continue
+        res = stellr.activate(ref_row["product_ref"], it["value"], line_ref)
+        label = ("Sony PlayStation" if it["brand"] == "sony" else "Xbox") + f" ₪{int(it['value'])}"
+        if not res.get("ok"):
+            db.stellr_code_add(okey, line_ref, label, ref_row["product_ref"], it["value"],
+                               stellr.CURRENCY, "pos-req", "error",
+                               error=f"HTTP {res.get('http')}: {res.get('error')}")
+            db.stellr_req_set(rid, "error", f"HTTP {res.get('http')}")
+            return {"ok": False, "error": f"HTTP {res.get('http')}"}
+        db.stellr_code_add(okey, line_ref, label, ref_row["product_ref"], it["value"],
+                           stellr.CURRENCY, "pos-req", "issued",
+                           tx_id=res.get("tx_id", ""), pan=res.get("pan", ""),
+                           pin=res.get("pin", ""))
+        issued.append(line_ref)
+    sent = False
+    if req.get("mode") == "wa" and req.get("phone"):
+        import wa
+        codes = [c for c in db.stellr_codes_for_order(okey) if c.get("status") == "issued"]
+        parts = [f"{c['wc_name']}: {c['pan']}" + (f" (PIN: {c['pin']})" if c.get("pin") else "")
+                 for c in codes]
+        body = "הקוד הדיגיטלי שלך מ-Green Mobile 🎁 — " + " · ".join(parts) + \
+               " — הקוד אישי וחד-פעמי, שמרו עליו!"
+        try:
+            wa.send_template(req["phone"], "", body)
+            sent = True
+            for c in codes:
+                db.stellr_code_update(c["id"], status="sent", sent_at=int(_t.time()))
+        except Exception as e:  # noqa: BLE001
+            logger.warning("stellr req wa send failed: %s", e)
+    db.stellr_req_set(rid, "issued")
+    return {"ok": True, "issued": len(issued), "sent": sent}
+
+
+@app.get("/api/board/stellr/request/{rid}")
+def board_stellr_request_status(rid: int, x_admin_key: Optional[str] = Header(None),
+                                x_device_token: Optional[str] = Header(None)):
+    """פולינג מהעמדה: סטטוס הבקשה; כשאושרה והונפקה — גם הקודים (להדפסה)."""
+    dev = _caller_device(x_admin_key, x_device_token)
+    req = db.stellr_req_get(rid)
+    if not req:
+        raise HTTPException(404, "בקשה לא נמצאה")
+    if dev and _device_branch(dev) != str(req.get("branch")):
+        raise HTTPException(403, "הבקשה שייכת לסניף אחר")
+    out = {"id": rid, "status": req.get("status"), "mode": req.get("mode"),
+           "is_uat": stellr.is_uat()}
+    if req.get("status") == "issued":
+        okey = f"req-{req['branch']}-{rid}"
+        codes = [c for c in db.stellr_codes_for_order(okey)
+                 if c.get("status") in ("issued", "sent")]
+        out["sent"] = any(c.get("status") == "sent" for c in codes)
+        out["codes"] = [{"name": c["wc_name"], "value": c["value"],
+                         "pan": c["pan"], "pin": c["pin"]} for c in codes]
+        out["bill"] = f"בקשה {rid}"
+    return out
+
+
+def _tg_webhook_secret() -> str:
+    import hashlib
+    return hashlib.sha256(("gmtg:" + TG_BOT).encode()).hexdigest()[:32]
+
+
+def _tg_register_webhook():
+    """רישום webhook לבוט האדמין (idempotent) — לכפתורי אישור/דחייה."""
+    if not TG_BOT:
+        return
+    try:
+        import requests as _rq
+        url = os.environ.get("PUBLIC_BASE_URL", "https://gm-transfers.onrender.com").rstrip("/")
+        _rq.post(f"https://api.telegram.org/bot{TG_BOT}/setWebhook",
+                 json={"url": f"{url}/api/tg/webhook",
+                       "secret_token": _tg_webhook_secret(),
+                       "allowed_updates": ["callback_query"]}, timeout=15)
+        logger.info("tg admin webhook registered")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("tg webhook register failed: %s", e)
+
+
+@app.post("/api/tg/webhook")
+async def tg_admin_webhook(request: Request):
+    """webhook של בוט האדמין — כרגע רק כפתורי אישור/דחייה של הנפקות קופה ידנית."""
+    if request.headers.get("x-telegram-bot-api-secret-token", "") != _tg_webhook_secret():
+        raise HTTPException(403, "bad secret")
+    try:
+        upd = await request.json()
+    except Exception:  # noqa: BLE001
+        return {"ok": True}
+    cb = upd.get("callback_query") or {}
+    data = str(cb.get("data") or "")
+    if not data.startswith("stlr:"):
+        return {"ok": True}
+    import requests as _rq
+    try:
+        _rq.post(f"https://api.telegram.org/bot{TG_BOT}/answerCallbackQuery",
+                 json={"callback_query_id": cb.get("id")}, timeout=10)
+    except Exception:  # noqa: BLE001
+        pass
+    # רק מהצ'אט של אסי
+    if str((cb.get("message") or {}).get("chat", {}).get("id") or "") != str(TG_ADMIN_CHAT):
+        return {"ok": True}
+    try:
+        _, act, rid = data.split(":", 2)
+        req = db.stellr_req_get(int(rid))
+    except Exception:  # noqa: BLE001
+        return {"ok": True}
+    msg = cb.get("message") or {}
+
+    def _edit(suffix):
+        try:
+            _rq.post(f"https://api.telegram.org/bot{TG_BOT}/editMessageText",
+                     json={"chat_id": msg.get("chat", {}).get("id"),
+                           "message_id": msg.get("message_id"),
+                           "text": (msg.get("text") or "") + "\n\n" + suffix,
+                           "parse_mode": "HTML"}, timeout=15)
+        except Exception:  # noqa: BLE001
+            pass
+    if not req or req.get("status") != "pending":
+        _edit("⚠️ הבקשה כבר טופלה או לא נמצאה")
+        return {"ok": True}
+    import time as _t
+    if int(_t.time()) - int(req.get("created_at") or 0) > 1800:
+        db.stellr_req_set(req["id"], "expired")
+        _edit("⌛ הבקשה פגה (מעל 30 דק׳) — הנציג יגיש חדשה")
+        return {"ok": True}
+    if act == "no":
+        db.stellr_req_set(req["id"], "denied")
+        _edit("❌ <b>נדחה</b> — הנציג רואה את הדחייה בעמדה")
+        return {"ok": True}
+    res = _stellr_req_issue(req)
+    if res.get("ok"):
+        _edit(f"✅ <b>אושר והונפק</b> ({res.get('issued', 0)} קודים)"
+              + (" · נשלח בוואטסאפ" if res.get("sent") else " · ממתין להדפסה בעמדה"))
+    else:
+        _edit(f"⚠️ אושר אך ההנפקה נכשלה: {res.get('error')}")
+    return {"ok": True}
 
 
 @app.post("/api/admin/stellr/test-activate")

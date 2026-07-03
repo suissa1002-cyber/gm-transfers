@@ -656,6 +656,21 @@ _SCHEMA = [
     )
     """.format(pk=_PK),
     "CREATE INDEX IF NOT EXISTS idx_stellr_codes_order ON stellr_codes(order_number)",
+    # בקשות הנפקה מקופה ידנית (סיטי) — דורשות אישור אסי בטלגרם לפני הנפקה
+    """
+    CREATE TABLE IF NOT EXISTS stellr_requests (
+        id           {pk},
+        branch       TEXT,
+        items        TEXT,
+        phone        TEXT,
+        mode         TEXT,
+        status       TEXT DEFAULT 'pending',
+        requested_by TEXT,
+        created_at   BIGINT,
+        decided_at   BIGINT,
+        error        TEXT
+    )
+    """.format(pk=_PK),
 ]
 
 
@@ -3018,18 +3033,52 @@ def stellr_codes_for_order(order_number) -> list:
 
 
 def stellr_pos_count_today(branch) -> int:
-    """כמה קודים הנפיק סניף היום (תקרה יומית) — לפי קידומת order_number של קופה."""
-    import time as _t
+    """כמה קודים הנפיק סניף היום (תקרה יומית) — קבלות (pos-) + בקשות ידניות (req-)."""
     from datetime import datetime as _dt
     midnight = int(_dt.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
     with _conn() as c:
         cur = c.cursor()
         cur.execute(_q("""SELECT COUNT(*) AS n FROM stellr_codes
-                          WHERE order_number LIKE ? AND created_at >= ?
-                            AND status IN ('issued','sent')"""),
-                    (f"pos-{branch}-%", midnight))
+                          WHERE (order_number LIKE ? OR order_number LIKE ?)
+                            AND created_at >= ? AND status IN ('issued','sent')"""),
+                    (f"pos-{branch}-%", f"req-{branch}-%", midnight))
         r = cur.fetchone()
         return int(r["n"] if r else 0)
+
+
+def stellr_req_add(branch, items_json, phone, mode, requested_by) -> int:
+    import time as _t
+    with _conn() as c:
+        cur = c.cursor()
+        args = (str(branch), items_json, phone or "", mode or "print",
+                requested_by or "", int(_t.time()))
+        if _USE_PG:
+            cur.execute(_q("""INSERT INTO stellr_requests
+                (branch, items, phone, mode, requested_by, created_at)
+                VALUES (?,?,?,?,?,?) RETURNING id"""), args)
+            return int(cur.fetchone()["id"])
+        cur.execute(_q("""INSERT INTO stellr_requests
+            (branch, items, phone, mode, requested_by, created_at)
+            VALUES (?,?,?,?,?,?)"""), args)
+        return int(cur.lastrowid)
+
+
+def stellr_req_get(rid) -> dict:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM stellr_requests WHERE id = ?"), (int(rid),))
+        r = cur.fetchone()
+        return dict(r) if r else {}
+
+
+def stellr_req_set(rid, status, error="") -> int:
+    import time as _t
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""UPDATE stellr_requests SET status=?, decided_at=?, error=?
+                          WHERE id=?"""),
+                    (status, int(_t.time()), error or "", int(rid)))
+        return cur.rowcount
 
 
 def stellr_codes_list(limit: int = 100) -> list:
