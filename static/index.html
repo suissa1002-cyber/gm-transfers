@@ -5671,6 +5671,72 @@ async function markFraudOutcome(orderNum,outcome){
     openWcOrder(orderNum);   // רענון הכרטיס
   }catch(e){ toast('שמירת התיוג נכשלה',false); }
 }
+// ── 🎫 Stellr — הנפקת קודים דיגיטליים בכרטיס ההזמנה ──
+const _STELLR_DIG_RE=/קוד דיגיטלי|גיפט|gift|psn|playstation|xbox|steam|voucher|שובר|ארנק דיגיטלי/i;
+async function stellrBoxLoad(num){
+  const box=document.getElementById('stellrBox'); if(!box||!num) return;
+  try{ if(S.stellrStatus===undefined) S.stellrStatus=await api('/api/admin/stellr/status'); }
+  catch(e){ S.stellrStatus=null; }
+  const st=S.stellrStatus;
+  if(!st||!st.key_set){ box.innerHTML=''; return; }        // Stellr לא מוגדר — שקט מוחלט
+  const _od=(S._wcoD&&String(S._wcoD.number)===String(num))?S._wcoD:null;
+  const digital=_STELLR_DIG_RE.test(((_od&&_od.line_items)||[]).map(li=>li.name||'').join(' '))
+                || !!document.querySelector('#frbScan details');   // fallback: יש באנר טריאז' = הזמנת קוד
+  let codes=[]; try{ codes=(await api('/api/admin/stellr/codes?order='+encodeURIComponent(num))).rows||[]; }catch(e){}
+  if(!codes.length&&!digital){ box.innerHTML=''; return; }
+  const P='#7c3aed';
+  const codeRow=r=>{
+    const stx={issued:['✓ הונפק','#16a34a'],sent:['✓ נשלח','#16a34a'],dry:['💡 dry-run','#d97706'],error:['⚠ שגיאה','#dc2626']}[r.status]||[r.status,'var(--muted)'];
+    const cid='stc'+r.id;
+    return `<div style="display:flex;gap:9px;align-items:center;padding:7px 0;border-bottom:1px solid var(--line);font-size:12.5px">
+      <span style="color:${stx[1]};font-weight:700;flex:none;min-width:74px">${stx[0]}</span>
+      <span style="flex:1;min-width:0">
+        <b>${escW(r.wc_name||'')}</b> · ₪${Math.round(r.value||0)}
+        ${r.status==='issued'||r.status==='sent'?`<br><span id="${cid}" data-pan="${escW(r.pan||'')}" data-pin="${escW(r.pin||'')}" style="direction:ltr;unicode-bidi:embed;font-family:monospace;letter-spacing:.5px">••••••••</span>
+          <button onclick="stellrReveal('${cid}')" style="background:none;border:0;cursor:pointer;font-size:13px" title="הצג/הסתר">👁</button>
+          <button onclick="stellrCopy('${cid}')" style="background:none;border:0;cursor:pointer;font-size:13px" title="העתק קוד">📋</button>`:''}
+        ${r.status==='error'?`<br><span style="color:#dc2626;font-size:11.5px">${escW(r.error||'')}</span>`:''}
+      </span>
+    </div>`; };
+  const canIssue=!codes.some(c=>c.status==='issued'||c.status==='sent');
+  box.innerHTML=`<div style="border:1.5px solid ${P}44;background:${P}0a;border-radius:14px;padding:12px 15px;margin-bottom:16px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:${codes.length||canIssue?'8px':'0'}">
+      <b style="color:${P};font-size:14px">🎫 קודים דיגיטליים (Stellr)</b>
+      ${st.is_uat?`<span class="ord-st" style="color:#d97706;border-color:#d9770655;background:#d977060f;font-size:10.5px">UAT — סביבת בדיקות</span>`:''}
+      ${!st.enabled?`<span class="ord-st" style="color:#6b7280;font-size:10.5px">כבוי (STELLR_ENABLED)</span>`:''}
+      <span style="margin-inline-start:auto"></span>
+      ${st.enabled&&canIssue?`<button onclick="stellrIssue('${num}',{})" class="btn-ghost" style="padding:5px 12px;font-size:12.5px;color:${P};border-color:${P}55">🎫 הנפק קודים</button>
+      <button onclick="stellrIssue('${num}',{force:1})" title="הנפקה גם כשהורדיקט אינו ירוק — באחריותך" style="padding:5px 9px;font-size:11.5px;border-radius:8px;border:1px dashed var(--line);background:none;color:var(--muted);cursor:pointer">עקוף ורדיקט</button>`:''}
+    </div>
+    ${codes.map(codeRow).join('')||(st.enabled?'':'<div class="muted" style="font-size:12px">מודול ההנפקה כבוי — הפעלה במשתני סביבה ב-Render.</div>')}
+  </div>`;
+}
+function stellrReveal(cid){
+  const el=document.getElementById(cid); if(!el) return;
+  const shown=el.dataset.shown==='1';
+  el.textContent=shown?'••••••••':(el.dataset.pan+(el.dataset.pin?' · PIN '+el.dataset.pin:''));
+  el.dataset.shown=shown?'0':'1';
+}
+function stellrCopy(cid){
+  const el=document.getElementById(cid); if(!el) return;
+  const t=el.dataset.pan+(el.dataset.pin?' PIN: '+el.dataset.pin:'');
+  navigator.clipboard.writeText(t).then(()=>toast('הקוד הועתק 📋',true)).catch(()=>toast('העתקה נכשלה',false));
+}
+async function stellrIssue(num,opts){
+  opts=opts||{};
+  const q=opts.force?'⚠️ להנפיק למרות שהורדיקט אינו ירוק? זה מנפיק קוד אמיתי בתשלום.':'להנפיק קודים להזמנה #'+num+'?';
+  if(!confirm(q)) return;
+  const box=document.getElementById('stellrBox');
+  if(box) box.innerHTML='<div class="muted" style="font-size:12.5px;padding:10px 14px;border:1px dashed var(--line);border-radius:12px;margin-bottom:16px">🎫 מנפיק קודים…</div>';
+  try{
+    const r=await api('/api/admin/stellr/issue',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({order:String(num),force:opts.force?1:0})},90000);
+    if(r.ok===false&&r.error) toast(r.error,false);
+    else if(r.errors&&r.errors.length) toast('הנפקה חלקית — '+r.errors.join('; '),false);
+    else toast('הונפקו '+(r.issued||0)+' קודים ✓',true);
+  }catch(e){ toast('שגיאה בהנפקה',false); }
+  stellrBoxLoad(num);
+}
 async function openFraudStats(){
   let d; try{ d=await api('/api/admin/fraud/log?limit=100'); }catch(e){ toast('טעינת המדד נכשלה',false); return; }
   const st=d.stats||{}; const M={green:['🟢 ירוק','#16a34a'],yellow:['🟡 צהוב','#d97706'],red:['🔴 אדום','#dc2626'],gray:['⚪ טרם שולם','#6b7280']};
@@ -6064,6 +6130,7 @@ function paintWcOrder(){
         : `${d.oos?`<span class="ord-st" style="color:#dc2626;border-color:#dc262655;background:#dc26260f;display:inline-flex;align-items:center;gap:6px">${ico('pkgx',14)} חסר במלאי בכל הסניפים — להשיג מהספק</span>`:''}${d.bcast?`<span class="ord-st" style="color:${d.bcast.status==='live'?'#15803d':'var(--muted)'};border-color:${d.bcast.status==='live'?'#15803d':'var(--muted)'}55;background:${d.bcast.status==='live'?'#15803d':'#6b7280'}0f;display:inline-flex;align-items:center;gap:6px">${ico('radio',14)} בקשת העברה שודרה ל: ${escW(bcastBranches(d.bcast))}${d.bcast.status==='live'?'':' — נסגרה בסניף'}</span>`:''}`}
     </div>`:''}
     ${(d.fraud&&d.fraud.reasons)?`<div id="frbScan">${fraudBanner(d.fraud,d.number)}</div>`:(d.fraud_scannable?`<div id="frbScan">${fraudScanChip(d.fraud,d.number)}</div>`:'')}
+    <div id="stellrBox"></div>${(function(){ setTimeout(()=>stellrBoxLoad(d.number),0); return ''; })()}
     ${d.cargo_status&&d.cargo_status.text?(function(){const cs=d.cargo_status;let col='#6b7280';const t=cs.text;
       if(/בוצע|נמסר|סופק/.test(t))col='#16a34a';else if(/בדרך|ללקוח|שליח|חלוקה/.test(t))col='#2563eb';else if(/מחסן/.test(t))col='#d97706';
       return `<div style="margin-bottom:16px;display:flex;gap:7px;flex-wrap:wrap;align-items:center"><span class="ord-st" style="color:${col};border-color:${col}55;background:${col}14;display:inline-flex;align-items:center;gap:6px">${ico('truck',14)} משלוח Cargo · <b>${escW(t)}</b>${cs.tracking?` · מעקב ${escW(cs.tracking)}`:''}${cs.line?` · ${escW(cs.line)}`:''}</span>${cs.track_url?`<button class="btn-ghost" style="padding:5px 10px;font-size:12px;display:inline-flex;align-items:center;gap:5px" onclick="copyCargoTrack('${escW(cs.track_url)}')">🔗 העתק קישור מעקב</button><a class="btn-ghost" style="padding:5px 10px;font-size:12px;text-decoration:none" target="_blank" href="${escW(cs.track_url)}">פתח ↗</a>`:''}</div>`;})():''}
