@@ -2599,6 +2599,7 @@ function waEnterSend(ev, fn){
 }
 async function loadWa(spinner){
   if(spinner) showLoading('טוען שיחות וואטסאפ…');
+  waEllaPendingLoad(false);   // 🎓 באדג' תור השאלות של אלה בסרגל (ברקע, מרנדר אם השתנה)
   try{ const d=await api('/api/admin/wa/conversations?archived='+(S.waArchived?1:0));
        S.waConvs=d.conversations||[]; S.waErr=''; updateWaBadge(S.waConvs); }
   catch(e){ S.waConvs=S.waConvs||[]; S.waErr=e.status===502?'שגיאת ConnectOp (טוקן?)':'שגיאת תקשורת'; }
@@ -2706,6 +2707,7 @@ function renderWa(){
                   onclick="S.waStarred=S.waStarred?0:1;renderWa()">${ico('star',16,S.waStarred)}</button>
           <button class="btn-ghost wa-ico ${S.waArchived?'wa-human-on':''}" title="${S.waArchived?'מציג כולל ארכיון — לחץ להסתיר':'הצג כולל ארכיון'}"
                   onclick="S.waArchived=S.waArchived?0:1;loadWa(true)">${ico('archive',16)}</button>
+          ${(S.ellaPending||[]).length?`<button class="btn-ghost wa-ico" title="🎓 לאלה יש ${S.ellaPending.length} שאלות/לקחים שממתינים לך — לחץ למעבר לשיחות" onclick="waEllaQueueOpen()" style="position:relative;color:#7c3aed">${CLAUDE_ICON_S}<span style="position:absolute;top:-3px;inset-inline-end:-3px;background:#7c3aed;color:#fff;border-radius:99px;font-size:9px;font-weight:700;padding:1px 4px;line-height:1.4">${S.ellaPending.length}</span></button>`:''}
         </div>
         ${S.waFilterAwaiting?`<div style="display:flex;align-items:center;gap:7px;padding:7px 10px;background:rgba(220,38,38,.08);border-bottom:1px solid var(--line);font-size:12.5px;color:#dc2626;font-weight:700">🔴 מסונן: ממתינים לנציג (${rows.length})<button class="btn-ghost" style="margin-inline-start:auto;padding:2px 9px;font-size:12px" onclick="S.waFilterAwaiting=false;renderWa()">✕ נקה</button></div>`:''}
         <div id="waListPane">${waListHTML(rows)}</div>
@@ -3472,13 +3474,49 @@ function waToggleUri(){
 }
 // 🎓 טיוטות למידה של אלה — נטענות לפאנל הצ'אט שלה (שאלות אליך + לקחים מוצעים)
 async function waEllaPendingLoad(repaint){
+  const before=(S.ellaPending||[]).length;
   try{ const r=await api('/api/admin/ella/pending'); S.ellaPending=(r&&r.rows)||[]; }
   catch(e){ S.ellaPending=S.ellaPending||[]; }
-  if(repaint && S.waPanel && S.waPanelMode==='uri') renderWaThread();
+  const changed=(S.ellaPending||[]).length!==before;
+  if((repaint||changed) && document.getElementById('waLayout')){
+    renderWa();                                  // מרענן גם את באדג' התור בסרגל
+    if(S.waPhone) renderWaThread();
+  }
+}
+// תור השאלות של אלה: לחיצה על הבאדג' → רשימת השיחות הממתינות → קפיצה לשיחה עם הפאנל פתוח
+function waEllaQueueOpen(){
+  const pend=S.ellaPending||[];
+  if(!pend.length){ toast('אין שאלות ממתינות מאלה 🙂',true); return; }
+  if(pend.length===1){ waEllaGoTo(pend[0].phone); return; }
+  const nameOf=p=>{ const c=(S.waConvs||[]).find(x=>String(x.phone)===String(p)); return (c&&c.name)?c.name:p; };
+  const rows=pend.map(r=>`<div onclick="waEllaGoTo('${escW(String(r.phone||''))}')" style="display:flex;gap:9px;align-items:flex-start;padding:10px 12px;border-bottom:1px solid var(--line);cursor:pointer" onmouseover="this.style.background='var(--card2)'" onmouseout="this.style.background=''">
+      <span style="flex:none;font-size:15px">${r.kind==='question'?'❓':'💡'}</span>
+      <span style="flex:1;min-width:0">
+        <b style="font-size:13px">${escW(nameOf(r.phone))}</b>
+        <div class="muted" style="font-size:12px;line-height:1.45;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">${escW((r.case_txt?r.case_txt+' — ':'')+(r.text||''))}</div>
+      </span>
+      <span class="muted" style="font-size:10.5px;white-space:nowrap">${escW((r.created_at||'').slice(5,10))}</span>
+    </div>`).join('');
+  document.getElementById('modalRoot').innerHTML=`<div class="dr-wrap" onclick="if(event.target===this)closeModal()" style="position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:1000;padding:16px">
+    <div style="background:var(--card);border-radius:16px;max-width:520px;width:100%;max-height:80vh;overflow:auto">
+      <div style="display:flex;align-items:center;gap:9px;padding:14px 16px 10px"><span style="color:#7c3aed">${CLAUDE_ICON_S}</span><b style="font-size:15px;flex:1">🎓 אלה ממתינה לך (${pend.length})</b><button class="dr-x" onclick="closeModal()">✕</button></div>
+      <div class="muted" style="font-size:12px;padding:0 16px 10px">לחיצה על שורה פותחת את השיחה עם הצ'אט של אלה — עונים לה שם.</div>
+      ${rows}
+    </div></div>`;
+}
+async function waEllaGoTo(phone){
+  closeModal();
+  await openWaConv(phone);
+  S.waPanel=true; S.waPanelMode='uri';
+  renderWaThread(); waUriCheckBridge(); waUriLoadHistory(phone);
 }
 function waEllaPendingHTML(){
-  const pend=S.ellaPending||[];
-  if(!pend.length) return '';
+  const all=S.ellaPending||[];
+  if(!all.length) return '';
+  const pend=all.filter(r=>String(r.phone||'')===String(S.waPhone||''));
+  const others=all.length-pend.length;
+  const extra=others>0?`<div class="wa-note" style="font-size:11.5px;cursor:pointer;color:#7c3aed" onclick="waEllaQueueOpen()">🎓 עוד ${others} שאלות/לקחים של אלה בשיחות אחרות — לחץ למעבר</div>`:'';
+  if(!pend.length) return extra;
   return pend.map(r=>{
     if(r.kind==='question') return `<div class="wa-uri-a" style="border-inline-start:3px solid #7c3aed">
       <div style="font-size:10.5px;color:#7c3aed;font-weight:700;margin-bottom:3px">🎓 למדתי משיחה ויש לי שאלה${r.case_txt?` · ${escW(r.case_txt)}`:''}</div>
@@ -3495,7 +3533,7 @@ function waEllaPendingHTML(){
         <button class="btn-ghost" style="padding:5px 8px;font-size:11.5px;color:var(--muted)" onclick="waEllaDel(${r.id})">דחה</button>
         <button class="btn-ghost" style="padding:5px 12px;font-size:11.5px;color:#16a34a;border-color:#16a34a55;font-weight:700" onclick="waEllaApprove(${r.id})">אשר ✓</button>
       </div></div>`;
-  }).join('');
+  }).join('')+extra;
 }
 async function waEllaAnswer(id){
   const el=document.getElementById('waEllaAns'+id); const txt=(el&&el.value||'').trim();
