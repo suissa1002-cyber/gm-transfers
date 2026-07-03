@@ -2708,6 +2708,7 @@ function renderWa(){
           <button class="btn-ghost wa-ico ${S.waArchived?'wa-human-on':''}" title="${S.waArchived?'מציג כולל ארכיון — לחץ להסתיר':'הצג כולל ארכיון'}"
                   onclick="S.waArchived=S.waArchived?0:1;loadWa(true)">${ico('archive',16)}</button>
           <button class="btn-ghost wa-ico" title="${(S.ellaPending||[]).length?`🎓 לאלה יש ${S.ellaPending.length} שאלות/לקחים שממתינים לך — לחץ למעבר לשיחות`:'שאלות הלמידה של אלה — אין ממתינות כרגע'}" onclick="waEllaQueueOpen()" style="position:relative;color:${(S.ellaPending||[]).length?'#7c3aed':'var(--muted)'};opacity:${(S.ellaPending||[]).length?'1':'.55'}">${CLAUDE_ICON_S}${(S.ellaPending||[]).length?`<span style="position:absolute;top:-3px;inset-inline-end:-3px;background:#7c3aed;color:#fff;border-radius:99px;font-size:9px;font-weight:700;padding:1px 4px;line-height:1.4">${S.ellaPending.length}</span>`:''}</button>
+          <button class="btn-ghost wa-ico" title="💬 פידבק לאלה — תלונה/תיקון/רעיון; היא תמיין לבד: פלייבוק או פרומפט לסשן Claude Code" onclick="ellaFeedbackOpen()" style="color:#7c3aed">💬</button>
         </div>
         ${S.waFilterAwaiting?`<div style="display:flex;align-items:center;gap:7px;padding:7px 10px;background:rgba(220,38,38,.08);border-bottom:1px solid var(--line);font-size:12.5px;color:#dc2626;font-weight:700">🔴 מסונן: ממתינים לנציג (${rows.length})<button class="btn-ghost" style="margin-inline-start:auto;padding:2px 9px;font-size:12px" onclick="S.waFilterAwaiting=false;renderWa()">✕ נקה</button></div>`:''}
         <div id="waListPane">${waListHTML(rows)}</div>
@@ -3488,7 +3489,7 @@ function waEllaQueueOpen(){
   const pend=S.ellaPending||[];
   if(!pend.length){ toast('אין שאלות ממתינות מאלה 🙂',true); return; }
   if(pend.length===1){ waEllaGoTo(pend[0].phone); return; }
-  const nameOf=p=>{ const c=(S.waConvs||[]).find(x=>String(x.phone)===String(p)); return (c&&c.name)?c.name:p; };
+  const nameOf=p=>{ if(!p) return '💬 פידבק ישיר'; const c=(S.waConvs||[]).find(x=>String(x.phone)===String(p)); return (c&&c.name)?c.name:p; };
   const rows=pend.map(r=>`<div onclick="waEllaGoTo('${escW(String(r.phone||''))}')" style="display:flex;gap:9px;align-items:flex-start;padding:10px 12px;border-bottom:1px solid var(--line);cursor:pointer" onmouseover="this.style.background='var(--card2)'" onmouseout="this.style.background=''">
       <span style="flex:none;font-size:15px">${r.kind==='question'?'❓':'💡'}</span>
       <span style="flex:1;min-width:0">
@@ -3506,6 +3507,7 @@ function waEllaQueueOpen(){
 }
 async function waEllaGoTo(phone){
   closeModal();
+  if(!phone){ ellaLessonsOpen(); return; }   // לקח מפידבק ישיר — אין שיחת לקוח, מאשרים בתפריט 💡
   await openWaConv(phone);
   S.waPanel=true; S.waPanelMode='uri';
   renderWaThread(); waUriCheckBridge(); waUriLoadHistory(phone);
@@ -3608,6 +3610,7 @@ function waUriHTML(){
         <b style="font-size:13.5px">${CLAUDE_ICON_S} אלה <span style="font-size:10px" title="${alive?'הגשר מחובר':'הגשר לא מחובר'}">${dot}</span></b>
         <span style="display:flex;gap:4px">
           <button class="btn-ghost" style="padding:2px 8px" title="למד את אלה — פלייבוק ולקחים" onclick="if(ensureAdmin(ellaLessonsOpen))ellaLessonsOpen()">💡</button>
+          <button class="btn-ghost" style="padding:2px 8px" title="פידבק לאלה — תלונה/תיקון/רעיון עליה" onclick="ellaFeedbackOpen()">💬</button>
           <button class="btn-ghost" style="padding:2px 8px" onclick="S.waPanel=false;renderWaThread()">✕</button>
         </span>
       </div>
@@ -5782,6 +5785,99 @@ async function ellaPendingAnswer(id){
 async function ellaPendingDel(id){
   try{ await api('/api/admin/ella/pending/'+id,{method:'DELETE'}); toast('נדחה',true); ellaLessonsOpen(); }
   catch(e){ toast('הדחייה נכשלה',false); }
+}
+// ── 💬 פידבק לאלה: ערוץ פנימי — אסי מתלונן/מציע, אלה ממיינת בעצמה ──────────
+// ידע/התנהגות → [LESSON] (נקלט בשרת כטיוטה לתפריט 💡) · קוד/יכולת → בלוק [DEV]
+// עם פרומפט מוכן להעתקה לסשן Claude Code · לא ברור → שאלה חוזרת. כלום לא נפתח
+// אוטומטית במערכת חיצונית (החלטת אסי 02/07).
+const ELLA_FB_PHONE='ella-feedback';
+async function ellaFeedbackOpen(){
+  S.ellaFb=S.ellaFb||[];
+  ellaFbPaint(true);
+  try{
+    const r=await api('/api/admin/wa/uri/history?phone='+ELLA_FB_PHONE);
+    const hist=[];
+    ((r&&r.jobs)||[]).forEach(j=>{
+      hist.push({role:'user',text:j.question||''});
+      hist.push({role:'ella',status:j.status==='error'?'error':'done',text:j.answer||''});
+    });
+    // ריצות שעדיין באוויר (pending בזיכרון) נשמרות — לא דורסים אותן בהיסטוריה
+    const live=(S.ellaFb||[]).filter(m=>m.status==='pending');
+    S.ellaFb=hist.concat(live.length?[{role:'user',text:live[0]._q||''},...live]:[]);
+    ellaFbPaint(true);
+  }catch(e){}
+}
+function ellaFbMsgHTML(m,idx){
+  if(m.role==='user') return `<div class="wa-uri-q">${escW(m.text)}</div>`;
+  if(m.status==='pending') return `<div class="wa-uri-a wa-uri-wait">⏳ אלה ממיינת את המשוב… (זה יכול לקחת כמה דקות)</div>`;
+  if(m.status==='error') return `<div class="wa-uri-a" style="border-color:#dc2626">❌ ${escW(m.text||'שגיאה')}</div>`;
+  let txt=m.text||'';
+  const dm=txt.match(/\[DEV\]\s*([\s\S]*?)\s*\[\/DEV\]/);
+  m._dev=dm?dm[1].trim():'';
+  txt=txt.replace(/\[DEV\][\s\S]*?\[\/DEV\]/,'').trim();
+  const hasLesson=/\[LESSON\]/.test(txt);
+  txt=txt.replace(/\[LESSON\]\s*[\s\S]*$/,'').trim();
+  const lessonNote=hasLesson?`<div style="margin-top:7px;color:#16a34a;font-weight:700;font-size:12.5px">💡 נוצרה הצעת לקח — ממתינה לאישורך בתפריט 💡 למד את אלה <button class="btn-ghost" style="padding:3px 9px;font-size:11.5px;margin-inline-start:6px" onclick="closeModal();ellaLessonsOpen()">פתח</button></div>`:'';
+  const devBox=m._dev?`<div style="margin-top:8px">
+      <div style="font-size:11px;color:#7c3aed;font-weight:700;margin-bottom:4px">🛠️ זה דורש קוד — פרומפט מוכן לסשן Claude Code:</div>
+      <div style="background:var(--card2);border:1px solid #7c3aed44;border-radius:10px;padding:9px 11px;white-space:pre-wrap;font-size:12px;font-family:ui-monospace,monospace;max-height:220px;overflow:auto;word-break:break-word">${escW(m._dev)}</div>
+      <button class="btn-primary" style="margin-top:6px;padding:6px 14px;font-size:12.5px;background:#7c3aed;border-color:#7c3aed" onclick="ellaFbCopyDev(${idx})">📋 העתק פרומפט</button>
+    </div>`:'';
+  return `<div class="wa-uri-a">${txt?escW(txt):''}${lessonNote}${devBox}</div>`;
+}
+function ellaFbCopyDev(idx){
+  const m=(S.ellaFb||[])[idx];
+  if(m&&m._dev){ navigator.clipboard.writeText(m._dev); toast('הפרומפט הועתק — הדבק בסשן Claude Code ✓',true); }
+}
+function ellaFbPaint(fresh){
+  const root=document.getElementById('modalRoot');
+  if(!fresh && !document.getElementById('ellaFbBox')) return;   // המודל נסגר — לא מציירים
+  const inp=document.getElementById('ellaFbInput');
+  const keep=inp?{v:inp.value,f:document.activeElement===inp}:null;
+  const msgs=(S.ellaFb||[]).map(ellaFbMsgHTML).join('');
+  root.innerHTML=`<div class="dr-wrap" onclick="if(event.target===this)closeModal()" style="position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:1000;padding:16px">
+    <div id="ellaFbBox" style="background:var(--card);border-radius:16px;max-width:640px;width:100%;height:min(88vh,660px);display:flex;flex-direction:column;padding:18px 20px">
+      <div style="display:flex;align-items:center;gap:9px;margin-bottom:4px;flex:none"><span style="font-size:18px">💬</span><b style="font-size:16px;flex:1">פידבק לאלה</b><button class="dr-x" onclick="closeModal()">✕</button></div>
+      <div class="muted" style="font-size:12.5px;margin-bottom:10px;flex:none">ספר לה מה הפריע לך או מה חסר — היא תמיין לבד: הנחיה לפלייבוק (לאישורך בתפריט 💡) או פרומפט מוכן לסשן Claude Code.</div>
+      <div id="ellaFbMsgs" style="flex:1;overflow:auto;display:flex;flex-direction:column;gap:8px;padding:2px">
+        ${msgs||'<div class="muted" style="font-size:12.5px;padding:6px">למשל: "ענית אתמול ללקוח שאין החזרות על אוזניות — זה לא נכון" · "היה מגניב אם היית מבינה הודעות קוליות"</div>'}
+      </div>
+      <div style="display:flex;gap:6px;margin-top:10px;flex:none">
+        <textarea id="ellaFbInput" placeholder="המשוב שלך לאלה…" style="flex:1;resize:none;min-height:40px;max-height:90px;padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:13.5px;font-family:inherit" onkeydown="waEnterSend(event,ellaFbSend)"></textarea>
+        <button class="btn-primary" onclick="ellaFbSend()" style="padding:8px 14px">שלח</button>
+      </div>
+    </div></div>`;
+  const box=document.getElementById('ellaFbMsgs'); if(box) box.scrollTop=box.scrollHeight;
+  if(keep){ const el=document.getElementById('ellaFbInput');
+    if(el){ if(keep.v) el.value=keep.v; if(keep.f) el.focus(); } }
+}
+async function ellaFbSend(){
+  const inp=document.getElementById('ellaFbInput');
+  const q=(inp&&inp.value||'').trim(); if(!q) return;
+  S.ellaFb=S.ellaFb||[];
+  S.ellaFb.push({role:'user',text:q});
+  const aMsg={role:'ella',status:'pending',text:'',_q:q};
+  S.ellaFb.push(aMsg);
+  if(inp) inp.value='';
+  ellaFbPaint();
+  try{
+    const r=await api('/api/admin/ella/feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:q})});
+    ellaFbPoll(r.id,aMsg);
+  }catch(e){ aMsg.status='error'; aMsg.text='השליחה נכשלה — בדוק חיבור ונסה שוב'; ellaFbPaint(); }
+}
+async function ellaFbPoll(jid,msg,tries){
+  tries=tries||0;
+  if(tries>170){ msg.status='error'; msg.text='תם הזמן (8 דק׳) — ייתכן שגשר אלה כבוי'; ellaFbPaint(); return; }
+  try{
+    const r=await api('/api/admin/wa/uri/job/'+jid);
+    if(r.status==='done'){
+      msg.status='done'; msg.text=r.answer||''; ellaFbPaint();
+      try{ waEllaPendingLoad(true); }catch(e){}   // אולי נוסף לקח → רענון הבאדג' 🎓
+      return;
+    }
+    if(r.status==='error'){ msg.status='error'; msg.text=r.answer||'שגיאה'; ellaFbPaint(); return; }
+  }catch(e){}
+  setTimeout(()=>ellaFbPoll(jid,msg,tries+1),3000);
 }
 function cargoStTag(cs){
   if(!cs || !cs.text) return '';

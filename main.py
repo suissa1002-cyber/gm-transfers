@@ -4262,6 +4262,20 @@ def bridge_answer(body: UriAnswer, x_bridge_key: Optional[str] = Header(None)):
     # משימת בוט (source='bot') → שולחים את תשובת אורי אוטומטית ללקוח בוואטסאפ
     try:
         job = db.uri_job_get(body.id)
+        # 💬 פידבק פנימי מאסי (ella-feedback): אם אלה סימנה [LESSON] — נכנס לתור
+        # האישורים בתפריט 💡 (בדיוק כמו הלמידה מהשיחות). לעולם לא נשלח ללקוח.
+        if job and job.get("source") == "feedback":
+            if body.status == "done":
+                import re as _re
+                m = _re.search(r"\[LESSON\]\s*(.+)", body.answer or "")
+                if m:
+                    db.kbp_add("lesson", "", "", m.group(1).strip().split("\n")[0][:500])
+                    try:
+                        _tg_admin("🎓 <b>פידבק לאלה</b>\nהמשוב שלך הפך להצעת לקח — "
+                                  "ממתין לאישורך בתפריט 💡 למד את אלה.")
+                    except Exception:  # noqa: BLE001
+                        pass
+            return {"ok": True}
         if job and job.get("source") == "bot" and body.status == "done":
             # 🤐 גארד נגד דריסת נציג חי: תשובות אורי אסינכרוניות (תור ~20-60ש) ועלולות
             # להגיע אחרי שנציג כבר השתלט וענה ידנית. אם human handoff פעיל — לא שולחים
@@ -4587,6 +4601,29 @@ def admin_ella_pending_del(pid: int, x_admin_key: Optional[str] = Header(None)):
     if not n:
         raise HTTPException(404, "לא נמצא")
     return {"ok": True}
+
+
+# ── 💬 פידבק לאלה: ערוץ תלונות/שיפורים ישיר מאסי — אלה ממיינת בעצמה ─────────
+FEEDBACK_PHONE = "ella-feedback"    # pseudo-phone: משרשר את כל הפידבק ב-uri_jobs
+
+
+class EllaFeedbackIn(BaseModel):
+    text: str = ""
+
+
+@app.post("/api/admin/ella/feedback")
+def admin_ella_feedback(body: EllaFeedbackIn, x_admin_key: Optional[str] = Header(None)):
+    """משוב חופשי של אסי על אלה (תלונה/תיקון/רעיון). נכנס לתור הגשר עם source='feedback';
+    אלה עונה בצ'אט וממיינת: ידע/התנהגות → מסיימת ב-[LESSON] (נקלט כטיוטה לאישור בתפריט
+    💡, אותו מסלול כמו הלמידה); קוד/יכולת → בלוק [DEV] עם פרומפט מוכן להדבקה בסשן
+    Claude Code. שום דבר לא נפתח אוטומטית במערכת חיצונית (החלטת אסי 02/07/2026).
+    היסטוריה/סטטוס: אותם endpoints של צ'אט הפאנל עם phone='ella-feedback'."""
+    _require_admin(x_admin_key)
+    q = (body.text or "").strip()
+    if not q:
+        raise HTTPException(400, "empty feedback")
+    jid = db.uri_job_add(FEEDBACK_PHONE, q, source="feedback")
+    return {"id": jid}
 
 
 @app.get("/api/uri-bridge/order")
