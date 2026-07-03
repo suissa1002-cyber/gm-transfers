@@ -1421,6 +1421,92 @@ def _apply_dynamic(out: dict, pid: str) -> dict:
     return out
 
 
+# ── 🛠️ תיקוני מעבדה — סיכום ללוח הבית ────────────────────────────────────────
+_repairs_sum_cache = {"at": 0.0, "data": None}
+
+
+@app.get("/api/admin/repairs/summary")
+def admin_repairs_summary(fresh: int = 0, x_admin_key: Optional[str] = Header(None)):
+    """סיכום תיקוני מעבדה להיום, לפי סניף (ספרה ראשונה של fixId = סניף):
+    • התקבלו ושוחררו היום (כמות+סכום) • התקבלו היום וטרם שוחררו (כמות)
+    • שוחררו היום מהמתנה קודמת (כמות+סכום) • פתוחים במעבדה (כמות+ותיק ביותר).
+    NewOrder /api/Fixes מסונן לפי creationDate ומוגבל ~100 לתשובה → מושכים
+    בפרוסות שבועיות 56 ימים אחורה (תיקון ותיק מזה כמעט לא משתחרר). cache 5 דק'."""
+    _require_admin(x_admin_key)
+    import time as _t
+    from datetime import datetime as _dt, timedelta as _td
+    if _repairs_sum_cache["data"] and not fresh \
+            and _t.time() - _repairs_sum_cache["at"] < 300:
+        return _repairs_sum_cache["data"]
+    no = poller.client()
+    try:
+        from zoneinfo import ZoneInfo
+        today = _dt.now(ZoneInfo(cfg.TZ)).date()
+    except Exception:  # noqa: BLE001
+        today = _dt.now().date()
+
+    def _pd(s):
+        s = str(s or "").strip()
+        if not s:
+            return None
+        try:
+            return _dt.strptime(s[:10], "%d/%m/%Y").date()
+        except Exception:  # noqa: BLE001
+            return None
+
+    fixes = {}
+    for i in range(8):                                   # 8 פרוסות של 7 ימים = 56 יום
+        frm = today - _td(days=7 * (i + 1) - 1)
+        to = today - _td(days=7 * i - (1 if i == 0 else 0))
+        try:
+            for f in (no.get_fixes(from_date=str(frm), to_date=str(to)) or []):
+                if f.get("fixId"):
+                    fixes[f["fixId"]] = f
+        except Exception as e:  # noqa: BLE001
+            logger.warning("repairs summary slice %s: %s", i, e)
+
+    def _empty():
+        return {"rec_rel": {"count": 0, "sum": 0.0}, "rec_open": {"count": 0},
+                "rel_old": {"count": 0, "sum": 0.0},
+                "open": {"count": 0, "oldest_days": 0}}
+    out = {str(b): _empty() for b in (1, 2, 3, 4)}
+    out["all"] = _empty()
+
+    def _bump(bucket, f, created, delivered):
+        charge = float(f.get("invoiceCharge") or 0) or float(f.get("estimatedCharge") or 0)
+        st = str(f.get("statusName") or "")
+        cancelled = "בוטל" in st
+        if created == today and delivered == today:
+            bucket["rec_rel"]["count"] += 1
+            bucket["rec_rel"]["sum"] += charge
+        elif created == today and not delivered and not cancelled:
+            bucket["rec_open"]["count"] += 1
+        elif delivered == today and created and created < today:
+            bucket["rel_old"]["count"] += 1
+            bucket["rel_old"]["sum"] += charge
+        if not delivered and not cancelled and created:
+            bucket["open"]["count"] += 1
+            age = (today - created).days
+            if age > bucket["open"]["oldest_days"]:
+                bucket["open"]["oldest_days"] = age
+
+    for f in fixes.values():
+        created = _pd(f.get("creationDate"))
+        delivered = _pd(f.get("deliveredDate"))
+        try:
+            br = int(str(f.get("fixId"))[0])
+        except Exception:  # noqa: BLE001
+            br = 0
+        if str(br) in out:
+            _bump(out[str(br)], f, created, delivered)
+        _bump(out["all"], f, created, delivered)
+
+    data = {"date": str(today), "branches": out, "scanned": len(fixes)}
+    _repairs_sum_cache["data"] = data
+    _repairs_sum_cache["at"] = _t.time()
+    return data
+
+
 @app.get("/api/admin/live-stock/{pid}")
 def admin_live_stock(pid: str, serials: int = 0, fresh: int = 0,
                      x_admin_key: Optional[str] = Header(None), x_device_token: Optional[str] = Header(None)):
