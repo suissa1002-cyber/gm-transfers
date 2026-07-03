@@ -3474,10 +3474,12 @@ function waToggleUri(){
 }
 // 🎓 טיוטות למידה של אלה — נטענות לפאנל הצ'אט שלה (שאלות אליך + לקחים מוצעים)
 async function waEllaPendingLoad(repaint){
-  const before=(S.ellaPending||[]).length;
+  S._ellaPollAt=Date.now();   // throttle לפולינג השקט (waPollTick)
+  const sig=rows=>rows.map(r=>r.id+':'+(r.kind||'')).join(',');
+  const before=sig(S.ellaPending||[]);
   try{ const r=await api('/api/admin/ella/pending'); S.ellaPending=(r&&r.rows)||[]; }
   catch(e){ S.ellaPending=S.ellaPending||[]; }
-  const changed=(S.ellaPending||[]).length!==before;
+  const changed=sig(S.ellaPending||[])!==before;
   if((repaint||changed) && document.getElementById('waLayout')){
     renderWa();                                  // מרענן גם את באדג' התור בסרגל
     if(S.waPhone) renderWaThread();
@@ -4684,6 +4686,8 @@ function waPollTick(){
   // אז מרעננים גם תוך כדי הקלדה — אחרת הודעות נכנסות לא מופיעות עד שליחה/מעבר שיחה.
   loadWaSilent();
   if(S.waPhone) loadWaThread(true);
+  // 🎓 תור אלה (שאלות/לקחים) — בלי זה הבאדג' מופיע רק ברענון מלא; throttle לדקה
+  if(!S._ellaPollAt || Date.now()-S._ellaPollAt>60000) waEllaPendingLoad(false);
 }
 // עדכון אזור ההודעות בלבד (כשפאנל אלה/מלאי פתוח) — בלי לרנדר מחדש את הפאנל/השדות,
 // עם שימור מיקום גלילה (גלילה לתחתית רק אם המשתמש כבר היה למטה — כמו בוואטסאפ).
