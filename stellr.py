@@ -25,7 +25,7 @@ BASE_URL = os.environ.get("STELLR_BASE_URL",
 API_KEY = os.environ.get("STELLR_API_KEY", "")
 STORE_REF = os.environ.get("STELLR_STORE_REF", "00001")
 CURRENCY = os.environ.get("STELLR_CURRENCY", "ILS")
-MAX_VALUE = float(os.environ.get("STELLR_MAX_VALUE", "500"))
+MAX_VALUE = float(os.environ.get("STELLR_MAX_VALUE", "650"))   # הקוד הגדול ביותר: Sony ₪635
 MAX_QTY = int(os.environ.get("STELLR_MAX_QTY", "3"))
 
 
