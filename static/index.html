@@ -6919,14 +6919,21 @@ function repairsListOpen(kind){
                rel_old: {t:'🔵 שוחררו היום מהמתנה', d:'ימים שהמתינו'},
                open:    {t:'🔧 פתוחים במעבדה כרגע', d:'ימים במעבדה'} }[kind];
   let list=(rp.rows[kind]||[]); if(rb!=='all') list=list.filter(r=>String(r.br)===rb);
-  const rows=list.map(r=>`<div style="display:flex;gap:9px;padding:9px 2px;border-bottom:1px solid var(--line);align-items:center">
-      ${meta.noDays?'':`<span style="flex:none;background:var(--card2);border-radius:8px;padding:3px 8px;font-size:12px;font-weight:800">${r.days} י׳</span>`}
+  const rows=list.map(r=>{
+    const dates=[ r.created?`📥 התקבל ${escW(r.created)}`:'',
+                  r.fixed?`🔧 תוקן ${escW(r.fixed)}`:'',
+                  r.delivered?`📤 שוחרר ${escW(r.delivered)}`:'' ].filter(Boolean).join(' · ');
+    return `<div style="display:flex;gap:9px;padding:10px 2px;border-bottom:1px solid var(--line);align-items:flex-start">
+      ${meta.noDays?'':`<span style="flex:none;background:var(--card2);border-radius:8px;padding:3px 8px;font-size:12px;font-weight:800;margin-top:1px" title="${meta.d}">${r.days} י׳</span>`}
       <span style="flex:1;min-width:0">
         <b style="font-size:13px">${escW(r.name||'ללא שם')}</b>${r.model?` <span class="muted" style="font-size:12px">· ${escW(r.model)}</span>`:''}<br>
+        ${r.complain?`<span style="font-size:12px;line-height:1.45">🛠 ${escW(r.complain)}</span><br>`:''}
+        ${r.remarks&&r.remarks!==r.complain?`<span class="muted" style="font-size:11.5px;line-height:1.45">✔️ בוצע: ${escW(r.remarks)}</span><br>`:''}
+        ${dates?`<span class="muted" style="font-size:11.5px">${dates}</span><br>`:''}
         <span class="muted" style="font-size:11.5px">#${escW(String(r.id||''))} · ${brName[String(r.br)]||('סניף '+r.br)}${r.status?` · ${escW(r.status)}`:''}${r.charge?` · ${_il(r.charge)}`:''}${kind==='repeat'&&r.prev_id?` · תיקון קודם #${escW(String(r.prev_id))}`:''}</span>
       </span>
       ${r.phone?`<a href="tel:${escW(r.phone)}" onclick="event.stopPropagation()" style="flex:none;text-decoration:none;font-size:16px" title="${escW(r.phone)}">📞</a>`:''}
-    </div>`).join('')||'<div class="empty" style="padding:18px 0">אין רשומות 🙂</div>';
+    </div>`; }).join('')||'<div class="empty" style="padding:18px 0">אין רשומות 🙂</div>';
   document.getElementById('modalRoot').innerHTML=`<div class="overlay" onclick="closeModal()"><div class="modal" style="max-width:440px;width:calc(100vw - 32px);text-align:right;padding:18px;max-height:80vh;display:flex;flex-direction:column" onclick="event.stopPropagation()">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
       <h3 style="margin:0;font-size:16px">${meta.t}</h3>

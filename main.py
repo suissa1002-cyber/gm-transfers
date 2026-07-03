@@ -1525,12 +1525,23 @@ def admin_repairs_summary(fresh: int = 0, x_admin_key: Optional[str] = Header(No
     def _row(f, br, days):
         cust = f.get("customer") or {}
         dev = f.get("deviceInfo") or {}
+
+        def _fd(key):                      # "DD/MM/YYYY HH:MM" → "DD/MM/YY"
+            d = _pd(f.get(key))
+            return d.strftime("%d/%m/%y") if d else ""
+
+        def _txt(key, cap=170):            # תלונה/הערות — שורה אחת נקייה
+            return " ".join(str(f.get(key) or "").split())[:cap]
         return {"id": f.get("fixId"), "br": br, "days": days,
                 "name": (cust.get("name") or "").strip(),
                 "phone": (cust.get("phoneNumber") or "").strip(),
                 "model": (dev.get("model") or "").strip(),
                 "status": str(f.get("statusName") or "").strip(),
-                "charge": _charge(f)}
+                "charge": _charge(f),
+                "created": _fd("creationDate"), "fixed": _fd("fixedDate"),
+                "delivered": _fd("deliveredDate"),
+                "complain": _txt("customerComplain"),
+                "remarks": _txt("fixRemarks")}
 
     rows = {"stuck": [], "awaiting": [], "repeat": [],
             "rec_rel": [], "rec_open": [], "rel_old": [], "open": []}
