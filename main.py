@@ -1572,9 +1572,9 @@ def admin_repairs_summary(fresh: int = 0, x_admin_key: Optional[str] = Header(No
             r["prev_id"] = rep[1].get("fixId")
             rows["repeat"].append(r)
 
+    # בלי קטימה — הרשימה חייבת להתאים 1:1 לספירה בצ'יפ בכל סינון סניף (סדרי גודל: עשרות)
     for k in rows:
         rows[k].sort(key=lambda r: -r["days"])
-        rows[k] = rows[k][:80]
     for b in out.values():
         t = b["turnaround"]
         b["turnaround"] = {"avg_days": round(t["days"] / t["count"], 1) if t["count"] else None,
