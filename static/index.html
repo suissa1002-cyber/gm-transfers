@@ -7589,9 +7589,9 @@ function renderHome(){
   const attHasItems=att.length>0;
   const attPanel = attHasItems
     ? `<div class="gzone"><span class="lbl">דורש טיפול</span><span class="rule"></span></div>
-       <div class="gatt">
-        <div class="ttl"><span class="gdot" style="background:var(--red)"></span>דורש טיפול עכשיו</div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">${att.join('')}</div></div>`
+       <div class="gatt"><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span class="ttl"><span class="gdot" style="background:var(--red)"></span>דורש טיפול עכשיו</span>
+        ${att.join('')}</div></div>`
     : `<div class="gok"><span style="font-weight:800">✓</span>הכל תקין</div>`;
   // ── 🆕 טיקר "הזמנות חדשות" (10 אחרונות, גלילה אוטומטית אטית) ──
   const _ils=n=>'₪'+Number(Math.round(n||0)).toLocaleString('en-US');
@@ -7662,7 +7662,7 @@ function renderHome(){
        ${(()=>{ const curRep=(d.reprev&&d.reprev.sum)||0;  // מעבדה לחתך הנוכחי (סניף+תקופה)
          return `<div class="gstat"><div class="v tnum" dir="ltr" style="color:var(--brand-ink)">${_il((tt.revenue||0)+curRep)}</div><div class="l">מכירות</div>${curRep?`<div class="sv">כולל מעבדה <span dir="ltr">${_il(curRep)}</span></div>`:''}</div>`; })()}
        <div class="gstat"><div class="v tnum" dir="ltr">${tt.count||0}</div><div class="l">עסקאות</div></div>
-       <div class="gstat"><div class="v tnum" dir="ltr" style="color:var(--red-ink)">${_il(tt.credits)}</div><div class="l">זיכויים</div></div>
+       <div class="gstat"><div class="v tnum" dir="ltr" style="color:${(tt.credits>0)?'var(--red-ink)':'var(--txt-3)'}">${_il(tt.credits)}</div><div class="l">זיכויים</div></div>
      </div>
      <div style="font-size:11px;color:var(--txt-3);margin-bottom:4px">קצב 14 ימים · <span style="color:var(--brand-ink);font-weight:700">השבוע</span> מול <span style="color:var(--txt-3);font-weight:700">שבוע שעבר</span></div>
      ${homeSpark(sd.weekly)}`):'';
