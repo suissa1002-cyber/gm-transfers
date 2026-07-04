@@ -1464,6 +1464,7 @@ def admin_repairs_summary(fresh: int = 0, x_admin_key: Optional[str] = Header(No
             return None
 
     fixes = {}
+    failed_slices = 0
     for i in range(10):                                  # 10 פרוסות של 7 ימים = 70 יום
         frm = today - _td(days=7 * (i + 1) - 1)
         to = today - _td(days=7 * i - (1 if i == 0 else 0))
@@ -1472,7 +1473,12 @@ def admin_repairs_summary(fresh: int = 0, x_admin_key: Optional[str] = Header(No
                 if f.get("fixId"):
                     fixes[f["fixId"]] = f
         except Exception as e:  # noqa: BLE001
+            failed_slices += 1
             logger.warning("repairs summary slice %s: %s", i, e)
+    # פרוסות שנכשלו = דאטה חסר. עדיף מטמון ישן-ושלם מאשר ספירה חלקית שנראית אמיתית.
+    if failed_slices and _repairs_sum_cache["data"]:
+        logger.warning("repairs summary: %s slices failed — serving stale cache", failed_slices)
+        return _repairs_sum_cache["data"]
 
     def _empty():
         return {"rec_rel": {"count": 0, "sum": 0.0}, "rec_open": {"count": 0},
@@ -1675,6 +1681,7 @@ def admin_repairs_revenue(branch_id: Optional[str] = None, period: Optional[str]
     no = poller.client()
     scan_from = frm - _td(days=70)
     fixes = {}
+    failed_slices = 0
     cur = scan_from
     while cur <= to:
         nxt = min(cur + _td(days=6), to)
@@ -1683,8 +1690,13 @@ def admin_repairs_revenue(branch_id: Optional[str] = None, period: Optional[str]
                 if f.get("fixId"):
                     fixes[f["fixId"]] = f
         except Exception as e:  # noqa: BLE001
+            failed_slices += 1
             logger.warning("repairs revenue slice %s: %s", cur, e)
         cur = nxt + _td(days=1)
+    # דאטה חלקי לא דורס מטמון שלם — עדיף מספר ישן-ונכון מחלקי-ושגוי
+    if failed_slices and hit:
+        logger.warning("repairs revenue: %s slices failed — serving stale cache", failed_slices)
+        return hit[1]
     s = 0.0
     n = 0
     bb = {str(b): {"sum": 0.0, "count": 0} for b in (1, 2, 3, 4)}
