@@ -7369,6 +7369,32 @@ async function homeSalesRefresh(){
   setTimeout(()=>loadHomeSales(), 18000);   // נותן לאיסוף מ-NewOrder לרוץ ברקע, ואז טוען מחדש
 }
 function homeSalesApplyRange(f,t){ if(!f||!t) return; S.homeSalesPeriod='range'; S.homeSalesRange={from:f,to:t}; closeModal(); loadHomeSales(); }
+// מכירות אחרונות — מודל עם הרשימה המלאה (עד 25) לפי החתך הנוכחי (תקופה+סניף)
+function homeRecentSalesOpen(){
+  S.homeLastTouch=Date.now();
+  const sd=(S.homeData&&S.homeData.sales)||{};
+  const rows=sd.recent||[];
+  const bn=sd.branch_names||{};
+  const _il=n=>'₪'+Number(Math.round(n||0)).toLocaleString('en-US');
+  const _t=ts=>{ try{ const d=new Date(String(ts).replace(' ','T')); const p=n=>('0'+n).slice(-2);
+    return p(d.getDate())+'/'+p(d.getMonth()+1)+' '+p(d.getHours())+':'+p(d.getMinutes()); }catch(e){ return ''; } };
+  const list=rows.map(r=>`<div style="display:flex;gap:10px;align-items:center;padding:9px 2px;border-bottom:1px solid var(--line)">
+      <span style="flex:1;min-width:0">
+        <b style="font-size:13px;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(r.name||'')}</b>
+        <span style="font-size:11.5px;color:var(--txt-3)">${escW(bn[String(r.branch_id)]||('סניף '+(r.branch_id??'')))}${r.items>1?` · ${r.items} פריטים`:''} · <span class="tnum" dir="ltr">${_t(r.ts)}</span></span>
+      </span>
+      <b class="tnum" dir="ltr" style="flex:none;color:var(--brand-ink)">${_il(r.amount)}</b>
+    </div>`).join('')||'<div class="empty" style="padding:18px 0">אין מכירות בתקופה 🙂</div>';
+  const per=(S.homeSalesPeriod==='yesterday')?'אתמול':(S.homeSalesPeriod==='range'?((sd.from||'')+' – '+(sd.to||'')):'היום');
+  document.getElementById('modalRoot').innerHTML=`<div class="overlay" onclick="closeModal()"><div class="modal" style="max-width:440px;width:calc(100vw - 32px);text-align:right;padding:18px;max-height:80vh;display:flex;flex-direction:column" onclick="event.stopPropagation()">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <h3 style="margin:0;font-size:16px;display:flex;align-items:center;gap:8px"><span style="display:inline-flex;color:var(--txt-3)">${ico('receipt',16)}</span>מכירות אחרונות</h3>
+      <button onclick="closeModal()" style="background:var(--card2);border:0;width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:15px;color:var(--txt)">✕</button>
+    </div>
+    <div style="font-size:12px;color:var(--txt-3);margin-bottom:8px">${rows.length} עסקאות · ${escW(per)}${S.homeBranch?` · ${escW(bn[String(S.homeBranch)]||'')}`:''}</div>
+    <div style="overflow-y:auto;flex:1;min-height:0">${list}</div>
+  </div></div>`;
+}
 function homeSalesRangeOpen(){
   const fmt=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   const now=new Date();
@@ -7729,7 +7755,7 @@ function renderHome(){
   const z3=[]; const z4=[];
   // מכירות אחרונות היום (SLIM: 5 שורות)
   const recent=(sd.recent||[]).slice(0,5);
-  if(homeShow('recent')) z3.push(crmCard(homeHead(ico('receipt',16),'מכירות אחרונות',((sd.today&&sd.today.count)||0)+' עסקאות',"hubGoCrm()")+
+  if(homeShow('recent')) z3.push(crmCard(homeHead(ico('receipt',16),'מכירות אחרונות',((sd.today&&sd.today.count)||0)+' עסקאות',"homeRecentSalesOpen()")+
     (recent.length?recent.map(r=>homeRow(
       `<div class="main"><div class="t1">${escW(r.name)}</div></div>
        <span class="t2 tnum" dir="ltr" style="flex:none">${escW(_tmt(r.ts))}</span>
