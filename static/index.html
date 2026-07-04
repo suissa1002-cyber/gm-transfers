@@ -13,15 +13,47 @@
 <meta name="theme-color" content="#16a34a">
 <style>
   :root{
-    --bg:#0e1116; --card:#171c24; --card2:#212834; --line:#2c3442;
-    --txt:#e8edf4; --muted:#94a3b8; --green:#1fbf6b; --red:#e5484d;
-    --amber:#f5a524; --blue:#3b82f6;
+    /* — legacy vars (נשמרים — קוד אחר תלוי בהם) — */
+    --bg:#0b0e13; --card:#151a22; --line:rgba(255,255,255,.08);
+    --txt:#eef2f8; --green:#2ece7d; --red:#ff5a5f;
+    --amber:#ffb020; --blue:#4c8dff;
     --maxw:1500px;
+    /* — GreenOS design tokens (home redesign) — */
+    --card-2:#1c222c; --card-3:#232a35;
+    --line-2:rgba(255,255,255,.14);
+    --txt-2:#a9b4c4; --txt-3:#6b7686;
+    --brand:#2ece7d;   --brand-ink:#7ff0b4;  --brand-bg:rgba(46,206,125,.12);
+    --red-ink:#ff9a9d;  --red-bg:rgba(255,90,95,.11);
+    --amber-ink:#ffca6a; --amber-bg:rgba(255,176,32,.12);
+    --blue-ink:#8fb6ff; --blue-bg:rgba(76,141,255,.12);
+    --purple:#a879ff;  --purple-ink:#c4a4ff; --purple-bg:rgba(168,121,255,.12);
+    /* aliases לאחור-תאימות (אל תסירו) */
+    --card2:var(--card-2); --muted:var(--txt-2);
+    /* צללים Apple-like */
+    --sh-1:0 1px 2px rgba(0,0,0,.28), 0 0 0 .5px rgba(255,255,255,.03);
+    --sh-2:0 2px 6px rgba(0,0,0,.30), 0 8px 24px rgba(0,0,0,.22);
+    --sh-3:0 12px 40px rgba(0,0,0,.45);
+    /* רדיוסים */
+    --r-xs:8px; --r-sm:12px; --r-md:16px; --r-lg:20px; --r-pill:999px;
+    /* רווח (בסיס 4) */
+    --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:20px; --s6:24px; --s8:32px;
   }
   body.light{
-    --bg:#eef1f6; --card:#ffffff; --card2:#f1f4f9; --line:#d7dee8;
-    --txt:#18222f; --muted:#5e6b7d; --green:#12a356; --red:#d23b40;
-    --amber:#b8860b; --blue:#2563eb;
+    --bg:#f5f7fa; --card:#ffffff; --line:rgba(16,24,40,.09);
+    --txt:#10151d; --green:#12a355; --red:#e5484d;
+    --amber:#c07a0c; --blue:#2f6fed;
+    --card-2:#f3f6fa; --card-3:#eaeff5;
+    --line-2:rgba(16,24,40,.16);
+    --txt-2:#55606f; --txt-3:#8a95a4;
+    --brand:#12a355;   --brand-ink:#0c7d41;  --brand-bg:rgba(18,163,85,.10);
+    --red-ink:#c0343a;  --red-bg:rgba(229,72,77,.08);
+    --amber-ink:#9a610a; --amber-bg:rgba(192,122,12,.10);
+    --blue-ink:#1f52c0; --blue-bg:rgba(47,111,237,.09);
+    --purple:#7c4dff;  --purple-ink:#5f34d6; --purple-bg:rgba(124,77,255,.09);
+    --card2:var(--card-2); --muted:var(--txt-2);
+    --sh-1:0 1px 2px rgba(16,24,40,.06), 0 0 0 .5px rgba(16,24,40,.03);
+    --sh-2:0 2px 8px rgba(16,24,40,.06), 0 10px 30px rgba(16,24,40,.05);
+    --sh-3:0 16px 44px rgba(16,24,40,.16);
   }
   *{box-sizing:border-box}
   html,body{margin:0;height:100%}
@@ -405,6 +437,118 @@
   .home-strip{display:flex;gap:12px;margin-bottom:16px;align-items:stretch}
   .home-strip>*{flex:1;min-width:240px}
   @media(max-width:760px){ .home-strip{flex-direction:column} }
+  /* ════════ GreenOS home redesign — DNA classes (additive) ════════ */
+  .tnum{font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
+  /* — כרטיס מאוחד — */
+  .gcard{background:var(--card);border:1px solid var(--line);border-radius:var(--r-md);
+         padding:var(--s4) var(--s5);box-shadow:var(--sh-1);
+         transition:box-shadow .18s ease, border-color .18s ease}
+  .gcard.clickable{cursor:pointer}
+  .gcard.clickable:hover{box-shadow:var(--sh-2);border-color:var(--line-2)}
+  /* — Header כרטיס — */
+  .ghead{display:flex;align-items:center;gap:var(--s3);margin-bottom:var(--s3)}
+  .ghead .ic{width:30px;height:30px;border-radius:9px;flex:none;display:flex;
+             align-items:center;justify-content:center;background:var(--card-2);color:var(--txt-2)}
+  .ghead .ttl{font-size:15px;font-weight:650;color:var(--txt)}
+  .ghead .sub{margin-inline-start:auto;font-size:12px;color:var(--txt-3);font-weight:500}
+  .ghead .chev{color:var(--txt-3);font-size:15px;flex:none;transition:transform .12s ease, color .12s ease}
+  .ghead[onclick]{cursor:pointer}
+  .ghead[onclick]:hover .chev,.gcard.clickable:hover .ghead .chev{color:var(--txt-2);transform:translateX(-2px)}
+  .gcard.clickable:hover{box-shadow:var(--sh-2);border-color:var(--line-2)}
+  /* — כותרת-זונה (eyebrow) — */
+  .gzone{display:flex;align-items:center;gap:var(--s3);margin-top:var(--s6);margin-bottom:var(--s3)}
+  .gzone .lbl{font-size:11.5px;font-weight:700;letter-spacing:.06em;color:var(--txt-3);white-space:nowrap}
+  .gzone .rule{flex:1;height:1px;background:var(--line);opacity:.6}
+  /* — שורת רשימה — */
+  .grow{display:flex;align-items:center;gap:var(--s3);padding:9px 2px;
+        border-top:1px solid var(--line);font-size:13px}
+  .grow:first-child{border-top:0}
+  .grow .lead{flex:none;width:20px;height:20px;color:var(--txt-3);display:flex;
+              align-items:center;justify-content:center}
+  .grow .main{flex:1;min-width:0}
+  .grow .main .t1{font-weight:600;color:var(--txt);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .grow .main .t2{font-size:11.5px;color:var(--txt-3)}
+  .grow .val{flex:none;font-weight:650;color:var(--txt)}
+  .grow.clickable{cursor:pointer}
+  .grow.clickable:hover{background:var(--card-2);border-radius:8px}
+  .gdot{width:8px;height:8px;border-radius:50%;flex:none}
+  /* — נקודת-מצב אווטר — */
+  .gav{width:20px;height:20px;border-radius:50%;background:var(--card-3);flex:none;
+       display:flex;align-items:center;justify-content:center;position:relative}
+  /* — KPI tile — */
+  .gkpi{flex:1;min-width:108px;background:var(--card);border:1px solid var(--line);
+        border-radius:var(--r-md);padding:14px 12px;text-align:center;box-shadow:var(--sh-1);
+        transition:box-shadow .18s ease, border-color .18s ease}
+  .gkpi.clickable{cursor:pointer}
+  .gkpi.clickable:hover{box-shadow:var(--sh-2);border-color:var(--line-2)}
+  .gkpi .v{font-size:24px;font-weight:750;line-height:1;letter-spacing:-.02em}
+  .gkpi .l{font-size:11px;font-weight:500;color:var(--txt-3);margin-top:4px}
+  /* — stat tile (מספר-ענק ממורכז) — */
+  .gstat{flex:1;background:var(--card-2);border:1px solid var(--line);border-radius:var(--r-sm);
+         padding:12px 8px;text-align:center;min-width:0}
+  .gstat .v{font-size:26px;font-weight:750;line-height:1.05;letter-spacing:-.02em}
+  .gstat .l{font-size:11px;font-weight:500;color:var(--txt-3);margin-top:4px}
+  .gstat .sv{font-size:11.5px;font-weight:600;color:var(--txt-3);margin-top:1px}
+  /* — אריח סניף / מתג תקופה — */
+  .gtile{flex:1;min-width:92px;background:var(--card-2);color:var(--txt);border:1px solid var(--line);
+         border-radius:var(--r-sm);padding:9px 8px;cursor:pointer;font-family:inherit;text-align:center;
+         transition:border-color .12s ease, background .12s ease}
+  .gtile:hover{border-color:var(--line-2)}
+  .gtile.sel{background:var(--brand);border-color:var(--brand);color:#fff;box-shadow:var(--sh-1)}
+  .gtile .bn{font-size:12px;font-weight:600;color:var(--txt-2)}
+  .gtile.sel .bn{color:rgba(255,255,255,.9)}
+  .gtile .bv{font-size:16px;font-weight:750;margin-top:2px}
+  .gtile .bs{font-size:10px;margin-top:1px;color:var(--txt-3)}
+  .gtile.sel .bs{color:rgba(255,255,255,.85)}
+  .gseg{display:flex;gap:3px;background:var(--card-2);border:1px solid var(--line);
+        border-radius:var(--r-sm);padding:3px}
+  .gseg>button{flex:1;background:transparent;color:var(--txt-2);border:0;border-radius:9px;
+               padding:7px 4px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;
+               transition:background .12s ease, color .12s ease}
+  .gseg>button.on{background:var(--brand);color:#fff}
+  /* — mini metric chip — */
+  .gmini{flex:1;min-width:105px;background:var(--card-2);border:1px solid var(--line);
+         border-radius:var(--r-sm);padding:8px;text-align:center}
+  .gmini.warn{border-color:var(--amber)}
+  .gmini .v{font-size:15px;font-weight:750}
+  .gmini.warn .v{color:var(--amber-ink)}
+  .gmini .l{font-size:10.5px;font-weight:500;color:var(--txt-3);margin-top:1px}
+  .gmini .s{font-size:10px;color:var(--txt-3)}
+  /* — פאנל "דורש טיפול" (פס-מבטא, לא הצפה) — */
+  .gatt{background:var(--card);border:1px solid var(--line);border-inline-start:3px solid var(--red);
+        border-radius:var(--r-md);padding:12px 14px}
+  .gatt.ok{border-inline-start-color:var(--brand)}
+  .gatt .ttl{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:700;color:var(--red-ink)}
+  .gatt.ok .ttl{color:var(--brand-ink)}
+  .gchip{background:var(--red-bg);border:1px solid transparent;color:var(--red-ink);
+         border-radius:var(--r-pill);padding:6px 12px;font-size:12.5px;font-weight:650;cursor:pointer;
+         font-family:inherit;display:inline-flex;align-items:center;gap:6px;
+         transition:border-color .12s ease}
+  .gchip:hover{border-color:var(--red)}
+  .gok{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--brand-ink);
+       border-inline-start:3px solid var(--brand);padding:8px 12px;border-radius:var(--r-sm);
+       background:var(--brand-bg)}
+  /* — פעולה מהירה — */
+  .gqa{background:var(--card);border:1px solid var(--line);color:var(--txt);border-radius:var(--r-sm);
+       padding:9px 13px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;
+       display:inline-flex;align-items:center;gap:7px;transition:border-color .12s ease}
+  .gqa:hover{border-color:var(--line-2)}
+  /* — גריד זונות — */
+  .gzgrid{display:grid;gap:var(--s3);grid-template-columns:repeat(auto-fill, minmax(300px, 1fr))}
+  @media(min-width:1120px){ .gzgrid.g3{grid-template-columns:repeat(3, 1fr)} }
+  @media(min-width:1560px){ .gzgrid.g3{grid-template-columns:repeat(4, 1fr)} }
+  .gmoney{display:grid;gap:var(--s3);grid-template-columns:1fr}
+  @media(min-width:1000px){ .gmoney{grid-template-columns:2fr 1fr;align-items:stretch} }
+  .gmoney .g-full{grid-column:1 / -1}
+  .branch-row{display:flex;gap:7px;flex-wrap:wrap}
+  @media(max-width:760px){
+    .branch-row{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;
+                scrollbar-width:none;padding-bottom:2px}
+    .branch-row::-webkit-scrollbar{display:none}
+    .branch-row>.gtile{flex:0 0 auto;min-width:104px}
+    .gkpi{min-width:calc(50% - 5px)}
+    .gcard{padding:var(--s4)}
+  }
   #wpop.wpop-min{height:auto!important}
   #wpop.wpop-min .wpop-host{display:none}
   .wpop-bar{display:flex;align-items:center;gap:7px;padding:8px 11px;background:#0b6b3a;color:#fff;flex:none}
@@ -4182,7 +4326,7 @@ const _IPATHS={
   pkgx:'<path d="M21 10V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0"/><path d="m7.5 4.27 9 5.15"/><polyline points="3.29 7 12 12 20.71 7"/><line x1="12" y1="22" x2="12" y2="12"/><path d="m17 13 5 5"/><path d="m22 13-5 5"/>',
 };
 function ico(name, size, fill){
-  return `<svg width="${size||17}" height="${size||17}" viewBox="0 0 24 24" fill="${fill?'currentColor':'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block">${_IPATHS[name]||''}</svg>`;
+  return `<svg width="${size||17}" height="${size||17}" viewBox="0 0 24 24" fill="${fill?'currentColor':'none'}" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="display:block">${_IPATHS[name]||''}</svg>`;
 }
 // אייקון Claude (הניצוץ הכתום) — מזהה את אלה
 const CLAUDE_ICON=`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D97757" stroke-width="3.2" stroke-linecap="round" style="display:block">
@@ -7095,7 +7239,7 @@ async function loadCrm(spinner){
 }
 function crmFmtTs(ts){ try{ const d=new Date(ts); if(isNaN(d.getTime())) return escW(ts||''); const p=n=>('0'+n).slice(-2); return p(d.getDate())+'/'+p(d.getMonth()+1)+' '+p(d.getHours())+':'+p(d.getMinutes()); }catch(e){ return escW(ts||''); } }
 function crmSetView(v){ _crmView=v; renderCrm(); }
-function crmCard(inner,extra){ return '<div style="background:var(--card,#171c24);border:1px solid var(--line,#2c3442);border-radius:14px;padding:14px 16px;'+(extra||'')+'">'+inner+'</div>'; }
+function crmCard(inner,extra){ return '<div class="gcard"'+(extra?(' style="'+extra+'"'):'')+'>'+inner+'</div>'; }
 
 // ═══════════════════ 🏠 לוח בית — פריוויו חי לכל המערכת ═══════════════════
 // מסך הנחיתה: רשת כרטיסים חיים שממחזרת endpoints קיימים (overview/wa/sentinel/
@@ -7253,7 +7397,7 @@ function homeSalesRangeOpen(){
 }
 function homeDonut(cats){
   const total=cats.reduce((s,c)=>s+(c.revenue||0),0)||1;
-  const cols=['#3b82f6','#f59e0b','#ef4444','#10b981','#f97316','#8b5cf6','#a16207','#ec4899','#6b7280','#84cc16','#06b6d4','#d946ef'];
+  const cols=['var(--blue)','var(--amber)','var(--red)','var(--brand)','#f97316','var(--purple)','#a16207','#ec4899','var(--txt-3)','#84cc16','#06b6d4','#d946ef'];
   let off=0;
   const segs=cats.map((c,i)=>{ const len=(c.revenue||0)/total*100;
     const s=`<circle r="15.915" cx="21" cy="21" fill="transparent" stroke="${cols[i%cols.length]}" stroke-width="6.5" stroke-dasharray="${len.toFixed(2)} ${(100-len).toFixed(2)}" stroke-dashoffset="${(-off).toFixed(2)}" transform="rotate(-90 21 21)"><title>${escW(c.category)}: ${Math.round(len)}%</title></circle>`;
@@ -7324,7 +7468,7 @@ function homeSpark(days){
       return `${_heDow[dt.getDay()]} · ${p[2]}/${p[1]}`; }catch(e){ return String(day); } };
   return `<svg viewBox="0 0 100 30" preserveAspectRatio="none" style="width:100%;height:42px;display:block">`+
     days.map((d,i)=>{ const rev=d.revenue||0; const hh=Math.max(rev>0?2:0.6,Math.min(28,rev/max*28)); const recent=i>=days.length-7;
-      return `<rect x="${(i*w+0.5).toFixed(2)}" y="${(30-hh).toFixed(2)}" width="${(w-1).toFixed(2)}" height="${hh.toFixed(2)}" rx="0.5" fill="${recent?'#16a34a':'#cbd5e1'}"><title>${escW(_tip(d.day))} · ₪${rev.toLocaleString()}</title></rect>`;
+      return `<rect x="${(i*w+0.5).toFixed(2)}" y="${(30-hh).toFixed(2)}" width="${(w-1).toFixed(2)}" height="${hh.toFixed(2)}" rx="0.5" fill="${recent?'var(--brand)':'var(--txt-3)'}"><title>${escW(_tip(d.day))} · ₪${rev.toLocaleString()}</title></rect>`;
     }).join('')+`</svg>`;
 }
 // ── עריכת לוח: רשימת הסקשנים (לצ'ק-בוקסים) + העדפות תצוגה (localStorage, ברירת מחדל=הכל דלוק) ──
@@ -7353,6 +7497,10 @@ function homeToggleSection(k,checked){ _homePrefsLoad(); S.homePrefs[k]=!!checke
   try{ localStorage.setItem('gm_home_prefs',JSON.stringify(S.homePrefs)); }catch(e){}
   S.homeLastTouch=Date.now(); if(S.view==='home')renderHome(); }
 function homeSettingsToggle(){ S.homeSettingsOpen=!S.homeSettingsOpen; S.homeLastTouch=Date.now(); if(S.view==='home')renderHome(); }
+// DEMOTE — מד-עלות אלה: מכווץ כברירת מחדל, נפתח בקליק (localStorage)
+function homeUricostToggle(){ if(S.homeUricostOpen==null){ try{ S.homeUricostOpen=localStorage.getItem('gm_home_uricost_open')==='1'; }catch(e){ S.homeUricostOpen=false; } }
+  S.homeUricostOpen=!S.homeUricostOpen; try{ localStorage.setItem('gm_home_uricost_open',S.homeUricostOpen?'1':'0'); }catch(e){}
+  S.homeLastTouch=Date.now(); if(S.view==='home')renderHome(); }
 function homeSettingsReset(){ S.homePrefs={}; try{ localStorage.removeItem('gm_home_prefs'); }catch(e){}
   S.homeLastTouch=Date.now(); if(S.view==='home')renderHome(); }
 function homeSettingsPanel(){
@@ -7371,18 +7519,19 @@ function homeSettingsPanel(){
   </div>`;
 }
 function homeKpi(val,label,color,onclick){
-  return `<div ${onclick?`onclick="${onclick}" style="cursor:pointer;`:'style="'}flex:1;min-width:108px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:13px 12px;text-align:center">
-    <div style="font-size:27px;font-weight:800;color:${color||'var(--txt)'};line-height:1">${val}</div>
-    <div class="muted" style="font-size:11.5px;margin-top:5px">${label}</div></div>`;
+  return `<div class="gkpi${onclick?' clickable':''}"${onclick?` onclick="${onclick}"`:''}>
+    <div class="v tnum" dir="ltr" style="color:${color||'var(--txt)'}">${val}</div>
+    <div class="l">${label}</div></div>`;
 }
+// homeHead: [עיגול-אייקון אפור] [כותרת] … [כותרת-משנה] [›]. הכרטיס עצמו מקבל .clickable ב-crmCard.
 function homeHead(icon,title,sub,onclick){
-  return `<div ${onclick?`onclick="${onclick}" style="cursor:pointer"`:''} style="display:flex;align-items:center;gap:8px;margin-bottom:9px">
-    <span style="font-size:16px">${icon}</span><b style="font-size:14.5px">${title}</b>
-    ${sub?`<span class="muted" style="margin-inline-start:auto;font-size:12px">${sub}</span>`:''}
-    ${onclick?'<span class="muted" style="font-size:13px">›</span>':''}</div>`;
+  return `<div class="ghead"${onclick?` onclick="${onclick}"`:''}>
+    <span class="ic">${icon}</span><span class="ttl">${title}</span>
+    ${sub?`<span class="sub">${sub}</span>`:''}
+    ${onclick?'<span class="chev">›</span>':''}</div>`;
 }
 function homeRow(inner,onclick){
-  return `<div ${onclick?`onclick="${onclick}" style="cursor:pointer;`:'style="'}display:flex;gap:8px;align-items:center;padding:6px 0;border-top:1px solid var(--line);font-size:13px">${inner}</div>`;
+  return `<div class="grow${onclick?' clickable':''}"${onclick?` onclick="${onclick}"`:''}>${inner}</div>`;
 }
 function renderHome(){
   const app=document.getElementById('app'); if(!app) return;
@@ -7401,19 +7550,27 @@ function renderHome(){
   const sentOk=sent.available&&!sent.stale&&!sentIssues.length;
   const remRows=(d.rem&&d.rem.rows)||[];
 
+  // ── מכירות היום (למדד המוביל ב-KPI) — grandTotal + מעבדה (זהה לאריח "כל הסניפים") ──
+  const _sd0=d.sales||{};
+  const _il0=n=>'₪'+Number(Math.round(n||0)).toLocaleString('en-US');
+  const _grand0=Object.values(_sd0.by_branch||{}).reduce((s,v)=>s+(v.revenue||0),0);
+  const _lab0=Object.values(((d.reprev||{}).by_branch)||{}).reduce((s,v)=>s+(v.sum||0),0);
+  const salesKpi=_il0(_grand0+_lab0);
+
   let h=`<div style="max-width:1280px;margin:0 auto;padding:4px 2px 34px">`;
-  // ── פס עריכת לוח (גלגל-שיניים → צ'ק-בוקסים לכל סקשן) ──
+  // ── שורת-על: עריכת לוח (גלגל-שיניים → צ'ק-בוקסים לכל סקשן) ──
   h+=`<div style="display:flex;justify-content:flex-start;margin-bottom:9px;position:relative">
     <button onclick="homeSettingsToggle()" title="עריכת לוח — בחר אילו סקשנים להציג" style="background:var(--card);border:1px solid var(--line);color:var(--muted);border-radius:10px;padding:6px 11px;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600">${ico('sliders',15)} עריכת לוח</button>
     ${S.homeSettingsOpen?homeSettingsPanel():''}
   </div>`;
-  // ── רצועת KPI ──
+  // ── רצועת KPI (RTL — הימני = ראשון = מכירות היום) ──
   if(homeShow('kpi')) h+=`<div style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:13px">
-    ${homeKpi(waWaiting,'ממתינים לנציג',waWaiting?'#dc2626':'#16a34a',waWaiting?'goWaWaiting()':'')}
-    ${homeKpi(overdue,'העברות באיחור',overdue?'#dc2626':'#16a34a',overdue?'goOverdueTransfers()':'')}
+    ${homeKpi(salesKpi,'מכירות היום','var(--brand-ink)','hubGoCrm()')}
+    ${homeKpi(waWaiting,'ממתינים לנציג',waWaiting?'var(--red-ink)':'var(--txt-3)',waWaiting?'goWaWaiting()':'')}
+    ${homeKpi(overdue,'העברות באיחור',overdue?'var(--red-ink)':'var(--txt-3)',overdue?'goOverdueTransfers()':'')}
     ${homeKpi(open,'העברות פתוחות',null,open?'goOpenTransfers()':'')}
     ${homeKpi(ansTxt,'מענה שיחות היום',null,'hubGoCrm()')}
-    ${homeKpi(sentOk?'תקין':'בעיה','מצב מערכת',sentOk?'#16a34a':'#dc2626',sentOk?'':"hubGo('sentinel')")}
+    ${homeKpi(sentOk?'תקין':'בעיה','מצב מערכת',sentOk?'var(--brand-ink)':'var(--red-ink)',sentOk?'':"hubGo('sentinel')")}
   </div>`;
   // ── רצועת "דורש טיפול עכשיו" ──
   // סינון מדויק ל-≥48ש' (ה-before בשרת הוא ברמת-יום, אז הזמנה מצהרי יום-הסף נכנסת כ"1 יום" שגוי)
@@ -7422,59 +7579,61 @@ function renderHome(){
   const ordsOver=((d.ordover&&d.ordover.orders)||[]);
   const ordsOverN=(d.ordover&&typeof d.ordover.total==='number')?d.ordover.total:ordsOver.length;
   const att=[];
-  const chip=(txt,onc)=>`<button onclick="${onc}" style="background:#fff;border:1px solid rgba(220,38,38,.4);color:#dc2626;border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px">${txt}</button>`;
+  const chip=(txt,onc)=>`<button class="gchip" onclick="${onc}">${txt}</button>`;
   if(waWaiting) att.push(chip(`${ico('chat',14)} ${waWaiting} ממתינים לנציג`,"goWaWaiting()"));
   if(overdue) att.push(chip(`${ico('truck',14)} ${overdue} העברות באיחור`,"goOverdueTransfers()"));
   if(ordsOverN) att.push(chip(`${ico('cart',14)} ${ordsOverN} הזמנות באיחור`,"goLateOrders()"));
   if(!sentOk) att.push(chip(`${ico('shield',14)} סנטינל: ${sent.stale?'לא מדווח':sentIssues.length+' בעיות'}`,"hubGo('sentinel')"));
-  const attPanel = att.length
-    ? `<div style="flex:1;min-width:240px;background:rgba(220,38,38,.06);border:1px solid rgba(220,38,38,.25);border-radius:14px;padding:11px 14px">
-        <b style="font-size:13px;color:#dc2626">🔴 דורש טיפול עכשיו</b>
+  // מצב יש-פריטים: פאנל ניטרלי עם פס-מבטא אדום + כותרת-זונה "דורש טיפול" מעליו.
+  // מצב ריק: שורה ירוקה דקה יחידה, בלי כותרת-זונה, בלי תיבה גדולה.
+  const attHasItems=att.length>0;
+  const attPanel = attHasItems
+    ? `<div class="gzone"><span class="lbl">דורש טיפול</span><span class="rule"></span></div>
+       <div class="gatt">
+        <div class="ttl"><span class="gdot" style="background:var(--red)"></span>דורש טיפול עכשיו</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">${att.join('')}</div></div>`
-    : `<div style="flex:1;min-width:240px;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.25);border-radius:14px;padding:11px 14px;font-size:13px;color:#16a34a;font-weight:700;display:flex;align-items:center">✅ הכל תחת שליטה — אין משימות דחופות כרגע</div>`;
+    : `<div class="gok"><span style="font-weight:800">✓</span>הכל תקין</div>`;
   // ── 🆕 טיקר "הזמנות חדשות" (10 אחרונות, גלילה אוטומטית אטית) ──
   const _ils=n=>'₪'+Number(Math.round(n||0)).toLocaleString('en-US');
   const _wcst={pending:'ממתין לתשלום',processing:'בטיפול',completed:'הושלם','on-hold':'בהמתנה',cancelled:'בוטל',refunded:'זוכה',failed:'נכשל',
     'shipping-stage':'בהפצה','order-ready':'מוכנה','tlv-pickup':'נק׳ ת״א',delivered:'נמסר','send-cargo':'לשליחה'};
   const _stN=s=>_wcst[s]||ordStName(s)||s;   // שם תקין (כולל סטטוסים מותאמים), לא slug
-  const _stC={pending:'#b45309',processing:'#15803d','on-hold':'#b45309',completed:'#1d4ed8',cancelled:'#dc2626',refunded:'#7c3aed',failed:'#dc2626',
-    'shipping-stage':'#7c3aed','order-ready':'#0d9488','tlv-pickup':'#0369a1',delivered:'#1d4ed8'};
+  const _stC={pending:'var(--amber-ink)',processing:'var(--brand-ink)','on-hold':'var(--amber-ink)',completed:'var(--blue-ink)',cancelled:'var(--red-ink)',refunded:'var(--purple-ink)',failed:'var(--red-ink)',
+    'shipping-stage':'var(--purple-ink)','order-ready':'var(--brand-ink)','tlv-pickup':'var(--blue-ink)',delivered:'var(--blue-ink)'};
   // תווית שידור: רק כשרלוונטי. הזמנה שכבר טופלה (handled) או בסטטוס משלוח/הושלם — לא "ממתין לשידור".
-  const _bcast=o=>o.oos?['חסר','#dc2626']:o.partial?['שודר חלקי','#d97706']:o.nosku?['ללא מק״ט','#d97706']:o.bcast?['שודר','#16a34a']
-    :((!o.handled&&(o.status==='processing'||o.status==='on-hold'))?['ממתין לשידור','#94a3b8']:null);
+  const _bcast=o=>o.oos?['חסר','var(--red-ink)']:o.partial?['שודר חלקי','var(--amber-ink)']:o.nosku?['ללא מק״ט','var(--amber-ink)']:o.bcast?['שודר','var(--brand-ink)']
+    :((!o.handled&&(o.status==='processing'||o.status==='on-hold'))?['ממתין לשידור','var(--txt-3)']:null);
   const ordNew=((d.ordnew&&d.ordnew.orders)||[]).slice(0,10);
   const tickerRow=o=>{ const b=_bcast(o);
-    return `<div style="padding:5px 2px;border-top:1px solid rgba(120,120,120,.13)">
+    return `<div style="padding:5px 2px;border-top:1px solid var(--line)">
       <div style="display:flex;gap:6px;align-items:center;font-size:12px">
-        <b style="font-weight:800">#${escW(String(o.number||''))}</b>
+        <b class="tnum" dir="ltr" style="font-weight:750">#${escW(String(o.number||''))}</b>
         <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(o.items||o.item||'')}</span>
-        <span style="font-weight:700;color:#16a34a;white-space:nowrap">${_ils(parseFloat(o.total)||0)}</span></div>
+        <span class="tnum" dir="ltr" style="font-weight:650;color:var(--brand-ink);white-space:nowrap">${_ils(parseFloat(o.total)||0)}</span></div>
       <div style="display:flex;gap:6px;align-items:center;margin-top:1px">
-        <span class="muted" style="flex:1;min-width:0;font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(o.name||'')}</span>
-        <span style="font-size:10px;font-weight:700;color:${_stC[o.status]||'#64748b'};white-space:nowrap">${escW(_stN(o.status))}</span>
+        <span style="flex:1;min-width:0;font-size:10.5px;color:var(--txt-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(o.name||'')}</span>
+        <span style="font-size:10px;font-weight:700;color:${_stC[o.status]||'var(--txt-3)'};white-space:nowrap">${escW(_stN(o.status))}</span>
         ${b?`<span style="font-size:10px;font-weight:700;color:${b[1]};white-space:nowrap">📡${escW(b[0])}</span>`:''}</div>
     </div>`; };
   const tickerRows=ordNew.map(tickerRow).join('');
   const tickerDur=Math.max(18,ordNew.length*3);
-  const newOrdersPanel=`<div style="background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.28);border-radius:14px;padding:9px 12px 8px;overflow:hidden">
-    <b style="font-size:13px;color:#16a34a;display:flex;align-items:center;gap:5px">🆕 הזמנות חדשות <span class="muted" style="font-weight:400;font-size:10.5px">(${ordNew.length} אחרונות)</span></b>
-    ${ordNew.length?`<div style="height:160px;overflow:hidden;margin-top:5px">
+  // הזמנות חדשות — יורד לזונה 3 (תפעול). כרטיס .gcard עם homeHead אחיד.
+  const newOrdersPanel=crmCard(homeHead(ico('cart',16),'הזמנות חדשות',ordNew.length+' אחרונות',null)+
+    (ordNew.length?`<div style="height:160px;overflow:hidden">
       <div class="home-ticker" style="animation-duration:${tickerDur}s">${tickerRows}${tickerRows}</div></div>`
-     :'<div class="muted" style="font-size:12px;padding:12px 0">אין הזמנות אחרונות</div>'}</div>`;
-  // ── שורת פעולות מהירות (יושבת מתחת ל"דורש טיפול" בצד ימין; הזמנות-חדשות משתרע לגובהן משמאל) ──
-  const qa=(txt,onc)=>`<button onclick="${onc}" style="background:var(--card);border:1px solid var(--line);color:var(--txt);border-radius:11px;padding:9px 13px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:7px">${txt}</button>`;
-  const quickRow=`<div style="display:flex;gap:8px;flex-wrap:wrap;align-content:flex-start">
+     :'<div class="muted" style="font-size:12px;padding:12px 0">אין הזמנות אחרונות</div>'));
+  // ── שורת פעולות מהירות ──
+  const qa=(txt,onc)=>`<button class="gqa" onclick="${onc}">${txt}</button>`;
+  const quickRow=`<div style="display:flex;gap:8px;flex-wrap:wrap;align-content:flex-start;margin-top:11px">
     ${qa(ico('bank',15)+' קישור תשלום',"if(ensureAdmin(payQuickOpen))payQuickOpen()")}
     ${qa(ico('cart',15)+' הזמנות',"openOrdersTab()")}
     ${qa(ico('chat',15)+' וואטסאפ',"openWaTab()")}
     ${qa(ico('camera',15)+' סריקת העברה',"hubGo('board')")}
     ${qa(ico('phone',15)+' מוקד שיחות',"hubGoCrm()")}
   </div>`;
-  // ימין: דורש-טיפול (גדל) + פעולות-מהירות מתחת · שמאל: הזמנות-חדשות שמתמתח לאותו גובה
-  const rightParts=[]; if(homeShow('attention')) rightParts.push(attPanel); if(homeShow('quick')) rightParts.push(quickRow);
-  const rightCol=rightParts.length?`<div style="display:flex;flex-direction:column;gap:10px">${rightParts.join('')}</div>`:'';
-  const stripParts=[]; if(rightCol) stripParts.push(rightCol); if(homeShow('neworders')) stripParts.push(newOrdersPanel);
-  if(stripParts.length) h+=`<div class="home-strip">${stripParts.join('')}</div>`;
+  // ── זונה 1: דורש-טיפול (או שורת "הכל תקין") + פעולות מהירות ──
+  if(homeShow('attention')) h+=attPanel;
+  if(homeShow('quick')) h+=quickRow;
   // ── 💰 סקשן מכירות (היום, מעבר בין סניפים) ──
   const sd=d.sales||{};
   const _il=n=>'₪'+Number(Math.round(n||0)).toLocaleString('en-US');
@@ -7487,28 +7646,28 @@ function renderHome(){
   const brTile=b=>{ const sel=curB===String(b.id);
     const rev=(b.id===''?grandTotal:(((sd.by_branch||{})[b.id]||{}).revenue||0))+repFor(b.id);
     const rep=repFor(b.id);
-    return `<button onclick="homeSalesBranch('${b.id}')" style="flex:1;min-width:92px;background:${sel?'#16a34a':'var(--card2)'};color:${sel?'#fff':'var(--txt)'};border:1px solid ${sel?'#16a34a':'var(--line)'};border-radius:11px;padding:8px 6px;cursor:pointer;font-family:inherit;text-align:center">
-      <div style="font-size:12px;font-weight:600">${b.n}</div>
-      <div style="font-size:15px;font-weight:800;margin-top:2px">${_il(rev)}</div>
-      ${rep>0?`<div style="font-size:10px;margin-top:1px;color:${sel?'#d1fae5':'var(--muted)'}">כולל מעבדה ${_il(rep)}</div>`:''}</button>`; };
+    return `<button class="gtile${sel?' sel':''}" onclick="homeSalesBranch('${b.id}')">
+      <div class="bn">${b.n}</div>
+      <div class="bv tnum" dir="ltr">${_il(rev)}</div>
+      ${rep>0?`<div class="bs">כולל מעבדה <span dir="ltr">${_il(rep)}</span></div>`:''}</button>`; };
   const tt=sd.today||{revenue:0,count:0,credits:0};
   const per=S.homeSalesPeriod||'today';
   const perLabel=per==='yesterday'?'אתמול':(per==='range'?((sd.from||'')+' – '+(sd.to||'')):'היום');
-  const seg=(id,lbl)=>`<button onclick="homeSalesPeriod('${id}')" style="flex:1;background:${per===id?'#16a34a':'transparent'};color:${per===id?'#fff':'var(--txt)'};border:0;border-radius:9px;padding:7px 4px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">${lbl}</button>`;
-  if(homeShow('sales')) h+=crmCard(
-    `<div style="display:flex;align-items:center;gap:8px;margin-bottom:11px"><span style="display:inline-flex;color:#16a34a">${ico('wallet',18)}</span><b style="font-size:15px">מכירות · ${escW(perLabel)}</b>${S.homeSalesLoading?'<span class="muted" style="font-size:12px;margin-inline-start:auto">⏳ מעדכן…</span>':'<button onclick="homeSalesRefresh()" title="משוך מכירות עכשיו מ-NewOrder" style="margin-inline-start:auto;background:none;border:0;cursor:pointer;font-size:16px;color:var(--muted);padding:0 2px;line-height:1">↻</button>'}</div>
-     <div style="display:flex;gap:3px;background:var(--card2);border:1px solid var(--line);border-radius:11px;padding:3px;margin-bottom:12px">${seg('today','היום')}${seg('yesterday','אתמול')}${seg('range','סינון')}</div>
-     <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:13px">${branches.map(brTile).join('')}</div>
-     <div style="display:flex;gap:10px;margin-bottom:13px">
+  const seg=(id,lbl)=>`<button class="${per===id?'on':''}" onclick="homeSalesPeriod('${id}')">${lbl}</button>`;
+  const salesCard=homeShow('sales')?crmCard(
+    `<div class="ghead"><span class="ic">${ico('wallet',16)}</span><span class="ttl">מכירות · ${escW(perLabel)}</span>${S.homeSalesLoading?'<span class="sub">⏳ מעדכן…</span>':'<button onclick="homeSalesRefresh()" title="משוך מכירות עכשיו מ-NewOrder" style="margin-inline-start:auto;background:none;border:0;cursor:pointer;font-size:16px;color:var(--txt-3);padding:0 2px;line-height:1">↻</button>'}</div>
+     <div class="gseg" style="margin-bottom:12px">${seg('today','היום')}${seg('yesterday','אתמול')}${seg('range','סינון')}</div>
+     <div class="branch-row" style="margin-bottom:13px">${branches.map(brTile).join('')}</div>
+     <div style="display:flex;gap:8px;margin-bottom:13px">
        ${(()=>{ const curRep=(d.reprev&&d.reprev.sum)||0;  // מעבדה לחתך הנוכחי (סניף+תקופה)
-         return `<div style="flex:1;text-align:center"><div style="font-size:24px;font-weight:800;color:#16a34a">${_il((tt.revenue||0)+curRep)}</div><div class="muted" style="font-size:11px">מכירות${curRep?` · כולל מעבדה ${_il(curRep)}`:''}</div></div>`; })()}
-       <div style="flex:1;text-align:center"><div style="font-size:24px;font-weight:800">${tt.count||0}</div><div class="muted" style="font-size:11px">עסקאות</div></div>
-       <div style="flex:1;text-align:center"><div style="font-size:24px;font-weight:800;color:#dc2626">${_il(tt.credits)}</div><div class="muted" style="font-size:11px">זיכויים</div></div>
+         return `<div class="gstat"><div class="v tnum" dir="ltr" style="color:var(--brand-ink)">${_il((tt.revenue||0)+curRep)}</div><div class="l">מכירות</div>${curRep?`<div class="sv">כולל מעבדה <span dir="ltr">${_il(curRep)}</span></div>`:''}</div>`; })()}
+       <div class="gstat"><div class="v tnum" dir="ltr">${tt.count||0}</div><div class="l">עסקאות</div></div>
+       <div class="gstat"><div class="v tnum" dir="ltr" style="color:var(--red-ink)">${_il(tt.credits)}</div><div class="l">זיכויים</div></div>
      </div>
-     <div class="muted" style="font-size:11px;margin-bottom:4px">קצב 14 ימים · <span style="color:#16a34a;font-weight:700">השבוע</span> מול <span style="color:#94a3b8;font-weight:700">שבוע שעבר</span></div>
-     ${homeSpark(sd.weekly)}`,
-    'margin-bottom:13px');
+     <div style="font-size:11px;color:var(--txt-3);margin-bottom:4px">קצב 14 ימים · <span style="color:var(--brand-ink);font-weight:700">השבוע</span> מול <span style="color:var(--txt-3);font-weight:700">שבוע שעבר</span></div>
+     ${homeSpark(sd.weekly)}`):'';
   // ── 🛠️ תיקוני מעבדה · היום (בורר סניפים כמו במכירות) ──
+  let repairsCard='';
   if(homeShow('repairs')){
     const rp=S.homeRepairs;
     const rb=String(S.homeRepBranch||'all');
@@ -7516,25 +7675,25 @@ function renderHome(){
     const rd=(rp&&rp.branches)?(rp.branches[rb]||rp.branches['all']):null;
     const rTile=b=>{ const sel=rb===b.id;
       const open=(rp&&rp.branches&&rp.branches[b.id])?rp.branches[b.id].open.count:'…';
-      return `<button onclick="homeRepBranch('${b.id}')" style="flex:1;min-width:92px;background:${sel?'#0d9488':'var(--card2)'};color:${sel?'#fff':'var(--txt)'};border:1px solid ${sel?'#0d9488':'var(--line)'};border-radius:11px;padding:8px 6px;cursor:pointer;font-family:inherit;text-align:center">
-        <div style="font-size:12px;font-weight:600">${b.n}</div>
-        <div style="font-size:15px;font-weight:800;margin-top:2px">${open}<span style="font-size:10px;font-weight:500"> פתוחים</span></div></button>`; };
-    h+=crmCard(
-      `<div style="display:flex;align-items:center;gap:8px;margin-bottom:11px"><span style="display:inline-flex;color:#0d9488">${ico('wrench',18)}</span><b style="font-size:15px">תיקוני מעבדה · היום</b>${S.homeRepairsLoading?'<span class="muted" style="font-size:12px;margin-inline-start:auto">⏳ מעדכן…</span>':'<button onclick="homeRepairsRefresh()" title="משוך תיקונים עכשיו מ-NewOrder" style="margin-inline-start:auto;background:none;border:0;cursor:pointer;font-size:16px;color:var(--muted);padding:0 2px;line-height:1">↻</button>'}</div>
-       <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:13px">${rBr.map(rTile).join('')}</div>
-       ${rd?`<div style="display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap">
-         <div onclick="repairsListOpen('rec_rel')" style="flex:1;min-width:130px;text-align:center;background:var(--card2);border:1px solid var(--line);border-radius:11px;padding:10px 6px;cursor:pointer"><div style="font-size:22px;font-weight:800;color:#16a34a">${rd.rec_rel.count}</div><div class="muted" style="font-size:11px">התקבלו ושוחררו היום</div><div style="font-size:12px;font-weight:700;color:#16a34a;margin-top:2px">${_il(rd.rec_rel.sum)}</div></div>
-         <div onclick="repairsListOpen('rec_open')" style="flex:1;min-width:130px;text-align:center;background:var(--card2);border:1px solid var(--line);border-radius:11px;padding:10px 6px;cursor:pointer"><div style="font-size:22px;font-weight:800;color:#d97706">${rd.rec_open.count}</div><div class="muted" style="font-size:11px">התקבלו היום · בטיפול</div><div class="muted" style="font-size:12px;margin-top:2px">—</div></div>
-         <div onclick="repairsListOpen('rel_old')" style="flex:1;min-width:130px;text-align:center;background:var(--card2);border:1px solid var(--line);border-radius:11px;padding:10px 6px;cursor:pointer"><div style="font-size:22px;font-weight:800;color:#2563eb">${rd.rel_old.count}</div><div class="muted" style="font-size:11px">שוחררו היום מהמתנה</div><div style="font-size:12px;font-weight:700;color:#2563eb;margin-top:2px">${_il(rd.rel_old.sum)}</div></div>
+      return `<button class="gtile${sel?' sel':''}" onclick="homeRepBranch('${b.id}')">
+        <div class="bn">${b.n}</div>
+        <div class="bv"><span class="tnum" dir="ltr">${open}</span><span style="font-size:10px;font-weight:500"> פתוחים</span></div></button>`; };
+    repairsCard=crmCard(
+      `<div class="ghead"><span class="ic">${ico('wrench',16)}</span><span class="ttl">תיקוני מעבדה · היום</span>${S.homeRepairsLoading?'<span class="sub">⏳ מעדכן…</span>':'<button onclick="homeRepairsRefresh()" title="משוך תיקונים עכשיו מ-NewOrder" style="margin-inline-start:auto;background:none;border:0;cursor:pointer;font-size:16px;color:var(--txt-3);padding:0 2px;line-height:1">↻</button>'}</div>
+       <div class="branch-row" style="margin-bottom:13px">${rBr.map(rTile).join('')}</div>
+       ${rd?`<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+         <div class="gstat" onclick="repairsListOpen('rec_rel')" style="cursor:pointer;min-width:130px"><div class="v tnum" dir="ltr" style="color:var(--brand-ink)">${rd.rec_rel.count}</div><div class="l">התקבלו ושוחררו היום</div><div class="sv" style="color:var(--brand-ink)" dir="ltr">${_il(rd.rec_rel.sum)}</div></div>
+         <div class="gstat" onclick="repairsListOpen('rec_open')" style="cursor:pointer;min-width:130px"><div class="v tnum" dir="ltr" style="color:var(--amber-ink)">${rd.rec_open.count}</div><div class="l">התקבלו היום · בטיפול</div><div class="sv">—</div></div>
+         <div class="gstat" onclick="repairsListOpen('rel_old')" style="cursor:pointer;min-width:130px"><div class="v tnum" dir="ltr" style="color:var(--blue-ink)">${rd.rel_old.count}</div><div class="l">שוחררו היום מהמתנה</div><div class="sv" style="color:var(--blue-ink)" dir="ltr">${_il(rd.rel_old.sum)}</div></div>
        </div>
-       <div class="muted" onclick="repairsListOpen('open')" style="font-size:12px;margin-bottom:11px;cursor:pointer">🔧 פתוחים במעבדה כרגע: <b>${rd.open.count}</b>${rd.open.count?` · הוותיק ביותר ממתין <b>${rd.open.oldest_days}</b> ימים`:''} <span style="text-decoration:underline">לרשימה</span></div>
+       <div onclick="repairsListOpen('open')" style="font-size:12px;color:var(--txt-3);margin-bottom:11px;cursor:pointer">🔧 פתוחים במעבדה כרגע: <b style="color:var(--txt)">${rd.open.count}</b>${rd.open.count?` · הוותיק ביותר ממתין <b style="color:var(--txt)">${rd.open.oldest_days}</b> ימים`:''} <span style="text-decoration:underline">לרשימה</span></div>
        ${(()=>{ // שורת מדדי עומק — קליק על תקועים/ממתינים/חוזרים פותח רשימה מפורטת
          const st=(rd.stuck7||{}).count||0, aw=(rd.awaiting||{}).count||0, rp=(rd.repeat||{}).count||0;
          const ta=rd.turnaround||{}; const mo=rd.month||{cur:{},prev:{}};
-         const chip=(icon,val,label,sub,kind,warn)=>`<div ${kind?`onclick="repairsListOpen('${kind}')"`:''} style="flex:1;min-width:105px;background:var(--card2);border:1px solid ${warn?'#f59e0b55':'var(--line)'};border-radius:11px;padding:8px 6px;text-align:center${kind?';cursor:pointer':''}">
-           <div style="font-size:16px;font-weight:800;${warn?'color:#d97706':''}">${icon} ${val}</div>
-           <div class="muted" style="font-size:10.5px;margin-top:1px">${label}</div>
-           ${sub?`<div class="muted" style="font-size:10px">${sub}</div>`:''}</div>`;
+         const chip=(icon,val,label,sub,kind,warn)=>`<div class="gmini${warn?' warn':''}" ${kind?`onclick="repairsListOpen('${kind}')"`:''} ${kind?'style="cursor:pointer"':''}>
+           <div class="v"><span style="font-weight:500">${icon}</span> <span class="tnum" dir="ltr">${val}</span></div>
+           <div class="l">${label}</div>
+           ${sub?`<div class="s">${sub}</div>`:''}</div>`;
          return `<div style="display:flex;gap:8px;flex-wrap:wrap">
            ${chip('⏱',ta.avg_days!=null?ta.avg_days+' י׳':'—','זמן טיפול ממוצע',ta.count?`על ${ta.count} תיקונים · 70 יום`:'','')}
            ${chip('🔥',st,'תקועים 7+ ימים',st?'לחץ לרשימה':'','stuck',st>0)}
@@ -7542,54 +7701,62 @@ function renderHome(){
            ${chip('🔁',rp,'תיקונים חוזרים (30 י׳)',rp?'לחץ לרשימה':'','repeat')}
            ${chip('💰',_il((mo.cur||{}).sum||0),'הכנסות מעבדה החודש',`חודש שעבר: ${_il((mo.prev||{}).sum||0)}`,'')}
          </div>`; })()}`
-       :'<div class="muted" style="font-size:13px;padding:6px 0">⏳ טוען נתוני מעבדה…</div>'}`,
-      'margin-bottom:13px');
+       :'<div class="muted" style="font-size:13px;padding:6px 0">⏳ טוען נתוני מעבדה…</div>'}`);
   }
-  // ── רשת כרטיסים ──
-  h+=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:12px">`;
-  // פילוח קטגוריות (דונאט כמו NewOrder) + פרוסת תיקוני מעבדה לאותו חתך תקופה/סניף
+  // ── פילוח קטגוריות (דונאט) — עולה לזונה 2 צמוד למכירות ──
   let catsAll=(sd.categories||[]).slice();
   const rrev=d.reprev;
   if(rrev&&rrev.sum>0) catsAll.push({category:'🛠 תיקוני מעבדה',revenue:rrev.sum});
   catsAll.sort((a,b)=>(b.revenue||0)-(a.revenue||0));
   const cats=catsAll.slice(0,11);
-  if(homeShow('categories')) h+=crmCard(homeHead(ico('tag',16),'פילוח קטגוריות',perLabel,"hubGoCrm()")+
+  const catsCard=homeShow('categories')?crmCard(homeHead(ico('tag',16),'פילוח קטגוריות',perLabel,"hubGoCrm()")+
     (cats.length?homeDonut(cats)
-     :'<div class="muted" style="font-size:13px;padding:6px 0">אין מכירות בתקופה</div>'));
-  // מכירות אחרונות היום
-  const recent=(sd.recent||[]).slice(0,8);
-  if(homeShow('recent')) h+=crmCard(homeHead(ico('receipt',16),'מכירות אחרונות',((sd.today&&sd.today.count)||0)+' עסקאות',"hubGoCrm()")+
+     :'<div class="muted" style="font-size:13px;padding:6px 0">אין מכירות בתקופה</div>')):'';
+  // ══ זונה 2 — כסף · היום (מכירות + דונאט זה-לצד-זה · מעבדה רוחב-מלא) ══
+  if(salesCard||catsCard||repairsCard){
+    h+=`<div class="gzone"><span class="lbl">כסף · היום</span><span class="rule"></span></div>`;
+    h+=`<div class="gmoney">`;
+    if(salesCard) h+=salesCard;
+    if(catsCard) h+=catsCard;
+    if(repairsCard) h+=`<div class="g-full">${repairsCard}</div>`;
+    h+=`</div>`;
+  }
+  // ══ זונות 3 (תפעול) ו-4 (רפרנס) — נאספות ואז נפלטות בגריד ══
+  const z3=[]; const z4=[];
+  // מכירות אחרונות היום (SLIM: 5 שורות)
+  const recent=(sd.recent||[]).slice(0,5);
+  if(homeShow('recent')) z3.push(crmCard(homeHead(ico('receipt',16),'מכירות אחרונות',((sd.today&&sd.today.count)||0)+' עסקאות',"hubGoCrm()")+
     (recent.length?recent.map(r=>homeRow(
-      `<b style="flex:1;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(r.name)}</b>
-       <span class="muted" style="font-size:11px;direction:ltr">${escW(_tmt(r.ts))}</span>
-       <span style="font-weight:600;color:#16a34a">${_il(r.amount)}</span>`)).join('')
-     :'<div class="muted" style="font-size:13px;padding:6px 0">אין מכירות היום</div>'));
+      `<div class="main"><div class="t1">${escW(r.name)}</div></div>
+       <span class="t2 tnum" dir="ltr" style="flex:none">${escW(_tmt(r.ts))}</span>
+       <span class="val tnum" dir="ltr" style="color:var(--brand-ink)">${_il(r.amount)}</span>`)).join('')
+     :'<div class="muted" style="font-size:13px;padding:6px 0">אין מכירות היום</div>')));
   // וואטסאפ — אינבוקס (כל הלא-מאורכבות, כמו בטאב), לא רק ממתינים
   const inbox=waConvs.filter(c=>!c.archived).sort((a,b)=>(b.ts||0)-(a.ts||0));
   const waList=inbox.slice(0,7);
-  const _dot=c=>c.awaiting_agent?'🔴':(c.unread?'🟡':'🟢');
-  const _waLegend=`<div class="muted" style="display:flex;flex-wrap:wrap;gap:10px;font-size:10.5px;padding:0 0 7px;line-height:1.4">
-    <span>🔴 ממתין לנציג</span><span>🟡 לא נקרא</span><span>🟢 נקרא / טופל</span></div>`;
-  if(homeShow('whatsapp')) h+=crmCard(homeHead(ico('chat',16),'וואטסאפ — אינבוקס',inbox.length+' שיחות'+(waWaiting?' · '+waWaiting+' ממתינים':''),"openWaTab()")+
+  const _dotC=c=>c.awaiting_agent?'var(--red)':(c.unread?'var(--amber)':'var(--brand)');
+  const _waLegend=`<div class="muted" style="display:flex;flex-wrap:wrap;gap:12px;font-size:10.5px;padding:0 0 7px;line-height:1.4">
+    <span style="display:inline-flex;align-items:center;gap:5px"><span class="gdot" style="background:var(--red)"></span>ממתין לנציג</span><span style="display:inline-flex;align-items:center;gap:5px"><span class="gdot" style="background:var(--amber)"></span>לא נקרא</span><span style="display:inline-flex;align-items:center;gap:5px"><span class="gdot" style="background:var(--brand)"></span>נקרא / טופל</span></div>`;
+  if(homeShow('whatsapp')) z3.push(crmCard(homeHead(ico('chat',16),'וואטסאפ — אינבוקס',inbox.length+' שיחות'+(waWaiting?' · '+waWaiting+' ממתינים':''),"openWaTab()")+
     (waList.length?_waLegend+waList.map(c=>homeRow(
-       `<span>${_dot(c)}</span>
-        <b style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(c.name||c.phone)}</b>
-        <span class="muted" style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:130px">${escW((c.last_msg||'').slice(0,42))}</span>`,
+       `<span class="lead"><span class="gdot" style="background:${_dotC(c)}"></span></span>
+        <div class="main"><div class="t1">${escW(c.name||c.phone)}</div></div>
+        <span class="t2" style="flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:130px">${escW((c.last_msg||'').slice(0,42))}</span>`,
        "openWaTab()")).join('')
-     :'<div class="muted" style="font-size:13px;padding:6px 0">האינבוקס ריק 👌</div>'));
+     :'<div class="muted" style="font-size:13px;padding:6px 0">האינבוקס ריק 👌</div>')));
   // העברות
   const trf=(d.ov&&d.ov.transfers)||[];
   // מציג את כל ההעברות הפתוחות (in_transit/partial), הישנה ביותר קודם; באיחור מסומן באדום ⏰
   const trfOpen=trf.filter(t=>t.status==='in_transit'||t.status==='partial')
                    .sort((a,b)=>(b.age_hours||0)-(a.age_hours||0));
   const _agT=h=>{ const d=Math.floor((h||0)/24); return d>=1?d+' י׳':Math.round(h||0)+'ש׳'; };
-  if(homeShow('transfers')) h+=crmCard(homeHead(ico('truck',16),'העברות',open+' פתוחות · '+overdue+' באיחור',overdue?"goOverdueTransfers()":"goOpenTransfers()")+
+  if(homeShow('transfers')) z3.push(crmCard(homeHead(ico('truck',16),'העברות',open+' פתוחות · '+overdue+' באיחור',overdue?"goOverdueTransfers()":"goOpenTransfers()")+
     (trfOpen.length?`<div style="max-height:280px;overflow-y:auto;margin:0 -4px;padding:0 4px">`+trfOpen.map(t=>homeRow(
-       `<span style="display:inline-flex;color:${t.overdue?'#dc2626':'var(--muted)'}">${ico(t.overdue?'clock':'truck',16)}</span><b style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(t.from_branch_name||t.from_name||'?')} → ${escW(t.to_branch_name||t.to_name||'?')}</b>
-        ${t.missing?`<span class="muted" style="font-size:11px">${t.missing} חסר</span>`:''}
-        <span style="font-size:11px;${t.overdue?'color:#dc2626;font-weight:700':'color:var(--muted)'}">${_agT(t.age_hours)}</span>`,
+       `<span class="lead" style="color:${t.overdue?'var(--red)':'var(--txt-3)'}">${ico(t.overdue?'clock':'truck',16)}</span><div class="main"><div class="t1">${escW(t.from_branch_name||t.from_name||'?')} → ${escW(t.to_branch_name||t.to_name||'?')}</div></div>
+        ${t.missing?`<span class="t2" style="flex:none">${t.missing} חסר</span>`:''}
+        <span class="tnum" dir="ltr" style="flex:none;font-size:11px;${t.overdue?'color:var(--red-ink);font-weight:700':'color:var(--txt-3)'}">${_agT(t.age_hours)}</span>`,
        "toggleAdmin()")).join('')+`</div>`
-     :'<div class="muted" style="font-size:13px;padding:6px 0">אין העברות פתוחות 👌</div>'));
+     :'<div class="muted" style="font-size:13px;padding:6px 0">אין העברות פתוחות 👌</div>')));
   // הורדות מלאי — סיטי היום (שורה מרווחת: שם המוצר למעלה, עובד מתחת)
   // איחוד לפי עסקה (op): הסכום בהערה הוא ברמת העסקה ומאוחסן על כל שורת-פריט — מציגים פעם אחת
   const _remOps=[]; const _remSeen={};
@@ -7597,39 +7764,40 @@ function renderHome(){
     if(!g){ g=_remSeen[k]={names:[],amt:(Number(r.amount)||_remAmt(r.note)),employee:r.employee,removed_at:r.removed_at}; _remOps.push(g); }
     else if(!g.amt){ g.amt=(Number(r.amount)||_remAmt(r.note)); }   // סכום ה-op מכל שורה שיש לה
     if(r.name) g.names.push(r.name); });
-  if(homeShow('removals')) h+=crmCard(homeHead(ico('trendDown',16),'הורדות מלאי — סיטי · '+escW(perLabel),_remOps.length+(_remOps.length===1?' עסקה':' עסקאות'),"S.view='admin';setAdminTab('removals')")+
-    (_remOps.length?_remOps.slice(0,7).map(g=>
-       `<div style="padding:8px 0;border-top:1px solid var(--line)">
+  if(homeShow('removals')){ const _remTot=_remOps.reduce((s,g)=>s+(Number(g.amt)||0),0);
+   z4.push(crmCard(homeHead(ico('trendDown',16),'הורדות מלאי — סיטי · '+escW(perLabel),_remOps.length+(_remOps.length===1?' עסקה':' עסקאות')+(_remTot?' · '+_il(_remTot):''),"S.view='admin';setAdminTab('removals')")+
+    (_remOps.length?_remOps.slice(0,4).map(g=>
+       `<div style="padding:7px 2px;border-top:1px solid var(--line)">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
-            <div style="font-size:13px;font-weight:700;line-height:1.35;flex:1;min-width:0">${escW(g.names.join(' · ')||'הורדת מלאי')}</div>
-            ${g.amt?`<span style="font-weight:700;color:#16a34a;white-space:nowrap">${_il(g.amt)}</span>`:''}
+            <div style="font-size:12.5px;font-weight:600;color:var(--txt);line-height:1.35;flex:1;min-width:0">${escW(g.names.join(' · ')||'הורדת מלאי')}</div>
+            ${g.amt?`<span class="tnum" dir="ltr" style="font-weight:650;color:var(--brand-ink);white-space:nowrap">${_il(g.amt)}</span>`:''}
           </div>
           <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px">
-            <span class="muted" style="font-size:11px;font-weight:400;display:inline-flex;align-items:center;gap:4px">${ico('user',12)} ${escW(g.employee||'—')}</span>
-            <span class="muted" style="font-size:11px;font-weight:400;direction:ltr;display:inline-flex;align-items:center;gap:4px">${ico('clock',12)} ${escW(_tmt(g.removed_at))}</span>
+            <span style="font-size:11px;color:var(--txt-3);display:inline-flex;align-items:center;gap:4px">${ico('user',12)} ${escW(g.employee||'—')}</span>
+            <span class="tnum" style="font-size:11px;color:var(--txt-3);direction:ltr;display:inline-flex;align-items:center;gap:4px">${ico('clock',12)} ${escW(_tmt(g.removed_at))}</span>
           </div>
         </div>`).join('')
-     :'<div class="muted" style="font-size:13px;padding:6px 0">אין הורדות בתקופה</div>'));
+     :'<div class="muted" style="font-size:13px;padding:6px 0">אין הורדות בתקופה</div>'))); }
   // שיחות מרכזיה היום + רשימת לא-נענו אחרונות
   const hist=(d.hist&&d.hist.calls)||[];
-  const missed=hist.filter(c=>c.direction==='in'&&c.disposition&&c.disposition!=='answered').slice(0,4);
-  if(homeShow('calls')) h+=crmCard(homeHead(ico('phone',16),'שיחות מרכזיה היום',ansTxt+' מענה',"hubGoCrm()")+
-    `<div style="display:flex;gap:6px;margin-top:2px">
-      <div style="flex:1;text-align:center;padding:6px 0"><div style="font-size:21px;font-weight:800;color:#16a34a">${ct.answered||0}</div><div class="muted" style="font-size:11px">נענו</div></div>
-      <div style="flex:1;text-align:center;padding:6px 0"><div style="font-size:21px;font-weight:800;color:#dc2626">${(ct.no_answer||0)+(ct.abandoned||0)}</div><div class="muted" style="font-size:11px">לא נענו</div></div>
-      <div style="flex:1;text-align:center;padding:6px 0"><div style="font-size:21px;font-weight:800">${ct.out||0}</div><div class="muted" style="font-size:11px">יוצאות</div></div>
+  const missed=hist.filter(c=>c.direction==='in'&&c.disposition&&c.disposition!=='answered').slice(0,3);
+  if(homeShow('calls')) z3.push(crmCard(homeHead(ico('phone',16),'שיחות מרכזיה היום',ansTxt+' מענה',"hubGoCrm()")+
+    `<div style="display:flex;gap:8px;margin-top:2px">
+      <div class="gstat"><div class="v tnum" dir="ltr" style="color:var(--brand-ink)">${ct.answered||0}</div><div class="l">נענו</div></div>
+      <div class="gstat"><div class="v tnum" dir="ltr" style="color:var(--red-ink)">${(ct.no_answer||0)+(ct.abandoned||0)}</div><div class="l">לא נענו</div></div>
+      <div class="gstat"><div class="v tnum" dir="ltr">${ct.out||0}</div><div class="l">יוצאות</div></div>
     </div>`+
-    (missed.length?`<div class="muted" style="font-size:11px;margin:8px 0 2px;font-weight:700">📵 לא נענו אחרונות</div>`+
+    (missed.length?`<div class="muted" style="font-size:11px;margin:10px 0 2px;font-weight:700">📵 לא נענו אחרונות</div>`+
       missed.map(c=>homeRow(
-        `<span>📵</span><b style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(c.matched_name||c.phone||'')}</b>
-         <span class="muted" style="font-size:11px;direction:ltr">${escW(_tmt(c.ts))}</span>`,
+        `<span class="lead">📵</span><div class="main"><div class="t1">${escW(c.matched_name||c.phone||'')}</div></div>
+         <span class="t2 tnum" dir="ltr" style="flex:none">${escW(_tmt(c.ts))}</span>`,
         "hubGoCrm()")).join('')
-     :''));
+     :'')));
   // סטטוס מערכת (Sentinel) — מוצג רק כשיש בעיה (ה-KPI למעלה מכסה את "תקין", בלי כפילות)
   if(!sentOk && homeShow('sentinel')){
-    h+=crmCard(homeHead('<span style="color:#dc2626;display:inline-flex">'+ico('shield',16)+'</span>','סטטוס מערכת (Sentinel)','דורש בדיקה',"hubGo('sentinel')")+
-      (sent.stale?'<div style="font-size:13px;padding:4px 0;color:#dc2626">⚠️ סנטינל לא מדווח (אולי כבוי)</div>'
-       :(sentIssues.slice(0,5).map(i=>homeRow(`<span>⚠️</span><span style="font-size:12.5px">${escW(typeof i==='string'?i:(i.msg||i.name||i.title||''))}</span>`)).join('')||'<div class="muted" style="font-size:13px;padding:4px 0">—</div>')));
+    z4.push(crmCard(homeHead('<span style="color:var(--red)">'+ico('shield',16)+'</span>','סטטוס מערכת (Sentinel)','דורש בדיקה',"hubGo('sentinel')")+
+      (sent.stale?'<div style="font-size:13px;padding:4px 0;color:var(--red-ink)">⚠️ סנטינל לא מדווח (אולי כבוי)</div>'
+       :(sentIssues.slice(0,5).map(i=>homeRow(`<span class="lead">⚠️</span><div class="main"><div class="t1" style="white-space:normal;font-size:12.5px">${escW(typeof i==='string'?i:(i.msg||i.name||i.title||''))}</div></div>`)).join('')||'<div class="muted" style="font-size:13px;padding:4px 0">—</div>'))));
   }
   // 👥 עובדים בסניפים (סידור עבודה) — מתג היום/מחר; היום=ברירת מחדל
   const sched=d.sched||{};
@@ -7649,58 +7817,68 @@ function renderHome(){
   const schedBr=_schedSrc.branches||sched.branches||[];
   const rosterToday=(_schedSrc.roster||[]).filter(r=>r.dow===sdow && r.employee);
   const byBr={}; rosterToday.forEach(r=>{ (byBr[r.branch_id]=byBr[r.branch_id]||[]).push(r); });
-  const stseg=(id,lbl)=>`<button onclick="homeStaffDay(${id})" style="flex:1;background:${staffDay===id?'#16a34a':'transparent'};color:${staffDay===id?'#fff':'var(--txt)'};border:0;border-radius:8px;padding:6px 2px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">${lbl}</button>`;
-  if(homeShow('staff')) h+=crmCard(homeHead(ico('user',16),'עובדים '+(staffDay?'מחר':'היום'),rosterToday.length+' במשמרת',"window.open('/schedule','_blank')")+
-    `<div style="display:flex;gap:3px;background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:3px;margin-bottom:9px">${stseg(0,'היום')}${stseg(1,'מחר')}</div>`+
+  const stseg=(id,lbl)=>`<button class="${staffDay===id?'on':''}" onclick="homeStaffDay(${id})">${lbl}</button>`;
+  if(homeShow('staff')) z4.push(crmCard(homeHead(ico('user',16),'עובדים '+(staffDay?'מחר':'היום'),rosterToday.length+' במשמרת',"window.open('/schedule','_blank')")+
+    `<div class="gseg" style="margin-bottom:9px">${stseg(0,'היום')}${stseg(1,'מחר')}</div>`+
     (rosterToday.length?schedBr.map(b=>{ const emps=byBr[b.id]||[]; if(!emps.length) return '';
       return `<div style="padding:7px 0;border-top:1px solid var(--line)">
-        <div style="font-size:13px;font-weight:700">${escW(b.name)}</div>
-        <div style="font-size:12px;margin-top:2px;line-height:1.6">${emps.map(e=>`${escW(e.employee)}${e.hours?` <span class="muted" style="font-size:11px">${escW(e.hours)}</span>`:''}`).join(' · ')}</div>
+        <div style="font-size:13px;font-weight:600;color:var(--txt)">${escW(b.name)}</div>
+        <div style="font-size:12px;margin-top:2px;line-height:1.6;color:var(--txt-2)">${emps.map(e=>`${escW(e.employee)}${e.hours?` <span class="muted" style="font-size:11px">${escW(e.hours)}</span>`:''}`).join(' · ')}</div>
       </div>`; }).join('')
-     :'<div class="muted" style="font-size:13px;padding:6px 0">'+(_schedLoading?'טוען…':('אין שיבוץ '+(staffDay?'למחר (טרם שובץ)':'להיום')))+'</div>'));
+     :'<div class="muted" style="font-size:13px;padding:6px 0">'+(_schedLoading?'טוען…':('אין שיבוץ '+(staffDay?'למחר (טרם שובץ)':'להיום')))+'</div>')));
   // 💳 צ'קים לפירעון (מתג: היום / רביעי הקרוב / רביעי הבא)
   const cmode=S.homeChecksMode||'today';
   const cdate=_checkDateFor(cmode);
   const cks=(S.homeChecks||[]).filter(c=>c.valueDate===cdate).sort((a,b)=>(b.amount||0)-(a.amount||0));
   const ctot=cks.reduce((s,c)=>s+(c.amount||0),0);
-  const cseg=(id,lbl)=>`<button onclick="homeChecksMode('${id}')" style="flex:1;background:${cmode===id?'#16a34a':'transparent'};color:${cmode===id?'#fff':'var(--txt)'};border:0;border-radius:8px;padding:6px 2px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit">${lbl}</button>`;
-  if(homeShow('checks')) h+=crmCard(homeHead(ico('bank',16),'צ׳קים לפירעון',cks.length?_il(ctot):'',"window.open('/checks','_blank')")+
-    `<div style="display:flex;gap:3px;background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:3px;margin-bottom:9px">${cseg('today','היום')}${cseg('wed0','רביעי הקרוב')}${cseg('wed1','רביעי הבא')}</div>`+
+  const cseg=(id,lbl)=>`<button class="${cmode===id?'on':''}" style="font-size:11.5px" onclick="homeChecksMode('${id}')">${lbl}</button>`;
+  if(homeShow('checks')) z4.push(crmCard(homeHead(ico('bank',16),'צ׳קים לפירעון',cks.length?_il(ctot):'',"window.open('/checks','_blank')")+
+    `<div class="gseg" style="margin-bottom:9px">${cseg('today','היום')}${cseg('wed0','רביעי הקרוב')}${cseg('wed1','רביעי הבא')}</div>`+
     (cks.length?`<div style="max-height:280px;overflow-y:auto;margin:0 -4px;padding:0 4px">`+cks.map(c=>homeRow(
-       `<b style="flex:1;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(c.payee||c.checkNum||'—')}</b>
-        <span class="muted" style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:80px">${escW(c.bank||'')}</span>
-        <span style="font-weight:600">${_il(c.amount)}</span>`)).join('')+`</div>`
-     :`<div class="muted" style="font-size:13px;padding:6px 0">${S.homeChecks?'אין צ׳קים לתאריך זה':'טוען…'}</div>`));
+       `<div class="main"><div class="t1">${escW(c.payee||c.checkNum||'—')}</div></div>
+        <span class="t2" style="flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:80px">${escW(c.bank||'')}</span>
+        <span class="val tnum" dir="ltr">${_il(c.amount)}</span>`)).join('')+`</div>`
+     :`<div class="muted" style="font-size:13px;padding:6px 0">${S.homeChecks?'אין צ׳קים לתאריך זה':'טוען…'}</div>`)));
   // 🛒 הזמנות בטיפול באיחור (status=processing, ישנות מ-48ש)
   const ordAge=o=>{ const t=Date.parse(o.date); return t?Math.floor((Date.now()-t)/3600000):0; };
   const ordSorted=ordsOver.slice().sort((a,b)=>(Date.parse(a.date)||0)-(Date.parse(b.date)||0));  // הישן ביותר קודם
-  if(homeShow('ordersLate')) h+=crmCard(homeHead(ico('cart',16),'הזמנות בטיפול באיחור',ordsOverN?ordsOverN+' באיחור':'',"goLateOrders()")+
+  if(homeShow('ordersLate')) z3.push(crmCard(homeHead(ico('cart',16),'הזמנות בטיפול באיחור',ordsOverN?ordsOverN+' באיחור':'',"goLateOrders()")+
     (ordSorted.length?ordSorted.slice(0,7).map(o=>{ const ag=ordAge(o); const dd=Math.floor(ag/24);
       return homeRow(
-       `<span style="display:inline-flex;color:#dc2626">${ico('clock',15)}</span><b style="flex:1;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">#${escW(String(o.number||''))} ${escW(o.name||'')}</b>
-        <span class="muted" style="font-size:11px">${dd>0?dd+' י׳':ag+'ש׳'}</span>
-        <span style="font-weight:600">${_il(parseFloat(o.total)||0)}</span>`,
+       `<span class="lead" style="color:var(--red)">${ico('clock',15)}</span><div class="main"><div class="t1"><span dir="ltr" class="tnum">#${escW(String(o.number||''))}</span> ${escW(o.name||'')}</div></div>
+        <span class="t2 tnum" dir="ltr" style="flex:none">${dd>0?dd+' י׳':ag+'ש׳'}</span>
+        <span class="val tnum" dir="ltr">${_il(parseFloat(o.total)||0)}</span>`,
        "openOrdersTab()"); }).join('')
-     :'<div class="muted" style="font-size:13px;padding:6px 0">אין הזמנות באיחור 👌</div>'));
+     :'<div class="muted" style="font-size:13px;padding:6px 0">אין הזמנות באיחור 👌</div>')));
   // 🧾 חשבוניות איציק היום לפי סניף (שירות חוצה-אפליקציה)
   const inv=S.homeInv||{};
   const invBr=inv.by_branch||{};
-  if(homeShow('invoices')) h+=crmCard(homeHead(ico('file',16),'חשבוניות איציק היום',inv.count?(inv.count+' · '+_il(inv.total)):'',"hubOpen('invoices')")+
-    (Object.keys(invBr).length?Object.entries(invBr).sort((a,b)=>(b[1].total||0)-(a[1].total||0)).map(([b,v])=>homeRow(
-       `<b style="flex:1;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(b)}</b>
-        <span class="muted" style="font-size:11px">${v.count} חשבוניות</span>
-        <span style="font-weight:600">${_il(v.total)}</span>`,"hubOpen('invoices')")).join('')
-     :`<div class="muted" style="font-size:13px;padding:6px 0">${S.homeInv?(inv.ok===false?'השירות לא זמין כרגע':'אין חשבוניות היום'):'טוען…'}</div>`));
-  // 💸 מד-עלות אלה (מדידה אמיתית לפני החלטת API) — סוכם total_cost_usd של כל ריצה
+  if(homeShow('invoices')) z4.push(crmCard(homeHead(ico('file',16),'חשבוניות איציק היום',inv.count?(inv.count+' · '+_il(inv.total)):'',"hubOpen('invoices')")+
+    (Object.keys(invBr).length?Object.entries(invBr).sort((a,b)=>(b[1].total||0)-(a[1].total||0)).slice(0,4).map(([b,v])=>homeRow(
+       `<div class="main"><div class="t1">${escW(b)}</div></div>
+        <span class="t2 tnum" dir="ltr" style="flex:none">${v.count} חשבוניות</span>
+        <span class="val tnum" dir="ltr">${_il(v.total)}</span>`,"hubOpen('invoices')")).join('')
+     :`<div class="muted" style="font-size:13px;padding:6px 0">${S.homeInv?(inv.ok===false?'השירות לא זמין כרגע':'אין חשבוניות היום'):'טוען…'}</div>`)));
+  // 💸 מד-עלות אלה (DEMOTE) — שורת סיכום מכווצת; קליק מרחיב לשלישייה המלאה
   const uc=d.uricost||{};
-  if(homeShow('uricost')) h+=crmCard(homeHead(ico('wallet',16),'מד-עלות אלה (API-שקול)',(uc.today_runs||0)+' ריצות היום',"")+
-    `<div style="display:flex;gap:8px;text-align:center;margin-top:4px">
-      <div style="flex:1;background:var(--card2);border-radius:10px;padding:9px 6px"><div style="font-size:19px;font-weight:800">$${(uc.today||0).toFixed(2)}</div><div class="muted" style="font-size:10.5px">היום</div></div>
-      <div style="flex:1;background:var(--card2);border-radius:10px;padding:9px 6px"><div style="font-size:19px;font-weight:800">$${(uc.total||0).toFixed(2)}</div><div class="muted" style="font-size:10.5px">סך נמדד · ${uc.measured_days||0} ימים</div></div>
-      <div style="flex:1;background:rgba(34,197,94,.1);border-radius:10px;padding:9px 6px"><div style="font-size:19px;font-weight:800;color:#16a34a">$${(uc.projected_monthly||0).toFixed(0)}</div><div class="muted" style="font-size:10.5px">חיזוי חודשי</div></div>
+  if(S.homeUricostOpen==null){ try{ S.homeUricostOpen=localStorage.getItem('gm_home_uricost_open')==='1'; }catch(e){ S.homeUricostOpen=false; } }
+  if(homeShow('uricost')){
+    const _ucOpen=!!S.homeUricostOpen;
+    z4.push(crmCard(
+      `<div class="ghead" onclick="homeUricostToggle()"><span class="ic">${ico('wallet',16)}</span><span class="ttl">מד-עלות אלה</span><span class="sub"><span dir="ltr">$${(uc.today||0).toFixed(2)}</span> היום · חיזוי <span dir="ltr">$${(uc.projected_monthly||0).toFixed(0)}</span></span><span class="chev">${_ucOpen?'⌄':'›'}</span></div>`+
+      (_ucOpen?`<div style="display:flex;gap:8px;text-align:center;margin-top:4px">
+      <div class="gstat"><div class="v tnum" dir="ltr">$${(uc.today||0).toFixed(2)}</div><div class="l">היום</div></div>
+      <div class="gstat"><div class="v tnum" dir="ltr">$${(uc.total||0).toFixed(2)}</div><div class="l">סך נמדד · ${uc.measured_days||0} ימים</div></div>
+      <div class="gstat"><div class="v tnum" dir="ltr" style="color:var(--brand-ink)">$${(uc.projected_monthly||0).toFixed(0)}</div><div class="l">חיזוי חודשי</div></div>
     </div>
-    <div class="muted" style="font-size:10.5px;margin-top:7px;line-height:1.4">${(uc.measured_days||0)} ימים נמדדו · ${uc.runs||0} ריצות · ${uc.avg_day!=null?'$'+uc.avg_day.toFixed(2)+' ליום בממוצע':''}<br>החיזוי מתבסס רק על ימים שכבר נמדדו — מדויק יותר ככל שעובר זמן.</div>`);
-  h+=`</div>`;
+    <div class="muted" style="font-size:10.5px;margin-top:7px;line-height:1.4">${(uc.measured_days||0)} ימים נמדדו · ${uc.runs||0} ריצות · ${uc.avg_day!=null?'$'+uc.avg_day.toFixed(2)+' ליום בממוצע':''}<br>החיזוי מתבסס רק על ימים שכבר נמדדו — מדויק יותר ככל שעובר זמן.</div>`:'')));
+  }
+  // ══ פליטת זונות 3 (תפעול) ו-4 (רפרנס) ══
+  if(homeShow('neworders')) z3.push(newOrdersPanel);
+  if(z3.length){ h+=`<div class="gzone"><span class="lbl">תפעול</span><span class="rule"></span></div>`;
+    h+=`<div class="gzgrid g3">${z3.join('')}</div>`; }
+  if(z4.length){ h+=`<div class="gzone"><span class="lbl">רפרנס</span><span class="rule"></span></div>`;
+    h+=`<div class="gzgrid g3">${z4.join('')}</div>`; }
   h+=`<div class="muted" style="text-align:center;font-size:11px;margin-top:14px">עודכן ${d._at?fmtTime(new Date(d._at).toISOString()):''} · מתרענן אוטומטית כל 15ש׳</div>`;
   h+=`</div>`;
   app.innerHTML=h;
