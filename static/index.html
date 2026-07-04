@@ -7311,13 +7311,13 @@ function repairsListOpen(kind){
   const _il=n=>'₪'+Number(Math.round(n||0)).toLocaleString('en-US');
   const rb=String(S.homeRepBranch||'all');
   const brName={'1':'גן העיר','2':'סטאר','3':'סיטי','4':'עד הלום'};
-  const meta={ stuck:   {t:'🔥 תקועים במעבדה 7+ ימים', d:'ימים במעבדה'},
-               awaiting:{t:'📦 מוכנים וממתינים לאיסוף', d:'ימים מאז שתוקן'},
-               repeat:  {t:'🔁 תיקונים חוזרים (30 יום)', d:'ימים משחרור קודם'},
-               rec_rel: {t:'🟢 התקבלו ושוחררו היום', d:'', noDays:true},
-               rec_open:{t:'🟠 התקבלו היום · בטיפול', d:'', noDays:true},
-               rel_old: {t:'🔵 שוחררו היום מהמתנה', d:'ימים שהמתינו'},
-               open:    {t:'🔧 פתוחים במעבדה כרגע', d:'ימים במעבדה'} }[kind];
+  const meta={ stuck:   {t:'תקועים במעבדה 7+ ימים', i:'zap', d:'ימים במעבדה'},
+               awaiting:{t:'מוכנים וממתינים לאיסוף', i:'pkg', d:'ימים מאז שתוקן'},
+               repeat:  {t:'תיקונים חוזרים (30 יום)', i:'repeat', d:'ימים משחרור קודם'},
+               rec_rel: {t:'התקבלו ושוחררו היום', i:'wrench', d:'', noDays:true},
+               rec_open:{t:'התקבלו היום · בטיפול', i:'wrench', d:'', noDays:true},
+               rel_old: {t:'שוחררו היום מהמתנה', i:'wrench', d:'ימים שהמתינו'},
+               open:    {t:'פתוחים במעבדה כרגע', i:'wrench', d:'ימים במעבדה'} }[kind];
   let list=(rp.rows[kind]||[]); if(rb!=='all') list=list.filter(r=>String(r.br)===rb);
   const rows=list.map(r=>{
     const dates=[ r.created?`📥 התקבל ${escW(r.created)}`:'',
@@ -7336,7 +7336,7 @@ function repairsListOpen(kind){
     </div>`; }).join('')||'<div class="empty" style="padding:18px 0">אין רשומות 🙂</div>';
   document.getElementById('modalRoot').innerHTML=`<div class="overlay" onclick="closeModal()"><div class="modal" style="max-width:440px;width:calc(100vw - 32px);text-align:right;padding:18px;max-height:80vh;display:flex;flex-direction:column" onclick="event.stopPropagation()">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-      <h3 style="margin:0;font-size:16px">${meta.t}</h3>
+      <h3 style="margin:0;font-size:16px;display:flex;align-items:center;gap:8px"><span style="display:inline-flex;color:var(--txt-3)">${ico(meta.i||'wrench',16)}</span>${meta.t}</h3>
       <button onclick="closeModal()" style="background:var(--card2);border:0;width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:15px;color:var(--txt)">✕</button>
     </div>
     <div class="muted" style="font-size:12px;margin-bottom:8px">${list.length} רשומות · ${rb==='all'?'כל הסניפים':brName[rb]}${meta.d?` · ממוין לפי ${meta.d}`:''}</div>
@@ -7686,20 +7686,20 @@ function renderHome(){
          <div class="gstat" onclick="repairsListOpen('rec_open')" style="cursor:pointer;min-width:130px"><div class="v tnum" dir="ltr" style="color:var(--amber-ink)">${rd.rec_open.count}</div><div class="l">התקבלו היום · בטיפול</div><div class="sv">—</div></div>
          <div class="gstat" onclick="repairsListOpen('rel_old')" style="cursor:pointer;min-width:130px"><div class="v tnum" dir="ltr" style="color:var(--blue-ink)">${rd.rel_old.count}</div><div class="l">שוחררו היום מהמתנה</div><div class="sv" style="color:var(--blue-ink)" dir="ltr">${_il(rd.rel_old.sum)}</div></div>
        </div>
-       <div onclick="repairsListOpen('open')" style="font-size:12px;color:var(--txt-3);margin-bottom:11px;cursor:pointer">🔧 פתוחים במעבדה כרגע: <b style="color:var(--txt)">${rd.open.count}</b>${rd.open.count?` · הוותיק ביותר ממתין <b style="color:var(--txt)">${rd.open.oldest_days}</b> ימים`:''} <span style="text-decoration:underline">לרשימה</span></div>
+       <div onclick="repairsListOpen('open')" style="font-size:12px;color:var(--txt-3);margin-bottom:11px;cursor:pointer;display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span style="display:inline-flex">${ico('wrench',12)}</span><span>פתוחים במעבדה כרגע: <b style="color:var(--txt)">${rd.open.count}</b>${rd.open.count?` · הוותיק ביותר ממתין <b style="color:var(--txt)">${rd.open.oldest_days}</b> ימים`:''} <span style="text-decoration:underline">לרשימה</span></span></div>
        ${(()=>{ // שורת מדדי עומק — קליק על תקועים/ממתינים/חוזרים פותח רשימה מפורטת
          const st=(rd.stuck7||{}).count||0, aw=(rd.awaiting||{}).count||0, rp=(rd.repeat||{}).count||0;
          const ta=rd.turnaround||{}; const mo=rd.month||{cur:{},prev:{}};
          const chip=(icon,val,label,sub,kind,warn)=>`<div class="gmini${warn?' warn':''}" ${kind?`onclick="repairsListOpen('${kind}')"`:''} ${kind?'style="cursor:pointer"':''}>
-           <div class="v"><span style="font-weight:500">${icon}</span> <span class="tnum" dir="ltr">${val}</span></div>
+           <div class="v" style="display:flex;align-items:center;justify-content:center;gap:6px"><span style="display:inline-flex;color:${warn?'inherit':'var(--txt-3)'}">${ico(icon,14)}</span><span class="tnum" dir="ltr">${val}</span></div>
            <div class="l">${label}</div>
            ${sub?`<div class="s">${sub}</div>`:''}</div>`;
          return `<div style="display:flex;gap:8px;flex-wrap:wrap">
-           ${chip('⏱',ta.avg_days!=null?ta.avg_days+' י׳':'—','זמן טיפול ממוצע',ta.count?`על ${ta.count} תיקונים · 70 יום`:'','')}
-           ${chip('🔥',st,'תקועים 7+ ימים',st?'לחץ לרשימה':'','stuck',st>0)}
-           ${chip('📦',aw,'מוכנים · ממתינים לאיסוף',aw?'לחץ לרשימה':'','awaiting')}
-           ${chip('🔁',rp,'תיקונים חוזרים (30 י׳)',rp?'לחץ לרשימה':'','repeat')}
-           ${chip('💰',_il((mo.cur||{}).sum||0),'הכנסות מעבדה החודש',`חודש שעבר: ${_il((mo.prev||{}).sum||0)}`,'')}
+           ${chip('clock',ta.avg_days!=null?ta.avg_days+' י׳':'—','זמן טיפול ממוצע',ta.count?`על ${ta.count} תיקונים · 70 יום`:'','')}
+           ${chip('zap',st,'תקועים 7+ ימים',st?'לחץ לרשימה':'','stuck',st>0)}
+           ${chip('pkg',aw,'מוכנים · ממתינים לאיסוף',aw?'לחץ לרשימה':'','awaiting')}
+           ${chip('repeat',rp,'תיקונים חוזרים (30 י׳)',rp?'לחץ לרשימה':'','repeat')}
+           ${chip('wallet',_il((mo.cur||{}).sum||0),'הכנסות מעבדה החודש',`חודש שעבר: ${_il((mo.prev||{}).sum||0)}`,'')}
          </div>`; })()}`
        :'<div class="muted" style="font-size:13px;padding:6px 0">⏳ טוען נתוני מעבדה…</div>'}`);
   }
