@@ -5683,8 +5683,9 @@ async function stellrBoxLoad(num){
   const st=S.stellrStatus;
   if(!st||!st.key_set){ box.innerHTML=''; return; }        // Stellr לא מוגדר — שקט מוחלט
   const _od=(S._wcoD&&String(S._wcoD.number)===String(num))?S._wcoD:null;
-  const digital=_STELLR_DIG_RE.test(((_od&&_od.line_items)||[]).map(li=>li.name||'').join(' '))
-                || !!document.querySelector('#frbScan details');   // fallback: יש באנר טריאז' = הזמנת קוד
+  // הזמנת קוד = לפי שמות הפריטים או דגל הטריאז' — לא לפי קיום באנר (גם לפיזיות שנסרקו יש)
+  const digital=_STELLR_DIG_RE.test(((_od&&(_od.items||_od.line_items))||[]).map(li=>li.name||'').join(' '))
+                || !!(_od&&_od.fraud&&_od.fraud.signals&&_od.fraud.signals.is_digital===true);
   let codes=[]; try{ codes=(await api('/api/admin/stellr/codes?order='+encodeURIComponent(num))).rows||[]; }catch(e){}
   if(!codes.length&&!digital){ box.innerHTML=''; return; }
   const P='#7c3aed';
@@ -5702,16 +5703,18 @@ async function stellrBoxLoad(num){
       </span>
     </div>`; };
   const canIssue=!codes.some(c=>c.status==='issued'||c.status==='sent');
+  const cardIco=`<span style="display:inline-flex;color:${P};flex:none"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg></span>`;
   box.innerHTML=`<div style="border:1.5px solid ${P}44;background:${P}0a;border-radius:14px;padding:12px 15px;margin-bottom:16px">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:${codes.length||canIssue?'8px':'0'}">
-      <b style="color:${P};font-size:14px">🎫 קודים דיגיטליים (Stellr)</b>
-      ${st.is_uat?`<span class="ord-st" style="color:#d97706;border-color:#d9770655;background:#d977060f;font-size:10.5px">UAT — סביבת בדיקות</span>`:''}
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      ${cardIco}<b style="color:${P};font-size:14px">קודים דיגיטליים</b>
+      ${st.is_uat?`<span class="ord-st" style="color:#d97706;border-color:#d9770655;background:#d977060f;font-size:10.5px;white-space:nowrap">UAT — בדיקות</span>`:''}
       ${!st.enabled?`<span class="ord-st" style="color:#6b7280;font-size:10.5px">כבוי (STELLR_ENABLED)</span>`:''}
-      <span style="margin-inline-start:auto"></span>
-      ${st.enabled&&canIssue?`<button onclick="stellrIssue('${num}',{})" class="btn-ghost" style="padding:5px 12px;font-size:12.5px;color:${P};border-color:${P}55">🎫 הנפק קודים</button>
-      <button onclick="stellrIssue('${num}',{force:1})" title="הנפקה גם כשהורדיקט אינו ירוק — באחריותך" style="padding:5px 9px;font-size:11.5px;border-radius:8px;border:1px dashed var(--line);background:none;color:var(--muted);cursor:pointer">עקוף ורדיקט</button>`:''}
     </div>
-    ${codes.map(codeRow).join('')||(st.enabled?'':'<div class="muted" style="font-size:12px">מודול ההנפקה כבוי — הפעלה במשתני סביבה ב-Render.</div>')}
+    ${st.enabled&&canIssue?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+      <button onclick="stellrIssue('${num}',{})" class="btn-ghost" style="flex:1;min-width:140px;padding:9px 12px;font-size:13px;color:${P};border-color:${P}55;display:inline-flex;align-items:center;justify-content:center;gap:6px">${cardIco} הנפק קודים</button>
+      <button onclick="stellrIssue('${num}',{force:1})" title="הנפקה גם כשהורדיקט אינו ירוק — באחריותך" style="flex:none;padding:9px 12px;font-size:12px;border-radius:10px;border:1px dashed var(--line);background:none;color:var(--muted);cursor:pointer;white-space:nowrap">עקוף ורדיקט</button>
+    </div>`:''}
+    ${codes.length?`<div style="margin-top:6px">${codes.map(codeRow).join('')}</div>`:(st.enabled?'':'<div class="muted" style="font-size:12px;margin-top:6px">מודול ההנפקה כבוי — הפעלה במשתני סביבה ב-Render.</div>')}
   </div>`;
 }
 function stellrReveal(cid){
