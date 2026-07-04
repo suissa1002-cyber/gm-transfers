@@ -537,6 +537,9 @@
   .gzgrid{display:grid;gap:var(--s3);grid-template-columns:repeat(auto-fill, minmax(300px, 1fr))}
   @media(min-width:1120px){ .gzgrid.g3{grid-template-columns:repeat(3, 1fr)} }
   @media(min-width:1560px){ .gzgrid.g3{grid-template-columns:repeat(4, 1fr)} }
+  /* ילדי גריד חייבים min-width:0 — אחרת תוכן רחב (בורר סניפים) מותח את הקלף ואת הדף הצידה */
+  .gzgrid>*, .gmoney>*{min-width:0}
+  .gcard{min-width:0;max-width:100%}
   .gmoney{display:grid;gap:var(--s3);grid-template-columns:1fr}
   @media(min-width:1000px){ .gmoney{grid-template-columns:2fr 1fr;align-items:stretch} }
   .gmoney .g-full{grid-column:1 / -1}
@@ -548,6 +551,7 @@
     .branch-row>.gtile{flex:0 0 auto;min-width:104px}
     .gkpi{min-width:calc(50% - 5px)}
     .gcard{padding:var(--s4)}
+    .wrap{overflow-x:clip}   /* רשת ביטחון: שום סקשן לא גורר את הדף הצידה במובייל */
   }
   #wpop.wpop-min{height:auto!important}
   #wpop.wpop-min .wpop-host{display:none}
