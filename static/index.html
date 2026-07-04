@@ -6318,7 +6318,6 @@ function paintWcOrder(){
         : `${d.oos?`<span class="ord-st" style="color:#dc2626;border-color:#dc262655;background:#dc26260f;display:inline-flex;align-items:center;gap:6px">${ico('pkgx',14)} חסר במלאי בכל הסניפים — להשיג מהספק</span>`:''}${d.bcast?`<span class="ord-st" style="color:${d.bcast.status==='live'?'#15803d':'var(--muted)'};border-color:${d.bcast.status==='live'?'#15803d':'var(--muted)'}55;background:${d.bcast.status==='live'?'#15803d':'#6b7280'}0f;display:inline-flex;align-items:center;gap:6px">${ico('radio',14)} בקשת העברה שודרה ל: ${escW(bcastBranches(d.bcast))}${d.bcast.status==='live'?'':' — נסגרה בסניף'}</span>`:''}`}
     </div>`:''}
     ${(d.fraud&&d.fraud.reasons)?`<div id="frbScan">${fraudBanner(d.fraud,d.number)}</div>`:(d.fraud_scannable?`<div id="frbScan">${fraudScanChip(d.fraud,d.number)}</div>`:'')}
-    <div id="stellrBox"></div>${(function(){ setTimeout(()=>stellrBoxLoad(d.number),0); return ''; })()}
     ${d.cargo_status&&d.cargo_status.text?(function(){const cs=d.cargo_status;let col='#6b7280';const t=cs.text;
       if(/בוצע|נמסר|סופק/.test(t))col='#16a34a';else if(/בדרך|ללקוח|שליח|חלוקה/.test(t))col='#2563eb';else if(/מחסן/.test(t))col='#d97706';
       return `<div style="margin-bottom:16px;display:flex;gap:7px;flex-wrap:wrap;align-items:center"><span class="ord-st" style="color:${col};border-color:${col}55;background:${col}14;display:inline-flex;align-items:center;gap:6px">${ico('truck',14)} משלוח Cargo · <b>${escW(t)}</b>${cs.tracking?` · מעקב ${escW(cs.tracking)}`:''}${cs.line?` · ${escW(cs.line)}`:''}</span>${cs.track_url?`<button class="btn-ghost" style="padding:5px 10px;font-size:12px;display:inline-flex;align-items:center;gap:5px" onclick="copyCargoTrack('${escW(cs.track_url)}')">🔗 העתק קישור מעקב</button><a class="btn-ghost" style="padding:5px 10px;font-size:12px;text-decoration:none" target="_blank" href="${escW(cs.track_url)}">פתח ↗</a>`:''}</div>`;})():''}
@@ -6367,6 +6366,7 @@ function paintWcOrder(){
     ${d.customer_note?`<div class="wa-note" style="margin-top:8px;display:flex;align-items:flex-start;gap:6px">${ico('pencil',13)} <span>${escW(d.customer_note)}</span></div>`:''}
     ${(d.notes||[]).length?`<details style="margin-top:8px"><summary class="muted" style="cursor:pointer;font-size:13px">הערות הזמנה (${d.notes.length})</summary>
       ${d.notes.map(n=>`<div class="wa-note" style="margin-top:5px;font-size:12px">${escW(n.note)}<div class="by"><span>${fmtD(n.date)}${n.customer?' · נשלח ללקוח':''}</span></div></div>`).join('')}</details>`:''}
+    <div id="stellrBox" style="margin-top:12px"></div>${(function(){ setTimeout(()=>stellrBoxLoad(d.number),0); return ''; })()}
     ${actions}
   </div></div>`;
 }
