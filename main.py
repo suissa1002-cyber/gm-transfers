@@ -1068,7 +1068,8 @@ def admin_overview(days: int = 7, x_admin_key: Optional[str] = Header(None)):
         age = alerts._age_hours(t)
         t = _enrich(t)
         t["age_hours"] = round(age, 1)
-        t["overdue"] = (t["status"] != "received"
+        # סגור (חוסר/ידני) = טופל בידיעה — לא "באיחור" גם אם לא נקלט במלואו
+        t["overdue"] = (t["status"] not in ("received", "closed")
                         and age >= cfg.RECEIVE_ESCALATE_HOURS)
         t["missing"] = (t.get("total_units", 0) or 0) - (t.get("received_units", 0) or 0)
         a = agg.get(str(t["op_id"]), {})
@@ -3985,7 +3986,7 @@ def _digest_data() -> dict:
     try:
         import alerts as _al
         rows = db.list_all_transfers(include_received_days=2)
-        pend = [t for t in rows if t.get("status") != "received"]
+        pend = [t for t in rows if t.get("status") not in ("received", "closed")]
         overdue = sum(1 for t in pend if _al._age_hours(t) >= cfg.RECEIVE_ESCALATE_HOURS)
         out["transfers"] = {"overdue": overdue, "pending": len(pend)}
     except Exception:  # noqa: BLE001
