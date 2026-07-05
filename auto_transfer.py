@@ -234,6 +234,7 @@ def _handle_order(o: dict, catalog: dict) -> list:
     created = []
     oos_names = []           # פריטים חסרים בכל הסניפים — לזיהוי "שודר חלקי" בסוף
     had_unmatched = False     # פריט פיזי ללא מק"ט בריצה הזו (לעדכון הבאנר)
+    verified_all = True       # False אם פריט דולג בגלל שגיאת API — אז אסור לנקות דגל OOS
     # שורות ההזמנה + תוספי Product Add-Ons (ראש מטען וכו') כשורות וירטואליות — כך
     # שגם התוסף משודר לליקוט, לא רק המוצר הראשי (פער שהתגלה בהזמנה 46875).
     for li in (list(o.get("line_items", [])) + _order_addon_items(o)):
@@ -262,6 +263,7 @@ def _handle_order(o: dict, catalog: dict) -> list:
             stock = no.get_product_stock(sku)
         except Exception as e:  # noqa: BLE001
             logger.warning("stock read failed for %s: %s", sku, e)
+            verified_all = False   # לא יודעים אם חסר — אסור לנקות דגל קיים על סמך דילוג
             continue
         # מוצר סריאלי (ולא אוזניות/שמע) → מצמידים סריאלים ספציפיים. טוענים מראש
         # את הסריאלים הזמינים לכל סניף (כדי לפצל נכון בין סניפים).
@@ -356,8 +358,11 @@ def _handle_order(o: dict, catalog: dict) -> list:
     # סימון OOS בסוף — אם חלק מההזמנה כן שודר (created) זה "שודר חלקי" ולא חוסר מלא
     if oos_names:
         _mark_oos(o.get("number"), oos_names[0], partial=bool(created))
+    elif verified_all:
+        _unmark_oos(o.get("number"))   # הכל זמין/שודר (ואומת בפועל) → לנקות דגל OOS ישן
     else:
-        _unmark_oos(o.get("number"))   # הכל זמין/שודר → לנקות דגל OOS ישן (ריצה חוזרת)
+        logger.info("order %s: stock check incomplete — keeping existing OOS flag",
+                    o.get("number"))
     if created:                        # דגל עמיד "שודר אי-פעם" — מונע שידור כפול בריפוי-עצמי
         db.sales_state_set(f"auto_tr_bcast:{o.get('number')}", "1")
     return created
