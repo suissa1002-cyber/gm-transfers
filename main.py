@@ -9670,13 +9670,13 @@ def _pbx_normalize_channels(raw) -> dict:
             e["branch"] = e["branch"] or "עד הלום"
         elif not e["branch"]:
             # חיוג-ישיר-לשלוחת-סניף (סטאר/גן-העיר) — המערכת מחייגת את השלוחה = שיחה נכנסת.
-            # (בשיחה יוצאת מספר השלוחה לא מופיע ב-appdata של רגל הלקוח.)
+            # גם exten=שלוחה על רגל הלקוח = נכנסת (ביוצאת ה-exten הוא המספר החיצוני,
+            # לעולם לא 2xx; אחרי מענה ה-appdata מאבד את "Dial SIP/2xx" ונשאר רק exten).
             em = _re.search(r"SIP/(\d{3})-greenmobile", appdata)
             ext = em.group(1) if em else (ch[2] if str(ch[2]).isdigit() else "")
             if ext in _PBX_EXT_BRANCH:
                 e["branch"] = _PBX_EXT_BRANCH[ext]
-                if em:                      # רגל-חיוג אמיתית לשלוחה (לא רק exten) → נכנסת
-                    e["inbound"] = True
+                e["inbound"] = True
     # ⚠️ נציג ענה → מסומן על השיחה(ות) הפעילה(ות). מדויק לשיחה בודדת (המקרה הנפוץ);
     # בכמה שיחות במקביל ייתכן סימון-יתר (שיחה מצלצלת תיראה כנענתה אם אחרת נענתה).
     if agent_up:
