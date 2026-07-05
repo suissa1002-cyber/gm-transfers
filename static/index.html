@@ -3686,7 +3686,14 @@ function waEllaPendingHTML(){
       <textarea id="waEllaPend${r.id}" rows="2" style="width:100%;box-sizing:border-box;padding:6px 9px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:12px;resize:vertical;margin-bottom:5px">${escW(r.text||'')}</textarea>
       <div style="display:flex;gap:5px;justify-content:flex-end">
         <button class="btn-ghost" style="padding:5px 8px;font-size:11.5px;color:var(--muted)" onclick="waEllaDel(${r.id})">דחה</button>
+        <button class="btn-ghost" style="padding:5px 10px;font-size:11.5px;color:#7c3aed;border-color:#7c3aed55" onclick="waEllaRefineToggle(${r.id})">✍️ חידוד</button>
         <button class="btn-ghost" style="padding:5px 12px;font-size:11.5px;color:#16a34a;border-color:#16a34a55;font-weight:700" onclick="waEllaApprove(${r.id})">אשר ✓</button>
+      </div>
+      <div id="waEllaRef${r.id}" style="display:none;margin-top:6px">
+        <div style="display:flex;gap:5px">
+          <input id="waEllaRefIn${r.id}" placeholder="הסבר/דיוק שלך — יתווסף ללקח לפני האישור" style="flex:1;min-width:0;padding:6px 9px;border-radius:8px;border:1px solid #7c3aed55;background:var(--bg);color:var(--txt);font-size:12px" onkeydown="if(event.key==='Enter'){event.preventDefault();waEllaRefineSend(${r.id})}">
+          <button class="btn-ghost" style="padding:5px 10px;font-size:11.5px;color:#16a34a;border-color:#16a34a55;font-weight:700;white-space:nowrap" onclick="waEllaRefineSend(${r.id})">אשר עם חידוד ✓</button>
+        </div>
       </div></div>`;
   }).join('')+extra;
 }
@@ -3706,6 +3713,22 @@ async function waEllaApprove(id){
 async function waEllaDel(id){
   try{ await api('/api/admin/ella/pending/'+id,{method:'DELETE'}); toast('נדחה',true); waEllaPendingLoad(true); }
   catch(e){ toast('הדחייה נכשלה',false); }
+}
+// ✍️ חידוד ללקח: לא רק אשר/דחה — אסי מוסיף דיוק והלקח נכנס לפלייבוק יחד איתו
+function waEllaRefineToggle(id){
+  const b=document.getElementById('waEllaRef'+id); if(!b) return;
+  const show=b.style.display==='none';
+  b.style.display=show?'block':'none';
+  if(show){ const i=document.getElementById('waEllaRefIn'+id); if(i) setTimeout(()=>i.focus(),50); }
+}
+async function waEllaRefineSend(id){
+  const base=((document.getElementById('waEllaPend'+id)||{}).value||'').trim();
+  const ref=((document.getElementById('waEllaRefIn'+id)||{}).value||'').trim();
+  if(ref.length<3){ toast('כתוב את החידוד',false); return; }
+  const txt=(base?base+' · ':'')+'חידוד (אסי): '+ref;
+  try{ await api('/api/admin/ella/pending/'+id+'/approve',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:txt})});
+    toast('הלקח אושר עם החידוד ✓',true); waEllaPendingLoad(true);
+  }catch(e){ toast('האישור נכשל',false); }
 }
 function waUriWarmup(){
   // ברגע שהפאנל נפתח — הגשר טוען את ההקשר ברקע; השאלה האמיתית תרוץ על סשן חם (מהיר)
