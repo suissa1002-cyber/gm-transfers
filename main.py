@@ -6543,27 +6543,45 @@ def _tg_register_webhook():
     try:
         import requests as _rq
         url = os.environ.get("PUBLIC_BASE_URL", "https://gm-transfers.onrender.com").rstrip("/")
+        # ⚠️ הבוט משותף עם invoice-manager (איציק)! חובה message ב-allowed_updates
+        # (סיבת-דחייה לחשבונית = הודעת reply) — ואנחנו ראוטר: מה שלא שלנו מועבר לאיציק.
         _rq.post(f"https://api.telegram.org/bot{TG_BOT}/setWebhook",
                  json={"url": f"{url}/api/tg/webhook",
                        "secret_token": _tg_webhook_secret(),
-                       "allowed_updates": ["callback_query"]}, timeout=15)
-        logger.info("tg admin webhook registered")
+                       "allowed_updates": ["callback_query", "message"]}, timeout=15)
+        logger.info("tg admin webhook registered (router mode)")
     except Exception as e:  # noqa: BLE001
         logger.warning("tg webhook register failed: %s", e)
 
 
+def _tg_forward_to_invoice(raw: bytes):
+    """הבוט משותף — כל עדכון שאינו שלנו (stlr:) מועבר ל-invoice-manager של איציק,
+    שהיה בעל ה-webhook המקורי (אישור/דחיית חשבוניות + סיבת דחייה בהודעה)."""
+    import requests as _rq
+    url = os.environ.get("INVOICE_TG_WEBHOOK",
+                         "https://invoice-manager-tfqj.onrender.com/api/telegram-webhook")
+    try:
+        _rq.post(url, data=raw, headers={"Content-Type": "application/json"}, timeout=25)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("tg forward to invoice-manager failed: %s", e)
+
+
 @app.post("/api/tg/webhook")
-async def tg_admin_webhook(request: Request):
-    """webhook של בוט האדמין — כרגע רק כפתורי אישור/דחייה של הנפקות קופה ידנית."""
+async def tg_admin_webhook(request: Request, background: BackgroundTasks):
+    """webhook של הבוט המשותף — ראוטר: כפתורי stlr: (הנפקות קופה) מטופלים כאן,
+    כל השאר (חשבוניות איציק וכו') מועבר ל-invoice-manager."""
     if request.headers.get("x-telegram-bot-api-secret-token", "") != _tg_webhook_secret():
         raise HTTPException(403, "bad secret")
+    raw = await request.body()
     try:
-        upd = await request.json()
+        import json as _json
+        upd = _json.loads(raw.decode("utf-8"))
     except Exception:  # noqa: BLE001
         return {"ok": True}
     cb = upd.get("callback_query") or {}
     data = str(cb.get("data") or "")
     if not data.startswith("stlr:"):
+        background.add_task(_tg_forward_to_invoice, raw)
         return {"ok": True}
     import requests as _rq
     try:
