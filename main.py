@@ -5610,10 +5610,19 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
     # ── 1) רשת: VPN/פרוקסי/דאטה-סנטר + מדינת IP (הכי קשה לזיוף) ──
     geo = _ip_geo(ip) if ip else {}
     ip_cc = geo.get("cc")
-    if geo.get("proxy"):
+    # iCloud Private Relay: אפל מנתבת ספארי דרך Cloudflare/Akamai — ip-api מסמן
+    # proxy/hosting למרות שזה פיצ'ר פרטיות ברירת-מחדל של אייפון, לא VPN שנבחר
+    # (כיול 47935: לקוח נקי לגמרי קיבל אדום רק בגלל זה). IL + ספק רילי ידוע → מידע בלבד.
+    _isp = str(geo.get("isp") or "").lower()
+    _relay = bool((geo.get("proxy") or geo.get("hosting")) and ip_cc == "IL"
+                  and any(k in _isp for k in ("cloudflare", "akamai", "icloud", "apple")))
+    if _relay:
+        reasons.append("ℹ️ גלישה דרך iCloud Private Relay של Apple — פיצ'ר פרטיות רגיל "
+                       "באייפון (לא VPN חשוד)")
+    if geo.get("proxy") and not _relay:
         risk += 3; hard_fraud = True
         reasons.append("ההזמנה בוצעה דרך VPN/פרוקסי")
-    if geo.get("hosting"):
+    if geo.get("hosting") and not _relay:
         risk += 3; hard_fraud = True
         reasons.append("IP של שרת/דאטה-סנטר (לא גולש רגיל)")
     if ip_cc and ip_cc != "IL":
