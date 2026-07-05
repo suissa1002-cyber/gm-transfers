@@ -327,6 +327,15 @@ def handle(phone: str, text: str, mtype: str = "text", reply_id: str = "", wamid
             db.bot_session_set(phone, "await_repair_model", {})
             return
         prod = _product_query(low)
+        # תשובת-תכונה קצרה ('כחול', '256') בשיחה פעילה = המשך הקשרי אצל אלה — לעולם
+        # לא חיפוש גלובלי של צבע (כשל 05/07: FreeClip 2 → 'כחול' → "20 תוצאות לכחול").
+        if _is_attr_followup(low) and _uri_engaged(phone):
+            if _ask_uri(phone, text, wamid):
+                return
+            # אלה לא זמינה — עדיף שאלה מכבדת מחיפוש-סרק של מילת צבע
+            wa.send_text(phone, "לאיזה מוצר הכוונה? כתבו את שם המוצר יחד עם הצבע "
+                                "(למשל: FreeClip 2 כחול) ואמצא לכם אותו 🙂")
+            return
         # שיחה פעילה עם אורי: כל עוד זו לא שאילתת מוצר ברורה — הכל נשאר עם אורי,
         # כולל הודעות קצרות ('Ok'/'תודה') ומשפטים באנגלית ('I should receive it today').
         if _uri_engaged(phone) and not prod and _ask_uri(phone, text, wamid):
