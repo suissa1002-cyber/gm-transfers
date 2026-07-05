@@ -5646,7 +5646,9 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
         ck = f"{c4}|{brand}"
         ents = (graph.get("cards") or {}).get(ck, [])
         names, emails_s, others = _distinct_identities(ents, num)
-        names.add(_norm_name(billing_name)); emails_s.add(email.lower())
+        # ⚠️ חובה _canon_email — הגרף שומר מיילים מנורמלים (ג'ימייל בלי נקודות);
+        # הוספת המייל הגולמי יצרה "2 מיילים" מדומים לכל ג'ימייל עם נקודה (באג 47994/48013)
+        names.add(_norm_name(billing_name)); emails_s.add(_canon_email(email))
         if others and (len(names) >= 2 or len(emails_s) >= 2):
             risk += 4; hard_fraud = True
             reasons.append(f"אותו כרטיס (****{c4}) שימש ליותר מזהות אחת "
