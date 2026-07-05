@@ -4135,7 +4135,11 @@ async function loadWaContact(){
   loadWaInvoices();   // חשבוניות נטענות במקביל
   if(!S.waTags){ try{ S.waTags=(await api('/api/admin/wa/tags')).tags||[]; }catch(e){ S.waTags=[]; } }
   try{ const c=await api('/api/admin/wa/contact/'+encodeURIComponent(phone));
-       if(S.waPhone===phone){ S.waContact=c; const p=document.getElementById('waPanelBox'); if(p) p.innerHTML=waPanelHTML(); } }
+       if(S.waPhone===phone){ S.waContact=c;
+         // ⚠️ לצייר רק כשהפאנל במצב פרטי-לקוח — לא לדרוס את פאנל אלה/מלאי שנפתח בינתיים
+         // (הטעינה האסינכרונית הסתיימה שנייה אחרי פתיחת הצ'אט של אלה ומחקה אותו)
+         const p=document.getElementById('waPanelBox');
+         if(p && (!S.waPanelMode || S.waPanelMode==='info')) p.innerHTML=waPanelHTML(); } }
   catch(e){ toast('טעינת פרטי פונה נכשלה',false); }
 }
 async function waAddTag(){
