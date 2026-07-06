@@ -532,8 +532,9 @@ def register_recurring_jobs():
     scheduler.add_job(_wa_scheduled_job, "interval", seconds=30, id="wa_scheduled", max_instances=1)
     # שינוי סטטוס הזמנה מתוזמן — בדיקה כל 30ש, מחיל מה שהגיע זמנו
     scheduler.add_job(_scheduled_status_job, "interval", seconds=30, id="scheduled_status", max_instances=1)
-    # קליטת חשבוניות ממייל הקופה — כל 3 שעות (לא דחוף; חוסך עומס IMAP/PDF)
-    scheduler.add_job(_invoice_capture_job, "interval", hours=3, id="invoice_capture", max_instances=1)
+    # קליטת חשבוניות ממייל הקופה — כל 20 דק' (3 שעות השאירו קבלות באינבוקס חצי יום;
+    # הסריקה זולה — 80 הודעות, רק חדשות מעובדות. כשל IMAP רגעי נסלח בסבב הבא הקרוב)
+    scheduler.add_job(_invoice_capture_job, "interval", minutes=20, id="invoice_capture", max_instances=1)
     # catch-up בהפעלה: דפלוי תכוף מאפס את טיימר ה-3ש' → היום אף קליטה לא רצה. ריצה
     # קצרה אחרי כל הפעלה (אידמפוטנטית — רק חדשות) מבטיחה שלא נפספס יום שלם.
     scheduler.add_job(_invoice_capture_job, "date", id="invoice_capture_initial",
