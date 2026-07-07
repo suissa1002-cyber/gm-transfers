@@ -5675,14 +5675,27 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
     email_role = False
     if ipqs_email:
         efs = ipqs_email.get("fraud_score") or 0
-        # abuse אמיתי (recent_abuse/honeypot/spam-trap) = חזק. לעומת "ציון גבוה" שנובע
-        # מ-generic/catch_all (office@, דומיין עסקי) = false-positive שכיח, לא הונאה.
-        email_real_abuse = bool(ipqs_email.get("recent_abuse") or ipqs_email.get("honeypot")
-                                or str(ipqs_email.get("spam_trap") or "none") not in ("none", ""))
+        _fs_h0 = str(ipqs_email.get("first_seen") or "")
+        _fsd0 = ipqs_email.get("first_seen_days")
+        _estab0 = ("year" in _fs_h0) or (isinstance(_fsd0, int) and _fsd0 >= 365)
+        # honeypot/spam-trap = כתובות שקיימות רק ללכידת abuse → אות חזק אמיתי (hard).
+        _strong_abuse = bool(ipqs_email.get("honeypot")
+                             or str(ipqs_email.get("spam_trap") or "none") not in ("none", ""))
+        # recent_abuse *לבד* על מייל ותיק (שנים) עם ציון נמוך = רעש מדליפת-מידע/רשימת-
+        # תפוצה, לא הונאה של הלקוח (כיול 48411: gmail בן 10 שנים, ציון 0, recent_abuse=1
+        # → אדום שגוי). ה-fraud_score של IPQS כבר שוקלל — אם הוא נמוך, IPQS עצמו רגוע.
+        _recent_ab = bool(ipqs_email.get("recent_abuse"))
+        _weak_recent = _recent_ab and not _strong_abuse and _estab0 and efs < 50
+        # abuse אמיתי (honeypot/spam-trap, או recent_abuse שאינו רעש) = חזק. לעומת "ציון
+        # גבוה" מ-generic/catch_all (office@, דומיין עסקי) = false-positive שכיח, לא הונאה.
+        email_real_abuse = _strong_abuse or (_recent_ab and not _weak_recent)
         email_role = bool(ipqs_email.get("generic") or ipqs_email.get("catch_all"))
         if email_real_abuse:
             risk += 2; hard_fraud = True
             reasons.append("המייל סומן ב-IPQS כפעילות זדונית/מלכודת-ספאם (recent abuse)")
+        elif _weak_recent:
+            reasons.append("ℹ️ המייל הופיע פעם ברשימת abuse של IPQS, אך הוא ותיק (שנים) "
+                           "וציון הסיכון שלו נמוך — כנראה רעש מדליפה/רשימת תפוצה, לא הונאה")
         elif efs >= 85 and not email_role:
             risk += 2
             reasons.append(f"ציון סיכון מייל גבוה ב-IPQS ({efs}) — לא מייל עסקי/גנרי")
