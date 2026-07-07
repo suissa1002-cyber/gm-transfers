@@ -1028,7 +1028,8 @@ async function api(path,opts,ms){
       if(j&&j.code==='device'){ deviceBlockedFlow(); }
       else if(j&&j.code==='branch-locked'){ toast('המכשיר נעול לסניף אחר — החלפת סניף דורשת אישור מנהל',false); }
     }catch(e){} }
-    const e=new Error('http '+r.status); e.status=r.status; throw e;
+    let _det=''; try{ _det=((await r.clone().json())||{}).detail||''; }catch(_){}   // סיבת השגיאה האמיתית מהשרת
+    const e=new Error('http '+r.status); e.status=r.status; e.detail=_det; throw e;
   }
   return r.json();
 }

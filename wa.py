@@ -947,6 +947,13 @@ def send_media(phone: str, filename: str, content: bytes, mime: str, caption: st
     kind = ("image" if m.startswith("image/") else
             "audio" if m.startswith("audio/") else
             "video" if m.startswith("video/") else "document")
+    # WhatsApp מקבל וידאו רק mp4/3gp ותמונה רק jpeg/png. פורמט אחר (.mov/quicktime,
+    # heic וכו') נשלח כ**מסמך** במקום להיכשל — הלקוח מוריד ומנגן/צופה (באג סרטון .MOV
+    # מהמעבדה: נשלח כ'וידאו' → Meta דחתה, והשגיאה נראתה כמו חלון-24ש שגוי).
+    if kind == "video" and m not in ("video/mp4", "video/3gpp", "video/3gp"):
+        kind = "document"
+    elif kind == "image" and m not in ("image/jpeg", "image/png"):
+        kind = "document"
     # מגבלות Meta Cloud API: image 5MB · audio/video 16MB · document 100MB.
     # קובץ שחורג מתקרת הסוג שלו אך ≤100MB → נשלח כ**מסמך** (הלקוח מוריד ומנגן) —
     # כך סרטון מעבדה 38MB עובר כמסמך במקום להיכשל על תקרת 16MB של וידאו.
