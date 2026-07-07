@@ -7324,6 +7324,17 @@ def admin_order_auto_transfer(oid: int, force: int = 0,
                 cleared += 1
             except Exception:  # noqa: BLE001
                 pass
+        # ⚠️ לנקות גם התראות-משמרת *שנדחו לבוקר* עבור ההזמנה — אחרת הבקשה הישנה
+        # (למשל צבע שהוחלף) נשלחת לעובד ליד החדשה ב-09:15 (באג 48411: יעקב קיבל
+        # שחור ישן + כחול חדש). התור מזוהה לפי מספר ההזמנה בטקסט ההתראה.
+        try:
+            stale = [a["id"] for a in db.shift_alerts_pending()
+                     if _re3.search(rf"#{onum}(?!\d)", a.get("text") or "")]
+            if stale:
+                db.shift_alerts_clear(stale)
+                logger.info("purged %d deferred shift alerts for order %s", len(stale), onum)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("purge deferred shift alerts for %s failed: %s", onum, e)
     created = auto_transfer._handle_order(o, catalog)
     # שידור ידני ("שדר מחדש") — מפעיל גם את ההתראות (טלגרם אדמין + צ'אט סניף + **DM
     # אישי למשמרת**), בדיוק כמו המסלול האוטומטי. עד עכשיו זה קרא רק ל-_handle_order
