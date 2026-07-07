@@ -5277,6 +5277,25 @@ def _names_consistent(a: str, b: str) -> bool:
     return False
 
 
+def _email_name_match(email: str, name: str) -> bool:
+    """האם שם הלקוח מופיע בחלק המקומי של המייל (חוצה-כתב, שלד-עיצורים) — סימן
+    לגיטימיות חזק כש-IPQS לא מכיר את המייל. תואם: מגד מסאעד↔magudmsaed2907,
+    peri↔peri.gold, דניס↔denis.krokos. לא תואם: מחמוד אסעד↔crex.wow.69.
+    ההתאמה = שיתוף רצף של ≥3 עיצורים (תופס קיצורי-שם, דוחה צירוף-מקרה)."""
+    import re as _re
+    local = _re.sub(r"[^a-z]", "", (email or "").split("@", 1)[0].lower())
+    loc = _name_skel(local)
+    if len(loc) < 3:
+        return False
+    loc_grams = {loc[i:i + 3] for i in range(len(loc) - 2)}
+    for sk in _name_skels(name):
+        if len(sk) < 3:
+            continue
+        if any(sk[i:i + 3] in loc_grams for i in range(len(sk) - 2)):
+            return True
+    return False
+
+
 # דומיינים של מייל חד-פעמי/זבל (סימן חזק להונאה בקודים דיגיטליים)
 import re as _re_fraud
 _re_pickup = _re_fraud.compile(r"נקודת\s*מסירה|איסוף\s*עצמי|מסירה\s*עצמית|pickup", _re_fraud.I)
@@ -5678,6 +5697,10 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
         _fs_h0 = str(ipqs_email.get("first_seen") or "")
         _fsd0 = ipqs_email.get("first_seen_days")
         _estab0 = ("year" in _fs_h0) or (isinstance(_fsd0, int) and _fsd0 >= 365)
+        # IPQS "מנחש" כשאינו מכיר את המייל (first_seen "now") — הציון היוריסטי, לא מבוסס
+        # היסטוריה. במקרה כזה נשענים על סיגנל שאנחנו מחשבים: האם שם הלקוח בתוך המייל.
+        _ipqs_unknown_email = ("now" in _fs_h0.lower())
+        _email_name_ok = _email_name_match(email, billing_name)
         # honeypot/spam-trap = כתובות שקיימות רק ללכידת abuse → אות חזק אמיתי (hard).
         _strong_abuse = bool(ipqs_email.get("honeypot")
                              or str(ipqs_email.get("spam_trap") or "none") not in ("none", ""))
@@ -5696,6 +5719,15 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
         elif _weak_recent:
             reasons.append("ℹ️ המייל הופיע פעם ברשימת abuse של IPQS, אך הוא ותיק (שנים) "
                            "וציון הסיכון שלו נמוך — כנראה רעש מדליפה/רשימת תפוצה, לא הונאה")
+        elif efs >= 85 and not email_role and _ipqs_unknown_email:
+            # IPQS לא מכיר את המייל → הציון ניחוש. מכריע לפי קוהרנטיות מייל↔שם:
+            if _email_name_ok:
+                reasons.append(f"✅ IPQS נותן ציון {efs} למייל שאינו מוכר לו (ניחוש היוריסטי), "
+                               "אך המייל תואם לשם הלקוח — זהות עקבית, לא חשד")
+            else:
+                risk += 1
+                reasons.append(f"ציון מייל גבוה ב-IPQS ({efs}) על מייל לא-מוכר, "
+                               "והמייל אינו תואם לשם הלקוח — זהירות")
         elif efs >= 85 and not email_role:
             risk += 2
             reasons.append(f"ציון סיכון מייל גבוה ב-IPQS ({efs}) — לא מייל עסקי/גנרי")
@@ -5714,7 +5746,8 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
         # סימן בודד כזה העביר הזמנה מוגנת-3DS נקייה לצהוב). ניקוד רק כש-IPQS *מכיר*
         # את המייל ויודע שנוצר לאחרונה בפועל.
         ipqs_unknown = ("now" in fs_human.lower())
-        if ipqs_unknown and not disposable:
+        # efs>=85 כבר טופל למעלה (עם הכרעת קוהרנטיות שם) — לא לכפול את הערת ה"לא-מוכר"
+        if ipqs_unknown and not disposable and efs < 85:
             reasons.append("ℹ️ המייל לא מוכר ל-IPQS (ייתכן חדש/נדיר) — מידע בלבד, לא חשד")
         elif email_fresh and not disposable:
             risk += 1
