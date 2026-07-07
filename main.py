@@ -7314,8 +7314,13 @@ def admin_order_auto_transfer(oid: int, force: int = 0,
     onum = str(o.get("number"))
     existing = [ln for ln in db.plan_list()
                 if _re3.search(rf"הזמנת אתר #{onum}(?!\d)", ln.get("created_by") or "")]
-    if existing and not force:
-        return {"ok": True, "already": True, "lines": len(existing)}
+    # ⚠️ אידמפוטנטיות: plan_list מחזיר רק שורות *ממתינות*; שורה ששודרה כבר עוזבת אותו,
+    # ולכן קריאה חוזרת בלי force הייתה משדרת שוב (באג 48411: קריאת-בדיקה שלי שידרה יחידות
+    # נוספות). הדגל העמיד auto_tr_bcast מציין ששודר — לא לשדר שוב אלא עם force מפורש.
+    already_bcast = bool(db.sales_state_get(f"auto_tr_bcast:{onum}"))
+    if (existing or already_bcast) and not force:
+        return {"ok": True, "already": True, "lines": len(existing),
+                "note": "כבר שודר — השתמש ב-force=1 לשידור מחדש"}
     cleared = 0
     if force and existing:
         for ln in existing:
