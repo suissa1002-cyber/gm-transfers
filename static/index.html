@@ -4737,8 +4737,10 @@ async function loadWaThread(silent){
   const phone=S.waPhone;
   try{ const t=await api('/api/admin/wa/thread/'+encodeURIComponent(phone));
        if(S.waPhone===phone){ S.waThread=t;
-         // פאנל אלה/מלאי פתוח → עדכון הודעות בלבד (לא דורס הפאנל); אחרת רינדור מלא
-         if(silent && S.waPanel && (S.waPanelMode==='uri'||S.waPanelMode==='stock')) waRefreshMsgsOnly();
+         // רענון שקט → עדכון-הודעות-בלבד (עם _sig שמדלג כשאין שינוי) — כך אלמנט וידאו/
+         // תמונה לא נבנה מחדש בכל poll ומפסיק לטעון (באג: סרטון יוצא הבהב ספינר כל 15ש).
+         // רינדור מלא רק בכניסה ראשונה לשיחה (silent=false).
+         if(silent) waRefreshMsgsOnly();
          else renderWaThread();
          const last=Math.max(0,...(t.messages||[]).map(m=>m.ts||0));
          if(last) waMarkSeen(phone,last); } }
