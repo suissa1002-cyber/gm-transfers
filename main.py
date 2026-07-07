@@ -8367,6 +8367,25 @@ def admin_order_trash(oid: int, x_admin_key: Optional[str] = Header(None)):
     return {"ok": True}
 
 
+@app.post("/api/admin/orders/{oid}/restore")
+def admin_order_restore(oid: int, x_admin_key: Optional[str] = Header(None)):
+    """שחזור הזמנה מהפח → חוזרת כ'בוטל' (PUT status מוציא מ-trash). רק להזמנה שבפח."""
+    _require_admin(x_admin_key)
+    import requests as _rq
+    base, k, s = _wc_creds()
+    cur = _rq.get(f"{base}/wp-json/wc/v3/orders/{oid}", auth=(k, s), timeout=30)
+    if not cur.ok:
+        raise HTTPException(404, "הזמנה לא נמצאה")
+    st = cur.json().get("status")
+    if st != "trash":
+        raise HTTPException(400, f"שחזור אפשרי רק להזמנה שבפח (הסטטוס: {st})")
+    r = _rq.put(f"{base}/wp-json/wc/v3/orders/{oid}",
+                json={"status": "cancelled"}, auth=(k, s), timeout=30)
+    if not r.ok:
+        raise HTTPException(502, "השחזור נכשל")
+    return {"ok": True, "status": "cancelled"}
+
+
 def _wp_app_auth():
     """Basic Auth של WP Application Password — לקריאות גשר ה-Cargo (gm-cargo/v1)."""
     u, p = os.getenv("WP_USERNAME", ""), os.getenv("WP_APP_PASSWORD", "")

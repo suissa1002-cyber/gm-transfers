@@ -6467,6 +6467,7 @@ function paintWcOrder(){
   if(phoneIntl.length>10) _actBtns.push(oAct('📄 שלח חשבונית','#0d9488',`wcoSendInvoice('${d.number}','${phoneIntl}')`,'שולח ללקוח בוואטסאפ את החשבונית של ההזמנה'));
   _actBtns.push(oAct('↩️ '+(d.return_open?'סגור החזרה':'פתח החזרה'),'#7c3aed',`wcoOpenReturn(${d.id},${d.return_open?1:0})`,d.return_open?'סגירת ההחזרה':'פותח החזרה: מתעד בהזמנה + מעתיק פרטי לקוח + פותח דשבורד Cargo לאיסוף'));
   if(['cancelled','failed','refunded'].includes(d.status)) _actBtns.push(oAct(ico('trash',14)+' העבר לפח','#b91c1c',`wcoTrash(${d.id})`));
+  if(d.status==='trash') _actBtns.push(oAct(ico('restore',14)+' שחזר הזמנה','#15803d',`wcoRestore(${d.id})`,'מוציא מהפח וחוזר לרשימות כ״בוטל״'));
   const actions=`<div style="margin-top:18px;border-top:1px solid var(--line);padding-top:16px;display:flex;flex-direction:column;gap:11px">
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <select id="wcoSt" style="flex:1;min-width:140px;max-width:230px;padding:9px 11px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:13px">${stOpts}</select>
@@ -6772,6 +6773,16 @@ async function wcoTrash(oid){
     toast('ההזמנה הועברה לפח ✓',true);
     closeModal(); loadWcOrders();
   }catch(e){ toast(e.status===400?'אפשר להעביר לפח רק הזמנות שבוטלו/נכשלו':'ההעברה לפח נכשלה',false); }
+  hideLoading();
+}
+async function wcoRestore(oid){
+  if(!confirm('לשחזר את ההזמנה מהפח? היא תחזור לרשימות הרגילות בסטטוס "בוטל".')) return;
+  showLoading('משחזר מהפח…');
+  try{
+    await api('/api/admin/orders/'+oid+'/restore',{method:'POST'},45000);
+    toast('ההזמנה שוחזרה (בוטל) ✓',true);
+    closeModal(); loadWcOrders();
+  }catch(e){ toast(e.status===400?'שחזור אפשרי רק להזמנה שבפח':'השחזור נכשל',false); }
   hideLoading();
 }
 async function wcoSetStatus(oid){
