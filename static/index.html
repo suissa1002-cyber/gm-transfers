@@ -4480,7 +4480,7 @@ function waRenderPending(){
 }
 function waStageFile(f, name){
   if(!f) return;
-  if(f.size>15*1024*1024){ toast('קובץ גדול מדי (מקס׳ 15MB)',false); return; }
+  if(f.size>100*1024*1024){ toast('קובץ גדול מדי (מקס׳ 100MB)',false); return; }
   if(S.waPending&&S.waPending.url){ try{URL.revokeObjectURL(S.waPending.url)}catch(_){} }
   S.waPending={blob:f, name:name||f.name||'image.png', url:URL.createObjectURL(f)};
   waRenderPending();
@@ -4492,7 +4492,7 @@ function waClearPending(){
 }
 async function waSendBlob(f, name){
   if(!S.waPhone) return;
-  if(f.size>15*1024*1024){ toast('קובץ גדול מדי (מקס׳ 15MB)',false); return; }
+  if(f.size>100*1024*1024){ toast('קובץ גדול מדי (מקס׳ 100MB)',false); return; }
   showLoading('מעלה ושולח קובץ…');
   try{
     const fd=new FormData(); fd.append('phone',S.waPhone); fd.append('file',f,name||f.name||'file');

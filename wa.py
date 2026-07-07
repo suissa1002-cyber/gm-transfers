@@ -940,14 +940,23 @@ def send_media(phone: str, filename: str, content: bytes, mime: str, caption: st
     נתיב ה-file-manager של קונקטופ. כפוף לחלון 24ש (template-only מחוצה לו)."""
     import os as _os
     import requests as _rq
-    if len(content) > 15 * 1024 * 1024:
-        raise WaError("קובץ גדול מדי (מקס׳ 15MB)")
     if not meta_direct_ready():
         raise WaError("Meta ישיר לא מוגדר")
+    _MB = 1024 * 1024
     m = (mime or "").lower()
     kind = ("image" if m.startswith("image/") else
             "audio" if m.startswith("audio/") else
             "video" if m.startswith("video/") else "document")
+    # מגבלות Meta Cloud API: image 5MB · audio/video 16MB · document 100MB.
+    # קובץ שחורג מתקרת הסוג שלו אך ≤100MB → נשלח כ**מסמך** (הלקוח מוריד ומנגן) —
+    # כך סרטון מעבדה 38MB עובר כמסמך במקום להיכשל על תקרת 16MB של וידאו.
+    _lim = {"image": 5, "audio": 16, "video": 16, "document": 100}
+    size = len(content)
+    if size > _lim.get(kind, 100) * _MB:
+        if size <= 100 * _MB and kind != "document":
+            kind = "document"
+        else:
+            raise WaError(f"קובץ גדול מדי ({size // _MB}MB) — המקסימום ב-WhatsApp הוא 100MB")
     safe = re.sub(r"[^\w.\-]+", "_", filename or "file", flags=re.UNICODE) or "file"
     tok = _os.getenv("META_WA_TOKEN").strip()
     pid = _os.getenv("META_WA_PHONE_ID").strip()
