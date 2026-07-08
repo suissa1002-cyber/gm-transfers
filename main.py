@@ -6221,7 +6221,17 @@ def admin_stellr_catalog(fresh: int = 0, x_admin_key: Optional[str] = Header(Non
     _require_admin(x_admin_key)
     if not stellr.API_KEY:
         raise HTTPException(400, "STELLR_API_KEY לא מוגדר")
-    return {"is_uat": stellr.is_uat(), "products": stellr.catalog(fresh=bool(fresh))}
+    try:
+        products = stellr.catalog(fresh=bool(fresh))
+    except Exception as e:  # noqa: BLE001
+        # 403 = ה-IP עדיין לא ב-allowlist של Stellr (relay מגיע אך נדחה) — לא 500 מבהיל
+        msg = str(e)
+        hint = ("ה-IP (185.60.168.165) עדיין לא ב-allowlist של Stellr — ממתין לאישורם"
+                if "403" in msg or "Forbidden" in msg else msg)
+        return {"is_uat": stellr.is_uat(), "ok": False, "error": hint, "raw": msg[:300],
+                "relay": bool(stellr.STELLR_RELAY_URL)}
+    return {"is_uat": stellr.is_uat(), "ok": True, "count": len(products or []),
+            "products": products}
 
 
 @app.post("/api/admin/stellr/map")
