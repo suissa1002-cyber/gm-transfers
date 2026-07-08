@@ -9,6 +9,8 @@
   STELLR_AUTO       off | dry | on — אוטומציה לירוק מוחלט (dry = רושם בלי להנפיק)
   STELLR_MAX_VALUE  תקרת ערך לקוד בודד (ברירת מחדל 500)
   STELLR_MAX_QTY    תקרת קודים להזמנה (ברירת מחדל 3)
+  STELLR_RELAY_URL  relay ב-PHP על שרת ה-WP (IP יוצא קבוע ל-allowlist של Stellr)
+  STELLR_RELAY_KEY  סוד אימות ל-relay (header X-GM-Relay-Key)
 
 ⚠️ כללי ברזל: לעולם לא לרשום PAN/PIN ללוג. amount נשלח כאובייקט {value, currency}.
 """
@@ -28,11 +30,46 @@ CURRENCY = os.environ.get("STELLR_CURRENCY", "ILS")
 MAX_VALUE = float(os.environ.get("STELLR_MAX_VALUE", "650"))   # הקוד הגדול ביותר: Sony ₪635
 MAX_QTY = int(os.environ.get("STELLR_MAX_QTY", "3"))
 
-# פרוקסי IP-סטטי (VPS) — פרודקשן של Stellr נעול ל-allowlist לפי IP, ו-Render יוצא
-# מטווחים משותפים מסתובבים. STELLR_PROXY מנתב את *כל* קריאות Stellr דרך IP קבוע אחד
-# שנותנים לסטלר. ריק = בלי פרוקסי (UAT/מקומי — התנהגות רגילה).
-STELLR_PROXY = os.environ.get("STELLR_PROXY", "").strip()
-_PROXIES = {"http": STELLR_PROXY, "https": STELLR_PROXY} if STELLR_PROXY else None
+# Relay IP-סטטי — פרודקשן של Stellr נעול ל-allowlist לפי IP, ו-Render יוצא מטווחים
+# משותפים מסתובבים. STELLR_RELAY_URL מפנה קריאות Stellr דרך relay ב-PHP על שרת ה-WP
+# (IP יוצא קבוע 185.60.168.165 שנותנים לסטלר). ריק = קריאה ישירה (UAT/מקומי).
+STELLR_RELAY_URL = os.environ.get("STELLR_RELAY_URL", "").strip()
+STELLR_RELAY_KEY = os.environ.get("STELLR_RELAY_KEY", "").strip()
+
+
+class _Resp:
+    """עוטף תשובת relay ({http, body}) כך שתיראה כמו requests.Response לקוראים."""
+    def __init__(self, status_code: int, text: str):
+        self.status_code = status_code
+        self.text = text or ""
+
+    def json(self):
+        import json as _json
+        return _json.loads(self.text) if self.text else None
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise requests.HTTPError(f"{self.status_code}: {self.text[:200]}")
+
+
+def _request(method: str, path: str, payload=None, timeout: int = 40):
+    """קריאה ל-Stellr — דרך relay (אם מוגדר) או ישירות. מחזיר אובייקט תשובה אחיד."""
+    if STELLR_RELAY_URL:
+        body = {"method": method, "path": path, "api_key": API_KEY}
+        if payload is not None:
+            body["payload"] = payload
+        rr = requests.post(STELLR_RELAY_URL, json=body, timeout=timeout + 20,
+                           headers={"X-GM-Relay-Key": STELLR_RELAY_KEY,
+                                    "Content-Type": "application/json"})
+        rr.raise_for_status()   # תקלה בשכבת ה-relay עצמה (WP/Cloudflare)
+        j = rr.json() or {}
+        if int(j.get("http") or 0) == 0:
+            raise requests.ConnectionError(f"relay→stellr: {j.get('error')}")
+        return _Resp(int(j.get("http")), j.get("body") or "")
+    url = f"{BASE_URL}{path}"
+    if method == "POST":
+        return requests.post(url, headers=_headers(), json=payload, timeout=timeout)
+    return requests.get(url, headers=_headers(), timeout=timeout)
 
 
 def enabled() -> bool:
@@ -59,7 +96,7 @@ def catalog(fresh: bool = False) -> list:
     """קטלוג המוצרים הזמין לנו (cache 10 דק')."""
     if _cat_cache["data"] and not fresh and time.time() - _cat_cache["at"] < 600:
         return _cat_cache["data"]
-    r = requests.get(f"{BASE_URL}/product", headers=_headers(), timeout=30, proxies=_PROXIES)
+    r = _request("GET", "/product", timeout=30)
     r.raise_for_status()
     data = r.json()
     _cat_cache["data"] = data
@@ -68,8 +105,7 @@ def catalog(fresh: bool = False) -> list:
 
 
 def get_transaction(tx_id: str) -> dict:
-    r = requests.get(f"{BASE_URL}/transaction/{tx_id}", headers=_headers(), timeout=30,
-                     proxies=_PROXIES)
+    r = _request("GET", f"/transaction/{tx_id}", timeout=30)
     r.raise_for_status()
     return r.json()
 
@@ -80,8 +116,7 @@ def activate(product_ref: str, value: float, ref: str, currency: str = "") -> di
     payload = {"amount": {"value": float(value), "currency": currency or CURRENCY},
                "productRef": str(product_ref), "storeRef": STORE_REF, "ref": str(ref)}
     try:
-        r = requests.post(f"{BASE_URL}/transaction", headers=_headers(),
-                          json=payload, timeout=40, proxies=_PROXIES)
+        r = _request("POST", "/transaction", payload=payload, timeout=40)
     except Exception as e:  # noqa: BLE001
         logger.warning("stellr activate %s: network error %s", ref, e)
         return {"ok": False, "http": 0, "error": f"network: {e}"}
@@ -101,4 +136,4 @@ def status() -> dict:
     return {"enabled": enabled(), "auto": auto_mode(), "base_url": BASE_URL,
             "is_uat": is_uat(), "store_ref": STORE_REF, "currency": CURRENCY,
             "max_value": MAX_VALUE, "max_qty": MAX_QTY, "key_set": bool(API_KEY),
-            "proxy": bool(STELLR_PROXY)}
+            "relay": bool(STELLR_RELAY_URL)}
