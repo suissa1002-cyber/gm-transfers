@@ -457,6 +457,8 @@ def register_recurring_jobs():
     scheduler.add_job(_ella_learn_job, "interval", minutes=30, id="ella_learn", max_instances=1)
     # 🎫 Stellr — הנפקה אוטומטית לירוק מוחלט (STELLR_AUTO=dry/on; off=לא עושה כלום)
     scheduler.add_job(_stellr_auto_job, "interval", minutes=5, id="stellr_auto", max_instances=1)
+    # 🎫 Watcher ל-allowlist של Stellr (GET בלבד): מתריע ברגע שהקטלוג חי / מזכיר נדנוד
+    scheduler.add_job(_stellr_watch_job, "interval", minutes=20, id="stellr_watch", max_instances=1)
     # 🪑 תג "בית לקוח" ↔ מלאי קופה (כיסאות כבדים): אזל→תיוג, חזר→הסרה
     scheduler.add_job(_beit_lakoach_sync_job, "interval", hours=6,
                       id="beit_lakoach_sync", max_instances=1, coalesce=True)
@@ -6206,6 +6208,38 @@ def _stellr_auto_job():
                           f"מנפיקה {res['issued']} קודים (ירוק מוחלט). לא הונפק בפועל.")
             except Exception:  # noqa: BLE001
                 pass
+
+
+def _stellr_watch_job():
+    """Watcher ל-allowlist של Stellr: בודק (GET בלבד — לא נוגע במצב) אם הקטלוג חי.
+    ברגע שהם מאשרים את ה-IP → מוצרים חוזרים → התראת טלגרם ועצירה (דגל). אם עד מחר
+    בצהריים עדיין 403 → תזכורת חד-פעמית לשלוח מייל נדנוד. פעיל רק בפרודקשן עם relay."""
+    if not (stellr.API_KEY and stellr.STELLR_RELAY_URL) or stellr.is_uat():
+        return
+    if db.sales_state_get("stellr_allowlisted", "") == "1":
+        return                                   # כבר עלה — לא בודקים יותר
+    try:
+        products = stellr.catalog(fresh=True)    # GET read-only
+    except Exception:  # noqa: BLE001
+        products = None
+    if products:                                 # 🎉 אושר!
+        db.sales_state_set("stellr_allowlisted", "1")
+        try:
+            _tg_admin(f"🎉 <b>Stellr — ה-IP אושר!</b>\nהקטלוג חי ({len(products)} מוצרים). "
+                      f"עכשיו: מיפוי productRefs אמיתיים → canary → go-live. פאבל.")
+        except Exception:  # noqa: BLE001
+            pass
+        return
+    # עדיין 403 — תזכורת נדנוד חד-פעמית מ-09/07 12:00 שעון ישראל (=09:00 UTC)
+    from datetime import datetime, timezone
+    nudge_due = datetime(2026, 7, 9, 9, 0, tzinfo=timezone.utc)
+    if datetime.now(timezone.utc) >= nudge_due and db.sales_state_get("stellr_nudge_done", "") != "1":
+        db.sales_state_set("stellr_nudge_done", "1")
+        try:
+            _tg_admin("⏰ <b>Stellr עדיין לא אישרו את ה-IP</b> (185.60.168.165) ולא ענו.\n"
+                      "הגיע הזמן למייל נדנוד — כדאי עם CC ל-Daniel ו-Willem.")
+        except Exception:  # noqa: BLE001
+            pass
 
 
 @app.get("/api/admin/stellr/status")
