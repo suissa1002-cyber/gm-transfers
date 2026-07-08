@@ -5934,7 +5934,11 @@ async function stellrPosOpen(){
       <div style="font-size:38px;margin-bottom:10px">🚧</div>
       <h3 style="margin:0 0 8px;font-size:17px">הנפקת קודים — בבנייה</h3>
       <div class="muted" style="font-size:13.5px;line-height:1.6">המערכת נמצאת בשלבי בדיקות אחרונים ועדיין לא מנפיקה קודים אמיתיים.<br>בינתיים ממשיכים להנפיק כרגיל דרך אסי/אודי.<br>עדכון יישלח כשהמערכת תעלה לאוויר 🙌</div>
-      <button onclick="closeModal()" style="margin-top:16px;padding:10px 26px;border-radius:11px;border:1px solid var(--line);background:var(--card2);color:var(--txt);font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">הבנתי</button>
+      <div style="display:flex;gap:9px;margin-top:16px">
+        <button onclick="stellrTestPrint()" style="flex:1;padding:10px 14px;border-radius:11px;border:1.5px solid #2563eb;background:#2563eb14;color:#2563eb;font-size:13.5px;font-weight:700;cursor:pointer;font-family:inherit">🖨 בדיקת הדפסה</button>
+        <button onclick="closeModal()" style="flex:1;padding:10px 14px;border-radius:11px;border:1px solid var(--line);background:var(--card2);color:var(--txt);font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">הבנתי</button>
+      </div>
+      <div class="muted" style="font-size:11px;margin-top:8px">בדיקת הדפסה מפיקה פתק דמה לבדיקת המדפסת — לא קוד אמיתי, בלי חיוב.</div>
     </div></div>`;
     return;
   }
@@ -6013,6 +6017,12 @@ function stellrPosPrint(r){
     <div style="margin-top:5mm;font-size:8.5pt">הקוד אישי וחד-פעמי — שמרו על הפתק!<br>גרין מובייל · greenmobile.co.il</div>
     <script>window.onload=()=>{window.print();};<\/script></body></html>`);
   w.document.close();
+}
+function stellrTestPrint(){
+  // פתק דמה לבדיקת המדפסת בעמדה — לא נוגע ב-Stellr, מסומן בבירור כבדיקה (is_uat)
+  stellrPosPrint({ bill: 'TEST', is_uat: true, codes: [
+    { name: 'בדיקת הדפסה — Xbox ₪50 (דמה)', pan: '1234-5678-9012-3456', pin: '4821' }
+  ]});
 }
 // ── 🎫 קופה ידנית (סיטי): בורר מותג+סכומים → בקשת אישור מאסי בטלגרם → הנפקה ──
 function stellrPosManualOpen(dn){
