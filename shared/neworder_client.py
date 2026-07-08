@@ -216,18 +216,24 @@ class NewOrderClient:
 
     def get_stock_operations(self, branch_id: Optional[int] = None,
                              from_date: Optional[str] = None, to_date: Optional[str] = None,
-                             page_size: int = 200, page_num: int = 1) -> list[dict]:
+                             page_size: int = 200, page_num: int = 1,
+                             include_items: bool = True) -> list[dict]:
         """
         היסטוריית תנועות מלאי. כולל העברות בין סניפים (opTypeName="העברה בין סניפים").
         כל תנועה: {id, createDate, operationType, opTypeName, documentNumber,
         employee, totalQuantity, stockItems[]}.
         ✅ סינון תאריכים עובד (תוקן ע"י NewOrder 06/2026). הפורמט הנדרש הוא DD/MM/YYYY;
         אפשר להעביר גם YYYY-MM-DD / datetime ו-`_fmt_date` ימיר אוטומטית.
+        ⚠️ include_items: NewOrder עשויים להפוך את stockItems לאופציונליים (includeItems,
+        07/2026) עם ברירת מחדל false לשליפות מהירות. אנחנו צורכים stockItems בליבה
+        (poller / removals_ingest / ron) ולכן שולחים includeItems=true כברירת מחדל —
+        כך שהפולר לא נשבר גם אם ברירת-המחדל בצד שלהם תתהפך. פרמטר לא-מוכר מתעלמים ממנו.
         """
         return self._get("/api/Products/stock-operations", {
             "branchId": branch_id,
             "fromDate": _fmt_date(from_date), "toDate": _fmt_date(to_date),
             "page_size": page_size, "page_num": page_num,
+            "includeItems": "true" if include_items else "false",
         })
 
     # ── Live stock helpers (used by Uri / customer service) ───────────
