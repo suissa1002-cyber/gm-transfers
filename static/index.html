@@ -6004,18 +6004,24 @@ function stellrPosPrint(r){
   // דף הדפסה בפורמט מדפסת-קופה (80מ"מ) — הדפדפן שולח למדפסת ברירת המחדל של העמדה
   const rows=(r.codes||[]).map(c=>`
     <div style="margin:6mm 0 2mm;font-weight:700">${escW(c.name||'')}</div>
-    <div style="font-size:15pt;font-weight:800;letter-spacing:1px;direction:ltr">${escW(c.pan||'')}</div>
+    <div style="font-size:13pt;font-weight:800;letter-spacing:.5px;direction:ltr;white-space:nowrap">${escW(c.pan||'')}</div>
     ${c.pin?`<div style="direction:ltr">PIN: <b>${escW(c.pin)}</b></div>`:''}`).join('');
   const w=window.open('','_blank','width=380,height=560');
   if(!w){ toast('חסימת חלונות קופצים — אפשרו popup',false); return; }
   w.document.write(`<!doctype html><html dir="rtl"><head><meta charset="utf-8"><title>קוד דיגיטלי</title>
-    <style>body{font-family:Arial,sans-serif;width:72mm;margin:0 auto;padding:4mm 2mm;text-align:center;font-size:10pt}</style></head><body>
+    <style>
+      /* גודל דף מדפסת-קופה: רוחב 80מ"מ, גובה=תוכן (auto → בלי שארית ריקה), margin:0 → בלי כותרות דפדפן (about:blank/תאריך/מספר עמוד) */
+      @page{ size:80mm auto; margin:0; }
+      html,body{ margin:0; padding:0; }
+      *{ box-sizing:border-box; }
+      body{ font-family:Arial,sans-serif; width:80mm; padding:3mm 3mm 5mm; text-align:center; font-size:10pt; }
+    </style></head><body>
     <div style="font-size:13pt;font-weight:800">Green Mobile 💚</div>
     <div>קוד דיגיטלי · קבלה ${escW(String(r.bill||''))}</div>
     ${r.is_uat?'<div style="font-weight:800;border:1px solid #000;margin:2mm 0;padding:1mm">*** בדיקה — UAT — לא קוד אמיתי ***</div>':''}
     ${rows}
     <div style="margin-top:5mm;font-size:8.5pt">הקוד אישי וחד-פעמי — שמרו על הפתק!<br>גרין מובייל · greenmobile.co.il</div>
-    <script>window.onload=()=>{window.print();};<\/script></body></html>`);
+    <script>window.onload=()=>{setTimeout(()=>{window.print();window.close&&setTimeout(()=>window.close(),300);},150);};<\/script></body></html>`);
   w.document.close();
 }
 function stellrTestPrint(){
