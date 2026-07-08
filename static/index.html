@@ -5927,9 +5927,9 @@ async function stellrPosOpen(){
   // סיטי (קופה ידנית, בלי קבלות NewOrder) → בורר מותג+סכומים עם אישור אסי בטלגרם
   try{ if(!S.stellrDenoms) S.stellrDenoms=await api('/api/board/stellr/denoms'); }catch(e){}
   const dn=S.stellrDenoms||{};
-  // כל עוד אנחנו על סביבת הבדיקות (UAT) — עובדי סניפים רואים הודעת "בבנייה" ולא מנפיקים
-  // קודי דמה ללקוחות. מנהל (אסי) ממשיך לבדוק כרגיל.
-  if(dn.is_uat&&!S.adminKey){
+  // גייט go-live מפורש (pos_live): עד שממפים refs אמיתיים ועושים canary — עובדי סניפים
+  // רואים "בבנייה" (עם בדיקת הדפסה) ולא מנפיקים. מנהל (אסי) ממשיך לבדוק כרגיל.
+  if(!dn.pos_live&&!S.adminKey){
     document.getElementById('modalRoot').innerHTML=`<div class="overlay" onclick="closeModal()"><div class="modal" style="max-width:360px;width:calc(100vw - 32px);text-align:center;padding:26px 20px" onclick="event.stopPropagation()">
       <div style="font-size:38px;margin-bottom:10px">🚧</div>
       <h3 style="margin:0 0 8px;font-size:17px">הנפקת קודים — בבנייה</h3>

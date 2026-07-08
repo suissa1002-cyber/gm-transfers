@@ -6301,6 +6301,10 @@ def board_stellr_issue(payload: dict, x_admin_key: Optional[str] = Header(None),
     יש פריט קוד ממופה (pos:<מקט>) → לא הונפק כבר (line_ref) → תקרות. שחזור (resend)
     מחזיר/שולח את הקוד הקיים — לעולם לא מנפיק חדש."""
     import re as _re
+    # גייט go-live: עובד סניף לא מנפיק עד STELLR_POS_LIVE=1 (גם בעקיפת פרונט). מנהל עוקף.
+    _is_admin = (not cfg.ADMIN_PASSWORD) or (x_admin_key or "") == cfg.ADMIN_PASSWORD
+    if not _is_admin and os.environ.get("STELLR_POS_LIVE", "0") != "1":
+        raise HTTPException(403, "הנפקת קודים עדיין בבנייה — פנה לאסי")
     dev = _caller_device(x_admin_key, x_device_token)
     branch = _device_branch(dev) if dev else str(payload.get("branch_id") or "")
     if not str(branch).strip():
@@ -6466,9 +6470,12 @@ def board_stellr_denoms(x_admin_key: Optional[str] = Header(None),
                         x_device_token: Optional[str] = Header(None)):
     dev = _caller_device(x_admin_key, x_device_token)
     branch = _device_branch(dev) if dev else ""
+    # pos_live = גייט go-live מפורש להנפקת קופה (לא תלוי ב-UAT/prod). עד שממפים refs
+    # אמיתיים ועושים canary — עובדי סניפים רואים "בבנייה" (עם בדיקת הדפסה). מנהל עוקף.
     return {"manual_branches": sorted(_stellr_manual_branches()),
             "branch": branch, "denoms": _stellr_denoms(),
-            "enabled": stellr.enabled(), "is_uat": stellr.is_uat()}
+            "enabled": stellr.enabled(), "is_uat": stellr.is_uat(),
+            "pos_live": os.environ.get("STELLR_POS_LIVE", "0") == "1"}
 
 
 @app.post("/api/board/stellr/request")
@@ -6478,6 +6485,10 @@ def board_stellr_request(payload: dict, x_admin_key: Optional[str] = Header(None
     לא מנפיק כלום — יוצר בקשה וממתין לאישור אסי בטלגרם (כפתורי אשר/דחה)."""
     import json as _json
     import re as _re
+    # גייט go-live: עובד סניף לא יוצר בקשות הנפקה עד STELLR_POS_LIVE=1. מנהל עוקף.
+    _is_admin = (not cfg.ADMIN_PASSWORD) or (x_admin_key or "") == cfg.ADMIN_PASSWORD
+    if not _is_admin and os.environ.get("STELLR_POS_LIVE", "0") != "1":
+        raise HTTPException(403, "הנפקת קודים עדיין בבנייה — פנה לאסי")
     dev = _caller_device(x_admin_key, x_device_token)
     branch = _device_branch(dev) if dev else str(payload.get("branch_id") or "")
     if not str(branch).strip():
