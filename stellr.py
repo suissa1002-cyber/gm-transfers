@@ -28,6 +28,12 @@ CURRENCY = os.environ.get("STELLR_CURRENCY", "ILS")
 MAX_VALUE = float(os.environ.get("STELLR_MAX_VALUE", "650"))   # הקוד הגדול ביותר: Sony ₪635
 MAX_QTY = int(os.environ.get("STELLR_MAX_QTY", "3"))
 
+# פרוקסי IP-סטטי (VPS) — פרודקשן של Stellr נעול ל-allowlist לפי IP, ו-Render יוצא
+# מטווחים משותפים מסתובבים. STELLR_PROXY מנתב את *כל* קריאות Stellr דרך IP קבוע אחד
+# שנותנים לסטלר. ריק = בלי פרוקסי (UAT/מקומי — התנהגות רגילה).
+STELLR_PROXY = os.environ.get("STELLR_PROXY", "").strip()
+_PROXIES = {"http": STELLR_PROXY, "https": STELLR_PROXY} if STELLR_PROXY else None
+
 
 def enabled() -> bool:
     return bool(API_KEY) and os.environ.get("STELLR_ENABLED", "0") == "1"
@@ -53,7 +59,7 @@ def catalog(fresh: bool = False) -> list:
     """קטלוג המוצרים הזמין לנו (cache 10 דק')."""
     if _cat_cache["data"] and not fresh and time.time() - _cat_cache["at"] < 600:
         return _cat_cache["data"]
-    r = requests.get(f"{BASE_URL}/product", headers=_headers(), timeout=30)
+    r = requests.get(f"{BASE_URL}/product", headers=_headers(), timeout=30, proxies=_PROXIES)
     r.raise_for_status()
     data = r.json()
     _cat_cache["data"] = data
@@ -62,7 +68,8 @@ def catalog(fresh: bool = False) -> list:
 
 
 def get_transaction(tx_id: str) -> dict:
-    r = requests.get(f"{BASE_URL}/transaction/{tx_id}", headers=_headers(), timeout=30)
+    r = requests.get(f"{BASE_URL}/transaction/{tx_id}", headers=_headers(), timeout=30,
+                     proxies=_PROXIES)
     r.raise_for_status()
     return r.json()
 
@@ -74,7 +81,7 @@ def activate(product_ref: str, value: float, ref: str, currency: str = "") -> di
                "productRef": str(product_ref), "storeRef": STORE_REF, "ref": str(ref)}
     try:
         r = requests.post(f"{BASE_URL}/transaction", headers=_headers(),
-                          json=payload, timeout=40)
+                          json=payload, timeout=40, proxies=_PROXIES)
     except Exception as e:  # noqa: BLE001
         logger.warning("stellr activate %s: network error %s", ref, e)
         return {"ok": False, "http": 0, "error": f"network: {e}"}
@@ -93,4 +100,5 @@ def activate(product_ref: str, value: float, ref: str, currency: str = "") -> di
 def status() -> dict:
     return {"enabled": enabled(), "auto": auto_mode(), "base_url": BASE_URL,
             "is_uat": is_uat(), "store_ref": STORE_REF, "currency": CURRENCY,
-            "max_value": MAX_VALUE, "max_qty": MAX_QTY, "key_set": bool(API_KEY)}
+            "max_value": MAX_VALUE, "max_qty": MAX_QTY, "key_set": bool(API_KEY),
+            "proxy": bool(STELLR_PROXY)}
