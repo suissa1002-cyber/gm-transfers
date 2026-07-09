@@ -2689,6 +2689,16 @@ def admin_os_deductible(model: str = "", brand: str = "", storage: str = "",
     return JSONResponse(out, headers={"Cache-Control": "no-store"})
 
 
+@app.get("/api/admin/tradein/catalog")
+def admin_tradein_catalog(x_admin_key: Optional[str] = Header(None),
+                          x_device_token: Optional[str] = Header(None)):
+    """קטלוג היד-שנייה המלא (KSP, מסונכרן שבועית) — לבורר הדגמים במחשבון
+    הטרייד-אין שבדיאלוג ההזמנה. מבנה: {brand:{model:{storage:[A,B,C,D]}}}."""
+    _require_admin_or_device(x_admin_key, x_device_token)
+    return JSONResponse({"catalog": greencare._load_secondhand()},
+                        headers={"Cache-Control": "no-store"})
+
+
 # ── אבטחת מכשירים (device allowlist) ───────────────────────────────
 # כל דפדפן מזדהה ב-X-Device-Token. מכשיר חדש = ממתין לאישור אסי בטלגרם
 # (כפתורי אשר/דחה כקישורים חתומים). מכשיר קיים עם סניף שמור = אישור אוטומטי.

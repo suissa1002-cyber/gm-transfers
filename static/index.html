@@ -6781,48 +6781,147 @@ async function osPolicyStatus(policyId,status){
     hideLoading(); if(r&&r.ok){ toast(status==='cancelled'?'הפוליסה בוטלה':'הפוליסה הופעלה',true); paintWcOrder(); } else toast('העדכון נכשל',false);
   }catch(e){ hideLoading(); toast('העדכון נכשל',false); }
 }
-// ── דיאלוג צירוף טרייד-אין ──
+// ── דיאלוג צירוף טרייד-אין — מחשבון מלא (קטלוג + מצב מכשיר + הערכה) ──
+function osTiSeries(brand,model){
+  // קיבוץ לסדרות למיון ה-select (מהחדש לישן), כמו במחשבון האתר
+  if(brand==='Apple'){ let m=model.match(/iPhone\s+(\d+)/i); if(m) return {label:'iPhone '+m[1],fam:0,num:+m[1]};
+    if(/SE/i.test(model)) return {label:'iPhone SE',fam:1,num:0}; return {label:'iPhone X / קלאסי',fam:1,num:-1}; }
+  if(brand==='Samsung'){ let m;
+    if(m=model.match(/^S\s*(\d+)/i)) return {label:'Galaxy S'+m[1],fam:0,num:+m[1]};
+    if(/Fold|Flip/i.test(model)){ const n=(model.match(/(\d+)/)||[0,0])[1]; return {label:'Galaxy Z (מתקפל)',fam:1,num:+n}; }
+    if(m=model.match(/Note\s*(\d+)/i)) return {label:'Galaxy Note',fam:2,num:+m[1]};
+    if(m=model.match(/^A\s*(\d+)/i)) return {label:'Galaxy A',fam:3,num:+m[1]};
+    if(m=model.match(/^M\s*(\d+)/i)) return {label:'Galaxy M',fam:4,num:+m[1]};
+    return {label:'Galaxy — אחר',fam:5,num:0}; }
+  if(brand==='Google'){ let m=model.match(/Pixel\s+(\d+)/i); if(m) return {label:'Pixel '+m[1],fam:0,num:+m[1]}; return {label:'Pixel — אחר',fam:1,num:0}; }
+  return {label:brand,fam:9,num:0};
+}
+function osTiVariantRank(m){ m=m.toLowerCase();
+  if(/pro max|ultra/.test(m)) return 0; if(/\bpro\b/.test(m)) return 1; if(/plus|\+/.test(m)) return 2; if(/mini|\be\b/.test(m)) return 4; return 3; }
+const OSTI_QS=[
+  {k:'power',q:'נדלק ומחזיק טעינה?',o:[['yes','כן'],['no','לא נדלק']]},
+  {k:'screen',q:'מצב המסך',o:[['ok','תקין'],['scratch','שריטות'],['crack','סדוק / שבור']]},
+  {k:'body',q:'גוף ומסגרת',o:[['ok','ללא פגמים'],['scratch','שריטות'],['dent','שקעים'],['backglass','גב שבור']]},
+  {k:'func',q:'תקלות תפקוד',o:[['none','הכל עובד'],['fault','יש תקלה']]}
+];
+function osTiEstimate(){
+  // מודל הניכוי המצטבר — זהה למחשבון האתר (עוגני KSP [A,B,C,D] + ניכוי פר-פגם)
+  const t=S._osTi||{}; const cat=t.cat||{};
+  const arr=((cat[t.brand]||{})[t.model]||{})[t.storage];
+  if(!arr) return null;
+  const A=arr[0],B=arr[1],C=arr[2],D=arr[3], c=t.cond||{};
+  const gap=Math.max(A-B,0), gcut=Math.max(A-C,0);
+  let v=A; const cuts=[];
+  const cut=(label,d)=>{ d=Math.round(d); if(d>0){ v-=d; cuts.push(label+' −'+Math.round(d/A*100)+'%'); } };
+  if(c.screen==='scratch') cut('שריטות מסך', gap*0.5);
+  if(c.body==='scratch') cut('שריטות גוף', gap*0.35);
+  if(c.body==='dent') cut('שקעים', gap*0.9);
+  if(c.screen==='crack') cut('מסך שבור', gcut);
+  if(c.body==='backglass') cut('גב שבור', gcut*0.35);
+  if(c.func==='fault'&&c.power!=='no') cut('תקלה', gcut*0.55);
+  if(c.power==='no') cut('לא נדלק', A-D);
+  const val=Math.round(Math.max(v, Math.round(A*0.06))/10)*10;
+  return {value:val, base:A, cuts};
+}
+function osTiCondSummary(){
+  const c=(S._osTi||{}).cond||{}; const parts=[];
+  OSTI_QS.forEach(q=>{ const o=(q.o.find(x=>x[0]===c[q.k])||[])[1]; if(o&&c[q.k]) parts.push(q.q.replace('?','')+': '+o); });
+  return parts.join(' · ');
+}
 function osAttachTradein(){
   const data=S._osD||{}, det=data.detected||{}, dt=det.tradein||{};
-  document.getElementById('modalRoot').innerHTML=`<div class="overlay" onclick="closeModal()"><div class="modal" style="max-width:420px;text-align:right;position:relative" onclick="event.stopPropagation()">
-    <button class="dr-x" style="position:absolute;top:10px;inset-inline-start:10px" onclick="paintWcOrder()">✕</button>
-    <div style="font-weight:800;margin-bottom:12px">🔄 צירוף טרייד-אין</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+  S._osTi={cat:null, brand:dt.brand||'', model:dt.model||'', storage:dt.storage||'', cond:{}, manual:false,
+           mBrand:dt.brand||'', mModel:dt.model||'', mStorage:dt.storage||''};
+  osTiPaint();
+  api('/api/admin/tradein/catalog',null,30000).then(r=>{ if(r&&r.catalog){ S._osTi.cat=r.catalog;
+      if(S._osTi.brand&&!r.catalog[S._osTi.brand]) S._osTi.brand=''; osTiPaint(); } })
+    .catch(()=>{ S._osTi.manual=true; osTiPaint(); });
+}
+function osTiSet(k,v){ const t=S._osTi;
+  if(k==='brand'){ t.brand=v; t.model=''; t.storage=''; }
+  else if(k==='model'){ t.model=v; const st=Object.keys(((t.cat||{})[t.brand]||{})[v]||{}); t.storage=st.length===1?st[0]:''; }
+  else t[k]=v;
+  osTiPaint();
+}
+function osTiCond(k,v){ S._osTi.cond=Object.assign({},S._osTi.cond,{[k]:v}); osTiPaint(); }
+function osTiPaint(){
+  const t=S._osTi||{}; const cat=t.cat;
+  const inp='width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--bg);color:var(--txt);margin-top:4px';
+  let deviceHTML='';
+  if(t.manual||!cat){
+    deviceHTML=`${cat?'':'<div class="muted" style="font-size:11.5px;margin-bottom:6px">טוען קטלוג…</div>'}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div><label class="muted" style="font-size:12px">מותג</label><input id="ostiMBrand" value="${escW(t.mBrand||'')}" oninput="S._osTi.mBrand=this.value" style="${inp}"></div>
+        <div><label class="muted" style="font-size:12px">נפח</label><input id="ostiMStorage" value="${escW(t.mStorage||'')}" oninput="S._osTi.mStorage=this.value" style="${inp}"></div>
+      </div>
+      <label class="muted" style="font-size:12px;display:block;margin-top:10px">דגם</label>
+      <input id="ostiMModel" value="${escW(t.mModel||'')}" oninput="S._osTi.mModel=this.value" style="${inp}">`;
+  } else {
+    const brands=Object.keys(cat);
+    let modelOpts='<option value="">בחר דגם…</option>';
+    if(t.brand&&cat[t.brand]){
+      const groups={};
+      Object.keys(cat[t.brand]).forEach(m=>{ const i=osTiSeries(t.brand,m); (groups[i.label]=groups[i.label]||{i,items:[]}).items.push(m); });
+      Object.keys(groups).sort((a,b)=>groups[a].i.fam-groups[b].i.fam||groups[b].i.num-groups[a].i.num).forEach(lab=>{
+        modelOpts+=`<optgroup label="${escW(lab)}">`+groups[lab].items.sort((a,b)=>osTiVariantRank(a)-osTiVariantRank(b)||a.localeCompare(b))
+          .map(m=>`<option value="${escW(m)}" ${m===t.model?'selected':''}>${escW(m)}</option>`).join('')+'</optgroup>';
+      });
+    }
+    const storages=t.model?Object.keys((cat[t.brand]||{})[t.model]||{}):[];
+    deviceHTML=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
       <div><label class="muted" style="font-size:12px">מותג</label>
-        <input id="ostiBrand" value="${escW(dt.brand||'')}" style="width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--bg);color:var(--txt);margin-top:4px"></div>
+        <select onchange="osTiSet('brand',this.value)" style="${inp}"><option value="">בחר…</option>${brands.map(b=>`<option ${b===t.brand?'selected':''}>${b}</option>`).join('')}</select></div>
       <div><label class="muted" style="font-size:12px">נפח</label>
-        <input id="ostiStorage" value="${escW(dt.storage||'')}" style="width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--bg);color:var(--txt);margin-top:4px"></div>
+        <select onchange="osTiSet('storage',this.value)" ${t.model?'':'disabled'} style="${inp}"><option value="">בחר…</option>${storages.map(s=>`<option ${s===t.storage?'selected':''}>${s}</option>`).join('')}</select></div>
     </div>
     <label class="muted" style="font-size:12px;display:block;margin-top:10px">דגם</label>
-    <input id="ostiModel" value="${escW(dt.model||'')}" style="width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--bg);color:var(--txt);margin-top:4px">
+    <select onchange="osTiSet('model',this.value)" ${t.brand?'':'disabled'} style="${inp}">${modelOpts}</select>`;
+  }
+  // שאלות מצב (תפקוד מוסתר כשהמכשיר לא נדלק — אין מה לבדוק)
+  const condHTML=OSTI_QS.filter(q=>!(q.k==='func'&&t.cond.power==='no')).map(q=>`
+    <div style="margin-top:9px"><span class="muted" style="font-size:12px">${q.q}</span>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">
+        ${q.o.map(([v,l])=>`<button type="button" onclick="osTiCond('${q.k}','${v}')" style="padding:6px 12px;border-radius:99px;font-size:12px;cursor:pointer;font-family:inherit;border:1.5px solid ${t.cond[q.k]===v?'var(--acc,#6366f1)':'var(--line)'};background:${t.cond[q.k]===v?'rgba(99,102,241,.12)':'var(--bg)'};color:var(--txt)">${l}</button>`).join('')}
+      </div></div>`).join('');
+  // הערכה חיה
+  const est=(!t.manual&&cat)?osTiEstimate():null;
+  const condDone=OSTI_QS.every(q=>(q.k==='func'&&t.cond.power==='no')||t.cond[q.k]);
+  let estHTML='';
+  if(est&&condDone){
+    if(t._estAuto!==est.value){ t._estAuto=est.value; t.estVal=String(est.value); }
+    estHTML=`<div style="background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:9px 12px;margin-top:10px;font-size:12px">
+      <b>הערכה: ₪${est.value.toLocaleString()}</b> <span class="muted">· בסיס כמו-חדש ₪${est.base.toLocaleString()}${est.cuts.length?' · '+est.cuts.join(' · '):''}</span></div>`;
+  } else if(!t.manual&&cat){
+    estHTML=`<div class="muted" style="font-size:11.5px;margin-top:10px">בחר דגם, נפח וכל שאלות המצב — ההערכה תחושב אוטומטית</div>`;
+  }
+  document.getElementById('modalRoot').innerHTML=`<div class="overlay" onclick="closeModal()"><div class="modal" style="max-width:460px;max-height:88vh;overflow-y:auto;text-align:right;position:relative" onclick="event.stopPropagation()">
+    <button class="dr-x" style="position:absolute;top:10px;inset-inline-start:10px" onclick="paintWcOrder()">✕</button>
+    <div style="font-weight:800;margin-bottom:12px">🔄 צירוף טרייד-אין</div>
+    ${deviceHTML}
+    ${condHTML}
+    ${estHTML}
     <div style="display:flex;gap:8px;align-items:flex-end;margin-top:10px">
-      <div style="flex:1"><label class="muted" style="font-size:12px">זיכוי משוער (₪)</label>
-        <input id="ostiEst" type="number" value="${dt.est_value||''}" style="width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--bg);color:var(--txt);margin-top:4px"></div>
-      <button class="btn-ghost" style="padding:9px 12px;font-size:12px;white-space:nowrap" onclick="osTradeinEstimate()">💡 הערך אוטומטית</button>
+      <div style="flex:1"><label class="muted" style="font-size:12px">זיכוי משוער (₪)${est&&condDone?' — ניתן לעריכה':''}</label>
+        <input id="ostiEst" type="number" value="${escW(t.estVal||'')}" oninput="S._osTi.estVal=this.value" style="${inp}"></div>
     </div>
-    <div id="ostiEstHint" class="muted" style="font-size:11.5px;margin-top:4px"></div>
     <label class="muted" style="font-size:12px;display:block;margin-top:10px">הערות</label>
-    <textarea id="ostiNotes" rows="2" style="width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--bg);color:var(--txt);margin-top:4px;resize:vertical;font-family:inherit"></textarea>
+    <textarea id="ostiNotes" rows="2" oninput="S._osTi.notes=this.value" style="${inp};resize:vertical;font-family:inherit">${escW(t.notes||'')}</textarea>
+    ${cat?`<label class="ls-check" style="margin-top:8px;font-size:12px"><input type="checkbox" ${t.manual?'checked':''} onchange="S._osTi.manual=this.checked;osTiPaint()"><span class="muted">דגם לא בקטלוג — הזנה ידנית</span></label>`:''}
     <div style="display:flex;gap:8px;margin-top:14px">
       <button class="btn-primary" style="flex:1;padding:10px" onclick="osCreateTradein()">צור רשומה</button>
       <button class="btn-ghost" style="padding:10px 16px" onclick="paintWcOrder()">ביטול</button>
     </div></div></div>`;
 }
-async function osTradeinEstimate(){
-  const g=id=>(document.getElementById(id)||{}).value||'';
-  const q='brand='+encodeURIComponent(g('ostiBrand'))+'&model='+encodeURIComponent(g('ostiModel'))+'&storage='+encodeURIComponent(g('ostiStorage'));
-  const hint=document.getElementById('ostiEstHint');
-  try{ const r=await api('/api/admin/order-services/deductible?'+q,null,30000);
-    const tl=r&&r.total_loss;
-    if(tl&&tl.matched&&tl.secondhand_value){ const e=document.getElementById('ostiEst'); if(e)e.value=tl.secondhand_value; if(hint)hint.textContent='שווי יד-שנייה מהקטלוג: ₪'+tl.secondhand_value; }
-    else if(hint) hint.textContent='דגם לא זוהה בקטלוג — הזן זיכוי ידנית';
-  }catch(e){ if(hint) hint.textContent='ההערכה נכשלה'; }
-}
 async function osCreateTradein(){
-  const d=S._wcoD||{}; const g=id=>(document.getElementById(id)||{}).value||'';
-  const body={order_id:d.id, brand:g('ostiBrand').trim(), model:g('ostiModel').trim(),
-    storage:g('ostiStorage').trim(), est_value:parseFloat(g('ostiEst'))||0, notes:g('ostiNotes').trim()};
-  if(!body.model){ toast('חסר דגם',false); return; }
+  const d=S._wcoD||{}; const t=S._osTi||{};
+  const manual=t.manual||!t.cat;
+  const brand=manual?(t.mBrand||'').trim():t.brand;
+  const model=manual?(t.mModel||'').trim():t.model;
+  const storage=manual?(t.mStorage||'').trim():t.storage;
+  if(!model){ toast('חסר דגם',false); return; }
+  const cond=osTiCondSummary();
+  const notes=[(t.notes||'').trim(), cond?('מצב מוצהר: '+cond):''].filter(Boolean).join(' | ');
+  const body={order_id:d.id, brand, model, storage, est_value:parseFloat(t.estVal)||0, notes};
   showLoading('יוצר רשומה…');
   try{ const r=await api('/api/admin/order-services/tradein/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)},40000);
     hideLoading(); if(r&&r.ok){ toast('רשומת טרייד-אין נוצרה ✓',true); paintWcOrder(); } else toast('היצירה נכשלה',false);
