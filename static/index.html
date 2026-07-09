@@ -7235,15 +7235,49 @@ function gcResultCard(p){
     <span class="btn-ghost">בחר ←</span>
   </div>`;
 }
-function gcOnInput(v){ S.gcQuery=v; S._refocusGc=false; }
+function gcOnInput(v){ S.gcQuery=v; S._refocusGc=false; gcAutoSearch(); }
 function gcClear(){ S.gcQuery=''; S.gcResults=null; S.gcSel=null; S.gcForm=null; renderGreenCare(); }
 async function gcSearch(){
   const q=(S.gcQuery||'').trim(); if(q.length<2) return;
   S.gcSel=null; S.gcForm=null;
   showLoading('מחפש מוצרים באתר…');
-  try{ const d=await api('/api/admin/greencare/lookup?q='+encodeURIComponent(q)); S.gcResults=d.results||[]; }
+  try{
+    let d=await api('/api/admin/greencare/lookup?q='+encodeURIComponent(q));
+    let res=d.results||[];
+    // תיקון פריסת מקלדת עברית→אנגלית ("ןפימק 16"→"iphone 16") — כמו במלאי חי
+    const alt=fixHebrewLayout(q);
+    if(res.length<3 && alt!==q){
+      try{ const d2=await api('/api/admin/greencare/lookup?q='+encodeURIComponent(alt));
+        const seen=new Set(res.map(r=>r.id));
+        (d2.results||[]).forEach(r=>{ if(!seen.has(r.id)) res.push(r); });
+      }catch(e){}
+    }
+    S.gcResults=res;
+  }
   catch(e){ hideLoading(); toast('החיפוש נכשל',false); return; }
   hideLoading(); renderGreenCare();
+}
+let _gcDebT=null;
+function gcAutoSearch(){   // השלמה תוך-כדי-הקלדה (debounce), כמו במלאי חי
+  clearTimeout(_gcDebT);
+  const q=(S.gcQuery||'').trim();
+  if(q.length<3) return;
+  _gcDebT=setTimeout(()=>{ if((S.gcQuery||'').trim()===q) gcSearchQuiet(q); }, 450);
+}
+async function gcSearchQuiet(q){
+  try{
+    let d=await api('/api/admin/greencare/lookup?q='+encodeURIComponent(q));
+    let res=d.results||[];
+    const alt=fixHebrewLayout(q);
+    if(res.length<3 && alt!==q){
+      try{ const d2=await api('/api/admin/greencare/lookup?q='+encodeURIComponent(alt));
+        const seen=new Set(res.map(r=>r.id));
+        (d2.results||[]).forEach(r=>{ if(!seen.has(r.id)) res.push(r); });
+      }catch(e){}
+    }
+    if((S.gcQuery||'').trim()!==q || S.gcSel) return;   // המשתמש המשיך להקליד / כבר בחר
+    S.gcResults=res; S._refocusGc=true; renderGreenCare();
+  }catch(e){}
 }
 async function gcSelect(id){
   showLoading('טוען הגדרות מוצר…');
