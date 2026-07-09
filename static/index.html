@@ -4368,6 +4368,10 @@ const _IPATHS={
   truck:'<rect x="1" y="3" width="15" height="13" rx="1"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>',
   pkgx:'<path d="M21 10V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0"/><path d="m7.5 4.27 9 5.15"/><polyline points="3.29 7 12 12 20.71 7"/><line x1="12" y1="22" x2="12" y2="12"/><path d="m17 13 5 5"/><path d="m22 13-5 5"/>',
   card:'<rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/>',
+  eye:'<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
+  copy:'<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+  printer:'<polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>',
+  globe:'<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>',
 };
 function ico(name, size, fill){
   return `<svg width="${size||17}" height="${size||17}" viewBox="0 0 24 24" fill="${fill?'currentColor':'none'}" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="display:block">${_IPATHS[name]||''}</svg>`;
@@ -5887,8 +5891,8 @@ async function stellrBoxLoad(num){
       <span style="flex:1;min-width:0">
         <b>${escW(r.wc_name||'')}</b> · ₪${Math.round(r.value||0)}
         ${r.status==='issued'||r.status==='sent'?`<br><span id="${cid}" data-pan="${escW(r.pan||'')}" data-pin="${escW(r.pin||'')}" style="direction:ltr;unicode-bidi:embed;font-family:monospace;letter-spacing:.5px">••••••••</span>
-          <button onclick="stellrReveal('${cid}')" style="background:none;border:0;cursor:pointer;font-size:13px" title="הצג/הסתר">👁</button>
-          <button onclick="stellrCopy('${cid}')" style="background:none;border:0;cursor:pointer;font-size:13px" title="העתק קוד">📋</button>`:''}
+          <button onclick="stellrReveal('${cid}')" style="background:none;border:0;cursor:pointer;color:var(--muted);vertical-align:-3px;display:inline-flex" title="הצג/הסתר">${ico('eye',14)}</button>
+          <button onclick="stellrCopy('${cid}')" style="background:none;border:0;cursor:pointer;color:var(--muted);vertical-align:-3px;display:inline-flex" title="העתק קוד">${ico('copy',14)}</button>`:''}
         ${r.status==='error'?`<br><span style="color:#dc2626;font-size:11.5px">${escW(r.error||'')}</span>`:''}
       </span>
     </div>`; };
@@ -5916,7 +5920,7 @@ function stellrReveal(cid){
 function stellrCopy(cid){
   const el=document.getElementById(cid); if(!el) return;
   const t=el.dataset.pan+(el.dataset.pin?' PIN: '+el.dataset.pin:'');
-  navigator.clipboard.writeText(t).then(()=>toast('הקוד הועתק 📋',true)).catch(()=>toast('העתקה נכשלה',false));
+  navigator.clipboard.writeText(t).then(()=>toast('הקוד הועתק ✓',true)).catch(()=>toast('העתקה נכשלה',false));
 }
 
 // ── 🎫 עמוד ניהול הקודים (תפריט צד) — כל הקודים שהונפקו: מי/מתי/כמה/סניף/יעד + שחזור ──
@@ -5928,10 +5932,10 @@ async function loadStellrCodes(spinner){
   if(S.view==='stellr') renderStellrCodes();
 }
 function stellrPgBranch(r){
-  if(r.branch==='אתר') return 'אתר 🌐';
+  if(r.branch==='אתר') return 'אתר';
   if(r.branch&&/^\d+$/.test(String(r.branch))) return lsBranchName(Number(r.branch));
   const ok=String(r.order_number||'');
-  if(/^\d+$/.test(ok)) return 'אתר 🌐';
+  if(/^\d+$/.test(ok)) return 'אתר';
   const m=ok.match(/^(?:pos|req)-(\d+)-/); return m?lsBranchName(Number(m[1])):'—';
 }
 function stellrPgRef(r){
@@ -5945,13 +5949,13 @@ function renderStellrCodes(){
   const rows=S.stellrCodesData||[];
   const q=(S.stellrPgQ||'').toLowerCase();
   const flt=q?rows.filter(r=>JSON.stringify([r.wc_name,r.order_number,r.actor,r.phone,r.branch]).toLowerCase().includes(q)):rows;
-  const stx=r=>({issued:['הונפק','#d97706'],sent:['נשלח ✓','#16a34a'],dry:['dry-run 💡','#6b7280'],error:['שגיאה ⚠','#dc2626']}[r.status]||[r.status,'var(--muted)']);
+  const stx=r=>({issued:['הונפק','#d97706'],sent:['נשלח ✓','#16a34a'],dry:['dry-run','#6b7280'],error:['שגיאה','#dc2626']}[r.status]||[r.status,'var(--muted)']);
   const fmt=ts=>ts?new Date(ts*1000).toLocaleString('he-IL',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
   const P='#7c3aed';
   const row=r=>{
     const [sl,sc]=stx(r);
     const cid='spg'+r.id;
-    const dest=r.status==='sent'?('💬 '+(r.phone||'')):(r.mode==='pos'&&r.status==='issued'?'🖨 הדפסה':(r.phone?'💬 '+r.phone:'—'));
+    const dest=r.status==='sent'?('וואטסאפ '+(r.phone||'')):(r.mode==='pos'&&r.status==='issued'?'הדפסה':(r.phone?'וואטסאפ '+r.phone:'—'));
     const hasCode=(r.status==='issued'||r.status==='sent');
     return `<div class="gcard" style="padding:13px 16px;margin-bottom:10px;min-width:0">
       <div style="display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;font-size:13px">
@@ -5967,11 +5971,11 @@ function renderStellrCodes(){
       </div>
       ${hasCode?`<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px">
         <span id="${cid}" data-pan="${escW(r.pan||'')}" data-pin="${escW(r.pin||'')}" style="direction:ltr;unicode-bidi:embed;font-family:monospace;font-size:13px;letter-spacing:.5px;background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:4px 10px">••••••••••••</span>
-        <button onclick="stellrReveal('${cid}')" class="btn-ghost" style="padding:4px 9px;font-size:13px" title="הצג/הסתר">👁</button>
-        <button onclick="stellrCopy('${cid}')" class="btn-ghost" style="padding:4px 9px;font-size:13px" title="העתק">📋</button>
+        <button onclick="stellrReveal('${cid}')" class="btn-ghost" style="padding:5px 9px;display:inline-flex;align-items:center" title="הצג/הסתר">${ico('eye',15)}</button>
+        <button onclick="stellrCopy('${cid}')" class="btn-ghost" style="padding:5px 9px;display:inline-flex;align-items:center" title="העתק">${ico('copy',15)}</button>
         <span style="flex:1"></span>
-        <button onclick="stellrPageResend(${r.id},'wa')" class="btn-ghost" style="padding:5px 11px;font-size:12.5px;color:#16a34a;border-color:#16a34a55">💬 שלח שוב</button>
-        <button onclick="stellrPageResend(${r.id},'print')" class="btn-ghost" style="padding:5px 11px;font-size:12.5px;color:#2563eb;border-color:#2563eb55">🖨 הדפס</button>
+        <button onclick="stellrPageResend(${r.id},'wa')" class="btn-ghost" style="padding:5px 11px;font-size:12.5px;color:#16a34a;border-color:#16a34a55;display:inline-flex;align-items:center;gap:6px">${ico('chat',14)} שלח שוב</button>
+        <button onclick="stellrPageResend(${r.id},'print')" class="btn-ghost" style="padding:5px 11px;font-size:12.5px;color:#2563eb;border-color:#2563eb55;display:inline-flex;align-items:center;gap:6px">${ico('printer',14)} הדפס</button>
       </div>`:(r.error?`<div style="color:#dc2626;font-size:12px;margin-top:6px">${escW(r.error)}</div>`:'')}
     </div>`; };
   document.getElementById('app').innerHTML=`<div class="wrap" style="max-width:860px">
