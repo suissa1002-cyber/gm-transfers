@@ -1298,6 +1298,7 @@ function renderDrawer(){
     <div class="dr-item ${act('crm')}" onclick="hubGoCrm()"><span>${ico('user',16)}</span><span>מוקד שיחות · CRM${lock}</span></div>
     <div class="dr-sec">מכירות</div>
     <div class="dr-item" onclick="toggleDrawer(false);if(ensureAdmin(payQuickOpen))payQuickOpen()"><span>${ico('receipt',16)}</span><span>קישור תשלום מהיר${lock}</span></div>
+    <div class="dr-item ${S.view==='admin'&&S.adminTab==='greencare'?'active':''}" onclick="toggleDrawer(false);if(ensureAdmin(()=>{hubGo('admin');setAdminTab('greencare');})){hubGo('admin');setAdminTab('greencare');}"><span>${ico('shield',16)}</span><span>Green Care${lock}</span></div>
     <div class="dr-sec">Hub</div>
     <div class="dr-item ${S.view==='tasks'?'active':''}" onclick="hubGo('tasks')"><span>${ico('list',16)}</span><span>משימות סוכנים${lock}</span></div>
     <div class="dr-item ${S.view==='sentinel'?'active':''}" onclick="hubGo('sentinel')"><span>${ico('shield',16)}</span><span>סטטוס Sentinel${lock}</span></div>
