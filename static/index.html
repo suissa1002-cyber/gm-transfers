@@ -6019,7 +6019,8 @@ async function stellrIssue(num,opts){
       body:JSON.stringify({order:String(num),force:opts.force?1:0})},90000);
     if(r.ok===false&&r.error) toast(r.error,false);
     else if(r.errors&&r.errors.length) toast('הנפקה חלקית — '+r.errors.join('; '),false);
-    else toast('הונפקו '+(r.issued||0)+' קודים ✓',true);
+    else if(r.sent) toast('הונפקו '+(r.issued||0)+' קודים ונשלחו ללקוח בוואטסאפ ✓',true);
+    else toast('הונפקו '+(r.issued||0)+' קודים ✓ — לא נשלח ללקוח (שלח מעמוד הקודים)',true);
   }catch(e){ toast('שגיאה בהנפקה',false); }
   stellrBoxLoad(num);
 }

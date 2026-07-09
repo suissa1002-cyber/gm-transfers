@@ -6703,10 +6703,37 @@ def _stellr_issue_order(num: str, dry: bool, actor: str, force: bool = False) ->
                                error=f"HTTP {res.get('http')}: {res.get('error')}")
             errors.append(f"{p['wc_name']}: HTTP {res.get('http')}")
             break
+    # שליחה אוטומטית ללקוח מיד אחרי ההנפקה (אסי, 09/07): הודעה נקייה לכל קוד לטלפון
+    # שבהזמנה (תבנית gm_code_delivery — עוברת גם מחוץ לחלון 24ש). כשל שליחה אינו מפיל
+    # את ההנפקה — הקוד שמור וניתן לשלוח שוב מעמוד הקודים.
+    sent_n, cust_phone = 0, ""
     if issued and not dry:
+        import re as _re2
+        import time as _t2
+        cust_phone = _re2.sub(r"\D", "", str((o.get("billing") or {}).get("phone") or ""))
+        if cust_phone.startswith("0"):
+            cust_phone = "972" + cust_phone[1:]
+        if len(cust_phone) >= 11:
+            import wa
+            for c in db.stellr_codes_for_order(num):
+                if c.get("status") != "issued":
+                    continue
+                _code, _pin = _stellr_display(c.get("pan"), c.get("pin"))
+                try:
+                    r = wa.send_code(cust_phone, c.get("wc_name") or "קוד דיגיטלי",
+                                     _code + (f" · PIN: {_pin}" if _pin else ""))
+                    if r.get("sent"):
+                        db.stellr_code_update(c["id"], status="sent",
+                                              sent_at=int(_t2.time()), phone=cust_phone)
+                        sent_n += 1
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("stellr order %s: auto-send failed: %s", num, e)
         try:
+            _send_note = (f" · נשלחו {sent_n} ללקוח 💬" if sent_n else
+                          " · ⚠️ לא נשלח ללקוח (אין טלפון/שליחה נכשלה) — שלח מעמוד הקודים")
             _tg_admin(f"🎫 <b>Stellr — הונפקו {len(issued)} קודים</b>\n"
-                      f"הזמנה #{num} · {actor} · {'UAT' if stellr.is_uat() else 'PRODUCTION'}")
+                      f"הזמנה #{num} · {actor}{_send_note} · "
+                      f"{'UAT' if stellr.is_uat() else 'PRODUCTION'}")
         except Exception:  # noqa: BLE001
             pass
     if errors:
@@ -6716,6 +6743,7 @@ def _stellr_issue_order(num: str, dry: bool, actor: str, force: bool = False) ->
         except Exception:  # noqa: BLE001
             pass
     return {"ok": not errors, "order": num, "dry": dry, "issued": len(issued),
+            "sent": sent_n, "phone": cust_phone,
             "skipped_existing": skipped, "errors": errors,
             "codes": db.stellr_codes_for_order(num)}
 
