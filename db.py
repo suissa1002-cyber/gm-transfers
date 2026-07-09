@@ -734,6 +734,15 @@ _SCHEMA = [
         created_by  TEXT
     )
     """,
+    # מתגי שירות גלובליים (kv) — מקור-אמת לדגלי on/off שהאתר החי קורא
+    """
+    CREATE TABLE IF NOT EXISTS app_settings (
+        key        TEXT PRIMARY KEY,
+        value      TEXT,
+        updated_at TEXT,
+        updated_by TEXT
+    )
+    """,
 ]
 
 
@@ -3149,6 +3158,25 @@ def stellr_codes_list(limit: int = 100) -> list:
         cur = c.cursor()
         cur.execute(_q("SELECT * FROM stellr_codes ORDER BY id DESC LIMIT ?"), (int(limit),))
         return [dict(r) for r in cur.fetchall()]
+
+
+# ── הגדרות אפליקציה (kv) — מתגי שירות גלובליים ──
+def setting_get(key, default=None):
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT value FROM app_settings WHERE key = ?"), (str(key),))
+        r = cur.fetchone()
+        return (dict(r)["value"] if r else default)
+
+
+def setting_set(key, value, by=""):
+    with _conn() as c:
+        c.cursor().execute(_q("""
+            INSERT INTO app_settings (key, value, updated_at, updated_by)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(key) DO UPDATE SET value=excluded.value,
+                updated_at=excluded.updated_at, updated_by=excluded.updated_by
+        """), (str(key), str(value), now_iso(), by or ""))
 
 
 # ── Green Care — דריסת הגדרות פר מוצר-הורה ──

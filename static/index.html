@@ -7198,10 +7198,37 @@ async function wcoAddNote(oid){
   }catch(e){ toast('הוספת ההערה נכשלה',false); }
 }
 // ── Green Care — ניהול הגנה מורחבת פר-מוצר ──
+function svcSwitchHTML(){
+  const f=S.svcFlags;
+  const row=(svc,label,on)=>`<div style="display:flex;align-items:center;gap:10px">
+      <button type="button" onclick="svcToggle('${svc}',${!on})" title="הדלק/כבה באתר" style="cursor:pointer;border:none;background:none;padding:0">
+        <span style="display:inline-block;width:44px;height:25px;border-radius:99px;background:${on?'var(--accent,#149c40)':'var(--line,#ccc)'};position:relative;transition:background .15s;vertical-align:middle">
+          <span style="position:absolute;top:3px;${on?'left:3px':'right:3px'};width:19px;height:19px;border-radius:50%;background:#fff;transition:all .15s"></span></span>
+      </button>
+      <span style="font-weight:700;font-size:13.5px">${label}</span>
+      <span class="muted" style="font-size:12px">${on?'פעיל באתר':'כבוי — מוסתר באתר'}</span>
+    </div>`;
+  if(!f) return `<div class="gcard" style="padding:12px 16px;margin-bottom:12px"><span class="muted" style="font-size:12.5px">טוען מתגי שירות…</span></div>`;
+  return `<div class="gcard" style="padding:14px 16px;margin-bottom:14px;display:flex;gap:26px;flex-wrap:wrap;align-items:center">
+    <span style="font-weight:800;font-size:13px;color:var(--muted)">מתגי שירות באתר</span>
+    ${row('greencare','Green Care',f.greencare)}
+    ${row('tradein','טרייד-אין',f.tradein)}
+  </div>`;
+}
+async function svcLoadFlags(){ try{ S.svcFlags=await api('/api/admin/service-flags'); }catch(e){ S.svcFlags={tradein:false,greencare:false}; } if(S.view==='admin'&&S.adminTab==='greencare') renderGreenCare(); }
+async function svcToggle(svc,enabled){
+  showLoading(enabled?'מדליק…':'מכבה…');
+  try{ await api('/api/admin/service-flags',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({service:svc,enabled})});
+    S.svcFlags=S.svcFlags||{}; S.svcFlags[svc]=enabled; hideLoading();
+    toast(enabled?'השירות הופעל באתר ✓':'השירות כובה — הווידג׳טים מוסתרים',true); renderGreenCare();
+  }catch(e){ hideLoading(); toast('העדכון נכשל',false); }
+}
 function renderGreenCare(){
   const app=document.getElementById('app');
+  if(S.svcFlags===undefined){ S.svcFlags=null; svcLoadFlags(); }
   app.innerHTML=`<h1 class="title" style="display:flex;align-items:center;gap:8px">${ico('shield',19)} Green Care — הגנה מורחבת</h1>
     ${adminTabsHTML()}
+    ${svcSwitchHTML()}
     <div class="muted" style="font-size:13px;margin-bottom:12px">חיפוש מוצר-הורה באתר → הפעלת Green Care, בחירת מסלולים ומחירים. ההגדרה חלה על כל הווריאציות של המוצר.</div>
     <div class="rebal-bar" style="margin-bottom:12px">
       <span class="ls-searchwrap">

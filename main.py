@@ -2712,6 +2712,57 @@ def admin_tradein_catalog(x_admin_key: Optional[str] = Header(None),
                         headers={"Cache-Control": "no-store"})
 
 
+# ── מתגי שירות גלובליים (טרייד-אין / Green Care) ──
+# מקור-האמת ל-on/off של הווידג'טים באתר החי. ברירת מחדל: כבוי (בטוח —
+# התוסף עולה כבוי ומדליקים כאן ידנית). האתר קורא את /api/public/service-flags.
+def _service_flag(key: str) -> bool:
+    return str(db.setting_get(key, "0")) == "1"
+
+
+@app.get("/api/public/service-flags")
+def public_service_flags():
+    """דגלי הפעלת שירותים — ציבורי, נקרא ע"י תוסף greenmobile-core באתר
+    (עם cache של 5 דק'). כיבוי כאן = הסתרת הווידג'טים באתר."""
+    return JSONResponse(
+        {"tradein": _service_flag("svc_tradein_live"),
+         "greencare": _service_flag("svc_greencare_live")},
+        headers={"Cache-Control": "public, max-age=60"})
+
+
+@app.get("/api/admin/service-flags")
+def admin_service_flags(x_admin_key: Optional[str] = Header(None),
+                        x_device_token: Optional[str] = Header(None)):
+    _require_admin_or_device(x_admin_key, x_device_token)
+    return JSONResponse(
+        {"tradein": _service_flag("svc_tradein_live"),
+         "greencare": _service_flag("svc_greencare_live"),
+         "tradein_at": db.setting_get("svc_tradein_live_at"),
+         "greencare_at": db.setting_get("svc_greencare_live_at")},
+        headers={"Cache-Control": "no-store"})
+
+
+class ServiceFlagIn(BaseModel):
+    service: str          # 'tradein' | 'greencare'
+    enabled: bool
+
+
+@app.post("/api/admin/service-flags")
+def admin_service_flags_set(body: ServiceFlagIn,
+                            x_admin_key: Optional[str] = Header(None),
+                            x_device_token: Optional[str] = Header(None)):
+    """הדלקה/כיבוי גלובלי של שירות. שומר את ההגדרות פר-מוצר — רק מכבה/מדליק
+    את התצוגה באתר. (כיבוי לא מוחק דריסות/פוליסות.)"""
+    actor = _actor_name(x_admin_key, x_device_token)
+    _require_admin_or_device(x_admin_key, x_device_token)
+    if body.service not in ("tradein", "greencare"):
+        raise HTTPException(400, "unknown service")
+    key = f"svc_{body.service}_live"
+    db.setting_set(key, "1" if body.enabled else "0", actor)
+    db.setting_set(key + "_at", now_iso(), actor)
+    logger.info("service-flag %s -> %s by %s", body.service, body.enabled, actor)
+    return {"ok": True, "service": body.service, "enabled": body.enabled}
+
+
 # ── אבטחת מכשירים (device allowlist) ───────────────────────────────
 # כל דפדפן מזדהה ב-X-Device-Token. מכשיר חדש = ממתין לאישור אסי בטלגרם
 # (כפתורי אשר/דחה כקישורים חתומים). מכשיר קיים עם סניף שמור = אישור אוטומטי.
