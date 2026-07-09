@@ -685,6 +685,55 @@ _SCHEMA = [
         updated_by    TEXT
     )
     """,
+    # ── שירות-לקוח בתוך הזמנה: פוליסת Green Care שנמכרה ללקוח מסוים ──
+    # plan: 'gc' (הרחבת שנה שנייה) / 'gcp' (הגנה מלאה 24ח'). start/end = תוקף.
+    f"""
+    CREATE TABLE IF NOT EXISTS greencare_policies (
+        id             {_PK},
+        order_id       INTEGER,
+        customer_name  TEXT,
+        customer_phone TEXT,
+        wc_product_id  INTEGER,
+        device_label   TEXT,
+        plan           TEXT,
+        price_paid     REAL,
+        tl_deductible  REAL,
+        start_date     TEXT,
+        end_date       TEXT,
+        status         TEXT DEFAULT 'active',
+        created_at     TEXT,
+        created_by     TEXT
+    )
+    """,
+    # ── מימושי Green Care: component / screen / total_loss / repair ──
+    f"""
+    CREATE TABLE IF NOT EXISTS greencare_claims (
+        id          {_PK},
+        policy_id   INTEGER,
+        claim_type  TEXT,
+        claim_date  TEXT,
+        note        TEXT,
+        deductible  REAL,
+        created_by  TEXT
+    )
+    """,
+    # ── רשומת טרייד-אין פר-הזמנה (מכשיר ישן שנמסר תמורת זיכוי) ──
+    f"""
+    CREATE TABLE IF NOT EXISTS tradein_records (
+        id          {_PK},
+        order_id    INTEGER,
+        brand       TEXT,
+        model       TEXT,
+        storage     TEXT,
+        est_value   REAL,
+        final_value REAL,
+        status      TEXT DEFAULT 'pending_pickup',
+        notes       TEXT,
+        created_at  TEXT,
+        updated_at  TEXT,
+        created_by  TEXT
+    )
+    """,
 ]
 
 
@@ -3138,6 +3187,140 @@ def greencare_delete(wc_product_id) -> int:
         cur.execute(_q("DELETE FROM greencare_overrides WHERE wc_product_id = ?"),
                     (int(wc_product_id),))
         return cur.rowcount
+
+
+# ── Green Care — פוליסות פר-לקוח + מימושים ─────────────────────────────
+def gc_policy_create(order_id, customer_name, customer_phone, wc_product_id,
+                     device_label, plan, price_paid, tl_deductible,
+                     start_date, end_date, created_by="") -> int:
+    """יוצר פוליסת Green Care ומחזיר את ה-id."""
+    args = (int(order_id) if order_id else None, customer_name or "",
+            customer_phone or "", int(wc_product_id) if wc_product_id else None,
+            device_label or "", plan or "gc",
+            float(price_paid or 0), float(tl_deductible or 0),
+            start_date or "", end_date or "", "active", now_iso(), created_by or "")
+    cols = ("order_id, customer_name, customer_phone, wc_product_id, device_label, "
+            "plan, price_paid, tl_deductible, start_date, end_date, status, "
+            "created_at, created_by")
+    with _conn() as c:
+        cur = c.cursor()
+        if _USE_PG:
+            cur.execute(_q(f"INSERT INTO greencare_policies ({cols}) "
+                           "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id"), args)
+            row = cur.fetchone()
+            return int(row["id"] if row else 0)
+        cur.execute(_q(f"INSERT INTO greencare_policies ({cols}) "
+                       "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)"), args)
+        return int(cur.lastrowid or 0)
+
+
+def gc_policy_get(policy_id) -> dict:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM greencare_policies WHERE id = ?"), (int(policy_id),))
+        r = cur.fetchone()
+        return dict(r) if r else {}
+
+
+def gc_policy_by_order(order_id) -> dict:
+    """הפוליסה האחרונה שנוצרה להזמנה (או {} אם אין)."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM greencare_policies WHERE order_id = ? "
+                       "ORDER BY id DESC LIMIT 1"), (int(order_id),))
+        r = cur.fetchone()
+        return dict(r) if r else {}
+
+
+def gc_policy_set_status(policy_id, status) -> dict:
+    with _conn() as c:
+        c.cursor().execute(_q("UPDATE greencare_policies SET status = ? WHERE id = ?"),
+                           (str(status), int(policy_id)))
+    return gc_policy_get(policy_id)
+
+
+def gc_policy_set_tl_deductible(policy_id, tl_deductible) -> dict:
+    with _conn() as c:
+        c.cursor().execute(_q("UPDATE greencare_policies SET tl_deductible = ? WHERE id = ?"),
+                           (float(tl_deductible or 0), int(policy_id)))
+    return gc_policy_get(policy_id)
+
+
+def gc_claims_list(policy_id) -> list:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM greencare_claims WHERE policy_id = ? ORDER BY id"),
+                    (int(policy_id),))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def gc_claim_add(policy_id, claim_type, claim_date, note, deductible, created_by="") -> int:
+    args = (int(policy_id), claim_type or "", claim_date or now_iso(),
+            note or "", float(deductible or 0), created_by or "")
+    with _conn() as c:
+        cur = c.cursor()
+        if _USE_PG:
+            cur.execute(_q("INSERT INTO greencare_claims (policy_id, claim_type, claim_date, "
+                           "note, deductible, created_by) VALUES (?,?,?,?,?,?) RETURNING id"), args)
+            row = cur.fetchone()
+            return int(row["id"] if row else 0)
+        cur.execute(_q("INSERT INTO greencare_claims (policy_id, claim_type, claim_date, "
+                       "note, deductible, created_by) VALUES (?,?,?,?,?,?)"), args)
+        return int(cur.lastrowid or 0)
+
+
+# ── Trade-In — רשומת מכשיר ישן פר-הזמנה ────────────────────────────────
+def tradein_create(order_id, brand, model, storage, est_value,
+                   notes="", created_by="") -> int:
+    args = (int(order_id) if order_id else None, brand or "", model or "",
+            storage or "", float(est_value or 0), None, "pending_pickup",
+            notes or "", now_iso(), now_iso(), created_by or "")
+    cols = ("order_id, brand, model, storage, est_value, final_value, status, "
+            "notes, created_at, updated_at, created_by")
+    with _conn() as c:
+        cur = c.cursor()
+        if _USE_PG:
+            cur.execute(_q(f"INSERT INTO tradein_records ({cols}) "
+                           "VALUES (?,?,?,?,?,?,?,?,?,?,?) RETURNING id"), args)
+            row = cur.fetchone()
+            return int(row["id"] if row else 0)
+        cur.execute(_q(f"INSERT INTO tradein_records ({cols}) "
+                       "VALUES (?,?,?,?,?,?,?,?,?,?,?)"), args)
+        return int(cur.lastrowid or 0)
+
+
+def tradein_get(rec_id) -> dict:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM tradein_records WHERE id = ?"), (int(rec_id),))
+        r = cur.fetchone()
+        return dict(r) if r else {}
+
+
+def tradein_by_order(order_id) -> dict:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM tradein_records WHERE order_id = ? "
+                       "ORDER BY id DESC LIMIT 1"), (int(order_id),))
+        r = cur.fetchone()
+        return dict(r) if r else {}
+
+
+def tradein_set_status(rec_id, status, final_value=None, note=None) -> dict:
+    """מקדם סטטוס טרייד-אין. final_value/note אופציונליים (note מתווסף בסוגריים)."""
+    rec = tradein_get(rec_id)
+    if not rec:
+        return {}
+    notes = rec.get("notes") or ""
+    if note:
+        stamp = now_iso()[:16].replace("T", " ")
+        notes = (notes + "\n" if notes else "") + f"[{stamp}] {note}"
+    fv = rec.get("final_value") if final_value is None else float(final_value)
+    with _conn() as c:
+        c.cursor().execute(_q("UPDATE tradein_records SET status = ?, final_value = ?, "
+                              "notes = ?, updated_at = ? WHERE id = ?"),
+                           (str(status), fv, notes, now_iso(), int(rec_id)))
+    return tradein_get(rec_id)
 
 
 def wa_msg_get(wamid: str):

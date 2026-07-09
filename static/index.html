@@ -6566,8 +6566,279 @@ function paintWcOrder(){
     ${(d.notes||[]).length?`<details style="margin-top:8px"><summary class="muted" style="cursor:pointer;font-size:13px">הערות הזמנה (${d.notes.length})</summary>
       ${d.notes.map(n=>`<div class="wa-note" style="margin-top:5px;font-size:12px">${escW(n.note)}<div class="by"><span>${fmtD(n.date)}${n.customer?' · נשלח ללקוח':''}</span></div></div>`).join('')}</details>`:''}
     <div id="stellrBox" style="margin-top:12px"></div>${(function(){ setTimeout(()=>stellrBoxLoad(d.number),0); return ''; })()}
+    <div id="orderServicesBox" style="margin-top:12px"></div>${(function(){ setTimeout(()=>orderServicesLoad(d),0); return ''; })()}
     ${actions}
   </div></div>`;
+}
+// ── שירותים בתוך הזמנה: Green Care policy + Trade-In ──────────────────
+const OS_TI_STEPS=[['pending_pickup','ממתין לאיסוף'],['received','התקבל'],['inspected','נבדק'],['credited','זוכה']];
+const OS_TI_LABEL={pending_pickup:'ממתין לאיסוף',received:'התקבל',inspected:'נבדק',credited:'זוכה',returned:'הוחזר ללקוח'};
+const OS_CLAIM_LABEL={component:'שבר רכיב',screen:'החלפת מסך',total_loss:'אובדן מוחלט',repair:'תיקון אחריות'};
+async function orderServicesLoad(d){
+  const box=document.getElementById('orderServicesBox'); if(!box) return;
+  box.innerHTML='<div class="muted" style="font-size:12.5px">טוען שירותים…</div>';
+  let data=null;
+  try{ data=await api('/api/admin/order-services/'+d.id,null,45000); }catch(e){}
+  if(!data){ box.innerHTML=''; return; }
+  S._osD=data;                       // נשמר לדיאלוגים (מימוש/צירוף) בלי טעינה חוזרת
+  box.innerHTML=osRenderHTML(data,d);
+}
+function osChip(txt,col){ return `<span class="ord-st" style="color:${col};border-color:${col}55;background:${col}14;display:inline-flex;align-items:center;gap:5px;font-size:12px">${txt}</span>`; }
+function osCounter(label,used,limit,col){
+  const pct=limit?Math.min(100,Math.round(used/limit*100)):0;
+  const bar=limit?`<div style="height:5px;border-radius:4px;background:var(--line);overflow:hidden;margin-top:4px"><div style="height:100%;width:${pct}%;background:${col}"></div></div>`:'';
+  return `<div style="flex:1;min-width:120px;background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:8px 10px">
+    <div style="font-size:11.5px;color:var(--muted)">${label}</div>
+    <div style="font-weight:800;font-size:14px">${used}${limit?` / ${limit}`:' <span style="font-size:11px;font-weight:500;color:var(--muted)">(ללא הגבלה)</span>'}</div>${bar}</div>`;
+}
+function osRenderHTML(data,d){
+  const gc=data.greencare||{}, pol=gc.policy, det=data.detected||{}, ti=(data.tradein||{}).record;
+  let html=`<div style="border-top:1px solid var(--line);padding-top:14px;margin-top:2px">
+    <div style="display:flex;align-items:center;gap:7px;font-weight:800;font-size:14.5px;margin-bottom:10px">${ico('shield',16)} שירותי לקוח בהזמנה</div>`;
+  // ── Green Care ──
+  if(pol){
+    html+=osGreenCareBox(gc,d);
+  }else{
+    const on=det.greencare&&det.greencare.detected;
+    html+=`<div style="background:var(--card2);border:1px dashed var(--line);border-radius:12px;padding:12px 14px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+      <span class="muted" style="font-size:13px">${on?'🛡️ זוהתה רכישת Green Care בהזמנה — צרף פוליסה':'אין פוליסת Green Care להזמנה זו'}</span>
+      <button class="btn-ghost" style="padding:7px 13px;font-size:12.5px;border-color:#16a34a;color:#16a34a" onclick="osAttachGreenCare()">➕ צרף Green Care</button></div>`;
+  }
+  // ── Trade-In ──
+  if(ti){
+    html+=osTradeinBox(ti);
+  }else{
+    const on=det.tradein&&det.tradein.detected;
+    html+=`<div style="background:var(--card2);border:1px dashed var(--line);border-radius:12px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+      <span class="muted" style="font-size:13px">${on?'🔄 זוהה טרייד-אין בהזמנה — צרף רשומה':'אין טרייד-אין להזמנה זו'}</span>
+      <button class="btn-ghost" style="padding:7px 13px;font-size:12.5px;border-color:#2563eb;color:#2563eb" onclick="osAttachTradein()">➕ צרף טרייד-אין</button></div>`;
+  }
+  html+=`</div>`;
+  return html;
+}
+function osGreenCareBox(gc,d){
+  const p=gc.policy, u=gc.usage||{}, ded=gc.deductibles||{};
+  const fmt=v=>'₪'+Number(v||0).toLocaleString('he-IL');
+  const stCol={active:'#16a34a',pending:'#ca8a04',expired:'#6b7280',cancelled:'#dc2626'};
+  const stTxt={active:'פעילה',pending:'טרם החלה',expired:'פגה',cancelled:'בוטלה'};
+  const sn=p.status_now||'active';
+  const dstr=t=>{const x=new Date(t);return isNaN(x)?(t||'—'):x.toLocaleDateString('he-IL');};
+  const cn=u.component||{}, sc=u.screen||{}, tl=u.total_loss||{}, rp=u.repair||{};
+  let counters=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0">
+    ${osCounter('שברי רכיבים',cn.used||0,cn.limit||4,'#16a34a')}
+    ${osCounter('החלפת מסך',sc.used||0,sc.limit||1,'#2563eb')}
+    ${p.plan==='gcp'?osCounter('אובדן מוחלט',tl.used||0,tl.limit||1,'#7c3aed'):''}
+    ${osCounter('תיקוני אחריות',rp.used||0,null,'#0d9488')}</div>`;
+  // שורות השתתפות עצמית עדכנית
+  let dedLines='';
+  const scr=ded.screen||{};
+  if(scr.deductible){
+    dedLines+=`<div class="muted" style="font-size:12.5px">🔧 השתתפות עצמית מסך כרגע: <b style="color:var(--txt)">${fmt(scr.deductible)}</b> (לפי מחיר תיקון ${fmt(scr.repair_price)}${scr.display?` · ${escW(scr.display)}`:''})</div>`;
+  }else if(scr.models&&scr.models.length){
+    dedLines+=`<div class="muted" style="font-size:12.5px">🔧 לא זוהה דגם למחירון המסך — בחר בעת רישום מימוש</div>`;
+  }
+  if(p.plan==='gcp'&&ded.total_loss){
+    const t=ded.total_loss;
+    dedLines+=`<div class="muted" style="font-size:12.5px">📉 שווי יד-שנייה עדכני: <b style="color:var(--txt)">${fmt(t.secondhand_value)}</b> · השתתפות אובדן: <b style="color:var(--txt)">${fmt(t.deductible)}</b>${t.matched?'':' <span style="color:#ca8a04">(דגם לא זוהה בקטלוג)</span>'}</div>`;
+  }
+  const claims=(gc.claims||[]);
+  const claimRows=claims.length?`<details style="margin-top:8px"><summary class="muted" style="cursor:pointer;font-size:12.5px">היסטוריית מימושים (${claims.length})</summary>
+    ${claims.map(c=>`<div class="wa-note" style="margin-top:5px;font-size:12px">${OS_CLAIM_LABEL[c.claim_type]||c.claim_type}${c.deductible?` · השתתפות ${fmt(c.deductible)}`:''}${c.note?` — ${escW(c.note)}`:''}<div class="by"><span>${dstr(c.claim_date)}${c.created_by?' · '+escW(c.created_by):''}</span></div></div>`).join('')}</details>`:'';
+  return `<div style="border:1px solid #16a34a44;border-radius:14px;padding:14px 16px;margin-bottom:10px;background:#16a34a08">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap">
+      <div><div style="font-weight:800;font-size:14px;display:flex;align-items:center;gap:6px">🛡️ ${escW(p.plan_label||'')}</div>
+        <div class="muted" style="font-size:12px;margin-top:2px">${escW(p.plan_subtitle||'')}</div></div>
+      ${osChip(stTxt[sn]||sn,stCol[sn]||'#6b7280')}</div>
+    <div class="muted" style="font-size:12.5px;margin-top:6px">${escW(p.device_label||'')}${p.price_paid?` · שולם ${fmt(p.price_paid)}`:''}</div>
+    <div class="muted" style="font-size:12.5px">תוקף: ${dstr(p.start_date)} — ${dstr(p.end_date)}</div>
+    ${counters}${dedLines}${claimRows}
+    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+      <button class="btn-primary" style="padding:8px 15px;font-size:13px" onclick="osClaimDialog(${p.id})">➕ רשום מימוש</button>
+      ${sn==='cancelled'
+        ?`<button class="btn-ghost" style="padding:8px 13px;font-size:12.5px;border-color:#16a34a;color:#16a34a" onclick="osPolicyStatus(${p.id},'active')">הפעל מחדש</button>`
+        :`<button class="btn-ghost" style="padding:8px 13px;font-size:12.5px;border-color:#dc2626;color:#dc2626" onclick="osPolicyStatus(${p.id},'cancelled')">בטל פוליסה</button>`}
+    </div></div>`;
+}
+function osTradeinBox(ti){
+  const fmt=v=>'₪'+Number(v||0).toLocaleString('he-IL');
+  const cur=ti.status||'pending_pickup';
+  const isEnd=(cur==='credited'||cur==='returned');
+  const idx=OS_TI_STEPS.findIndex(s=>s[0]===cur);
+  const stepper=`<div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin:10px 0">
+    ${OS_TI_STEPS.map((s,i)=>{const done=idx>=i&&cur!=='returned';const col=cur==='returned'?'#6b7280':(done?'#2563eb':'var(--line)');
+      return `<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:50%;background:${col};flex:none"></span><span style="font-size:11.5px;color:${done?'var(--txt)':'var(--muted)'}">${s[1]}</span>${i<OS_TI_STEPS.length-1?`<span style="width:14px;height:1.5px;background:var(--line)"></span>`:''}</span>`;}).join('')}
+    ${cur==='returned'?osChip('הוחזר ללקוח','#dc2626'):''}</div>`;
+  // כפתורי קידום סטטוס
+  let acts='';
+  if(cur==='pending_pickup') acts=`<button class="btn-ghost" style="padding:7px 13px;font-size:12.5px" onclick="osTradeinAdvance(${ti.id},'received')">✓ סמן כהתקבל</button>`;
+  else if(cur==='received') acts=`<button class="btn-ghost" style="padding:7px 13px;font-size:12.5px" onclick="osTradeinAdvance(${ti.id},'inspected')">🔍 סמן כנבדק</button>`;
+  else if(cur==='inspected') acts=`<button class="btn-ghost" style="padding:7px 13px;font-size:12.5px;border-color:#16a34a;color:#16a34a" onclick="osTradeinCredit(${ti.id})">💳 זכה את הלקוח</button>
+      <button class="btn-ghost" style="padding:7px 13px;font-size:12.5px;border-color:#dc2626;color:#dc2626" onclick="osTradeinAdvance(${ti.id},'returned')">↩️ החזר ללקוח</button>`;
+  const dev=[ti.brand,ti.model,ti.storage].filter(Boolean).join(' ');
+  return `<div style="border:1px solid #2563eb44;border-radius:14px;padding:14px 16px;background:#2563eb08">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+      <div style="font-weight:800;font-size:14px;display:flex;align-items:center;gap:6px">🔄 טרייד-אין</div>
+      ${osChip(OS_TI_LABEL[cur]||cur,isEnd?(cur==='credited'?'#16a34a':'#dc2626'):'#2563eb')}</div>
+    <div class="muted" style="font-size:12.5px;margin-top:5px">${escW(dev||'—')}</div>
+    <div class="muted" style="font-size:12.5px">זיכוי משוער: <b style="color:var(--txt)">${fmt(ti.est_value)}</b>${ti.final_value!=null?` · זיכוי סופי: <b style="color:var(--txt)">${fmt(ti.final_value)}</b>`:''}</div>
+    ${ti.notes?`<div class="wa-note" style="margin-top:6px;font-size:12px;white-space:pre-wrap">${escW(ti.notes)}</div>`:''}
+    ${stepper}
+    ${acts?`<div style="display:flex;gap:8px;flex-wrap:wrap">${acts}</div>`:''}</div>`;
+}
+// ── דיאלוג צירוף Green Care ──
+function osAttachGreenCare(){
+  const data=S._osD||{}, det=data.detected||{}, dg=det.greencare||{};
+  const plan=dg.plan==='gcp'?'gcp':'gc';
+  const dsel=id=>document.getElementById(id);
+  document.getElementById('modalRoot').innerHTML=`<div class="overlay" onclick="closeModal()"><div class="modal" style="max-width:440px;text-align:right;position:relative" onclick="event.stopPropagation()">
+    <button class="dr-x" style="position:absolute;top:10px;inset-inline-start:10px" onclick="paintWcOrder()">✕</button>
+    <div style="font-weight:800;margin-bottom:12px;display:flex;align-items:center;gap:6px">🛡️ צירוף פוליסת Green Care</div>
+    <label class="muted" style="font-size:12px">מסלול</label>
+    <select id="osgcPlan" style="width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--bg);color:var(--txt);margin:4px 0 12px" onchange="osgcPlanHint()">
+      <option value="gc" ${plan==='gc'?'selected':''}>Green Care — הרחבת שנה שנייה (12ח׳ מתום שנת הבסיס)</option>
+      <option value="gcp" ${plan==='gcp'?'selected':''}>Green Care Plus — הגנה מלאה 24ח׳ מרכישה</option>
+    </select>
+    <label class="muted" style="font-size:12px">מכשיר</label>
+    <input id="osgcDevice" value="${escW(det.device_label||'')}" style="width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--bg);color:var(--txt);margin:4px 0 12px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div><label class="muted" style="font-size:12px">מחיר ששולם (₪)</label>
+        <input id="osgcPrice" type="number" value="${dg.price||''}" style="width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--bg);color:var(--txt);margin-top:4px"></div>
+      <div><label class="muted" style="font-size:12px">תאריך רכישה</label>
+        <input id="osgcDate" type="date" value="${(det.purchase_date||'').slice(0,10)}" style="width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--bg);color:var(--txt);margin-top:4px"></div>
+    </div>
+    <div id="osgcTlWrap" style="margin-top:12px;display:${plan==='gcp'?'block':'none'}">
+      <label class="muted" style="font-size:12px">מדרגת השתתפות אובדן מוחלט (₪)</label>
+      <input id="osgcTl" type="number" placeholder="ברירת מחדל אוטומטית" style="width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--bg);color:var(--txt);margin-top:4px">
+      <div class="muted" style="font-size:11px;margin-top:3px">ריק → ~10% ממחיר המכשיר, מוצמד ל-[₪149, ₪499]</div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button class="btn-primary" style="flex:1;padding:10px" onclick="osCreateGreenCare()">צור פוליסה</button>
+      <button class="btn-ghost" style="padding:10px 16px" onclick="paintWcOrder()">ביטול</button>
+    </div></div></div>`;
+}
+function osgcPlanHint(){ const p=(document.getElementById('osgcPlan')||{}).value; const w=document.getElementById('osgcTlWrap'); if(w) w.style.display=p==='gcp'?'block':'none'; }
+async function osCreateGreenCare(){
+  const data=S._osD||{}, det=data.detected||{}, d=S._wcoD||{};
+  const g=id=>(document.getElementById(id)||{}).value||'';
+  const body={order_id:d.id, plan:g('osgcPlan'), device_label:g('osgcDevice').trim(),
+    price_paid:parseFloat(g('osgcPrice'))||0, purchase_date:g('osgcDate'),
+    wc_product_id:det.wc_product_id||null, customer_name:det.customer_name||'',
+    customer_phone:det.customer_phone||''};
+  const tl=g('osgcTl'); if(tl!=='') body.tl_deductible=parseFloat(tl);
+  showLoading('יוצר פוליסה…');
+  try{ const r=await api('/api/admin/order-services/greencare/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)},40000);
+    hideLoading(); if(r&&r.ok){ toast('פוליסת Green Care נוצרה ✓',true); paintWcOrder(); } else toast('היצירה נכשלה',false);
+  }catch(e){ hideLoading(); toast('היצירה נכשלה',false); }
+}
+// ── דיאלוג רישום מימוש ──
+function osClaimDialog(policyId){
+  const data=S._osD||{}, gc=data.greencare||{}, u=gc.usage||{}, ded=gc.deductibles||{}, p=gc.policy||{};
+  const opts=[];
+  opts.push(`<option value="component" ${(u.component&&u.component.remaining<=0)?'disabled':''}>שבר רכיב — נותרו ${(u.component||{}).remaining||0}/${(u.component||{}).limit||4}</option>`);
+  opts.push(`<option value="screen" ${(u.screen&&u.screen.used_up)?'disabled':''}>החלפת מסך${(u.screen&&u.screen.used_up)?' (נוצל)':''}</option>`);
+  if(p.plan==='gcp') opts.push(`<option value="total_loss" ${(u.total_loss&&!u.total_loss.allowed)?'disabled':''}>אובדן מוחלט${(u.total_loss&&!u.total_loss.allowed)?' (לא זמין)':''}</option>`);
+  opts.push(`<option value="repair">תיקון אחריות רגיל (ללא הגבלה)</option>`);
+  const scrDed=(ded.screen||{}).deductible||0;
+  const tlDed=(ded.total_loss||{}).deductible||0;
+  document.getElementById('modalRoot').innerHTML=`<div class="overlay" onclick="closeModal()"><div class="modal" style="max-width:420px;text-align:right;position:relative" onclick="event.stopPropagation()">
+    <button class="dr-x" style="position:absolute;top:10px;inset-inline-start:10px" onclick="paintWcOrder()">✕</button>
+    <div style="font-weight:800;margin-bottom:12px">➕ רישום מימוש · פוליסה #${policyId}</div>
+    <label class="muted" style="font-size:12px">סוג מימוש</label>
+    <select id="osclType" data-scr="${scrDed}" data-tl="${tlDed}" style="width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--bg);color:var(--txt);margin:4px 0 12px" onchange="osClaimDedHint()">${opts.join('')}</select>
+    <label class="muted" style="font-size:12px">השתתפות עצמית (₪)</label>
+    <input id="osclDed" type="number" value="" style="width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--bg);color:var(--txt);margin:4px 0 4px">
+    <div id="osclDedHint" class="muted" style="font-size:11.5px;margin-bottom:10px"></div>
+    <label class="muted" style="font-size:12px">הערה</label>
+    <textarea id="osclNote" rows="2" placeholder="פירוט התקלה / רכיב שנשבר…" style="width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--bg);color:var(--txt);margin:4px 0 4px;resize:vertical;font-family:inherit"></textarea>
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button class="btn-primary" style="flex:1;padding:10px" onclick="osSubmitClaim(${policyId})">רשום מימוש</button>
+      <button class="btn-ghost" style="padding:10px 16px" onclick="paintWcOrder()">ביטול</button>
+    </div></div></div>`;
+  osClaimDedHint();
+}
+function osClaimDedHint(){
+  const sel=document.getElementById('osclType'); if(!sel) return;
+  const t=sel.value, ded=document.getElementById('osclDed'), hint=document.getElementById('osclDedHint');
+  const scr=parseFloat(sel.dataset.scr)||0, tl=parseFloat(sel.dataset.tl)||0;
+  if(t==='screen'){ if(ded)ded.value=scr||''; if(hint)hint.textContent=scr?('50% ממחיר תיקון המסך העדכני = ₪'+scr):'דגם לא זוהה במחירון — הזן ידנית'; }
+  else if(t==='total_loss'){ if(ded)ded.value=tl||''; if(hint)hint.textContent=tl?('מדרגת השתתפות אובדן שנשמרה = ₪'+tl):'הזן מדרגת השתתפות'; }
+  else { if(ded)ded.value=0; if(hint)hint.textContent=(t==='component'||t==='repair')?'ללא השתתפות עצמית':''; }
+}
+async function osSubmitClaim(policyId){
+  const g=id=>(document.getElementById(id)||{}).value||'';
+  const body={policy_id:policyId, claim_type:g('osclType'), note:g('osclNote').trim(), deductible:parseFloat(g('osclDed'))||0};
+  showLoading('רושם מימוש…');
+  try{ const r=await api('/api/admin/order-services/greencare/claim',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)},40000);
+    hideLoading();
+    if(r&&r.ok){ toast('המימוש נרשם ✓',true); paintWcOrder(); }
+    else toast(r&&r.error?r.error:'הרישום נכשל',false);
+  }catch(e){ hideLoading(); toast('הרישום נכשל — ייתכן שחרגת ממגבלת התוכנית',false); }
+}
+async function osPolicyStatus(policyId,status){
+  if(status==='cancelled'&&!confirm('לבטל את פוליסת ה-Green Care?')) return;
+  showLoading('מעדכן…');
+  try{ const r=await api('/api/admin/order-services/greencare/status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({policy_id:policyId,status})},30000);
+    hideLoading(); if(r&&r.ok){ toast(status==='cancelled'?'הפוליסה בוטלה':'הפוליסה הופעלה',true); paintWcOrder(); } else toast('העדכון נכשל',false);
+  }catch(e){ hideLoading(); toast('העדכון נכשל',false); }
+}
+// ── דיאלוג צירוף טרייד-אין ──
+function osAttachTradein(){
+  const data=S._osD||{}, det=data.detected||{}, dt=det.tradein||{};
+  document.getElementById('modalRoot').innerHTML=`<div class="overlay" onclick="closeModal()"><div class="modal" style="max-width:420px;text-align:right;position:relative" onclick="event.stopPropagation()">
+    <button class="dr-x" style="position:absolute;top:10px;inset-inline-start:10px" onclick="paintWcOrder()">✕</button>
+    <div style="font-weight:800;margin-bottom:12px">🔄 צירוף טרייד-אין</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div><label class="muted" style="font-size:12px">מותג</label>
+        <input id="ostiBrand" value="${escW(dt.brand||'')}" style="width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--bg);color:var(--txt);margin-top:4px"></div>
+      <div><label class="muted" style="font-size:12px">נפח</label>
+        <input id="ostiStorage" value="${escW(dt.storage||'')}" style="width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--bg);color:var(--txt);margin-top:4px"></div>
+    </div>
+    <label class="muted" style="font-size:12px;display:block;margin-top:10px">דגם</label>
+    <input id="ostiModel" value="${escW(dt.model||'')}" style="width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--bg);color:var(--txt);margin-top:4px">
+    <div style="display:flex;gap:8px;align-items:flex-end;margin-top:10px">
+      <div style="flex:1"><label class="muted" style="font-size:12px">זיכוי משוער (₪)</label>
+        <input id="ostiEst" type="number" value="${dt.est_value||''}" style="width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--bg);color:var(--txt);margin-top:4px"></div>
+      <button class="btn-ghost" style="padding:9px 12px;font-size:12px;white-space:nowrap" onclick="osTradeinEstimate()">💡 הערך אוטומטית</button>
+    </div>
+    <div id="ostiEstHint" class="muted" style="font-size:11.5px;margin-top:4px"></div>
+    <label class="muted" style="font-size:12px;display:block;margin-top:10px">הערות</label>
+    <textarea id="ostiNotes" rows="2" style="width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--bg);color:var(--txt);margin-top:4px;resize:vertical;font-family:inherit"></textarea>
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button class="btn-primary" style="flex:1;padding:10px" onclick="osCreateTradein()">צור רשומה</button>
+      <button class="btn-ghost" style="padding:10px 16px" onclick="paintWcOrder()">ביטול</button>
+    </div></div></div>`;
+}
+async function osTradeinEstimate(){
+  const g=id=>(document.getElementById(id)||{}).value||'';
+  const q='brand='+encodeURIComponent(g('ostiBrand'))+'&model='+encodeURIComponent(g('ostiModel'))+'&storage='+encodeURIComponent(g('ostiStorage'));
+  const hint=document.getElementById('ostiEstHint');
+  try{ const r=await api('/api/admin/order-services/deductible?'+q,null,30000);
+    const tl=r&&r.total_loss;
+    if(tl&&tl.matched&&tl.secondhand_value){ const e=document.getElementById('ostiEst'); if(e)e.value=tl.secondhand_value; if(hint)hint.textContent='שווי יד-שנייה מהקטלוג: ₪'+tl.secondhand_value; }
+    else if(hint) hint.textContent='דגם לא זוהה בקטלוג — הזן זיכוי ידנית';
+  }catch(e){ if(hint) hint.textContent='ההערכה נכשלה'; }
+}
+async function osCreateTradein(){
+  const d=S._wcoD||{}; const g=id=>(document.getElementById(id)||{}).value||'';
+  const body={order_id:d.id, brand:g('ostiBrand').trim(), model:g('ostiModel').trim(),
+    storage:g('ostiStorage').trim(), est_value:parseFloat(g('ostiEst'))||0, notes:g('ostiNotes').trim()};
+  if(!body.model){ toast('חסר דגם',false); return; }
+  showLoading('יוצר רשומה…');
+  try{ const r=await api('/api/admin/order-services/tradein/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)},40000);
+    hideLoading(); if(r&&r.ok){ toast('רשומת טרייד-אין נוצרה ✓',true); paintWcOrder(); } else toast('היצירה נכשלה',false);
+  }catch(e){ hideLoading(); toast('היצירה נכשלה',false); }
+}
+async function osTradeinAdvance(recId,status,note,finalValue){
+  showLoading('מעדכן…');
+  const body={record_id:recId,status}; if(note)body.note=note; if(finalValue!=null)body.final_value=finalValue;
+  try{ const r=await api('/api/admin/order-services/tradein/status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)},30000);
+    hideLoading(); if(r&&r.ok){ toast('הסטטוס עודכן ✓',true); paintWcOrder(); } else toast('העדכון נכשל',false);
+  }catch(e){ hideLoading(); toast('העדכון נכשל',false); }
+}
+function osTradeinCredit(recId){
+  const v=prompt('סכום זיכוי סופי (₪):'); if(v===null) return;
+  const fv=parseFloat(v); if(isNaN(fv)){ toast('סכום לא תקין',false); return; }
+  osTradeinAdvance(recId,'credited',null,fv);
 }
 async function wcoLoadCalls(phoneIntl){
   const box=document.getElementById('wcoCalls'); if(!box || box.dataset.loaded) return;

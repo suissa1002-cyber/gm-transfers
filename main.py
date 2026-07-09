@@ -4,6 +4,7 @@ Transfers app — FastAPI backend.
 """
 
 import os
+import re
 import json as json_mod
 import logging
 from typing import Optional
@@ -2376,6 +2377,311 @@ def admin_greencare_save(body: GreenCareSaveIn, x_admin_key: Optional[str] = Hea
                          "wc_pushed": bool(push.get("ok")),
                          "wc_error": push.get("error", "")},
                         headers={"Cache-Control": "no-store"})
+
+
+# ── ניהול שירות פר-לקוח בתוך הזמנה (Green Care policy + Trade-In) ───────
+# בתוך הזמנה ספציפית: פוליסת Green Care שנרכשה, מעקב מימושים ומגבלות, בדיקת
+# השתתפות עצמית חיה (מסך / אובדן מוחלט), ורשומת טרייד-אין. הווידג'טים באתר עוד
+# לא חיים → מזהים אוטומטית מפריטי/מטא ההזמנה, ומאפשרים גם צירוף ידני.
+_GC_ITEM_MARKERS = ("green care", "greencare", "גרין קר", "גרין-קר")
+_TI_ITEM_MARKERS = ("trade-in", "trade in", "tradein", "טרייד", "טרייד-אין", "טרייד אין")
+
+
+def _svc_wc_order(oid: int) -> dict:
+    """מושך הזמנה גולמית מ-WooCommerce (line_items + meta) לצורך זיהוי שירותים."""
+    creds = _wc_creds()
+    if not creds:
+        return {}
+    base, k, s = creds
+    import requests as _rq
+    try:
+        r = _rq.get(f"{base}/wp-json/wc/v3/orders/{int(oid)}", auth=(k, s), timeout=30)
+        return r.json() if r.ok else {}
+    except Exception as e:  # noqa: BLE001
+        logger.warning("order-services wc fetch %s failed: %s", oid, e)
+        return {}
+
+
+def _parse_storage(txt: str) -> str:
+    m = re.search(r"(\d+)\s*(GB|TB|ג'יגה|ג׳יגה|גיגה)", str(txt or ""), re.IGNORECASE)
+    if not m:
+        return ""
+    unit = "TB" if m.group(2).upper().startswith("T") else "GB"
+    return f"{m.group(1)} {unit}"
+
+
+def _guess_brand(label: str) -> str:
+    """ניחוש מותג משם המוצר לפי מפתחות קטלוג היד-שנייה (Apple/Samsung/Google...)."""
+    low = str(label or "").lower()
+    aliases = {"Apple": ["apple", "iphone", "אייפון", "אפל"],
+               "Samsung": ["samsung", "galaxy", "סמסונג", "גלקסי"],
+               "Google": ["google", "pixel", "פיקסל", "גוגל"]}
+    for brand, keys in aliases.items():
+        if any(a in low for a in keys):
+            return brand
+    return ""
+
+
+def _detect_order_services(o: dict) -> dict:
+    """מזהה מרכיבי Green Care / טרייד-אין מתוך הזמנת WooCommerce גולמית → prefill."""
+    meta = {m.get("key"): m.get("value") for m in (o.get("meta_data") or [])}
+    items = o.get("line_items") or []
+    billing = o.get("billing") or {}
+    cust_name = f"{billing.get('first_name', '')} {billing.get('last_name', '')}".strip()
+    cust_phone = billing.get("phone", "") or ""
+    purchase_date = o.get("date_paid") or o.get("date_created") or ""
+
+    def _is_svc(nm):
+        return any(mk in str(nm).lower() for mk in _GC_ITEM_MARKERS + _TI_ITEM_MARKERS)
+
+    # מוצר עוגן = הפריט הפיזי היקר ביותר שאינו שירות (המכשיר שמבוטח / שנקנה)
+    main = None
+    for li in items:
+        if _is_svc(li.get("name")):
+            continue
+        try:
+            tot = float(li.get("total") or 0)
+        except (TypeError, ValueError):
+            tot = 0.0
+        if main is None or tot > main[0]:
+            main = (tot, li)
+    main_li = main[1] if main else (items[0] if items else {})
+    device_label = (main_li or {}).get("name") or ""
+    wc_product_id = (main_li or {}).get("product_id") or 0
+
+    # ── Green Care ──
+    gc_item = next((li for li in items
+                    if any(mk in str(li.get("name")).lower() for mk in _GC_ITEM_MARKERS)), None)
+    gc_meta = any(str(kk).startswith("_gm_greencare_") for kk in meta)
+    gc_detected = bool(gc_item or gc_meta)
+    gc_plan = (meta.get("_gm_greencare_plan") or "").strip().lower()
+    if gc_plan not in ("gc", "gcp"):
+        nm = str((gc_item or {}).get("name") or "")
+        gc_plan = "gcp" if ("plus" in nm.lower() or "פלוס" in nm) else "gc"
+    gc_price = 0.0
+    for src in (meta.get("_gm_greencare_price"), (gc_item or {}).get("total")):
+        try:
+            if src not in (None, ""):
+                gc_price = float(src)
+                break
+        except (TypeError, ValueError):
+            continue
+
+    # ── טרייד-אין ──
+    ti_item = next((li for li in items
+                    if any(mk in str(li.get("name")).lower() for mk in _TI_ITEM_MARKERS)), None)
+    ti_meta = any(str(kk).startswith("_gm_tradein_") for kk in meta)
+    ti_detected = bool(ti_item or ti_meta)
+    ti_brand = meta.get("_gm_tradein_brand") or _guess_brand(device_label)
+    ti_model = meta.get("_gm_tradein_model") or (device_label if not ti_item else
+                                                 (ti_item.get("name") or ""))
+    ti_storage = meta.get("_gm_tradein_storage") or _parse_storage(device_label)
+    try:
+        ti_est = float(meta.get("_gm_tradein_value") or 0)
+    except (TypeError, ValueError):
+        ti_est = 0.0
+
+    return {
+        "customer_name": cust_name, "customer_phone": cust_phone,
+        "purchase_date": purchase_date,
+        "device_label": device_label, "wc_product_id": wc_product_id,
+        "greencare": {"detected": gc_detected, "plan": gc_plan, "price": gc_price},
+        "tradein": {"detected": ti_detected, "brand": ti_brand, "model": ti_model,
+                    "storage": ti_storage, "est_value": ti_est},
+    }
+
+
+def _policy_view(policy: dict) -> dict:
+    """פוליסה + חישוב שימוש + השתתפויות עצמיות עדכניות (מסך/אובדן) לתצוגה."""
+    if not policy:
+        return {}
+    claims = db.gc_claims_list(policy["id"])
+    usage = greencare.usage_summary(policy, claims)
+    ded = {}
+    try:
+        ded["screen"] = greencare.screen_deductible(policy.get("device_label") or "",
+                                                     pricelist=_repair_prices())
+    except Exception as e:  # noqa: BLE001
+        logger.warning("screen deductible calc failed: %s", e)
+        ded["screen"] = {"matched": "", "repair_price": 0, "deductible": 0, "models": []}
+    # אובדן מוחלט — רק ל-gcp; שווי יד-שנייה של המכשיר המבוטח + מדרגת ההשתתפות שנשמרה
+    if policy.get("plan") == "gcp":
+        lbl = policy.get("device_label") or ""
+        val = greencare.tl_valuation(_guess_brand(lbl), lbl, _parse_storage(lbl))
+        ded["total_loss"] = {"secondhand_value": val.get("value", 0),
+                             "matched": val.get("matched", False),
+                             "deductible": policy.get("tl_deductible") or 0}
+    return {
+        "policy": {**policy,
+                   "plan_label": greencare.PLAN_LABELS.get(policy.get("plan"), policy.get("plan")),
+                   "plan_subtitle": greencare.PLAN_SUBTITLES.get(policy.get("plan"), ""),
+                   "status_now": greencare.policy_status_now(policy)},
+        "claims": claims, "usage": usage, "deductibles": ded,
+    }
+
+
+@app.get("/api/admin/order-services/{order_id}")
+def admin_order_services(order_id: int, x_admin_key: Optional[str] = Header(None)):
+    """מצב השירותים של הזמנה: פוליסת Green Care (+שימוש+השתתפויות), טרייד-אין,
+    וזיהוי-אוטומטי מפריטי ההזמנה ל-prefill/צירוף."""
+    _require_admin(x_admin_key)
+    o = _svc_wc_order(order_id)
+    detected = _detect_order_services(o) if o else {}
+    policy = db.gc_policy_by_order(order_id)
+    tradein = db.tradein_by_order(order_id)
+    return JSONResponse({
+        "order_id": order_id,
+        "greencare": _policy_view(policy),
+        "tradein": {"record": tradein or None},
+        "detected": detected,
+    }, headers={"Cache-Control": "no-store"})
+
+
+class OSGreenCareCreateIn(BaseModel):
+    order_id: int
+    plan: str = "gc"
+    price_paid: float = 0
+    device_label: str = ""
+    wc_product_id: Optional[int] = None
+    customer_name: str = ""
+    customer_phone: str = ""
+    purchase_date: str = ""
+    tl_deductible: Optional[float] = None
+
+
+@app.post("/api/admin/order-services/greencare/create")
+def admin_os_gc_create(body: OSGreenCareCreateIn, x_admin_key: Optional[str] = Header(None)):
+    """יוצר פוליסת Green Care ללקוח בהזמנה. תאריכים נגזרים מהמסלול + תאריך הרכישה."""
+    actor = _actor_name(x_admin_key, None)
+    _require_admin(x_admin_key)
+    plan = body.plan if body.plan in ("gc", "gcp") else "gc"
+    start, end = greencare.policy_dates(plan, body.purchase_date or None)
+    tl_ded = body.tl_deductible
+    if tl_ded is None:
+        tl_ded = greencare.default_tl_deductible(body.price_paid)
+    pid = db.gc_policy_create(
+        order_id=body.order_id, customer_name=body.customer_name,
+        customer_phone=body.customer_phone, wc_product_id=body.wc_product_id,
+        device_label=body.device_label, plan=plan, price_paid=body.price_paid,
+        tl_deductible=tl_ded, start_date=start, end_date=end, created_by=actor)
+    logger.info("order-services: gc policy %s created for order %s plan=%s by %s",
+                pid, body.order_id, plan, actor or "?")
+    return JSONResponse({"ok": True, **_policy_view(db.gc_policy_get(pid))},
+                        headers={"Cache-Control": "no-store"})
+
+
+class OSClaimIn(BaseModel):
+    policy_id: int
+    claim_type: str
+    note: str = ""
+    deductible: Optional[float] = None
+    claim_date: str = ""
+
+
+@app.post("/api/admin/order-services/greencare/claim")
+def admin_os_gc_claim(body: OSClaimIn, x_admin_key: Optional[str] = Header(None)):
+    """רושם מימוש — עם אכיפת מגבלות התוכנית (שברים 4, מסך פעם, אובדן gcp שנה2)."""
+    actor = _actor_name(x_admin_key, None)
+    _require_admin(x_admin_key)
+    policy = db.gc_policy_get(body.policy_id)
+    if not policy:
+        raise HTTPException(404, "פוליסה לא נמצאה")
+    claims = db.gc_claims_list(body.policy_id)
+    ok, err = greencare.validate_claim(policy, claims, body.claim_type)
+    if not ok:
+        return JSONResponse({"ok": False, "error": err}, status_code=400,
+                            headers={"Cache-Control": "no-store"})
+    ded = float(body.deductible or 0)
+    db.gc_claim_add(body.policy_id, body.claim_type, body.claim_date or db.now_iso(),
+                    body.note, ded, created_by=actor)
+    logger.info("order-services: claim %s on policy %s ded=%s by %s",
+                body.claim_type, body.policy_id, ded, actor or "?")
+    return JSONResponse({"ok": True, **_policy_view(db.gc_policy_get(body.policy_id))},
+                        headers={"Cache-Control": "no-store"})
+
+
+class OSStatusIn(BaseModel):
+    policy_id: int
+    status: str   # 'cancelled' / 'active'
+
+
+@app.post("/api/admin/order-services/greencare/status")
+def admin_os_gc_status(body: OSStatusIn, x_admin_key: Optional[str] = Header(None)):
+    """ביטול / הפעלה מחדש של פוליסה."""
+    _require_admin(x_admin_key)
+    if body.status not in ("cancelled", "active"):
+        raise HTTPException(400, "סטטוס לא חוקי")
+    if not db.gc_policy_get(body.policy_id):
+        raise HTTPException(404, "פוליסה לא נמצאה")
+    db.gc_policy_set_status(body.policy_id, body.status)
+    return JSONResponse({"ok": True, **_policy_view(db.gc_policy_get(body.policy_id))},
+                        headers={"Cache-Control": "no-store"})
+
+
+class OSTradeinCreateIn(BaseModel):
+    order_id: int
+    brand: str = ""
+    model: str = ""
+    storage: str = ""
+    est_value: float = 0
+    notes: str = ""
+
+
+@app.post("/api/admin/order-services/tradein/create")
+def admin_os_tradein_create(body: OSTradeinCreateIn, x_admin_key: Optional[str] = Header(None)):
+    """יוצר רשומת טרייד-אין (סטטוס התחלתי: ממתין לאיסוף)."""
+    actor = _actor_name(x_admin_key, None)
+    _require_admin(x_admin_key)
+    rid = db.tradein_create(order_id=body.order_id, brand=body.brand, model=body.model,
+                            storage=body.storage, est_value=body.est_value,
+                            notes=body.notes, created_by=actor)
+    logger.info("order-services: tradein %s created for order %s by %s",
+                rid, body.order_id, actor or "?")
+    return JSONResponse({"ok": True, "record": db.tradein_get(rid)},
+                        headers={"Cache-Control": "no-store"})
+
+
+class OSTradeinStatusIn(BaseModel):
+    record_id: int
+    status: str
+    final_value: Optional[float] = None
+    note: str = ""
+
+
+_TRADEIN_STATUSES = ("pending_pickup", "received", "inspected", "credited", "returned")
+
+
+@app.post("/api/admin/order-services/tradein/status")
+def admin_os_tradein_status(body: OSTradeinStatusIn, x_admin_key: Optional[str] = Header(None)):
+    """מקדם סטטוס טרייד-אין: ממתין לאיסוף → התקבל → נבדק → זוכה / הוחזר ללקוח."""
+    _require_admin(x_admin_key)
+    if body.status not in _TRADEIN_STATUSES:
+        raise HTTPException(400, "סטטוס טרייד-אין לא חוקי")
+    if not db.tradein_get(body.record_id):
+        raise HTTPException(404, "רשומת טרייד-אין לא נמצאה")
+    rec = db.tradein_set_status(body.record_id, body.status,
+                                final_value=body.final_value, note=body.note or None)
+    return JSONResponse({"ok": True, "record": rec}, headers={"Cache-Control": "no-store"})
+
+
+@app.get("/api/admin/order-services/deductible")
+def admin_os_deductible(model: str = "", brand: str = "", storage: str = "",
+                        policy_id: Optional[int] = None,
+                        x_admin_key: Optional[str] = Header(None)):
+    """חישוב חי של השתתפות עצמית: מסך (50% ממחיר תיקון עדכני) + אובדן מוחלט
+    (שווי יד-שנייה + מדרגת ההשתתפות שנשמרה בפוליסה, ל-gcp בלבד)."""
+    _require_admin(x_admin_key)
+    out = {"screen": greencare.screen_deductible(model or "", pricelist=_repair_prices())}
+    policy = db.gc_policy_get(policy_id) if policy_id else {}
+    if policy.get("plan") == "gcp" or (not policy and brand):
+        val = greencare.tl_valuation(brand or _guess_brand(model), model, storage)
+        out["total_loss"] = {"secondhand_value": val.get("value", 0),
+                             "matched": val.get("matched", False),
+                             "deductible": (policy.get("tl_deductible") or 0) if policy else 0,
+                             "brands": val.get("brands", []),
+                             "models": val.get("models", []),
+                             "storages": val.get("storages", [])}
+    return JSONResponse(out, headers={"Cache-Control": "no-store"})
 
 
 # ── אבטחת מכשירים (device allowlist) ───────────────────────────────
