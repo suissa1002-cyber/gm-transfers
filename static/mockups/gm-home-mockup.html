@@ -160,11 +160,12 @@ section { margin-bottom:66px; }
 .band.care p { color:var(--ink2); }
 .care-art { display:flex; justify-content:center; color:var(--accent); }
 .care-art .ic { width:120px; height:120px; stroke-width:1.2; }
-.care-tiers { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:24px; }
-.tier { background:var(--surface); border:1px solid var(--line); border-radius:18px; padding:14px 20px; font-size:.86rem; color:var(--ink2); }
-.tier strong { display:block; color:var(--ink); font-size:1rem; }
-.tier .gc-logo { margin-bottom:5px; }
-.tier > span { display:block; }
+.care-tiers { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:26px; }
+.tier { background:var(--surface); border:1px solid var(--line); border-radius:20px; padding:22px 24px; font-size:1rem; color:var(--ink2); }
+.tier strong { display:block; color:var(--ink); font-size:1.1rem; }
+.tier .gc-logo { margin-bottom:12px; }
+.tier > span { display:block; line-height:1.45; }
+@media (max-width:640px){ .care-tiers { grid-template-columns:1fr; } }
 .club { background:var(--alt); border-radius:26px; padding:46px; text-align:center; }
 .club h2 { font-size:1.9rem; font-weight:900; margin:0 0 8px; letter-spacing:-.02em; }
 .club h2 em { color:var(--accent); font-style:normal; }
@@ -474,8 +475,8 @@ let btimer = setInterval(() => bshow((bidx + 1) % 3), 6000);
       <h2><span class="gc-logo" style="font-size:1.9rem" aria-label="green care"><img class="gc-g" alt="g"><span class="gc-green">reen</span><span class="gc-care">care</span><span class="gc-mark">.</span></span> · שקט נפשי, בירוק.</h2>
       <p>הגנה מורחבת מפני שברים ותקלות — טיפול במעבדה שלנו, איסוף עד הבית, וכל המחירים גלויים מראש.</p>
       <div class="care-tiers">
-        <div class="tier"><span class="gc-logo" style="font-size:1.05rem" aria-label="green care"><img class="gc-g" alt="g"><span class="gc-green">reen</span><span class="gc-care">care</span><span class="gc-mark">.</span></span><span>הרחבת אחריות — שנה שנייה</span></div>
-        <div class="tier"><span class="gc-logo" style="font-size:1.05rem" aria-label="green care+"><img class="gc-g" alt="g"><span class="gc-green">reen</span><span class="gc-care">care</span><span class="gc-mark">+</span></span><span>24 ח׳: שברים, מסך וטוטאל-לוס</span></div>
+        <div class="tier"><span class="gc-logo" style="font-size:1.55rem" aria-label="green care"><img class="gc-g" alt="g"><span class="gc-green">reen</span><span class="gc-care">care</span><span class="gc-mark">.</span></span><span>הרחבת אחריות — שנה שנייה</span></div>
+        <div class="tier"><span class="gc-logo" style="font-size:1.55rem" aria-label="green care+"><img class="gc-g" alt="g"><span class="gc-green">reen</span><span class="gc-care">care</span><span class="gc-mark">+</span></span><span>24 ח׳: שברים, מסך וטוטאל-לוס</span></div>
       </div>
       <a class="btn primary" href="gm-greencare-landing.html">לפרטים והצטרפות</a>
     </div>
