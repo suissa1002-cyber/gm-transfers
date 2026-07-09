@@ -2581,9 +2581,15 @@ def admin_os_gc_create(body: OSGreenCareCreateIn, x_admin_key: Optional[str] = H
     tl_ded = body.tl_deductible
     if tl_ded is None:
         # Total-loss deductible is ~10% of the DEVICE price (Asi: fixed tiers by
-        # device price), NOT the Green Care premium. Fall back to price_paid only
-        # if the device price wasn't provided (legacy).
-        tl_ded = greencare.default_tl_deductible(body.device_price or body.price_paid)
+        # device price), NOT the Green Care premium. Resolve the device price
+        # AUTHORITATIVELY server-side from the order (don't depend on the client
+        # sending it — a cached frontend would omit it and fall back wrongly).
+        dev_price = float(body.device_price or 0)
+        if dev_price <= 0:
+            o = _svc_wc_order(body.order_id)
+            det = _detect_order_services(o) if o else {}
+            dev_price = float(det.get("device_price") or 0)
+        tl_ded = greencare.default_tl_deductible(dev_price or body.price_paid)
     pid = db.gc_policy_create(
         order_id=body.order_id, customer_name=body.customer_name,
         customer_phone=body.customer_phone, wc_product_id=body.wc_product_id,
