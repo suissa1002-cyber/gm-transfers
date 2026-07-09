@@ -3174,6 +3174,14 @@ def stellr_code_get(code_id) -> dict:
         return dict(r) if r else {}
 
 
+def stellr_code_delete(code_id) -> int:
+    """מחיקת רשומת קוד (ניקוי רשומות בדיקה/שגויות בלבד — אדמין)."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("DELETE FROM stellr_codes WHERE id = ?"), (int(code_id),))
+        return cur.rowcount
+
+
 # ── הגדרות אפליקציה (kv) — מתגי שירות גלובליים ──
 def setting_get(key, default=None):
     with _conn() as c:

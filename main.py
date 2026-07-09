@@ -6835,6 +6835,31 @@ def admin_stellr_codes(order: str = "", limit: int = 200,
     return {"rows": rows}
 
 
+@app.delete("/api/admin/stellr/codes/{cid}")
+def admin_stellr_code_delete(cid: int, x_admin_key: Optional[str] = Header(None)):
+    """מחיקת רשומת קוד — לניקוי רשומות בדיקה/שגויות בלבד (הקוד עצמו אצל הספק לא מתבטל)."""
+    _require_admin(x_admin_key)
+    return {"deleted": db.stellr_code_delete(cid)}
+
+
+@app.post("/api/admin/stellr/codes/manual")
+def admin_stellr_code_manual(payload: dict, x_admin_key: Optional[str] = Header(None)):
+    """רישום ידני של קוד שהונפק מחוץ למערכת (למשל canary מסקריפט) — לתיעוד ושחזור.
+    body: {wc_name, value, pan, pin, tx_id, phone, branch, actor, status}."""
+    _require_admin(x_admin_key)
+    import time as _t
+    cid = db.stellr_code_add(
+        str(payload.get("order") or f"manual-{int(_t.time())}"),
+        f"manual-{int(_t.time() * 1000)}",
+        str(payload.get("wc_name") or "קוד ידני"), str(payload.get("product_ref") or ""),
+        float(payload.get("value") or 0), stellr.CURRENCY, "manual",
+        str(payload.get("status") or "issued"),
+        tx_id=str(payload.get("tx_id") or ""), pan=str(payload.get("pan") or ""),
+        pin=str(payload.get("pin") or ""), branch=str(payload.get("branch") or ""),
+        actor=str(payload.get("actor") or ""), phone=str(payload.get("phone") or ""))
+    return {"ok": True, "id": cid}
+
+
 @app.post("/api/admin/stellr/resend")
 def admin_stellr_resend(payload: dict, x_admin_key: Optional[str] = Header(None)):
     """שחזור מעמוד ניהול הקודים: שולח שוב בוואטסאפ או מחזיר להדפסה — לעולם לא מנפיק חדש.
