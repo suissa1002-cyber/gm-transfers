@@ -6855,7 +6855,8 @@ function osTiPaint(){
         <div><label class="muted" style="font-size:12px">נפח</label><input id="ostiMStorage" value="${escW(t.mStorage||'')}" oninput="S._osTi.mStorage=this.value" style="${inp}"></div>
       </div>
       <label class="muted" style="font-size:12px;display:block;margin-top:10px">דגם</label>
-      <input id="ostiMModel" value="${escW(t.mModel||'')}" oninput="S._osTi.mModel=this.value" style="${inp}">`;
+      <input id="ostiMModel" value="${escW(t.mModel||'')}" oninput="S._osTi.mModel=this.value" style="${inp}">
+      ${cat?`<div style="margin-top:6px;text-align:start"><a href="javascript:void(0)" onclick="S._osTi.manual=false;osTiPaint()" class="muted" style="font-size:11.5px;text-decoration:underline">← חזרה לבחירה מהקטלוג</a></div>`:''}`;
   } else {
     const brands=Object.keys(cat);
     let modelOpts='<option value="">בחר דגם…</option>';
@@ -6875,7 +6876,8 @@ function osTiPaint(){
         <select onchange="osTiSet('storage',this.value)" ${t.model?'':'disabled'} style="${inp}"><option value="">בחר…</option>${storages.map(s=>`<option ${s===t.storage?'selected':''}>${s}</option>`).join('')}</select></div>
     </div>
     <label class="muted" style="font-size:12px;display:block;margin-top:10px">דגם</label>
-    <select onchange="osTiSet('model',this.value)" ${t.brand?'':'disabled'} style="${inp}">${modelOpts}</select>`;
+    <select onchange="osTiSet('model',this.value)" ${t.brand?'':'disabled'} style="${inp}">${modelOpts}</select>
+    <div style="margin-top:6px;text-align:start"><a href="javascript:void(0)" onclick="S._osTi.manual=true;osTiPaint()" class="muted" style="font-size:11.5px;text-decoration:underline">הדגם לא מופיע בקטלוג? הזנה ידנית</a></div>`;
   }
   // שאלות מצב (תפקוד מוסתר כשהמכשיר לא נדלק — אין מה לבדוק)
   const condHTML=OSTI_QS.filter(q=>!(q.k==='func'&&t.cond.power==='no')).map(q=>`
@@ -6906,7 +6908,6 @@ function osTiPaint(){
     </div>
     <label class="muted" style="font-size:12px;display:block;margin-top:10px">הערות</label>
     <textarea id="ostiNotes" rows="2" oninput="S._osTi.notes=this.value" style="${inp};resize:vertical;font-family:inherit">${escW(t.notes||'')}</textarea>
-    ${cat?`<label class="ls-check" style="margin-top:8px;font-size:12px"><input type="checkbox" ${t.manual?'checked':''} onchange="S._osTi.manual=this.checked;osTiPaint()"><span class="muted">דגם לא בקטלוג — הזנה ידנית</span></label>`:''}
     <div style="display:flex;gap:8px;margin-top:14px">
       <button class="btn-primary" style="flex:1;padding:10px" onclick="osCreateTradein()">צור רשומה</button>
       <button class="btn-ghost" style="padding:10px 16px" onclick="paintWcOrder()">ביטול</button>
