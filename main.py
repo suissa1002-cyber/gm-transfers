@@ -2322,7 +2322,11 @@ def admin_greencare_product(wc_id: int, x_admin_key: Optional[str] = Header(None
         raise HTTPException(502, "wc lookup failed")
     price = _gc_price_of(p, base, k, s)
     override = greencare.get_override(wc_id)
-    effective = greencare.compute_effective(price, override)
+    # כללי זמינות ברירת-מחדל (קטגוריה/מתקפל/אייפון/מחיר) — דריסה שמורה גוברת
+    cats = [c.get("name", "") for c in (p.get("categories") or [])] + \
+           [c.get("slug", "") for c in (p.get("categories") or [])]
+    avail = greencare.default_availability(p.get("name") or "", price, cats)
+    effective = greencare.compute_effective(price, override, avail)
     img = ((p.get("images") or [{}])[0] or {}).get("src", "")
     return {
         "id": p.get("id"), "name": p.get("name") or "", "sku": p.get("sku") or "",
@@ -2331,6 +2335,7 @@ def admin_greencare_product(wc_id: int, x_admin_key: Optional[str] = Header(None
         "variations_count": len(p.get("variations") or []),
         "defaults": {"gc": greencare.price_gc_default(price),
                      "gcp": greencare.price_gcp_default(price)},
+        "default_availability": avail,
         "override": override or None,
         "effective": effective,
     }

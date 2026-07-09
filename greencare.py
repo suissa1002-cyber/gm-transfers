@@ -21,6 +21,45 @@ from datetime import date, datetime
 import db
 
 
+# ── כללי זמינות ברירת-מחדל (הכרעות אסי 09/07/2026; דריסה ידנית תמיד גוברת) ──
+# שלב השקה: רק קטגוריית סמארטפונים. הרחבה עתידית (שעונים/טאבלטים) — הוספת מילות מפתח.
+ALLOWED_CATEGORY_KEYWORDS = ["סמארטפון", "smartphone"]
+FOLDABLE_KEYWORDS = ["fold", "flip", "razr", "מתקפל"]          # מתקפלים — ללא שום חבילה
+IPHONE_KEYWORDS = ["iphone", "אייפון"]                          # אייפון — ללא חבילת בסיס
+GC_BASIC_PRICE_CAP = 2999                                        # מעל זה — ללא חבילת בסיס
+
+
+_HE_FINALS = str.maketrans("ךםןףץ", "כמנפצ")
+
+
+def _norm_he(s: str) -> str:
+    """נרמול להשוואה: lowercase + המרת אותיות סופיות לרגילות.
+    ("סמארטפון" מסתיים ב-ן' סופית, אבל בתוך "סמארטפונים" זו נ' רגילה — בלי
+    הנרמול ההכלה נכשלת בשקט.)"""
+    return str(s or "").lower().translate(_HE_FINALS)
+
+
+def default_availability(name: str, price: float, categories) -> dict:
+    """זמינות ברירת-המחדל לפי כללי העסק (כשאין דריסה שמורה). מחזיר:
+    {enabled, tier_gc, tier_gcp, reasons:[טקסטים בעברית להצגה בקונסולה]}"""
+    nm = _norm_he(name)
+    cats = " ".join(_norm_he(c) for c in (categories or []))
+    if not any(_norm_he(k) in cats for k in ALLOWED_CATEGORY_KEYWORDS):
+        return {"enabled": False, "tier_gc": False, "tier_gcp": False,
+                "reasons": ["מחוץ לקטגוריית מכשירים — כבוי בשלב ההשקה"]}
+    if any(_norm_he(k) in nm for k in FOLDABLE_KEYWORDS):
+        return {"enabled": False, "tier_gc": False, "tier_gcp": False,
+                "reasons": ["מכשיר מתקפל — ללא חבילות"]}
+    reasons, gc_on = [], True
+    if any(_norm_he(k) in nm for k in IPHONE_KEYWORDS):
+        gc_on = False
+        reasons.append("אייפון — ללא חבילת בסיס")
+    elif float(price or 0) > GC_BASIC_PRICE_CAP:
+        gc_on = False
+        reasons.append("מעל ₪2,999 — ללא חבילת בסיס")
+    return {"enabled": True, "tier_gc": gc_on, "tier_gcp": True, "reasons": reasons}
+
+
 # ── נוסחת ברירת-המחדל ──
 def price_gcp_default(price: float) -> int:
     """Green Care Plus: 28% ממחיר המוצר, מעוגל ל-₪10 הקרוב, ואז מוצמד ל-[₪200, ₪749].
@@ -53,14 +92,16 @@ def delete_override(wc_product_id) -> int:
 
 
 # ── חישוב המצב האפקטיבי (נוסחה + דריסה) ──
-def compute_effective(product_price: float, override: dict) -> dict:
+def compute_effective(product_price: float, override: dict, defaults: dict = None) -> dict:
     """מאחד את נוסחת ברירת-המחדל עם הדריסה השמורה. מחזיר:
     {enabled, tiers:{gc:{on,price,source}, gcp:{on,price,source}}}
-    source='override' אם המחיר נדרס ידנית, אחרת 'formula'."""
+    source='override' אם המחיר נדרס ידנית, אחרת 'formula'.
+    defaults (אופציונלי) = default_availability(...) — קובע את מתגי הזמינות כשאין דריסה."""
     ov = override or {}
-    enabled = bool(int(ov.get("enabled", 1))) if ov else True
-    on_gc = bool(int(ov.get("tier_gc", 1))) if ov else True
-    on_gcp = bool(int(ov.get("tier_gcp", 1))) if ov else True
+    df = defaults or {"enabled": True, "tier_gc": True, "tier_gcp": True}
+    enabled = bool(int(ov.get("enabled", 1))) if ov else bool(df.get("enabled", True))
+    on_gc = bool(int(ov.get("tier_gc", 1))) if ov else bool(df.get("tier_gc", True))
+    on_gcp = bool(int(ov.get("tier_gcp", 1))) if ov else bool(df.get("tier_gcp", True))
 
     def_gc = price_gc_default(product_price)
     def_gcp = price_gcp_default(product_price)
