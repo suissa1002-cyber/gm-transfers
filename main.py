@@ -6831,6 +6831,18 @@ def admin_stellr_codes(order: str = "", x_admin_key: Optional[str] = Header(None
     return {"rows": rows}
 
 
+def _stellr_display(pan: str, pin: str):
+    """הקוד למימוש בתצוגה ללקוח: אצל חלק מהמוצרים (Xbox) Stellr מחזיר ב-pan את מזהה
+    העסקה (UUID) והקוד האמיתי למימוש נמצא ב-pin (canary 09/07: 'קוד' הציג UUID ובלבל).
+    UUID אינו קוד מימוש — מזהים ומציגים את ה-pin כקוד, בלי ה-UUID."""
+    import re as _re
+    p, q = (pan or "").strip(), (pin or "").strip()
+    if q and _re.fullmatch(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+                           r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", p):
+        return q, ""
+    return p, q
+
+
 @app.post("/api/admin/stellr/issue")
 def admin_stellr_issue(payload: dict, x_admin_key: Optional[str] = Header(None)):
     """הנפקה ידנית מהקונסולה. body: {order, dry: 0/1, force: 0/1}."""
@@ -6958,7 +6970,8 @@ def board_stellr_issue(payload: dict, x_admin_key: Optional[str] = Header(None),
         import time as _t
         sent_n = 0
         for c in existing:   # הודעה נקייה נפרדת לכל קוד — לא מערבבים קודים בשורה אחת
-            code_str = c["pan"] + (f" · PIN: {c['pin']}" if c.get("pin") else "")
+            _code, _pin = _stellr_display(c["pan"], c.get("pin"))
+            code_str = _code + (f" · PIN: {_pin}" if _pin else "")
             try:
                 wa.send_code(phone, c["wc_name"], code_str)
                 db.stellr_code_update(c["id"], status="sent", sent_at=int(_t.time()))
@@ -6976,8 +6989,8 @@ def board_stellr_issue(payload: dict, x_admin_key: Optional[str] = Header(None),
         pass
     return {"ok": True, "recovered": recovered, "sent": sent, "is_uat": stellr.is_uat(),
             "bill": bill, "customer": cust.get("name") or "",
-            "codes": [{"name": c["wc_name"], "value": c["value"], "pan": c["pan"],
-                       "pin": c["pin"]} for c in existing]}
+            "codes": [dict(zip(("pan", "pin"), _stellr_display(c["pan"], c.get("pin"))),
+                          name=c["wc_name"], value=c["value"]) for c in existing]}
 
 
 @app.post("/api/admin/wa/template/create-code")
@@ -7138,7 +7151,8 @@ def _stellr_req_issue(req: dict) -> dict:
         codes = [c for c in db.stellr_codes_for_order(okey) if c.get("status") == "issued"]
         sent_n = 0
         for c in codes:      # הודעה נקייה נפרדת לכל קוד
-            code_str = c["pan"] + (f" · PIN: {c['pin']}" if c.get("pin") else "")
+            _code, _pin = _stellr_display(c["pan"], c.get("pin"))
+            code_str = _code + (f" · PIN: {_pin}" if _pin else "")
             try:
                 wa.send_code(req["phone"], c["wc_name"], code_str)
                 db.stellr_code_update(c["id"], status="sent", sent_at=int(_t.time()))
@@ -7167,8 +7181,8 @@ def board_stellr_request_status(rid: int, x_admin_key: Optional[str] = Header(No
         codes = [c for c in db.stellr_codes_for_order(okey)
                  if c.get("status") in ("issued", "sent")]
         out["sent"] = any(c.get("status") == "sent" for c in codes)
-        out["codes"] = [{"name": c["wc_name"], "value": c["value"],
-                         "pan": c["pan"], "pin": c["pin"]} for c in codes]
+        out["codes"] = [dict(zip(("pan", "pin"), _stellr_display(c["pan"], c.get("pin"))),
+                             name=c["wc_name"], value=c["value"]) for c in codes]
         out["bill"] = f"בקשה {rid}"
     return out
 
