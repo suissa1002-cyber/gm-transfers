@@ -2499,10 +2499,13 @@ def _detect_order_services(o: dict) -> dict:
     except (TypeError, ValueError):
         ti_est = 0.0
 
+    device_price = float(main[0]) if main else 0.0  # device line total — the
+    # base for the total-loss deductible (NOT the Green Care premium).
     return {
         "customer_name": cust_name, "customer_phone": cust_phone,
         "purchase_date": purchase_date,
         "device_label": device_label, "wc_product_id": wc_product_id,
+        "device_price": device_price,
         "greencare": {"detected": gc_detected, "plan": gc_plan, "price": gc_price},
         "tradein": {"detected": ti_detected, "brand": ti_brand, "model": ti_model,
                     "storage": ti_storage, "est_value": ti_est},
@@ -2558,7 +2561,8 @@ def admin_order_services(order_id: int, x_admin_key: Optional[str] = Header(None
 class OSGreenCareCreateIn(BaseModel):
     order_id: int
     plan: str = "gc"
-    price_paid: float = 0
+    price_paid: float = 0          # Green Care premium the customer paid
+    device_price: float = 0        # device price — base for the TL deductible
     device_label: str = ""
     wc_product_id: Optional[int] = None
     customer_name: str = ""
@@ -2576,7 +2580,10 @@ def admin_os_gc_create(body: OSGreenCareCreateIn, x_admin_key: Optional[str] = H
     start, end = greencare.policy_dates(plan, body.purchase_date or None)
     tl_ded = body.tl_deductible
     if tl_ded is None:
-        tl_ded = greencare.default_tl_deductible(body.price_paid)
+        # Total-loss deductible is ~10% of the DEVICE price (Asi: fixed tiers by
+        # device price), NOT the Green Care premium. Fall back to price_paid only
+        # if the device price wasn't provided (legacy).
+        tl_ded = greencare.default_tl_deductible(body.device_price or body.price_paid)
     pid = db.gc_policy_create(
         order_id=body.order_id, customer_name=body.customer_name,
         customer_phone=body.customer_phone, wc_product_id=body.wc_product_id,

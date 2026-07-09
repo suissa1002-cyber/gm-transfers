@@ -6820,7 +6820,8 @@ async function osCreateGreenCare(){
   const data=S._osD||{}, det=data.detected||{}, d=S._wcoD||{};
   const g=id=>(document.getElementById(id)||{}).value||'';
   const body={order_id:d.id, plan:g('osgcPlan'), device_label:g('osgcDevice').trim(),
-    price_paid:parseFloat(g('osgcPrice'))||0, purchase_date:g('osgcDate'),
+    price_paid:parseFloat(g('osgcPrice'))||0, device_price:det.device_price||0,
+    purchase_date:g('osgcDate'),
     wc_product_id:det.wc_product_id||null, customer_name:det.customer_name||'',
     customer_phone:det.customer_phone||''};
   const tl=g('osgcTl'); if(tl!=='') body.tl_deductible=parseFloat(tl);
