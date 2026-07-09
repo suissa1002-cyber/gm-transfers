@@ -6693,7 +6693,7 @@ def _stellr_issue_order(num: str, dry: bool, actor: str, force: bool = False) ->
                                      p["value"], stellr.CURRENCY,
                                      "auto" if actor == "auto" else "manual", "issued",
                                      tx_id=res.get("tx_id", ""), pan=res.get("pan", ""),
-                                     pin=res.get("pin", ""))
+                                     pin=res.get("pin", ""), branch="אתר", actor=actor)
             issued.append({**p, "id": cid, "tx_id": res.get("tx_id")})
         else:
             # שגיאה (504/507/אחר) — עוצרים מיד, לא ממשיכים להנפיק
@@ -6824,11 +6824,43 @@ def admin_stellr_map_del(wc_key: str, x_admin_key: Optional[str] = Header(None))
 
 
 @app.get("/api/admin/stellr/codes")
-def admin_stellr_codes(order: str = "", x_admin_key: Optional[str] = Header(None)):
+def admin_stellr_codes(order: str = "", limit: int = 200,
+                       x_admin_key: Optional[str] = Header(None)):
     _require_admin(x_admin_key)
     rows = (db.stellr_codes_for_order(str(order).strip().lstrip("#"))
-            if order else db.stellr_codes_list(100))
+            if order else db.stellr_codes_list(min(int(limit or 200), 1000)))
+    # נרמול תצוגה: אצל Xbox ה-pan הוא UUID עסקה והקוד ב-pin — מציגים את הקוד האמיתי
+    for r in rows:
+        r["pan"], r["pin"] = _stellr_display(r.get("pan"), r.get("pin"))
     return {"rows": rows}
+
+
+@app.post("/api/admin/stellr/resend")
+def admin_stellr_resend(payload: dict, x_admin_key: Optional[str] = Header(None)):
+    """שחזור מעמוד ניהול הקודים: שולח שוב בוואטסאפ או מחזיר להדפסה — לעולם לא מנפיק חדש.
+    body: {id, mode: 'wa'|'print', phone (ל-wa; ברירת מחדל הטלפון השמור)}."""
+    _require_admin(x_admin_key)
+    import re as _re
+    import time as _t
+    row = db.stellr_code_get(int(payload.get("id") or 0))
+    if not row or row.get("status") not in ("issued", "sent"):
+        raise HTTPException(404, "קוד לא נמצא (או שלא הונפק בהצלחה)")
+    code, pin = _stellr_display(row.get("pan"), row.get("pin"))
+    mode = str(payload.get("mode") or "print")
+    if mode == "wa":
+        phone = _re.sub(r"\D", "", str(payload.get("phone") or row.get("phone") or ""))
+        if phone.startswith("0"):
+            phone = "972" + phone[1:]
+        if len(phone) < 11:
+            raise HTTPException(400, "מספר טלפון לא תקין לשליחה")
+        import wa
+        code_str = code + (f" · PIN: {pin}" if pin else "")
+        r = wa.send_code(phone, row.get("wc_name") or "קוד דיגיטלי", code_str)
+        db.stellr_code_update(row["id"], status="sent", sent_at=int(_t.time()), phone=phone)
+        return {"ok": True, "sent": bool(r.get("sent")), "phone": phone}
+    return {"ok": True, "codes": [{"name": row.get("wc_name"), "value": row.get("value"),
+                                   "pan": code, "pin": pin}],
+            "bill": str(row.get("order_number") or "")}
 
 
 def _stellr_display(pan: str, pin: str):
@@ -6960,7 +6992,8 @@ def board_stellr_issue(payload: dict, x_admin_key: Optional[str] = Header(None),
             db.stellr_code_add(okey, p["line_ref"], p["wc_name"], p["product_ref"],
                                p["value"], stellr.CURRENCY, "pos", "issued",
                                tx_id=res.get("tx_id", ""), pan=res.get("pan", ""),
-                               pin=res.get("pin", ""))
+                               pin=res.get("pin", ""), branch=branch,
+                               actor=str(doc.get("employee") or ""), phone=phone)
         existing = [c for c in db.stellr_codes_for_order(okey)
                     if c.get("status") in ("issued", "sent")]
     cust = doc.get("customer") or {}
@@ -7143,7 +7176,8 @@ def _stellr_req_issue(req: dict) -> dict:
         db.stellr_code_add(okey, line_ref, label, ref_row["product_ref"], it["value"],
                            stellr.CURRENCY, "pos-req", "issued",
                            tx_id=res.get("tx_id", ""), pan=res.get("pan", ""),
-                           pin=res.get("pin", ""))
+                           pin=res.get("pin", ""), branch=str(branch),
+                           actor=str(req.get("employee") or ""), phone=str(req.get("phone") or ""))
         issued.append(line_ref)
     sent = False
     if req.get("mode") == "wa" and req.get("phone"):

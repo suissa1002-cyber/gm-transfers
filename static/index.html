@@ -1301,6 +1301,7 @@ function renderDrawer(){
     <div class="dr-item ${S.view==='admin'&&S.adminTab==='greencare'?'active':''}" onclick="toggleDrawer(false);if(ensureAdmin(()=>{hubGo('admin');setAdminTab('greencare');})){hubGo('admin');setAdminTab('greencare');}"><span>${ico('shield',16)}</span><span>Green Care${lock}</span></div>
     <div class="dr-sec">Hub</div>
     <div class="dr-item ${S.view==='tasks'?'active':''}" onclick="hubGo('tasks')"><span>${ico('list',16)}</span><span>משימות סוכנים${lock}</span></div>
+    <div class="dr-item ${S.view==='stellr'?'active':''}" onclick="hubGo('stellr')"><span>${ico('card',16)}</span><span>קודים דיגיטליים${lock}</span></div>
     <div class="dr-item ${S.view==='sentinel'?'active':''}" onclick="hubGo('sentinel')"><span>${ico('shield',16)}</span><span>סטטוס Sentinel${lock}</span></div>
     <div class="dr-sec">אפליקציות</div>
     ${HUB_APPS.map(a=>`
@@ -1368,6 +1369,10 @@ function hubGo(view){
   if(view==='sentinel'){
     if(!ensureAdmin(()=>hubGo('sentinel'))) return;
     S.view='sentinel'; S.embedApp=null; loadSentinel(true); return;
+  }
+  if(view==='stellr'){
+    if(!ensureAdmin(()=>hubGo('stellr'))) return;
+    S.view='stellr'; S.embedApp=null; loadStellrCodes(true); return;
   }
   S.view='board'; S.embedApp=null; render();
 }
@@ -1568,6 +1573,7 @@ function render(){
   if(S.view==='embed') return renderEmbed(app);
   if(S.view==='tasks') return S.tasksData?renderTasks():loadTasks(true);
   if(S.view==='sentinel') return S.sentinelData?renderSentinel():loadSentinel(true);
+  if(S.view==='stellr') return S.stellrCodesData?renderStellrCodes():loadStellrCodes(true);
   if(S.view==='crm') return _crmStats?renderCrm():loadCrm(true);
   if(S.view==='admin') return S.adminData?renderAdmin():loadAdmin(true);
   if(S.view==='scan')  return renderScan(app);
@@ -4361,6 +4367,7 @@ const _IPATHS={
   radio:'<circle cx="12" cy="12" r="2"/><path d="M4.93 19.07a10 10 0 0 1 0-14.14"/><path d="M7.76 16.24a6 6 0 0 1 0-8.49"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>',
   truck:'<rect x="1" y="3" width="15" height="13" rx="1"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>',
   pkgx:'<path d="M21 10V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0"/><path d="m7.5 4.27 9 5.15"/><polyline points="3.29 7 12 12 20.71 7"/><line x1="12" y1="22" x2="12" y2="12"/><path d="m17 13 5 5"/><path d="m22 13-5 5"/>',
+  card:'<rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/>',
 };
 function ico(name, size, fill){
   return `<svg width="${size||17}" height="${size||17}" viewBox="0 0 24 24" fill="${fill?'currentColor':'none'}" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="display:block">${_IPATHS[name]||''}</svg>`;
@@ -5910,6 +5917,92 @@ function stellrCopy(cid){
   const el=document.getElementById(cid); if(!el) return;
   const t=el.dataset.pan+(el.dataset.pin?' PIN: '+el.dataset.pin:'');
   navigator.clipboard.writeText(t).then(()=>toast('הקוד הועתק 📋',true)).catch(()=>toast('העתקה נכשלה',false));
+}
+
+// ── 🎫 עמוד ניהול הקודים (תפריט צד) — כל הקודים שהונפקו: מי/מתי/כמה/סניף/יעד + שחזור ──
+async function loadStellrCodes(spinner){
+  if(spinner) showLoading('טוען קודים דיגיטליים…');
+  try{ S.stellrCodesData=(await api('/api/admin/stellr/codes?limit=300')).rows||[]; }
+  catch(e){ S.stellrCodesData=[]; }
+  if(spinner) hideLoading();
+  if(S.view==='stellr') renderStellrCodes();
+}
+function stellrPgBranch(r){
+  if(r.branch==='אתר') return 'אתר 🌐';
+  if(r.branch&&/^\d+$/.test(String(r.branch))) return lsBranchName(Number(r.branch));
+  const ok=String(r.order_number||'');
+  if(/^\d+$/.test(ok)) return 'אתר 🌐';
+  const m=ok.match(/^(?:pos|req)-(\d+)-/); return m?lsBranchName(Number(m[1])):'—';
+}
+function stellrPgRef(r){
+  const ok=String(r.order_number||'');
+  if(/^\d+$/.test(ok)) return 'הזמנה #'+ok;
+  let m=ok.match(/^pos-\d+-(.+)$/); if(m) return 'קבלה '+m[1];
+  m=ok.match(/^req-\d+-(\d+)$/); if(m) return 'בקשת סיטי '+m[1];
+  return ok||'—';
+}
+function renderStellrCodes(){
+  const rows=S.stellrCodesData||[];
+  const q=(S.stellrPgQ||'').toLowerCase();
+  const flt=q?rows.filter(r=>JSON.stringify([r.wc_name,r.order_number,r.actor,r.phone,r.branch]).toLowerCase().includes(q)):rows;
+  const stx=r=>({issued:['הונפק','#d97706'],sent:['נשלח ✓','#16a34a'],dry:['dry-run 💡','#6b7280'],error:['שגיאה ⚠','#dc2626']}[r.status]||[r.status,'var(--muted)']);
+  const fmt=ts=>ts?new Date(ts*1000).toLocaleString('he-IL',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
+  const P='#7c3aed';
+  const row=r=>{
+    const [sl,sc]=stx(r);
+    const cid='spg'+r.id;
+    const dest=r.status==='sent'?('💬 '+(r.phone||'')):(r.mode==='pos'&&r.status==='issued'?'🖨 הדפסה':(r.phone?'💬 '+r.phone:'—'));
+    const hasCode=(r.status==='issued'||r.status==='sent');
+    return `<div class="gcard" style="padding:13px 16px;margin-bottom:10px;min-width:0">
+      <div style="display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;font-size:13px">
+        <b style="flex:1;min-width:150px">${escW(r.wc_name||'')}</b>
+        <span style="font-weight:800;color:${P}">₪${Math.round(r.value||0)}</span>
+        <span style="color:${sc};font-weight:700">${sl}</span>
+      </div>
+      <div class="muted" style="display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;margin-top:5px">
+        <span>${fmt(r.created_at)}</span><span>${escW(stellrPgBranch(r))}</span>
+        <span>${escW(stellrPgRef(r))}</span>
+        ${r.actor?`<span>מנפיק: ${escW(r.actor)}</span>`:''}
+        <span>יעד: ${escW(dest)}</span>
+      </div>
+      ${hasCode?`<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px">
+        <span id="${cid}" data-pan="${escW(r.pan||'')}" data-pin="${escW(r.pin||'')}" style="direction:ltr;unicode-bidi:embed;font-family:monospace;font-size:13px;letter-spacing:.5px;background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:4px 10px">••••••••••••</span>
+        <button onclick="stellrReveal('${cid}')" class="btn-ghost" style="padding:4px 9px;font-size:13px" title="הצג/הסתר">👁</button>
+        <button onclick="stellrCopy('${cid}')" class="btn-ghost" style="padding:4px 9px;font-size:13px" title="העתק">📋</button>
+        <span style="flex:1"></span>
+        <button onclick="stellrPageResend(${r.id},'wa')" class="btn-ghost" style="padding:5px 11px;font-size:12.5px;color:#16a34a;border-color:#16a34a55">💬 שלח שוב</button>
+        <button onclick="stellrPageResend(${r.id},'print')" class="btn-ghost" style="padding:5px 11px;font-size:12.5px;color:#2563eb;border-color:#2563eb55">🖨 הדפס</button>
+      </div>`:(r.error?`<div style="color:#dc2626;font-size:12px;margin-top:6px">${escW(r.error)}</div>`:'')}
+    </div>`; };
+  document.getElementById('app').innerHTML=`<div class="wrap" style="max-width:860px">
+    <div style="display:flex;align-items:center;gap:10px;margin:4px 0 14px;flex-wrap:wrap">
+      <span style="display:inline-flex;color:${P}">${ico('card',22)}</span>
+      <h2 style="margin:0;font-size:19px">קודים דיגיטליים</h2>
+      <span class="muted" style="font-size:12.5px">${rows.length} הנפקות אחרונות</span>
+      <span style="flex:1"></span>
+      <button class="btn-ghost" style="padding:6px 12px;font-size:12.5px" onclick="loadStellrCodes(true)">רענן ↻</button>
+    </div>
+    <input placeholder="חיפוש — מוצר / קבלה / הזמנה / מנפיק / טלפון…" value="${escW(S.stellrPgQ||'')}"
+      oninput="S.stellrPgQ=this.value;clearTimeout(S._spgT);S._spgT=setTimeout(renderStellrCodes,250)"
+      style="width:100%;box-sizing:border-box;padding:11px 14px;border:1.5px solid var(--line);border-radius:12px;background:var(--card);color:var(--txt);font-size:14px;font-family:inherit;margin-bottom:14px">
+    ${flt.length?flt.map(row).join(''):'<div class="empty">אין קודים'+(q?' תואמים לחיפוש':' עדיין')+'</div>'}
+  </div>`;
+  const inp=document.querySelector('#app input'); if(inp&&S.stellrPgQ){ inp.focus(); inp.setSelectionRange(inp.value.length,inp.value.length); }
+}
+async function stellrPageResend(id,mode){
+  let phone='';
+  if(mode==='wa'){
+    const r=(S.stellrCodesData||[]).find(x=>x.id===id)||{};
+    phone=prompt('לאיזה מספר לשלוח את הקוד בוואטסאפ?', r.phone||'');
+    if(phone===null) return;
+  }
+  try{
+    const r=await api('/api/admin/stellr/resend',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({id:id,mode:mode,phone:phone})},60000);
+    if(mode==='print'&&r.codes){ stellrPosPrint(r); }
+    else toast(r.sent?'הקוד נשלח בוואטסאפ ✓':'השליחה נכשלה — נסה שוב',!!r.sent);
+    loadStellrCodes(false);
+  }catch(e){ toast('שגיאה בשחזור'+(e.detail?': '+e.detail:''),false); }
 }
 async function stellrIssue(num,opts){
   opts=opts||{};

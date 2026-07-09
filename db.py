@@ -786,6 +786,10 @@ def _migrate():
         # מקור משימת אורי: panel (טיוטה לאסי) / bot (תשובה אוטומטית ללקוח)
         ("uri_jobs", "source", "TEXT"),
         ("pbx_route", "note", "TEXT"),    # הערה פנימית על שיחה (תיעוד/איכות מענה)
+        # עמוד ניהול הקודים: מי הנפיק, מאיזה סניף, לאן נשלח (וואטסאפ) — לשקיפות ושחזור
+        ("stellr_codes", "branch", "TEXT"),
+        ("stellr_codes", "actor", "TEXT"),
+        ("stellr_codes", "phone", "TEXT"),
     ]
     for table, col, typ in cols:
         try:
@@ -3064,28 +3068,30 @@ def stellr_code_exists(line_ref) -> bool:
 
 
 def stellr_code_add(order_number, line_ref, wc_name, product_ref, value,
-                    currency, mode, status, tx_id="", pan="", pin="", error="") -> int:
+                    currency, mode, status, tx_id="", pan="", pin="", error="",
+                    branch="", actor="", phone="") -> int:
     import time as _t
     with _conn() as c:
         cur = c.cursor()
         args = (str(order_number), str(line_ref), wc_name or "", str(product_ref or ""),
                 float(value or 0), currency or "", mode or "", status or "",
-                tx_id or "", pan or "", pin or "", error or "", int(_t.time()))
+                tx_id or "", pan or "", pin or "", error or "", int(_t.time()),
+                str(branch or ""), actor or "", str(phone or ""))
         if _USE_PG:
             cur.execute(_q("""INSERT INTO stellr_codes
                 (order_number, line_ref, wc_name, product_ref, value, currency,
-                 mode, status, tx_id, pan, pin, error, created_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id"""), args)
+                 mode, status, tx_id, pan, pin, error, created_at, branch, actor, phone)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id"""), args)
             return int(cur.fetchone()["id"])
         cur.execute(_q("""INSERT INTO stellr_codes
             (order_number, line_ref, wc_name, product_ref, value, currency,
-             mode, status, tx_id, pan, pin, error, created_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)"""), args)
+             mode, status, tx_id, pan, pin, error, created_at, branch, actor, phone)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"""), args)
         return int(cur.lastrowid)
 
 
 def stellr_code_update(code_id, **kw):
-    allowed = {"status", "tx_id", "pan", "pin", "error", "sent_at"}
+    allowed = {"status", "tx_id", "pan", "pin", "error", "sent_at", "phone", "mode"}
     sets = {k: v for k, v in kw.items() if k in allowed}
     if not sets:
         return 0
@@ -3158,6 +3164,14 @@ def stellr_codes_list(limit: int = 100) -> list:
         cur = c.cursor()
         cur.execute(_q("SELECT * FROM stellr_codes ORDER BY id DESC LIMIT ?"), (int(limit),))
         return [dict(r) for r in cur.fetchall()]
+
+
+def stellr_code_get(code_id) -> dict:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM stellr_codes WHERE id = ?"), (int(code_id),))
+        r = cur.fetchone()
+        return dict(r) if r else {}
 
 
 # ── הגדרות אפליקציה (kv) — מתגי שירות גלובליים ──
