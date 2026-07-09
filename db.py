@@ -671,6 +671,20 @@ _SCHEMA = [
         error        TEXT
     )
     """.format(pk=_PK),
+    # Green Care — דריסת הגדרות הגנה מורחבת פר מוצר-הורה (WooCommerce parent id).
+    # ההגדרה חלה על כל הווריאציות (meta על ההורה). דריסה ריקה (NULL) = מחיר לפי נוסחה.
+    """
+    CREATE TABLE IF NOT EXISTS greencare_overrides (
+        wc_product_id INTEGER PRIMARY KEY,
+        enabled       INTEGER NOT NULL DEFAULT 1,
+        tier_gc       INTEGER NOT NULL DEFAULT 1,
+        tier_gcp      INTEGER NOT NULL DEFAULT 1,
+        price_gc      REAL,
+        price_gcp     REAL,
+        updated_at    TEXT,
+        updated_by    TEXT
+    )
+    """,
 ]
 
 
@@ -3086,6 +3100,44 @@ def stellr_codes_list(limit: int = 100) -> list:
         cur = c.cursor()
         cur.execute(_q("SELECT * FROM stellr_codes ORDER BY id DESC LIMIT ?"), (int(limit),))
         return [dict(r) for r in cur.fetchall()]
+
+
+# ── Green Care — דריסת הגדרות פר מוצר-הורה ──
+def greencare_get(wc_product_id) -> dict:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM greencare_overrides WHERE wc_product_id = ?"),
+                    (int(wc_product_id),))
+        r = cur.fetchone()
+        return dict(r) if r else {}
+
+
+def greencare_set(wc_product_id, enabled, tier_gc, tier_gcp,
+                  price_gc=None, price_gcp=None, by="") -> dict:
+    """שומר/מעדכן דריסה. price_gc/price_gcp = None → מחיר לפי נוסחה. מחזיר את השורה."""
+    pgc = None if (price_gc is None or price_gc == "") else float(price_gc)
+    pgcp = None if (price_gcp is None or price_gcp == "") else float(price_gcp)
+    with _conn() as c:
+        c.cursor().execute(_q("""
+            INSERT INTO greencare_overrides (wc_product_id, enabled, tier_gc, tier_gcp,
+                                             price_gc, price_gcp, updated_at, updated_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(wc_product_id) DO UPDATE SET
+                enabled=excluded.enabled, tier_gc=excluded.tier_gc,
+                tier_gcp=excluded.tier_gcp, price_gc=excluded.price_gc,
+                price_gcp=excluded.price_gcp, updated_at=excluded.updated_at,
+                updated_by=excluded.updated_by
+        """), (int(wc_product_id), 1 if enabled else 0, 1 if tier_gc else 0,
+               1 if tier_gcp else 0, pgc, pgcp, now_iso(), by or ""))
+    return greencare_get(wc_product_id)
+
+
+def greencare_delete(wc_product_id) -> int:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("DELETE FROM greencare_overrides WHERE wc_product_id = ?"),
+                    (int(wc_product_id),))
+        return cur.rowcount
 
 
 def wa_msg_get(wamid: str):

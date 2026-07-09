@@ -20,6 +20,7 @@ import db
 import poller
 import misroute
 import stellr
+import greencare
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -2224,6 +2225,156 @@ def admin_wc_disconnect(body: WcDisconnectIn, x_admin_key: Optional[str] = Heade
     _flush()
     logger.info("wc-disconnect: sku %s cleared from id %s by %s", sku, e0.get("id"), actor or "?")
     return JSONResponse({"ok": True, "id": e0.get("id"), "name": e0.get("name")},
+                        headers={"Cache-Control": "no-store"})
+
+
+# ── Green Care — ניהול הגנה מורחבת פר-מוצר ──────────────────────────
+# חיפוש מוצר-הורה באתר → פאנל הגדרות (הפעלה/טירים/מחיר עם דריסה) → שמירה ל-DB
+# ודחיפת meta למוצר ההורה ב-WooCommerce (חל על כל הווריאציות).
+def _gc_price_of(p: dict, base, k, s) -> float:
+    """מחיר לחישוב הנוסחה: מוצר פשוט = price; משתנה = מחיר הווריאציה המינימלי
+    (או שדה price של ההורה כ-fallback)."""
+    try:
+        pr = float(p.get("price") or 0)
+    except (TypeError, ValueError):
+        pr = 0.0
+    if p.get("type") == "variable":
+        try:
+            import requests as _rq
+            rv = _rq.get(base + f"/wp-json/wc/v3/products/{p.get('id')}/variations",
+                         params={"per_page": 100}, auth=(k, s), timeout=20)
+            prices = [float(v.get("price")) for v in (rv.json() if rv.ok else [])
+                      if v.get("price")]
+            if prices:
+                pr = min(prices)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("greencare variation price lookup failed for %s: %s", p.get("id"), e)
+    return pr
+
+
+@app.get("/api/admin/greencare/lookup")
+def admin_greencare_lookup(q: str = "", x_admin_key: Optional[str] = Header(None),
+                           x_device_token: Optional[str] = Header(None)):
+    """חיפוש מוצרי-הורה באתר לפי שם או מק"ט — עד 10 תוצאות. הגדרות Green Care
+    חלות על ההורה (כולל כל הווריאציות), לכן מחזירים רק מוצרי הורה (לא וריאציות)."""
+    _require_admin_or_device(x_admin_key, x_device_token)
+    creds = _wc_creds()
+    q = (q or "").strip()
+    if not creds or len(q) < 2:
+        return {"results": []}
+    base, k, s = creds
+    import requests as _rq
+    prods = []
+    # קודם ניסיון לפי מק"ט (מחזיר מוצר בודד), אחר-כך חיפוש טקסט חופשי
+    try:
+        rs = _rq.get(base + "/wp-json/wc/v3/products", params={"sku": q},
+                     auth=(k, s), timeout=15)
+        if rs.ok and isinstance(rs.json(), list):
+            prods = rs.json()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("greencare lookup sku %s failed: %s", q, e)
+    if not prods:
+        try:
+            rt = _rq.get(base + "/wp-json/wc/v3/products",
+                         params={"search": q, "per_page": 10, "status": "publish"},
+                         auth=(k, s), timeout=15)
+            prods = rt.json() if rt.ok else []
+        except Exception as e:  # noqa: BLE001
+            logger.warning("greencare lookup search %s failed: %s", q, e)
+            prods = []
+    out = []
+    for p in (prods or []):
+        if not isinstance(p, dict):
+            continue
+        # וריאציה בודדת שנמצאה לפי מק"ט → מטפסים למוצר ההורה
+        pid = p.get("parent_id") or p.get("id") if p.get("type") == "variation" else p.get("id")
+        img = ((p.get("images") or [{}])[0] or {}).get("src", "")
+        out.append({
+            "id": pid, "name": p.get("name") or "", "sku": p.get("sku") or "",
+            "price": p.get("price") or "", "type": p.get("type") or "",
+            "variations_count": len(p.get("variations") or []), "image": img,
+        })
+        if len(out) >= 10:
+            break
+    return {"results": out}
+
+
+@app.get("/api/admin/greencare/product/{wc_id}")
+def admin_greencare_product(wc_id: int, x_admin_key: Optional[str] = Header(None),
+                            x_device_token: Optional[str] = Header(None)):
+    """מידע מוצר + ברירות-מחדל מהנוסחה + דריסה שמורה + המצב האפקטיבי."""
+    _require_admin_or_device(x_admin_key, x_device_token)
+    creds = _wc_creds()
+    if not creds:
+        raise HTTPException(503, "wc not configured")
+    base, k, s = creds
+    import requests as _rq
+    try:
+        r = _rq.get(base + f"/wp-json/wc/v3/products/{int(wc_id)}", auth=(k, s), timeout=15)
+        if not r.ok:
+            raise HTTPException(404, "product not found")
+        p = r.json()
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001
+        logger.warning("greencare product %s lookup failed: %s", wc_id, e)
+        raise HTTPException(502, "wc lookup failed")
+    price = _gc_price_of(p, base, k, s)
+    override = greencare.get_override(wc_id)
+    effective = greencare.compute_effective(price, override)
+    img = ((p.get("images") or [{}])[0] or {}).get("src", "")
+    return {
+        "id": p.get("id"), "name": p.get("name") or "", "sku": p.get("sku") or "",
+        "type": p.get("type") or "", "price": price, "image": img,
+        "permalink": p.get("permalink") or "",
+        "variations_count": len(p.get("variations") or []),
+        "defaults": {"gc": greencare.price_gc_default(price),
+                     "gcp": greencare.price_gcp_default(price)},
+        "override": override or None,
+        "effective": effective,
+    }
+
+
+class GreenCareSaveIn(BaseModel):
+    wc_id: int
+    enabled: bool = True
+    tier_gc: bool = True
+    tier_gcp: bool = True
+    price_gc: Optional[float] = None
+    price_gcp: Optional[float] = None
+
+
+@app.post("/api/admin/greencare/save")
+def admin_greencare_save(body: GreenCareSaveIn, x_admin_key: Optional[str] = Header(None),
+                         x_device_token: Optional[str] = Header(None)):
+    """שומר דריסה ב-DB, מחשב מצב אפקטיבי, ודוחף meta למוצר ההורה ב-WooCommerce.
+    כשל בדחיפה לאתר → עדיין נשמר מקומית ומוחזר wc_pushed:false + שגיאה."""
+    actor = _actor_name(x_admin_key, x_device_token)
+    _require_admin_or_device(x_admin_key, x_device_token)
+    creds = _wc_creds()
+    if not creds:
+        raise HTTPException(503, "wc not configured")
+    base, k, s = creds
+    import requests as _rq
+    # מחיר המוצר לחישוב הנוסחה (מהאתר) — נדרש כדי לחשב מחיר אפקטיבי מדויק
+    try:
+        r = _rq.get(base + f"/wp-json/wc/v3/products/{body.wc_id}", auth=(k, s), timeout=15)
+        p = r.json() if r.ok else {}
+    except Exception as e:  # noqa: BLE001
+        logger.warning("greencare save price lookup failed for %s: %s", body.wc_id, e)
+        p = {}
+    price = _gc_price_of(p, base, k, s) if p else 0.0
+    greencare.set_override(body.wc_id, body.enabled, body.tier_gc, body.tier_gcp,
+                           body.price_gc, body.price_gcp, by=actor)
+    override = greencare.get_override(body.wc_id)
+    effective = greencare.compute_effective(price, override)
+    push = greencare.push_to_wc(body.wc_id, effective)
+    logger.info("greencare save: id %s enabled=%s gc=%s gcp=%s pushed=%s by %s",
+                body.wc_id, body.enabled, body.tier_gc, body.tier_gcp,
+                push.get("ok"), actor or "?")
+    return JSONResponse({"ok": True, "effective": effective,
+                         "wc_pushed": bool(push.get("ok")),
+                         "wc_error": push.get("error", "")},
                         headers={"Cache-Control": "no-store"})
 
 

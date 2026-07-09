@@ -789,6 +789,7 @@ const S = { branchId:null, branchName:null, employee:null, adminKey:null,
             lsCat:null, lsCatAt:null, lsQuery:'', lsKind:'serial', lsCategory:'', lsMfr:'', lsStock:true,
             lsLive:{}, lsSeq:0, lsSerialHits:null, _refocusLs:false, _lsDetail:null, lsWc:{}, lsWcOff:false,
             tasksData:null, tkGroup:'', tkStatus:'open', tkSearch:'', _refocusTk:false,
+            gcQuery:'', gcResults:null, gcSel:null, gcForm:null, gcBusy:false, _refocusGc:false,
             branchTab:'board', deviceToken:null };
 
 // ── ערכת נושא (כהה/בהיר) ──
@@ -1937,6 +1938,7 @@ function adminTabsHTML(){
       <button class="${a('order')}" onclick="setAdminTab('order')">${ico('list',15)} טיוטת הזמנה${oc}</button>
     </div>
     <button class="${a('removals')}" onclick="setAdminTab('removals')">${ico('trendDown',15)} הורדות מרלוג</button>
+    <button class="${a('greencare')}" onclick="setAdminTab('greencare')">${ico('shield',15)} Green Care</button>
   </div>`;
 }
 function setAdminTab(tab){
@@ -1949,6 +1951,7 @@ function setAdminTab(tab){
   else if(tab==='reco'){ if(!S.recoData) loadReco(true); else renderReco(); }
   else if(tab==='order'){ loadOrder(true); }
   else if(tab==='removals'){ if(!S.removalsData) loadRemovals(true); else renderRemovals(); }
+  else if(tab==='greencare'){ renderGreenCare(); }
   else if(tab==='wcorders'){ renderWcOrders(); }
   else if(tab==='wa'){ if(!S.waConvs) loadWa(true); else renderWa(); }
   else renderAdmin();
@@ -6822,6 +6825,132 @@ async function wcoAddNote(oid){
     openWcOrder(oid);
   }catch(e){ toast('הוספת ההערה נכשלה',false); }
 }
+// ── Green Care — ניהול הגנה מורחבת פר-מוצר ──
+function renderGreenCare(){
+  const app=document.getElementById('app');
+  app.innerHTML=`<h1 class="title" style="display:flex;align-items:center;gap:8px">${ico('shield',19)} Green Care — הגנה מורחבת</h1>
+    ${adminTabsHTML()}
+    <div class="muted" style="font-size:13px;margin-bottom:12px">חיפוש מוצר-הורה באתר → הפעלת Green Care, בחירת מסלולים ומחירים. ההגדרה חלה על כל הווריאציות של המוצר.</div>
+    <div class="rebal-bar" style="margin-bottom:12px">
+      <span class="ls-searchwrap">
+        <input id="gcSearch" placeholder="🔎 שם מוצר / מק״ט" value="${(S.gcQuery||'').replace(/"/g,'&quot;')}"
+          oninput="gcOnInput(this.value)" onkeydown="if(event.key==='Enter')gcSearch()"
+          autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search">
+        ${S.gcQuery?`<button class="ls-clear" onclick="gcClear()" title="נקה חיפוש">✕</button>`:''}
+      </span>
+      <button class="btn-ghost" onclick="gcSearch()">חפש</button>
+    </div>
+    <div id="gcBody">${gcBodyHTML()}</div>`;
+  if(S._refocusGc){ const el=document.getElementById('gcSearch'); if(el){ el.focus(); const v=el.value; el.value=''; el.value=v; } S._refocusGc=false; }
+}
+function gcBodyHTML(){
+  if(S.gcSel) return gcPanelHTML();
+  const r=S.gcResults;
+  if(r===null) return `<div class="empty">🔎 הקלד שם מוצר או מק״ט ולחץ Enter / חפש</div>`;
+  if(!r.length) return `<div class="empty">לא נמצאו מוצרים מתאימים</div>`;
+  return `<div class="ls-cards">${r.map(gcResultCard).join('')}</div>`;
+}
+function gcResultCard(p){
+  const img=p.image?`<img src="${p.image}" style="width:44px;height:44px;object-fit:contain;border-radius:8px;background:#fff">`:`<div style="width:44px;height:44px;border-radius:8px;background:var(--card2)"></div>`;
+  const vc=p.variations_count?` · ${p.variations_count} וריאציות`:'';
+  const sku=p.sku?` · מק״ט ${p.sku}`:'';
+  return `<div class="gcard" style="display:flex;align-items:center;gap:12px;padding:12px;cursor:pointer;margin-bottom:8px" onclick="gcSelect(${p.id})">
+    ${img}
+    <div style="flex:1;min-width:0">
+      <div style="font-weight:700">${p.name}</div>
+      <div class="muted" style="font-size:12px">${p.price?'₪'+p.price:''}${sku}${vc}</div>
+    </div>
+    <span class="btn-ghost">בחר ←</span>
+  </div>`;
+}
+function gcOnInput(v){ S.gcQuery=v; S._refocusGc=false; }
+function gcClear(){ S.gcQuery=''; S.gcResults=null; S.gcSel=null; S.gcForm=null; renderGreenCare(); }
+async function gcSearch(){
+  const q=(S.gcQuery||'').trim(); if(q.length<2) return;
+  S.gcSel=null; S.gcForm=null;
+  showLoading('מחפש מוצרים באתר…');
+  try{ const d=await api('/api/admin/greencare/lookup?q='+encodeURIComponent(q)); S.gcResults=d.results||[]; }
+  catch(e){ hideLoading(); toast('החיפוש נכשל',false); return; }
+  hideLoading(); renderGreenCare();
+}
+async function gcSelect(id){
+  showLoading('טוען הגדרות מוצר…');
+  let d; try{ d=await api('/api/admin/greencare/product/'+encodeURIComponent(id)); }
+  catch(e){ hideLoading(); toast('טעינת המוצר נכשלה',false); return; }
+  hideLoading();
+  const eff=d.effective||{tiers:{gc:{},gcp:{}}};
+  const ov=d.override;
+  // הטופס: המחיר מוצג רק אם נדרס ידנית (אחרת ריק → placeholder הנוסחה)
+  S.gcSel=d;
+  S.gcForm={
+    enabled: eff.enabled!==false,
+    tier_gc: (eff.tiers.gc||{}).on!==false,
+    tier_gcp: (eff.tiers.gcp||{}).on!==false,
+    price_gc: (ov&&ov.price_gc!=null)?String(Math.round(ov.price_gc)):'',
+    price_gcp:(ov&&ov.price_gcp!=null)?String(Math.round(ov.price_gcp)):'',
+  };
+  renderGreenCare();
+}
+function gcBack(){ S.gcSel=null; S.gcForm=null; renderGreenCare(); }
+function gcSet(k,v){ if(S.gcForm){ S.gcForm[k]=v; gcRefreshPanel(); } }
+function gcSetPrice(k,v){ if(S.gcForm){ S.gcForm[k]=(v||'').replace(/[^\d]/g,''); } }
+function gcRefreshPanel(){ const b=document.getElementById('gcBody'); if(b) b.innerHTML=gcPanelHTML(); }
+function gcPanelHTML(){
+  const d=S.gcSel, f=S.gcForm; if(!d||!f) return '';
+  const def=d.defaults||{gc:0,gcp:0};
+  const img=d.image?`<img src="${d.image}" style="width:60px;height:60px;object-fit:contain;border-radius:10px;background:#fff">`:'';
+  const vc=d.variations_count?`<span class="muted" style="font-size:12px">${d.variations_count} וריאציות — ההגדרה חלה על כולן</span>`:'';
+  const tierRow=(key,label,sub,defPrice)=>{
+    const on=f['tier_'+key], price=f['price_'+key];
+    const overridden=(price||'').length>0;
+    const badge=overridden
+      ? `<span class="badge-manual" style="font-size:11px">נדרס ידנית</span>`
+      : `<span class="badge" style="font-size:11px;background:var(--card2);color:var(--muted);padding:2px 8px;border-radius:8px">לפי נוסחה</span>`;
+    return `<div class="gcard" style="padding:14px;margin-bottom:10px;opacity:${f.enabled?'1':'.5'}">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <label class="ls-check" style="margin:0"><input type="checkbox" ${on?'checked':''} ${f.enabled?'':'disabled'} onchange="gcSet('tier_${key}',this.checked)"><span style="font-weight:700">${label}</span></label>
+        <span style="margin-inline-start:auto">${badge}</span>
+      </div>
+      <div class="muted" style="font-size:12px;margin-bottom:8px">${sub}</div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:14px">מחיר ₪</span>
+        <input inputmode="numeric" value="${price}" placeholder="${defPrice}" ${(!f.enabled||!on)?'disabled':''}
+          oninput="gcSetPrice('price_${key}',this.value)" onblur="gcRefreshPanel()"
+          style="width:110px;padding:8px;border-radius:10px;border:2px solid var(--line);background:var(--card2);color:var(--txt);text-align:center">
+        <span class="muted" style="font-size:12px">ריק = לפי נוסחה (₪${defPrice})</span>
+      </div>
+    </div>`;
+  };
+  return `<div style="max-width:640px">
+    <button class="btn-ghost" style="margin-bottom:12px" onclick="gcBack()">← חזרה לתוצאות</button>
+    <div class="gcard" style="display:flex;align-items:center;gap:14px;padding:14px;margin-bottom:14px">
+      ${img}
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:800;font-size:16px">${d.name}</div>
+        <div class="muted" style="font-size:13px">מחיר בסיס: ₪${Math.round(d.price||0)}${d.sku?' · מק״ט '+d.sku:''}</div>
+        ${vc}
+      </div>
+    </div>
+    <label class="ls-check" style="margin-bottom:14px;font-size:15px"><input type="checkbox" ${f.enabled?'checked':''} onchange="gcSet('enabled',this.checked)"><span style="font-weight:700">Green Care פעיל למוצר</span></label>
+    ${tierRow('gc','Green Care','הרחבת אחריות שנה שנייה — במעבדה שלנו',def.gc)}
+    ${tierRow('gcp','Green Care Plus','חבילת שברים 24 ח׳ — מסך, רכיבים, טוטאל-לוס',def.gcp)}
+    <button class="btn-primary" style="margin-top:10px" ${S.gcBusy?'disabled':''} onclick="gcSave()">${S.gcBusy?'שומר…':'שמור ועדכן באתר'}</button>
+  </div>`;
+}
+async function gcSave(){
+  const d=S.gcSel, f=S.gcForm; if(!d||!f) return;
+  S.gcBusy=true; gcRefreshPanel();
+  const body={ wc_id:d.id, enabled:!!f.enabled, tier_gc:!!f.tier_gc, tier_gcp:!!f.tier_gcp,
+    price_gc:(f.price_gc||'').length?Number(f.price_gc):null,
+    price_gcp:(f.price_gcp||'').length?Number(f.price_gcp):null };
+  let r; try{ r=await api('/api/admin/greencare/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); }
+  catch(e){ S.gcBusy=false; gcRefreshPanel(); toast('השמירה נכשלה',false); return; }
+  S.gcBusy=false;
+  if(r.wc_pushed) toast('נשמר ועודכן באתר ✓',true,1600);
+  else toast('נשמר מקומית — דחיפה לאתר נכשלה',false,2400);
+  // רענון המצב האפקטיבי מהשרת כדי לשקף source/מחיר מעודכן
+  gcSelect(d.id);
+}
 function renderAdmin(){
   if(S.adminTab==='live') return S.lsCat?renderLive():loadLiveCatalog(true);
   if(S.adminTab==='wa') return S.waConvs?renderWa():loadWa(true);
@@ -6830,6 +6959,7 @@ function renderAdmin(){
   if(S.adminTab==='reco') return S.recoData?renderReco():loadReco(true);
   if(S.adminTab==='order') return S.orderData?renderOrder():loadOrder(true);
   if(S.adminTab==='removals') return S.removalsData?renderRemovals():loadRemovals(true);
+  if(S.adminTab==='greencare') return renderGreenCare();
   if(S.adminTab==='wcorders') return renderWcOrders();
   const app=document.getElementById('app');
   const f=S.adminFilters;
