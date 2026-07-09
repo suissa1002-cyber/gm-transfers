@@ -2277,12 +2277,25 @@ def admin_greencare_lookup(q: str = "", x_admin_key: Optional[str] = Header(None
     if not prods:
         try:
             rt = _rq.get(base + "/wp-json/wc/v3/products",
-                         params={"search": q, "per_page": 10, "status": "publish"},
-                         auth=(k, s), timeout=15)
+                         params={"search": q, "per_page": 30, "status": "publish"},
+                         auth=(k, s), timeout=20)
             prods = rt.json() if rt.ok else []
         except Exception as e:  # noqa: BLE001
             logger.warning("greencare lookup search %s failed: %s", q, e)
             prods = []
+        # חיפוש WC סורק גם תיאורים ומחזיר רעש (דיסק-און-קי על "iphone 16"...).
+        # מסננים: כל מילות החיפוש חייבות להופיע בשם/מק"ט, וממיינים לפי רלוונטיות.
+        toks = [t for t in q.lower().split() if t]
+        if toks and isinstance(prods, list):
+            def _blob(p):
+                return ((p.get("name") or "") + " " + (p.get("sku") or "")).lower()
+            strict = [p for p in prods if isinstance(p, dict)
+                      and all(t in _blob(p) for t in toks)]
+            if strict:
+                ql = q.lower()
+                strict.sort(key=lambda p: (0 if ql in _blob(p) else 1,
+                                           len(p.get("name") or "")))
+                prods = strict
     out = []
     for p in (prods or []):
         if not isinstance(p, dict):

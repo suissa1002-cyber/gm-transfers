@@ -7216,23 +7216,29 @@ function renderGreenCare(){
   if(S._refocusGc){ const el=document.getElementById('gcSearch'); if(el){ el.focus(); const v=el.value; el.value=''; el.value=v; } S._refocusGc=false; }
 }
 function gcBodyHTML(){
-  if(S.gcSel) return gcPanelHTML();
+  // רשימת תוצאות עם הרחבה אינליין — לחיצה על כרטיס פותחת את ההגדרות בתוכו,
+  // בלי לעבור עמוד. עבודה מהירה מול דגם אחרי דגם.
   const r=S.gcResults;
-  if(r===null) return `<div class="empty">🔎 הקלד שם מוצר או מק״ט ולחץ Enter / חפש</div>`;
+  if(r===null) return `<div class="empty">🔎 הקלד שם מוצר או מק״ט — החיפוש רץ תוך כדי הקלדה</div>`;
   if(!r.length) return `<div class="empty">לא נמצאו מוצרים מתאימים</div>`;
   return `<div class="ls-cards">${r.map(gcResultCard).join('')}</div>`;
 }
 function gcResultCard(p){
+  const open=S.gcSel&&S.gcSel.id===p.id;
   const img=p.image?`<img src="${p.image}" style="width:44px;height:44px;object-fit:contain;border-radius:8px;background:#fff">`:`<div style="width:44px;height:44px;border-radius:8px;background:var(--card2)"></div>`;
   const vc=p.variations_count?` · ${p.variations_count} וריאציות`:'';
   const sku=p.sku?` · מק״ט ${p.sku}`:'';
-  return `<div class="gcard" style="display:flex;align-items:center;gap:12px;padding:12px;cursor:pointer;margin-bottom:8px" onclick="gcSelect(${p.id})">
-    ${img}
-    <div style="flex:1;min-width:0">
-      <div style="font-weight:700">${p.name}</div>
-      <div class="muted" style="font-size:12px">${p.price?'₪'+p.price:''}${sku}${vc}</div>
+  const chev=`<span class="muted" style="font-size:14px;transition:transform .15s;transform:rotate(${open?'90deg':'0'});display:inline-block">‹</span>`;
+  return `<div class="gcard" style="padding:0;margin-bottom:8px;overflow:hidden${open?';border-color:var(--acc,#6366f1)':''}">
+    <div style="display:flex;align-items:center;gap:12px;padding:12px;cursor:pointer" onclick="gcSelect(${p.id})">
+      ${img}
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700">${p.name}</div>
+        <div class="muted" style="font-size:12px">${p.price?'₪'+p.price:''}${sku}${vc}</div>
+      </div>
+      ${chev}
     </div>
-    <span class="btn-ghost">בחר ←</span>
+    ${open?`<div style="border-top:1px solid var(--line);padding:14px;background:var(--card2)">${gcPanelHTML()}</div>`:''}
   </div>`;
 }
 function gcOnInput(v){ S.gcQuery=v; S._refocusGc=false; gcAutoSearch(); }
@@ -7280,6 +7286,8 @@ async function gcSearchQuiet(q){
   }catch(e){}
 }
 async function gcSelect(id){
+  // לחיצה חוזרת על כרטיס פתוח — מקפלת אותו (אקורדיון)
+  if(S.gcSel&&S.gcSel.id===id){ S.gcSel=null; S.gcForm=null; renderGreenCare(); return; }
   showLoading('טוען הגדרות מוצר…');
   let d; try{ d=await api('/api/admin/greencare/product/'+encodeURIComponent(id)); }
   catch(e){ hideLoading(); toast('טעינת המוצר נכשלה',false); return; }
@@ -7300,7 +7308,7 @@ async function gcSelect(id){
 function gcBack(){ S.gcSel=null; S.gcForm=null; renderGreenCare(); }
 function gcSet(k,v){ if(S.gcForm){ S.gcForm[k]=v; gcRefreshPanel(); } }
 function gcSetPrice(k,v){ if(S.gcForm){ S.gcForm[k]=(v||'').replace(/[^\d]/g,''); } }
-function gcRefreshPanel(){ const b=document.getElementById('gcBody'); if(b) b.innerHTML=gcPanelHTML(); }
+function gcRefreshPanel(){ const b=document.getElementById('gcBody'); if(b) b.innerHTML=gcBodyHTML(); }
 function gcPanelHTML(){
   const d=S.gcSel, f=S.gcForm; if(!d||!f) return '';
   const def=d.defaults||{gc:0,gcp:0};
@@ -7335,15 +7343,6 @@ function gcPanelHTML(){
       </div>`
     : '';
   return `<div style="max-width:640px">
-    <button class="btn-ghost" style="margin-bottom:12px" onclick="gcBack()">← חזרה לתוצאות</button>
-    <div class="gcard" style="display:flex;align-items:center;gap:14px;padding:14px;margin-bottom:14px">
-      ${img}
-      <div style="flex:1;min-width:0">
-        <div style="font-weight:800;font-size:16px">${d.name}</div>
-        <div class="muted" style="font-size:13px">מחיר בסיס: ₪${Math.round(d.price||0)}${d.sku?' · מק״ט '+d.sku:''}</div>
-        ${vc}
-      </div>
-    </div>
     ${avChips}
     <label class="ls-check" style="margin-bottom:14px;font-size:15px"><input type="checkbox" ${f.enabled?'checked':''} onchange="gcSet('enabled',this.checked)"><span style="font-weight:700">Green Care פעיל למוצר</span></label>
     ${tierRow('gc','Green Care','הרחבת אחריות שנה שנייה — במעבדה שלנו',def.gc)}
