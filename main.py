@@ -8855,10 +8855,15 @@ def admin_order_shipping_method(oid: int, body: ShippingMethodIn,
         raise HTTPException(502, "עדכון אופן המשלוח נכשל")
     nj = r.json()
     number = str(nj.get("number") or od.get("number") or oid)
-    try:                                          # גארד: לא לשדר את ההזמנה הזו שוב לעולם
-        db.sales_state_set(f"auto_tr_bcast:{number}", "1")
-    except Exception:  # noqa: BLE001
-        pass
+    # גארד שידור: רק ב**איסוף עצמי** (אין משלוח לשדר להעברה) מסמנים "לא לשדר". בשינוי
+    # לשיטת *משלוח* (רגיל/אקספרס/קרגו) — לא נוגעים בדגל! אחרת הזמנת משלוח שאופן המשלוח
+    # שלה שונה נחסמה בטעות משידור לגיטימי (באג 48532, 09/07: bcast=None אך הדגל דלוק →
+    # הפולר דילג, אין העברה, אין סניף).
+    if mode in ("pickup", "tlv"):
+        try:
+            db.sales_state_set(f"auto_tr_bcast:{number}", "1")
+        except Exception:  # noqa: BLE001
+            pass
     try:                                          # הערה פנימית בהזמנה
         _rq.post(f"{base}/wp-json/wc/v3/orders/{oid}/notes",
                  json={"note": f"אופן משלוח שונה ל: {title} (דרך GreenOS)",
