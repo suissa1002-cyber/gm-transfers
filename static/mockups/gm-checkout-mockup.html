@@ -125,6 +125,13 @@ h1.pagetitle{font-size:clamp(1.4rem,2.6vw,1.9rem);font-weight:900;margin:0 0 20p
 .ppembed-title{font-weight:900;font-size:1.05rem;margin:0 0 14px;}
 .payinline{display:flex;align-items:center;justify-content:center;gap:9px;width:100%;background:var(--accent);color:var(--accent-ink);border:none;border-radius:99px;padding:15px;font-weight:900;font-size:1.05rem;cursor:pointer;font-family:inherit;margin-top:6px;}
 .payinline:hover{filter:brightness(1.05);}
+.wallets{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px;}
+.wbtn{display:flex;align-items:center;justify-content:center;gap:6px;border:none;border-radius:12px;padding:13px;font-family:inherit;font-weight:800;font-size:.95rem;cursor:pointer;}
+.wbtn.dark{background:#111;color:#fff;} .wbtn.dark svg{fill:#fff;}
+.wbtn.glight{background:#fff;color:#111;border:1.5px solid var(--line);}
+.wbtn.bitb{background:#0a7cff;color:#fff;letter-spacing:.02em;}
+.orline{display:flex;align-items:center;gap:12px;color:var(--ink2);font-size:.82rem;margin:2px 0 16px;}
+.orline::before,.orline::after{content:"";flex:1;height:1px;background:var(--line);}
 .terms{display:flex;align-items:flex-start;gap:10px;font-size:.85rem;color:var(--ink2);margin-top:4px;}
 .terms input{margin-top:3px;width:17px;height:17px;accent-color:var(--accent);flex:none;}
 .terms a{color:var(--accent);font-weight:700;text-decoration:none;}
@@ -212,14 +219,20 @@ h1.pagetitle{font-size:clamp(1.4rem,2.6vw,1.9rem);font-weight:900;margin:0 0 20p
           <label class="orow" onclick="pickPay(this,'google')"><span class="radio"></span><svg class="paylogo" viewBox="0 0 40 26"><rect width="40" height="26" rx="4" fill="#fff" stroke="#e6eae8"/><text x="20" y="17" font-size="8" text-anchor="middle" font-family="Arial" font-weight="bold"><tspan fill="#4285f4">G</tspan><tspan fill="#5c666d"> Pay</tspan></text></svg><span class="otxt"><div class="ot">Google Pay</div></span></label>
           <label class="orow" onclick="pickPay(this,'blender')"><span class="radio"></span><svg class="paylogo" viewBox="0 0 40 26"><rect width="40" height="26" rx="4" fill="#fff" stroke="#e6eae8"/><text x="20" y="18" font-size="14" fill="#00b0f0" text-anchor="middle" font-family="Arial" font-weight="bold">b</text></svg><span class="otxt"><div class="ot">Blender · תשלומים</div><div class="os">פריסה נוחה לתשלומים</div></span></label>
         </div>
-        <div class="paynote" id="payNote"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg> <span>פרטי התשלום מוזנים בעמוד הסליקה המאובטח (PayPlus) — איננו שומרים פרטי כרטיס.</span></div>
+        <div class="paynote" id="payNote" style="display:none"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg> <span></span></div>
         <label class="terms" style="margin-top:14px"><input type="checkbox" required> קראתי ואני מאשר/ת את <a href="#">תקנון האתר</a> ו<a href="#">מדיניות הפרטיות</a></label>
       </div>
       <!-- embedded PayPlus payment page (samePageIframe) — appears in-page after 'אישור ותשלום' -->
-      <div class="ppembed" id="ppEmbed">
+      <div class="ppembed show" id="ppEmbed">
         <div class="ppembed-bar"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg> תשלום מאובטח דרך PayPlus<span class="url">payments.payplus.co.il</span></div>
         <div class="ppembed-body">
           <div class="ppembed-title">פרטי תשלום</div>
+          <div class="wallets">
+            <button type="button" class="wbtn dark" onclick="finishPay()"><svg viewBox="0 0 20 24" width="13" aria-hidden="true"><path d="M14 12.6c0-2.6 2.1-3.9 2.2-4-1.2-1.8-3.1-2-3.8-2-1.6-.2-3.1.9-3.9.9-.8 0-2-.9-3.3-.9-1.7 0-3.3 1-4.1 2.5-1.8 3.1-.5 7.6 1.3 10.1.9 1.2 1.9 2.6 3.2 2.5 1.3-.1 1.8-.8 3.3-.8 1.5 0 2 .8 3.3.8 1.4 0 2.2-1.2 3.1-2.5.6-.9.9-1.8.9-1.8-.1 0-2.4-.9-2.4-3.6zM12 4.8c.7-.8 1.1-2 1-3.1-1 0-2.1.7-2.8 1.5-.6.7-1.1 1.8-1 2.9 1.1.1 2.1-.5 2.8-1.3z"/></svg> Pay</button>
+            <button type="button" class="wbtn glight" onclick="finishPay()"><span style="color:#4285f4;font-weight:900">G</span>&nbsp;Pay</button>
+            <button type="button" class="wbtn bitb" onclick="finishPay()">bit</button>
+          </div>
+          <div class="orline"><span>או בכרטיס אשראי</span></div>
           <div class="frow one"><div class="field"><label>מספר כרטיס</label><div class="cardinput"><input type="text" inputmode="numeric" placeholder="0000 0000 0000 0000"><span class="cc"><svg viewBox="0 0 32 20" width="28"><rect width="32" height="20" rx="3" fill="#1a1f71"/><text x="16" y="14" font-size="8" fill="#fff" text-anchor="middle" font-family="Arial" font-weight="bold">VISA</text></svg><svg viewBox="0 0 32 20" width="28"><rect width="32" height="20" rx="3" fill="#fff" stroke="#e6eae8"/><circle cx="13" cy="10" r="6" fill="#eb001b"/><circle cx="19" cy="10" r="6" fill="#f79e1b" fill-opacity=".85"/></svg></span></div></div></div>
           <div class="frow"><div class="field"><label>תוקף</label><input type="text" placeholder="חודש / שנה"></div><div class="field"><label>CVV</label><input type="text" inputmode="numeric" placeholder="3 ספרות"></div></div>
           <div class="frow"><div class="field"><label>שם בעל/ת הכרטיס</label><input type="text" placeholder="כפי שמופיע בכרטיס"></div><div class="field"><label>מספר תשלומים</label><select><option>תשלום אחד</option><option>2 תשלומים</option><option>3 תשלומים (ללא ריבית)</option><option>6 תשלומים</option><option>12 תשלומים</option><option>24 תשלומים</option><option>36 תשלומים</option></select></div></div>
@@ -291,6 +304,7 @@ function renderSummary(){
   else { shipEl.textContent=money(ship); shipRow.classList.remove('free-sv'); }
   let shipCost = ship>0?ship:(s>=TH?0:35);
   document.getElementById('osTotal').textContent=money(s+shipCost);
+  const pa=document.getElementById('payAmt'); if(pa) pa.textContent=money(s+shipCost);
 }
 function pickDelivery(el,kind){
   document.querySelectorAll('#delivery .orow').forEach(o=>o.classList.remove('sel')); el.classList.add('sel');
@@ -299,21 +313,19 @@ function pickDelivery(el,kind){
   ship = kind==='express'?89:0;
   renderSummary();
 }
+let payMethod='card';
 function pickPay(el,kind){
+  payMethod=kind;
   document.querySelectorAll('#payment .orow').forEach(o=>o.classList.remove('sel')); el.classList.add('sel');
-  const note=document.getElementById('payNote').querySelector('span');
-  const msgs={card:'פרטי הכרטיס מוזנים בעמוד הסליקה המאובטח (PayPlus) — איננו שומרים פרטי כרטיס.',
-    bit:'בסיום ההזמנה תועברו לאישור מהיר באפליקציית bit.',
-    apple:'התשלום יאושר דרך Apple Pay במכשיר שלכם.',
-    google:'התשלום יאושר דרך Google Pay.',
-    blender:'פריסה לתשלומים נוחים דרך Blender — כפוף לאישור.'};
-  note.textContent=msgs[kind]||msgs.card;
+  const isBlender = kind==='blender';
+  document.getElementById('ppEmbed').classList.toggle('show', !isBlender);
+  const pn=document.getElementById('payNote'); pn.style.display = isBlender?'flex':'none';
+  if(isBlender) pn.querySelector('span').textContent='חלון Blender ייפתח בעת לחיצה על "אישור ותשלום".';
+  else document.getElementById('ppEmbed').scrollIntoView({behavior:'smooth',block:'nearest'});
 }
-function currentTotal(){ const s=sub(); const shipCost = ship>0?ship:(s>=TH?0:35); return s+shipCost; }
 function placeOrder(e){ e.preventDefault();
-  const emb=document.getElementById('ppEmbed');
-  document.getElementById('payAmt').textContent = money(currentTotal());
-  emb.classList.add('show');
+  if(payMethod==='blender'){ finishPay(); return false; }   // Blender opens its own window (mock -> complete)
+  const emb=document.getElementById('ppEmbed'); emb.classList.add('show');
   emb.scrollIntoView({behavior:'smooth', block:'center'});
   return false; }
 function finishPay(){ document.getElementById('done').classList.add('show'); document.body.style.overflow='hidden'; try{localStorage.removeItem('gm_cart');}catch(_){} }
