@@ -305,7 +305,7 @@ function toggleNav(){
   const open=n.classList.toggle('open');o.classList.toggle('open',open);
   document.body.style.overflow=open?'hidden':'';
 }
-function scrollToProducts(){ document.getElementById('psec').scrollIntoView({behavior:'smooth',block:'start'}); }
+// no auto-scroll on filter — the brand circles + accordion must stay put; only the grid below re-populates
 function filterProducts(catId, label){
   let n=0;
   document.querySelectorAll('#pgrid .card').forEach(c=>{
@@ -333,15 +333,14 @@ function pickBrand(btn){
     h+='</div>'; inner.innerHTML=h; panel.classList.add('open');
   } else { panel.classList.remove('open'); inner.innerHTML=''; }
   filterProducts(parseInt(id), d ? d.name : btn.querySelector('.bname').textContent);
-  scrollToProducts();
 }
 function pickSeries(el,cid,label){
   document.querySelectorAll('.sbtn').forEach(b=>b.classList.remove('sel'));
-  el.classList.add('sel'); filterProducts(cid,label); scrollToProducts();
+  el.classList.add('sel'); filterProducts(cid,label);
 }
 function pickBrandAll(id){
   document.querySelectorAll('.sbtn').forEach(b=>b.classList.remove('sel'));
-  const d=SERIES[id]; filterProducts(parseInt(id), d.name); scrollToProducts();
+  const d=SERIES[id]; filterProducts(parseInt(id), d.name);
 }
 // RTL horizontal rows must start from the RIGHT (first brand = Apple)
 function gmResetSliders(){
