@@ -70,7 +70,9 @@ body.gm-new-checkout .payplus-checkout-image-container{ background:transparent; 
 body.gm-new-checkout .payplus-checkout-image{ max-height:26px; width:auto; }
 body.gm-new-checkout #pp_iframe{ width:100%!important; border:1px solid var(--gm-line)!important; border-radius:14px; min-height:520px; background:var(--gm-surface); }
 
-/* order summary (side) */
+/* order summary (side) — kill the theme's old two-column widths/floats */
+body.gm-new-checkout #order_review,
+body.gm-new-checkout #order_review_heading{ width:100%!important; max-width:none!important; float:none!important; }
 body.gm-new-checkout .gm-summary h3#order_review_heading{ font-size:1.1rem; font-weight:900; margin:0 0 14px; }
 body.gm-new-checkout .woocommerce-checkout-review-order-table{ width:100%; border:none; margin:0; }
 body.gm-new-checkout .woocommerce-checkout-review-order-table thead{ display:none; }
