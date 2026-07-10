@@ -116,6 +116,31 @@ main{padding-bottom:70px;}
 .spec-row{display:grid;grid-template-columns:200px 1fr;gap:10px 24px;padding:10px 0;border-bottom:1px dashed var(--line);font-size:.92rem;}
 .spec-k{font-weight:700;}
 .spec-v{color:var(--ink2);}
+/* service popups */
+.modal-ov{position:fixed;inset:0;background:rgba(17,20,23,.55);z-index:80;opacity:0;pointer-events:none;transition:opacity .2s;}
+.modal-ov.open{opacity:1;pointer-events:auto;}
+.modal{position:fixed;z-index:81;top:50%;left:50%;transform:translate(-50%,-46%) scale(.98);opacity:0;pointer-events:none;width:min(460px,92vw);max-height:88vh;overflow-y:auto;background:var(--surface);border-radius:22px;padding:26px 26px 22px;box-shadow:0 30px 80px rgba(0,0,0,.35);transition:opacity .2s, transform .2s;}
+.modal.open{opacity:1;pointer-events:auto;transform:translate(-50%,-50%) scale(1);}
+.modal-x{position:absolute;top:14px;left:14px;background:var(--alt);border:none;border-radius:50%;width:34px;height:34px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--ink);}
+.m-head{display:flex;align-items:center;gap:10px;margin-bottom:8px;min-height:40px;}
+.m-title{font-size:1.3rem;font-weight:900;margin:2px 0 4px;}
+.m-sub{color:var(--ink2);font-size:.95rem;margin:0 0 16px;}
+.m-plans{display:flex;flex-direction:column;gap:10px;margin-bottom:16px;}
+.m-plan{display:flex;align-items:center;gap:12px;border:1.5px solid var(--line);border-radius:14px;padding:12px 14px;cursor:pointer;}
+.m-plan.sel{border-color:var(--accent);background:var(--accent-soft);}
+.m-plan input{accent-color:var(--accent);width:18px;height:18px;}
+.m-plan b{display:block;font-size:.98rem;} .m-plan span{color:var(--ink2);font-size:.83rem;}
+.m-plan i{margin-inline-start:auto;font-weight:900;color:var(--accent);font-style:normal;}
+.m-list{list-style:none;padding:0;margin:0 0 18px;display:flex;flex-direction:column;gap:8px;}
+.m-list li{display:flex;gap:8px;align-items:center;font-size:.9rem;color:var(--ink2);}
+.m-list .ic{width:18px;height:18px;color:var(--accent);flex:none;}
+.m-steps{display:flex;flex-direction:column;gap:10px;margin-bottom:18px;}
+.m-step{display:flex;align-items:center;gap:12px;font-size:.95rem;}
+.m-step b{width:28px;height:28px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:.85rem;flex:none;}
+.m-cta{display:block;text-align:center;background:var(--accent);color:#fff;border:none;border-radius:99px;padding:14px;font-weight:900;font-size:1rem;cursor:pointer;font-family:inherit;text-decoration:none;}
+.m-cta:hover{filter:brightness(1.05);}
+.m-link{display:block;text-align:center;color:var(--accent);font-weight:700;font-size:.9rem;text-decoration:none;margin-top:12px;}
+.m-note{text-align:center;color:var(--ink2);font-size:.82rem;margin-top:12px;}
 footer.site{background:var(--alt);border-top:1px solid var(--line);padding:30px 0;text-align:center;color:var(--ink2);font-size:.85rem;margin-top:20px;}
 .mnav-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:60;opacity:0;pointer-events:none;transition:opacity .28s;}
 .mnav-overlay.open{opacity:1;pointer-events:auto;}
@@ -133,7 +158,10 @@ footer.site{background:var(--alt);border-top:1px solid var(--line);padding:30px 
   .gmnav-wrap{display:none;}
   .pdp{grid-template-columns:1fr;gap:22px;} .gallery{position:static;}
   .pwidgets{grid-template-columns:1fr;}
-  .trust{grid-template-columns:1fr;}
+  .trust{grid-template-columns:1fr 1fr;gap:8px;}
+  .trust-item{padding:10px 12px;gap:8px;}
+  .trust-item .ic{width:20px;height:20px;}
+  .trust-item b{font-size:.8rem;} .trust-item span{font-size:.7rem;line-height:1.3;}
   .tabbar{gap:16px;overflow-x:auto;} .spec-row{grid-template-columns:1fr;gap:2px;}
 }
 </style>
@@ -182,13 +210,13 @@ footer.site{background:var(--alt);border-top:1px solid var(--line);padding:30px 
           <div class="pw-head"><svg class="pwshield" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5 4.5 5.5v6c0 4.5 3.2 8 7.5 10 4.3-2 7.5-5.5 7.5-10v-6z"/><path d="M8.8 11.8l2.3 2.3 4.3-4.5"/></svg><div class="gc-word"><span>green</span>care<b>.</b></div></div>
           <div class="pw-t">הגנה מורחבת למכשיר</div>
           <div class="pw-s">הרחבת אחריות או כיסוי שברים מלא · החל מ-₪99</div>
-          <a class="pw-btn" href="gm-greencare-landing.html">לפרטים</a>
+          <button class="pw-btn" type="button" onclick="openModal('gc')">לפרטים</button>
         </div>
         <div class="pw-card">
           <div class="pw-head"><span class="pw-ic"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4 3.5 7.5 7 11"/><path d="M3.5 7.5H17a3.5 3.5 0 0 1 3.5 3.5"/><path d="M17 20l3.5-3.5L17 13"/><path d="M20.5 16.5H7A3.5 3.5 0 0 1 3.5 13"/></svg></span></div>
           <div class="pw-t">יש לך מכשיר ישן להחלפה?</div>
           <div class="pw-s">כמה שווה הישן שלכם? זיכוי שחוזר אליכם לאחר בדיקה</div>
-          <a class="pw-btn" href="gm-tradein-mockup.html">בדקו שווי</a>
+          <button class="pw-btn" type="button" onclick="openModal('ti')">בדקו שווי</button>
         </div>
       </div>
 
@@ -238,6 +266,39 @@ footer.site{background:var(--alt);border-top:1px solid var(--line);padding:30px 
     <div class="tabpane" id="tab-rev"><p>★ 4.8 מתוך 5 · 126 ביקורות · (אזור הביקורות יוצג מהחנות החיה)</p></div>
   </div>
 </main>
+
+<div class="modal-ov" id="modalOv" onclick="closeModal()"></div>
+<div class="modal" id="modal-gc" role="dialog" aria-modal="true">
+  <button class="modal-x" type="button" onclick="closeModal()" aria-label="סגור"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
+  <div class="m-head"><svg class="pwshield" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5 4.5 5.5v6c0 4.5 3.2 8 7.5 10 4.3-2 7.5-5.5 7.5-10v-6z"/><path d="M8.8 11.8l2.3 2.3 4.3-4.5"/></svg><div class="gc-word"><span>green</span>care<b>.</b></div></div>
+  <h3 class="m-title">הגנה מורחבת למכשיר</h3>
+  <p class="m-sub">שקט נפשי מלא — טיפול במעבדה שלנו ואיסוף עד הבית. בחרו מסלול:</p>
+  <div class="m-plans">
+    <label class="m-plan"><input type="radio" name="gc" checked><div><b>Care — הרחבת אחריות</b><span>שנה נוספת מלאה על תקלות</span></div><i>₪99</i></label>
+    <label class="m-plan sel"><input type="radio" name="gc"><div><b>Care+ — כולל שברים</b><span>אחריות + כיסוי שברים ונזקי נוזלים</span></div><i>₪149</i></label>
+  </div>
+  <ul class="m-list">
+    <li><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><polyline points="5 12 10 17 19 7"/></svg> תיקון במעבדת Green Mobile — במקום אחד</li>
+    <li><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><polyline points="5 12 10 17 19 7"/></svg> איסוף המכשיר עד הבית וחזרה</li>
+    <li><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><polyline points="5 12 10 17 19 7"/></svg> ללא השתתפות עצמית נסתרת</li>
+  </ul>
+  <button class="m-cta" type="button" onclick="closeModal()">הוספה להזמנה</button>
+  <a class="m-link" href="gm-greencare-takanon.html">לתקנון וכתב השירות המלא ›</a>
+</div>
+<div class="modal" id="modal-ti" role="dialog" aria-modal="true">
+  <button class="modal-x" type="button" onclick="closeModal()" aria-label="סגור"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
+  <div class="m-head"><span class="pw-ic"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4 3.5 7.5 7 11"/><path d="M3.5 7.5H17a3.5 3.5 0 0 1 3.5 3.5"/><path d="M17 20l3.5-3.5L17 13"/><path d="M20.5 16.5H7A3.5 3.5 0 0 1 3.5 13"/></svg></span></div>
+  <h3 class="m-title">טרייד-אין — זיכוי על הישן</h3>
+  <p class="m-sub">קבלו הערכה תוך 30 שניות, והורידו את הסכום ממחיר המכשיר החדש.</p>
+  <div class="m-steps">
+    <div class="m-step"><b>1</b><span>בוחרים דגם ומצב</span></div>
+    <div class="m-step"><b>2</b><span>מקבלים הערכה מיידית</span></div>
+    <div class="m-step"><b>3</b><span>זיכוי + איסוף הישן במשלוח</span></div>
+  </div>
+  <a class="m-cta" href="gm-tradein-mockup.html">התחלת הערכה ›</a>
+  <div class="m-note">איסוף המכשיר הישן עד הבית · זיכוי בקבלה</div>
+</div>
+
 <footer class="site"><div class="wrap">© 2026 Green Mobile · מוקאפ עמוד מוצר</div></footer>
 <script>
 const PRICE = {"256GB|סגול": 2949, "256GB|שחור": 2949, "256GB|צהוב": 2949, "256GB|אפור": 2949, "512GB|צהוב": 3249, "512GB|סגול": 3249, "512GB|אפור": 3249, "512GB|שחור": 3249};
@@ -261,5 +322,9 @@ let q=1; function qty(d){ q=Math.max(1,q+d); document.getElementById('qtyN').tex
 function tab(btn,id){ document.querySelectorAll('.tabbar button').forEach(b=>b.classList.remove('sel')); btn.classList.add('sel');
   document.querySelectorAll('.tabpane').forEach(p=>p.classList.remove('sel')); document.getElementById('tab-'+id).classList.add('sel'); }
 function toggleNav(){ const n=document.getElementById('mnav'),o=document.getElementById('mnavOverlay'); const op=n.classList.toggle('open'); o.classList.toggle('open',op); document.body.style.overflow=op?'hidden':''; }
+function openModal(id){ document.getElementById('modalOv').classList.add('open'); document.getElementById('modal-'+id).classList.add('open'); document.body.style.overflow='hidden'; }
+function closeModal(){ document.getElementById('modalOv').classList.remove('open'); document.querySelectorAll('.modal').forEach(m=>m.classList.remove('open')); document.body.style.overflow=''; }
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeModal(); });
+document.querySelectorAll('.m-plan').forEach(p=>p.addEventListener('click',()=>{ document.querySelectorAll('.m-plan').forEach(x=>x.classList.remove('sel')); p.classList.add('sel'); p.querySelector('input').checked=true; }));
 refresh();
 </script>
