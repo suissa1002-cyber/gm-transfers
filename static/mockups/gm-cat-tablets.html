@@ -54,8 +54,9 @@ nav.cats a.active{color:var(--accent);font-weight:800;}
 .mnav a.active{color:var(--accent);}
 main{padding:0 0 70px;}
 .intro{text-align:center;color:var(--ink2);font-size:1.02rem;padding:26px 0 4px;}
-.brandrow{display:flex;justify-content:safe center;gap:26px;overflow-x:auto;padding:24px 10px 16px;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
-.brandrow::-webkit-scrollbar{display:none;}
+.brandscroll{overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
+.brandscroll::-webkit-scrollbar{display:none;}
+.brandrow{display:flex;justify-content:safe center;gap:26px;padding:24px 18px 16px;width:max-content;min-width:100%;scroll-snap-type:x proximity;}
 .brand{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:9px;text-decoration:none;color:var(--ink);background:none;border:none;cursor:pointer;font-family:inherit;width:118px;padding:0;scroll-snap-align:start;}
 .bcircle{display:flex;align-items:center;justify-content:center;width:108px;height:108px;border-radius:50%;overflow:hidden;background:#fff;border:1px solid var(--line);box-shadow:0 0 0 5px var(--bg),0 0 0 6.5px var(--line),0 6px 18px rgba(17,20,23,.07);transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease;}
 .bcircle img{width:82%;height:82%;object-fit:contain;}
@@ -140,7 +141,7 @@ footer.site{background:var(--alt);border-top:1px solid var(--line);padding:30px 
   .hbar{gap:14px;padding:12px 0;}
   header.site{border-bottom:none;}
   .intro{padding:18px 0 2px;font-size:.95rem;}
-  .brandrow{gap:16px;padding:16px 2px 8px;}
+  .brandrow{gap:16px;padding:18px 14px 12px;}
   .brand{width:92px;}
   .bcircle{width:84px;height:84px;}
   .bname{font-size:.8rem;}
@@ -172,14 +173,14 @@ footer.site{background:var(--alt);border-top:1px solid var(--line);padding:30px 
 </aside>
 <main class="wrap">
   <p class="intro">בחרו תת-קטגוריה — וצללו פנימה</p>
-  <div class="brandrow" id="brandrow">
+  <div class="brandscroll" id="brandrow"><div class="brandrow">
 <button class="brand" type="button" data-key="1955" data-fids="1955 3461 3462 3463 3464 3465 3466" data-name="Apple iPad" onclick="pickBrand(this)" aria-expanded="false"><span class="bcircle"><img src="https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2026/03/ipad_air_m4_spacegray_select.jpg?fit=700%2C700&ssl=1" alt="Apple iPad" loading="lazy"></span><span class="bname">Apple iPad</span><span class="bmeta">11 מוצרים <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="7 10 12 15 17 10"/></svg></span></button>
 <button class="brand" type="button" data-key="1956" data-fids="1956 1957 1959" data-name="Samsung Tablet" onclick="pickBrand(this)" aria-expanded="false"><span class="bcircle"><img src="https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2025/12/5-5.png?fit=700%2C700&ssl=1" alt="Samsung Tablet" loading="lazy"></span><span class="bname">Samsung Tablet</span><span class="bmeta">6 מוצרים <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="7 10 12 15 17 10"/></svg></span></button>
 <button class="brand" type="button" data-key="1961" data-fids="1961" data-name="Xiaomi Pad" onclick="pickBrand(this)" aria-expanded="false"><span class="bcircle"><img src="https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2025/07/1.png?fit=700%2C700&ssl=1" alt="Xiaomi Pad" loading="lazy"></span><span class="bname">Xiaomi Pad</span><span class="bmeta">5 מוצרים</span></button>
 <button class="brand" type="button" data-key="2240" data-fids="2240" data-name="OnePlus Tablet" onclick="pickBrand(this)" aria-expanded="false"><span class="bcircle"><img src="https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2026/05/oneplus-pad-4-dune-glow-hero-1.jpg?fit=700%2C700&ssl=1" alt="OnePlus Tablet" loading="lazy"></span><span class="bname">OnePlus Tablet</span><span class="bmeta">8 מוצרים</span></button>
 <button class="brand" type="button" data-key="3572" data-fids="3572" data-name="Amazon Kindle" onclick="pickBrand(this)" aria-expanded="false"><span class="bcircle"><img src="https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2026/05/kindle-pw-kids-hero-fixed.jpg?fit=700%2C700&ssl=1" alt="Amazon Kindle" loading="lazy"></span><span class="bname">Amazon Kindle</span><span class="bmeta">3 מוצרים</span></button>
 <button class="brand" type="button" data-key="2024" data-fids="2024" data-name="טאבלטים לילדים" onclick="pickBrand(this)" aria-expanded="false"><span class="bcircle"><img src="https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2025/06/4-9.png?fit=700%2C700&ssl=1" alt="טאבלטים לילדים" loading="lazy"></span><span class="bname">טאבלטים לילדים</span><span class="bmeta">7 מוצרים</span></button>
-</div>
+</div></div>
 <div class="spanel" id="spanel"><div class="spanel-in" id="spanelIn"></div></div>
   <div class="catbody">
     <button class="filterbtn" type="button" onclick="toggleFilters()"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg> סינון מוצרים</button><aside class="filters" id="filters"><h2 class="ftitle">סינון מוצרים</h2><div class="fgroup"><div class="fhead" onclick="toggleGroup(this)">מחיר <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="7 10 12 15 17 10"/></svg></div><div class="fbody"><div class="prange">₪<span id="pminL">169</span> — ₪<span id="pmaxL">5,899</span></div><div class="rangewrap"><div class="rtrack"></div><div class="rfill" id="rfill"></div><input type="range" id="pmin" min="169" max="5899" value="169" step="10" oninput="priceInput(this)"><input type="range" id="pmax" min="169" max="5899" value="5899" step="10" oninput="priceInput(this)"></div></div></div><div class="fgroup" data-fidx="0"><div class="fhead" onclick="toggleGroup(this)">בחירת צבע <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="7 10 12 15 17 10"/></svg></div><div class="fbody"><label class="fcheck" data-idx="0" data-val="כחול"><input type="checkbox" value="כחול" onchange="toggleFacet(this,0)"> <span class="l">כחול</span><span class="c">(14)</span></label>
@@ -345,6 +346,6 @@ function clearFilters(){
   const pn=document.getElementById('pmin'),px=document.getElementById('pmax');
   if(pn){F.pmin=PMIN;F.pmax=PMAX;pn.value=PMIN;px.value=PMAX;priceInput(pn);} else applyFilters();
 }
-function gmResetSliders(){document.querySelectorAll('.brandrow, nav.cats').forEach(function(el){el.scrollLeft=0;if(el.scrollLeft>0)el.scrollLeft=el.scrollWidth;});}
+function gmResetSliders(){document.querySelectorAll('.brandscroll, nav.cats').forEach(function(el){el.scrollLeft=0;if(el.scrollLeft>0)el.scrollLeft=el.scrollWidth;});}
 window.addEventListener('load',function(){gmResetSliders();const pn=document.getElementById('pmin');if(pn)priceInput(pn);});
 </script>

@@ -54,8 +54,9 @@ nav.cats a.active{color:var(--accent);font-weight:800;}
 .mnav a.active{color:var(--accent);}
 main{padding:0 0 70px;}
 .intro{text-align:center;color:var(--ink2);font-size:1.02rem;padding:26px 0 4px;}
-.brandrow{display:flex;justify-content:safe center;gap:26px;overflow-x:auto;padding:24px 10px 16px;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
-.brandrow::-webkit-scrollbar{display:none;}
+.brandscroll{overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
+.brandscroll::-webkit-scrollbar{display:none;}
+.brandrow{display:flex;justify-content:safe center;gap:26px;padding:24px 18px 16px;width:max-content;min-width:100%;scroll-snap-type:x proximity;}
 .brand{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:9px;text-decoration:none;color:var(--ink);background:none;border:none;cursor:pointer;font-family:inherit;width:118px;padding:0;scroll-snap-align:start;}
 .bcircle{display:flex;align-items:center;justify-content:center;width:108px;height:108px;border-radius:50%;overflow:hidden;background:#fff;border:1px solid var(--line);box-shadow:0 0 0 5px var(--bg),0 0 0 6.5px var(--line),0 6px 18px rgba(17,20,23,.07);transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease;}
 .bcircle img{width:82%;height:82%;object-fit:contain;}
@@ -140,7 +141,7 @@ footer.site{background:var(--alt);border-top:1px solid var(--line);padding:30px 
   .hbar{gap:14px;padding:12px 0;}
   header.site{border-bottom:none;}
   .intro{padding:18px 0 2px;font-size:.95rem;}
-  .brandrow{gap:16px;padding:16px 2px 8px;}
+  .brandrow{gap:16px;padding:18px 14px 12px;}
   .brand{width:92px;}
   .bcircle{width:84px;height:84px;}
   .bname{font-size:.8rem;}
@@ -172,7 +173,7 @@ footer.site{background:var(--alt);border-top:1px solid var(--line);padding:30px 
 </aside>
 <main class="wrap">
   <p class="intro">בחרו תת-קטגוריה — וצללו פנימה</p>
-  <div class="brandrow" id="brandrow">
+  <div class="brandscroll" id="brandrow"><div class="brandrow">
 <button class="brand" type="button" data-key="1935" data-fids="1935 1936 1937 1939 2266 3131" data-name="מכשירי Apple" onclick="pickBrand(this)" aria-expanded="false"><span class="bcircle"><img src="https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2022/12/Untitled-design-6.jpg?fit=700%2C700&ssl=1" alt="מכשירי Apple" loading="lazy"></span><span class="bname">מכשירי Apple</span><span class="bmeta">15 מוצרים <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="7 10 12 15 17 10"/></svg></span></button>
 <button class="brand" type="button" data-key="1940" data-fids="1940 2221 3011" data-name="מכשירי Google" onclick="pickBrand(this)" aria-expanded="false"><span class="bcircle"><img src="https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2024/08/httpssupport.google.combusinessanswer3415281hlen-GBvisit_id638091340784885189-1853280825pbizprofile_transfer_ownerrd1-11-1.png?fit=700%2C700&ssl=1" alt="מכשירי Google" loading="lazy"></span><span class="bname">מכשירי Google</span><span class="bmeta">9 מוצרים <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="7 10 12 15 17 10"/></svg></span></button>
 <button class="brand" type="button" data-key="1943" data-fids="1943 1944 1945 1946 1947 2088 2318 3497" data-name="מכשירי Samsung" onclick="pickBrand(this)" aria-expanded="false"><span class="bcircle"><img src="https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2025/04/httpssupport.google.combusinessanswer3415281hlen-GBvisit_id638091340784885189-1853280825pbizprofile_transfer_ownerrd1-19.png?fit=700%2C700&ssl=1" alt="מכשירי Samsung" loading="lazy"></span><span class="bname">מכשירי Samsung</span><span class="bmeta">23 מוצרים <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="7 10 12 15 17 10"/></svg></span></button>
@@ -189,7 +190,7 @@ footer.site{background:var(--alt);border-top:1px solid var(--line);padding:30px 
 <button class="brand" type="button" data-key="2025" data-fids="2025" data-name="מכשירי Blackview" onclick="pickBrand(this)" aria-expanded="false"><span class="bcircle"><img src="https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2023/02/httpssupport.google.combusinessanswer3415281hlen-GBvisit_id638091340784885189-1853280825pbizprofile_transfer_ownerrd1-29.png?fit=700%2C700&ssl=1" alt="מכשירי Blackview" loading="lazy"></span><span class="bname">מכשירי Blackview</span><span class="bmeta">2 מוצרים</span></button>
 <button class="brand" type="button" data-key="3556" data-fids="3556" data-name="מכשירים מוקשחים" onclick="pickBrand(this)" aria-expanded="false"><span class="bcircle"><img src="https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2026/04/philips-xenium-s8320-hero.jpg?fit=700%2C700&ssl=1" alt="מכשירים מוקשחים" loading="lazy"></span><span class="bname">מכשירים מוקשחים</span><span class="bmeta">3 מוצרים</span></button>
 <button class="brand" type="button" data-key="2029" data-fids="2029" data-name="מכשירים מתקפלים" onclick="pickBrand(this)" aria-expanded="false"><span class="bcircle"><img src="https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2024/09/httpssupport.google.combusinessanswer3415281hlen-GBvisit_id638091340784885189-1853280825pbizprofile_transfer_ownerrd1-27.png?fit=700%2C700&ssl=1" alt="מכשירים מתקפלים" loading="lazy"></span><span class="bname">מכשירים מתקפלים</span><span class="bmeta">19 מוצרים</span></button>
-</div>
+</div></div>
 <div class="spanel" id="spanel"><div class="spanel-in" id="spanelIn"></div></div>
   <div class="catbody">
     <button class="filterbtn" type="button" onclick="toggleFilters()"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg> סינון מוצרים</button><aside class="filters" id="filters"><h2 class="ftitle">סינון מוצרים</h2><div class="fgroup"><div class="fhead" onclick="toggleGroup(this)">מחיר <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="7 10 12 15 17 10"/></svg></div><div class="fbody"><div class="prange">₪<span id="pminL">329</span> — ₪<span id="pmaxL">18,889</span></div><div class="rangewrap"><div class="rtrack"></div><div class="rfill" id="rfill"></div><input type="range" id="pmin" min="329" max="18889" value="329" step="10" oninput="priceInput(this)"><input type="range" id="pmax" min="329" max="18889" value="18889" step="10" oninput="priceInput(this)"></div></div></div><div class="fgroup" data-fidx="0"><div class="fhead" onclick="toggleGroup(this)">זיכרון RAM <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="7 10 12 15 17 10"/></svg></div><div class="fbody"><label class="fcheck" data-idx="0" data-val="3GB"><input type="checkbox" value="3GB" onchange="toggleFacet(this,0)"> <span class="l">3GB</span><span class="c">(1)</span></label>
@@ -414,6 +415,6 @@ function clearFilters(){
   const pn=document.getElementById('pmin'),px=document.getElementById('pmax');
   if(pn){F.pmin=PMIN;F.pmax=PMAX;pn.value=PMIN;px.value=PMAX;priceInput(pn);} else applyFilters();
 }
-function gmResetSliders(){document.querySelectorAll('.brandrow, nav.cats').forEach(function(el){el.scrollLeft=0;if(el.scrollLeft>0)el.scrollLeft=el.scrollWidth;});}
+function gmResetSliders(){document.querySelectorAll('.brandscroll, nav.cats').forEach(function(el){el.scrollLeft=0;if(el.scrollLeft>0)el.scrollLeft=el.scrollWidth;});}
 window.addEventListener('load',function(){gmResetSliders();const pn=document.getElementById('pmin');if(pn)priceInput(pn);});
 </script>
