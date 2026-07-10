@@ -173,8 +173,8 @@ footer.site{background:var(--alt);border-top:1px solid var(--line);padding:30px 
 <main class="wrap">
   <p class="intro">בחרו תת-קטגוריה — וצללו פנימה</p>
   <div class="brandrow" id="brandrow">
-<button class="brand" type="button" data-id="3252" onclick="pickBrand(this)" aria-expanded="false"><span class="bcircle"><img src="https://i0.wp.com/i0.wp.com/greenmobile.co.il/wp-content/uploads/2025/06/httpssupport.google.combusinessanswer3415281hlen-GBvisit_id638091340784885189-1853280825pbizprofile_transfer_ownerrd1-53.png?fit=700%2C700&ssl=1?resize=300,300" alt="מחשבי Mini" loading="lazy"></span><span class="bname">מחשבי Mini</span><span class="bmeta">1 מוצרים</span></button>
-<button class="brand" type="button" data-id="1965" onclick="pickBrand(this)" aria-expanded="false"><span class="bcircle"><img src="https://i0.wp.com/i0.wp.com/greenmobile.co.il/wp-content/uploads/2026/03/macbook-neo-silver.jpg?fit=700%2C700&ssl=1?resize=300,300" alt="מחשבים ניידים" loading="lazy"></span><span class="bname">מחשבים ניידים</span><span class="bmeta">1 מוצרים <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="7 10 12 15 17 10"/></svg></span></button>
+<button class="brand" type="button" data-key="1965" data-fids="1965 2014 2015 3518" data-name="מחשבים ניידים" onclick="pickBrand(this)" aria-expanded="false"><span class="bcircle"><img src="https://i0.wp.com/i0.wp.com/greenmobile.co.il/wp-content/uploads/2026/03/macbook-neo-silver.jpg?fit=700%2C700&ssl=1?resize=300,300" alt="מחשבים ניידים" loading="lazy"></span><span class="bname">מחשבים ניידים</span><span class="bmeta">1 מוצרים <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="7 10 12 15 17 10"/></svg></span></button>
+<button class="brand" type="button" data-key="3252" data-fids="3252" data-name="מחשבי Mini" onclick="pickBrand(this)" aria-expanded="false"><span class="bcircle"><img src="https://i0.wp.com/i0.wp.com/greenmobile.co.il/wp-content/uploads/2025/06/httpssupport.google.combusinessanswer3415281hlen-GBvisit_id638091340784885189-1853280825pbizprofile_transfer_ownerrd1-53.png?fit=700%2C700&ssl=1?resize=300,300" alt="מחשבי Mini" loading="lazy"></span><span class="bname">מחשבי Mini</span><span class="bmeta">1 מוצרים</span></button>
 </div>
 <div class="spanel" id="spanel"><div class="spanel-in" id="spanelIn"></div></div>
   <div class="catbody">
@@ -191,11 +191,12 @@ footer.site{background:var(--alt);border-top:1px solid var(--line);padding:30px 
 </main>
 <footer class="site"><div class="wrap">© 2026 Green Mobile · מוקאפ עמוד קטגוריה — קונספט ניווט + סינון</div></footer>
 <script>
-const SERIES = {"1965": {"name": "מחשבים ניידים", "all": "https://greenmobile.co.il/?product_cat=%d7%9e%d7%97%d7%a9%d7%91%d7%99%d7%9d-%d7%a0%d7%99%d7%99%d7%93%d7%99%d7%9d", "items": [{"id": 3518, "name": "MacBook Neo", "url": "https://greenmobile.co.il/?product_cat=macbook-neo", "count": 1}]}};
+const SERIES = {"1965": {"name": "מחשבים ניידים", "all": "https://greenmobile.co.il/?product_cat=%d7%9e%d7%97%d7%a9%d7%91%d7%99%d7%9d-%d7%a0%d7%99%d7%99%d7%93%d7%99%d7%9d", "items": [{"name": "Macbook Air", "url": "https://greenmobile.co.il/?product_cat=macbook-air", "count": 0, "fids": "2014"}, {"name": "Macbook Pro", "url": "https://greenmobile.co.il/?product_cat=macbook-pro", "count": 0, "fids": "2015"}, {"name": "MacBook Neo", "url": "https://greenmobile.co.il/?product_cat=macbook-neo", "count": 1, "fids": "3518"}]}};
 const FACET_IDX = [];
 const PMIN=2139, PMAX=2555, ALL_TITLE='כל המחשבים';
-const F = {cat:0, catLabel:ALL_TITLE, pmin:PMIN, pmax:PMAX, facets:{}};
+const F = {cat:new Set(), catLabel:ALL_TITLE, pmin:PMIN, pmax:PMAX, facets:{}};
 FACET_IDX.forEach(i=>F.facets[i]=new Set());
+function setCat(fidsStr){ F.cat = new Set(fidsStr ? fidsStr.split(' ').filter(Boolean) : []); }
 function toggleNav(){const n=document.getElementById('mnav'),o=document.getElementById('mnavOverlay');const op=n.classList.toggle('open');o.classList.toggle('open',op);document.body.style.overflow=op?'hidden':'';}
 function toggleFilters(){document.getElementById('filters').classList.toggle('open');}
 function toggleGroup(h){h.parentElement.classList.toggle('closed');}
@@ -204,7 +205,7 @@ function applyFilters(){
   let n=0;
   document.querySelectorAll('#pgrid .card').forEach(c=>{
     let ok=true;
-    if(F.cat && c.dataset.cats.split(' ').indexOf(String(F.cat))<0) ok=false;
+    if(F.cat.size){ const cv=c.dataset.cats.split(' '); let hit=false; for(const v of cv){if(F.cat.has(v)){hit=true;break;}} if(!hit) ok=false; }
     if(ok){const pr=+c.dataset.price; if(pr<F.pmin||pr>F.pmax) ok=false;}
     if(ok){ for(const i of FACET_IDX){ const set=F.facets[i]; if(set.size){ const raw=c.dataset['f'+i]||''; const cv=raw?raw.split('|'):[]; let hit=false; set.forEach(v=>{if(cv.indexOf(v)>=0)hit=true;}); if(!hit){ok=false;break;} } } }
     c.classList.toggle('hide',!ok); if(ok)n++;
@@ -215,20 +216,20 @@ function applyFilters(){
 }
 let activeBrand=null;
 function pickBrand(btn){
-  const id=btn.dataset.id, panel=document.getElementById('spanel'), inner=document.getElementById('spanelIn');
-  if(activeBrand===id){document.querySelectorAll('.brand').forEach(b=>b.classList.remove('active'));if(panel){panel.classList.remove('open');inner.innerHTML='';}activeBrand=null;F.cat=0;F.catLabel=ALL_TITLE;applyFilters();return;}
+  const key=btn.dataset.key, panel=document.getElementById('spanel'), inner=document.getElementById('spanelIn');
+  if(activeBrand===key){document.querySelectorAll('.brand').forEach(b=>b.classList.remove('active'));if(panel){panel.classList.remove('open');inner.innerHTML='';}activeBrand=null;F.cat=new Set();F.catLabel=ALL_TITLE;applyFilters();return;}
   document.querySelectorAll('.brand').forEach(b=>{b.classList.remove('active');b.setAttribute('aria-expanded','false');});
-  btn.classList.add('active');btn.setAttribute('aria-expanded','true');activeBrand=id;
-  const d=SERIES[id];
+  btn.classList.add('active');btn.setAttribute('aria-expanded','true');activeBrand=key;
+  const d=SERIES[key];
   if(d&&panel){
-    let h='<div class="spanel-h"><b>'+d.name+' — בחרו תת-קטגוריה</b><a href="'+d.all+'" onclick="pickBrandAll(\''+id+'\');return false;">כל '+d.name+' ←</a></div><div class="sbtns">';
-    d.items.forEach(s=>{h+='<a class="sbtn" href="'+s.url+'" onclick="pickSeries(this,'+s.id+',\''+d.name+' · '+s.name+'\');return false;">'+s.name+' <span class="c">('+s.count+')</span></a>';});
+    let h='<div class="spanel-h"><b>'+d.name+' — בחרו תת-קטגוריה</b><a href="'+d.all+'" onclick="pickBrandAll(\''+btn.dataset.fids+'\',\''+d.name+'\');return false;">כל '+d.name+' ←</a></div><div class="sbtns">';
+    d.items.forEach(s=>{h+='<a class="sbtn" href="'+s.url+'" onclick="pickSeries(this,\''+s.fids+'\',\''+d.name+' · '+s.name+'\');return false;">'+s.name+' <span class="c">('+s.count+')</span></a>';});
     h+='</div>';inner.innerHTML=h;panel.classList.add('open');
   } else if(panel){panel.classList.remove('open');inner.innerHTML='';}
-  F.cat=parseInt(id);F.catLabel=d?d.name:btn.querySelector('.bname').textContent;applyFilters();
+  setCat(btn.dataset.fids);F.catLabel=d?d.name:btn.dataset.name;applyFilters();
 }
-function pickSeries(el,cid,label){document.querySelectorAll('.sbtn').forEach(b=>b.classList.remove('sel'));el.classList.add('sel');F.cat=cid;F.catLabel=label;applyFilters();}
-function pickBrandAll(id){document.querySelectorAll('.sbtn').forEach(b=>b.classList.remove('sel'));const d=SERIES[id];F.cat=parseInt(id);F.catLabel=d.name;applyFilters();}
+function pickSeries(el,fids,label){document.querySelectorAll('.sbtn').forEach(b=>b.classList.remove('sel'));el.classList.add('sel');setCat(fids);F.catLabel=label;applyFilters();}
+function pickBrandAll(fids,name){document.querySelectorAll('.sbtn').forEach(b=>b.classList.remove('sel'));setCat(fids);F.catLabel=name;applyFilters();}
 function toggleFacet(cb,idx){const s=F.facets[idx];if(cb.checked)s.add(cb.value);else s.delete(cb.value);applyFilters();}
 function priceInput(el){
   let a=+document.getElementById('pmin').value,b=+document.getElementById('pmax').value;
