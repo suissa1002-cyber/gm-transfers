@@ -104,6 +104,27 @@ h1.pagetitle{font-size:clamp(1.4rem,2.6vw,1.9rem);font-weight:900;margin:0 0 20p
 .reveal.show{display:block;}
 .paynote{display:flex;gap:10px;align-items:flex-start;background:var(--alt);border-radius:12px;padding:13px 15px;font-size:.85rem;color:var(--ink2);margin-top:10px;}
 .paynote .ic{width:18px;height:18px;color:var(--accent);flex:none;margin-top:1px;}
+/* embedded PayPlus card fields (one-page checkout) */
+.ppframe{border:1.5px solid var(--line);border-radius:14px;padding:16px;margin-top:12px;background:var(--alt);}
+.ppframe-head{display:flex;align-items:center;gap:8px;font-size:.85rem;font-weight:800;color:var(--ink2);margin-bottom:14px;}
+.ppframe-head .ic{width:17px;height:17px;color:var(--accent);}
+.ppbadge{margin-inline-start:auto;font-size:.7rem;font-weight:800;color:var(--accent);background:var(--accent-soft);border-radius:99px;padding:3px 10px;letter-spacing:.02em;}
+.ppframe .field input,.ppframe .field select{background:var(--surface);}
+.cardinput{position:relative;display:flex;align-items:center;}
+.cardinput input{flex:1;padding-inline-start:74px;}
+.cardinput .cc{position:absolute;inset-inline-start:12px;display:flex;gap:5px;pointer-events:none;}
+.ppnote{display:flex;gap:8px;align-items:flex-start;font-size:.78rem;color:var(--ink2);margin-top:12px;}
+.ppnote .ic{width:15px;height:15px;color:var(--accent);flex:none;margin-top:1px;}
+/* embedded PayPlus payment (samePageIframe simulation) */
+.ppembed{display:none;margin-top:16px;border:1.5px solid var(--line);border-radius:16px;overflow:hidden;box-shadow:var(--shadow);}
+.ppembed.show{display:block;}
+.ppembed-bar{display:flex;align-items:center;gap:8px;background:var(--alt);padding:10px 14px;border-bottom:1px solid var(--line);font-size:.82rem;font-weight:700;color:var(--ink2);}
+.ppembed-bar .ic{width:16px;height:16px;color:var(--accent);}
+.ppembed-bar .url{margin-inline-start:auto;font-family:ui-monospace,monospace;font-size:.72rem;opacity:.65;font-weight:500;}
+.ppembed-body{padding:20px;background:var(--surface);}
+.ppembed-title{font-weight:900;font-size:1.05rem;margin:0 0 14px;}
+.payinline{display:flex;align-items:center;justify-content:center;gap:9px;width:100%;background:var(--accent);color:var(--accent-ink);border:none;border-radius:99px;padding:15px;font-weight:900;font-size:1.05rem;cursor:pointer;font-family:inherit;margin-top:6px;}
+.payinline:hover{filter:brightness(1.05);}
 .terms{display:flex;align-items:flex-start;gap:10px;font-size:.85rem;color:var(--ink2);margin-top:4px;}
 .terms input{margin-top:3px;width:17px;height:17px;accent-color:var(--accent);flex:none;}
 .terms a{color:var(--accent);font-weight:700;text-decoration:none;}
@@ -194,6 +215,18 @@ h1.pagetitle{font-size:clamp(1.4rem,2.6vw,1.9rem);font-weight:900;margin:0 0 20p
         <div class="paynote" id="payNote"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg> <span>פרטי התשלום מוזנים בעמוד הסליקה המאובטח (PayPlus) — איננו שומרים פרטי כרטיס.</span></div>
         <label class="terms" style="margin-top:14px"><input type="checkbox" required> קראתי ואני מאשר/ת את <a href="#">תקנון האתר</a> ו<a href="#">מדיניות הפרטיות</a></label>
       </div>
+      <!-- embedded PayPlus payment page (samePageIframe) — appears in-page after 'אישור ותשלום' -->
+      <div class="ppembed" id="ppEmbed">
+        <div class="ppembed-bar"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg> תשלום מאובטח דרך PayPlus<span class="url">payments.payplus.co.il</span></div>
+        <div class="ppembed-body">
+          <div class="ppembed-title">פרטי תשלום</div>
+          <div class="frow one"><div class="field"><label>מספר כרטיס</label><div class="cardinput"><input type="text" inputmode="numeric" placeholder="0000 0000 0000 0000"><span class="cc"><svg viewBox="0 0 32 20" width="28"><rect width="32" height="20" rx="3" fill="#1a1f71"/><text x="16" y="14" font-size="8" fill="#fff" text-anchor="middle" font-family="Arial" font-weight="bold">VISA</text></svg><svg viewBox="0 0 32 20" width="28"><rect width="32" height="20" rx="3" fill="#fff" stroke="#e6eae8"/><circle cx="13" cy="10" r="6" fill="#eb001b"/><circle cx="19" cy="10" r="6" fill="#f79e1b" fill-opacity=".85"/></svg></span></div></div></div>
+          <div class="frow"><div class="field"><label>תוקף</label><input type="text" placeholder="חודש / שנה"></div><div class="field"><label>CVV</label><input type="text" inputmode="numeric" placeholder="3 ספרות"></div></div>
+          <div class="frow"><div class="field"><label>שם בעל/ת הכרטיס</label><input type="text" placeholder="כפי שמופיע בכרטיס"></div><div class="field"><label>מספר תשלומים</label><select><option>תשלום אחד</option><option>2 תשלומים</option><option>3 תשלומים (ללא ריבית)</option><option>6 תשלומים</option><option>12 תשלומים</option><option>24 תשלומים</option><option>36 תשלומים</option></select></div></div>
+          <button type="button" class="payinline" onclick="finishPay()"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg> שלם <span id="payAmt"></span></button>
+          <div class="ppnote"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg> <span>זהו דף הסליקה של PayPlus המוטמע בעמוד (ללא מעבר עמוד). פרטי הכרטיס מוזנים ישירות מול חברת הסליקה ואינם נשמרים אצלנו.</span></div>
+        </div>
+      </div>
     </form>
 
     <aside class="osum">
@@ -276,6 +309,13 @@ function pickPay(el,kind){
     blender:'פריסה לתשלומים נוחים דרך Blender — כפוף לאישור.'};
   note.textContent=msgs[kind]||msgs.card;
 }
-function placeOrder(e){ e.preventDefault(); document.getElementById('done').classList.add('show'); document.body.style.overflow='hidden'; try{localStorage.removeItem('gm_cart');}catch(_){} return false; }
+function currentTotal(){ const s=sub(); const shipCost = ship>0?ship:(s>=TH?0:35); return s+shipCost; }
+function placeOrder(e){ e.preventDefault();
+  const emb=document.getElementById('ppEmbed');
+  document.getElementById('payAmt').textContent = money(currentTotal());
+  emb.classList.add('show');
+  emb.scrollIntoView({behavior:'smooth', block:'center'});
+  return false; }
+function finishPay(){ document.getElementById('done').classList.add('show'); document.body.style.overflow='hidden'; try{localStorage.removeItem('gm_cart');}catch(_){} }
 renderSummary();
 </script>
