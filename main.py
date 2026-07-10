@@ -5665,8 +5665,22 @@ def _pp_mark_paid(order_id: int, f: dict) -> bool:
 # ומשקלל אותם עם עקביות-שם / ערך / כמות / velocity לציון 🟢/🟡/🔴 + נימוקים.
 # הכל קריאה-בלבד; לעולם לא מבצע פעולה — רק מספק חיווי לאדם.
 
-_DIGITAL_MARKERS = ("קוד דיגיטלי", "גיפט", "gift", "psn", "playstation store",
-                    "xbox", "steam", "ארנק דיגיטלי", "voucher", "שובר")
+# ⚠️ מדויק בכוונה: לא "xbox"/"playstation"/"steam" לבד — אחרת אביזרי גיימינג פיזיים
+# ("בקר טיסה ל-Xbox", "אוזניות PlayStation") נתפסים כקוד דיגיטלי (באג 48600, 10/07).
+# מקור-האמת האמיתי הוא מיפוי Stellr (_is_digital בודק אותו קודם); אלה רק גיבוי-שם.
+_DIGITAL_MARKERS = ("קוד דיגיטלי", "קוד טעינה", "gift card", "גיפט קארד", "כרטיס מתנה",
+                    "ארנק דיגיטלי", "game pass", "xbox live", "xbox gift", "psn",
+                    "playstation gift", "steam wallet", "voucher דיגיטלי")
+
+
+def _order_is_digital(li) -> bool:
+    """פריט = קוד דיגיטלי? מקור אמת: ממופה ל-Stellr (מדויק, לא תופס אביזרים פיזיים);
+    גיבוי: מילות-מפתח מדויקות בשם. משמש טריאז' + הנפקה."""
+    key_v = f"{li.get('product_id')}:{li.get('variation_id') or 0}"
+    if db.stellr_map_get(key_v) or db.stellr_map_get(str(li.get("product_id"))):
+        return True
+    nm = str(li.get("name") or "").lower()
+    return any(m.lower() in nm for m in _DIGITAL_MARKERS)
 
 
 def _pp_view_tx(tuid: str) -> Optional[dict]:
@@ -6059,10 +6073,7 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
     רשת(IP/VPN/geo) · גרף שכפול-כרטיס/IP · שלמות תשלום(3DS) · מייל חד-פעמי · ערך/כמות.
     שם = סימן שולי בלבד (מי שיש לו אשראי גנוב יודע את שם בעל הכרטיס). חיווי-בלבד."""
     items = o.get("line_items") or []
-    def _is_digital(li):
-        nm = str(li.get("name") or "").lower()
-        return any(m.lower() in nm for m in _DIGITAL_MARKERS)
-    digital = [li for li in items if _is_digital(li)]
+    digital = [li for li in items if _order_is_digital(li)]
     is_digital_order = bool(digital)
     if not is_digital_order and not force:
         return None
@@ -6624,11 +6635,7 @@ def admin_fraud_outcome(body: FraudOutcome, x_admin_key: Optional[str] = Header(
 
 
 def _order_has_digital(items) -> bool:
-    for li in (items or []):
-        nm = str(li.get("name") or "").lower()
-        if any(m.lower() in nm for m in _DIGITAL_MARKERS):
-            return True
-    return False
+    return any(_order_is_digital(li) for li in (items or []))
 
 
 # ═══════════════ 🎫 Stellr — הנפקת קודים דיגיטליים ═══════════════
@@ -6653,9 +6660,7 @@ def _stellr_issue_order(num: str, dry: bool, actor: str, force: bool = False) ->
     if not o:
         return {"ok": False, "error": "הזמנה לא נמצאה"}
     items = o.get("line_items") or []
-    digital = [li for li in items
-               if any(m.lower() in str(li.get("name") or "").lower()
-                      for m in _DIGITAL_MARKERS)]
+    digital = [li for li in items if _order_is_digital(li)]
     if not digital:
         return {"ok": False, "error": "אין בהזמנה פריט קוד דיגיטלי"}
     meta = {m.get("key"): m.get("value") for m in (o.get("meta_data") or [])}

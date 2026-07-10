@@ -5869,7 +5869,8 @@ async function markFraudOutcome(orderNum,outcome){
   }catch(e){ toast('שמירת התיוג נכשלה',false); }
 }
 // ── 🎫 Stellr — הנפקת קודים דיגיטליים בכרטיס ההזמנה ──
-const _STELLR_DIG_RE=/קוד דיגיטלי|גיפט|gift|psn|playstation|xbox|steam|voucher|שובר|ארנק דיגיטלי/i;
+// מדויק: לא "xbox"/"playstation" לבד (אחרת בקר/משחק פיזי ל-Xbox נתפס כקוד — באג 48600)
+const _STELLR_DIG_RE=/קוד דיגיטלי|קוד טעינה|gift card|גיפט קארד|כרטיס מתנה|ארנק דיגיטלי|game pass|xbox live|xbox gift|psn|playstation gift|steam wallet/i;
 async function stellrBoxLoad(num){
   const box=document.getElementById('stellrBox'); if(!box||!num) return;
   try{ if(S.stellrStatus===undefined) S.stellrStatus=await api('/api/admin/stellr/status'); }
