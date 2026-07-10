@@ -118,13 +118,31 @@ section{margin:64px 0;}
 footer.site{background:var(--alt);border-top:1px solid var(--line);padding:28px 0;text-align:center;color:var(--ink2);font-size:.85rem;}
 footer.site a{color:var(--accent);font-weight:700;}
 @media (max-width:820px){
-  .hero{grid-template-columns:1fr;}
+  .hero{grid-template-columns:1fr;gap:24px;padding:36px 0 24px;}
   .hero-art{order:-1;}
-  .hero-art img{max-width:220px;}
+  .hero-art img{max-width:200px;}
   .plans,.cover{grid-template-columns:1fr;}
   .how{grid-template-columns:1fr;}
 }
+@media (max-width:600px){
+  .wrap{padding:0 16px;}
+  .hbar{gap:10px;padding:12px 0;flex-wrap:wrap;}
+  .logo-img{height:28px;}
+  .hlinks{margin-inline-start:0;width:100%;order:2;justify-content:center;flex-wrap:wrap;gap:8px 15px;font-size:.82rem;}
+  .hero h1{font-size:clamp(1.8rem,7.5vw,2.3rem);}
+  .hero p{font-size:1rem;}
+  .hero-badges{gap:8px;}
+  section{margin:44px 0;}
+  .sec-title{font-size:1.45rem;}
+  .plan{padding:22px 20px;}
+  .transp{padding:24px 18px;}
+  .coverc{padding:20px 18px;}
+  .cta-end{padding:32px 20px;}
+  .cta-end h2{font-size:1.3rem;}
+  .mc-out{gap:8px;}
+}
 </style>
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Green Care — הגנה מורחבת למכשיר | Green Mobile</title>
 
 <div class="mocknote">מוקאפ · עמוד Green Care ייעודי · מחירי דוגמה להמחשה · לא עמוד אמיתי</div>
