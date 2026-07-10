@@ -82,7 +82,7 @@ main{padding-bottom:70px;}
 .stor{background:var(--surface);border:1.5px solid var(--line);border-radius:12px;padding:10px 20px;font-weight:800;font-size:.95rem;color:var(--ink);cursor:pointer;margin-inline-end:8px;font-family:inherit;transition:all .14s;}
 .stor:hover{border-color:var(--accent);}
 .stor.sel{border-color:var(--accent);background:var(--accent-soft);color:var(--accent);}
-.stor.off{opacity:.34;pointer-events:none;text-decoration:line-through;}
+.stor.off{opacity:.5;border-style:dashed;}   /* not offered in the current colour — still clickable (smart jump) */
 .addcart.disabled{background:var(--ink2);pointer-events:none;opacity:.75;}
 .instk.oos{color:var(--deal);}
 .buyrow{display:flex;gap:12px;align-items:stretch;margin:20px 0 14px;}
@@ -115,7 +115,7 @@ main{padding-bottom:70px;}
 .pw-btn{display:block;text-align:center;background:var(--accent);color:#fff;border-radius:99px;padding:11px;font-weight:800;text-decoration:none;margin-top:8px;}
 .pw-btn:hover{filter:brightness(1.05);}
 .fulldesc{color:var(--ink2);font-size:.98rem;}
-.fulldesc img{max-width:100%;height:auto;border-radius:12px;margin:8px 0;}
+.fulldesc img{display:block;max-width:100%;height:auto;border-radius:12px;margin:14px auto;}  /* NLM combined image — always centred */
 .fulldesc h1{font-size:1.3rem;color:var(--ink);margin:6px 0 10px;}
 .fulldesc ul{padding-inline-start:18px;}
 /* tabs */
@@ -123,7 +123,7 @@ main{padding-bottom:70px;}
 .tabbar{display:flex;gap:28px;border-bottom:1px solid var(--line);}
 .tabbar button{background:none;border:none;padding:16px 2px;font-family:inherit;font-weight:800;font-size:1rem;color:var(--ink2);cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-1px;}
 .tabbar button.sel{color:var(--ink);border-bottom-color:var(--accent);}
-.tabpane{display:none;padding:24px 0;max-width:900px;}
+.tabpane{display:none;padding:24px 0;max-width:960px;margin-inline:auto;}
 .tabpane.sel{display:block;}
 .tabpane p{color:var(--ink2);font-size:1rem;}
 .spec-row{display:grid;grid-template-columns:200px 1fr;gap:10px 24px;padding:10px 0;border-bottom:1px dashed var(--line);font-size:.92rem;}
@@ -369,6 +369,7 @@ footer.site{background:var(--alt);border-top:1px solid var(--line);padding:30px 
 <script>
 const PRICE = {"512GB · 12GB RAM|CANYON ORANGE": 5499, "512GB · 12GB RAM|TUNDRA UMBER": 5999, "1TB · 16GB RAM|TUNDRA UMBER": 7789};
 const AVAIL = {"512GB · 12GB RAM|CANYON ORANGE": "in", "512GB · 12GB RAM|TUNDRA UMBER": "in", "1TB · 16GB RAM|TUNDRA UMBER": "out"};
+const COLORS = ["CANYON ORANGE", "TUNDRA UMBER"];
 let curColor = "CANYON ORANGE", curStor = "512GB \u00b7 12GB RAM";
 function fmt(n){ return n.toLocaleString('en-US'); }
 function cfgAvailFor(color){ return [...document.querySelectorAll('.stor')].filter(b=>((b.dataset.stor+'|'+color) in PRICE)); }
@@ -390,13 +391,25 @@ function refresh(){
   if(inStock){ instk.classList.remove('oos'); instk.innerHTML = `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><polyline points="5 12 10 17 19 7"/></svg> במלאי · מוכן למשלוח`; add.classList.remove('disabled'); add.innerHTML = `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="19.5" r="1.4"/><circle cx="17" cy="19.5" r="1.4"/><path d="M3 4h2.5l2.2 11.5h10.4L20.5 8H7"/></svg> הוספה לסל`; }
   else { instk.classList.add('oos'); instk.innerHTML = `אזל מהמלאי · זמין בהזמנה מהספק`; add.classList.add('disabled'); add.innerHTML = 'אזל מהמלאי'; }
 }
-function pickColor(btn){
-  document.querySelectorAll('.cthumb').forEach(b=>b.classList.remove('sel')); btn.classList.add('sel');
-  curColor = btn.dataset.color;
-  if(btn.dataset.img) document.getElementById('gmainImg').src = btn.dataset.img;
+function setColor(color){
+  curColor = color;
+  document.querySelectorAll('.cthumb').forEach(b=>{ const on=b.dataset.color===color; b.classList.toggle('sel',on); if(on && b.dataset.img) document.getElementById('gmainImg').src=b.dataset.img; });
+  document.getElementById('colLbl').textContent = color;
+}
+function pickColor(btn){ setColor(btn.dataset.color); refresh(); }
+function pickStor(btn){
+  const stor = btn.dataset.stor;
+  // smart cross-axis pick: if this config isn't offered in the current colour,
+  // jump to a colour that DOES have it (prefer one that's in stock) and select it too
+  if(!((stor + '|' + curColor) in PRICE)){
+    const has = COLORS.filter(c => (stor + '|' + c) in PRICE);
+    const pref = has.find(c => AVAIL[stor + '|' + c] !== 'out') || has[0];
+    if(pref) setColor(pref);
+  }
+  document.querySelectorAll('.stor').forEach(b=>b.classList.remove('sel')); btn.classList.add('sel');
+  curStor = stor;
   refresh();
 }
-function pickStor(btn){ document.querySelectorAll('.stor').forEach(b=>b.classList.remove('sel')); btn.classList.add('sel'); curStor=btn.dataset.stor; refresh(); }
 let q=1; function qty(d){ q=Math.max(1,q+d); document.getElementById('qtyN').textContent=q; }
 function tab(btn,id){ document.querySelectorAll('.tabbar button').forEach(b=>b.classList.remove('sel')); btn.classList.add('sel');
   document.querySelectorAll('.tabpane').forEach(p=>p.classList.remove('sel')); document.getElementById('tab-'+id).classList.add('sel'); }
