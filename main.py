@@ -1819,36 +1819,37 @@ def mock_search(q: str = "", limit: int = 7):
     hit = _mock_search_cache.get(ck)
     if hit and (_t.time() - hit[0]) < _MOCK_SEARCH_TTL:
         return hit[1]
-    base = os.getenv("WC_STORE_URL", "https://greenmobile.co.il").rstrip("/")
+    # Cloudflare blocks the public Store API from datacenter IPs (Render), so use
+    # the authenticated wc/v3 REST — the same path the rest of this app uses and
+    # which CF lets through with the consumer key.
+    creds = _wc_creds()
+    if not creds:
+        return {"q": q, "results": [], "error": "no WC creds"}
+    base, ck, cs = creds
     out = []
+
+    def _money(v):
+        try:
+            return round(float(v))
+        except Exception:
+            return None
+
     try:
         import requests as _rq
-        r = _rq.get(base + "/wp-json/wc/store/v1/products",
-                    params={"search": q, "per_page": limit, "orderby": "relevance",
-                            "catalog_visibility": "visible"},
-                    headers={"User-Agent": "Mozilla/5.0 Chrome/124"}, timeout=12)
+        r = _rq.get(base + "/wp-json/wc/v3/products",
+                    params={"search": q, "per_page": limit, "status": "publish",
+                            "catalog_visibility": "visible", "orderby": "popularity"},
+                    auth=(ck, cs), timeout=12)
         if r.status_code == 200:
             for p in r.json():
-                pr = p.get("prices") or {}
-                try:
-                    mu = int(pr.get("currency_minor_unit", 2))
-                except Exception:
-                    mu = 2
-
-                def _money(v):
-                    try:
-                        return round(int(v) / (10 ** mu))
-                    except Exception:
-                        return None
-
                 imgs = p.get("images") or []
                 out.append({
                     "id": p.get("id"),
                     "name": _html.unescape(p.get("name") or "").strip(),
-                    "price": _money(pr.get("price")),
-                    "regular": _money(pr.get("regular_price")),
+                    "price": _money(p.get("price")),
+                    "regular": _money(p.get("regular_price")),
                     "on_sale": bool(p.get("on_sale")),
-                    "img": (imgs[0].get("thumbnail") or imgs[0].get("src")) if imgs else "",
+                    "img": (imgs[0].get("src")) if imgs else "",
                     "url": p.get("permalink") or "",
                 })
     except Exception as e:
