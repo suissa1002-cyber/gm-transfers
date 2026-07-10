@@ -234,10 +234,12 @@ footer.site { background:var(--alt); border-top:1px solid var(--line); padding:4
   :root[data-theme="dark"] .logo-wrap, .logo-wrap { padding:0; background:none; }
   :root[data-theme="dark"] .logo-wrap { background:#fff; border-radius:8px; padding:4px 8px; }
   .msearch .search { font-size:.95rem; padding:11px 18px; }
-  .bcarousel { aspect-ratio:1080/700; border-radius:16px; }
+  /* full-bleed banner, no rounded corners, flush under the header — like GoMobile */
+  .bcarousel { aspect-ratio:1080/700; border-radius:0; box-shadow:none; }
   .bslide .bdesk { display:none; }
   .bslide .bmob { display:block; }
-  .banner-wrap { padding:12px 0 8px; margin-inline:-10px; }
+  .banner-wrap { padding:0; margin:0 0 12px; margin-inline:calc(-1 * clamp(18px, 3vw, 48px)); }
+  header.site { border-bottom:none; }
   .bdots { bottom:9px; }
   .sec-head h2 { font-size:1.3rem; }
 }
