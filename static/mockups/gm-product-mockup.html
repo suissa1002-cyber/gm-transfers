@@ -52,10 +52,11 @@ main{padding-bottom:70px;}
 .gallery{position:sticky;top:96px;}
 .gmain{background:#fff;border:1px solid var(--line);border-radius:var(--r);aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;overflow:hidden;}
 .gmain img{width:86%;height:86%;object-fit:contain;}
-.gthumbs{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;}
-.gthumb{width:74px;height:74px;border:1.5px solid var(--line);border-radius:14px;background:#fff;overflow:hidden;cursor:pointer;padding:6px;}
-.gthumb.sel{border-color:var(--accent);}
-.gthumb img{width:100%;height:100%;object-fit:contain;}
+.cthumbs{display:flex;gap:10px;flex-wrap:wrap;}
+.cthumb{width:66px;height:66px;border:2px solid var(--line);border-radius:14px;background:#fff;overflow:hidden;cursor:pointer;padding:5px;transition:border-color .14s;}
+.cthumb:hover{border-color:var(--accent);}
+.cthumb.sel{border-color:var(--accent);}
+.cthumb img{width:100%;height:100%;object-fit:contain;}
 .eyebrow{color:var(--ink2);font-weight:700;font-size:.9rem;letter-spacing:.02em;}
 .ptitle{font-size:clamp(1.5rem,2.6vw,2.1rem);font-weight:900;line-height:1.15;margin:6px 0 10px;letter-spacing:-.01em;}
 .rating{display:flex;align-items:center;gap:6px;color:var(--ink2);font-size:.88rem;margin-bottom:14px;}
@@ -70,9 +71,6 @@ main{padding-bottom:70px;}
 .opt{margin-bottom:18px;}
 .opt .lab{font-weight:800;font-size:.92rem;margin-bottom:9px;}
 .opt .lab span{color:var(--ink2);font-weight:600;}
-.sw{width:38px;height:38px;border-radius:50%;border:2px solid var(--line);background:none;cursor:pointer;padding:3px;margin-inline-end:8px;transition:border-color .14s;}
-.sw span{display:block;width:100%;height:100%;border-radius:50%;background:var(--sw);border:1px solid rgba(0,0,0,.12);}
-.sw.sel{border-color:var(--accent);}
 .stor{background:var(--surface);border:1.5px solid var(--line);border-radius:12px;padding:10px 20px;font-weight:800;font-size:.95rem;color:var(--ink);cursor:pointer;margin-inline-end:8px;font-family:inherit;transition:all .14s;}
 .stor:hover{border-color:var(--accent);}
 .stor.sel{border-color:var(--accent);background:var(--accent-soft);color:var(--accent);}
@@ -89,14 +87,24 @@ main{padding-bottom:70px;}
 .trust-item .ic{width:22px;height:22px;color:var(--accent);flex:none;}
 .trust-item b{display:block;font-size:.9rem;}
 .trust-item span{color:var(--ink2);font-size:.78rem;}
-/* addon widgets (Green Care / trade-in) */
-.addons{display:flex;flex-direction:column;gap:12px;margin:18px 0 4px;}
-.addon{border:1.5px solid var(--line);border-radius:16px;padding:14px 16px;display:flex;gap:12px;align-items:flex-start;}
-.addon .ic{width:26px;height:26px;color:var(--accent);flex:none;margin-top:2px;}
-.addon .t{font-weight:800;display:flex;align-items:center;gap:7px;}
-.addon .s{color:var(--ink2);font-size:.85rem;margin-top:2px;}
-.addon .price-add{margin-inline-start:auto;font-weight:900;color:var(--accent);white-space:nowrap;}
-.addon.gc{border-color:var(--accent);background:var(--accent-soft);}
+/* addon widgets (Green Care / trade-in) — side by side on desktop, stacked on mobile */
+.pwidgets{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:20px 0 4px;}
+.pw-card{border:1.5px solid var(--line);border-radius:18px;padding:16px 18px;display:flex;flex-direction:column;gap:6px;background:linear-gradient(180deg,var(--accent-soft),transparent 72%);}
+.pw-card.gc{border-color:var(--accent);}
+.pw-head{display:flex;align-items:center;gap:8px;min-height:38px;}
+.pwshield{width:30px;height:30px;color:var(--accent);}
+.gc-word{font-weight:900;font-size:1.2rem;letter-spacing:-.02em;}
+.gc-word span,.gc-word b{color:var(--accent);}
+.pw-ic{display:inline-flex;width:40px;height:40px;border-radius:50%;background:var(--accent);color:#fff;align-items:center;justify-content:center;}
+.pw-ic .ic{width:22px;height:22px;}
+.pw-t{font-weight:800;font-size:1rem;}
+.pw-s{color:var(--ink2);font-size:.87rem;flex:1;line-height:1.45;}
+.pw-btn{display:block;text-align:center;background:var(--accent);color:#fff;border-radius:99px;padding:11px;font-weight:800;text-decoration:none;margin-top:8px;}
+.pw-btn:hover{filter:brightness(1.05);}
+.fulldesc{color:var(--ink2);font-size:.98rem;}
+.fulldesc img{max-width:100%;height:auto;border-radius:12px;margin:8px 0;}
+.fulldesc h1{font-size:1.3rem;color:var(--ink);margin:6px 0 10px;}
+.fulldesc ul{padding-inline-start:18px;}
 /* tabs */
 .tabs{border-top:1px solid var(--line);margin-top:10px;}
 .tabbar{display:flex;gap:28px;border-bottom:1px solid var(--line);}
@@ -124,6 +132,7 @@ footer.site{background:var(--alt);border-top:1px solid var(--line);padding:30px 
   .hbar{gap:14px;padding:12px 0;} header.site{border-bottom:none;}
   .gmnav-wrap{display:none;}
   .pdp{grid-template-columns:1fr;gap:22px;} .gallery{position:static;}
+  .pwidgets{grid-template-columns:1fr;}
   .trust{grid-template-columns:1fr;}
   .tabbar{gap:16px;overflow-x:auto;} .spec-row{grid-template-columns:1fr;gap:2px;}
 }
@@ -150,9 +159,6 @@ footer.site{background:var(--alt);border-top:1px solid var(--line);padding:30px 
   <div class="pdp">
     <div class="gallery">
       <div class="gmain"><img id="gmainImg" src="https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2024/01/httpssupport.google.combusinessanswer3415281hlen-GBvisit_id638091340784885189-1853280825pbizprofile_transfer_ownerrd1-4-2.png?fit=700%2C700&ssl=1" alt="טלפון סלולרי Samsung Galaxy S24 Ultra 12GB RAM"></div>
-      <div class="gthumbs" id="gthumbs">
-        <button class="gthumb sel" onclick="pickThumb(this)" data-img="https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2024/01/httpssupport.google.combusinessanswer3415281hlen-GBvisit_id638091340784885189-1853280825pbizprofile_transfer_ownerrd1-4-2.png?fit=700%2C700&ssl=1"><img src="https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2024/01/httpssupport.google.combusinessanswer3415281hlen-GBvisit_id638091340784885189-1853280825pbizprofile_transfer_ownerrd1-4-2.png?fit=700%2C700&ssl=1" alt=""></button><button class="gthumb" onclick="pickThumb(this)" data-img="https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2024/01/httpssupport.google.combusinessanswer3415281hlen-GBvisit_id638091340784885189-1853280825pbizprofile_transfer_ownerrd1-3-2.png?fit=700%2C700&ssl=1"><img src="https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2024/01/httpssupport.google.combusinessanswer3415281hlen-GBvisit_id638091340784885189-1853280825pbizprofile_transfer_ownerrd1-3-2.png?fit=700%2C700&ssl=1" alt=""></button><button class="gthumb" onclick="pickThumb(this)" data-img="https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2024/01/httpssupport.google.combusinessanswer3415281hlen-GBvisit_id638091340784885189-1853280825pbizprofile_transfer_ownerrd1-2-2.png?fit=700%2C700&ssl=1"><img src="https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2024/01/httpssupport.google.combusinessanswer3415281hlen-GBvisit_id638091340784885189-1853280825pbizprofile_transfer_ownerrd1-2-2.png?fit=700%2C700&ssl=1" alt=""></button><button class="gthumb" onclick="pickThumb(this)" data-img="https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2024/01/httpssupport.google.combusinessanswer3415281hlen-GBvisit_id638091340784885189-1853280825pbizprofile_transfer_ownerrd1-1-2.png?fit=700%2C700&ssl=1"><img src="https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2024/01/httpssupport.google.combusinessanswer3415281hlen-GBvisit_id638091340784885189-1853280825pbizprofile_transfer_ownerrd1-1-2.png?fit=700%2C700&ssl=1" alt=""></button>
-      </div>
     </div>
     <div class="info">
       <div class="eyebrow">Samsung</div>
@@ -161,25 +167,9 @@ footer.site{background:var(--alt);border-top:1px solid var(--line);padding:30px 
       <div class="pricebox"><span class="from" id="fromLbl">החל מ-</span><span class="amt">‏₪<span id="priceAmt">2,949</span></span></div>
       <div class="pay">עד <b>36 תשלומים</b> · משלוח חינם מעל ₪500</div>
       <div class="instk"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><polyline points="5 12 10 17 19 7"/></svg> במלאי · מוכן למשלוח</div>
-      <p class="pshort">Galaxy S24 Ultra הוא מכשיר הדגל של סמסונג עם 12GB RAM, מצלמה עוצמתית 200MP, מסך Dynamic AMOLED 2X בגודל 6.8 אינץ&#x27;, ומעבד Snapdragon מהדור החדש. עיצוב יוקרתי, ביצועים מתקדמים וחוויית שימוש שאין לה תחרות. 
- 
- 
- אחריות: 
- שנה אחריות ע&quot;י יבואן מקביל 
- 
- 
- תשלומים: 
- עד 12 תשלומים נוחים (3 ראשונים ללא ריבית) 
- 
- 
- שירות ושילוח: 
- משלוח חינם (7 ימי עסקים), שירות לקוחות מצוין 
- 
- 
- משלוח מהיר: 
- משלוח באותו היום בעלות 89 ש&quot;ח – להזמנות עד השעה 13:00 | ימים א&#x27;-ה&#x27; | חלוקה: באר שבע–חיפה</p>
+      <p class="pshort">Galaxy S24 Ultra הוא מכשיר הדגל של סמסונג עם 12GB RAM, מצלמה עוצמתית 200MP, מסך Dynamic AMOLED 2X בגודל 6.8 אינץ&#x27;, ומעבד Snapdragon מהדור החדש. עיצוב יוקרתי, ביצועים מתקדמים וחוויית שימוש שאין לה תחרות.</p>
 
-      <div class="opt"><div class="lab">צבע: <span id="colLbl">שחור</span></div><button class="sw sel" data-color="שחור" data-img="https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2024/01/httpssupport.google.combusinessanswer3415281hlen-GBvisit_id638091340784885189-1853280825pbizprofile_transfer_ownerrd1-4-2.png?fit=700%2C700&ssl=1" onclick="pickColor(this)" title="שחור" style="--sw:#1d1d1f"><span></span></button><button class="sw" data-color="אפור" data-img="https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2024/01/httpssupport.google.combusinessanswer3415281hlen-GBvisit_id638091340784885189-1853280825pbizprofile_transfer_ownerrd1-3-2.png?fit=700%2C700&ssl=1" onclick="pickColor(this)" title="אפור" style="--sw:#8e8e93"><span></span></button><button class="sw" data-color="סגול" data-img="https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2024/01/httpssupport.google.combusinessanswer3415281hlen-GBvisit_id638091340784885189-1853280825pbizprofile_transfer_ownerrd1-2-2.png?fit=700%2C700&ssl=1" onclick="pickColor(this)" title="סגול" style="--sw:#8b7fb0"><span></span></button><button class="sw" data-color="צהוב" data-img="https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2024/01/httpssupport.google.combusinessanswer3415281hlen-GBvisit_id638091340784885189-1853280825pbizprofile_transfer_ownerrd1-1-2.png?fit=700%2C700&ssl=1" onclick="pickColor(this)" title="צהוב" style="--sw:#e9dca0"><span></span></button></div>
+      <div class="opt"><div class="lab">צבע: <span id="colLbl">שחור</span></div><div class="cthumbs"><button class="cthumb sel" data-color="שחור" data-img="https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2024/01/httpssupport.google.combusinessanswer3415281hlen-GBvisit_id638091340784885189-1853280825pbizprofile_transfer_ownerrd1-4-2.png?fit=700%2C700&ssl=1" onclick="pickColor(this)" title="שחור"><img src="https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2024/01/httpssupport.google.combusinessanswer3415281hlen-GBvisit_id638091340784885189-1853280825pbizprofile_transfer_ownerrd1-4-2.png?fit=700%2C700&ssl=1" alt="שחור"></button><button class="cthumb" data-color="אפור" data-img="https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2024/01/httpssupport.google.combusinessanswer3415281hlen-GBvisit_id638091340784885189-1853280825pbizprofile_transfer_ownerrd1-3-2.png?fit=700%2C700&ssl=1" onclick="pickColor(this)" title="אפור"><img src="https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2024/01/httpssupport.google.combusinessanswer3415281hlen-GBvisit_id638091340784885189-1853280825pbizprofile_transfer_ownerrd1-3-2.png?fit=700%2C700&ssl=1" alt="אפור"></button><button class="cthumb" data-color="סגול" data-img="https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2024/01/httpssupport.google.combusinessanswer3415281hlen-GBvisit_id638091340784885189-1853280825pbizprofile_transfer_ownerrd1-2-2.png?fit=700%2C700&ssl=1" onclick="pickColor(this)" title="סגול"><img src="https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2024/01/httpssupport.google.combusinessanswer3415281hlen-GBvisit_id638091340784885189-1853280825pbizprofile_transfer_ownerrd1-2-2.png?fit=700%2C700&ssl=1" alt="סגול"></button><button class="cthumb" data-color="צהוב" data-img="https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2024/01/httpssupport.google.combusinessanswer3415281hlen-GBvisit_id638091340784885189-1853280825pbizprofile_transfer_ownerrd1-1-2.png?fit=700%2C700&ssl=1" onclick="pickColor(this)" title="צהוב"><img src="https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2024/01/httpssupport.google.combusinessanswer3415281hlen-GBvisit_id638091340784885189-1853280825pbizprofile_transfer_ownerrd1-1-2.png?fit=700%2C700&ssl=1" alt="צהוב"></button></div></div>
       <div class="opt"><div class="lab">נפח אחסון</div><button class="stor sel" data-stor="256GB" onclick="pickStor(this)">256GB</button><button class="stor" data-stor="512GB" onclick="pickStor(this)">512GB</button></div>
 
       <div class="buyrow">
@@ -187,16 +177,26 @@ footer.site{background:var(--alt);border-top:1px solid var(--line);padding:30px 
         <a class="addcart" href="https://greenmobile.co.il/?add-to-cart=15172"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="19.5" r="1.4"/><circle cx="17" cy="19.5" r="1.4"/><path d="M3 4h2.5l2.2 11.5h10.4L20.5 8H7"/></svg> הוספה לסל</a>
       </div>
 
-      <div class="addons">
-        <div class="addon gc"><span class="ic"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5 4.5 5.5v6c0 4.5 3.2 8 7.5 10 4.3-2 7.5-5.5 7.5-10v-6z"/><path d="M8.8 11.8l2.3 2.3 4.3-4.5"/></svg></span><div><div class="t">Green Care — הגנה מורחבת</div><div class="s">כיסוי שברים ותקלות + טיפול במעבדה שלנו ואיסוף עד הבית</div></div><span class="price-add">+₪79</span></div>
-        <div class="addon"><span class="ic"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4 3.5 7.5 7 11"/><path d="M3.5 7.5H17a3.5 3.5 0 0 1 3.5 3.5"/><path d="M17 20l3.5-3.5L17 13"/><path d="M20.5 16.5H7A3.5 3.5 0 0 1 3.5 13"/></svg></span><div><div class="t">טרייד-אין — זיכוי על הישן</div><div class="s">קבלו הערכה תוך 30 שניות והורידו מהמחיר</div></div><span class="price-add">הערכה ›</span></div>
+      <div class="pwidgets">
+        <div class="pw-card gc">
+          <div class="pw-head"><svg class="pwshield" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5 4.5 5.5v6c0 4.5 3.2 8 7.5 10 4.3-2 7.5-5.5 7.5-10v-6z"/><path d="M8.8 11.8l2.3 2.3 4.3-4.5"/></svg><div class="gc-word"><span>green</span>care<b>.</b></div></div>
+          <div class="pw-t">הגנה מורחבת למכשיר</div>
+          <div class="pw-s">הרחבת אחריות או כיסוי שברים מלא · החל מ-₪99</div>
+          <a class="pw-btn" href="gm-greencare-landing.html">לפרטים</a>
+        </div>
+        <div class="pw-card">
+          <div class="pw-head"><span class="pw-ic"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4 3.5 7.5 7 11"/><path d="M3.5 7.5H17a3.5 3.5 0 0 1 3.5 3.5"/><path d="M17 20l3.5-3.5L17 13"/><path d="M20.5 16.5H7A3.5 3.5 0 0 1 3.5 13"/></svg></span></div>
+          <div class="pw-t">יש לך מכשיר ישן להחלפה?</div>
+          <div class="pw-s">כמה שווה הישן שלכם? זיכוי שחוזר אליכם לאחר בדיקה</div>
+          <a class="pw-btn" href="gm-tradein-mockup.html">בדקו שווי</a>
+        </div>
       </div>
 
       <div class="trust">
-        <div class="trust-item"><span class="ic"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 6h11v10h-11z"/><path d="M13.5 9.5h4l3 3.5v3h-7z"/><circle cx="6.5" cy="17.5" r="1.8"/><circle cx="16.5" cy="17.5" r="1.8"/></svg></span><div><b>משלוח חינם</b><span>מעל ₪500, לכל הארץ</span></div></div>
+        <div class="trust-item"><span class="ic"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 6h11v10h-11z"/><path d="M13.5 9.5h4l3 3.5v3h-7z"/><circle cx="6.5" cy="17.5" r="1.8"/><circle cx="16.5" cy="17.5" r="1.8"/></svg></span><div><b>משלוח חינם</b><span>1–6 ימי עסקים · מעל ₪500</span></div></div>
+        <div class="trust-item"><span class="ic"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 5 13h5.5L9.5 22 19 10.5h-6z"/></svg></span><div><b>משלוח אקספרס</b><span>‏₪89 · עד 13:00 · באר שבע–חיפה</span></div></div>
+        <div class="trust-item"><span class="ic"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5 4.5 5.5v6c0 4.5 3.2 8 7.5 10 4.3-2 7.5-5.5 7.5-10v-6z"/><path d="M8.8 11.8l2.3 2.3 4.3-4.5"/></svg></span><div><b>אחריות</b><span>שנה אחריות ע&quot;י יבואן מקביל</span></div></div>
         <div class="trust-item"><span class="ic"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="5.5" width="19" height="13" rx="2.5"/><line x1="2.5" y1="10" x2="21.5" y2="10"/><line x1="6" y1="14.5" x2="10" y2="14.5"/></svg></span><div><b>עד 36 תשלומים</b><span>אשראי / Blender</span></div></div>
-        <div class="trust-item"><span class="ic"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6.5a4.5 4.5 0 0 1 5.6-4.3l-3.1 3.1 1.7 1.7 3.1-3.1a4.5 4.5 0 0 1-5.8 5.7L8.5 17.1a2 2 0 1 1-2.8-2.8l7.5-7.4z"/></svg></span><div><b>מעבדת שירות</b><span>אחריות במקום אחד</span></div></div>
-        <div class="trust-item"><span class="ic"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5 4.5 5.5v6c0 4.5 3.2 8 7.5 10 4.3-2 7.5-5.5 7.5-10v-6z"/><path d="M8.8 11.8l2.3 2.3 4.3-4.5"/></svg></span><div><b>אחריות יבואן</b><span>מקורית ורשמית</span></div></div>
       </div>
     </div>
   </div>
@@ -207,23 +207,33 @@ footer.site{background:var(--alt);border-top:1px solid var(--line);padding:30px 
       <button onclick="tab(this,'spec')">מפרט טכני</button>
       <button onclick="tab(this,'rev')">ביקורות (126)</button>
     </div>
-    <div class="tabpane sel" id="tab-desc"><p>Galaxy S24 Ultra הוא מכשיר הדגל של סמסונג עם 12GB RAM, מצלמה עוצמתית 200MP, מסך Dynamic AMOLED 2X בגודל 6.8 אינץ&#x27;, ומעבד Snapdragon מהדור החדש. עיצוב יוקרתי, ביצועים מתקדמים וחוויית שימוש שאין לה תחרות. 
- 
- 
- אחריות: 
- שנה אחריות ע&quot;י יבואן מקביל 
- 
- 
- תשלומים: 
- עד 12 תשלומים נוחים (3 ראשונים ללא ריבית) 
- 
- 
- שירות ושילוח: 
- משלוח חינם (7 ימי עסקים), שירות לקוחות מצוין 
- 
- 
- משלוח מהיר: 
- משלוח באותו היום בעלות 89 ש&quot;ח – להזמנות עד השעה 13:00 | ימים א&#x27;-ה&#x27; | חלוקה: באר שבע–חיפה</p></div>
+    <div class="tabpane sel" id="tab-desc"><div class="fulldesc"><div dir="rtl" style="text-align: right; font-family: Arial, sans-serif; max-width: 800px; margin: auto;">
+<h1 style="font-size: 24px; color: #000;">Samsung Galaxy S24 Ultra – סמארטפון פרימיום עם מצלמה עוצמתית, מעבד חזק ועיצוב יוקרתי</h1>
+<p><strong>Samsung Galaxy S24 Ultra משלב טכנולוגיה מתקדמת עם עיצוב יוקרתי, כולל מסך Dynamic AMOLED 2X בגודל 6.8 אינץ', מעבד Snapdragon 8 Gen 3, מצלמה ראשית של 200MP, סוללה עוצמתית של 5000mAh ועט S-Pen מובנה.<br />
+</strong></p>
+<ul style="list-style: none; padding: 0;">
+<li><img style="vertical-align: middle; margin-left: 6px;" src="https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2025/01/GREENMOBILE_PROFILE-02.jpg" alt="אייקון מסך" width="16" /> מסך 6.8 אינץ' Dynamic AMOLED 2X ברזולוציית QHD+ עם קצב רענון משתנה של 1-120Hz</li>
+<li><img style="vertical-align: middle; margin-left: 6px;" src="https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2025/01/GREENMOBILE_PROFILE-02.jpg" alt="אייקון מעבד" width="16" /> מעבד Snapdragon 8 Gen 3 לביצועים מהירים ויעילים</li>
+<li><img style="vertical-align: middle; margin-left: 6px;" src="https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2025/01/GREENMOBILE_PROFILE-02.jpg" alt="אייקון מצלמה" width="16" /> מערך צילום מרובע עם מצלמה ראשית של 200MP, זום אופטי עד 10x ויכולות AI מתקדמות</li>
+<li><img style="vertical-align: middle; margin-left: 6px;" src="https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2025/01/GREENMOBILE_PROFILE-02.jpg" alt="אייקון סוללה" width="16" /> סוללת 5000mAh עם טעינה מהירה של 45W וטעינה אלחוטית של 15W</li>
+<li><img style="vertical-align: middle; margin-left: 6px;" src="https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2025/01/GREENMOBILE_PROFILE-02.jpg" alt="אייקון עמידות" width="16" /> עמידות למים ואבק בתקן IP68</li>
+<li><img style="vertical-align: middle; margin-left: 6px;" src="https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2025/01/GREENMOBILE_PROFILE-02.jpg" alt="אייקון עיצוב" width="16" /> שלדת טיטניום חזקה עם זכוכית Gorilla Glass Armor</li>
+<li><img style="vertical-align: middle; margin-left: 6px;" src="https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2025/01/GREENMOBILE_PROFILE-02.jpg" alt="אייקון עט" width="16" /> עט S-Pen מובנה לכתיבה וציור מדויקים</li>
+</ul>
+<h2>חוויית צילום מתקדמת עם מצלמה של 200MP</h2>
+<p>ה-Galaxy S24 Ultra מצויד במערך צילום מרובע, הכולל מצלמה ראשית של 200MP, מצלמת זום פריסקופית של 50MP עם זום אופטי של 5x, מצלמת טלפוטו של 10MP עם זום אופטי של 3x ומצלמת אולטרה-רחבה של 12MP. המצלמות נתמכות בטכנולוגיות AI מתקדמות לשיפור איכות התמונות והווידאו.</p>
+<p><img style="max-width: 100%; height: auto; margin: 20px 0;" src="https://i0.wp.com/www.bug.co.il/Images/Site/Pages/s_31d4d8fb-b945-4de2-ab49-17ed23a2c55d.webp" alt="מצלמה איכותית" /></p>
+<h2>ביצועים מרשימים עם Snapdragon 8 Gen 3</h2>
+<p>המעבד החזק Snapdragon 8 Gen 3 מספק ביצועים מהירים ויעילים, מתאים למשחקים, עבודה מרובת משימות ויישומים כבדים. יחד עם 12GB RAM, המכשיר מציע חוויית שימוש חלקה ומהירה.</p>
+<h2>סוללה עוצמתית וטעינה מהירה</h2>
+<p>סוללת 5000mAh מבטיחה שימוש ממושך לאורך כל היום. המכשיר תומך בטעינה מהירה של 45W ובטעינה אלחוטית של 15W, כך שתוכלו לחזור לפעולה במהירות.</p>
+<h2>עיצוב יוקרתי ועמידות גבוהה</h2>
+<p>ה-Galaxy S24 Ultra מגיע עם שלדת טיטניום חזקה וזכוכית Gorilla Glass Armor, המציעים עמידות גבוהה בפני שריטות ונפילות. העיצוב השטוח והאלגנטי מעניק למכשיר מראה מודרני ויוקרתי.</p>
+<p><img style="max-width: 100%; height: auto; margin: 20px 0;" src="https://i0.wp.com/www.bug.co.il/Images/Site/Pages/s_6fd6a4ec-b78b-4f28-9666-0965e04085bf.webp" alt="עיצוב פרמיום וצבעים מדהימים" /></p>
+<h2>עט S-Pen מובנה</h2>
+<p>העט המובנה מאפשר כתיבה, ציור</p>
+</div>
+</div></div>
     <div class="tabpane" id="tab-spec"><div class="spec-row"><div class="spec-k">גודל מסך</div><div class="spec-v">6.8” Dynamic AMOLED 2X QHD+ 505 ppi, 1-120Hz 2600Nits</div></div><div class="spec-row"><div class="spec-k">עמיד למים \ תקן</div><div class="spec-v">כן</div></div><div class="spec-row"><div class="spec-k">IP68</div><div class="spec-v">רזולוציה</div></div><div class="spec-row"><div class="spec-k">3120x1440</div><div class="spec-v">PPI - צפיפות פיקסלים</div></div><div class="spec-row"><div class="spec-k">505ppi</div><div class="spec-v">מעבד</div></div><div class="spec-row"><div class="spec-k">Snapdragon 8 Gen3 4nm</div><div class="spec-v">זיכרון RAM</div></div><div class="spec-row"><div class="spec-k">12GB</div><div class="spec-v">*נפח אחסון מובנה</div></div><div class="spec-row"><div class="spec-k">512GB</div><div class="spec-v">מאפיינים נוספים</div></div><div class="spec-row"><div class="spec-k">Wi-Fi</div><div class="spec-v">Bluetooth</div></div><div class="spec-row"><div class="spec-k">GPS</div><div class="spec-v">חיישן ביומטרי</div></div><div class="spec-row"><div class="spec-k">NFC</div><div class="spec-v">S-Pen</div></div><div class="spec-row"><div class="spec-k">מימדים ב-מילימטר</div><div class="spec-v">79x162.3x8.6 מ&quot;מ</div></div><div class="spec-row"><div class="spec-k">מצלמה קדמית (סלפי)</div><div class="spec-v">12MP</div></div><div class="spec-row"><div class="spec-k">מצלמה אחורית</div><div class="spec-v">12MP</div></div><div class="spec-row"><div class="spec-k">4 מצלמות</div><div class="spec-v">10MP</div></div><div class="spec-row"><div class="spec-k">50MP</div><div class="spec-v">200MP</div></div><div class="spec-row"><div class="spec-k">משקל</div><div class="spec-v">232 גרם</div></div><div class="spec-row"><div class="spec-k">פלט שמע</div><div class="spec-v">רמקול סטריאו</div></div><div class="spec-row"><div class="spec-k">סים (SIM)</div><div class="spec-v">Nano</div></div><div class="spec-row"><div class="spec-k">נפח קיבולת סוללה mAh</div><div class="spec-v">5000mAh</div></div><div class="spec-row"><div class="spec-k">טעינה והעברת נתונים</div><div class="spec-v">Type - C</div></div><div class="spec-row"><div class="spec-k">טעינה אלחוטית</div><div class="spec-v">כן</div></div></div>
     <div class="tabpane" id="tab-rev"><p>★ 4.8 מתוך 5 · 126 ביקורות · (אזור הביקורות יוצג מהחנות החיה)</p></div>
   </div>
@@ -241,15 +251,12 @@ function refresh(){
   document.getElementById('colLbl').textContent = curColor;
 }
 function pickColor(btn){
-  document.querySelectorAll('.sw').forEach(b=>b.classList.remove('sel')); btn.classList.add('sel');
+  document.querySelectorAll('.cthumb').forEach(b=>b.classList.remove('sel')); btn.classList.add('sel');
   curColor = btn.dataset.color;
-  if(btn.dataset.img){ document.getElementById('gmainImg').src = btn.dataset.img;
-    document.querySelectorAll('.gthumb').forEach(t=>t.classList.toggle('sel', t.dataset.img===btn.dataset.img)); }
+  if(btn.dataset.img) document.getElementById('gmainImg').src = btn.dataset.img;
   refresh();
 }
 function pickStor(btn){ document.querySelectorAll('.stor').forEach(b=>b.classList.remove('sel')); btn.classList.add('sel'); curStor=btn.dataset.stor; refresh(); }
-function pickThumb(btn){ document.getElementById('gmainImg').src=btn.dataset.img; document.querySelectorAll('.gthumb').forEach(t=>t.classList.remove('sel')); btn.classList.add('sel');
-  document.querySelectorAll('.sw').forEach(b=>{ if(b.dataset.img===btn.dataset.img) b.click(); }); }
 let q=1; function qty(d){ q=Math.max(1,q+d); document.getElementById('qtyN').textContent=q; }
 function tab(btn,id){ document.querySelectorAll('.tabbar button').forEach(b=>b.classList.remove('sel')); btn.classList.add('sel');
   document.querySelectorAll('.tabpane').forEach(p=>p.classList.remove('sel')); document.getElementById('tab-'+id).classList.add('sel'); }
