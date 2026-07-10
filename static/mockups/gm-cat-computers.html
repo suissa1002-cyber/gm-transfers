@@ -213,6 +213,32 @@ function applyFilters(){
   document.getElementById('pbarTitle').textContent=F.catLabel;
   document.getElementById('pbarCnt').textContent=n+' מוצרים';
   const none=document.getElementById('pnone'); if(none) none.style.display=n?'none':'block';
+  recomputeFacets();
+}
+// dynamic facets (HUSKY-style): each facet's options reflect the current result set
+// filtered by cat+price+all OTHER facets; values with 0 hide, empty groups hide.
+const ALL_CARDS=()=>document.querySelectorAll('#pgrid .card');
+function matchesExcept(c, exceptIdx){
+  if(F.cat.size){ const cv=c.dataset.cats.split(' '); let hit=false; for(const v of cv){if(F.cat.has(v)){hit=true;break;}} if(!hit) return false; }
+  const pr=+c.dataset.price; if(pr<F.pmin||pr>F.pmax) return false;
+  for(const i of FACET_IDX){ if(i===exceptIdx) continue; const set=F.facets[i]; if(set.size){ const raw=c.dataset['f'+i]||''; const cv=raw?raw.split('|'):[]; let hit=false; set.forEach(v=>{if(cv.indexOf(v)>=0)hit=true;}); if(!hit) return false; } }
+  return true;
+}
+function recomputeFacets(){
+  const cards=[...ALL_CARDS()];
+  FACET_IDX.forEach(i=>{
+    const base=cards.filter(c=>matchesExcept(c,i));
+    let anyVisible=false;
+    document.querySelectorAll('.fcheck[data-idx="'+i+'"]').forEach(row=>{
+      const val=row.dataset.val;
+      const cnt=base.reduce((a,c)=>{const raw=c.dataset['f'+i]||''; return a+((raw&&raw.split('|').indexOf(val)>=0)?1:0);},0);
+      const checked=row.querySelector('input').checked;
+      row.querySelector('.c').textContent='('+cnt+')';
+      const show=cnt>0||checked; row.style.display=show?'':'none'; if(show) anyVisible=true;
+    });
+    const grp=document.querySelector('.fgroup[data-fidx="'+i+'"]');
+    if(grp) grp.style.display=anyVisible?'':'none';
+  });
 }
 let activeBrand=null;
 function pickBrand(btn){

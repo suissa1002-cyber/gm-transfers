@@ -178,34 +178,34 @@ footer.site{background:var(--alt);border-top:1px solid var(--line);padding:30px 
 </div>
 <div class="spanel" id="spanel"><div class="spanel-in" id="spanelIn"></div></div>
   <div class="catbody">
-    <button class="filterbtn" type="button" onclick="toggleFilters()"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg> סינון מוצרים</button><aside class="filters" id="filters"><h2 class="ftitle">סינון מוצרים</h2><div class="fgroup"><div class="fhead" onclick="toggleGroup(this)">מחיר <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="7 10 12 15 17 10"/></svg></div><div class="fbody"><div class="prange">₪<span id="pminL">88</span> — ₪<span id="pmaxL">2,849</span></div><div class="rangewrap"><div class="rtrack"></div><div class="rfill" id="rfill"></div><input type="range" id="pmin" min="88" max="2849" value="88" step="10" oninput="priceInput(this)"><input type="range" id="pmax" min="88" max="2849" value="2849" step="10" oninput="priceInput(this)"></div></div></div><div class="fgroup"><div class="fhead" onclick="toggleGroup(this)">קישוריות / ממשק <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="7 10 12 15 17 10"/></svg></div><div class="fbody"><label class="fcheck"><input type="checkbox" value="אלחוטי - בלוטוס" onchange="toggleFacet(this,0)"> <span class="l">אלחוטי - בלוטוס</span><span class="c">(121)</span></label>
-<label class="fcheck"><input type="checkbox" value="חוטי - 3.5mm" onchange="toggleFacet(this,0)"> <span class="l">חוטי - 3.5mm</span><span class="c">(35)</span></label>
-<label class="fcheck"><input type="checkbox" value="אלחוטי - דונגל USB-A" onchange="toggleFacet(this,0)"> <span class="l">אלחוטי - דונגל USB-A</span><span class="c">(16)</span></label>
-<label class="fcheck"><input type="checkbox" value="אלחוטי - דונגל USB-C" onchange="toggleFacet(this,0)"> <span class="l">אלחוטי - דונגל USB-C</span><span class="c">(13)</span></label>
-<label class="fcheck"><input type="checkbox" value="חוטי - USB-A" onchange="toggleFacet(this,0)"> <span class="l">חוטי - USB-A</span><span class="c">(11)</span></label>
-<label class="fcheck"><input type="checkbox" value="חוטי - USB-C" onchange="toggleFacet(this,0)"> <span class="l">חוטי - USB-C</span><span class="c">(6)</span></label>
-<label class="fcheck"><input type="checkbox" value="אלחוטי-בלוטוס" onchange="toggleFacet(this,0)"> <span class="l">אלחוטי-בלוטוס</span><span class="c">(2)</span></label></div></div><div class="fgroup"><div class="fhead" onclick="toggleGroup(this)">אוזניות לשימוש <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="7 10 12 15 17 10"/></svg></div><div class="fbody"><label class="fcheck"><input type="checkbox" value="סמרטפונים וטאבלטים" onchange="toggleFacet(this,1)"> <span class="l">סמרטפונים וטאבלטים</span><span class="c">(134)</span></label>
-<label class="fcheck"><input type="checkbox" value="גיימינג" onchange="toggleFacet(this,1)"> <span class="l">גיימינג</span><span class="c">(58)</span></label>
-<label class="fcheck"><input type="checkbox" value="פלייסטיישן" onchange="toggleFacet(this,1)"> <span class="l">פלייסטיישן</span><span class="c">(52)</span></label>
-<label class="fcheck"><input type="checkbox" value="נינטנדו סווץ" onchange="toggleFacet(this,1)"> <span class="l">נינטנדו סווץ</span><span class="c">(39)</span></label>
-<label class="fcheck"><input type="checkbox" value="אקס בוקס" onchange="toggleFacet(this,1)"> <span class="l">אקס בוקס</span><span class="c">(31)</span></label>
-<label class="fcheck"><input type="checkbox" value="מוקד טלפוני" onchange="toggleFacet(this,1)"> <span class="l">מוקד טלפוני</span><span class="c">(9)</span></label>
-<label class="fcheck"><input type="checkbox" value="סמארטפונים וטאבלטים" onchange="toggleFacet(this,1)"> <span class="l">סמארטפונים וטאבלטים</span><span class="c">(2)</span></label></div></div><div class="fgroup"><div class="fhead" onclick="toggleGroup(this)">סוג האוזניות <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="7 10 12 15 17 10"/></svg></div><div class="fbody"><label class="fcheck"><input type="checkbox" value="קשת - On Ear / Over Ear" onchange="toggleFacet(this,2)"> <span class="l">קשת - On Ear / Over Ear</span><span class="c">(94)</span></label>
-<label class="fcheck"><input type="checkbox" value="תוך אוזן - In Ear" onchange="toggleFacet(this,2)"> <span class="l">תוך אוזן - In Ear</span><span class="c">(61)</span></label>
-<label class="fcheck"><input type="checkbox" value="אוזן פתוחה - Open Ear" onchange="toggleFacet(this,2)"> <span class="l">אוזן פתוחה - Open Ear</span><span class="c">(15)</span></label>
-<label class="fcheck"><input type="checkbox" value="עורף - Neckband" onchange="toggleFacet(this,2)"> <span class="l">עורף - Neckband</span><span class="c">(1)</span></label></div></div><div class="fgroup"><div class="fhead" onclick="toggleGroup(this)">קישוריות <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="7 10 12 15 17 10"/></svg></div><div class="fbody"><label class="fcheck"><input type="checkbox" value="Bluetooth" onchange="toggleFacet(this,3)"> <span class="l">Bluetooth</span><span class="c">(34)</span></label>
-<label class="fcheck"><input type="checkbox" value="AUX 3.5MM" onchange="toggleFacet(this,3)"> <span class="l">AUX 3.5MM</span><span class="c">(12)</span></label>
-<label class="fcheck"><input type="checkbox" value="USB-A" onchange="toggleFacet(this,3)"> <span class="l">USB-A</span><span class="c">(6)</span></label>
-<label class="fcheck"><input type="checkbox" value="כבל מיקרופון/גיטרה 6.3מ&quot;מ" onchange="toggleFacet(this,3)"> <span class="l">כבל מיקרופון/גיטרה 6.3מ&quot;מ</span><span class="c">(6)</span></label>
-<label class="fcheck"><input type="checkbox" value="HDMI" onchange="toggleFacet(this,3)"> <span class="l">HDMI</span><span class="c">(3)</span></label>
-<label class="fcheck"><input type="checkbox" value="WIFI" onchange="toggleFacet(this,3)"> <span class="l">WIFI</span><span class="c">(3)</span></label>
-<label class="fcheck"><input type="checkbox" value="OTG" onchange="toggleFacet(this,3)"> <span class="l">OTG</span><span class="c">(1)</span></label>
-<label class="fcheck"><input type="checkbox" value="TF/Micro SD" onchange="toggleFacet(this,3)"> <span class="l">TF/Micro SD</span><span class="c">(1)</span></label>
-<label class="fcheck"><input type="checkbox" value="USB" onchange="toggleFacet(this,3)"> <span class="l">USB</span><span class="c">(1)</span></label>
-<label class="fcheck"><input type="checkbox" value="USB C" onchange="toggleFacet(this,3)"> <span class="l">USB C</span><span class="c">(1)</span></label>
-<label class="fcheck"><input type="checkbox" value="XBOX Wireless" onchange="toggleFacet(this,3)"> <span class="l">XBOX Wireless</span><span class="c">(1)</span></label>
-<label class="fcheck"><input type="checkbox" value="אלחוטי 2.4Ghz" onchange="toggleFacet(this,3)"> <span class="l">אלחוטי 2.4Ghz</span><span class="c">(1)</span></label>
-<label class="fcheck"><input type="checkbox" value="רדיו FM" onchange="toggleFacet(this,3)"> <span class="l">רדיו FM</span><span class="c">(1)</span></label></div></div><button class="fclear" type="button" onclick="clearFilters()">נקה סינון</button></aside>
+    <button class="filterbtn" type="button" onclick="toggleFilters()"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg> סינון מוצרים</button><aside class="filters" id="filters"><h2 class="ftitle">סינון מוצרים</h2><div class="fgroup"><div class="fhead" onclick="toggleGroup(this)">מחיר <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="7 10 12 15 17 10"/></svg></div><div class="fbody"><div class="prange">₪<span id="pminL">88</span> — ₪<span id="pmaxL">2,849</span></div><div class="rangewrap"><div class="rtrack"></div><div class="rfill" id="rfill"></div><input type="range" id="pmin" min="88" max="2849" value="88" step="10" oninput="priceInput(this)"><input type="range" id="pmax" min="88" max="2849" value="2849" step="10" oninput="priceInput(this)"></div></div></div><div class="fgroup" data-fidx="0"><div class="fhead" onclick="toggleGroup(this)">קישוריות / ממשק <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="7 10 12 15 17 10"/></svg></div><div class="fbody"><label class="fcheck" data-idx="0" data-val="אלחוטי - בלוטוס"><input type="checkbox" value="אלחוטי - בלוטוס" onchange="toggleFacet(this,0)"> <span class="l">אלחוטי - בלוטוס</span><span class="c">(121)</span></label>
+<label class="fcheck" data-idx="0" data-val="חוטי - 3.5mm"><input type="checkbox" value="חוטי - 3.5mm" onchange="toggleFacet(this,0)"> <span class="l">חוטי - 3.5mm</span><span class="c">(35)</span></label>
+<label class="fcheck" data-idx="0" data-val="אלחוטי - דונגל USB-A"><input type="checkbox" value="אלחוטי - דונגל USB-A" onchange="toggleFacet(this,0)"> <span class="l">אלחוטי - דונגל USB-A</span><span class="c">(16)</span></label>
+<label class="fcheck" data-idx="0" data-val="אלחוטי - דונגל USB-C"><input type="checkbox" value="אלחוטי - דונגל USB-C" onchange="toggleFacet(this,0)"> <span class="l">אלחוטי - דונגל USB-C</span><span class="c">(13)</span></label>
+<label class="fcheck" data-idx="0" data-val="חוטי - USB-A"><input type="checkbox" value="חוטי - USB-A" onchange="toggleFacet(this,0)"> <span class="l">חוטי - USB-A</span><span class="c">(11)</span></label>
+<label class="fcheck" data-idx="0" data-val="חוטי - USB-C"><input type="checkbox" value="חוטי - USB-C" onchange="toggleFacet(this,0)"> <span class="l">חוטי - USB-C</span><span class="c">(6)</span></label>
+<label class="fcheck" data-idx="0" data-val="אלחוטי-בלוטוס"><input type="checkbox" value="אלחוטי-בלוטוס" onchange="toggleFacet(this,0)"> <span class="l">אלחוטי-בלוטוס</span><span class="c">(2)</span></label></div></div><div class="fgroup" data-fidx="1"><div class="fhead" onclick="toggleGroup(this)">אוזניות לשימוש <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="7 10 12 15 17 10"/></svg></div><div class="fbody"><label class="fcheck" data-idx="1" data-val="סמרטפונים וטאבלטים"><input type="checkbox" value="סמרטפונים וטאבלטים" onchange="toggleFacet(this,1)"> <span class="l">סמרטפונים וטאבלטים</span><span class="c">(134)</span></label>
+<label class="fcheck" data-idx="1" data-val="גיימינג"><input type="checkbox" value="גיימינג" onchange="toggleFacet(this,1)"> <span class="l">גיימינג</span><span class="c">(58)</span></label>
+<label class="fcheck" data-idx="1" data-val="פלייסטיישן"><input type="checkbox" value="פלייסטיישן" onchange="toggleFacet(this,1)"> <span class="l">פלייסטיישן</span><span class="c">(52)</span></label>
+<label class="fcheck" data-idx="1" data-val="נינטנדו סווץ"><input type="checkbox" value="נינטנדו סווץ" onchange="toggleFacet(this,1)"> <span class="l">נינטנדו סווץ</span><span class="c">(39)</span></label>
+<label class="fcheck" data-idx="1" data-val="אקס בוקס"><input type="checkbox" value="אקס בוקס" onchange="toggleFacet(this,1)"> <span class="l">אקס בוקס</span><span class="c">(31)</span></label>
+<label class="fcheck" data-idx="1" data-val="מוקד טלפוני"><input type="checkbox" value="מוקד טלפוני" onchange="toggleFacet(this,1)"> <span class="l">מוקד טלפוני</span><span class="c">(9)</span></label>
+<label class="fcheck" data-idx="1" data-val="סמארטפונים וטאבלטים"><input type="checkbox" value="סמארטפונים וטאבלטים" onchange="toggleFacet(this,1)"> <span class="l">סמארטפונים וטאבלטים</span><span class="c">(2)</span></label></div></div><div class="fgroup" data-fidx="2"><div class="fhead" onclick="toggleGroup(this)">סוג האוזניות <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="7 10 12 15 17 10"/></svg></div><div class="fbody"><label class="fcheck" data-idx="2" data-val="קשת - On Ear / Over Ear"><input type="checkbox" value="קשת - On Ear / Over Ear" onchange="toggleFacet(this,2)"> <span class="l">קשת - On Ear / Over Ear</span><span class="c">(94)</span></label>
+<label class="fcheck" data-idx="2" data-val="תוך אוזן - In Ear"><input type="checkbox" value="תוך אוזן - In Ear" onchange="toggleFacet(this,2)"> <span class="l">תוך אוזן - In Ear</span><span class="c">(61)</span></label>
+<label class="fcheck" data-idx="2" data-val="אוזן פתוחה - Open Ear"><input type="checkbox" value="אוזן פתוחה - Open Ear" onchange="toggleFacet(this,2)"> <span class="l">אוזן פתוחה - Open Ear</span><span class="c">(15)</span></label>
+<label class="fcheck" data-idx="2" data-val="עורף - Neckband"><input type="checkbox" value="עורף - Neckband" onchange="toggleFacet(this,2)"> <span class="l">עורף - Neckband</span><span class="c">(1)</span></label></div></div><div class="fgroup" data-fidx="3"><div class="fhead" onclick="toggleGroup(this)">קישוריות <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="7 10 12 15 17 10"/></svg></div><div class="fbody"><label class="fcheck" data-idx="3" data-val="Bluetooth"><input type="checkbox" value="Bluetooth" onchange="toggleFacet(this,3)"> <span class="l">Bluetooth</span><span class="c">(34)</span></label>
+<label class="fcheck" data-idx="3" data-val="AUX 3.5MM"><input type="checkbox" value="AUX 3.5MM" onchange="toggleFacet(this,3)"> <span class="l">AUX 3.5MM</span><span class="c">(12)</span></label>
+<label class="fcheck" data-idx="3" data-val="USB-A"><input type="checkbox" value="USB-A" onchange="toggleFacet(this,3)"> <span class="l">USB-A</span><span class="c">(6)</span></label>
+<label class="fcheck" data-idx="3" data-val="כבל מיקרופון/גיטרה 6.3מ&quot;מ"><input type="checkbox" value="כבל מיקרופון/גיטרה 6.3מ&quot;מ" onchange="toggleFacet(this,3)"> <span class="l">כבל מיקרופון/גיטרה 6.3מ&quot;מ</span><span class="c">(6)</span></label>
+<label class="fcheck" data-idx="3" data-val="HDMI"><input type="checkbox" value="HDMI" onchange="toggleFacet(this,3)"> <span class="l">HDMI</span><span class="c">(3)</span></label>
+<label class="fcheck" data-idx="3" data-val="WIFI"><input type="checkbox" value="WIFI" onchange="toggleFacet(this,3)"> <span class="l">WIFI</span><span class="c">(3)</span></label>
+<label class="fcheck" data-idx="3" data-val="OTG"><input type="checkbox" value="OTG" onchange="toggleFacet(this,3)"> <span class="l">OTG</span><span class="c">(1)</span></label>
+<label class="fcheck" data-idx="3" data-val="TF/Micro SD"><input type="checkbox" value="TF/Micro SD" onchange="toggleFacet(this,3)"> <span class="l">TF/Micro SD</span><span class="c">(1)</span></label>
+<label class="fcheck" data-idx="3" data-val="USB"><input type="checkbox" value="USB" onchange="toggleFacet(this,3)"> <span class="l">USB</span><span class="c">(1)</span></label>
+<label class="fcheck" data-idx="3" data-val="USB C"><input type="checkbox" value="USB C" onchange="toggleFacet(this,3)"> <span class="l">USB C</span><span class="c">(1)</span></label>
+<label class="fcheck" data-idx="3" data-val="XBOX Wireless"><input type="checkbox" value="XBOX Wireless" onchange="toggleFacet(this,3)"> <span class="l">XBOX Wireless</span><span class="c">(1)</span></label>
+<label class="fcheck" data-idx="3" data-val="אלחוטי 2.4Ghz"><input type="checkbox" value="אלחוטי 2.4Ghz" onchange="toggleFacet(this,3)"> <span class="l">אלחוטי 2.4Ghz</span><span class="c">(1)</span></label>
+<label class="fcheck" data-idx="3" data-val="רדיו FM"><input type="checkbox" value="רדיו FM" onchange="toggleFacet(this,3)"> <span class="l">רדיו FM</span><span class="c">(1)</span></label></div></div><button class="fclear" type="button" onclick="clearFilters()">נקה סינון</button></aside>
     <div class="pcol">
       <div class="pbar"><h2 id="pbarTitle">כל האוזניות ורמקולים</h2><span class="cnt" id="pbarCnt">208 מוצרים</span></div>
       <div class="pgrid" id="pgrid">
@@ -446,6 +446,32 @@ function applyFilters(){
   document.getElementById('pbarTitle').textContent=F.catLabel;
   document.getElementById('pbarCnt').textContent=n+' מוצרים';
   const none=document.getElementById('pnone'); if(none) none.style.display=n?'none':'block';
+  recomputeFacets();
+}
+// dynamic facets (HUSKY-style): each facet's options reflect the current result set
+// filtered by cat+price+all OTHER facets; values with 0 hide, empty groups hide.
+const ALL_CARDS=()=>document.querySelectorAll('#pgrid .card');
+function matchesExcept(c, exceptIdx){
+  if(F.cat.size){ const cv=c.dataset.cats.split(' '); let hit=false; for(const v of cv){if(F.cat.has(v)){hit=true;break;}} if(!hit) return false; }
+  const pr=+c.dataset.price; if(pr<F.pmin||pr>F.pmax) return false;
+  for(const i of FACET_IDX){ if(i===exceptIdx) continue; const set=F.facets[i]; if(set.size){ const raw=c.dataset['f'+i]||''; const cv=raw?raw.split('|'):[]; let hit=false; set.forEach(v=>{if(cv.indexOf(v)>=0)hit=true;}); if(!hit) return false; } }
+  return true;
+}
+function recomputeFacets(){
+  const cards=[...ALL_CARDS()];
+  FACET_IDX.forEach(i=>{
+    const base=cards.filter(c=>matchesExcept(c,i));
+    let anyVisible=false;
+    document.querySelectorAll('.fcheck[data-idx="'+i+'"]').forEach(row=>{
+      const val=row.dataset.val;
+      const cnt=base.reduce((a,c)=>{const raw=c.dataset['f'+i]||''; return a+((raw&&raw.split('|').indexOf(val)>=0)?1:0);},0);
+      const checked=row.querySelector('input').checked;
+      row.querySelector('.c').textContent='('+cnt+')';
+      const show=cnt>0||checked; row.style.display=show?'':'none'; if(show) anyVisible=true;
+    });
+    const grp=document.querySelector('.fgroup[data-fidx="'+i+'"]');
+    if(grp) grp.style.display=anyVisible?'':'none';
+  });
 }
 let activeBrand=null;
 function pickBrand(btn){

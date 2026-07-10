@@ -179,8 +179,8 @@ footer.site{background:var(--alt);border-top:1px solid var(--line);padding:30px 
 </div>
 <div class="spanel" id="spanel"><div class="spanel-in" id="spanelIn"></div></div>
   <div class="catbody">
-    <button class="filterbtn" type="button" onclick="toggleFilters()"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg> סינון מוצרים</button><aside class="filters" id="filters"><h2 class="ftitle">סינון מוצרים</h2><div class="fgroup"><div class="fhead" onclick="toggleGroup(this)">מחיר <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="7 10 12 15 17 10"/></svg></div><div class="fbody"><div class="prange">₪<span id="pminL">139</span> — ₪<span id="pmaxL">625</span></div><div class="rangewrap"><div class="rtrack"></div><div class="rfill" id="rfill"></div><input type="range" id="pmin" min="139" max="625" value="139" step="10" oninput="priceInput(this)"><input type="range" id="pmax" min="139" max="625" value="625" step="10" oninput="priceInput(this)"></div></div></div><div class="fgroup"><div class="fhead" onclick="toggleGroup(this)">סוג <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="7 10 12 15 17 10"/></svg></div><div class="fbody"><label class="fcheck"><input type="checkbox" value="מצלמת פנים" onchange="toggleFacet(this,0)"> <span class="l">מצלמת פנים</span><span class="c">(14)</span></label>
-<label class="fcheck"><input type="checkbox" value="מצלמת חוץ" onchange="toggleFacet(this,0)"> <span class="l">מצלמת חוץ</span><span class="c">(10)</span></label></div></div><button class="fclear" type="button" onclick="clearFilters()">נקה סינון</button></aside>
+    <button class="filterbtn" type="button" onclick="toggleFilters()"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg> סינון מוצרים</button><aside class="filters" id="filters"><h2 class="ftitle">סינון מוצרים</h2><div class="fgroup"><div class="fhead" onclick="toggleGroup(this)">מחיר <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="7 10 12 15 17 10"/></svg></div><div class="fbody"><div class="prange">₪<span id="pminL">139</span> — ₪<span id="pmaxL">625</span></div><div class="rangewrap"><div class="rtrack"></div><div class="rfill" id="rfill"></div><input type="range" id="pmin" min="139" max="625" value="139" step="10" oninput="priceInput(this)"><input type="range" id="pmax" min="139" max="625" value="625" step="10" oninput="priceInput(this)"></div></div></div><div class="fgroup" data-fidx="0"><div class="fhead" onclick="toggleGroup(this)">סוג <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="7 10 12 15 17 10"/></svg></div><div class="fbody"><label class="fcheck" data-idx="0" data-val="מצלמת פנים"><input type="checkbox" value="מצלמת פנים" onchange="toggleFacet(this,0)"> <span class="l">מצלמת פנים</span><span class="c">(14)</span></label>
+<label class="fcheck" data-idx="0" data-val="מצלמת חוץ"><input type="checkbox" value="מצלמת חוץ" onchange="toggleFacet(this,0)"> <span class="l">מצלמת חוץ</span><span class="c">(10)</span></label></div></div><button class="fclear" type="button" onclick="clearFilters()">נקה סינון</button></aside>
     <div class="pcol">
       <div class="pbar"><h2 id="pbarTitle">כל המוצרי חשמל</h2><span class="cnt" id="pbarCnt">35 מוצרים</span></div>
       <div class="pgrid" id="pgrid">
@@ -248,6 +248,32 @@ function applyFilters(){
   document.getElementById('pbarTitle').textContent=F.catLabel;
   document.getElementById('pbarCnt').textContent=n+' מוצרים';
   const none=document.getElementById('pnone'); if(none) none.style.display=n?'none':'block';
+  recomputeFacets();
+}
+// dynamic facets (HUSKY-style): each facet's options reflect the current result set
+// filtered by cat+price+all OTHER facets; values with 0 hide, empty groups hide.
+const ALL_CARDS=()=>document.querySelectorAll('#pgrid .card');
+function matchesExcept(c, exceptIdx){
+  if(F.cat.size){ const cv=c.dataset.cats.split(' '); let hit=false; for(const v of cv){if(F.cat.has(v)){hit=true;break;}} if(!hit) return false; }
+  const pr=+c.dataset.price; if(pr<F.pmin||pr>F.pmax) return false;
+  for(const i of FACET_IDX){ if(i===exceptIdx) continue; const set=F.facets[i]; if(set.size){ const raw=c.dataset['f'+i]||''; const cv=raw?raw.split('|'):[]; let hit=false; set.forEach(v=>{if(cv.indexOf(v)>=0)hit=true;}); if(!hit) return false; } }
+  return true;
+}
+function recomputeFacets(){
+  const cards=[...ALL_CARDS()];
+  FACET_IDX.forEach(i=>{
+    const base=cards.filter(c=>matchesExcept(c,i));
+    let anyVisible=false;
+    document.querySelectorAll('.fcheck[data-idx="'+i+'"]').forEach(row=>{
+      const val=row.dataset.val;
+      const cnt=base.reduce((a,c)=>{const raw=c.dataset['f'+i]||''; return a+((raw&&raw.split('|').indexOf(val)>=0)?1:0);},0);
+      const checked=row.querySelector('input').checked;
+      row.querySelector('.c').textContent='('+cnt+')';
+      const show=cnt>0||checked; row.style.display=show?'':'none'; if(show) anyVisible=true;
+    });
+    const grp=document.querySelector('.fgroup[data-fidx="'+i+'"]');
+    if(grp) grp.style.display=anyVisible?'':'none';
+  });
 }
 let activeBrand=null;
 function pickBrand(btn){
