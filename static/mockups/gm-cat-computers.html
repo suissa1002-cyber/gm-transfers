@@ -53,7 +53,7 @@ nav.cats a.hot{color:var(--deal);font-weight:800;}
 nav.cats a.active{color:var(--accent);font-weight:800;}
 .mnav a.active{color:var(--accent);}
 main{padding:0 0 70px;}
-.intro{text-align:center;color:var(--ink2);font-size:1.02rem;padding:26px 0 4px;}
+.intro{text-align:center;color:var(--ink2);font-size:1.02rem;padding:6px 0 16px;}
 .brandscroll{overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
 .brandscroll::-webkit-scrollbar{display:none;}
 .brandrow{display:flex;justify-content:safe center;gap:26px;padding:24px 18px 16px;width:max-content;min-width:100%;scroll-snap-type:x proximity;}
@@ -173,12 +173,12 @@ footer.site{background:var(--alt);border-top:1px solid var(--line);padding:30px 
   <a href="gm-home-mockup.html#deals" class="hot">מבצעים</a><a href="gm-home-mockup.html">בית</a><a href="gm-cat-smartphones.html">סמארטפונים</a><a href="gm-cat-tablets.html">טאבלטים</a><a href="gm-cat-smartwatch.html">שעונים חכמים</a><a href="gm-cat-headphones.html">אוזניות ורמקולים</a><a href="gm-cat-gaming.html">גיימינג</a><a href="gm-cat-electrical.html">מוצרי חשמל</a><a href="gm-cat-pc-acces.html">ציוד מחשוב</a><a href="gm-cat-computers.html" class="active">מחשבים</a><a href="gm-cat-accessories.html">אביזרים</a><a href="gm-cat-gaming.html?sel=3553">קודים דיגיטליים</a><a href="gm-tradein-mockup.html">טרייד-אין</a><a href="gm-greencare-landing.html">Green Care</a><a href="https://greenmobile.co.il/?post_type=product">מציאון</a>
 </aside>
 <main class="wrap">
-  <p class="intro">בחרו תת-קטגוריה — וצללו פנימה</p>
   <div class="brandscroll" id="brandrow"><div class="brandrow">
 <button class="brand" type="button" data-key="1965" data-fids="1965 2014 2015 3518" data-name="מחשבים ניידים" onclick="pickBrand(this)" aria-expanded="false"><span class="bcircle"><img src="https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2026/03/macbook-neo-silver.jpg?fit=700%2C700&ssl=1" alt="מחשבים ניידים" loading="lazy"></span><span class="bname">מחשבים ניידים</span><span class="bmeta">1 מוצרים <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="7 10 12 15 17 10"/></svg></span></button>
 <button class="brand" type="button" data-key="3252" data-fids="3252" data-name="מחשבי Mini" onclick="pickBrand(this)" aria-expanded="false"><span class="bcircle"><img src="https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2025/06/httpssupport.google.combusinessanswer3415281hlen-GBvisit_id638091340784885189-1853280825pbizprofile_transfer_ownerrd1-53.png?fit=700%2C700&ssl=1" alt="מחשבי Mini" loading="lazy"></span><span class="bname">מחשבי Mini</span><span class="bmeta">1 מוצרים</span></button>
 </div></div>
 <div class="spanel" id="spanel"><div class="spanel-in" id="spanelIn"></div></div>
+  <p class="intro">בחרו תת-קטגוריה — וצללו פנימה</p>
   <div class="catbody">
     <button class="filterbtn" type="button" onclick="toggleFilters()"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg> סינון מוצרים</button><aside class="filters" id="filters"><h2 class="ftitle">סינון מוצרים</h2><div class="fgroup"><div class="fhead" onclick="toggleGroup(this)">מחיר <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="7 10 12 15 17 10"/></svg></div><div class="fbody"><div class="prange">₪<span id="pminL">2,130</span> — ₪<span id="pmaxL">2,560</span></div><div class="rangewrap"><div class="rtrack"></div><div class="rfill" id="rfill"></div><input type="range" id="pmin" min="2130" max="2560" value="2130" step="10" oninput="priceInput(this)"><input type="range" id="pmax" min="2130" max="2560" value="2560" step="10" oninput="priceInput(this)"></div></div></div><button class="fclear" type="button" onclick="clearFilters()">נקה סינון</button></aside>
     <div class="pcol">
