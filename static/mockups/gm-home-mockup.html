@@ -136,7 +136,7 @@ section { margin-bottom:66px; }
 @media (max-width:1350px) { .row { grid-auto-columns:calc((100% - 4*16px)/5); } }
 @media (max-width:1100px) { .row { grid-auto-columns:calc((100% - 3*16px)/4); } }
 @media (max-width:860px)  { .row { grid-auto-columns:calc((100% - 2*16px)/3); } }
-@media (max-width:640px)  { .row { grid-auto-columns:calc((100% - 16px)/2.18); } }
+@media (max-width:640px)  { .row { grid-auto-columns:calc((100% - 16px)/2); } .card { scroll-snap-align:start; } }
 .card { scroll-snap-align:start; background:var(--surface); border:1px solid var(--line); border-radius:var(--r); padding:14px; display:flex; flex-direction:column; gap:8px; transition:transform .15s ease, box-shadow .15s ease; }
 .card:hover { transform:translateY(-3px); box-shadow:var(--shadow); }
 .card-media { position:relative; background:#fff; border-radius:16px; display:flex; align-items:center; justify-content:center; height:168px; }
@@ -297,6 +297,16 @@ function bshow(i) {
 }
 function bgo(i) { bshow(i); clearInterval(btimer); btimer = setInterval(() => bshow((bidx + 1) % 4), 6000); }
 let btimer = setInterval(() => bshow((bidx + 1) % 4), 6000);
+// RTL sliders must open from the RIGHT (first item). iOS Safari sometimes
+// initialises horizontal scroll at the wrong end — force inline-start.
+function gmResetSliders() {
+  document.querySelectorAll('.cat-track, .row, nav.cats').forEach(function(el) {
+    el.scrollLeft = 0;              // negative-model browsers: 0 = start (right)
+    if (el.scrollLeft > 0) el.scrollLeft = el.scrollWidth; // reverse-model (old Safari)
+  });
+}
+window.addEventListener('load', gmResetSliders);
+gmResetSliders();
 </script>
 
 <div class="cat-row">
