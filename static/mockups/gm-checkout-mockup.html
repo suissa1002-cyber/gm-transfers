@@ -72,7 +72,8 @@ header.site{background:var(--bg);border-bottom:1px solid var(--line);}
 .backcart:hover{color:var(--accent);} .backcart .ic{width:17px;height:17px;}
 main{padding:24px 0 70px;}
 h1.pagetitle{font-size:clamp(1.4rem,2.6vw,1.9rem);font-weight:900;margin:0 0 20px;}
-.cogrid{display:grid;grid-template-columns:1fr 380px;gap:28px;align-items:start;}
+.cogrid{display:grid;grid-template-columns:1fr 470px;gap:28px;align-items:start;}
+.sidecol{display:flex;flex-direction:column;gap:16px;}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:22px 22px;margin-bottom:16px;}
 .card h2{font-size:1.1rem;font-weight:900;margin:0 0 4px;display:flex;align-items:center;gap:9px;}
 .card .num{width:26px;height:26px;border-radius:50%;background:var(--accent);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:.85rem;font-weight:800;flex:none;}
@@ -136,7 +137,7 @@ h1.pagetitle{font-size:clamp(1.4rem,2.6vw,1.9rem);font-weight:900;margin:0 0 20p
 .terms input{margin-top:3px;width:17px;height:17px;accent-color:var(--accent);flex:none;}
 .terms a{color:var(--accent);font-weight:700;text-decoration:none;}
 /* summary */
-.osum{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:20px;position:sticky;top:18px;box-shadow:var(--shadow);}
+.osum{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:20px;box-shadow:var(--shadow);}
 .osum h2{font-size:1.05rem;font-weight:900;margin:0 0 14px;display:flex;justify-content:space-between;align-items:center;}
 .osum h2 a{font-size:.8rem;color:var(--accent);text-decoration:none;font-weight:700;}
 .oi{display:flex;gap:11px;padding:10px 0;border-bottom:1px solid var(--line);}
@@ -164,7 +165,8 @@ h1.pagetitle{font-size:clamp(1.4rem,2.6vw,1.9rem);font-weight:900;margin:0 0 20p
 .done-card h3{font-size:1.4rem;font-weight:900;margin:0 0 8px;}
 .done-card p{color:var(--ink2);margin:0 0 20px;}
 .done-card a{display:inline-block;background:var(--accent);color:#fff;text-decoration:none;font-weight:800;border-radius:99px;padding:12px 30px;}
-@media (max-width:900px){.cogrid{grid-template-columns:1fr;} .osum{position:static;order:-1;}}
+@media (max-width:900px){.cogrid{grid-template-columns:1fr;}}
+@media (max-width:520px){.wallets{grid-template-columns:1fr;}}
 @media (max-width:560px){.frow{grid-template-columns:1fr;}}
 </style>
 
@@ -216,20 +218,32 @@ h1.pagetitle{font-size:clamp(1.4rem,2.6vw,1.9rem);font-weight:900;margin:0 0 20p
           <label class="orow sel" onclick="pickPay(this,'card')"><span class="radio"></span><svg class="paylogo" viewBox="0 0 40 26"><rect width="40" height="26" rx="4" fill="#e6eae8"/><rect y="6" width="40" height="5" fill="#5c666d"/></svg><span class="otxt"><div class="ot">כרטיס אשראי</div><div class="os">Visa / Mastercard · עד 36 תשלומים</div></span></label>
           <label class="orow" onclick="pickPay(this,'bit')"><span class="radio"></span><svg class="paylogo" viewBox="0 0 40 26"><rect width="40" height="26" rx="4" fill="#0a7cff"/><text x="20" y="17" font-size="10" fill="#fff" text-anchor="middle" font-family="Arial" font-weight="bold">bit</text></svg><span class="otxt"><div class="ot">bit</div><div class="os">תשלום מהיר מהאפליקציה</div></span></label>
           <label class="orow" onclick="pickPay(this,'apple')"><span class="radio"></span><svg class="paylogo" viewBox="0 0 40 26"><rect width="40" height="26" rx="4" fill="#111"/><text x="21" y="17" font-size="9" fill="#fff" text-anchor="middle" font-family="Arial">&#63743; Pay</text></svg><span class="otxt"><div class="ot">Apple Pay</div></span></label>
-          <label class="orow" onclick="pickPay(this,'google')"><span class="radio"></span><svg class="paylogo" viewBox="0 0 40 26"><rect width="40" height="26" rx="4" fill="#fff" stroke="#e6eae8"/><text x="20" y="17" font-size="8" text-anchor="middle" font-family="Arial" font-weight="bold"><tspan fill="#4285f4">G</tspan><tspan fill="#5c666d"> Pay</tspan></text></svg><span class="otxt"><div class="ot">Google Pay</div></span></label>
-          <label class="orow" onclick="pickPay(this,'blender')"><span class="radio"></span><svg class="paylogo" viewBox="0 0 40 26"><rect width="40" height="26" rx="4" fill="#fff" stroke="#e6eae8"/><text x="20" y="18" font-size="14" fill="#00b0f0" text-anchor="middle" font-family="Arial" font-weight="bold">b</text></svg><span class="otxt"><div class="ot">Blender · תשלומים</div><div class="os">פריסה נוחה לתשלומים</div></span></label>
+          <label class="orow" onclick="pickPay(this,'google')"><span class="radio"></span><span style="display:inline-flex;align-items:center;gap:2px;font-weight:700;font-size:.82rem;color:#5f6368;background:#fff;border:1px solid #e6eae8;border-radius:5px;padding:3px 8px"><svg viewBox="0 0 24 24" width="16" height="16" style="vertical-align:middle" aria-hidden="true"><path fill="#4285F4" d="M23 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.2c-.3 1.5-1.1 2.7-2.4 3.6v3h3.9c2.3-2.1 3.6-5.2 3.6-8.8z"/><path fill="#34A853" d="M12 24c3.2 0 5.9-1.1 7.9-2.9l-3.9-3c-1.1.7-2.5 1.2-4 1.2-3.1 0-5.7-2.1-6.6-4.9H1.4v3.1C3.4 21.3 7.4 24 12 24z"/><path fill="#FBBC05" d="M5.4 14.3c-.2-.7-.4-1.5-.4-2.3s.1-1.6.4-2.3V6.6H1.4C.5 8.2 0 10 0 12s.5 3.8 1.4 5.4l4-3.1z"/><path fill="#EA4335" d="M12 4.8c1.8 0 3.3.6 4.6 1.8l3.4-3.4C17.9 1.2 15.2 0 12 0 7.4 0 3.4 2.7 1.4 6.6l4 3.1C6.3 6.9 8.9 4.8 12 4.8z"/></svg>Pay</span><span class="otxt"><div class="ot">Google Pay</div></span></label>
+          <label class="orow" onclick="pickPay(this,'blender')"><span class="radio"></span><svg class="paylogo" viewBox="0 0 40 26"><rect width="40" height="26" rx="4" fill="#fff" stroke="#e6eae8"/><circle cx="20" cy="13" r="8.5" fill="#13b5c8"/><text x="20" y="17.5" font-size="12" fill="#fff" text-anchor="middle" font-family="Arial" font-weight="bold">b</text></svg><span class="otxt"><div class="ot">Blender · תשלומים</div><div class="os">פריסה נוחה לתשלומים</div></span></label>
         </div>
         <div class="paynote" id="payNote" style="display:none"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg> <span></span></div>
         <label class="terms" style="margin-top:14px"><input type="checkbox" required> קראתי ואני מאשר/ת את <a href="#">תקנון האתר</a> ו<a href="#">מדיניות הפרטיות</a></label>
       </div>
-      <!-- embedded PayPlus payment page (samePageIframe) — appears in-page after 'אישור ותשלום' -->
+    </form>
+
+    <div class="sidecol">
+      <aside class="osum">
+        <h2>ההזמנה שלי <a href="gm-cart-mockup.html">עריכה</a></h2>
+        <div id="osItems"></div>
+        <div class="srow"><span>סכום ביניים</span><span class="sv" id="osSub">‏₪0</span></div>
+        <div class="srow" id="osShipRow"><span>משלוח</span><span class="sv" id="osShip">חינם</span></div>
+        <div class="stotal"><span>לתשלום<div class="stax">כולל מע"מ</div></span><span class="sv" id="osTotal">‏₪0</span></div>
+        <button class="placebtn" type="submit" form="coForm"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg> אישור ותשלום</button>
+        <div class="secure"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><polyline points="5 12 10 17 19 7"/></svg> 100% אבטחת מידע · שירות לקוחות אנושי</div>
+      </aside>
+      <!-- embedded PayPlus payment page (samePageIframe) — in the side column -->
       <div class="ppembed show" id="ppEmbed">
         <div class="ppembed-bar"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg> תשלום מאובטח דרך PayPlus<span class="url">payments.payplus.co.il</span></div>
         <div class="ppembed-body">
           <div class="ppembed-title">פרטי תשלום</div>
           <div class="wallets">
             <button type="button" class="wbtn dark" onclick="finishPay()"><svg viewBox="0 0 20 24" width="13" aria-hidden="true"><path d="M14 12.6c0-2.6 2.1-3.9 2.2-4-1.2-1.8-3.1-2-3.8-2-1.6-.2-3.1.9-3.9.9-.8 0-2-.9-3.3-.9-1.7 0-3.3 1-4.1 2.5-1.8 3.1-.5 7.6 1.3 10.1.9 1.2 1.9 2.6 3.2 2.5 1.3-.1 1.8-.8 3.3-.8 1.5 0 2 .8 3.3.8 1.4 0 2.2-1.2 3.1-2.5.6-.9.9-1.8.9-1.8-.1 0-2.4-.9-2.4-3.6zM12 4.8c.7-.8 1.1-2 1-3.1-1 0-2.1.7-2.8 1.5-.6.7-1.1 1.8-1 2.9 1.1.1 2.1-.5 2.8-1.3z"/></svg> Pay</button>
-            <button type="button" class="wbtn glight" onclick="finishPay()"><span style="color:#4285f4;font-weight:900">G</span>&nbsp;Pay</button>
+            <button type="button" class="wbtn glight" onclick="finishPay()"><svg viewBox="0 0 24 24" width="16" height="16" style="vertical-align:middle" aria-hidden="true"><path fill="#4285F4" d="M23 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.2c-.3 1.5-1.1 2.7-2.4 3.6v3h3.9c2.3-2.1 3.6-5.2 3.6-8.8z"/><path fill="#34A853" d="M12 24c3.2 0 5.9-1.1 7.9-2.9l-3.9-3c-1.1.7-2.5 1.2-4 1.2-3.1 0-5.7-2.1-6.6-4.9H1.4v3.1C3.4 21.3 7.4 24 12 24z"/><path fill="#FBBC05" d="M5.4 14.3c-.2-.7-.4-1.5-.4-2.3s.1-1.6.4-2.3V6.6H1.4C.5 8.2 0 10 0 12s.5 3.8 1.4 5.4l4-3.1z"/><path fill="#EA4335" d="M12 4.8c1.8 0 3.3.6 4.6 1.8l3.4-3.4C17.9 1.2 15.2 0 12 0 7.4 0 3.4 2.7 1.4 6.6l4 3.1C6.3 6.9 8.9 4.8 12 4.8z"/></svg><span style="color:#5f6368;font-weight:800">&nbsp;Pay</span></button>
             <button type="button" class="wbtn bitb" onclick="finishPay()">bit</button>
           </div>
           <div class="orline"><span>או בכרטיס אשראי</span></div>
@@ -240,17 +254,7 @@ h1.pagetitle{font-size:clamp(1.4rem,2.6vw,1.9rem);font-weight:900;margin:0 0 20p
           <div class="ppnote"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg> <span>זהו דף הסליקה של PayPlus המוטמע בעמוד (ללא מעבר עמוד). פרטי הכרטיס מוזנים ישירות מול חברת הסליקה ואינם נשמרים אצלנו.</span></div>
         </div>
       </div>
-    </form>
-
-    <aside class="osum">
-      <h2>ההזמנה שלי <a href="gm-cart-mockup.html">עריכה</a></h2>
-      <div id="osItems"></div>
-      <div class="srow"><span>סכום ביניים</span><span class="sv" id="osSub">‏₪0</span></div>
-      <div class="srow" id="osShipRow"><span>משלוח</span><span class="sv" id="osShip">חינם</span></div>
-      <div class="stotal"><span>לתשלום<div class="stax">כולל מע"מ</div></span><span class="sv" id="osTotal">‏₪0</span></div>
-      <button class="placebtn" type="submit" form="coForm"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg> אישור ותשלום</button>
-      <div class="secure"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><polyline points="5 12 10 17 19 7"/></svg> 100% אבטחת מידע · שירות לקוחות אנושי</div>
-    </aside>
+    </div>
   </div>
 </main>
 
