@@ -18,8 +18,16 @@
 .gmnav a:hover{color:var(--accent);}
 .gmnav a.hot{color:var(--deal);font-weight:800;}
 .gmnav a.active{color:var(--accent);font-weight:800;}
+
+.gc-logo{display:inline-flex;align-items:baseline;gap:.06em;font-family:'Assistant',sans-serif;font-weight:800;letter-spacing:-.02em;line-height:1;direction:ltr;}
+.gc-logo .gc-g{height:1.06em;width:auto;align-self:center;transform:translateY(.06em);}
+/* font-size:1em מפורש — מגן מפני כללי-הקשר שדורסים span-ים (למשל .addon-txt span) */
+.gc-logo .gc-green{color:#128a18 !important;font-size:1em !important;font-weight:800 !important;}
+.gc-logo .gc-care{color:var(--ink,#111417) !important;font-size:1em !important;font-weight:800 !important;}
+.gc-logo .gc-mark{color:#128a18 !important;font-size:1em !important;font-weight:800 !important;}
+.gc-logo.on-dark .gc-care{color:#fff !important;}
 </style>
-<title>טלפון סלולרי Samsung Galaxy S24 Ultra 12GB RAM | Green Mobile (מוקאפ p1)</title>
+<title>טלפון סלולרי Samsung Galaxy S24 Ultra 12GB RAM | Green Mobile (מוקאפ p2)</title>
 <style>
 :root{--bg:#fff;--alt:#f5f7f6;--surface:#fff;--ink:#111417;--ink2:#5c666d;--accent:#149c40;--accent-ink:#fff;--accent-soft:#e7f6ec;--deal:#e2551f;--line:#e6eae8;--shadow:0 12px 34px rgba(17,20,23,.09);--r:22px;}
 @media (prefers-color-scheme:dark){:root{--bg:#101314;--alt:#171b1c;--surface:#1a1f20;--ink:#eef2f0;--ink2:#9aa6a0;--accent:#3ecf68;--accent-ink:#062412;--accent-soft:#1a2f21;--deal:#ff8352;--line:#272e2f;--shadow:0 12px 34px rgba(0,0,0,.4);}}
@@ -116,31 +124,86 @@ main{padding-bottom:70px;}
 .spec-row{display:grid;grid-template-columns:200px 1fr;gap:10px 24px;padding:10px 0;border-bottom:1px dashed var(--line);font-size:.92rem;}
 .spec-k{font-weight:700;}
 .spec-v{color:var(--ink2);}
-/* service popups */
-.modal-ov{position:fixed;inset:0;background:rgba(17,20,23,.55);z-index:80;opacity:0;pointer-events:none;transition:opacity .2s;}
-.modal-ov.open{opacity:1;pointer-events:auto;}
-.modal{position:fixed;z-index:81;top:50%;left:50%;transform:translate(-50%,-46%) scale(.98);opacity:0;pointer-events:none;width:min(460px,92vw);max-height:88vh;overflow-y:auto;background:var(--surface);border-radius:22px;padding:26px 26px 22px;box-shadow:0 30px 80px rgba(0,0,0,.35);transition:opacity .2s, transform .2s;}
-.modal.open{opacity:1;pointer-events:auto;transform:translate(-50%,-50%) scale(1);}
-.modal-x{position:absolute;top:14px;left:14px;background:var(--alt);border:none;border-radius:50%;width:34px;height:34px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--ink);}
-.m-head{display:flex;align-items:center;gap:10px;margin-bottom:8px;min-height:40px;}
-.m-title{font-size:1.3rem;font-weight:900;margin:2px 0 4px;}
-.m-sub{color:var(--ink2);font-size:.95rem;margin:0 0 16px;}
-.m-plans{display:flex;flex-direction:column;gap:10px;margin-bottom:16px;}
-.m-plan{display:flex;align-items:center;gap:12px;border:1.5px solid var(--line);border-radius:14px;padding:12px 14px;cursor:pointer;}
-.m-plan.sel{border-color:var(--accent);background:var(--accent-soft);}
-.m-plan input{accent-color:var(--accent);width:18px;height:18px;}
-.m-plan b{display:block;font-size:.98rem;} .m-plan span{color:var(--ink2);font-size:.83rem;}
-.m-plan i{margin-inline-start:auto;font-weight:900;color:var(--accent);font-style:normal;}
-.m-list{list-style:none;padding:0;margin:0 0 18px;display:flex;flex-direction:column;gap:8px;}
-.m-list li{display:flex;gap:8px;align-items:center;font-size:.9rem;color:var(--ink2);}
-.m-list .ic{width:18px;height:18px;color:var(--accent);flex:none;}
-.m-steps{display:flex;flex-direction:column;gap:10px;margin-bottom:18px;}
-.m-step{display:flex;align-items:center;gap:12px;font-size:.95rem;}
-.m-step b{width:28px;height:28px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:.85rem;flex:none;}
-.m-cta{display:block;text-align:center;background:var(--accent);color:#fff;border:none;border-radius:99px;padding:14px;font-weight:900;font-size:1rem;cursor:pointer;font-family:inherit;text-decoration:none;}
-.m-cta:hover{filter:brightness(1.05);}
-.m-link{display:block;text-align:center;color:var(--accent);font-weight:700;font-size:.9rem;text-decoration:none;margin-top:12px;}
-.m-note{text-align:center;color:var(--ink2);font-size:.82rem;margin-top:12px;}
+/* ===== real service modals (ported from the live gm-services widget) ===== */
+.gic{width:1.15em;height:1.15em;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;vertical-align:-.16em;flex:none;}
+.svc-note{display:none;margin:8px 0 4px;background:var(--accent-soft);color:var(--accent);border-radius:12px;padding:10px 14px;font-size:.9rem;font-weight:700;}
+.svc-note.show{display:block;}
+.plans{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;}
+.plan{border:2px solid var(--line);border-radius:16px;padding:16px;cursor:pointer;transition:all .14s;background:var(--surface);display:flex;flex-direction:column;gap:8px;}
+.plan:hover{border-color:var(--accent);}
+.plan.sel{border-color:var(--accent);background:var(--accent-soft);}
+.plan .phead{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.plan .pprice2{font-size:1.25rem;font-weight:900;color:var(--accent);font-variant-numeric:tabular-nums;}
+.plan .pper{font-size:.72rem;color:var(--ink2);font-weight:600;}
+.plan ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px;}
+.plan li{font-size:.8rem;color:var(--ink);display:flex;gap:7px;align-items:flex-start;line-height:1.45;}
+.plan li .gic{color:var(--accent);margin-top:.15em;width:1em;height:1em;stroke-width:2;}
+.plan li.no{color:var(--ink2);} .plan li.no .gic{color:var(--ink2);}
+.plan .pbadge{font-size:.68rem;font-weight:800;background:var(--accent);color:var(--accent-ink);border-radius:99px;padding:3px 10px;}
+.gc-deduct{background:var(--alt);border:1px solid var(--line);border-radius:12px;padding:12px 15px;font-size:.8rem;color:var(--ink2);margin-bottom:12px;}
+.gc-deduct b{color:var(--ink);}
+.gc-tak{text-align:center;font-size:.82rem;margin-bottom:4px;} .gc-tak a{color:var(--accent);font-weight:700;}
+.mbackdrop{position:fixed;inset:0;background:rgba(10,14,12,.55);backdrop-filter:blur(3px);z-index:100;display:none;align-items:center;justify-content:center;padding:20px;}
+.mbackdrop.open{display:flex;}
+.modal{background:var(--surface);border-radius:22px;width:100%;max-width:560px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.4);}
+.mhead{display:flex;align-items:center;gap:12px;padding:18px 22px;border-bottom:1px solid var(--line);}
+.mhead strong{font-size:1.05rem;font-weight:900;}
+.mhead .msteps{margin-inline-start:auto;display:flex;gap:6px;}
+.mstep{width:24px;height:24px;border-radius:50%;background:var(--alt);color:var(--ink2);display:flex;align-items:center;justify-content:center;font-size:.78rem;font-weight:700;}
+.mstep.on{background:var(--accent);color:var(--accent-ink);} .mstep.done{background:var(--accent-soft);color:var(--accent);}
+.mclose{background:var(--alt);border:none;color:var(--ink);width:32px;height:32px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+.mbody{padding:22px;overflow-y:auto;flex:1;}
+.mbody h2{font-size:1.15rem;font-weight:800;margin:0 0 4px;}
+.mbody .sub{color:var(--ink2);font-size:.85rem;margin:0 0 18px;}
+.mfoot{display:flex;align-items:center;gap:12px;padding:16px 22px;border-top:1px solid var(--line);background:var(--alt);}
+.mfoot .btn{padding:12px 24px;font-size:.95rem;}
+.btn{border:none;border-radius:99px;padding:14px 26px;font-weight:800;font-size:1rem;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;justify-content:center;gap:8px;}
+.btn.primary{background:var(--accent);color:var(--accent-ink);flex:none;} .btn.primary:disabled{opacity:.4;cursor:not-allowed;}
+.btn.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--line);}
+.qrow{margin-bottom:18px;} .qrow h3{font-size:.95rem;font-weight:700;margin:0 0 9px;}
+.qopts{display:flex;gap:9px;flex-wrap:wrap;}
+.qopt{background:var(--alt);border:2px solid var(--line);border-radius:11px;padding:10px 17px;font-weight:600;font-size:.88rem;cursor:pointer;transition:all .14s;}
+.qopt:hover{border-color:var(--accent);} .qopt.sel{border-color:var(--accent);background:var(--accent-soft);color:var(--accent);}
+.deadnote{font-size:.82rem;color:var(--ink2);background:var(--alt);border-radius:12px;padding:11px 15px;margin:4px 0 0;}
+.dsearch-wrap{position:relative;margin-bottom:12px;}
+.dsearch{width:100%;padding:12px 42px 12px 14px;border:2px solid var(--line);border-radius:12px;background:var(--alt);color:var(--ink);font-family:inherit;font-size:.95rem;font-weight:600;}
+.dsearch::placeholder{color:var(--ink2);font-weight:500;}
+.dsearch:focus{outline:none;border-color:var(--accent);background:var(--surface);}
+.dsearch-ic{position:absolute;top:50%;inset-inline-start:14px;transform:translateY(-50%);color:var(--ink2);pointer-events:none;}
+.modelbox{max-height:290px;overflow-y:auto;padding-inline-end:5px;}
+.mbody .opts{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;}
+.mbody .opt{background:var(--alt);border:2px solid var(--line);border-radius:12px;padding:13px 14px;font-weight:700;font-size:.9rem;cursor:pointer;text-align:center;transition:all .14s;margin:0;}
+.mbody .opt:hover{border-color:var(--accent);} .mbody .opt.sel{border-color:var(--accent);background:var(--accent-soft);color:var(--accent);}
+.mbody .opt.small{padding:10px 11px;font-size:.85rem;border-radius:11px;}
+.series{margin-bottom:8px;}
+.series-h{display:flex;align-items:center;justify-content:space-between;width:100%;font-family:inherit;font-size:.9rem;font-weight:800;color:var(--ink);background:var(--alt);border:1.5px solid var(--line);border-radius:12px;padding:11px 14px;cursor:pointer;transition:all .14s;}
+.series-h:hover{border-color:var(--accent);}
+.series.open .series-h{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);border-bottom-left-radius:0;border-bottom-right-radius:0;}
+.series-t .cnt{font-weight:600;opacity:.55;margin-inline-start:6px;}
+.chev{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none;transition:transform .18s;}
+.series.open .chev{transform:rotate(180deg);}
+.series.open .opts{border:1.5px solid var(--accent);border-top:none;border-radius:0 0 12px 12px;padding:11px;background:var(--surface);}
+.nores{color:var(--ink2);font-size:.9rem;padding:22px;text-align:center;background:var(--alt);border-radius:12px;}
+.result{text-align:center;}
+.result .lead{color:var(--ink2);font-size:.9rem;margin-bottom:4px;}
+.result .amount{font-size:2.8rem;font-weight:900;color:var(--accent);line-height:1;margin-bottom:12px;font-variant-numeric:tabular-nums;}
+.stswitch{display:flex;align-items:center;justify-content:center;gap:7px;flex-wrap:wrap;margin-bottom:8px;}
+.stlabel{font-size:.82rem;color:var(--ink2);font-weight:600;}
+.stchip{background:var(--alt);border:1.5px solid var(--line);border-radius:99px;padding:5px 14px;font-size:.82rem;font-weight:700;cursor:pointer;}
+.stchip.sel{border-color:var(--accent);background:var(--accent-soft);color:var(--accent);}
+.stnote{font-size:.74rem;color:var(--ink2);margin:0 0 14px;}
+.breakdown{max-width:400px;margin:12px auto 16px;text-align:start;background:var(--alt);border:1px solid var(--line);border-radius:14px;padding:14px 18px;}
+.bktitle{font-size:.8rem;font-weight:800;color:var(--ink2);margin-bottom:9px;}
+.bkrow{display:flex;justify-content:space-between;align-items:center;gap:12px;font-size:.88rem;padding:6px 0;border-bottom:1px dashed var(--line);}
+.bkrow:last-child{border-bottom:none;} .bkrow.base{font-weight:700;}
+.bkrow .bkv{font-variant-numeric:tabular-nums;font-weight:700;white-space:nowrap;}
+.bkrow:not(.base):not(.total) .bkv{color:var(--deal);}
+.bkrow.floor{color:var(--ink2);font-size:.8rem;}
+.bkrow.total{border-top:2px solid var(--line);margin-top:3px;padding-top:10px;font-weight:900;}
+.bkrow.total .bkv{color:var(--accent);font-size:1.1rem;}
+.result .disclaimer{background:var(--accent-soft);color:var(--ink2);border-radius:12px;padding:11px 16px;font-size:.82rem;margin:0 auto 4px;}
+.result .disclaimer b{color:var(--ink);}
+@media (max-width:560px){.plans{grid-template-columns:1fr;}}
 footer.site{background:var(--alt);border-top:1px solid var(--line);padding:30px 0;text-align:center;color:var(--ink2);font-size:.85rem;margin-top:20px;}
 .mnav-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:60;opacity:0;pointer-events:none;transition:opacity .28s;}
 .mnav-overlay.open{opacity:1;pointer-events:auto;}
@@ -166,7 +229,7 @@ footer.site{background:var(--alt);border-top:1px solid var(--line);padding:30px 
 }
 </style>
 
-<div class="mocknote">מוקאפ p1 · עמוד מוצר — ראש חדש + פריסה נקייה · דאטה חי · לא עמוד אמיתי</div>
+<div class="mocknote">מוקאפ p2 · עמוד מוצר — ראש חדש + פריסה נקייה · דאטה חי · לא עמוד אמיתי</div>
 <header class="site">
   <div class="wrap"><div class="hbar">
     <button class="hamb" type="button" onclick="toggleNav()" aria-label="תפריט"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><line x1="3.5" y1="7" x2="20.5" y2="7"/><line x1="3.5" y1="12" x2="20.5" y2="12"/><line x1="3.5" y1="17" x2="20.5" y2="17"/></svg></button>
@@ -210,15 +273,17 @@ footer.site{background:var(--alt);border-top:1px solid var(--line);padding:30px 
           <div class="pw-head"><svg class="pwshield" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5 4.5 5.5v6c0 4.5 3.2 8 7.5 10 4.3-2 7.5-5.5 7.5-10v-6z"/><path d="M8.8 11.8l2.3 2.3 4.3-4.5"/></svg><div class="gc-word"><span>green</span>care<b>.</b></div></div>
           <div class="pw-t">הגנה מורחבת למכשיר</div>
           <div class="pw-s">הרחבת אחריות או כיסוי שברים מלא · החל מ-₪99</div>
-          <button class="pw-btn" type="button" onclick="openModal('gc')">לפרטים</button>
+          <button class="pw-btn" type="button" onclick="openGC()">לפרטים</button>
         </div>
         <div class="pw-card">
           <div class="pw-head"><span class="pw-ic"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4 3.5 7.5 7 11"/><path d="M3.5 7.5H17a3.5 3.5 0 0 1 3.5 3.5"/><path d="M17 20l3.5-3.5L17 13"/><path d="M20.5 16.5H7A3.5 3.5 0 0 1 3.5 13"/></svg></span></div>
           <div class="pw-t">יש לך מכשיר ישן להחלפה?</div>
           <div class="pw-s">כמה שווה הישן שלכם? זיכוי שחוזר אליכם לאחר בדיקה</div>
-          <button class="pw-btn" type="button" onclick="openModal('ti')">בדקו שווי</button>
+          <button class="pw-btn" type="button" onclick="openTI()">בדקו שווי</button>
         </div>
       </div>
+      <div class="svc-note" id="svcNote"></div>
+      <div class="svc-note" id="priceBack"></div>
 
       <div class="trust">
         <div class="trust-item"><span class="ic"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 6h11v10h-11z"/><path d="M13.5 9.5h4l3 3.5v3h-7z"/><circle cx="6.5" cy="17.5" r="1.8"/><circle cx="16.5" cy="17.5" r="1.8"/></svg></span><div><b>משלוח חינם</b><span>1–6 ימי עסקים · מעל ₪500</span></div></div>
@@ -267,38 +332,61 @@ footer.site{background:var(--alt);border-top:1px solid var(--line);padding:30px 
   </div>
 </main>
 
-<div class="modal-ov" id="modalOv" onclick="closeModal()"></div>
-<div class="modal" id="modal-gc" role="dialog" aria-modal="true">
-  <button class="modal-x" type="button" onclick="closeModal()" aria-label="סגור"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
-  <div class="m-head"><svg class="pwshield" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5 4.5 5.5v6c0 4.5 3.2 8 7.5 10 4.3-2 7.5-5.5 7.5-10v-6z"/><path d="M8.8 11.8l2.3 2.3 4.3-4.5"/></svg><div class="gc-word"><span>green</span>care<b>.</b></div></div>
-  <h3 class="m-title">הגנה מורחבת למכשיר</h3>
-  <p class="m-sub">שקט נפשי מלא — טיפול במעבדה שלנו ואיסוף עד הבית. בחרו מסלול:</p>
-  <div class="m-plans">
-    <label class="m-plan"><input type="radio" name="gc" checked><div><b>Care — הרחבת אחריות</b><span>שנה נוספת מלאה על תקלות</span></div><i>₪99</i></label>
-    <label class="m-plan sel"><input type="radio" name="gc"><div><b>Care+ — כולל שברים</b><span>אחריות + כיסוי שברים ונזקי נוזלים</span></div><i>₪149</i></label>
+<!-- GREEN CARE MODAL (real, ported from the live widget) -->
+<div class="mbackdrop" id="gcBackdrop" onclick="if(event.target===this)closeGC()">
+  <div class="modal" role="dialog" aria-modal="true">
+    <div class="mhead">
+      <strong style="display:flex;align-items:center;gap:8px"><span class="gc-logo" style="font-size:1.15rem" aria-label="green care"><img class="gc-g" alt="g"><span class="gc-green">reen</span><span class="gc-care">care</span><span class="gc-mark">.</span></span> <span style="font-weight:600;color:var(--ink2);font-size:.85rem">· הגנה מורחבת</span></strong>
+      <button class="mclose" onclick="closeGC()" aria-label="סגור"><svg class="gic" viewBox="0 0 24 24" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
+    </div>
+    <div class="mbody">
+      <h2>בחרו את רמת ההגנה למכשיר</h2>
+      <p class="sub">טלפון סלולרי Samsung Galaxy S24 Ultra 12GB RAM · המסלולים הזמינים נקבעים לכל מוצר</p>
+      <div class="plans">
+        <div class="plan" id="planGC" onclick="pickPlan('gc')">
+          <div class="phead"><span class="gc-logo" style="font-size:1.05rem" aria-label="green care"><img class="gc-g" alt="g"><span class="gc-green">reen</span><span class="gc-care">care</span><span class="gc-mark">.</span></span><span class="pprice2">₪99</span></div>
+          <div class="pper">הרחבת אחריות · שנה שנייה</div>
+          <ul>
+            <li><svg class="gic" viewBox="0 0 24 24" aria-hidden="true"><polyline points="5 12 10 17 19 7"/></svg> שנה שנייה של אחריות מלאה — אותם תנאים של אחריות הבסיס</li>
+            <li><svg class="gic" viewBox="0 0 24 24" aria-hidden="true"><polyline points="5 12 10 17 19 7"/></svg> תיקונים במעבדה שלנו · איסוף מהבית</li>
+            <li class="no"><svg class="gic" viewBox="0 0 24 24" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg> לא כולל שברים ונזקי לקוח</li>
+          </ul>
+        </div>
+        <div class="plan" id="planGCP" onclick="pickPlan('gcp')">
+          <div class="phead"><span class="gc-logo" style="font-size:1.05rem" aria-label="green care+"><img class="gc-g" alt="g"><span class="gc-green">reen</span><span class="gc-care">care</span><span class="gc-mark">+</span></span><span class="pprice2">₪749</span></div>
+          <div class="pper">הגנה מלאה · 24 חודשים <span class="pbadge">הכי משתלם</span></div>
+          <ul>
+            <li><svg class="gic" viewBox="0 0 24 24" aria-hidden="true"><polyline points="5 12 10 17 19 7"/></svg> אחריות תיקונים מלאה לשנתיים</li>
+            <li><svg class="gic" viewBox="0 0 24 24" aria-hidden="true"><polyline points="5 12 10 17 19 7"/></svg> עד 4 תיקוני שברים חינם (מצלמות / גב / שקע טעינה)</li>
+            <li><svg class="gic" viewBox="0 0 24 24" aria-hidden="true"><polyline points="5 12 10 17 19 7"/></svg> החלפת מסך שבור — פעם אחת, בהשתתפות עצמית</li>
+            <li><svg class="gic" viewBox="0 0 24 24" aria-hidden="true"><polyline points="5 12 10 17 19 7"/></svg> נזק מוחלט בשנה השנייה — מכשיר שווה־ערך או זיכוי</li>
+            <li><svg class="gic" viewBox="0 0 24 24" aria-hidden="true"><polyline points="5 12 10 17 19 7"/></svg> מכשיר חלופי אם התיקון מעל שעתיים</li>
+          </ul>
+        </div>
+      </div>
+      <div class="gc-deduct"><b>השתתפות עצמית — שקוף מראש:</b> החלפת מסך = <b>50% ממחיר תיקון המסך</b> ביום הפנייה לפי המחירון · נזק מוחלט = <b>₪399</b> (קבוע). שווי המכשיר בנזק מוחלט לפי מחירון היד-השנייה שלנו.</div>
+      <div class="gc-tak">יש לקרוא את <a href="gm-greencare-takanon.html">התקנון וכתב השירות המלא</a> · אינו פוליסת ביטוח · לא כולל אובדן/גניבה</div>
+    </div>
+    <div class="mfoot" id="gcFoot">
+      <button class="btn primary" id="gcApply" disabled onclick="applyGC()">הוסיפו הגנה</button>
+      <button class="btn ghost" onclick="closeGC()">אולי אחר כך</button>
+    </div>
   </div>
-  <ul class="m-list">
-    <li><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><polyline points="5 12 10 17 19 7"/></svg> תיקון במעבדת Green Mobile — במקום אחד</li>
-    <li><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><polyline points="5 12 10 17 19 7"/></svg> איסוף המכשיר עד הבית וחזרה</li>
-    <li><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><polyline points="5 12 10 17 19 7"/></svg> ללא השתתפות עצמית נסתרת</li>
-  </ul>
-  <button class="m-cta" type="button" onclick="closeModal()">הוספה להזמנה</button>
-  <a class="m-link" href="gm-greencare-takanon.html">לתקנון וכתב השירות המלא ›</a>
 </div>
-<div class="modal" id="modal-ti" role="dialog" aria-modal="true">
-  <button class="modal-x" type="button" onclick="closeModal()" aria-label="סגור"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
-  <div class="m-head"><span class="pw-ic"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4 3.5 7.5 7 11"/><path d="M3.5 7.5H17a3.5 3.5 0 0 1 3.5 3.5"/><path d="M17 20l3.5-3.5L17 13"/><path d="M20.5 16.5H7A3.5 3.5 0 0 1 3.5 13"/></svg></span></div>
-  <h3 class="m-title">טרייד-אין — זיכוי על הישן</h3>
-  <p class="m-sub">קבלו הערכה תוך 30 שניות, והורידו את הסכום ממחיר המכשיר החדש.</p>
-  <div class="m-steps">
-    <div class="m-step"><b>1</b><span>בוחרים דגם ומצב</span></div>
-    <div class="m-step"><b>2</b><span>מקבלים הערכה מיידית</span></div>
-    <div class="m-step"><b>3</b><span>זיכוי + איסוף הישן במשלוח</span></div>
+<!-- TRADE-IN MODAL (real calculator, ported from the live widget) -->
+<div class="mbackdrop" id="tiBackdrop" onclick="if(event.target===this)closeTI()">
+  <div class="modal" role="dialog" aria-modal="true">
+    <div class="mhead">
+      <strong>מחשבון טרייד-אין</strong>
+      <div class="msteps"><span class="mstep on" id="ms1">1</span><span class="mstep" id="ms2">2</span><span class="mstep" id="ms3">3</span></div>
+      <button class="mclose" onclick="closeTI()" aria-label="סגור"><svg class="gic" viewBox="0 0 24 24" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
+    </div>
+    <div class="mbody" id="tiBody"></div>
+    <div class="mfoot" id="tiFoot"></div>
   </div>
-  <a class="m-cta" href="gm-tradein-mockup.html">התחלת הערכה ›</a>
-  <div class="m-note">איסוף המכשיר הישן עד הבית · זיכוי בקבלה</div>
 </div>
 
+<script>const GC_G="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAFoAAACOCAYAAACxBx87AAAvO0lEQVR42u29W2ydV3bn+fvv/Z3Dw5sokqIo6mL5ItdFKldVShWXk6qKXZ1K3ybTGDQgDzAPg36YqbzkMo3CoDM9maY0SBrJBBl0IUCAKmCmgXkb6S2Y6enOra26peOUXG2XxbJdtmzZsm6USFG8ncv37f88nO8cHkokRarkS+DaxBEp8pzvsr61117rv/5rbfGzsTaMADhZfj9Wfr9znMecxACo/P6z8eEY+pkISk0+iZjZQB4nSg0+hjgDHMUwDTOn1P4ZOInvpdk/E/Tdgo18fnxgrOVdIYTBIoQ+B6SEQ7NoLqtvpX9v7fb8X1xY4gzFzzR6u5r8LIHTJATHf0D2zncHxxr5yH4KHw7yVEgaMa4klMeQbhtdR3677sWLK30r8/wmTc4QOEHaymZ/lAUtKIViwsDv7Zms9cWHJB+xwiPAYdDeYHbZrlpqSSwhZiFdKgq9rqJ4o54Xb6625m5yivqGxy5H/EibiJm2MAYnJydCoaei4z9G4VeFnibqUxKPWBwiahIxpchB4FHQUaGPK4W9FcV8OI9Ly59urPA8BSCmEWc/6oKeJnAWM4M5QRz4ZxOT1Vw/H0P8Rwr8PcFx9WlcmYZA/RLV8tVHVE1Rg8q0m0KHCIxKqqmS5ZWhwbnG2PIiMySeuVvQ2UfQXARo29Oho1OjVcIXndJ/ocjTZBwERbfcseHrR3L7V6F9JEUddmLYOaMxY3XyycmVa6evzQLmVLkGaO0jH61xrBTfaWKstQ7ZfkZRv6TIoxJVWqlwK9XdSC23XKx7NVy44dz11HKR6gSy0Ke9DjzlxDN5zqc4OTHYXRDPrMk3fGQ02eUCdaLtYey7sm9MQZ8K8pPKOEwEN20nAqiKlJXyWXuJgIhYGYUqzg2FASZknk7m6RG0t3vW+eOh43B8dDT62fJehfk39OUtPSTpk5YPkZGRU9Byk4RLoW79BSJ3So3UKh/BYxKfDZn3M12e62ND/mhptIGja67s/uXhoSJPj0vhiIIGy4keQXFbLq9K2RmBTQD1hX4HDqRK3HdwF30APHM2Acboo2ejgXqj0o91AGvSAVGQuuHGTkO99gwwERPCQAiMt25PDgMilEc9+VES9P41IaasGiUGwEPYFZIDvo/wzV2RCyGJqhwHyPoGOUHoei0zH1GNfo/i4rZmB3B295E/OoK+vOYVh0osnMIqhBVQ3nXH7gdZttpWGNtOuVTUa32scqY0G7QRv4+kRleL/obRNYtZQU6GSpXbuag7vkxBkL2a5PnlXctL5bE+Yn60oINrAHhuYIVCF8FvIS+W9jl1p//2DIXLCFG2ccMtkq6FJtdv7rq5UgZFbft96qOk0ae7U1mf+MFoA/KLQX7VBXOloAOh9J/vJewu5odUoQKYpMtOetV1XeXZEqc+v2arPyqC7mRAxGnC2bNn81v52BUlfqzEa7TSvJKTIi41uygdt82+EpALdbT6JuJ5Cv1NH7q+0fk/eja6o2WnZprVenhTyd8lcc6FbxHIVFUkknX1e6NXpqBMVSJy7lWsGaGzLVf/8yhXbvckedPfFfTu/jzbrf/evfmpvZevvrU49WduJZOFCsnHhQcJFC4cgUKCNjrS8ZhVEKgicGJJ1nmc/mPR8neWRgYuzPwWTY4Ry091bf5HD4/+dvkwThCv/AH56i98fa4WfrCMJIEVnIMKpAgEufRJVEKeCnXkJeCKzUvk/KUS367e1MvL/+qd1fLYgTPrF1Z9KDS2Vw9P3nFNncz0iS2O0s1O3zFO9sRud2t8F5fmG0f6JvL6oeTiU+AnJY4l87AKRm0PloIukJpCc8LvGs9gncPhb6Fx+ea/uLm4bkW4I3f40c4ZTpcUgzKbPfr7oyNW7dNZ5JNOPixrPNm7gIxArhBWZG6qKN5JhX9s56/M/c7cu13hniRyimIjE6b39cbco7EzqKulHY3saO9pzEngZFcz2++/U2s7vzsJnCl5FyfK4wFcR+zF3fOcv+PzJ7vLVvf3k384OVg0il3NUBtUloaqgYHkolqkUGSxskKxcpsKS2556ebKzWVO9USAG2jyh0+jTxAnjtK/Wt3XXwzFvspys5ZVYrVwqDpPlUjKCBZFec0Rk+SCkCsLrZCKVt4smq2Baj1rpPpg9erKtf+HBmfJ73nu6RLYP0mxoaC2ECDTZBzDPNsNeHi/Bb12aSfb0dEmFxKYpjZWGRtN1WzcIZuIKY05sScEDWN2JacBiRqp7ViVgVkO5Bb1kLQKWkx4QYEbhcNcCMW1GIubN3zjFl+nXp57fTByJ9euVzt3vtZ8iJhKRodPHu6b65sbDOofER6GOEJIu6U4qVBMWHFPMGOGMZld2MPgmqU+7Ira4DyWC1BLcoNCDYJuW9wWzCWYk9MshOuJdF0K807FbRcsuV6/tXds7/Lrv/V68y7hGHGGwHnEftQFojp5xvOI/cfF5XPmWDct5u0+iQcfg51EXft34kTgq2cCt6gNaGJwuBX2tCppv9EjEA4r6JDsSZu9wKAC/UgVoGrIZLfdKyt00YW1+ZKQEyZZygU50CS5ZbNqWETMIl0l8DapuBisC5VCVxx981rKV3njZp15EmdKCP9kV8u9gU+0JlbtDIR6rzVak1+fHLj9cD5SqVcOqCgOZYqPIB5y4BHEQdABFYxTVSSsXZABbLqWL22BnnVIBGoDFWWCCRdAy7kDNxW4hP2O0AW1uJjH9KZT8W6er7673FxeuINptJl8zE9hWx6cq9SrCf+c2v6+4YE0XJlsVCuPyPpsEsdkfUzShELaZdGH1S8E4Q4uRee/vvMW16tU95vuuKPyu1Mp9eBVQd0pLDj5qu1XFPmRUnop5n6r2WjeWGChzika6zT7/u32+6DRf0T/rsbEgUx6OFqfKKI+ETIdS/CYCw6Gqtr4b+621iUKSGlNjtJdItM9g+6eR2L34GaBQFQEMkGC1HILeCdEXnPivAtecc6r9erq2/WlW1c4RfODxhI2+rww5gyBMzD+eQYacfxASPFzkfCkHI4T0mEy7VZiwCJqnUjcMQtbZzm0ybV6k0+o56cAkrpYZdss0ZJYSYk5ci4gP5+inqe68uLwvuGrl569VO/O0geg2Q9Oo79JZfDy4Gi1f+AIIX6GqCcxP4f5eKiohgw5uHCBbSx1xecuV+K98HRcqgLl4mmkqKhABk7gnKUgzlu8kPB/ypz/qLXYenOBhdsfvOloewDmzInAlR9m/fXGeL+Ko6b4CugpRX0CMYaoKXXsZXdx8z019b0Q+NoCKgkIJUgdwPYKiRs2L1H4eySfLRr1V29z+zYzuBuV3qfgs5/iESWAw9PPV25l9Sn1hU8jvhSkLxuOhqhh27hwcnJOaqNh76twNzM9CVuY5PZjj8qUaYDAQ7Q8QNAAqKJaf/9gf3F++cTyjTLyu++xc5h0msBzpV78U6o116ZS5EnJ/4TALxN4XNIQ0PZqjUgqs2vvoYnYqdCN1jmGVpshKg1IGkOeEPRnobIwsqzbS8PNBjM9eM2pnZ0y7NjM/K9lNHSFOLIyMlWIJ0PQryjoy5I+rqgBEsktF85dkLoW+MOFFKrn0Re4wxjFQMYI0hMK+gopfLXZ6P+5waOD43eELO+RRnc0ub0SZ+OPjO9V6vt5S/8VUV9R4JCkgMGF1zRG95El8bo4zFuyiNz1e+5UCe1QxzselBREiansJrHHDlVV+udrnw/zje82GoC6s/rs9gQfdqgFRniQybFiJfucpV8m6hcVOExQRkHLLXeYbPerxWu5uU5mOm6Su2uTaHVXfm+ni/ya/yMSyU0XFCRF1ZA+SdAvBfmZMFY9yv84PsSp7WMc2xd0RzM7WPE3pwYqteITQv8Q8ysSh5DablJyZ8ELO9TgtS/W/dR2tO3CpmVornuZFu64i533rztG75F2ok7BueUEqhAV/DjwKyJ+dWAsPMrpE7EEm7Y9d+5tOmaIzJCYwZw+Wt19Y+njIcVfJugfK+oTCkRycpK5T2u8lpEL67JzAIXlhqRViWWhFWAZWBHUJTcRhbGF4l3H6OUy78w7UUkpsJBDUB+BEScqgXhTt6/dyP/7W0td/sb0vU1Idk+MtSdjMXLx5oFA9jTBv6ygx5QpuDAlG3NnInYP18KItv4kREMiJ7mVoG60iFkSrMg0kXIA2ZlF1TBgNATeFaCPoIpFRqIPO5aBUa+d3z7/OYFxIghFhkk6FvFX+tPq0tBre759gxtXAG1aM74jQXdQuD+cHGi29ElnfDlEPSEx6DwVJN3fOhzueDCmibyooOsk5hQ0T+EFW3MKXhAsCzWc2lokKYL7DINYu8B7FDTiwBj2ODCBGEZUe5bVnbqApuiIHBQYs/g8ueZTf7jIN7nBr9HaTgIg2/Q0pxHPIs7jya8zsNrQJ2PFTyJ9hkwTtuWG17IU29fmVMaUwqBA3WLFSXPAuwG9Jngr2e8UhFny7Gao5UuFvRpSKKSQAJJTSMExSv05lcEUWuOh8KQKHsZ6NNlHkPZLjAlqdsnCX/NQwjbNSHDbLFoVVYCHSTxpeHlkbvLqka8dfPfcmXOpNCEd/9o7jQzNKdz63bHdkfR5oacMU4DIcekj7yzSa/sInYVuBeldwUWsCyZdSCm+XklcylO6clu75vmd1xbvqYoS/N+fHBq9MD+WFVwoon5i0uuKehRxBPMQeIpAH+qhM+5EsxMFESlTH/hR5+Ep4cuv979+i29xC4DnCLBxfXi2icFwN5MMchYPIz0FHFfwkHPK9Udh20JWh+9jsAxeErok+4eE8AOcXop55Z1GH3OVq63G/NvX6py5sr2idhuenVmaP83qxPmJuRbZq7Xh8ELCh2WOk9LPI33GeEpWf4/3vV0l6Wi2lISCxpz4gszVsLf/DVhoC/oZKBfFu0zI3YL+VwROkTiKmSYMVfeNK/hjwFFl2mOApnNEpcsq3i4I1dbkhD0PvIr5odHzweGleD29fu2PLi0D3O4Nko6hXlbmhuMY5jzmWYpZZpeApSW4MfaNI1e9Wl9w8Hz7sPos4jFguNQ972gmJkyTREYk+rCszzr5O4enD1+4eOpivZtbvKdGt5OT3ZsaY2yoSD5m6TMKHFA1QKt0TV36GdvzLkrrbCPmMedBf54X8XvVmL0ycJtbF//o3btTSWtI2cYZOm2dYpr7rddvT01PvVzv11UrvUvUrNpu28eAoa4Tmbal2WqDUU4KiiHTQMKPkMLRpdh64+j00TdnTsy0NrPVd2v0X5TP+hSJ3x0Yjlnr05jPEDRMIpUxUdiRrxy7q/481osknnMKf7XQGPkRp2aWug/5W2Rl5jltmCDVlkEG3eYmowSOA18jv6IrK8DbQ9NTK9VBmhKxDdb6k0QGy7N5BzOz/f4IEuOyn8hzXr/Sf+UqKjMzzxBKxtKGGt02+19b+0VBmojoCScdkxlMOZC8PRTO5eMoPWzDsq1XlPj/ksNfVi+1fsKflEJe8wbydVp6age3rx7koyO6Hsdz6dSVG8O/PXyuOjrQCkFNm37DxxFZjz9/Ly+7HTUmpAJkjRh/OipdKGJ6EVgA4LXjwufWHetuG/vVUpu+ebwSqmmfIw8rYxwI5MnlNNuObW67cVEBaMi8jsN3C/zthbGpl2f/ZHaJaQLTZJwm9rCBdurxbqRznayKmCZjmgyjxd9fvJmv1H+oFmdJ/gHJ75beRCiz6WmbthpyEpAhP+Sgj7mIE93H3VMxy10547ZdSaUPHcbeObjPKf8vsX4j1HSUwriZWljZPbS5ox2Fqorl+vsmuf5ft+KfOlaen//tCwt35Rzfq25b7imWKM8xPj2+v6hVvhoiv0rgaQXtxeDcxTYRTSMXqoQMk1Lu7yf0vy+M8B/4tSsr5VxO9+puYN6hSqt5yEoPh5iG18GV20XDyst14TrJb0h8L1vKXpr77Qu3OUHkNJETvaHLe4Y7dxpMRU60Z87NKzdn8xZ/S5H+GvsSdtox5tepmM0UCBqTODC6qHGmCd2K2bvQO7Oux9v+xvCAE48Eh0cJGuziEWvsia2QZCsIRQWSmyTecu4Xi2Z4+Xr1zVnRJYKnshbv/egbZ05ScIbEScS3aC3NDl1IIf4A8+NU+KaT3Y4LxD0Rv56MZ5k72hVIh8lbhyaHJvvXZUTv6m7Q46vWG7v6kQ9iH3Ci1sP41bZtcybZWrb1sovwQgrhXU6RmCYw2j3v+9ecr6PZ+8v14I9fb6ipt5x4ieQL2HV16g29rfxgZ/m15BpwgORDK62VWvcdJzeqM9x/fI1y0ucBYpjCmpJVawOR5p7ehsowTZ0Im5uGH6rwDxfqby90feOv7hw4f2Dj8pqpmq8VcwXhhw76IdItRVxq6DbMZBtMc7KQ+kEHITtQSSNrgt6/dpcbeg+5Wv3BjAOj3YgobVtzVCLJyfh6kF9V38ilrjZ3zMYHN1J5DZGl8VaIfi3EcF54vkeNvK07TeXRkquyxoPZU/S1qptlWNor4+Vza4UtiSHjcQLDFthOXadpqxto1/gHJ+NWsRqdLhP9zs1/8epi15HfitT9ftjqU901Ak7NNG/tOnA5WG856aZb63omaQsWlNqQuGmnc5XZjCloLK5qTaM5voEffaxLyVIRNQBhkEjsZtK2mxhrhyhJiTkSV2t5XHPlnvsQFZD+RXktv3aulaJmnbiR2h1o1hDG7aeSZTyUQhouyGsbi8bdxdAAR37zSDVzHMIaVGgvwiT3eqSbZv0koUwADYhX7Xi5bi1333XlQ9GZtu21Tx3t3kur6VvC10BzgqSO93Evl7aT02zTjQdAw6EW1gR9+VwXrb/ruc0fnK8mxwFw9b6meAAFNQnMOnEzhiznw1z9ZRRS0bA9jzyHKXaE5KibRgjGteRiE41e4wEboK/oq4ZQ1IwrhJ5OFvcUedvbUBDgHHwbpdv1fK7VXVym7mHl38+xf6bb/zksxYKk21iLxnlPxLC5P72WELBKlZWphhiqGxmXuzS6qBTROOOnqqpVUnBDwY1Qpp4+zEOZLNSQVCeouM+VxO1Wbc42msHhznjHTatLRdxhRNBl2QsnhSI5K2Dkwyndcz1XPlBPyAVy6d/fx7SThCW34low35MIuOvZhaGQSErb9jQ2e7amYqfM1fR3ojq3PYudlXTk+44+FZU2c8jWIbqrlWpu3JSdY3cq+u/9kMt4ywbJkYJBJQYH6nncBCf4YMfx42t2ztVMDgPBDCg5ktypnbk3StkFdw2QFyry7l2eX2OShJ64XAADcaIhQgMrvy+hJHCiKnskyCO58w97qwonFxloJFkjQLajudzT/06mqSI0N1Kn0O0AUKJ3Vy6fq1usgFbXwCRvh90jGyiMUJXIuDMmWm7VuqF3D57ywa5+wOVza8iaqoOOHkPejRTbUYFhK6JmD/PJGCe3SCzHJqt3YB1iww40p0ghsYK12pMl3h6NKnVx2gzYKzFZhP7+B1UH8h5gHu3gJStGFNjjoKHSpU07wHY6Qd+q8XJUVt/YRncyZfM9ZiQrFhW5leyGk9sr6jZif2ycnBBBZg9ofwxx7x2Rkj9Qb9rdfEsCGP2D0V047UeeCEF9JSKXtszyd/BqqfQ2SIYFoXlnjdWtF8OekYXKSpJvyV4uTxi2iUSvYbkZVQUmlRWHRqYP716HnJ38AAXd6bp7isQJopraj3gUGC+RHXaUSWofLUfMJ3mupdjcXNBe71fWi8aKUroOzCJaCmo3wqHLN97stGt/zUQSe5U4mvrqH2d6aqCrUcfugyz+oLR5lNBZM3Yd3TVCpXpUDseExnouaVt8FQlCEAqsCl0l6GqrKBp3YN+ba3TFaRV0BekKqEXWRebSNi4gdDKMgt2CJzL5MxOD1V33w5R/wEtgO8tfrhnVvuoeyZ/GfNLSIAXbz/KrzCQFwGoaXXXSlUocqG+u0SpxiHLkK/lKsi/aXJS1oqB28tL2PUF/ISdDC4SGkT9l6XiRVh/m6aezrn853V2R358xXXZdKDmFY984squo9D1O1BPgx4CaC9vpHt5G915drkoYs4zS2xlcWhh4e+UuY8p6P7qrrbvZXXf0ReS3nbzCzkolQtmirx37S/tC5JjEZ0eeeesgp4mcIr+D7qX3WJPXCujPUDB9uFbUl4/I/pylIwTtLquz2IG30cHu5ORFUrjkkF1hjtZWWMcaSmV0kYvNlNffsdIFO91w3sk8aOvMQ4+ltsvCkkx9Ro8l9MXQX39q7LWxfT0PNzLd0xnhvbLL0z01OCeIw7tbh6PTl5B/EXxIcT3cs+WDX2OgBhvcdMvmSia/fXP33llOkTjdXXC34N49S+AMxeL04sJI1v+u0NXUTA1loW/HPWlLTptg1OJzgkWHeGv4j/fXF29cnufUXf2OxIMJ0nuLNtZ09JtUdl/ft1+FP0fQl8DHoMspDNs6e9s2B2Jokx4L5mTedgrX+LVzbZLjX9zNkw53XdrR7jTLQ+q7gvwa4m07NYnqSbJvqdVtx8ftUh5En8SjiKcU9XR/I//cQGXPJNM9D3qawInSI/B9mxN1NfjMmncBwG8c6RuZ23soi35KKT2D+BxBU4jo3B2sYmu+dyeTFGQFgVmR/JrNK9UKN7ZSmi1xiCyEmxbnk3wEwl4iI6WrX/Ip77EwuvSrRVBQjeRHHPSLhUl91SxWve/Ht6b7rnHyYmOd5p3aFFHgHiDP3e15pgmTQ5P9K1o5EBU+k3J/BfhCGSBnFDtgYHUeZbee0YsEnSf3+dV89XY38fxVEt+6Q5Z3Hainz/LAMreWhvSSxGGbTwIj7eXW2++Iv1ZOhqUR4FNANVg1RUZ3Z/lM/kdT7y5x+Wb72D22tUPD7e2P1zvu7Jt3RyeyE6dPxOfeem4iR4cqkSco/AWCvujkR5XR3y3ZY5uPUUhtaKPd1AUuB/RSKvzjW0fm15ix5+/OzGhT21be6L7qvvFGn/+ekr5G4EsEVSlcYGKXxretS6QovRBjL2D/xNZLKJyLTjNFHLwwvqiF16nWOTZTdGv4du7GZYwdiY+uptpyzMeSW4/n+FMEjss8YfkxoYFyrt17Zq7dRSISylbGcuFbwJ8phG/dXKx8j1MX60yX1RIb2Pq4AajUFvgxAr9OWhpfavRN9VdiCvsRe0C7FBXU7m2/nVJkrXOz2l8127sVGA0KwwGGlVr99bgy2B+aVa3Wsj3/dCQtHV8qtltrjafD5GOvDKRidM+uvD7VoPl4EdMTsp4CPSX7uMVDCuovF2ptey3oVODGsujOXpH9sgqeiyl9b/l/uTwLwDPEza53cxvdAa3PULSO6nKsFOcUw36LMYL2AOxQ51S2vk4EYkmefBjcl/CeZA4qZm+R+a2+VLmaL4WrI9nk7eIbWopzq60q1TwMhXU3kZaSmgxkxVijEn//3w4XlThSKzxF0FSSH8Z+2NIRwyFZU+qwrtz1MrZr+9c2cWoHbjexzznxQut26+Z25nW26cF7bPXKldmb4fC+H1SVxrEPk4cRgiqKcqcGb1sXrZLQW9L4CFRtH5AYlXQA+/EgLgLvuvDV2Bfnsno+F/sHVpOop0JFQZ7aUzELHgixz81asaIBKx9zzngIaT94vx0eVmJfCh4X9HfJtO4uZ9v1alxSKDpZgkWZV0k8X6/4Ryu1+cUedsym7Fht6eirXZnFKRL/1+Tg7tni86HQfyPirxB4iBCiU4KCtKPo0aV/u9bBAHIVwKKCZ0FzLphP+JasOUlLpliV1JKdt1MRyoAMhwG7GDYaC2I30riCR5M1IRgiOHS9n9Qt+NgZEzojKAiS6yReAf5dcHFm9uHZH/EsxVa2+d6mo7MsdnjT/+215ex397yWIt9zYLdNTWaqRPWSbe2g1lplqK5uF+dABO+2GYR0wKKupDp4EViRtIrUQmVJsJRhV7AHQIPCQxb9kvuMKpIrdGmt9NbragfKUJbfADm2eAf0vVD4u83VgbfuWLC3jJizbZ5UCHZf2z13c2zxBQ16BGsP9gCBEWI3z5Z2ABSp1LP25QV3OG8VUEUwUHZkbCeLRbPdcqVddI8dgcxyFVGVlK2bU6kNBHT3wNp5lwMTy44gbVLcdVsvRfTdoqWX//7Mk4tnpi+G3jB7q3Fv1+b0mnbPPT+X7/kno4s5blrqC/IQsFtSnyVjpR12OegtcA4bGTUFgqQKooboBwaAQcQAol9SRaEHhTS95UL308epXbWAkmK7o06C6xLnXPBXrajvLNQvvzPzJzMFewnMkLbjGYVtPdl2cBAwuvT1S6v9IXtDLb4v8z3bryd7ubR8WTdLcT9YcSotaU5BTkFR7suWuo1P1F3/O3Ty5PZnivIzeYlcpB1iJuvbtQUiWTtF65syM0p8u0jpbxZdvMsp8p1CvDt581pPfKPBf713b7Xin4P4D0FfIvAxwbDabl+yt4nrbuVSbVTPqjvesf4Tvo/7WgtI2txBE4jYRr5h60eh4Gwo0p/njfz83Km52/cDgu2cX3eayKdIrS8vr4raSoUsBwdJA8j9kvpKbGPNJnoHi9CdGPK6tj9bvNZssHasyWXnGmUqf3JuuIE1Q+Jshr+TLazOXP+9hVtQ1i6e3Vlm/360bU2zTxNHX92/P9aKTyfraYKeRP44ZlxSpU2mWZdR/mByhZsL2B2HT1Lb77HryNdSCjMk/zXWc0WhmcV/eXmuR3vDDlIE96nR9NjKXyfVH19cHZvoWyxSrCeUKzhDqmBqQhntxSx0m/p9EO0yN7LD3f5LCqWgU7uMmnewXlIK30b+fpGHmcX/+fLN7mw+89MkLO//s92tnwfOT0z0DWdHKPwFZf450FGsg9gT7a1kgERh2+sav/p9aD7Yq73qJCMkIrFsCF4grhsu2rycUjinhv929/DKGxf/h4WFO/qgv8cNBjcD2UvNbj2zstIX4u2YKosxsJxQXtK5K1D6uZGgTKHztc712tjZ30mgvHHuZ01zpaigqEBUqcckm2XBVfCMpL+lCN/Pm+FcrWi9fuV/mrvNqVKTT69PTb2fGr3hmPz65GAaT1MtZccIfiKITyMeQzogeZSoalckeXtfy07rszuKRtWjQ/fuObBRw+7OZ0O5OEfa5YE2FKludFPwNoXfKKQXQyp+RKsyM59XZjl1sf6gM8QPJgF6htANSb9GZfTQ/n0OfjhketzBjwo/inwAa7/xiELoV6LPoR0qS3eJaY3d4O3dhXrpxR1SfEmpFTTd7jK2itIt5EugS7beIOdCYf+kLxVv3/idG9e6Ee5J4qZ7s3zQGt0LwI8xNlAdqo6uuhgNIZtUnvZb4TGCDgdx2Hg/9qSloVAWJAj1dknv4mHu2tcec+kuK3At9AodOlz7rSkHJS8hrgTxboHeFL5I4s0iS5fzJa6lUJ1bnW/d4u1r9c52Tg84WfzA9xHWhpsQTBNgYmA0z0ep1h5yjYeDdMSkw0EcSmZCMOZAn6QqgUhyRVaHI7UGRHeyXe5BsFymgeWcoFa56DaVaBjmgplN4qJCetPWT1TwFnnr3blW3zynrqzemWPsoQr4w2U6tksZeJps+B/sHxGt0ZhpwtZ4IO5VYDzZUwTGaLfPGTHskjXYxjZclanaRORYCrqQKCyaWC3EsuVlwW1LC5ibMjeV0lWbG4briq0bBZXrZLX5he9fXLxDe3kvNHln6N3Ow+c7SSvthOVJis89d3nh7J+yMjrJbF7sq8ZQDPYp22XYa7PHFBNGYzKjTh6SGLTdD/QZMlC3Ewgmt2lI1J1YIrCUxDxOc3KcVdT1WBSzzVbzdh5qK9V+Ggtz15pP83R+9vTFxMmyCxnd6/N99Hz8gG305qjE+vd8jWxiaqIPGGoMMhgKhlTTQCiygVSkPin1WaniVKk4pQrE9tSORZJDS6HVkkPLDo0QQyPFfMV1r6TIUr/CIrB8belaY7Pt7zaQg99LYbx3D2XrW3PHLh6dIZs5SphgIsv78zhYGYy3XAQ7tV/LKThLEfragu5vJBXtFpqd127FtNxaLrLVrJhlNj9+heLcVNnxbD0W+SBV7gHtldW7Udf9jh1u4LUJULvWbg0o9zH0PcT33t8bpB6T84GYju3gJes3AdtI23+aB7PR8R9AOP3hH9MfojYS7/O1aEvX5ptUpi5PjTjzYBqsRtdTIJNVtJ1Z53eXxSmTHdd+31IrL1phabFxeb5rKzdvjrKxLt+r5uXkHZ/YqpVm77mnn84GeWUsq3moWq0GKSTnlgp5s3sDcLSIVkihyJMbyZXl+dULyxuwYzd179R7IWP1sf76YPG4FD7m1JhURbV2eOp2YXp1g/rDdifdQIgmOcqsVslfmxqe+v4VrtxgmlD2P02b5km0wwVnJ3uifIuM6fYCuWfkzYmiGb8sp48VziPJTWyRyYSN701gB1WcHJFuy/EtWH714K6DFy5xKe/OljsCnrv96J4msMVKERUq45I/hfRZone7hRVZ7QS7G1tIhXKTkD7hhqP+poXeYZpbZb4tbNP9e3Azt8MpLDuYH/nGkb5bReOIgr8CPl4W+a1AWdC5yb1ZFLYHlREodJWYvkuRrrZSK+wsYOkBtrOQ5eRxlZpDkA856JDbj/W22p/daneUAjGIlIIoEsX50eH9N35z+vK7p84gTpeX/uz70PtuGvEtIqdJHcLLzdXFIyHEL5TtYo+BTGK5jDw3rTBsb63GrrI+vpoKV+ysca16Jb/fyFCTK5ONa3HlEm5cA1AMA6qY1EoCbS3o5EJRfQrgxGMk/aJzbv4fHFzm2UtzG5ir90K7O5qcuqmnb1IZmdt7CIcvovSLiMOSBtobJ3Qjz03vyzgPWagpiJQ7JPlmU5plinwrT+Zu4H+mWy8YZp+ZLXa/2r+S595DwWcwh9pFAwoKRNFOBAmCdMerncZqHywxgBlAdivj+uQXx2YXzi7kPemhjGcwz+3Q3m7tOgaeITJLxmlS57h7vrznsaTK0wr8I+DngX0dcFWQ3XUf6rnHQMAhqNLutkvyK9H+94urtZf49YWc0wTOYM7erTTZppHOSQKnyK9wZWX8D8bfSq68plZ6nEoYDbHEeYtNOkl3IPeijXASqNh+BOkpB19fHMqLXX908Ce3b1+6VWLYxR2L2kYthn1Pj6nzGfUQwToJiT+cHCxa8YCy4osxpV9GOk5iPxBckEO3huVuj6jTMzpDISO5vRfYLeMLgXipmyT4i530+N+gKik1+64py18i6hHgc8o0SI6Mt6K/rmXpAigwgP1x0D8w3hVyf290eP+L81x+Z51v22k1f5L2jvcdNv9m07lTEdD5zNcQ68NuxqaP7ErN5SeKSvpCtL4k6TO29xOJ5bs6pJz1wVRvzrHsHqZMcuFVAq+Sc77Q1rUr97bRx9ZwCOX1hSKr/DCgh0LyESoa3mZ91hq/rv2/EUifRmEgygMk7dr9ewdezimu7K5lS5duX2rcF9P/zIYLYHW0f7S/6upoS8uPO/oXhH7B9hPIE0Clp8P79prot2tXIi0vWXqxsF68XV+53WWTblC7ci9Bu9MHD2COuaWhytTLWeFDFk+64X1lirOdDdmqoqUzEdurtGTvhvQxgvokDkanoyReqTeLH08xdfEqV278tCvi4X97uLYyt3KwsZo9Vq8UR2PwUQeOyj5sM9m977SNzU3ckyYzuGEo/I7kF6qp+BEzC4scLd97fnOIVfeE708QOwD5+L/e9/Mp8z8D/WoIOkQsOT1Fl4C7NfiikkcrrKBVzG2sd2z/RAovAq9E62JM6RYZKyuL1Xxgf7NZvVxNF69cLHrLqI9yNCyzHFZmV7J8OI+tWq3SN9CsuloZCYm92I+lxFGbJxR5RGivoUai2sNuujfeYwoyoqLK1JgvK/nfZcH/5/WHrz/PsxRdGd0XP3qDGC1r+OIq4bsh84TtYQWNKio5d7ENWmzoanbb4Ro01JBrSGPGh0j+uTylt/PEVeXxehgs5oqlcGultrK65+E9qypUBEJKfSnMt+Yrecj7mGJQ1IZCTKPJlbHU9BQKk8rYL9gPTJG826J/3dVtr6jCiEJBIiO4wS2sv07mrJfTmw+WH310LWMyPHZtYaW+/wVc7LX0CElPKNJH1rMy38vatd/TaZIcjIck+rEmDI9JmnXkuuBqiMWNJG5S0TIpW6GivGWMolRLVVs1QhiGNBKlccGEEvtMGiWxK0g1EjVT1q6wI03ulFRUace5K5gfSzrbEuduMXurG2of3UYT5G3nADvT4zeO9I0eWDhOiP91iOGr4I8TiBQu3G53FXew29Daq8NkkleQlgSLZCzJrAgaTmXStVy6BBE5A2qW+gUDJA/bHsb0gyrq0PW9w2C/rCSkoqiM4NxNrBddpD+T+dO5SuVHfP3SancR3Abkmm3rtL3jj19vVP7N3jfyJt+m8DDRw0gHyEIkpV4qzL03EEl3PeoIGpDow95ddiorrG6DtC6z1KETZCiCY9lntVLWDQaM7Lu2SNU2TEWb9BhUcRQuUsOF31Ch70g+27caL/Dbl1Z3mmXZfnK2Z3pc/971G6NfGH3eqdIXijjiQCaYUiY5p6Bw6T1vuUBqI5tZ8okiqN3azVs8/rIgjN7GuB2e31rwsdOAPScokinSckJ6FadvO/rPm9KLc1yZux/UcPvcu2+vERo5RVH/7+rLlfn+VVIWEAPAbgUG207fHV72dqprfccUX/+6O1Jc/3eviwV34lWsaTIldSwSCUDdBRdIPJfwX0byFxaWZ6+XbSIiZ3aGy+yc5HgUcRZzBjc/ubLcXxu4XYhGCKEfGJHKDb9Qwl2g5d7Vteu3LRXrK23ZkPmvdcLUuuNspzjI3UqX9l5BUVEZULgwzATCf0wh/YcY83Nzh+eu8etlHHkf1N2dC/q5bsYj8L+R139pz2LmfCnIRlRkBi3ViKpIJW/zzsZWO6lY3R7bfyfJ5rV/yy4FimpXrbTV4zb2q1hnFfkr0Xxh7tDc1a6/fP7+gK+fJsm+Br7884P9o5PLjzpkx6Oypx14EvPJUFG0Da2SF72GK+x0V88Hkw7ufXRyQgqKimTgAlwwK/wC5q+d9J/I6jPzD81f7vGX7zuh+9Mxlbo8tUur89/g9ZGVvaspU5MirQg1Up4OIw0r0Ifai1u3B1avbWUHnsFORHrncdt+cXkGtTObJqdg2SldJ2mmCHwnJP1NpSh+cn11fr5bGXvyp2u19WA1aprqyMjegyH5cZx9VkGfAT9h84gyBrXWVjO5cHdjxA4zdJ2Y7/e2tE5z19MLAkFRIrYfemraClyUeEX4xZz0I5Nmikb90tK/XLrZ06zlp6YmPAjuXWC66+40F75x/d19cWhxtTV8Q0W6YnFD1nWaPErwLsSAUIWMKGvNHaPDZabjt23PS717kZQ2aMPc7aBvN1RQT4UXMddtn7f1n4P8girxQiXz3OziUpPeLS8fgDq+NzZymjBSe2jE1dVxpfAQhEcifMLiUdmPWEyRmAhRUVmpch1zUiad3G195a3ZSB1hBAn37ILb4UmXxy1L9W+Vmwm/Y/sNuXgrD3od0sWC+jtLw0sLd2w//cDGg2STqmziZ8BHfm1i6dyxcysjaeQGee1Nkb1ZwBE5/5jgYaxDLjxqM6zgqlFVdgWUtTvV0I39tgNj9vycbOckNW3nLtyUqSNuIF114i1TvIH0alZtvbParFxfGdASZ5dWu7iO1wUwD0g478eYprp3dO/oSiuMZ4mJIPYiTUlMGE9KGjfsKXnRI1iDbbzCFSg3Ed5o47lOibLIjZoKrgPLxkuS5mwtkLihxI2ALztw3eh64daN5kq6PkS8NcvsyvvRdvm9IaJ39n/tXamnqbB/Khudr1diPjxgtUY8FHanVmtvQHtsJiSNYu+GMKjkQbdbQvTR1vTgngVSa4myllDTwasydYIWE2mRIswleV5wXeZGLWe2GZu3a6m2ejk2mvzgZoOj0zmnTrlLSTi5QZexv1MavZFd/c0j1fGD89V6HgeyoP6YWgPFQKzGhmpJseJYVFOR+qoxVJ1csUNY54kkLClBykMIjRapIWIzuGgVWWyFPNVT1ast0mpFrdWJMLH6+tzrrQ+qabje8+NvnLv2Fjmd9mfOEPgO2eRDZM2CLPWNrL/WWxDqwdU98/nw2+Svj9Fax+0L92iB6G1d08/G37Wh9/18vaTyO8edzQSPYmZQ93vvuLPp4Imev53ZGN4tz+ufafDPNPoDuBY/kLv50Gjt/w/f7Zf/2snfpAAAAABJRU5ErkJggg==";document.querySelectorAll(".gc-g").forEach(i=>i.src=GC_G);</script>
 <footer class="site"><div class="wrap">© 2026 Green Mobile · מוקאפ עמוד מוצר</div></footer>
 <script>
 const PRICE = {"256GB|סגול": 2949, "256GB|שחור": 2949, "256GB|צהוב": 2949, "256GB|אפור": 2949, "512GB|צהוב": 3249, "512GB|סגול": 3249, "512GB|אפור": 3249, "512GB|שחור": 3249};
@@ -322,9 +410,135 @@ let q=1; function qty(d){ q=Math.max(1,q+d); document.getElementById('qtyN').tex
 function tab(btn,id){ document.querySelectorAll('.tabbar button').forEach(b=>b.classList.remove('sel')); btn.classList.add('sel');
   document.querySelectorAll('.tabpane').forEach(p=>p.classList.remove('sel')); document.getElementById('tab-'+id).classList.add('sel'); }
 function toggleNav(){ const n=document.getElementById('mnav'),o=document.getElementById('mnavOverlay'); const op=n.classList.toggle('open'); o.classList.toggle('open',op); document.body.style.overflow=op?'hidden':''; }
-function openModal(id){ document.getElementById('modalOv').classList.add('open'); document.getElementById('modal-'+id).classList.add('open'); document.body.style.overflow='hidden'; }
-function closeModal(){ document.getElementById('modalOv').classList.remove('open'); document.querySelectorAll('.modal').forEach(m=>m.classList.remove('open')); document.body.style.overflow=''; }
-document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeModal(); });
-document.querySelectorAll('.m-plan').forEach(p=>p.addEventListener('click',()=>{ document.querySelectorAll('.m-plan').forEach(x=>x.classList.remove('sel')); p.classList.add('sel'); p.querySelector('input').checked=true; }));
+/* ===== real service modals: trade-in calculator + Green Care (ported from live widget) ===== */
+const CATALOG = {"Apple": {"iPhone 11": {"256 GB": [407, 366, 142, 142], "128 GB": [391, 349, 134, 134], "64 GB": [349, 313, 131, 131]}, "iPhone 11 Pro": {"512 GB": [442, 387, 171, 171], "256 GB": [472, 447, 162, 147], "64 GB": [289, 276, 138, 138]}, "iPhone 11 Pro Max": {"512 GB": [480, 480, 211, 191], "256 GB": [529, 488, 204, 179], "64 GB": [407, 382, 187, 162]}, "iPhone 12": {"256 GB": [520, 440, 211, 211], "128 GB": [496, 440, 207, 207], "64 GB": [403, 358, 195, 195]}, "iPhone 12 Mini": {"256 GB": [440, 349, 162, 155], "128 GB": [419, 349, 171, 171], "64 GB": [374, 374, 138, 131]}, "iPhone 12 Pro": {"512 GB": [618, 562, 276, 276], "256 GB": [611, 537, 252, 252], "128 GB": [529, 520, 236, 236]}, "iPhone 12 Pro Max": {"512 GB": [691, 684, 338, 325], "256 GB": [789, 684, 299, 285], "128 GB": [700, 659, 301, 301]}, "iPhone 13": {"512 GB": [798, 651, 289, 289], "256 GB": [720, 631, 276, 256], "128 GB": [684, 594, 256, 248]}, "iPhone 13 Mini": {"512 GB": [708, 586, 276, 276], "256 GB": [602, 537, 285, 285], "128 GB": [576, 488, 269, 269]}, "iPhone 13 Pro": {"1 TB": [1091, 924, 427, 427], "512 GB": [968, 851, 419, 419], "256 GB": [936, 862, 349, 349], "128 GB": [842, 798, 313, 313]}, "iPhone 13 Pro Max": {"1 TB": [1171, 1094, 472, 472], "512 GB": [1098, 1082, 444, 444], "256 GB": [1082, 960, 407, 358], "128 GB": [936, 858, 398, 318]}, "iPhone 14": {"512 GB": [1005, 887, 395, 374], "256 GB": [989, 867, 387, 382], "128 GB": [838, 749, 374, 349]}, "iPhone 14 Plus": {"512 GB": [984, 862, 374, 374], "256 GB": [964, 851, 387, 387], "128 GB": [887, 805, 329, 329]}, "iPhone 14 Pro": {"1 TB": [1343, 1151, 472, 472], "512 GB": [1269, 1082, 492, 492], "256 GB": [1220, 1053, 476, 476], "128 GB": [1025, 907, 395, 395]}, "iPhone 14 Pro Max": {"1 TB": [1465, 1395, 598, 598], "512 GB": [1432, 1282, 537, 537], "256 GB": [1432, 1298, 567, 567], "128 GB": [1229, 1151, 529, 529]}, "iPhone 15": {"512 GB": [1306, 1212, 520, 520], "256 GB": [1275, 1167, 529, 529], "128 GB": [1118, 1009, 492, 492]}, "iPhone 15 Plus": {"512 GB": [1302, 1234, 492, 492], "256 GB": [1220, 1147, 513, 513], "128 GB": [1196, 1071, 529, 529]}, "iPhone 15 Pro": {"1 TB": [1725, 1522, 708, 708], "512 GB": [1737, 1538, 732, 732], "256 GB": [1565, 1411, 732, 732], "128 GB": [1432, 1344, 638, 638]}, "iPhone 15 Pro Max": {"1 TB": [1960, 1733, 691, 691], "512 GB": [1891, 1646, 732, 732], "256 GB": [1798, 1603, 732, 732], "128 GB": [1546, 1383, 553, 488]}, "iPhone 16": {"512 GB": [1615, 1371, 635, 635], "256 GB": [1574, 1347, 749, 749], "128 GB": [1483, 1320, 749, 749]}, "iPhone 16 plus": {"512 GB": [1912, 1595, 757, 757], "256 GB": [1912, 1709, 757, 757], "128 GB": [1847, 1566, 716, 716]}, "iPhone 16 Pro": {"1 TB": [2206, 1979, 777, 737], "512 GB": [2360, 2064, 989, 989], "256 GB": [2196, 1910, 826, 826], "128 GB": [2018, 1790, 785, 785]}, "iPhone 16 Pro max": {"1 TB": [2294, 2156, 1271, 1271], "512 GB": [2294, 2091, 1200, 1200], "256 GB": [2262, 2120, 1152, 1152]}, "iPhone 16e": {"512 GB": [1017, 936, 431, 431], "256 GB": [976, 895, 407, 407], "128 GB": [854, 773, 371, 325]}, "iPhone 7": {"256 GB": [36, 36, 14, 14], "128 GB": [36, 36, 14, 14], "32 GB": [36, 36, 14, 14]}, "iPhone 7 Plus": {"256 GB": [36, 36, 14, 14], "128 GB": [36, 36, 14, 14], "32 GB": [36, 36, 14, 14]}, "iPhone 8": {"256 GB": [67, 48, 34, 34], "64 GB": [36, 36, 14, 14]}, "iPhone 8 Plus": {"256 GB": [96, 67, 34, 34], "128 GB": [40, 36, 14, 14], "64 GB": [96, 67, 34, 34]}, "iPhone SE": {"256 GB": [123, 123, 41, 41], "128 GB": [123, 123, 41, 41], "64 GB": [123, 123, 41, 41]}, "iPhone X": {"256 GB": [147, 98, 58, 58], "64 GB": [134, 82, 48, 40]}, "iPhone XR": {"256 GB": [163, 123, 58, 58], "128 GB": [163, 123, 49, 49], "64 GB": [134, 100, 48, 40]}, "iPhone XS": {"512 GB": [163, 163, 58, 58], "256 GB": [163, 163, 58, 58], "64 GB": [134, 122, 40, 40]}, "iPhone XS Max": {"512 GB": [204, 163, 65, 65], "256 GB": [204, 163, 65, 65], "64 GB": [204, 126, 65, 65]}}, "Samsung": {"A02": {"64 GB": [8, 8, 0, 0], "32 GB": [8, 8, 0, 0]}, "A04": {"32 GB": [24, 24, 0, 0]}, "A12": {"128 GB": [40, 40, 16, 16]}, "A13": {"128 GB": [57, 57, 24, 24], "64 GB": [57, 57, 24, 24]}, "A22 (5G)": {"128 GB": [57, 57, 16, 16], "64 GB": [57, 57, 16, 16]}, "A23": {"128 GB": [65, 65, 24, 24], "64 GB": [57, 57, 24, 24]}, "A30": {"64 GB": [58, 58, 14, 14], "32 GB": [58, 58, 28, 28]}, "A30 S": {"128 GB": [58, 58, 25, 25], "64 GB": [58, 58, 25, 25], "32 GB": [58, 58, 25, 25]}, "A31": {"64 GB": [134, 134, 61, 61]}, "A32": {"128 GB": [102, 82, 41, 41]}, "A32 (5G)": {"128 GB": [106, 106, 57, 57], "64 GB": [106, 106, 57, 57]}, "A33 5G": {"128 GB": [115, 96, 58, 48]}, "A34 (5G)": {"256 GB": [204, 204, 65, 65], "128 GB": [204, 204, 65, 65]}, "A50": {"128 GB": [65, 65, 19, 17], "64 GB": [65, 65, 25, 25]}, "A50 S": {"128 GB": [65, 65, 25, 25], "64 GB": [65, 65, 25, 25]}, "A51": {"256 GB": [82, 82, 41, 41], "128 GB": [82, 82, 19, 17], "64 GB": [82, 82, 25, 25]}, "A51 (5G)": {"256 GB": [82, 82, 14, 14], "128 GB": [82, 82, 41, 41]}, "A51 (5G) ULTRA": {"128 GB": [82, 82, 41, 41]}, "A52": {"256 GB": [134, 134, 61, 61]}, "A52 (5G)": {"256 GB": [131, 131, 48, 48], "128 GB": [131, 131, 48, 48]}, "A52s": {"256 GB": [155, 155, 87, 61], "128 GB": [155, 155, 87, 61]}, "A52s (5G)": {"256 GB": [158, 158, 96, 96], "128 GB": [158, 158, 96, 96]}, "A53 (5G)": {"256 GB": [138, 138, 58, 58], "128 GB": [138, 138, 58, 58]}, "A54 (5G)": {"256 GB": [264, 264, 58, 58], "128 GB": [264, 264, 65, 65]}, "A70": {"128 GB": [83, 83, 14, 14], "64 GB": [83, 83, 34, 29], "32 GB": [83, 83, 14, 14]}, "A71": {"128 GB": [83, 83, 38, 29]}, "A71 (5G)": {"128 GB": [83, 83, 22, 22]}, "A71 (5G) ULTRA": {"128 GB": [96, 83, 34, 29]}, "A72": {"256 GB": [245, 206, 66, 66], "128 GB": [218, 218, 87, 61]}, "A72 (5G)": {"256 GB": [180, 180, 40, 40], "128 GB": [180, 180, 40, 40]}, "A73(5G)": {"256 GB": [142, 142, 57, 57], "128 GB": [144, 142, 57, 57]}, "A8": {"32 GB": [41, 41, 14, 14]}, "Flip 5 (5G)": {"512 GB": [903, 740, 269, 269], "256 GB": [903, 740, 269, 269], "128 GB": [903, 578, 155, 155]}, "Fold 5 (5G)": {"1 TB": [813, 813, 325, 325], "512 GB": [773, 773, 285, 285], "256 GB": [732, 732, 288, 244]}, "Galaxy Z Flip4 5G": {"128 GB": [569, 569, 82, 82]}, "M": {"128 GB": [124, 124, 8, 8]}, "M52": {"128 GB": [149, 149, 87, 61]}, "Note 10": {"256 GB": [195, 158, 48, 48]}, "Note 10 + 5G": {"256 GB": [204, 147, 41, 41]}, "Note 10 Lite": {"128 GB": [107, 107, 41, 41]}, "Note 10 Plus": {"512 GB": [252, 220, 58, 58], "256 GB": [248, 224, 58, 58]}, "Note 10 Plus + 5G": {"512 GB": [252, 220, 58, 58], "256 GB": [248, 224, 58, 58]}, "Note 20": {"256 GB": [310, 310, 89, 85]}, "Note 20 (5G)": {"256 GB": [310, 310, 82, 65], "128 GB": [310, 310, 82, 65]}, "Note 20 Ultra (4G)": {"512 GB": [489, 407, 123, 123], "256 GB": [407, 367, 107, 107]}, "Note 20 Ultra (5G)": {"512 GB": [489, 407, 123, 123], "256 GB": [489, 407, 123, 123], "128 GB": [407, 367, 123, 123]}, "Note 8": {"256 GB": [82, 82, 41, 41]}, "Note 9": {"512 GB": [296, 296, 82, 74], "128 GB": [296, 296, 82, 74]}, "S10": {"512 GB": [123, 82, 36, 36], "128 GB": [131, 118, 53, 53]}, "S10 (5G)": {"512 GB": [163, 123, 41, 41], "256 GB": [123, 82, 41, 41]}, "S10 E": {"256 GB": [107, 82, 33, 33], "128 GB": [107, 82, 33, 33]}, "S10 Plus": {"1 TB": [204, 147, 58, 58], "512 GB": [204, 147, 58, 58], "256 GB": [204, 151, 69, 69], "128 GB": [211, 141, 69, 69]}, "S20": {"128 GB": [204, 204, 65, 49]}, "S20 (5G)": {"256 GB": [232, 232, 89, 89], "128 GB": [232, 232, 89, 89]}, "S20 FE": {"256 GB": [204, 204, 65, 49], "128 GB": [204, 204, 65, 49]}, "S20 FE (5G)": {"256 GB": [216, 216, 73, 73], "128 GB": [216, 216, 78, 78]}, "S20 Plus": {"128 GB": [245, 245, 82, 65]}, "S20 Plus (5G)": {"512 GB": [245, 245, 82, 65], "256 GB": [273, 273, 106, 106], "128 GB": [273, 273, 106, 106]}, "S20 Ultra": {"512 GB": [310, 310, 82, 82], "256 GB": [310, 310, 82, 82], "128 GB": [301, 301, 82, 82]}, "S20 Ultra (5G)": {"512 GB": [322, 322, 93, 93], "256 GB": [322, 322, 93, 93], "128 GB": [322, 322, 93, 93]}, "S21 (5G)": {"256 GB": [245, 245, 82, 82], "128 GB": [245, 245, 82, 82]}, "S21 FE (5G)": {"256 GB": [245, 245, 82, 82], "128 GB": [245, 245, 82, 82]}, "S21 Plus (5G)": {"256 GB": [322, 322, 142, 142], "128 GB": [322, 322, 142, 142]}, "S21 Ultra (5G)": {"512 GB": [529, 500, 232, 232], "256 GB": [496, 460, 187, 187], "128 GB": [415, 415, 187, 187]}, "S22": {"256 GB": [329, 329, 151, 144], "128 GB": [329, 329, 151, 144]}, "S22 Plus": {"256 GB": [492, 492, 183, 183], "128 GB": [496, 496, 183, 183]}, "S22 Ultra": {"1 TB": [736, 704, 256, 256], "512 GB": [736, 716, 264, 264], "256 GB": [736, 716, 264, 264], "128 GB": [736, 716, 264, 264]}, "S23": {"256 GB": [545, 472, 175, 175], "128 GB": [549, 472, 200, 200]}, "S23 FE": {"256 GB": [440, 378, 175, 175], "128 GB": [440, 378, 175, 175]}, "S23 Plus": {"512 GB": [659, 586, 256, 256], "256 GB": [659, 586, 256, 256]}, "S23 Ultra": {"1 TB": [1000, 920, 349, 349], "512 GB": [1000, 920, 349, 349], "256 GB": [993, 909, 342, 342]}, "S24": {"512 GB": [1033, 936, 285, 245], "256 GB": [895, 854, 285, 245], "128 GB": [854, 789, 285, 245]}, "S24 Plus": {"512 GB": [1098, 1086, 325, 285], "256 GB": [1078, 1021, 325, 285]}, "S24 Ultra": {"1 TB": [1589, 1505, 423, 407], "512 GB": [1404, 1383, 423, 382], "256 GB": [1318, 1318, 423, 349]}, "S25": {"512 GB": [1180, 1062, 391, 325], "256 GB": [1180, 1058, 391, 285], "128 GB": [1058, 976, 391, 285]}, "S25 Plus": {"512 GB": [1395, 1167, 391, 325], "256 GB": [1224, 1151, 391, 325]}, "S25 Ultra": {"1 TB": [2034, 1831, 570, 553], "512 GB": [1953, 1831, 570, 553], "256 GB": [1789, 1709, 570, 480]}, "Z Flip 3 (5G)": {"256 GB": [259, 259, 36, 36], "128 GB": [259, 259, 36, 36]}, "Z Flip 4 (5G)": {"512 GB": [374, 374, 82, 82], "256 GB": [374, 374, 82, 82], "128 GB": [374, 374, 82, 82]}, "Z Fold 2 (5G)": {"512 GB": [222, 222, 36, 36], "256 GB": [222, 222, 36, 36]}, "Z Fold 2 LTE": {"256 GB": [222, 222, 36, 36]}, "Z Fold 3 (5G)": {"512 GB": [407, 370, 82, 82], "256 GB": [370, 370, 74, 74]}, "Z Fold 4 (5G)": {"1 TB": [591, 591, 102, 102], "512 GB": [659, 659, 211, 211], "256 GB": [659, 659, 171, 171]}}, "Google": {"Pixel 6 Pro": {"256 GB": [216, 166, 12, 12], "128 GB": [151, 130, 12, 12]}, "Pixel 6a": {"128 GB": [135, 122, 12, 12]}, "Pixel 7": {"256 GB": [261, 213, 12, 12], "128 GB": [252, 196, 12, 12]}, "Pixel 7 Pro": {"256 GB": [277, 213, 12, 12], "128 GB": [269, 213, 12, 12]}, "Pixel 7a": {"128 GB": [252, 196, 12, 12]}, "Pixel 8": {"256 GB": [286, 286, 33, 33], "128 GB": [286, 286, 33, 33]}, "Pixel 8 Pro": {"512 GB": [440, 400, 33, 33], "256 GB": [400, 400, 33, 33], "128 GB": [400, 400, 33, 33]}, "Pixel 8a": {"128 GB": [270, 245, 33, 33]}, "Pixel 9": {"256 GB": [651, 612, 33, 33], "128 GB": [651, 612, 33, 33]}, "Pixel 9 Pro": {"512 GB": [818, 736, 82, 82], "256 GB": [818, 736, 82, 82], "128 GB": [818, 736, 82, 82]}, "Pixel 9a": {"256 GB": [612, 571, 33, 33], "128 GB": [612, 571, 33, 33]}}};
+const PROD_PRICE = 2949;
+const S = { brand:null, model:null, storage:null, query:'', openSeries:null, cond:{}, step:1 };
+const bd = document.getElementById('tiBackdrop');
+const tibody = document.getElementById('tiBody');
+const tifoot = document.getElementById('tiFoot');
+function openTI(){ bd.classList.add('open'); document.body.style.overflow='hidden'; renderTI(); }
+function closeTI(){ bd.classList.remove('open'); document.body.style.overflow=''; }
+function setSteps(){ [1,2,3].forEach(i=>{ const el=document.getElementById('ms'+i); el.className='mstep'+(i===S.step?' on':(i<S.step?' done':'')); }); }
+function renderTI(){ setSteps(); if(S.step===1) renderDevice(); else if(S.step===2) renderCondition(); else renderResult(); }
+function seriesInfo(brand,model){
+  if(brand==='Apple'){ let m=model.match(/iPhone\s+(\d+)/i); if(m) return {label:'iPhone '+m[1],fam:0,num:+m[1]};
+    if(/SE/i.test(model)) return {label:'iPhone SE',fam:1,num:0}; return {label:'iPhone X / קלאסי',fam:1,num:-1}; }
+  if(brand==='Samsung'){ let m;
+    if(m=model.match(/^S\s*(\d+)/i)) return {label:'Galaxy S'+m[1],fam:0,num:+m[1]};
+    if(/Fold|Flip/i.test(model)){ let n=(model.match(/(\d+)/)||[0,0])[1]; return {label:'Galaxy Z (מתקפל)',fam:1,num:+n}; }
+    if(m=model.match(/Note\s*(\d+)/i)) return {label:'Galaxy Note',fam:2,num:+m[1]};
+    if(m=model.match(/^A\s*(\d+)/i)) return {label:'Galaxy A',fam:3,num:+m[1]};
+    if(m=model.match(/^M\s*(\d+)/i)) return {label:'Galaxy M',fam:4,num:+m[1]};
+    return {label:'Galaxy — אחר',fam:5,num:0}; }
+  if(brand==='Google'){ let m=model.match(/Pixel\s+(\d+)/i); if(m) return {label:'Pixel '+m[1],fam:0,num:+m[1]}; return {label:'Pixel — אחר',fam:1,num:0}; }
+  return {label:model,fam:0,num:0};
+}
+function variantRank(model){ const m=model.toLowerCase();
+  if(/pro max|ultra/.test(m)) return 0; if(/\bpro\b/.test(m)) return 1; if(/plus|\+/.test(m)) return 2; if(/mini|16e|\be\b/.test(m)) return 4; return 3; }
+function seriesLabelOf(m){ return seriesInfo(S.brand,m).label; }
+function modelGroupsHTML(){
+  const q=(S.query||'').trim().toLowerCase(); const searching=q.length>0; const groups={};
+  Object.keys(CATALOG[S.brand]).forEach(m=>{ if(searching && !m.toLowerCase().includes(q)) return;
+    const info=seriesInfo(S.brand,m); (groups[info.label]=groups[info.label]||{info,items:[]}).items.push(m); });
+  const labels=Object.keys(groups).sort((a,b)=>{const A=groups[a].info,B=groups[b].info;return A.fam-B.fam||B.num-A.num;});
+  if(!labels.length) return '<div class="nores">לא נמצא דגם תואם. נסה שם אחר או דבר איתנו בוואטסאפ.</div>';
+  if(!searching && (!S.openSeries || !labels.includes(S.openSeries))) S.openSeries=(S.model?seriesLabelOf(S.model):labels[0]);
+  const chev='<svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10l5 5 5-5"/></svg>';
+  let out='';
+  labels.forEach(lab=>{ const items=groups[lab].items.sort((a,b)=>variantRank(a)-variantRank(b)||a.localeCompare(b));
+    const isOpen=searching||lab===S.openSeries; const esc=lab.replace(/'/g,"\\'");
+    out+=`<div class="series ${isOpen?'open':''}"><button type="button" class="series-h" onclick="toggleSeries('${esc}')"><span class="series-t">${lab} <span class="cnt">${items.length}</span></span>${chev}</button>`;
+    if(isOpen){ out+='<div class="opts">'; items.forEach(m=>out+=`<div class="opt small ${S.model===m?'sel':''}" onclick="pickModel('${m.replace(/'/g,"\\'")}')">${m}</div>`); out+='</div>'; }
+    out+='</div>'; });
+  return out;
+}
+function toggleSeries(lab){ S.openSeries=lab; const mb=document.getElementById('modelbox'); if(mb) mb.innerHTML=modelGroupsHTML(); }
+function renderDevice(){
+  let h='<h2>איזה מכשיר יש לך?</h2><p class="sub">בחר יצרן, ואז חפש או בחר דגם</p>';
+  h+='<div class="qrow"><h3>יצרן</h3><div class="opts">';
+  for(const b in CATALOG) h+=`<div class="opt ${S.brand===b?'sel':''}" onclick="pickBrand('${b}')">${b}</div>`;
+  h+='</div></div>';
+  if(S.brand){ const qv=(S.query||'').replace(/"/g,'&quot;');
+    h+=`<div class="qrow"><h3>דגם</h3><div class="dsearch-wrap"><input class="dsearch" id="dsearch" placeholder="חיפוש דגם — למשל 15 Pro" value="${qv}" oninput="onSearch(this.value)" autocomplete="off"><span class="dsearch-ic"><svg class="gic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6"/><line x1="15" y1="15" x2="20.5" y2="20.5"/></svg></span></div><div class="modelbox" id="modelbox">${modelGroupsHTML()}</div></div>`; }
+  if(S.model){ h+='<div class="qrow" id="storageRow"><h3>נפח · '+S.model+'</h3><div class="opts">';
+    for(const s in CATALOG[S.brand][S.model]) h+=`<div class="opt ${S.storage===s?'sel':''}" onclick="pickStorage('${s}')">${s}</div>`; h+='</div></div>'; }
+  tibody.innerHTML=h;
+  tifoot.innerHTML=`<button class="btn primary" ${S.storage?'':'disabled'} onclick="go(2)">להמשך</button><span style="color:var(--ink2);font-size:.82rem">${S.storage?S.brand+' '+S.model+' · '+S.storage:'בחר מכשיר'}</span>`;
+  if(S._scrollStorage){ S._scrollStorage=false; const r=document.getElementById('storageRow'); if(r) r.scrollIntoView({behavior:'smooth',block:'nearest'}); }
+}
+function onSearch(v){ S.query=v; const mb=document.getElementById('modelbox'); if(mb) mb.innerHTML=modelGroupsHTML(); }
+function pickBrand(b){S.brand=b;S.model=null;S.storage=null;S.query='';S.openSeries=null;renderTI();}
+function pickModel(m){S.model=m;S.storage=null;S.openSeries=seriesLabelOf(m);S._scrollStorage=true;renderTI();}
+function pickStorage(s){S.storage=s;renderTI();}
+const QS=[
+  {k:'power',q:'המכשיר נדלק ומחזיק טעינה?',o:[['yes','כן'],['no','לא — לא נדלק']]},
+  {k:'screen',q:'מצב המסך',o:[['ok','תקין'],['scratch','שריטות קלות'],['crack','סדוק / שבור']]},
+  {k:'body',q:'מצב הגוף והמסגרת',o:[['ok','ללא פגמים'],['scratch','שריטות קלות'],['dent','שקעים ומכות'],['backglass','גב סדוק / שבור']]},
+  {k:'func',q:'תקלות תפקודיות?',o:[['none','הכל עובד'],['fault','יש תקלה (מצלמה/רמקול/כפתורים)']]}
+];
+function skipQ(k){ return k==='func' && S.cond.power==='no'; }
+function renderCondition(){
+  let h='<h2>מה מצב המכשיר?</h2><p class="sub">תיאור מדויק = הערכה מדויקת</p>';
+  QS.forEach(q=>{ if(skipQ(q.k)) return;
+    h+=`<div class="qrow"><h3>${q.q}</h3><div class="qopts">`;
+    q.o.forEach(([v,l])=>h+=`<div class="qopt ${S.cond[q.k]===v?'sel':''}" onclick="pickCond('${q.k}','${v}')">${l}</div>`);
+    h+='</div></div>'; });
+  if(S.cond.power==='no') h+='<p class="deadnote">מכשיר שאינו נדלק מוערך כ״תקול״ — אין צורך בפרטי תפקוד נוספים.</p>';
+  tibody.innerHTML=h;
+  const done=QS.every(q=>skipQ(q.k)||S.cond[q.k]);
+  tifoot.innerHTML=`<button class="btn primary" ${done?'':'disabled'} onclick="go(3)">קבל הערכה</button><button class="btn ghost" onclick="go(1)">חזרה</button>`;
+}
+function pickCond(k,v){S.cond=Object.assign({},S.cond,{[k]:v});renderCondition();}
+function estimate(){
+  const arr=CATALOG[S.brand][S.model][S.storage]; const A=arr[0],B=arr[1],C=arr[2],D2=arr[3]; const c=S.cond;
+  const gap=Math.max(A-B,0), gc=Math.max(A-C,0); let v=A;
+  const lines=[{label:'מחיר בסיס · כמו חדש',amount:A,base:true}];
+  const cut=(label,delta)=>{ delta=Math.round(delta); if(delta>0){ v-=delta; lines.push({label,amount:-delta}); } };
+  if(c.screen==='scratch') cut('שריטות קלות במסך', gap*0.5);
+  if(c.body==='scratch') cut('שריטות קלות בגוף', gap*0.35);
+  if(c.body==='dent') cut('שקעים ומכות בגוף', gap*0.9);
+  if(c.screen==='crack') cut('מסך סדוק / שבור', gc);
+  if(c.body==='backglass') cut('גב סדוק / שבור', gc*0.35);
+  if(c.func==='fault') cut('תקלה תפקודית', gc*0.55);
+  if(c.power==='no') cut('המכשיר אינו נדלק', (A-D2));
+  const floor=Math.round(A*0.06); const floored=v<floor; let val=Math.round(Math.max(v,floor)/10)*10;
+  return {value:val,lines,A,floored,scrap:Math.round(floor/10)*10};
+}
+function renderResult(){
+  const est=estimate(); const allStor=CATALOG[S.brand][S.model]; const storages=Object.keys(allStor);
+  const sameStorage=storages.length>1 && storages.every(s=>JSON.stringify(allStor[s])===JSON.stringify(allStor[storages[0]]));
+  const chips=storages.map(s=>`<span class="stchip ${s===S.storage?'sel':''}" onclick="pickResStorage('${s}')">${s}</span>`).join('');
+  const stnote=sameStorage?`<div class="stnote">בדגם זה המחיר זהה לכל הנפחים (לפי מחירון עדכני)</div>`:'';
+  const rows=est.lines.map(l=>{ if(l.base) return `<div class="bkrow base"><span>${l.label}</span><span class="bkv">₪${l.amount.toLocaleString()}</span></div>`;
+    const pct=Math.round(Math.abs(l.amount)/est.A*100); return `<div class="bkrow"><span>${l.label}</span><span class="bkv">−${pct}%</span></div>`; }).join('');
+  const floorNote=est.floored?`<div class="bkrow floor"><span>ריצפת שווי מינימלית (נזק כבד)</span><span class="bkv">₪${est.scrap.toLocaleString()}</span></div>`:'';
+  tibody.innerHTML=`<div class="result">
+    <div class="lead">שווי משוער · ${S.brand} ${S.model}</div>
+    <div class="amount">₪${est.value.toLocaleString()}</div>
+    <div class="stswitch"><span class="stlabel">נפח:</span>${chips}</div>${stnote}
+    <div class="breakdown"><div class="bktitle">איך חושב השווי?</div>${rows}${floorNote}
+      <div class="bkrow total"><span>הערכה סופית משוערת</span><span class="bkv">₪${est.value.toLocaleString()}</span></div></div>
+    <div class="disclaimer">זו <b>הערכה משוערת</b>. הסכום הסופי נקבע לאחר בדיקת המכשיר. לא מרוצה? <b>נחזיר לך את המכשיר.</b></div>
+  </div>`;
+  tifoot.innerHTML=`<button class="btn primary" onclick="applyCredit(${est.value})"><svg class="gic" viewBox="0 0 24 24" aria-hidden="true"><polyline points="5 12 10 17 19 7"/></svg> החל זיכוי ₪${est.value.toLocaleString()}</button><button class="btn ghost" onclick="go(2)">שנה מצב</button>`;
+}
+function pickResStorage(s){S.storage=s;renderResult();}
+function go(n){S.step=n;renderTI();}
+function applyCredit(v){
+  const after=Math.max(PROD_PRICE - v, 0);
+  const pb=document.getElementById('priceBack'); pb.classList.add('show');
+  pb.innerHTML=`<svg class="gic" viewBox="0 0 24 24" aria-hidden="true"><polyline points="5 12 10 17 19 7"/></svg> תקבלו <b>₪${v.toLocaleString()}</b> בחזרה אחרי טרייד-אין · עלות בפועל ₪${after.toLocaleString()}`;
+  closeTI();
+}
+/* Green Care */
+const GC_PLANS = { gc:{name:'green care',price:99}, gcp:{name:'green care+',price:749} };
+let gcSel=null;
+const gcBd=document.getElementById('gcBackdrop');
+function openGC(){ gcBd.classList.add('open'); document.body.style.overflow='hidden'; }
+function closeGC(){ gcBd.classList.remove('open'); document.body.style.overflow=''; }
+function pickPlan(p){ gcSel=p; document.getElementById('planGC').classList.toggle('sel',p==='gc'); document.getElementById('planGCP').classList.toggle('sel',p==='gcp'); const btn=document.getElementById('gcApply'); btn.disabled=false; btn.textContent='הוסיפו '+GC_PLANS[p].name+' · ₪'+GC_PLANS[p].price; }
+function applyGC(){ if(!gcSel) return; const pl=GC_PLANS[gcSel]; const sn=document.getElementById('svcNote'); sn.classList.add('show'); sn.innerHTML=`<svg class="gic" viewBox="0 0 24 24" aria-hidden="true"><polyline points="5 12 10 17 19 7"/></svg> נוסף <b>${pl.name}</b> · ₪${pl.price} — הגנה מורחבת למכשיר`; closeGC(); }
+document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ closeTI(); closeGC(); } });
 refresh();
 </script>
