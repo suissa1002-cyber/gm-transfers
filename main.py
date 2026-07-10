@@ -7001,8 +7001,10 @@ def _stellr_display(pan: str, pin: str):
     UUID אינו קוד מימוש — מזהים ומציגים את ה-pin כקוד, בלי ה-UUID."""
     import re as _re
     p, q = (pan or "").strip(), (pin or "").strip()
+    if q and _re.search(r"[A-Za-z]", q):          # pin = קוד-מימוש אלפאנומרי → זה הקוד
+        return q, ""
     if q and _re.fullmatch(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
-                           r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", p):
+                           r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", p):   # pan=UUID → הקוד ב-pin
         return q, ""
     return p, q
 
