@@ -1798,6 +1798,66 @@ def _wc_creds():
     return (u, k, s) if (u and k and s) else None
 
 
+# ── חיפוש למוקאפ: פרוקסי באותו-מקור למנוע החיפוש של האתר ──
+# מנוע החיפוש החי הוא FiboSearch Pro (dgwt-wcas). ה-AJAX שלו חסום ב-Cloudflare
+# לגישה חוצת-מקור/דאטה-סנטר, ולכן המוקאפ (שמוגש מכאן, אותו מקור) שולף הצעות
+# מאותו אינדקס מוצרים דרך WC Store API הציבורי. בעלייה-לאוויר השדה יהפוך
+# לווידג'ט [fibosearch] הנייטיב וישתמש במנוע ישירות.
+_mock_search_cache: dict = {}
+_MOCK_SEARCH_TTL = 120
+
+
+@app.get("/api/mock/search")
+def mock_search(q: str = "", limit: int = 7):
+    import time as _t
+    import html as _html
+    q = (q or "").strip()
+    if len(q) < 2:
+        return {"q": q, "results": []}
+    limit = max(1, min(int(limit or 7), 12))
+    ck = f"{q}|{limit}"
+    hit = _mock_search_cache.get(ck)
+    if hit and (_t.time() - hit[0]) < _MOCK_SEARCH_TTL:
+        return hit[1]
+    base = os.getenv("WC_STORE_URL", "https://greenmobile.co.il").rstrip("/")
+    out = []
+    try:
+        import requests as _rq
+        r = _rq.get(base + "/wp-json/wc/store/v1/products",
+                    params={"search": q, "per_page": limit, "orderby": "relevance",
+                            "catalog_visibility": "visible"},
+                    headers={"User-Agent": "Mozilla/5.0 Chrome/124"}, timeout=12)
+        if r.status_code == 200:
+            for p in r.json():
+                pr = p.get("prices") or {}
+                try:
+                    mu = int(pr.get("currency_minor_unit", 2))
+                except Exception:
+                    mu = 2
+
+                def _money(v):
+                    try:
+                        return round(int(v) / (10 ** mu))
+                    except Exception:
+                        return None
+
+                imgs = p.get("images") or []
+                out.append({
+                    "id": p.get("id"),
+                    "name": _html.unescape(p.get("name") or "").strip(),
+                    "price": _money(pr.get("price")),
+                    "regular": _money(pr.get("regular_price")),
+                    "on_sale": bool(p.get("on_sale")),
+                    "img": (imgs[0].get("thumbnail") or imgs[0].get("src")) if imgs else "",
+                    "url": p.get("permalink") or "",
+                })
+    except Exception as e:
+        return {"q": q, "results": [], "error": str(e)[:120]}
+    res = {"q": q, "results": out}
+    _mock_search_cache[ck] = (_t.time(), res)
+    return res
+
+
 # ── העשרת שורות העברה/שידור בצבע (מ-WooCommerce לפי SKU) ──
 # שם המוצר מהקופה (NewOrder) לא תמיד כולל צבע (למשל אביזרים — "Xbox Wireless
 # Controller" בלי "לבן"). מושכים את הצבע מהווריאציה ב-WooCommerce לפי SKU
