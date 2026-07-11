@@ -7056,10 +7056,21 @@ function osTiBuild(){
 function tiWidgetRender(b){
   const host=document.getElementById('tiWidgetHost'); if(!host) return;
   if(window.matchMedia('(max-width:1199px)').matches){ host.innerHTML=''; return; }
+  const t=b.t;
+  if(!t.open){
+    host.innerHTML=`<div class="gcard ti-widget" onclick="tiWidgetToggle(true)" style="position:fixed;left:18px;top:106px;width:200px;z-index:5;padding:16px;text-align:center;cursor:pointer">
+      <div style="font-size:26px;line-height:1">🔄</div>
+      <div style="font-weight:800;font-size:13.5px;color:#149c40;margin-top:6px">מחשבון טרייד-אין</div>
+      <div class="muted" style="font-size:11px;margin-top:2px">תמחור מכשיר ללקוח בסניף</div>
+      <div class="muted" style="font-size:15px;margin-top:4px">▾</div>
+    </div>`;
+    return;
+  }
   host.innerHTML=`<div class="gcard ti-widget" style="position:fixed;left:18px;top:106px;width:302px;max-height:calc(100vh - 130px);overflow-y:auto;z-index:5;padding:14px 16px;text-align:right">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
       <span style="font-weight:800;font-size:13.5px;color:#149c40">🔄 מחשבון טרייד-אין</span>
       <a href="javascript:void(0)" onclick="tiWidgetReset()" class="muted" style="margin-inline-start:auto;font-size:11px;text-decoration:underline">נקה</a>
+      <button type="button" onclick="tiWidgetToggle(false)" title="כווץ" style="border:none;background:none;cursor:pointer;color:var(--muted);font-size:15px;padding:0 2px">▴</button>
     </div>
     ${b.deviceHTML}
     ${b.condHTML}
@@ -7067,16 +7078,18 @@ function tiWidgetRender(b){
     ${b.estHTML}
   </div>`;
 }
-function tiWidgetReset(){ S._osTi={widgetMode:true,branchMode:true,cat:S._tiCatCache||null,brand:'',model:'',storage:'',cond:{},manual:false,mBrand:'',mModel:'',mStorage:''}; osTiPaint(); }
-function tiWidgetEnsure(){
-  if(!document.getElementById('tiWidgetHost')) return;
-  if(!(S._osTi&&S._osTi.widgetMode)) tiWidgetReset();
-  const t=S._osTi;
-  if(!t.cat && !t._catLoading){ t._catLoading=true;
+function tiWidgetToggle(open){ const t=S._osTi||{}; if(!t.widgetMode) return; t.open=!!open;
+  if(open && !t.cat && !t._catLoading){ t._catLoading=true;
     api('/api/admin/tradein/catalog',null,30000).then(r=>{ t._catLoading=false;
       if(r&&r.catalog){ S._tiCatCache=r.catalog; t.cat=r.catalog; osTiPaint(); } })
       .catch(()=>{ t._catLoading=false; });
   }
+  osTiPaint();
+}
+function tiWidgetReset(){ const wasOpen=!!(S._osTi&&S._osTi.widgetMode&&S._osTi.open); S._osTi={widgetMode:true,branchMode:true,open:wasOpen,cat:S._tiCatCache||null,brand:'',model:'',storage:'',cond:{},manual:false,mBrand:'',mModel:'',mStorage:''}; osTiPaint(); }
+function tiWidgetEnsure(){
+  if(!document.getElementById('tiWidgetHost')) return;
+  if(!(S._osTi&&S._osTi.widgetMode)) tiWidgetReset();
   osTiPaint();
 }
 function osTiPaint(){
