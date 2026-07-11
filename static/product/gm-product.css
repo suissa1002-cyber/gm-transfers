@@ -480,3 +480,4 @@ body.gm-product-new *{text-indent:0!important;}
 .gm-atc ul.variable-items-wrapper li.variable-item.button-variable-item{padding:14px 30px!important;width:auto!important;height:auto!important;min-width:96px;}
 .gm-atc ul.variable-items-wrapper li.button-variable-item .variable-item-span{font-size:1.02rem!important;font-weight:800!important;}
 .gm-atc ul.variable-items-wrapper li.button-variable-item.selected .variable-item-span{color:var(--accent)!important;}
+.gm-atc ul.variable-items-wrapper li.variable-item.selected{background:var(--accent-soft)!important;border-color:var(--accent)!important;box-shadow:0 0 0 1px var(--accent)!important;}
