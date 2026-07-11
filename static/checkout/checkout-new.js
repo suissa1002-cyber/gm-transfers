@@ -164,6 +164,14 @@ jQuery(function ($) {
   decorateAll();
   $(document.body).on('updated_checkout', function () { decorateAll(); setTimeout(decorateAll, 80); });
 
+  /* the whole shipping card selects (radios are hidden) */
+  $(document).on('click', '#gm-shipping-list ul#shipping_method li', function () {
+    var $inp = $(this).find('input.shipping_method');
+    if ($inp.length && !$inp.prop('checked')) {
+      $inp.prop('checked', true).trigger('change');
+    }
+  });
+
   /* ---------- 4: PayPlus embedded iframe -> side-column slot ---------- */
   function movePP() {
     var $frame = $('#pp_iframe');
