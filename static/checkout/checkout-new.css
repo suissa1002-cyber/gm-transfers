@@ -91,6 +91,12 @@ body.gm-new-checkout #gm-shipping-list ul#shipping_method input.shipping_method{
   position:static!important; float:none!important; flex:none; margin:0!important;
   width:18px!important; height:18px!important; inset:auto!important; opacity:1!important; transform:none!important;
 }
+/* hard reset: theme positions things inside these labels absolutely — force normal flow */
+body.gm-new-checkout #gm-shipping-list ul#shipping_method label > *{
+  position:static!important; float:none!important; inset:auto!important; transform:none!important; margin:0!important;
+}
+body.gm-new-checkout #gm-shipping-list .gm-ship-ic{ display:block!important; flex:0 0 26px!important; }
+body.gm-new-checkout #gm-shipping-list .gm-ship-txt{ position:static!important; }
 /* kill theme-drawn custom radio pseudo-controls that overlap our icons */
 body.gm-new-checkout #gm-shipping-list ul#shipping_method label::before,
 body.gm-new-checkout #gm-shipping-list ul#shipping_method label::after,
@@ -144,6 +150,20 @@ body.gm-new-checkout .gm-pp-bar{ display:flex; align-items:center; gap:8px; back
 body.gm-new-checkout .gm-pp-url{ margin-inline-start:auto; font-family:ui-monospace,monospace; font-size:.72rem; opacity:.65; font-weight:500; direction:ltr; }
 body.gm-new-checkout .gm-pp-body{ padding:14px; }
 body.gm-new-checkout .gm-pp-wait{ padding:24px 18px; text-align:center; color:var(--gm-ink2); font-size:.85rem; background:var(--gm-bg); border:1.5px dashed var(--gm-line); border-radius:12px; }
+/* mockup-style skeleton of the payment form (visual only, activates after אישור ותשלום) */
+body.gm-new-checkout .gm-pp-skel{ pointer-events:none; user-select:none; }
+body.gm-new-checkout .gm-pp-skel .sk-title{ font-weight:900; font-size:1.05rem; margin:2px 0 14px; color:var(--gm-ink); text-align:start; }
+body.gm-new-checkout .gm-pp-skel .sk-wallets{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-bottom:14px; }
+body.gm-new-checkout .gm-pp-skel .sk-w{ border-radius:12px; padding:12px; text-align:center; font-weight:800; font-size:.9rem; }
+body.gm-new-checkout .gm-pp-skel .sk-w.apple{ background:#111; color:#fff; }
+body.gm-new-checkout .gm-pp-skel .sk-w.google{ background:#fff; color:#5f6368; border:1.5px solid var(--gm-line); }
+body.gm-new-checkout .gm-pp-skel .sk-w.bit{ background:#0a7cff; color:#fff; }
+body.gm-new-checkout .gm-pp-skel .sk-or{ display:flex; align-items:center; gap:12px; color:var(--gm-ink2); font-size:.8rem; margin:0 0 14px; }
+body.gm-new-checkout .gm-pp-skel .sk-or::before, body.gm-new-checkout .gm-pp-skel .sk-or::after{ content:""; flex:1; height:1px; background:var(--gm-line); }
+body.gm-new-checkout .gm-pp-skel .sk-lab{ font-size:.8rem; font-weight:700; color:var(--gm-ink2); margin:0 0 6px; text-align:start; }
+body.gm-new-checkout .gm-pp-skel .sk-field{ border:1.5px solid var(--gm-line); border-radius:12px; background:var(--gm-bg); padding:12px 14px; color:#a6b0ab; font-size:.9rem; margin-bottom:12px; text-align:start; }
+body.gm-new-checkout .gm-pp-skel .sk-row{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+body.gm-new-checkout .gm-pp-skel .sk-note{ margin-top:4px; text-align:center; color:var(--gm-ink2); font-size:.78rem; background:var(--gm-accent-soft); border-radius:10px; padding:9px 12px; }
 body.gm-new-checkout .gm-pp-body .pp_iframe{ margin:0; }
 /* edit link in the summary heading */
 body.gm-new-checkout .gm-edit{ float:left; font-size:.8rem; color:var(--gm-accent); font-weight:700; text-decoration:none; }
@@ -163,6 +183,7 @@ body.gm-new-checkout .woocommerce-checkout-review-order-table td{ text-align:end
 body.gm-new-checkout .woocommerce-checkout-review-order-table td.product-name{ text-align:start; }
 body.gm-new-checkout .woocommerce-checkout-review-order-table tr{ display:table-row!important; border-bottom:1px solid var(--gm-line); }
 body.gm-new-checkout .gm-shipping-total th{ font-weight:700; color:var(--gm-ink2); }
+body.gm-new-checkout .gm-shipping-total td{ font-weight:800!important; color:var(--gm-accent)!important; text-align:end!important; }
 body.gm-new-checkout .cart_item .product-name{ color:var(--gm-ink); font-weight:600; font-size:.9rem; }
 body.gm-new-checkout .cart_item .variation{ margin:4px 0 0; font-size:.78rem; color:var(--gm-ink2); display:block; }
 body.gm-new-checkout .cart_item .variation dt{ display:none!important; }

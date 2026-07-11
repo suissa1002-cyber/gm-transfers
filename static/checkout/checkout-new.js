@@ -143,8 +143,17 @@ jQuery(function ($) {
     var $slot = $('#gm-pp-slot');
     if (!$slot.length) return;
     if (/blender/.test(sig)) { $slot.prop('hidden', true).removeClass('show'); return; }
-    if (!$('#pp_iframe').length && !$slot.find('.gm-pp-wait').length) {
-      $slot.find('.gm-pp-body').html('<div class="gm-pp-wait">טופס התשלום המאובטח של PayPlus ייפתח כאן לאחר לחיצה על "אישור ותשלום"</div>');
+    if (!$('#pp_iframe').length && !$slot.find('.gm-pp-skel').length) {
+      $slot.find('.gm-pp-body').html(
+        '<div class="gm-pp-skel">'
+        + '<div class="sk-title">פרטי תשלום</div>'
+        + '<div class="sk-wallets"><div class="sk-w apple">Pay</div><div class="sk-w google">G Pay</div><div class="sk-w bit">bit</div></div>'
+        + '<div class="sk-or">או בכרטיס אשראי</div>'
+        + '<div class="sk-lab">מספר כרטיס</div><div class="sk-field">0000 0000 0000 0000</div>'
+        + '<div class="sk-row"><div><div class="sk-lab">תוקף</div><div class="sk-field">חודש / שנה</div></div><div><div class="sk-lab">CVV</div><div class="sk-field">3 ספרות</div></div></div>'
+        + '<div class="sk-row"><div><div class="sk-lab">שם בעל/ת הכרטיס</div><div class="sk-field">כפי שמופיע בכרטיס</div></div><div><div class="sk-lab">מספר תשלומים</div><div class="sk-field">תשלום אחד</div></div></div>'
+        + '<div class="sk-note">הטופס יופעל לאחר לחיצה על "אישור ותשלום" — ההזנה מתבצעת מול PayPlus בלבד</div>'
+        + '</div>');
     }
     $slot.prop('hidden', false).addClass('show');
   }
@@ -172,7 +181,7 @@ jQuery(function ($) {
     var $slot = $('#gm-pp-slot');
     if (!$slot.length || $.contains($slot[0], $frame[0])) return;
     var $wrap = $frame.closest('.pp_iframe');
-    $slot.find('.gm-pp-wait').remove();
+    $slot.find('.gm-pp-wait,.gm-pp-skel').remove();
     $slot.find('.gm-pp-body').append($wrap.length ? $wrap : $frame);
     $slot.prop('hidden', false).addClass('show');
     $slot[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
