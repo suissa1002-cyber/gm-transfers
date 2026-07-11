@@ -790,6 +790,8 @@ def _migrate():
         ("stellr_codes", "branch", "TEXT"),
         ("stellr_codes", "actor", "TEXT"),
         ("stellr_codes", "phone", "TEXT"),
+        # פוליסת Green Care שנוצרת בסניף נקשרת למספר הסידורי (אין הזמנת אתר)
+        ("greencare_policies", "serial", "TEXT"),
     ]
     for table, col, typ in cols:
         try:
@@ -3242,25 +3244,26 @@ def greencare_delete(wc_product_id) -> int:
 # ── Green Care — פוליסות פר-לקוח + מימושים ─────────────────────────────
 def gc_policy_create(order_id, customer_name, customer_phone, wc_product_id,
                      device_label, plan, price_paid, tl_deductible,
-                     start_date, end_date, created_by="") -> int:
-    """יוצר פוליסת Green Care ומחזיר את ה-id."""
+                     start_date, end_date, created_by="", serial="") -> int:
+    """יוצר פוליסת Green Care ומחזיר את ה-id. serial — למכירה בסניף (בלי הזמנת אתר)."""
     args = (int(order_id) if order_id else None, customer_name or "",
             customer_phone or "", int(wc_product_id) if wc_product_id else None,
             device_label or "", plan or "gc",
             float(price_paid or 0), float(tl_deductible or 0),
-            start_date or "", end_date or "", "active", now_iso(), created_by or "")
+            start_date or "", end_date or "", "active", now_iso(), created_by or "",
+            str(serial or "").strip())
     cols = ("order_id, customer_name, customer_phone, wc_product_id, device_label, "
             "plan, price_paid, tl_deductible, start_date, end_date, status, "
-            "created_at, created_by")
+            "created_at, created_by, serial")
     with _conn() as c:
         cur = c.cursor()
         if _USE_PG:
             cur.execute(_q(f"INSERT INTO greencare_policies ({cols}) "
-                           "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id"), args)
+                           "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id"), args)
             row = cur.fetchone()
             return int(row["id"] if row else 0)
         cur.execute(_q(f"INSERT INTO greencare_policies ({cols}) "
-                       "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)"), args)
+                       "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)"), args)
         return int(cur.lastrowid or 0)
 
 
@@ -3270,6 +3273,18 @@ def gc_policy_get(policy_id) -> dict:
         cur.execute(_q("SELECT * FROM greencare_policies WHERE id = ?"), (int(policy_id),))
         r = cur.fetchone()
         return dict(r) if r else {}
+
+
+def gc_policy_by_serial(serial: str) -> list:
+    """כל הפוליסות על מספר סידורי (החדשה ראשונה) — לבדיקת פוליסה קיימת בסניף."""
+    sn = str(serial or "").strip()
+    if not sn:
+        return []
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM greencare_policies WHERE serial = ? ORDER BY id DESC"),
+                    (sn,))
+        return [dict(r) for r in cur.fetchall()]
 
 
 def gc_policy_by_order(order_id) -> dict:

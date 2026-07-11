@@ -1723,8 +1723,10 @@ async function renderBoard(app, silent){
     ${lastHtml}
     ${list.length?`<div class="board-grid">${list.map(cardHtml).join('')}</div>`
                  :(S._boardErr?'<div class="empty">בעיית רשת — מתחבר מחדש… 🔄</div>':'<div class="empty">אין כרגע העברות בדרך אליך 🎉</div>')}
-    <div id="tiWidgetHost"></div>`;
+    <div id="tiWidgetHost"></div>
+    <div id="gcWidgetHost"></div>`;
   tiWidgetEnsure();
+  gcwEnsure();
   if(needEmp){
     const e=document.getElementById('empInput'); try{e.focus();}catch(x){}
     e.addEventListener('keydown',ev=>{ if(ev.key!=='Enter')return; const v=e.value.trim(); if(!v)return; if(submitEmployee(v)) render(); });
@@ -7092,6 +7094,168 @@ function tiWidgetEnsure(){
   if(!(S._osTi&&S._osTi.widgetMode)) tiWidgetReset();
   osTiPaint();
 }
+// ── ווידג'ט Green Care על לוח הסניף: סריאל → זיהוי מוצר → יצירת פוליסה ──
+// מעוגן לתחתית המסך (הטרייד-אין למעלה) — שניהם נפתחים בלי להתנגש.
+function gcwState(){ if(!S._gcW) S._gcW={open:false,code:'',busy:false,err:'',res:null,plan:'',manualPrice:'',custName:'',custPhone:'',created:null,creating:false}; return S._gcW; }
+function gcwReset(){ const was=!!(S._gcW&&S._gcW.open); S._gcW={open:was,code:'',busy:false,err:'',res:null,plan:'',manualPrice:'',custName:'',custPhone:'',created:null,creating:false}; gcwRender();
+  setTimeout(()=>{ const i=document.getElementById('gcwCode'); if(i) i.focus(); },50); }
+function gcwToggle(open){ const w=gcwState(); w.open=!!open; gcwRender();
+  if(open) setTimeout(()=>{ const i=document.getElementById('gcwCode'); if(i) i.focus(); },50); }
+function gcwSetPlan(p){ gcwState().plan=p; gcwRender(); }
+async function gcwLookup(extra){
+  const w=gcwState(); const code=(w.code||'').trim();
+  if(code.length<4){ w.err='סרוק או הקלד מספר סידורי / IMEI'; return gcwRender(); }
+  w.busy=true; w.err=''; w.created=null; gcwRender();
+  try{
+    let q='/api/branch/greencare/lookup?code='+encodeURIComponent(code);
+    if(extra&&extra.wcId) q+='&wc_id='+extra.wcId;
+    if(extra&&extra.price) q+='&price='+extra.price;
+    const r=await api(q,null,30000);
+    w.res=r; w.plan='';
+    const t=r&&r.pricing&&r.pricing.enabled?r.pricing.tiers:null;
+    if(t){ // מסלול יחיד זמין → נבחר אוטומטית
+      if(t.gcp&&t.gcp.on&&!(t.gc&&t.gc.on)) w.plan='gcp';
+      if(t.gc&&t.gc.on&&!(t.gcp&&t.gcp.on)) w.plan='gc'; }
+  }catch(e){ w.err=e.detail||'שגיאה בבדיקה — נסה שוב'; }
+  w.busy=false; gcwRender();
+}
+function gcwManual(){ const w=gcwState(); const p=parseFloat(w.manualPrice||''); if(!p||p<=0){ w.err='הזן מחיר מכשיר תקין'; return gcwRender(); } gcwLookup({price:p}); }
+async function gcwCreate(){
+  const w=gcwState(); const r=w.res; if(!r||!r.found||!w.plan||w.creating) return;
+  const pr=r.pricing&&r.pricing.tiers&&r.pricing.tiers[w.plan];
+  if(!pr||!pr.on) return;
+  w.creating=true; w.err=''; gcwRender();
+  try{
+    const res=await api('/api/branch/greencare/policy/create',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({serial:r.serial,plan:w.plan,
+        device_label:(r.wc&&r.wc.name)||(r.product&&r.product.name)||'',
+        wc_product_id:(r.wc&&r.wc.id)||null,
+        price_paid:pr.price,device_price:(r.pricing&&r.pricing.device_price)||0,
+        customer_name:w.custName||'',customer_phone:w.custPhone||''})},30000);
+    if(res&&res.ok) w.created=res;
+    else w.err=(res&&res.error)||'יצירת הפוליסה נכשלה';
+  }catch(e){ w.err=e.status===409?'כבר קיימת פוליסה בתוקף על הסריאל הזה — בדוק שוב בסריקה':(e.detail||'יצירת הפוליסה נכשלה — נסה שוב'); }
+  w.creating=false; gcwRender();
+}
+function gcwBullets(plan,res){
+  const ex=(res&&res.extras)||{}; const scr=ex.screen||{};
+  if(plan==='gc') return [
+    'שנה שנייה של אחריות מלאה — מתחילה כשנגמרת אחריות היצרן',
+    'כל תקלת חומרה מתוקנת חינם במעבדה שלנו',
+    'לא מכסה: שברים, נזקי נוזלים, אובדן וגניבה'];
+  const b=[
+    'הגנה מלאה ל-24 חודשים מיום הרכישה',
+    'עד 4 תיקוני שברים חינם: מצלמות, זכוכית גב, שקע טעינה',
+    'החלפת מסך שבור — פעם אחת, השתתפות עצמית 50% ממחיר התיקון'+(scr.deductible?' (₪'+Number(scr.deductible).toLocaleString()+' לדגם זה)':''),
+    'נזק מוחלט בשנה השנייה — מכשיר שווה-ערך או זיכוי'+(ex.tl_deductible?' (השתתפות ₪'+Number(ex.tl_deductible).toLocaleString()+')':''),
+    'לא מכסה: אובדן וגניבה'];
+  return b;
+}
+function gcwStatusChip(st){
+  const m={active:['בתוקף','#149c40'],pending:['טרם החלה','#b58900'],expired:['פג תוקף','#b3261e'],cancelled:['בוטלה','#b3261e']};
+  const x=m[st]||[st,'var(--muted)'];
+  return `<span style="display:inline-block;padding:1px 8px;border-radius:99px;font-size:10.5px;font-weight:700;color:#fff;background:${x[1]}">${x[0]}</span>`;
+}
+function gcwRender(){
+  const host=document.getElementById('gcWidgetHost'); if(!host) return;
+  if(window.matchMedia('(max-width:1199px)').matches){ host.innerHTML=''; return; }
+  const w=gcwState();
+  if(!w.open){
+    host.innerHTML=`<div class="gcard gcw-widget" onclick="gcwToggle(true)" style="position:fixed;left:18px;bottom:18px;width:200px;z-index:5;padding:16px;text-align:center;cursor:pointer">
+      <div style="font-size:26px;line-height:1">🛡️</div>
+      <div style="font-weight:800;font-size:13.5px;color:#149c40;margin-top:6px">Green Care</div>
+      <div class="muted" style="font-size:11px;margin-top:2px">פוליסה חדשה / בדיקה לפי סריאל</div>
+      <div class="muted" style="font-size:15px;margin-top:4px">▴</div>
+    </div>`;
+    return;
+  }
+  const inp='width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--bg);color:var(--txt);margin-top:4px';
+  let body='';
+  if(w.created){
+    const p=(w.created.policy)||{};
+    body=`<div style="background:var(--card2);border:1.5px solid #149c40;border-radius:12px;padding:14px;text-align:center">
+        <div style="font-weight:900;font-size:16px;color:#149c40">✓ פוליסה #${p.id||''} נוצרה</div>
+        <div style="font-size:12px;margin-top:4px">${escW(p.plan_label||'')}</div>
+        <div class="muted" style="font-size:11.5px;margin-top:2px">סריאל ${escW(p.serial||'')} · בתוקף עד ${escW(p.end_date||'')}</div>
+      </div>
+      <div style="background:#149c40;color:#fff;border-radius:12px;padding:12px 14px;margin-top:10px;text-align:center">
+        <div style="font-size:11.5px;opacity:.9">עכשיו בקופה:</div>
+        <div style="font-weight:900;font-size:15px;margin-top:2px">הוסף פריט "${escW(w.created.pos_item||'greencare')}"</div>
+        <div style="font-weight:900;font-size:20px;margin-top:2px">וגבה ₪${Number(p.price_paid||0).toLocaleString()}</div>
+      </div>
+      <button class="btn-ghost" style="width:100%;padding:10px;margin-top:12px" onclick="gcwReset()">סריקה חדשה</button>`;
+  } else {
+    body=`<label class="muted" style="font-size:12px">מספר סידורי / IMEI</label>
+      <div style="display:flex;gap:8px;align-items:flex-end">
+        <input id="gcwCode" value="${escW(w.code||'')}" autocomplete="off" placeholder="סרוק או הקלד…" style="${inp};flex:1;direction:ltr;text-align:left;font-family:monospace"
+          oninput="S._gcW.code=this.value" onkeydown="if(event.key==='Enter'){S._gcW.code=this.value;gcwLookup()}">
+        <button class="btn" style="padding:9px 14px" onclick="gcwLookup()" ${w.busy?'disabled':''}>${w.busy?'בודק…':'בדוק'}</button>
+      </div>`;
+    if(w.err) body+=`<div style="color:#b3261e;font-size:12px;margin-top:8px">${escW(w.err)}</div>`;
+    const r=w.res;
+    if(r&&!r.found){
+      body+=`<div class="muted" style="font-size:12px;margin-top:10px">הסריאל לא נמצא במלאי ואין עליו פוליסה. ודא סריקה נכונה (סריאל של המכשיר, לא של האריזה).</div>`;
+    }
+    if(r&&r.found){
+      // פוליסות קיימות על הסריאל
+      (r.policies||[]).forEach(pv=>{ const p=pv.policy||{}; const u=pv.usage||{};
+        body+=`<div style="background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-top:10px;font-size:12px">
+          <div style="display:flex;align-items:center;gap:6px"><b>פוליסה #${p.id}</b> ${gcwStatusChip(p.status_now||p.status)}</div>
+          <div class="muted" style="margin-top:2px">${escW(p.plan_label||'')}</div>
+          <div class="muted" style="margin-top:2px">${escW(p.start_date||'')} → ${escW(p.end_date||'')}${p.plan==='gcp'?` · שברים ${(u.component||{}).used||0}/4 · מסך ${(u.screen||{}).used||0}/1`:''}</div>
+        </div>`; });
+      // המוצר שזוהה
+      if(r.product||r.wc){
+        const nm=(r.wc&&r.wc.name)||(r.product&&r.product.name)||'';
+        const pr=r.pricing;
+        body+=`<div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-top:10px">
+          <div style="font-weight:700;font-size:13px">${escW(nm)}</div>
+          ${pr?`<div class="muted" style="font-size:11.5px;margin-top:2px">מחיר מכשיר: ₪${Number(pr.device_price||0).toLocaleString()}${pr.price_source==='wc'?' (מהאתר)':pr.price_source==='pos'?' (מהקופה)':pr.price_source==='manual'?' (ידני)':''}</div>`:''}
+          ${!r.wc&&(r.suggestions||[]).length?`<div class="muted" style="font-size:11.5px;margin-top:6px">בחר את המוצר המתאים באתר:</div>`+
+            r.suggestions.map(sg=>`<button class="btn-ghost" style="display:block;width:100%;text-align:right;padding:7px 10px;margin-top:5px;font-size:12px" onclick="gcwLookup({wcId:${sg.id}})">${escW(sg.name)}${sg.price?` · ₪${Number(sg.price).toLocaleString()}`:''}</button>`).join(''):''}
+        </div>`;
+        if(!pr){
+          body+=`<div class="muted" style="font-size:11.5px;margin-top:8px">לא נמצא מחיר למכשיר — הזן מחיר מכירה לחישוב הפוליסה:</div>
+            <div style="display:flex;gap:8px;align-items:flex-end">
+              <input type="number" value="${escW(w.manualPrice||'')}" oninput="S._gcW.manualPrice=this.value" onkeydown="if(event.key==='Enter'){S._gcW.manualPrice=this.value;gcwManual()}" placeholder="₪" style="${inp};flex:1">
+              <button class="btn" style="padding:9px 14px" onclick="gcwManual()">חשב</button>
+            </div>`;
+        } else if(!pr.enabled||!((pr.tiers.gc&&pr.tiers.gc.on)||(pr.tiers.gcp&&pr.tiers.gcp.on))){
+          body+=`<div style="color:#b58900;font-size:12px;margin-top:10px">אין חבילות Green Care זמינות למכשיר זה${(pr.reasons||[]).length?': '+pr.reasons.join(' · '):''}</div>`;
+        } else {
+          if((pr.reasons||[]).length) body+=`<div class="muted" style="font-size:11px;margin-top:8px">${pr.reasons.map(escW).join(' · ')}</div>`;
+          ['gc','gcp'].forEach(pl=>{ const t=pr.tiers[pl]; if(!t||!t.on) return;
+            const sel=w.plan===pl;
+            body+=`<div onclick="gcwSetPlan('${pl}')" style="border:1.5px solid ${sel?'#149c40':'var(--line)'};${sel?'box-shadow:0 0 0 2px rgba(20,156,64,.15);':''}border-radius:12px;padding:11px 13px;margin-top:10px;cursor:pointer">
+              <div style="display:flex;align-items:baseline;gap:8px">
+                <b style="font-size:13px">${pl==='gcp'?'Green Care Plus':'Green Care'}</b>
+                <span style="margin-inline-start:auto;font-weight:900;color:#149c40;font-size:15px">₪${Number(t.price).toLocaleString()}</span>
+              </div>
+              <div class="muted" style="font-size:10.5px;margin-top:1px">${pl==='gcp'?'הגנה מלאה · 24 חודשים':'הרחבת אחריות · שנה שנייה'}</div>
+              <ul style="margin:7px 0 0;padding-inline-start:16px;font-size:11.5px;line-height:1.55">
+                ${gcwBullets(pl,r).map(x=>`<li>${escW(x)}</li>`).join('')}
+              </ul>
+            </div>`; });
+          body+=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">
+              <div><label class="muted" style="font-size:11.5px">שם הלקוח</label><input value="${escW(w.custName||'')}" oninput="S._gcW.custName=this.value" style="${inp}"></div>
+              <div><label class="muted" style="font-size:11.5px">טלפון</label><input value="${escW(w.custPhone||'')}" oninput="S._gcW.custPhone=this.value" style="${inp};direction:ltr;text-align:left"></div>
+            </div>
+            <button class="btn" style="width:100%;padding:11px;margin-top:12px;font-weight:800" onclick="gcwCreate()" ${(!w.plan||w.creating)?'disabled':''}>${w.creating?'יוצר פוליסה…':(w.plan?'צור פוליסה על הסריאל':'בחר מסלול כדי להמשיך')}</button>
+            <div class="muted" style="font-size:10.5px;margin-top:6px;text-align:center">לאחר היצירה: הוסף בקופה פריט greencare / greencare plus וגבה את המחיר</div>`;
+        }
+      }
+    }
+  }
+  host.innerHTML=`<div class="gcard gcw-widget" style="position:fixed;left:18px;bottom:18px;width:302px;max-height:calc(100vh - 140px);overflow-y:auto;z-index:5;padding:14px 16px;text-align:right">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <span style="font-weight:800;font-size:13.5px;color:#149c40">🛡️ Green Care</span>
+      <a href="javascript:void(0)" onclick="gcwReset()" class="muted" style="margin-inline-start:auto;font-size:11px;text-decoration:underline">נקה</a>
+      <button type="button" onclick="gcwToggle(false)" title="כווץ" style="border:none;background:none;cursor:pointer;color:var(--muted);font-size:15px;padding:0 2px">▾</button>
+    </div>
+    ${body}
+  </div>`;
+}
+function gcwEnsure(){ if(!document.getElementById('gcWidgetHost')) return; gcwRender(); }
 function osTiPaint(){
   const b=osTiBuild(); const t=b.t;
   if(t.widgetMode) return tiWidgetRender(b);
