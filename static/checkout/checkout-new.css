@@ -45,6 +45,22 @@ body.gm-new-checkout #billing_email_field{ grid-column:auto; }
 /* address block inside step 2 — fields in pairs like the mockup */
 body.gm-new-checkout .gm-addr-block{ margin-top:20px; padding-top:20px; border-top:1px solid var(--gm-line); }
 body.gm-new-checkout .gm-addr-title{ font-size:.95rem; font-weight:800; color:var(--gm-ink2); margin:0 0 12px; }
+/* pickup: inline branch selector — the legacy popup is fully suppressed on the new checkout */
+body.gm-new-checkout #branch-pickup-popup,
+body.gm-new-checkout .gm-popup-overlay,
+body.gm-new-checkout .gm-pickup-banner,
+body.gm-new-checkout .gm-selected-branch-display{ display:none!important; }
+body.gm-new-checkout #gm-branch-wrap{ margin-top:16px; }
+body.gm-new-checkout #gm-branch-pick{
+  width:100%; box-sizing:border-box; padding:13px 16px; padding-inline-end:42px;
+  border:1.5px solid var(--gm-line); border-radius:12px; background:var(--gm-surface);
+  font-size:.95rem; font-weight:600; color:var(--gm-ink); font-family:inherit; cursor:pointer;
+  appearance:none; -webkit-appearance:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%234b4f58' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat:no-repeat; background-position:left 15px center;
+}
+body.gm-new-checkout #gm-branch-pick:focus{ outline:none; border-color:var(--gm-accent); }
+body.gm-new-checkout .gm-branch-note{ font-size:.78rem; color:var(--gm-ink2); margin-top:7px; font-weight:600; }
 body.gm-new-checkout .gm-addr-fields{ display:grid; grid-template-columns:1fr 1fr; gap:0 16px; }
 body.gm-new-checkout .gm-addr-fields .form-row{ grid-column:auto!important; }
 body.gm-new-checkout .gm-addr-fields #billing_company_field,

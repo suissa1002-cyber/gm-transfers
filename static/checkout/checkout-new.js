@@ -19,6 +19,9 @@ jQuery(function ($) {
     store: ic('<path d="M4 9.5 5.5 4h13L20 9.5M4 9.5h16M4 9.5v10.5h16V9.5M4 9.5a2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0"/>')
   };
 
+  /* the legacy branch-pickup popup must not run on the new checkout */
+  window.gmPickupInitialized = true;
+
   function setLabelText($field, text) {
     var $l = $field.find('label').first();
     if (!$l.length) return;
@@ -156,7 +159,57 @@ jQuery(function ($) {
   }
   $(document.body).on('change', 'input[name="payment_method"]', ppSlotState);
 
-  function decorateAll() { decorateShipping(); decoratePayment(); ensureProxy(); fixQty(); ppSlotState(); }
+  /* ---------- pickup: inline branch selector (mockup) — replaces the legacy popup ---------- */
+  var PICKUP_VAL = 'local_pickup:2';
+  var GM_BRANCHES = [
+    { id: 'gan-hair', name: 'סניף גן העיר', disp: 'גן העיר — אשדוד',   address: 'הגדוד העברי 5, אשדוד' },
+    { id: 'star',     name: 'סניף סטאר',    disp: 'סטאר סנטר — אשדוד', address: "ז'בוטינסקי 45, אשדוד" },
+    { id: 'city',     name: 'סניף סיטי',    disp: 'סיטי — אשדוד',      address: 'הציונות 13, אשדוד' },
+    { id: 'ad-halom', name: 'סניף עד הלום', disp: 'עד הלום — אשדוד',   address: 'צומת עד הלום, אשדוד' }
+  ];
+  function gmSaveBranch(b) {
+    /* same three channels the legacy popup used — the order keeps receiving the branch */
+    var full = b.name + ' - ' + b.address;
+    var $f = $('#gm_pickup_branch');
+    if (!$f.length) $f = $('<input type="hidden" id="gm_pickup_branch" name="gm_pickup_branch">').appendTo('form.checkout');
+    $f.val(full);
+    try { sessionStorage.setItem('gm_selected_branch', JSON.stringify(b)); } catch (e) {}
+    var url = (typeof gmAjaxUrl !== 'undefined' && gmAjaxUrl) ? gmAjaxUrl : '/wp-admin/admin-ajax.php';
+    var body = 'action=gm_save_pickup_branch&branch=' + encodeURIComponent(full);
+    if (typeof gmPickupNonce !== 'undefined' && gmPickupNonce) body += '&nonce=' + encodeURIComponent(gmPickupNonce);
+    try {
+      fetch(url, { method: 'POST', credentials: 'same-origin',
+                   headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body });
+    } catch (e) {}
+  }
+  function gmBranchById(id) {
+    for (var i = 0; i < GM_BRANCHES.length; i++) if (GM_BRANCHES[i].id === id) return GM_BRANCHES[i];
+    return GM_BRANCHES[0];
+  }
+  function pickupUI() {
+    var isPickup = $('input.shipping_method[value="' + PICKUP_VAL + '"]').is(':checked');
+    /* address fields are delivery-only; pickup shows the branch selector instead */
+    $('.gm-addr-block, .woocommerce-shipping-fields, .woocommerce-additional-fields').toggle(!isPickup);
+    document.body.style.overflow = '';   /* the legacy popup locks scroll when it opens — always release */
+    var $wrap = $('#gm-branch-wrap');
+    if (!isPickup) { $wrap.remove(); return; }
+    if (!$wrap.length) {
+      var saved = null;
+      try { saved = JSON.parse(sessionStorage.getItem('gm_selected_branch') || 'null'); } catch (e) {}
+      var savedId = saved && saved.id;
+      var opts = GM_BRANCHES.map(function (b) {
+        return '<option value="' + b.id + '"' + (b.id === savedId ? ' selected' : '') + '>' + b.disp + '</option>';
+      }).join('');
+      $wrap = $('<div id="gm-branch-wrap"><div class="gm-addr-title">בחירת סניף לאיסוף</div>'
+        + '<select id="gm-branch-pick">' + opts + '</select>'
+        + '<div class="gm-branch-note">נעדכן אותך כשההזמנה מוכנה לאיסוף · זמן הכנה משוער: מספר שעות</div></div>');
+      $('#gm-shipping-list').after($wrap);
+      $wrap.on('change', '#gm-branch-pick', function () { gmSaveBranch(gmBranchById(this.value)); });
+      gmSaveBranch(gmBranchById($wrap.find('#gm-branch-pick').val()));
+    }
+  }
+
+  function decorateAll() { decorateShipping(); decoratePayment(); ensureProxy(); fixQty(); ppSlotState(); pickupUI(); }
   decorateAll();
   $(document.body).on('updated_checkout', function () { decorateAll(); setTimeout(decorateAll, 80); });
 
