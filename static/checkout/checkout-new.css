@@ -271,7 +271,7 @@ body.gm-new-checkout .gm-summary table.woocommerce-checkout-review-order-table t
 }
 body.gm-new-checkout .gm-shipping-total th{ font-weight:700; color:var(--gm-ink2); }
 body.gm-new-checkout .gm-shipping-total td{ font-weight:800!important; color:var(--gm-accent)!important; text-align:end!important; }
-body.gm-new-checkout .cart_item .product-name{ color:var(--gm-ink); font-weight:600; font-size:13.5px; line-height:1.35; }
+body.gm-new-checkout .cart_item .product-name{ color:var(--gm-ink); font-weight:600!important; font-size:13.5px; line-height:1.35; }
 body.gm-new-checkout .cart_item .variation{ margin:4px 0 0; font-size:12.5px; color:var(--gm-ink2); display:block; }
 body.gm-new-checkout .cart_item .variation dt{ display:none!important; }
 body.gm-new-checkout .cart_item .variation dd{ display:inline!important; margin:0!important; }
@@ -290,7 +290,7 @@ body.gm-new-checkout .cart-subtotal th,
 body.gm-new-checkout .gm-shipping-total th{ font-size:15px; font-weight:600; color:var(--gm-ink2); }
 body.gm-new-checkout .cart-subtotal td .amount{ font-weight:700; font-size:15px; }
 body.gm-new-checkout .cart_item .product-total .amount{ font-size:14px; font-weight:800; }
-body.gm-new-checkout .order-total th{ font-weight:900; font-size:19px; }
+body.gm-new-checkout .order-total th{ font-weight:900!important; font-size:19px; }
 body.gm-new-checkout .order-total .amount{ color:var(--gm-ink); font-weight:900; font-size:19px; }
 body.gm-new-checkout ul#shipping_method{ list-style:none; margin:6px 0; padding:0; display:flex; flex-direction:column; gap:8px; }
 body.gm-new-checkout ul#shipping_method li{ border:1.5px solid var(--gm-line); border-radius:12px; padding:11px 13px; margin:0; }
