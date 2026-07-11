@@ -78,9 +78,10 @@ jQuery(function ($) {
       var $price = $label.find('.woocommerce-Price-amount').first();
       var priceHtml = $price.length ? ('<span class="gm-ship-price">' + $price.prop('outerHTML') + '</span>')
                                     : '<span class="gm-ship-price free">חינם</span>';
-      /* icon lives INSIDE the title line (inline) — cannot overlap text by construction */
-      $label.html('<span class="gm-ship-txt"><b>' + conf.icon + '<span class="gm-ship-t">' + conf.t + '</span></b>'
-        + '<span class="gm-ship-s">' + conf.s + '</span></span>'
+      /* icon in its own flex column — the subtitle aligns exactly under the title's first letter */
+      $label.html('<span class="gm-ship-row">' + conf.icon
+        + '<span class="gm-ship-txt"><b class="gm-ship-t">' + conf.t + '</b>'
+        + '<span class="gm-ship-s">' + conf.s + '</span></span></span>'
         + priceHtml);
       $li.data('gmDecorated', true);
     });

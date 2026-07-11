@@ -129,6 +129,14 @@ body.gm-new-checkout li.wc_payment_method label *{ text-indent:0!important; }
 /* nothing may render past the rounded card edge */
 body.gm-new-checkout #gm-shipping-list ul#shipping_method li{ overflow:hidden!important; }
 body.gm-new-checkout #gm-shipping-list .gm-ship-txt{ display:block!important; text-align:start!important; }
+/* icon column + text column: the subtitle starts exactly under the title's first letter (mockup) */
+body.gm-new-checkout #gm-shipping-list .gm-ship-row{ display:flex!important; gap:10px!important; align-items:flex-start!important; }
+body.gm-new-checkout #gm-shipping-list .gm-ship-row > .gm-ship-ic{
+  position:static!important; display:block!important; flex:none!important;
+  width:22px!important; height:22px!important; margin:2px 0 0!important; vertical-align:baseline!important;
+}
+body.gm-new-checkout #gm-shipping-list .gm-ship-row .gm-ship-t{ display:block; font-weight:800; font-size:1.02rem; line-height:1.3; }
+body.gm-new-checkout #gm-shipping-list .gm-ship-row .gm-ship-s{ display:block; margin-top:2px; }
 body.gm-new-checkout .gm-ship-ic{ width:26px; height:26px; flex:none; fill:none; stroke:var(--gm-ink); stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
 body.gm-new-checkout #gm-shipping-list li:has(input:checked) .gm-ship-ic{ stroke:var(--gm-accent); }
 body.gm-new-checkout .gm-ship-txt{ flex:1; min-width:0; display:flex; flex-direction:column; }
@@ -203,6 +211,10 @@ body.gm-new-checkout .gm-summary table.shop_table{
 }
 body.gm-new-checkout .gm-summary div,
 body.gm-new-checkout .gm-summary fieldset,
+body.gm-new-checkout .gm-summary table,
+body.gm-new-checkout .gm-summary tr,
+body.gm-new-checkout .gm-summary th,
+body.gm-new-checkout .gm-summary td,
 body.gm-new-checkout .gm-summary thead,
 body.gm-new-checkout .gm-summary tbody,
 body.gm-new-checkout .gm-summary tfoot{
@@ -222,7 +234,17 @@ body.gm-new-checkout .woocommerce-checkout-review-order-table td{
 }
 body.gm-new-checkout .woocommerce-checkout-review-order-table td{ text-align:end; }
 body.gm-new-checkout .woocommerce-checkout-review-order-table td.product-name{ text-align:start; }
-body.gm-new-checkout .woocommerce-checkout-review-order-table tr{ display:table-row!important; border-bottom:1px solid var(--gm-line); }
+body.gm-new-checkout .woocommerce-checkout-review-order-table tr{ display:table-row!important; }
+/* dividers like the mockup: hairline under each item, hairline above the total row */
+body.gm-new-checkout .gm-summary table.woocommerce-checkout-review-order-table{ border-collapse:collapse!important; }
+body.gm-new-checkout .gm-summary table.woocommerce-checkout-review-order-table tr.cart_item > td,
+body.gm-new-checkout .gm-summary table.woocommerce-checkout-review-order-table tr.cart_item > th{
+  border-bottom:1px solid var(--gm-line)!important; padding:12px 0!important;
+}
+body.gm-new-checkout .gm-summary table.woocommerce-checkout-review-order-table tr.order-total > td,
+body.gm-new-checkout .gm-summary table.woocommerce-checkout-review-order-table tr.order-total > th{
+  border-top:1px solid var(--gm-line)!important; padding-top:12px!important;
+}
 body.gm-new-checkout .gm-shipping-total th{ font-weight:700; color:var(--gm-ink2); }
 body.gm-new-checkout .gm-shipping-total td{ font-weight:800!important; color:var(--gm-accent)!important; text-align:end!important; }
 body.gm-new-checkout .cart_item .product-name{ color:var(--gm-ink); font-weight:600; font-size:.9rem; }
@@ -301,6 +323,8 @@ body.gm-new-checkout .woocommerce-message{ border:1px solid var(--gm-line)!impor
   body.gm-new-checkout #gm-shipping-list .gm-ship-ic{ width:18px!important; height:18px!important; vertical-align:-4px!important; margin-inline-end:7px!important; }
   body.gm-new-checkout #gm-shipping-list .gm-ship-price{ inset-inline-end:13px!important; font-size:.85rem; }
   body.gm-new-checkout .gm-ship-txt b{ font-size:.88rem; }
+  body.gm-new-checkout #gm-shipping-list .gm-ship-row .gm-ship-t{ font-size:.95rem; }
+  body.gm-new-checkout #gm-shipping-list .gm-ship-row > .gm-ship-ic{ width:19px!important; height:19px!important; }
   body.gm-new-checkout .gm-ship-txt > span{ font-size:.74rem; }
   body.gm-new-checkout li.wc_payment_method{ padding:11px 13px; }
   body.gm-new-checkout .gm-pm-txt b{ font-size:.9rem; }
