@@ -82,22 +82,34 @@ body.gm-new-checkout #gm-shipping-list .gm-ship-table td{ display:block; width:1
 body.gm-new-checkout #gm-shipping-list .gm-ship-table th{ display:none; }
 body.gm-new-checkout #gm-shipping-list .woocommerce-shipping-destination,
 body.gm-new-checkout #gm-shipping-list .woocommerce-shipping-calculator{ display:none; }
-body.gm-new-checkout #gm-shipping-list ul#shipping_method{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:10px; }
+body.gm-new-checkout #gm-shipping-list ul#shipping_method{ list-style:none!important; margin:0!important; padding:0!important; display:block!important; }
+body.gm-new-checkout .gm-ship-txt b{ display:block; }
+body.gm-new-checkout .gm-ship-txt > span{ display:block; }
+/* deterministic geometry — no reliance on theme flex: radio + icon pinned, text gets reserved padding */
 body.gm-new-checkout #gm-shipping-list ul#shipping_method li{
-  border:1.5px solid var(--gm-line)!important; border-radius:14px!important; padding:13px 16px!important; margin:0!important;
-  display:flex!important; flex-direction:row!important; align-items:center!important; gap:12px; background:var(--gm-surface); transition:border-color .14s, background .14s; cursor:pointer; width:100%;
+  position:relative!important; display:block!important; width:100%; box-sizing:border-box;
+  border:1.5px solid var(--gm-line)!important; border-radius:14px!important;
+  margin:0 0 10px!important; padding:12px 16px!important;
+  padding-inline-start:82px!important;   /* radio + icon zone (right in RTL) */
+  padding-inline-end:74px!important;     /* price zone (left in RTL) */
+  min-height:62px; background:var(--gm-surface); transition:border-color .14s, background .14s; cursor:pointer;
 }
 body.gm-new-checkout #gm-shipping-list ul#shipping_method li:has(input:checked){ border-color:var(--gm-accent)!important; background:var(--gm-accent-soft); }
 body.gm-new-checkout #gm-shipping-list ul#shipping_method input.shipping_method{
-  position:static!important; float:none!important; flex:none; margin:0!important;
-  width:18px!important; height:18px!important; inset:auto!important; opacity:1!important; transform:none!important;
+  position:absolute!important; inset-inline-start:16px!important; inset-inline-end:auto!important;
+  top:50%!important; transform:translateY(-50%)!important; margin:0!important;
+  width:18px!important; height:18px!important; opacity:1!important; float:none!important;
 }
-/* hard reset: theme positions things inside these labels absolutely — force normal flow */
-body.gm-new-checkout #gm-shipping-list ul#shipping_method label > *{
-  position:static!important; float:none!important; inset:auto!important; transform:none!important; margin:0!important;
+body.gm-new-checkout #gm-shipping-list .gm-ship-ic{
+  position:absolute!important; inset-inline-start:46px!important; inset-inline-end:auto!important;
+  top:50%!important; transform:translateY(-50%)!important;
+  width:25px!important; height:25px!important; display:block!important; margin:0!important;
 }
-body.gm-new-checkout #gm-shipping-list .gm-ship-ic{ display:block!important; flex:0 0 26px!important; }
-body.gm-new-checkout #gm-shipping-list .gm-ship-txt{ position:static!important; }
+body.gm-new-checkout #gm-shipping-list .gm-ship-price{
+  position:absolute!important; inset-inline-end:16px!important; inset-inline-start:auto!important;
+  top:50%!important; transform:translateY(-50%)!important; margin:0!important;
+}
+body.gm-new-checkout #gm-shipping-list ul#shipping_method label > *{ float:none!important; }
 /* kill theme-drawn custom radio pseudo-controls that overlap our icons */
 body.gm-new-checkout #gm-shipping-list ul#shipping_method label::before,
 body.gm-new-checkout #gm-shipping-list ul#shipping_method label::after,
@@ -106,9 +118,10 @@ body.gm-new-checkout #gm-shipping-list ul#shipping_method li::after,
 body.gm-new-checkout li.wc_payment_method > label::before,
 body.gm-new-checkout li.wc_payment_method > label::after{ content:none!important; display:none!important; }
 body.gm-new-checkout #gm-shipping-list ul#shipping_method label{
-  flex:1; min-width:0; display:flex!important; flex-direction:row!important; flex-wrap:nowrap!important; align-items:center!important;
-  gap:12px; font-weight:700; font-size:.92rem; margin:0!important; padding:0!important; cursor:pointer; line-height:1.4; color:var(--gm-ink); width:auto!important;
+  display:block!important; width:100%!important; margin:0!important; padding:0!important;
+  text-align:start!important; font-weight:700; font-size:.92rem; cursor:pointer; line-height:1.4; color:var(--gm-ink);
 }
+body.gm-new-checkout #gm-shipping-list .gm-ship-txt{ display:block!important; text-align:start!important; }
 body.gm-new-checkout .gm-ship-ic{ width:26px; height:26px; flex:none; fill:none; stroke:var(--gm-ink); stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
 body.gm-new-checkout #gm-shipping-list li:has(input:checked) .gm-ship-ic{ stroke:var(--gm-accent); }
 body.gm-new-checkout .gm-ship-txt{ flex:1; min-width:0; display:flex; flex-direction:column; }
@@ -241,4 +254,35 @@ body.gm-new-checkout .woocommerce-message{ border:1px solid var(--gm-line)!impor
   body.gm-new-checkout .gm-secure-note{ order:6; }
   body.gm-new-checkout .woocommerce-billing-fields__field-wrapper,
   body.gm-new-checkout .woocommerce-shipping-fields__field-wrapper{ grid-template-columns:1fr; }
+
+  /* compact mobile cards — no stretched-out sections */
+  body.gm-new-checkout .gm-card{ padding:18px!important; border-radius:16px; }
+  body.gm-new-checkout .gm-step-head{ font-size:1rem; margin-bottom:14px; }
+  body.gm-new-checkout .gm-badge{ width:24px; height:24px; font-size:.8rem; }
+  body.gm-new-checkout .form-row{ padding:0 0 11px; }
+  body.gm-new-checkout .form-row label{ font-size:.8rem; margin-bottom:5px; }
+  body.gm-new-checkout .input-text,
+  body.gm-new-checkout select,
+  body.gm-new-checkout textarea{ padding:11px 13px!important; font-size:.92rem; }
+  body.gm-new-checkout .gm-addr-block{ margin-top:14px; padding-top:14px; }
+  body.gm-new-checkout .gm-addr-title{ margin-bottom:9px; }
+  body.gm-new-checkout #gm-shipping-list ul#shipping_method li{
+    min-height:56px; padding-top:10px!important; padding-bottom:10px!important;
+    padding-inline-start:74px!important; padding-inline-end:62px!important; margin-bottom:8px!important;
+  }
+  body.gm-new-checkout #gm-shipping-list ul#shipping_method input.shipping_method{ inset-inline-start:13px!important; }
+  body.gm-new-checkout #gm-shipping-list .gm-ship-ic{ inset-inline-start:41px!important; width:22px!important; height:22px!important; }
+  body.gm-new-checkout #gm-shipping-list .gm-ship-price{ inset-inline-end:13px!important; font-size:.85rem; }
+  body.gm-new-checkout .gm-ship-txt b{ font-size:.88rem; }
+  body.gm-new-checkout .gm-ship-txt > span{ font-size:.74rem; }
+  body.gm-new-checkout li.wc_payment_method{ padding:11px 13px; }
+  body.gm-new-checkout .gm-pm-txt b{ font-size:.9rem; }
+  body.gm-new-checkout .woocommerce-checkout-review-order-table th,
+  body.gm-new-checkout .woocommerce-checkout-review-order-table td{ padding:8px 0!important; }
+  body.gm-new-checkout .gm-oi-img, body.gm-new-checkout .gm-oi img{ width:46px; height:46px; }
+  body.gm-new-checkout #gm-pay-proxy{ padding:14px!important; font-size:1rem!important; }
+  body.gm-new-checkout #gm-po-slot{ margin-top:12px; }
+  body.gm-new-checkout .gm-pp-body{ padding:12px; }
+  body.gm-new-checkout .gm-pp-skel .sk-field{ padding:10px 12px; margin-bottom:10px; font-size:.85rem; }
+  body.gm-new-checkout .gm-pp-skel .sk-w{ padding:10px; font-size:.85rem; }
 }
