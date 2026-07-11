@@ -7673,6 +7673,7 @@ function gcPolBodyHTML(){
   return list.map(gcPolCard).join('');
 }
 function gcPolCard(p){
+  const open=S.gcPolSel===p.id;
   const src=p.order_id
     ?`אתר · הזמנה #${p.order_id}`
     :`סניף${p.created_by?' · '+escW(p.created_by):''}`;
@@ -7681,32 +7682,121 @@ function gcPolCard(p){
     ?` · שברים ${(u.component||{}).used||0}/4 · מסך ${(u.screen||{}).used||0}/1${((u.total_loss||{}).used||0)?' · אובדן 1/1':''}`
     :(p.claims_count?` · ${p.claims_count} מימושים`:'');
   const act=p.status==='cancelled'
-    ?`<button class="btn-ghost" style="padding:5px 10px;font-size:11.5px" onclick="gcPolStatus(${p.id},'active')">הפעל מחדש</button>`
-    :`<button class="btn-ghost" style="padding:5px 10px;font-size:11.5px;color:var(--red)" onclick="gcPolStatus(${p.id},'cancelled')">בטל</button>`;
-  return `<div class="gcard" style="padding:12px 16px;margin-bottom:8px">
-    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-      <b>#${p.id}</b>
-      <span style="font-weight:700;font-size:13px;color:#149c40">${p.plan==='gcp'?'Green Care Plus':'Green Care'}</span>
-      ${gcwStatusChip(p.status_now)}
-      <span class="muted" style="font-size:12px">${src}</span>
-      <span style="margin-inline-start:auto;font-weight:800">₪${Number(p.price_paid||0).toLocaleString()}</span>
-      ${act}
+    ?`<button class="btn-ghost" style="padding:5px 10px;font-size:11.5px" onclick="event.stopPropagation();gcPolStatus(${p.id},'active')">הפעל מחדש</button>
+       <button class="btn-ghost" style="padding:5px 10px;font-size:11.5px;color:var(--red)" onclick="event.stopPropagation();gcPolDelete(${p.id})">מחק</button>`
+    :`<button class="btn-ghost" style="padding:5px 10px;font-size:11.5px;color:var(--red)" onclick="event.stopPropagation();gcPolStatus(${p.id},'cancelled')">בטל</button>`;
+  const chev=`<span class="muted" style="font-size:14px;transition:transform .15s;transform:rotate(${open?'90deg':'0'});display:inline-block">‹</span>`;
+  return `<div class="gcard" style="padding:12px 16px;margin-bottom:8px${open?';border-color:#149c40':''}">
+    <div style="cursor:pointer" onclick="gcPolToggle(${p.id})">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <b>#${p.id}</b>
+        <span style="font-weight:700;font-size:13px;color:#149c40">${p.plan==='gcp'?'Green Care Plus':'Green Care'}</span>
+        ${gcwStatusChip(p.status_now)}
+        <span class="muted" style="font-size:12px">${src}</span>
+        <span style="margin-inline-start:auto;font-weight:800">₪${Number(p.price_paid||0).toLocaleString()}</span>
+        ${act}
+        ${chev}
+      </div>
+      <div style="font-size:13px;font-weight:600;margin-top:6px">${escW(p.device_label||'—')}</div>
+      <div class="muted" style="font-size:12px;margin-top:2px">${[
+          p.customer_name?escW(p.customer_name):'',
+          p.customer_phone?`<span style="direction:ltr;unicode-bidi:isolate">${escW(p.customer_phone)}</span>`:'',
+          p.serial?`סריאל <span style="direction:ltr;unicode-bidi:isolate;font-family:monospace">${escW(p.serial)}</span>`:'',
+          p.invoice_ref?`חשבונית ${escW(p.invoice_ref)}`:''
+        ].filter(Boolean).join(' · ')||'ללא פרטי לקוח'}</div>
+      <div class="muted" style="font-size:12px;margin-top:2px">${escW(p.start_date||'')} → ${escW(p.end_date||'')}${usage}</div>
     </div>
-    <div style="font-size:13px;font-weight:600;margin-top:6px">${escW(p.device_label||'—')}</div>
-    <div class="muted" style="font-size:12px;margin-top:2px">${[
-        p.customer_name?escW(p.customer_name):'',
-        p.customer_phone?`<span style="direction:ltr;unicode-bidi:isolate">${escW(p.customer_phone)}</span>`:'',
-        p.serial?`סריאל <span style="direction:ltr;unicode-bidi:isolate;font-family:monospace">${escW(p.serial)}</span>`:''
-      ].filter(Boolean).join(' · ')||'ללא פרטי לקוח'}</div>
-    <div class="muted" style="font-size:12px;margin-top:2px">${escW(p.start_date||'')} → ${escW(p.end_date||'')}${usage}</div>
+    ${open?gcPolDetailHTML(p):''}
   </div>`;
+}
+function gcPolToggle(id){
+  S.gcPolSel=(S.gcPolSel===id)?null:id;
+  if(S.gcPolSel){ S.gcPolDetail=null; gcPolLoadDetail(id); }
+  const b=document.getElementById('gcPolBody'); if(b) b.innerHTML=gcPolBodyHTML();
+}
+async function gcPolLoadDetail(id){
+  try{
+    const d=await api('/api/admin/greencare/policy/'+id);
+    if(S.gcPolSel===id){ S.gcPolDetail=d; const b=document.getElementById('gcPolBody'); if(b) b.innerHTML=gcPolBodyHTML(); }
+  }catch(e){ if(S.gcPolSel===id){ S.gcPolDetail={error:true}; const b=document.getElementById('gcPolBody'); if(b) b.innerHTML=gcPolBodyHTML(); } }
+}
+function gcPolDetailHTML(p){
+  const d=S.gcPolDetail;
+  if(!d||d.error||!d.policy||d.policy.id!==p.id)
+    return `<div class="muted" style="padding:12px 0 2px;font-size:12px">${d&&d.error?'טעינת הפרטים נכשלה':'טוען פרטים…'}</div>`;
+  const pol=d.policy;
+  const F=(label,val)=>`<div><div class="muted" style="font-size:11px">${label}</div><div style="font-weight:600;font-size:13px;margin-top:1px">${val||'—'}</div></div>`;
+  const dt=s=>s?String(s).slice(0,10):'—';
+  const dtt=s=>{ if(!s) return '—'; const t=String(s); return t.slice(0,10)+(t.length>15?' · '+t.slice(11,16):''); };
+  const CT={component:'שבר רכיב',screen:'החלפת מסך',total_loss:'אובדן מוחלט',repair:'תיקון אחריות'};
+  const claims=(d.claims||[]).map(c=>`<div style="display:flex;gap:10px;flex-wrap:wrap;font-size:12px;padding:6px 0;border-top:1px solid var(--line)">
+      <b>${CT[c.claim_type]||escW(c.claim_type)}</b>
+      <span class="muted">${dt(c.claim_date)}</span>
+      ${Number(c.deductible)>0?`<span class="muted">השתתפות ₪${Number(c.deductible).toLocaleString()}</span>`:''}
+      ${c.note?`<span class="muted" style="flex:1">${escW(c.note)}</span>`:''}
+      ${c.created_by?`<span class="muted">${escW(c.created_by)}</span>`:''}
+    </div>`).join('');
+  const u=d.usage||{};
+  const scr=(d.deductibles||{}).screen||{};
+  return `<div style="border-top:1px solid var(--line);margin-top:10px;padding-top:12px" onclick="event.stopPropagation()">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px 18px">
+      ${F('לקוח', pol.customer_name?escW(pol.customer_name):'')}
+      ${F('טלפון', pol.customer_phone?`<span style="direction:ltr;unicode-bidi:isolate">${escW(pol.customer_phone)}</span>`:'')}
+      ${F('מקור', pol.order_id?('אתר · הזמנה #'+pol.order_id):'סניף')}
+      ${F('סריאל', pol.serial?`<span style="direction:ltr;unicode-bidi:isolate;font-family:monospace">${escW(pol.serial)}</span>`:'')}
+      ${F('תאריך רכישה', dt(pol.purchase_date))}
+      ${F('תחילת כיסוי', dt(pol.start_date))}
+      ${F('תום כיסוי', dt(pol.end_date))}
+      ${F('מחיר ששולם', '₪'+Number(pol.price_paid||0).toLocaleString())}
+      ${F('השתתפות אובדן מוחלט', pol.plan==='gcp'?('₪'+Number(pol.tl_deductible||0).toLocaleString()):'—')}
+      ${F('השתתפות מסך (נכון להיום)', scr.deductible?('₪'+Number(scr.deductible).toLocaleString()):'—')}
+      ${F('נוצרה ע"י', pol.created_by?escW(pol.created_by):'')}
+      ${F('נוצרה בתאריך', dtt(pol.created_at))}
+    </div>
+    <div style="display:flex;gap:8px;align-items:flex-end;margin-top:14px;max-width:380px">
+      <div style="flex:1"><label class="muted" style="font-size:11px">מס׳ חשבונית (קופה / אתר)</label>
+        <input id="gcPolInv" value="${escW(pol.invoice_ref||'')}" autocomplete="off" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--txt);margin-top:3px"
+          onkeydown="if(event.key==='Enter')gcPolSaveInvoice(${pol.id})"></div>
+      <button class="btn-ghost" style="padding:8px 14px" onclick="gcPolSaveInvoice(${pol.id})">שמור</button>
+    </div>
+    <div style="margin-top:14px">
+      <div style="font-weight:700;font-size:12.5px">מימושים${pol.plan==='gcp'?` <span class="muted" style="font-weight:400">· שברים ${(u.component||{}).used||0}/4 · מסך ${(u.screen||{}).used||0}/1 · אובדן ${(u.total_loss||{}).used||0}/1</span>`:''}</div>
+      ${claims||`<div class="muted" style="font-size:12px;margin-top:4px">אין מימושים עדיין</div>`}
+    </div>
+    <div style="display:flex;gap:8px;margin-top:14px">
+      ${p.status==='cancelled'
+        ?`<button class="btn-ghost" style="padding:7px 14px" onclick="gcPolStatus(${pol.id},'active')">הפעל מחדש</button>
+          <button class="btn-ghost" style="padding:7px 14px;color:var(--red);border-color:var(--red)" onclick="gcPolDelete(${pol.id})">מחק לצמיתות</button>`
+        :`<button class="btn-ghost" style="padding:7px 14px;color:var(--red)" onclick="gcPolStatus(${pol.id},'cancelled')">בטל פוליסה</button>`}
+    </div>
+  </div>`;
+}
+async function gcPolSaveInvoice(id){
+  const el=document.getElementById('gcPolInv'); const v=el?el.value:'';
+  try{
+    await api('/api/admin/greencare/policy/invoice',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({policy_id:id,invoice_ref:v})});
+    try{ toast('מס׳ החשבונית נשמר',true); }catch(x){}
+    const it=(S.gcPolicies||[]).find(q=>q.id===id); if(it) it.invoice_ref=v;
+    if(S.gcPolDetail&&S.gcPolDetail.policy&&S.gcPolDetail.policy.id===id) S.gcPolDetail.policy.invoice_ref=v;
+    const b=document.getElementById('gcPolBody'); if(b) b.innerHTML=gcPolBodyHTML();
+  }catch(e){ try{ toast('שמירת החשבונית נכשלה',false); }catch(x){} }
+}
+async function gcPolDelete(id){
+  if(!confirm('למחוק לצמיתות את פוליסה #'+id+'? הפעולה בלתי הפיכה.')) return;
+  try{
+    await api('/api/admin/greencare/policy/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({policy_id:id})});
+    if(S.gcPolSel===id){ S.gcPolSel=null; S.gcPolDetail=null; }
+    try{ toast('הפוליסה נמחקה',true); }catch(x){}
+  }catch(e){ try{ toast(e.detail||'מחיקה נכשלה',false); }catch(x){} }
+  gcPoliciesLoad();
 }
 async function gcPolStatus(id,st){
   if(st==='cancelled'&&!confirm('לבטל את פוליסה #'+id+'?')) return;
   try{
     await api('/api/admin/order-services/greencare/status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({policy_id:id,status:st})});
   }catch(e){ try{ toast('עדכון הפוליסה נכשל',false); }catch(x){} }
-  gcPoliciesLoad();
+  await gcPoliciesLoad();
+  if(S.gcPolSel===id) gcPolLoadDetail(id);
 }
 function gcBodyHTML(){
   // רשימת תוצאות עם הרחבה אינליין — לחיצה על כרטיס פותחת את ההגדרות בתוכו,

@@ -2913,6 +2913,61 @@ def admin_gc_policies(q: str = "", x_admin_key: Optional[str] = Header(None)):
                         headers={"Cache-Control": "no-store"})
 
 
+@app.get("/api/admin/greencare/policy/{policy_id}")
+def admin_gc_policy_detail(policy_id: int, x_admin_key: Optional[str] = Header(None)):
+    """פרטי פוליסה מלאים לתצוגת אזור הניהול: לקוח, תאריך רכישה, חשבונית,
+    יוצר, מימושים והשתתפויות עדכניות."""
+    _require_admin(x_admin_key)
+    p = db.gc_policy_get(policy_id)
+    if not p:
+        raise HTTPException(404, "פוליסה לא נמצאה")
+    v = _policy_view(p)
+    v["policy"]["purchase_date"] = greencare.purchase_date_of(p)
+    v["policy"]["source"] = "site" if p.get("order_id") else "branch"
+    return JSONResponse(v, headers={"Cache-Control": "no-store"})
+
+
+class GCPolicyInvoiceIn(BaseModel):
+    policy_id: int
+    invoice_ref: str = ""
+
+
+@app.post("/api/admin/greencare/policy/invoice")
+def admin_gc_policy_invoice(body: GCPolicyInvoiceIn,
+                            x_admin_key: Optional[str] = Header(None)):
+    """שמירת/עדכון מס' חשבונית (קופה או אתר) על פוליסה."""
+    actor = _actor_name(x_admin_key, None)
+    _require_admin(x_admin_key)
+    if not db.gc_policy_get(body.policy_id):
+        raise HTTPException(404, "פוליסה לא נמצאה")
+    db.gc_policy_set_invoice(body.policy_id, body.invoice_ref)
+    logger.info("greencare: invoice_ref '%s' set on policy %s by %s",
+                (body.invoice_ref or "").strip(), body.policy_id, actor or "?")
+    return JSONResponse({"ok": True, **_policy_view(db.gc_policy_get(body.policy_id))},
+                        headers={"Cache-Control": "no-store"})
+
+
+class GCPolicyDeleteIn(BaseModel):
+    policy_id: int
+
+
+@app.post("/api/admin/greencare/policy/delete")
+def admin_gc_policy_delete(body: GCPolicyDeleteIn,
+                           x_admin_key: Optional[str] = Header(None)):
+    """מחיקה לצמיתות — רק לפוליסה מבוטלת (ביטול קודם = בלם בטיחות)."""
+    actor = _actor_name(x_admin_key, None)
+    _require_admin(x_admin_key)
+    p = db.gc_policy_get(body.policy_id)
+    if not p:
+        raise HTTPException(404, "פוליסה לא נמצאה")
+    if p.get("status") != "cancelled":
+        raise HTTPException(400, "מחיקה אפשרית רק לפוליסה מבוטלת — בטל אותה קודם")
+    db.gc_policy_delete(body.policy_id)
+    logger.info("greencare: policy %s DELETED (was cancelled, serial=%s order=%s) by %s",
+                body.policy_id, p.get("serial") or "-", p.get("order_id") or "-", actor or "?")
+    return JSONResponse({"ok": True}, headers={"Cache-Control": "no-store"})
+
+
 class BranchGCCreateIn(BaseModel):
     serial: str
     plan: str = "gcp"

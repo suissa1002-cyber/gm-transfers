@@ -226,6 +226,15 @@ def policy_dates(plan: str, purchase_date) -> tuple:
     return start.isoformat(), end.isoformat()
 
 
+def purchase_date_of(policy: dict) -> str:
+    """תאריך הרכישה, נגזר הפוך מ-policy_dates: gcp מתחיל ברכישה; gc מתחיל
+    שנה אחרי (בתום שנת היצרן)."""
+    st = _parse_date((policy or {}).get("start_date"))
+    if (policy or {}).get("plan") == "gc":
+        return _add_months(st, -12).isoformat()
+    return st.isoformat()
+
+
 def policy_status_now(policy: dict) -> str:
     """מצב תוקף אפקטיבי: 'cancelled' אם בוטלה; 'pending' אם טרם החל (gc לפני שנה2);
     'expired' אם עבר תום; אחרת 'active'."""

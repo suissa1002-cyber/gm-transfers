@@ -792,6 +792,8 @@ def _migrate():
         ("stellr_codes", "phone", "TEXT"),
         # פוליסת Green Care שנוצרת בסניף נקשרת למספר הסידורי (אין הזמנת אתר)
         ("greencare_policies", "serial", "TEXT"),
+        # מס' חשבונית (קופה/אתר) — מוזן/נערך מאזור ניהול הפוליסות
+        ("greencare_policies", "invoice_ref", "TEXT"),
     ]
     for table, col, typ in cols:
         try:
@@ -3273,6 +3275,23 @@ def gc_policy_get(policy_id) -> dict:
         cur.execute(_q("SELECT * FROM greencare_policies WHERE id = ?"), (int(policy_id),))
         r = cur.fetchone()
         return dict(r) if r else {}
+
+
+def gc_policy_delete(policy_id) -> int:
+    """מחיקה לצמיתות של פוליסה + המימושים שלה. שכבת ה-API אוכפת שרק
+    פוליסה מבוטלת נמחקת."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("DELETE FROM greencare_claims WHERE policy_id = ?"), (int(policy_id),))
+        cur.execute(_q("DELETE FROM greencare_policies WHERE id = ?"), (int(policy_id),))
+        return int(cur.rowcount or 0)
+
+
+def gc_policy_set_invoice(policy_id, invoice_ref) -> dict:
+    with _conn() as c:
+        c.cursor().execute(_q("UPDATE greencare_policies SET invoice_ref = ? WHERE id = ?"),
+                           (str(invoice_ref or "").strip(), int(policy_id)))
+    return gc_policy_get(policy_id)
 
 
 def gc_policies_list(limit: int = 500) -> list:
