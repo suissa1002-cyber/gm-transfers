@@ -118,10 +118,15 @@ jQuery(function ($) {
      CSS) — no more fighting over its text/ownership. Our proxy triggers it. */
   function ensureProxy() {
     if (!$('#gm-po-slot').length) {
-      $('.gm-summary').append('<div id="gm-po-slot"><button type="button" id="gm-pay-proxy">אישור ותשלום</button></div>');
+      $('.gm-summary').append('<div id="gm-po-slot"><button type="button" id="gm-pay-proxy" class="gm-pay-btn">אישור ותשלום</button></div>');
+    }
+    /* a second pay button at the END of the flow (mobile) — the user finishes
+       filling at the bottom and pays right there, no scrolling back up */
+    if (!$('#gm-pay-proxy2').length) {
+      $('#gm-step-payment').append('<button type="button" id="gm-pay-proxy2" class="gm-pay-btn">אישור ותשלום</button>');
     }
   }
-  $(document).on('click', '#gm-pay-proxy', function () {
+  $(document).on('click', '#gm-pay-proxy, #gm-pay-proxy2', function () {
     var $b = $('form.checkout #place_order');
     if ($b.length) $b.first().trigger('click');
     else $('form.checkout').trigger('submit');

@@ -246,14 +246,15 @@ body.gm-new-checkout ul#shipping_method li:has(input:checked){ border-color:var(
 body.gm-new-checkout ul#shipping_method label{ font-weight:700; font-size:.88rem; margin:0; }
 
 /* real WC button hidden (managed by WooCommerce/PayPlus); our proxy triggers it */
+body.gm-new-checkout #gm-pay-proxy2{ display:none; width:100%; margin-top:14px; }
 body.gm-new-checkout form.checkout #place_order{ display:none!important; }
 body.gm-new-checkout #gm-po-slot{ margin-top:16px; }
-body.gm-new-checkout #gm-pay-proxy{
+body.gm-new-checkout .gm-pay-btn{
   width:100%; background:var(--gm-accent)!important; color:#fff!important; border:none!important;
   border-radius:99px!important; padding:16px!important; font-weight:900!important; font-size:1.08rem!important;
   font-family:inherit!important; cursor:pointer; box-shadow:none!important; text-shadow:none!important; margin-top:8px; float:none; height:auto; line-height:1.2;
 }
-body.gm-new-checkout #gm-pay-proxy:hover{ filter:brightness(1.05); }
+body.gm-new-checkout .gm-pay-btn:hover{ filter:brightness(1.05); }
 body.gm-new-checkout .woocommerce-terms-and-conditions-wrapper{ margin:6px 0 12px; font-size:.85rem; color:var(--gm-ink2); }
 body.gm-new-checkout .woocommerce-terms-and-conditions-link{ color:var(--gm-accent); font-weight:700; }
 body.gm-new-checkout .gm-secure-note{ text-align:center; color:var(--gm-ink2); font-size:.8rem; }
@@ -311,7 +312,8 @@ body.gm-new-checkout .woocommerce-message{ border:1px solid var(--gm-line)!impor
   body.gm-new-checkout .order-total th{ font-size:.95rem; }
   body.gm-new-checkout .order-total .amount{ font-size:1.1rem; }
   body.gm-new-checkout .gm-tax-note{ font-size:.7rem; }
-  body.gm-new-checkout #gm-pay-proxy{ padding:14px!important; font-size:1rem!important; }
+  body.gm-new-checkout .gm-pay-btn{ padding:14px!important; font-size:1rem!important; }
+  body.gm-new-checkout #gm-pay-proxy2{ display:block; }
   body.gm-new-checkout #gm-po-slot{ margin-top:12px; }
   body.gm-new-checkout .gm-pp-body{ padding:12px; }
   body.gm-new-checkout .gm-pp-skel .sk-field{ padding:10px 12px; margin-bottom:10px; font-size:.85rem; }
