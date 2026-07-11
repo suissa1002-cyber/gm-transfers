@@ -118,8 +118,15 @@ body.gm-new-checkout li.wc_payment_method > label::before,
 body.gm-new-checkout li.wc_payment_method > label::after{ content:none!important; display:none!important; }
 body.gm-new-checkout #gm-shipping-list ul#shipping_method label{
   display:block!important; width:100%!important; margin:0!important; padding:0!important;
-  text-align:start!important; font-weight:700; font-size:.92rem; cursor:pointer; line-height:1.4; color:var(--gm-ink);
+  text-align:start!important; text-indent:0!important;
+  font-weight:700; font-size:.92rem; cursor:pointer; line-height:1.4; color:var(--gm-ink);
 }
+/* theme uses a hanging text-indent for radio labels — it INHERITS into every inner block; kill it everywhere */
+body.gm-new-checkout #gm-shipping-list ul#shipping_method label *,
+body.gm-new-checkout li.wc_payment_method label,
+body.gm-new-checkout li.wc_payment_method label *{ text-indent:0!important; }
+/* nothing may render past the rounded card edge */
+body.gm-new-checkout #gm-shipping-list ul#shipping_method li{ overflow:hidden!important; }
 body.gm-new-checkout #gm-shipping-list .gm-ship-txt{ display:block!important; text-align:start!important; }
 body.gm-new-checkout .gm-ship-ic{ width:26px; height:26px; flex:none; fill:none; stroke:var(--gm-ink); stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
 body.gm-new-checkout #gm-shipping-list li:has(input:checked) .gm-ship-ic{ stroke:var(--gm-accent); }
