@@ -128,9 +128,42 @@ jQuery(function ($) {
     }
   }
 
-  function decorateAll() { decorateShipping(); decoratePayment(); movePlaceOrder(); }
+  /* summary: "× 1" -> "כמות: 1" */
+  function fixQty() {
+    $('.woocommerce-checkout-review-order-table .product-quantity').each(function () {
+      var n = (this.textContent.match(/\d+/) || ['1'])[0];
+      if (this.textContent.indexOf('כמות') === -1) this.textContent = 'כמות: ' + n;
+    });
+  }
+
+  /* PayPlus side card follows the chosen method: placeholder for PayPlus methods, hidden for Blender */
+  function ppSlotState() {
+    var $c = $('input[name="payment_method"]:checked');
+    var sig = ($c.val() || '') + ' ' + ($c.attr('id') || '') + ' ' + ($c.closest('li').attr('class') || '');
+    var $slot = $('#gm-pp-slot');
+    if (!$slot.length) return;
+    if (/blender/.test(sig)) { $slot.prop('hidden', true).removeClass('show'); return; }
+    if (!$('#pp_iframe').length && !$slot.find('.gm-pp-wait').length) {
+      $slot.find('.gm-pp-body').html('<div class="gm-pp-wait">טופס התשלום המאובטח של PayPlus ייפתח כאן לאחר לחיצה על "אישור ותשלום"</div>');
+    }
+    $slot.prop('hidden', false).addClass('show');
+  }
+  $(document.body).on('change', 'input[name="payment_method"]', ppSlotState);
+
+  function decorateAll() { decorateShipping(); decoratePayment(); movePlaceOrder(); fixQty(); ppSlotState(); }
   decorateAll();
-  $(document.body).on('updated_checkout', decorateAll);
+  $(document.body).on('updated_checkout', function () { decorateAll(); setTimeout(decorateAll, 80); });
+
+  /* WooCommerce re-writes the button text from the gateway's order_button_text
+     after our handler — enforce ours whenever it changes */
+  (function enforceBtnText() {
+    var slot = document.getElementById('gm-po-slot');
+    if (!slot) return;
+    new MutationObserver(function () {
+      var b = document.getElementById('place_order');
+      if (b && b.textContent.trim() !== 'אישור ותשלום') b.textContent = 'אישור ותשלום';
+    }).observe(slot, { childList: true, subtree: true, characterData: true });
+  })();
 
   /* ---------- 4: PayPlus embedded iframe -> side-column slot ---------- */
   function movePP() {
@@ -139,6 +172,7 @@ jQuery(function ($) {
     var $slot = $('#gm-pp-slot');
     if (!$slot.length || $.contains($slot[0], $frame[0])) return;
     var $wrap = $frame.closest('.pp_iframe');
+    $slot.find('.gm-pp-wait').remove();
     $slot.find('.gm-pp-body').append($wrap.length ? $wrap : $frame);
     $slot.prop('hidden', false).addClass('show');
     $slot[0].scrollIntoView({ behavior: 'smooth', block: 'center' });

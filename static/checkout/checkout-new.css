@@ -89,8 +89,15 @@ body.gm-new-checkout #gm-shipping-list ul#shipping_method li{
 body.gm-new-checkout #gm-shipping-list ul#shipping_method li:has(input:checked){ border-color:var(--gm-accent)!important; background:var(--gm-accent-soft); }
 body.gm-new-checkout #gm-shipping-list ul#shipping_method input.shipping_method{
   position:static!important; float:none!important; flex:none; margin:0!important;
-  width:18px!important; height:18px!important; inset:auto!important;
+  width:18px!important; height:18px!important; inset:auto!important; opacity:1!important; transform:none!important;
 }
+/* kill theme-drawn custom radio pseudo-controls that overlap our icons */
+body.gm-new-checkout #gm-shipping-list ul#shipping_method label::before,
+body.gm-new-checkout #gm-shipping-list ul#shipping_method label::after,
+body.gm-new-checkout #gm-shipping-list ul#shipping_method li::before,
+body.gm-new-checkout #gm-shipping-list ul#shipping_method li::after,
+body.gm-new-checkout li.wc_payment_method > label::before,
+body.gm-new-checkout li.wc_payment_method > label::after{ content:none!important; display:none!important; }
 body.gm-new-checkout #gm-shipping-list ul#shipping_method label{
   flex:1; min-width:0; display:flex!important; flex-direction:row!important; flex-wrap:nowrap!important; align-items:center!important;
   gap:12px; font-weight:700; font-size:.92rem; margin:0!important; padding:0!important; cursor:pointer; line-height:1.4; color:var(--gm-ink); width:auto!important;
@@ -136,6 +143,7 @@ body.gm-new-checkout .gm-pp-card{ padding:0; overflow:hidden; }
 body.gm-new-checkout .gm-pp-bar{ display:flex; align-items:center; gap:8px; background:var(--gm-bg); padding:11px 16px; border-bottom:1px solid var(--gm-line); font-size:.85rem; font-weight:800; color:var(--gm-ink2); }
 body.gm-new-checkout .gm-pp-url{ margin-inline-start:auto; font-family:ui-monospace,monospace; font-size:.72rem; opacity:.65; font-weight:500; direction:ltr; }
 body.gm-new-checkout .gm-pp-body{ padding:14px; }
+body.gm-new-checkout .gm-pp-wait{ padding:24px 18px; text-align:center; color:var(--gm-ink2); font-size:.85rem; background:var(--gm-bg); border:1.5px dashed var(--gm-line); border-radius:12px; }
 body.gm-new-checkout .gm-pp-body .pp_iframe{ margin:0; }
 /* edit link in the summary heading */
 body.gm-new-checkout .gm-edit{ float:left; font-size:.8rem; color:var(--gm-accent); font-weight:700; text-decoration:none; }
@@ -148,8 +156,13 @@ body.gm-new-checkout .gm-summary h3#order_review_heading{ font-size:1.1rem; font
 body.gm-new-checkout .woocommerce-checkout-review-order-table{ width:100%; border:none; margin:0; }
 body.gm-new-checkout .woocommerce-checkout-review-order-table thead{ display:none; }
 body.gm-new-checkout .woocommerce-checkout-review-order-table th,
-body.gm-new-checkout .woocommerce-checkout-review-order-table td{ border:none; padding:9px 0; text-align:start; }
-body.gm-new-checkout .woocommerce-checkout-review-order-table tr{ border-bottom:1px solid var(--gm-line); }
+body.gm-new-checkout .woocommerce-checkout-review-order-table td{
+  display:table-cell!important; width:auto!important; border:none!important; padding:10px 0!important; text-align:start; vertical-align:middle; background:none!important;
+}
+body.gm-new-checkout .woocommerce-checkout-review-order-table td{ text-align:end; }
+body.gm-new-checkout .woocommerce-checkout-review-order-table td.product-name{ text-align:start; }
+body.gm-new-checkout .woocommerce-checkout-review-order-table tr{ display:table-row!important; border-bottom:1px solid var(--gm-line); }
+body.gm-new-checkout .gm-shipping-total th{ font-weight:700; color:var(--gm-ink2); }
 body.gm-new-checkout .cart_item .product-name{ color:var(--gm-ink); font-weight:600; font-size:.9rem; }
 body.gm-new-checkout .cart_item .variation{ margin:4px 0 0; font-size:.78rem; color:var(--gm-ink2); display:block; }
 body.gm-new-checkout .cart_item .variation dt{ display:none!important; }
