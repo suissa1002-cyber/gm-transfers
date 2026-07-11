@@ -488,3 +488,9 @@ body.gm-product-new *{text-indent:0!important;}
 .spec-k{width:200px;flex:none;color:var(--ink2);font-weight:700;}
 .spec-v{flex:1;color:var(--ink);}
 .cart-checkout{display:block;text-align:center;background:var(--accent);color:#fff!important;border-radius:99px;padding:13px;font-weight:900;text-decoration:none!important;margin-top:10px;}
+/* r4.2: קוביות אמון — סט אחד בלבד לכל רוחב מסך (הכפילות: desk+mob הוצגו יחד) */
+.trust-mob{display:none!important;}
+@media (max-width:900px){
+  .trust-desk{display:none!important;}
+  .trust-mob{display:grid!important;}
+}
