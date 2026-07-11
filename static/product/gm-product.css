@@ -494,3 +494,20 @@ body.gm-product-new *{text-indent:0!important;}
   .trust-desk{display:none!important;}
   .trust-mob{display:grid!important;}
 }
+
+/* ═══ r5 ═══ */
+/* 1) הכרטיסים הישנים שלי (.pwidgets) אינם — הכללים שלהם נוטרלו כדי לא לזהם
+      את הווידג'טים האמיתיים של תוסף הליבה (שמביאים עיצוב משלהם) */
+.gm-pdp-wrap .pw-ic{all:revert;}
+body.gm-product-new .pw-card .pw-ic{position:static!important;width:auto;height:auto;background:none;border-radius:0;}
+/* עדין יותר: מחזירים את העיצוב של תוסף הליבה — האייקונים שלו בזרימה, לא אבסולוטיים */
+body.gm-product-new .gm-svc-cards .pw-ic, body.gm-product-new [class*="gm-svc"] .pw-ic{position:static!important;}
+/* 2) "אפשרויות נוספות" — הווידג'ט המקורי מקבל את מראה המוקאפ */
+.gm-pdp-wrap .gm-lp-label{font-size:.95rem!important;font-weight:800!important;color:var(--ink)!important;margin:16px 0 8px!important;}
+.gm-pdp-wrap .gm-lp-strip{display:grid!important;grid-template-columns:1fr 1fr;gap:10px!important;}
+.gm-pdp-wrap .gm-lp-tile{width:auto!important;border:1.5px solid var(--line)!important;border-radius:14px!important;padding:14px 12px 12px!important;background:var(--surface)!important;}
+.gm-pdp-wrap .gm-lp-tile:hover{border-color:var(--accent)!important;box-shadow:none!important;}
+.gm-pdp-wrap .gm-lp-tile.in-cart{border-color:var(--accent)!important;background:var(--accent-soft)!important;}
+.gm-pdp-wrap .gm-lp-tile img{height:92px!important;border-radius:10px!important;background:#fff;}
+.gm-pdp-wrap .gm-lp-tile-name{font-size:.82rem!important;color:var(--ink)!important;font-weight:600!important;line-height:1.3!important;max-height:2.6em!important;}
+.gm-pdp-wrap .gm-lp-tile-price{font-size:.92rem!important;font-weight:800!important;color:var(--accent)!important;}
