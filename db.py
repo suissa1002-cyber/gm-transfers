@@ -3275,6 +3275,32 @@ def gc_policy_get(policy_id) -> dict:
         return dict(r) if r else {}
 
 
+def gc_policies_list(limit: int = 500) -> list:
+    """כל הפוליסות (אתר + סניפים), החדשה ראשונה — לאזור ניהול הפוליסות."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM greencare_policies ORDER BY id DESC LIMIT ?"),
+                    (int(limit),))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def gc_claims_for_policies(policy_ids: list) -> dict:
+    """{policy_id: [claims]} בשאילתה אחת — לחישוב שימוש ברשימת הפוליסות."""
+    ids = [int(i) for i in (policy_ids or []) if i]
+    if not ids:
+        return {}
+    marks = ",".join("?" * len(ids))
+    out = {}
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q(f"SELECT * FROM greencare_claims WHERE policy_id IN ({marks}) "
+                       "ORDER BY id"), tuple(ids))
+        for r in cur.fetchall():
+            d = dict(r)
+            out.setdefault(int(d["policy_id"]), []).append(d)
+    return out
+
+
 def gc_policy_by_serial(serial: str) -> list:
     """כל הפוליסות על מספר סידורי (החדשה ראשונה) — לבדיקת פוליסה קיימת בסניף."""
     sn = str(serial or "").strip()

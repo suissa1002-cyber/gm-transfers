@@ -7096,18 +7096,20 @@ function tiWidgetEnsure(){
 }
 // ── ווידג'ט Green Care על לוח הסניף: סריאל → זיהוי מוצר → יצירת פוליסה ──
 // מעוגן לתחתית המסך (הטרייד-אין למעלה) — שניהם נפתחים בלי להתנגש.
-function gcwState(){ if(!S._gcW) S._gcW={open:false,code:'',busy:false,err:'',res:null,plan:'',manualPrice:'',custName:'',custPhone:'',created:null,creating:false}; return S._gcW; }
-function gcwReset(){ const was=!!(S._gcW&&S._gcW.open); S._gcW={open:was,code:'',busy:false,err:'',res:null,plan:'',manualPrice:'',custName:'',custPhone:'',created:null,creating:false}; gcwRender();
+function gcwState(){ if(!S._gcW) S._gcW={open:false,mode:'serial',code:'',busy:false,err:'',res:null,plan:'',manualPrice:'',serialManual:'',custName:'',custPhone:'',created:null,creating:false}; return S._gcW; }
+function gcwReset(){ const was=!!(S._gcW&&S._gcW.open); const md=(S._gcW&&S._gcW.mode)||'serial'; S._gcW={open:was,mode:md,code:'',busy:false,err:'',res:null,plan:'',manualPrice:'',serialManual:'',custName:'',custPhone:'',created:null,creating:false}; gcwRender();
   setTimeout(()=>{ const i=document.getElementById('gcwCode'); if(i) i.focus(); },50); }
 function gcwToggle(open){ const w=gcwState(); w.open=!!open; gcwRender();
   if(open) setTimeout(()=>{ const i=document.getElementById('gcwCode'); if(i) i.focus(); },50); }
+function gcwMode(m){ const w=gcwState(); if(w.mode===m) return; w.mode=m; w.code=''; w.err=''; w.res=null; w.created=null; w.plan=''; gcwRender();
+  setTimeout(()=>{ const i=document.getElementById('gcwCode'); if(i) i.focus(); },50); }
 function gcwSetPlan(p){ gcwState().plan=p; gcwRender(); }
 async function gcwLookup(extra){
-  const w=gcwState(); const code=(w.code||'').trim();
-  if(code.length<4){ w.err='סרוק או הקלד מספר סידורי / IMEI'; return gcwRender(); }
+  const w=gcwState(); const code=(w.code||'').trim(); const pos=w.mode==='pos';
+  if(pos?code.length<2:code.length<4){ w.err=pos?'הקלד מס׳ פריט מהקופה':'סרוק או הקלד מספר סידורי / IMEI'; return gcwRender(); }
   w.busy=true; w.err=''; w.created=null; gcwRender();
   try{
-    let q='/api/branch/greencare/lookup?code='+encodeURIComponent(code);
+    let q='/api/branch/greencare/lookup?'+(pos?'pos_id=':'code=')+encodeURIComponent(code);
     if(extra&&extra.wcId) q+='&wc_id='+extra.wcId;
     if(extra&&extra.price) q+='&price='+extra.price;
     const r=await api(q,null,30000);
@@ -7124,10 +7126,12 @@ async function gcwCreate(){
   const w=gcwState(); const r=w.res; if(!r||!r.found||!w.plan||w.creating) return;
   const pr=r.pricing&&r.pricing.tiers&&r.pricing.tiers[w.plan];
   if(!pr||!pr.on) return;
+  const serial=(r.serial||w.serialManual||'').trim();
+  if(serial.length<4){ w.err='ליצירת פוליסה נדרש מספר סידורי — סרוק את המכשיר הנמכר'; return gcwRender(); }
   w.creating=true; w.err=''; gcwRender();
   try{
     const res=await api('/api/branch/greencare/policy/create',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({serial:r.serial,plan:w.plan,
+      body:JSON.stringify({serial:serial,plan:w.plan,
         device_label:(r.wc&&r.wc.name)||(r.product&&r.product.name)||'',
         wc_product_id:(r.wc&&r.wc.id)||null,
         price_paid:pr.price,device_price:(r.pricing&&r.pricing.device_price)||0,
@@ -7185,16 +7189,21 @@ function gcwRender(){
       </div>
       <button class="btn-ghost" style="width:100%;padding:10px;margin-top:12px" onclick="gcwReset()">סריקה חדשה</button>`;
   } else {
-    body=`<label class="muted" style="font-size:12px">מספר סידורי / IMEI</label>
+    const pos=w.mode==='pos';
+    body=`<div style="display:flex;gap:6px;margin-bottom:8px">
+        <button type="button" onclick="gcwMode('serial')" style="flex:1;padding:6px;font-size:11.5px;border-radius:8px;background:transparent;border:1px solid ${!pos?'#149c40':'var(--line)'};color:${!pos?'#149c40':'var(--muted)'};font-weight:${!pos?'800':'600'}">סריאל / IMEI</button>
+        <button type="button" onclick="gcwMode('pos')" style="flex:1;padding:6px;font-size:11.5px;border-radius:8px;background:transparent;border:1px solid ${pos?'#149c40':'var(--line)'};color:${pos?'#149c40':'var(--muted)'};font-weight:${pos?'800':'600'}">מס׳ פריט קופה</button>
+      </div>
+      <label class="muted" style="font-size:12px">${pos?'מס׳ פריט בקופה':'מספר סידורי / IMEI'}</label>
       <div style="display:flex;gap:8px;align-items:flex-end">
-        <input id="gcwCode" value="${escW(w.code||'')}" autocomplete="off" placeholder="סרוק או הקלד…" style="${inp};flex:1;direction:ltr;text-align:left;font-family:monospace"
+        <input id="gcwCode" value="${escW(w.code||'')}" autocomplete="off" placeholder="${pos?'הקלד מס׳ פריט…':'סרוק או הקלד…'}" style="${inp};flex:1;direction:ltr;text-align:left;font-family:monospace"
           oninput="S._gcW.code=this.value" onkeydown="if(event.key==='Enter'){S._gcW.code=this.value;gcwLookup()}">
         <button class="btn-primary" style="padding:9px 14px" onclick="gcwLookup()" ${w.busy?'disabled':''}>${w.busy?'בודק…':'בדוק'}</button>
       </div>`;
     if(w.err) body+=`<div style="color:var(--red);font-size:12px;margin-top:8px">${escW(w.err)}</div>`;
     const r=w.res;
     if(r&&!r.found){
-      body+=`<div class="muted" style="font-size:12px;margin-top:10px">הסריאל לא נמצא במלאי ואין עליו פוליסה. ודא סריקה נכונה (סריאל של המכשיר, לא של האריזה).</div>`;
+      body+=`<div class="muted" style="font-size:12px;margin-top:10px">${pos?'מס׳ הפריט לא נמצא בקופה — בדוק את המספר.':'הסריאל לא נמצא במלאי ואין עליו פוליסה. ודא סריקה נכונה (סריאל של המכשיר, לא של האריזה).'}</div>`;
     }
     if(r&&r.found){
       // פוליסות קיימות על הסריאל
@@ -7236,11 +7245,16 @@ function gcwRender(){
                 ${gcwBullets(pl,r).map(x=>`<li>${escW(x)}</li>`).join('')}
               </ul>
             </div>`; });
+          const needSerial=!r.serial;
+          const haveSerial=!needSerial||((w.serialManual||'').trim().length>=4);
           body+=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">
               <div><label class="muted" style="font-size:11.5px">שם הלקוח</label><input value="${escW(w.custName||'')}" oninput="S._gcW.custName=this.value" style="${inp}"></div>
               <div><label class="muted" style="font-size:11.5px">טלפון</label><input value="${escW(w.custPhone||'')}" oninput="S._gcW.custPhone=this.value" style="${inp};direction:ltr;text-align:left"></div>
             </div>
-            <button class="btn-primary" style="width:100%;padding:11px;margin-top:12px;font-weight:800;background:#149c40${(!w.plan||w.creating)?';opacity:.55;cursor:default':''}" onclick="gcwCreate()" ${(!w.plan||w.creating)?'disabled':''}>${w.creating?'יוצר פוליסה…':(w.plan?'צור פוליסה על הסריאל':'בחר מסלול כדי להמשיך')}</button>
+            ${needSerial?`<label class="muted" style="font-size:11.5px;display:block;margin-top:8px">מספר סידורי של המכשיר הנמכר (חובה ליצירת פוליסה)</label>
+            <input value="${escW(w.serialManual||'')}" autocomplete="off" placeholder="סרוק בעת המכירה…" style="${inp};direction:ltr;text-align:left;font-family:monospace"
+              oninput="S._gcW.serialManual=this.value" onchange="gcwRender()">`:''}
+            <button class="btn-primary" style="width:100%;padding:11px;margin-top:12px;font-weight:800;background:#149c40${(!w.plan||w.creating||!haveSerial)?';opacity:.55;cursor:default':''}" onclick="gcwCreate()" ${(!w.plan||w.creating)?'disabled':''}>${w.creating?'יוצר פוליסה…':(!w.plan?'בחר מסלול כדי להמשיך':(!haveSerial?'הזן סריאל ליצירת פוליסה':'צור פוליסה על הסריאל'))}</button>
             <div class="muted" style="font-size:10.5px;margin-top:6px;text-align:center">לאחר היצירה: הוסף בקופה פריט greencare / greencare plus וגבה את המחיר</div>`;
         }
       }
@@ -7585,6 +7599,9 @@ function svcSwitchHTML(){
     <button class="btn-ghost" style="margin-inline-start:auto;display:inline-flex;align-items:center;gap:6px;color:#149c40;padding:8px 14px" onclick="branchTiOpen()" title="תמחור טרייד-אין — לא מקושר להזמנה">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4 3.5 7.5 7 11"/><path d="M3.5 7.5H17a3.5 3.5 0 0 1 3.5 3.5"/><path d="M17 20l3.5-3.5L17 13"/><path d="M20.5 16.5H7A3.5 3.5 0 0 1 3.5 13"/></svg>
       מחשבון טרייד-אין</button>
+    <button class="btn-ghost" style="display:inline-flex;align-items:center;gap:6px;color:#149c40;padding:8px 14px" onclick="gcPoliciesOpen()" title="כל הפוליסות — אתר + סניפים">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
+      כל הפוליסות</button>
   </div>`;
 }
 async function svcLoadFlags(){ try{ S.svcFlags=await api('/api/admin/service-flags'); }catch(e){ S.svcFlags={tradein:false,greencare:false}; } if(S.view==='admin'&&S.adminTab==='greencare') renderGreenCare(); }
@@ -7598,6 +7615,21 @@ async function svcToggle(svc,enabled){
 function renderGreenCare(){
   const app=document.getElementById('app');
   if(S.svcFlags===undefined){ S.svcFlags=null; svcLoadFlags(); }
+  if(S.gcMode==='policies'){
+    app.innerHTML=`<h1 class="title" style="display:flex;align-items:center;gap:8px">${ico('shield',19)} Green Care — כל הפוליסות</h1>
+      ${adminTabsHTML()}
+      <div class="rebal-bar" style="margin-bottom:12px">
+        <button class="btn-ghost" onclick="gcPoliciesClose()">→ חזרה להגדרות מוצרים</button>
+        <span class="ls-searchwrap">
+          <input id="gcPolQ" placeholder="🔎 סריאל / לקוח / טלפון / מכשיר / מס׳ הזמנה" value="${escW(S.gcPolQ||'')}"
+            oninput="gcPolFilter(this.value)" autocomplete="off" spellcheck="false">
+          ${S.gcPolQ?`<button class="ls-clear" onclick="gcPolFilter('');renderGreenCare()" title="נקה">✕</button>`:''}
+        </span>
+        <span class="muted" style="font-size:12px">${gcPolCountsTxt()}</span>
+      </div>
+      <div id="gcPolBody">${gcPolBodyHTML()}</div>`;
+    return;
+  }
   app.innerHTML=`<h1 class="title" style="display:flex;align-items:center;gap:8px">${ico('shield',19)} Green Care — הגנה מורחבת</h1>
     ${adminTabsHTML()}
     ${svcSwitchHTML()}
@@ -7613,6 +7645,67 @@ function renderGreenCare(){
     </div>
     <div id="gcBody">${gcBodyHTML()}</div>`;
   if(S._refocusGc){ const el=document.getElementById('gcSearch'); if(el){ el.focus(); const v=el.value; el.value=''; el.value=v; } S._refocusGc=false; }
+}
+// ── אזור ניהול הפוליסות: כל הפוליסות (אתר + סניפים) במקום אחד ───────────
+function gcPoliciesOpen(){ S.gcMode='policies'; if(!S.gcPolicies) gcPoliciesLoad(); renderGreenCare(); }
+function gcPoliciesClose(){ S.gcMode=''; renderGreenCare(); }
+async function gcPoliciesLoad(){
+  S._gcPolBusy=true;
+  if(S.view==='admin'&&S.adminTab==='greencare'&&S.gcMode==='policies') renderGreenCare();
+  try{ const d=await api('/api/admin/greencare/policies'); S.gcPolicies=d.items||[]; S.gcPolCounts=d.counts||null; }
+  catch(e){ S.gcPolicies=[]; S.gcPolCounts=null; }
+  S._gcPolBusy=false;
+  if(S.view==='admin'&&S.adminTab==='greencare'&&S.gcMode==='policies') renderGreenCare();
+}
+function gcPolCountsTxt(){
+  const c=S.gcPolCounts; if(!c) return '';
+  return `${c.total} פוליסות · ${c.active} בתוקף · אתר ${c.site} · סניפים ${c.branch}`;
+}
+function gcPolFilter(v){ S.gcPolQ=v; const b=document.getElementById('gcPolBody'); if(b) b.innerHTML=gcPolBodyHTML(); }
+function gcPolBodyHTML(){
+  if(S._gcPolBusy&&!S.gcPolicies) return `<div class="empty">טוען פוליסות…</div>`;
+  let list=S.gcPolicies||[];
+  const q=(S.gcPolQ||'').trim().toLowerCase();
+  if(q) list=list.filter(p=>['serial','customer_name','customer_phone','device_label','order_id','id','created_by']
+      .some(f=>String(p[f]==null?'':p[f]).toLowerCase().includes(q)));
+  if(!list.length) return `<div class="empty">${q?'אין פוליסות שמתאימות לחיפוש':'אין פוליסות עדיין'}</div>`;
+  return list.map(gcPolCard).join('');
+}
+function gcPolCard(p){
+  const src=p.order_id
+    ?`אתר · הזמנה #${p.order_id}`
+    :`סניף${p.created_by?' · '+escW(p.created_by):''}`;
+  const u=p.usage||{};
+  const usage=p.plan==='gcp'
+    ?` · שברים ${(u.component||{}).used||0}/4 · מסך ${(u.screen||{}).used||0}/1${((u.total_loss||{}).used||0)?' · אובדן 1/1':''}`
+    :(p.claims_count?` · ${p.claims_count} מימושים`:'');
+  const act=p.status==='cancelled'
+    ?`<button class="btn-ghost" style="padding:5px 10px;font-size:11.5px" onclick="gcPolStatus(${p.id},'active')">הפעל מחדש</button>`
+    :`<button class="btn-ghost" style="padding:5px 10px;font-size:11.5px;color:var(--red)" onclick="gcPolStatus(${p.id},'cancelled')">בטל</button>`;
+  return `<div class="gcard" style="padding:12px 16px;margin-bottom:8px">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <b>#${p.id}</b>
+      <span style="font-weight:700;font-size:13px;color:#149c40">${p.plan==='gcp'?'Green Care Plus':'Green Care'}</span>
+      ${gcwStatusChip(p.status_now)}
+      <span class="muted" style="font-size:12px">${src}</span>
+      <span style="margin-inline-start:auto;font-weight:800">₪${Number(p.price_paid||0).toLocaleString()}</span>
+      ${act}
+    </div>
+    <div style="font-size:13px;font-weight:600;margin-top:6px">${escW(p.device_label||'—')}</div>
+    <div class="muted" style="font-size:12px;margin-top:2px">${[
+        p.customer_name?escW(p.customer_name):'',
+        p.customer_phone?`<span style="direction:ltr;unicode-bidi:isolate">${escW(p.customer_phone)}</span>`:'',
+        p.serial?`סריאל <span style="direction:ltr;unicode-bidi:isolate;font-family:monospace">${escW(p.serial)}</span>`:''
+      ].filter(Boolean).join(' · ')||'ללא פרטי לקוח'}</div>
+    <div class="muted" style="font-size:12px;margin-top:2px">${escW(p.start_date||'')} → ${escW(p.end_date||'')}${usage}</div>
+  </div>`;
+}
+async function gcPolStatus(id,st){
+  if(st==='cancelled'&&!confirm('לבטל את פוליסה #'+id+'?')) return;
+  try{
+    await api('/api/admin/order-services/greencare/status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({policy_id:id,status:st})});
+  }catch(e){ try{ toast('עדכון הפוליסה נכשל',false); }catch(x){} }
+  gcPoliciesLoad();
 }
 function gcBodyHTML(){
   // רשימת תוצאות עם הרחבה אינליין — לחיצה על כרטיס פותחת את ההגדרות בתוכו,

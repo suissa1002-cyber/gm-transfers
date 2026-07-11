@@ -2765,36 +2765,53 @@ def _gc_wc_guess(base, k, s, name: str) -> tuple:
 
 
 @app.get("/api/branch/greencare/lookup")
-def branch_gc_lookup(code: str = "", wc_id: int = 0, price: float = 0,
+def branch_gc_lookup(code: str = "", pos_id: str = "", wc_id: int = 0, price: float = 0,
                      x_admin_key: Optional[str] = Header(None),
                      x_device_token: Optional[str] = Header(None)):
     """ווידג'ט Green Care בסניף: סריאל/IMEI → מוצר (קופה+אתר) + תמחור פוליסות
-    אפקטיבי + פוליסות קיימות על הסריאל. wc_id — בחירת נציג מתוך ההצעות;
+    אפקטיבי + פוליסות קיימות על הסריאל. pos_id — חיפוש לפי מס' פריט בקופה
+    (לקוח מתעניין, אין עדיין סריאל ביד); wc_id — בחירת נציג מתוך ההצעות;
     price — מחיר מכשיר ידני כשאין התאמת אתר."""
     _require_admin_or_device(x_admin_key, x_device_token)
     code = (code or "").strip()
-    if len(code) < 4:
-        raise HTTPException(400, "קוד קצר מדי")
-    row = db.serial_product(code)
-    policies = [_policy_view(p) for p in db.gc_policy_by_serial(code)]
-    if not row and not policies:
-        return JSONResponse({"found": False, "serial": code, "policies": []},
-                            headers={"Cache-Control": "no-store"})
-    pos_name = (row or {}).get("product_name") or ""
-    pos_id = (row or {}).get("product_id")
+    pos_id = (pos_id or "").strip()
+    serial, row, nop, policies = "", None, {}, []
+    if pos_id:
+        # מצב מס' פריט: מזהים ישירות מהקופה, בלי סריאל ובלי בדיקת פוליסות
+        try:
+            import poller
+            nop = poller.client().get_product(pos_id) or {}
+        except Exception as e:  # noqa: BLE001
+            logger.warning("branch gc neworder product %s failed: %s", pos_id, e)
+        if not nop.get("id"):
+            return JSONResponse({"found": False, "serial": "", "policies": []},
+                                headers={"Cache-Control": "no-store"})
+        pos_name = str(nop.get("name") or "")
+    else:
+        if len(code) < 4:
+            raise HTTPException(400, "קוד קצר מדי")
+        serial = code
+        row = db.serial_product(code)
+        policies = [_policy_view(p) for p in db.gc_policy_by_serial(code)]
+        if not row and not policies:
+            return JSONResponse({"found": False, "serial": code, "policies": []},
+                                headers={"Cache-Control": "no-store"})
+        pos_name = (row or {}).get("product_name") or ""
+        pos_id = (row or {}).get("product_id")
     creds = _wc_creds()
-    wcp, sugg, nop = None, [], {}
+    wcp, sugg = None, []
     if creds:
         base, k, s = creds
         if wc_id:
             wcp = _gc_wc_by_id(base, k, s, wc_id) or None
         elif pos_id:
             # קודם קישור מק"ט (ברקוד קופה = SKU אתר), אחר-כך ניחוש לפי שם
-            try:
-                import poller
-                nop = poller.client().get_product(pos_id) or {}
-            except Exception as e:  # noqa: BLE001
-                logger.warning("branch gc neworder product %s failed: %s", pos_id, e)
+            if not nop:
+                try:
+                    import poller
+                    nop = poller.client().get_product(pos_id) or {}
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("branch gc neworder product %s failed: %s", pos_id, e)
             bc = str(nop.get("barcode") or "").strip()
             if bc:
                 import requests as _rq
@@ -2843,13 +2860,47 @@ def branch_gc_lookup(code: str = "", wc_id: int = 0, price: float = 0,
         logger.warning("branch gc screen deductible failed: %s", e)
         extras["screen"] = {}
     return JSONResponse({
-        "found": True, "serial": code,
-        "product": ({"pos_id": pos_id, "name": pos_name} if row else None),
+        "found": True, "serial": serial,
+        "product": ({"pos_id": pos_id, "name": pos_name} if pos_name else None),
         "wc": ({"id": wcp.get("id"), "name": wcp.get("name") or "",
                 "sku": wcp.get("sku") or "",
                 "image": ((wcp.get("images") or [{}])[0] or {}).get("src", "")} if wcp else None),
         "suggestions": sugg, "pricing": pricing, "extras": extras, "policies": policies,
     }, headers={"Cache-Control": "no-store"})
+
+
+@app.get("/api/admin/greencare/policies")
+def admin_gc_policies(q: str = "", x_admin_key: Optional[str] = Header(None)):
+    """אזור ניהול הפוליסות: כל הפוליסות במקום אחד — גם מהאתר (order_id) וגם
+    מהסניפים (serial). q — סינון חופשי על סריאל/לקוח/טלפון/מכשיר/מס' הזמנה."""
+    _require_admin(x_admin_key)
+    rows = db.gc_policies_list(limit=500)
+    ql = (q or "").strip().lower()
+    if ql:
+        def _hit(p):
+            blob = " ".join(str(p.get(f) or "") for f in
+                            ("serial", "customer_name", "customer_phone",
+                             "device_label", "order_id", "id", "created_by")).lower()
+            return ql in blob
+        rows = [p for p in rows if _hit(p)]
+    claims_map = db.gc_claims_for_policies([p["id"] for p in rows])
+    items = []
+    for p in rows:
+        claims = claims_map.get(int(p["id"]), [])
+        items.append({
+            **p,
+            "plan_label": greencare.PLAN_LABELS.get(p.get("plan"), p.get("plan")),
+            "status_now": greencare.policy_status_now(p),
+            "source": "site" if p.get("order_id") else "branch",
+            "usage": greencare.usage_summary(p, claims),
+            "claims_count": len(claims),
+        })
+    counts = {"total": len(items),
+              "active": sum(1 for i in items if i["status_now"] == "active"),
+              "site": sum(1 for i in items if i["source"] == "site"),
+              "branch": sum(1 for i in items if i["source"] == "branch")}
+    return JSONResponse({"items": items, "counts": counts},
+                        headers={"Cache-Control": "no-store"})
 
 
 class BranchGCCreateIn(BaseModel):
