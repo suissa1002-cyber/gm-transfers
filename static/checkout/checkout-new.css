@@ -16,7 +16,7 @@ body.woocommerce-checkout.gm-new-checkout{
 body.gm-new-checkout .entry-title,
 body.gm-new-checkout .woocommerce-breadcrumb{ display:none; }
 
-body.gm-new-checkout .gm-co-title{ max-width:1180px; margin:6px auto 18px; font-size:clamp(1.5rem,3vw,2.1rem); font-weight:900; letter-spacing:-.01em; color:var(--gm-ink); }
+body.gm-new-checkout .gm-co-title{ max-width:1200px; margin:6px auto 18px; font-size:clamp(1.5rem,3vw,2.1rem); font-weight:900; letter-spacing:-.01em; color:var(--gm-ink); }
 
 /* layout */
 body.gm-new-checkout .gm-co-grid{ display:flex; flex-direction:row; gap:26px; align-items:flex-start; max-width:1200px; margin:0 auto; }
