@@ -481,3 +481,10 @@ body.gm-product-new *{text-indent:0!important;}
 .gm-atc ul.variable-items-wrapper li.button-variable-item .variable-item-span{font-size:1.02rem!important;font-weight:800!important;}
 .gm-atc ul.variable-items-wrapper li.button-variable-item.selected .variable-item-span{color:var(--accent)!important;}
 .gm-atc ul.variable-items-wrapper li.variable-item.selected{background:var(--accent-soft)!important;border-color:var(--accent)!important;box-shadow:0 0 0 1px var(--accent)!important;}
+/* r4: מצב "לא זמין בצבע הזה" לתצורות (הקפיצה החכמה) + specwrap */
+.gm-atc ul.variable-items-wrapper li.variable-item.gm-off{opacity:.38;border-style:dashed!important;}
+.specwrap{max-width:860px;}
+.spec-row{display:flex;gap:18px;padding:11px 0;border-bottom:1px dashed var(--line);font-size:.93rem;}
+.spec-k{width:200px;flex:none;color:var(--ink2);font-weight:700;}
+.spec-v{flex:1;color:var(--ink);}
+.cart-checkout{display:block;text-align:center;background:var(--accent);color:#fff!important;border-radius:99px;padding:13px;font-weight:900;text-decoration:none!important;margin-top:10px;}

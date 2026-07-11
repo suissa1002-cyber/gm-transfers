@@ -162,3 +162,280 @@
     });
   });
 })(jQuery);
+
+/* ═══ r4 — פורט 1:1 של טכנולוגיית המוקאפ ═══
+   מקור האמת: agents/homepage/design/generate_product_mockup.py + fetch_product.py */
+(function ($) {
+  'use strict';
+
+  /* ---------- מטריצת וריאציות דלילה: cfg|color → {price, stock} ---------- */
+  var M = { price: {}, avail: {}, colors: [], cfgs: [], colorAttr: null, cfgAttrs: [] };
+  function buildMatrix() {
+    var $form = $('form.variations_form');
+    if (!$form.length) return false;
+    var vars = $form.data('product_variations');
+    if (!vars || !vars.length) return false;
+    var attrNames = Object.keys(vars[0].attributes || {});
+    M.colorAttr = attrNames.find(function (n) { return /color|צבע/i.test(n); }) || null;
+    M.cfgAttrs = attrNames.filter(function (n) { return n !== M.colorAttr; });
+    vars.forEach(function (v) {
+      var color = M.colorAttr ? (v.attributes[M.colorAttr] || '') : 'יחיד';
+      var cfg = M.cfgAttrs.map(function (n) { return v.attributes[n] || ''; }).join('|') || 'יחיד';
+      var key = cfg + '||' + color;
+      M.price[key] = v.display_price;
+      M.avail[key] = v.is_in_stock ? 'in' : 'out';
+      if (M.colors.indexOf(color) < 0) M.colors.push(color);
+      if (M.cfgs.indexOf(cfg) < 0) M.cfgs.push(cfg);
+    });
+    return true;
+  }
+  function curVal(attr) {
+    var $ul = $('.gm-atc .variable-items-wrapper[data-attribute_name="' + attr + '"]');
+    return $ul.find('.variable-item.selected').attr('data-value') || '';
+  }
+  function curColor() { return M.colorAttr ? curVal(M.colorAttr) : 'יחיד'; }
+  function curCfg() {
+    return M.cfgAttrs.map(function (n) { return curVal(n); }).join('|') || 'יחיד';
+  }
+  function itemUL(attr) { return $('.gm-atc .variable-items-wrapper[data-attribute_name="' + attr + '"]'); }
+
+  /* ---------- הבורר החכם (refresh/pickStor מהמוקאפ) ---------- */
+  function refreshSmart() {
+    if (!M.cfgs.length) return;
+    var color = curColor();
+    /* אפרוּר תצורות שלא קיימות בצבע הנבחר (מטריצה דלילה) */
+    M.cfgAttrs.forEach(function (attr, ai) {
+      itemUL(attr).find('.variable-item').each(function () {
+        var val = $(this).attr('data-value');
+        var exists = M.cfgs.some(function (cfg) {
+          var parts = cfg.split('|');
+          return parts[ai] === val && ((cfg + '||' + color) in M.price);
+        });
+        $(this).toggleClass('gm-off', !exists);
+      });
+    });
+    /* מלאי + טקסט לפי הצירוף שנבחר */
+    var key = curCfg() + '||' + color;
+    if (key in M.avail) {
+      var ok = M.avail[key] !== 'out';
+      var $ins = $('.instk');
+      if (ok) $ins.removeClass('oos').html('✓ במלאי · מוכן למשלוח');
+      else $ins.addClass('oos').html('אזל מהמלאי · זמין בהזמנה מהספק');
+    }
+  }
+  /* קפיצה חכמה: תצורה שלא קיימת בצבע הנוכחי → עוברים לצבע שיש בו (עדיפות במלאי) */
+  $(document).on('click', '.gm-atc .variable-item.gm-off', function (e) {
+    e.preventDefault(); e.stopImmediatePropagation();
+    var $it = $(this);
+    var attr = $it.closest('.variable-items-wrapper').data('attribute_name');
+    var ai = M.cfgAttrs.indexOf(attr);
+    if (ai < 0 || !M.colorAttr) return;
+    var val = $it.attr('data-value');
+    var candidates = M.colors.filter(function (c) {
+      return M.cfgs.some(function (cfg) { return cfg.split('|')[ai] === val && ((cfg + '||' + c) in M.price); });
+    });
+    var pref = candidates.find(function (c) {
+      return M.cfgs.some(function (cfg) { return cfg.split('|')[ai] === val && M.avail[cfg + '||' + c] !== 'out'; });
+    }) || candidates[0];
+    if (!pref) return;
+    /* בוחרים קודם את הצבע המתאים, ואז את התצורה המבוקשת */
+    itemUL(M.colorAttr).find('.variable-item[data-value="' + pref + '"]').trigger('click');
+    setTimeout(function () { $it.removeClass('gm-off').trigger('click'); setTimeout(refreshSmart, 120); }, 150);
+  });
+  $(document).on('click', '.gm-atc .variable-item', function () { setTimeout(refreshSmart, 120); });
+  $(document).on('found_variation reset_data', 'form.variations_form', function () { setTimeout(refreshSmart, 60); });
+
+  /* ---------- פרסר המפרט (פורט מדויק של הפרסר בפייתון) ---------- */
+  var SPEC_LABELS = ["גודל מסך", "עמיד למים", "רזולוציה", "PPI", "צפיפות", "מעבד", "זיכרון RAM",
+    "נפח אחסון", "מאפיינים נוספים", "חיישן ביומטרי", "חיישנים", "מימדים", "מידות",
+    "מצלמה קדמית", "מצלמה אחורית", "מצלמה ראשית", "מצלמות", "משקל", "פלט שמע",
+    "סים", "קיבולת סוללה", "סוללה", "טעינה", "מערכת הפעלה", "ערכת שבבים", "מאיץ גרפי",
+    "חיבור USB", "בלוטות", "תדרי", "צבע", "מסך", "דגם"];
+  function isLabel(s) {
+    s = s.replace(/^\*+/, '').trim();
+    return s.length <= 32 && SPEC_LABELS.some(function (k) { return s.indexOf(k) > -1; });
+  }
+  function parseSpec(text) {
+    var lines = text.split('\n').map(function (x) { return x.trim(); }).filter(Boolean);
+    var colon = lines.filter(function (l) { return l.indexOf(':') > -1; }).length;
+    var rows = [];
+    if (lines.length && colon >= lines.length * 0.5) {
+      lines.forEach(function (l) {
+        var i = l.indexOf(':');
+        if (i > -1) {
+          var k = l.slice(0, i).replace(/[*–-\s]+$/,'').replace(/^[*–-\s]+/,'').trim();
+          var v = l.slice(i + 1).trim();
+          if (k && v && k.length <= 40) rows.push([k, [v]]);
+          else if (v && rows.length) rows[rows.length - 1][1].push(v);
+        } else if (rows.length) rows[rows.length - 1][1].push(l);
+      });
+    } else {
+      lines.forEach(function (l) {
+        if (isLabel(l)) rows.push([l.replace(/^\*+/, '').trim(), []]);
+        else if (rows.length) rows[rows.length - 1][1].push(l);
+      });
+    }
+    return rows.filter(function (r) { return r[1].length; });
+  }
+  function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function buildSpec() {
+    var $tbl = $('#tab-spec .spectbl');
+    if (!$tbl.length || $tbl.data('gmParsed')) return;
+    var raw = '';
+    $tbl.find('tr').each(function () {
+      var k = $(this).find('th').text().trim();
+      if (k.indexOf('מפרט') > -1) raw = $(this).find('td').text();
+    });
+    if (!raw.trim()) return;
+    var rows = parseSpec(raw);
+    if (rows.length < 3) return;   /* פורמט לא מזוהה — משאירים את הטבלה */
+    /* שורות תכונה גנריות שימושיות (בלי צירי וריאציה ובלי בלוב המפרט) */
+    var extra = '';
+    $tbl.find('tr').each(function () {
+      var k = $(this).find('th').text().trim(), v = $(this).find('td').text().trim();
+      if (!k || k.indexOf('מפרט') > -1 || k.indexOf('בחירת') > -1) return;
+      if (rows.some(function (r) { return r[0] === k; })) return;
+      extra += '<div class="spec-row"><div class="spec-k">' + esc(k) + '</div><div class="spec-v">' + esc(v) + '</div></div>';
+    });
+    var h = rows.map(function (r) {
+      return '<div class="spec-row"><div class="spec-k">' + esc(r[0]) + '</div><div class="spec-v">' + esc(r[1].join(' · ')) + '</div></div>';
+    }).join('') + extra;
+    $tbl.replaceWith('<div class="specwrap">' + h + '</div>');
+  }
+
+  /* ---------- חילוץ התיאור הקצר: פסקת שיווק + אחריות לקוביות (כמו fetch_product) ---------- */
+  function extractShort() {
+    var $raw = $('#gm-shortdesc-raw');
+    var market = '', warranty = '';
+    if ($raw.length) {
+      $raw.find('p').each(function () {
+        var txt = $(this).text().trim();
+        if (!txt || $(this).find('img').length) return;
+        if (/^אחריות|אחריות:/.test(txt)) { warranty = (txt.split(':')[1] || txt).trim(); }
+        else if (/משלוח מהיר|אקספרס|^משלוח חינם/.test(txt)) { /* שורות שירות — לקוביות בלבד */ }
+        else if (!market && txt.indexOf('תשלומים') < 0) market = txt;
+      });
+    }
+    if (market) $('#gmPshort').text(market); else $('#gmPshort').remove();
+    return { warranty: warranty || 'שנה אחריות יבואן' };
+  }
+
+  /* ---------- קוביות אמון — התוכן הדינמי של המוקאפ ---------- */
+  function buildTrust(warranty) {
+    var price = 0;
+    var m = ($('.pricebox .price').text().match(/[\d,]+/) || [''])[0].replace(/,/g, '');
+    price = parseInt(m, 10) || 0;
+    var free = price >= 500;
+    var cubes = [
+      { t: free ? 'משלוח חינם' : 'משלוח רגיל', s: '1–6 ימי עסקים' },
+      { t: 'משלוח באותו היום', s: 'בהזמנה עד 13:00 · א׳–ה׳ · ₪89 · ב״ש–חיפה' },
+      { t: 'עד 12 תשלומים', s: 'אשראי · 3 ללא ריבית' },
+      { t: 'אחריות', s: warranty }
+    ];
+    $('.trust').each(function () {
+      $(this).find('.titem').each(function (i) {
+        var c = cubes[i % 4];
+        var $tx = $(this).find('.t-tx');
+        var target = $tx.length ? $tx : $(this);
+        target.html('<b>' + esc(c.t) + '</b><span>' + esc(c.s) + '</span>');
+      });
+    });
+  }
+
+  /* ---------- מיני-סל (דרור) — הסל האמיתי דרך Store API ---------- */
+  var cartNonce = null;
+  function storeNonce() {
+    if (cartNonce) return Promise.resolve(cartNonce);
+    return fetch('/wp-json/wc/store/v1/cart', { credentials: 'same-origin' })
+      .then(function (r) { cartNonce = r.headers.get('Nonce'); return r.json(); })
+      .then(function (c) { drawerRender(c); return cartNonce; });
+  }
+  function cartOp(path, payload) {
+    return storeNonce().then(function (n) {
+      return fetch('/wp-json/wc/store/v1/cart/' + path, {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'Nonce': n }, body: JSON.stringify(payload)
+      });
+    }).then(function (r) { cartNonce = r.headers.get('Nonce') || cartNonce; return r.json(); });
+  }
+  function money(cents, minor) { return '‏₪' + (cents / Math.pow(10, minor)).toLocaleString('en-US'); }
+  function drawerRender(c) {
+    var $items = $('#cartItems'); if (!$items.length || !c || !c.totals) return;
+    var minor = c.totals.currency_minor_unit || 0;
+    var count = 0;
+    if (!(c.items || []).length) $items.html('<div class="cart-empty">הסל ריק</div>');
+    else $items.html(c.items.map(function (it, i) {
+      count += it.quantity;
+      var img = (it.images && it.images[0]) ? it.images[0].thumbnail : '';
+      var varTxt = (it.variation || []).map(function (v) { return v.value; }).join(' · ');
+      return '<div class="citem" data-key="' + it.key + '"><img class="citem-img" src="' + img + '" alt="">' +
+        '<div class="citem-main"><div class="citem-nm">' + esc(it.name) + '</div>' +
+        (varTxt ? '<div class="citem-var">' + esc(varTxt) + '</div>' : '') +
+        '<div class="citem-bottom"><div class="cqty"><button data-d="-1">−</button><span>' + it.quantity + '</span><button data-d="1">+</button></div>' +
+        '<span class="citem-pr">' + money(it.totals.line_total, minor) + '</span></div></div>' +
+        '<button class="citem-rm" aria-label="הסר"><svg viewBox="0 0 24 24" style="width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button></div>';
+    }).join(''));
+    $('#cartSubtotal').text(money(+c.totals.total_items, minor));
+    $('.cart-count-n').text(count);
+    $('.mcart-b').text(count);
+    $('.cart-pill').html($('.cart-pill svg').prop('outerHTML') + ' הסל שלי (' + count + ')');
+    var sub = (+c.totals.total_items) / Math.pow(10, minor);
+    var TH = 500, $ship = $('#cartShip');
+    if (sub >= TH) $ship.html('<b>קיבלת משלוח חינם!</b><div class="bar"><div class="fill" style="width:100%"></div></div>');
+    else $ship.html('עוד <b>‏₪' + (TH - sub).toLocaleString('en-US') + '</b> ותיהנו ממשלוח חינם<div class="bar"><div class="fill" style="width:' + Math.min(100, Math.round(sub / TH * 100)) + '%"></div></div>');
+  }
+  function drawerEnsure() {
+    if ($('#cartDrawer').length) return;
+    $('body').append(
+      '<div class="cart-overlay" id="cartOverlay"></div>' +
+      '<aside class="cart-drawer" id="cartDrawer" aria-label="עגלת הקניות">' +
+      '<div class="cart-head"><strong>הסל שלי (<span class="cart-count-n">0</span>)</strong>' +
+      '<button class="mclose" id="cartClose" aria-label="סגור">×</button></div>' +
+      '<div class="cart-added" id="cartAdded">✓ המוצר נוסף לסל</div>' +
+      '<div class="cart-ship" id="cartShip"></div>' +
+      '<div class="cart-items" id="cartItems"></div>' +
+      '<div class="cart-foot"><div class="cart-subtotal"><span>סכום ביניים</span><span class="cs-amt" id="cartSubtotal">‏₪0</span></div>' +
+      '<div class="cart-note">המשלוח מחושב בעמוד התשלום</div>' +
+      '<a class="btn primary cart-checkout" href="/מעבר-לתשלום/">מעבר לתשלום</a></div></aside>');
+    $('#cartOverlay,#cartClose').on('click', closeDrawer);
+  }
+  function openDrawer(added) {
+    drawerEnsure();
+    $('#cartDrawer').addClass('open'); $('#cartOverlay').addClass('open');
+    document.body.style.overflow = 'hidden';
+    if (added) { var $a = $('#cartAdded'); $a.addClass('show'); clearTimeout(window._caT); window._caT = setTimeout(function () { $a.removeClass('show'); }, 2600); }
+  }
+  function closeDrawer() { $('#cartDrawer').removeClass('open'); $('#cartOverlay').removeClass('open'); document.body.style.overflow = ''; }
+  $(document).on('click', '.citem .cqty button', function () {
+    var $ci = $(this).closest('.citem'), d = +$(this).data('d');
+    var q = parseInt($ci.find('.cqty span').text(), 10) + d;
+    (q < 1 ? cartOp('remove-item', { key: $ci.data('key') }) : cartOp('update-item', { key: $ci.data('key'), quantity: q })).then(drawerRender);
+  });
+  $(document).on('click', '.citem-rm', function () {
+    cartOp('remove-item', { key: $(this).closest('.citem').data('key') }).then(drawerRender);
+  });
+  /* הוספה לסל בלי לעזוב את העמוד → נפתח הדרור (כמו במוקאפ) */
+  $(document).on('submit', '.gm-atc form.cart', function (e) {
+    var $form = $(this);
+    var pid = +($form.find('input[name=variation_id]').val() || $form.find('button[name=add-to-cart]').val() || $form.data('product_id') || 0);
+    if (!pid) return; /* בלי מזהה — נופלים לזרימה הרגילה */
+    e.preventDefault();
+    var qty = +($form.find('input.qty').val() || 1);
+    cartOp('add-item', { id: pid, quantity: qty }).then(function (c) {
+      if (c && c.items) { drawerRender(c); openDrawer(true); }
+      else { $form.off('submit').trigger('submit'); }  /* שגיאה — הזרימה הרגילה */
+    });
+  });
+  /* פיל הסל בהדר פותח את הדרור */
+  $(document).on('click', '.cart-pill, .mcart', function (e) { e.preventDefault(); openDrawer(false); });
+
+  /* ---------- init ---------- */
+  $(function () {
+    buildMatrix();
+    setTimeout(refreshSmart, 700);
+    buildSpec();
+    var ex = extractShort();
+    buildTrust(ex.warranty);
+    storeNonce();  /* טוען את מצב הסל האמיתי לפיל ולדרור */
+  });
+})(jQuery);
