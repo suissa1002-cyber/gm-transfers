@@ -164,6 +164,7 @@ body.gm-new-checkout .payplus-checkout-image-container{ background:transparent; 
 body.gm-new-checkout .payplus-checkout-image{ max-height:26px; width:auto; }
 body.gm-new-checkout #pp_iframe{ width:100%!important; border:none!important; border-radius:0; min-height:560px; background:var(--gm-surface); display:block; }
 
+body.gm-new-checkout .gm-pp-bar{ display:none!important; }
 /* PayPlus embed slot in the side column (mockup) */
 body.gm-new-checkout .gm-pp-card{ padding:0; overflow:hidden; }
 body.gm-new-checkout .gm-pp-bar{ display:flex; align-items:center; gap:8px; background:var(--gm-bg); padding:11px 16px; border-bottom:1px solid var(--gm-line); font-size:.85rem; font-weight:800; color:var(--gm-ink2); }
