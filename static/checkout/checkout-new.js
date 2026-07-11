@@ -139,10 +139,74 @@ jQuery(function ($) {
   });
 
   /* summary: "× 1" -> "כמות: 1" */
+  /* one-page checkout: the summary IS the cart — inline qty +/− and remove
+     per item via the Store API (same-origin), no separate cart page needed */
+  var gmCartNonce = null;
+  function gmStoreNonce() {
+    if (gmCartNonce) return Promise.resolve(gmCartNonce);
+    return fetch('/wp-json/wc/store/v1/cart', { credentials: 'same-origin' })
+      .then(function (r) { gmCartNonce = r.headers.get('Nonce'); return gmCartNonce; });
+  }
+  function gmCartOp(path, payload) {
+    return gmStoreNonce().then(function (n) {
+      return fetch('/wp-json/wc/store/v1/cart/' + path, {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'Nonce': n },
+        body: JSON.stringify(payload)
+      });
+    }).then(function (r) {
+      gmCartNonce = r.headers.get('Nonce') || gmCartNonce;
+      if (!r.ok) throw new Error('cart op ' + r.status);
+      return r.json();
+    });
+  }
+  function gmKeyByIndex(idx) {
+    /* fallback when the row carries no data-key (pre-v0.6 template): both the
+       summary and the Store API iterate the cart in the same order */
+    return gmStoreNonce().then(function (n) {
+      return fetch('/wp-json/wc/store/v1/cart', { credentials: 'same-origin', headers: { 'Nonce': n } });
+    }).then(function (r) { return r.json(); })
+      .then(function (c) { var it = (c.items || [])[idx]; return it && it.key; });
+  }
+  function gmEditItem($tr, qty) {
+    if ($tr.data('gmBusy')) return;
+    $tr.data('gmBusy', 1).css('opacity', .45);
+    var direct = $tr.attr('data-key');
+    var idx = $('.gm-summary tr.cart_item').index($tr);
+    (direct ? Promise.resolve(direct) : gmKeyByIndex(idx)).then(function (key) {
+      if (!key) throw new Error('no key');
+      return qty > 0 ? gmCartOp('update-item', { key: key, quantity: qty })
+                     : gmCartOp('remove-item', { key: key });
+    }).then(function (c) {
+      if (!c || !(c.items || []).length) { location.reload(); return; }
+      $(document.body).trigger('update_checkout');
+    }).catch(function () {
+      $tr.data('gmBusy', 0).css('opacity', 1);
+      alert('עדכון הסל נכשל — נסה שוב');
+    });
+  }
+  $(document).on('click', '.gm-qty-btn', function () {
+    var $btn = $(this), d = parseInt($btn.attr('data-d'), 10) || 0;
+    var $tr = $btn.closest('tr.cart_item');
+    var qty = parseInt($btn.closest('.gm-qty').find('b').text(), 10) || 1;
+    gmEditItem($tr, Math.max(0, qty + d));
+  });
+  $(document).on('click', '.gm-oi-rm', function () {
+    gmEditItem($(this).closest('tr.cart_item'), 0);
+  });
   function fixQty() {
-    $('.woocommerce-checkout-review-order-table .product-quantity').each(function () {
-      var n = (this.textContent.match(/\d+/) || ['1'])[0];
-      if (this.textContent.indexOf('כמות') === -1) this.textContent = 'כמות: ' + n;
+    $('.gm-summary tr.cart_item').each(function () {
+      var $tr = $(this);
+      if ($tr.find('.gm-qty').length) return;
+      var $q = $tr.find('.product-quantity').first();
+      var qty = parseInt((($q.text() || '').match(/\d+/) || ['1'])[0], 10);
+      var ctl = '<span class="gm-qty">' +
+        '<button type="button" class="gm-qty-btn" data-d="-1" aria-label="הפחת כמות">−</button>' +
+        '<b>' + qty + '</b>' +
+        '<button type="button" class="gm-qty-btn" data-d="1" aria-label="הוסף כמות">+</button></span>' +
+        '<a href="javascript:void(0)" class="gm-oi-rm">הסר</a>';
+      if ($q.length) $q.replaceWith(ctl);
+      else $tr.find('.gm-oi-main').append(ctl);
     });
   }
 

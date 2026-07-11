@@ -221,6 +221,14 @@ body.gm-new-checkout .gm-pp-skel .sk-row{ display:grid; grid-template-columns:1f
 body.gm-new-checkout .gm-pp-skel .sk-note{ margin-top:4px; text-align:center; color:var(--gm-ink2); font-size:12.5px; background:var(--gm-accent-soft); border-radius:10px; padding:9px 12px; }
 body.gm-new-checkout .gm-pp-body .pp_iframe{ margin:0; }
 /* edit link in the summary heading */
+/* inline cart editing in the summary — the עריכה link (old cart page) is retired */
+body.gm-new-checkout .gm-edit{ display:none!important; }
+body.gm-new-checkout .gm-qty{ display:inline-flex; align-items:center; gap:8px; margin-top:6px; vertical-align:middle; }
+body.gm-new-checkout .gm-qty-btn{ width:22px; height:22px; border:1px solid var(--gm-line)!important; border-radius:7px; background:var(--gm-surface)!important; color:var(--gm-ink)!important; font-size:14px; line-height:1; display:inline-flex; align-items:center; justify-content:center; cursor:pointer; padding:0!important; font-weight:700; box-shadow:none!important; }
+body.gm-new-checkout .gm-qty-btn:hover{ border-color:var(--gm-accent)!important; color:var(--gm-accent)!important; }
+body.gm-new-checkout .gm-qty b{ font-size:13px; min-width:14px; text-align:center; font-variant-numeric:tabular-nums; }
+body.gm-new-checkout .gm-oi-rm{ font-size:11.5px; color:var(--gm-ink2)!important; text-decoration:underline; margin-inline-start:10px; }
+body.gm-new-checkout .gm-oi-rm:hover{ color:#d33!important; }
 body.gm-new-checkout .gm-edit{ float:left; font-size:13px; color:var(--gm-accent); font-weight:700; text-decoration:none; }
 body.gm-new-checkout .gm-edit:hover{ text-decoration:underline; }
 
