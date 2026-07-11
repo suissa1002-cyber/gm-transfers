@@ -552,3 +552,10 @@ body.gm-product-new .gm-svc-addons .addon-btn:hover{background:var(--accent-soft
 .gm-pdp-wrap .gm-lp-strip{position:relative;}
 body.gm-product-new .gm-svc-addons .addon.greencare .gc-logo{font-size:1.32rem!important;}
 body.gm-product-new .gm-svc-addons .addon.greencare .addon-shield{display:none!important;}
+/* r7.1: אפשרויות נוספות — שורת אביזר קומפקטית (זה תוסף למוצר, לא המוצר) */
+.gm-pdp-wrap .gm-lp-tile{display:flex!important;align-items:center!important;gap:10px!important;text-align:start!important;padding:9px 12px!important;padding-inline-end:40px!important;min-height:0!important;}
+.gm-pdp-wrap .gm-lp-tile img{width:46px!important;height:46px!important;flex:none!important;border-radius:8px!important;margin:0!important;}
+.gm-pdp-wrap .gm-lp-tile-name{margin:0!important;font-size:.78rem!important;line-height:1.25!important;-webkit-line-clamp:2;max-height:2.5em!important;}
+.gm-pdp-wrap .gm-lp-tile-price{margin:0!important;margin-inline-start:auto!important;flex:none!important;font-size:.88rem!important;}
+.gm-pdp-wrap .gm-lp-tile > div:not([class]){flex:1;min-width:0;}
+.gm-pdp-wrap .gm-lp-plus{position:absolute!important;top:50%!important;transform:translateY(-50%)!important;inset-inline-end:8px!important;left:auto!important;right:auto!important;}
