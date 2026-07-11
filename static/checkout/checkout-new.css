@@ -82,11 +82,15 @@ body.gm-new-checkout #gm-shipping-list .woocommerce-shipping-destination,
 body.gm-new-checkout #gm-shipping-list .woocommerce-shipping-calculator{ display:none; }
 body.gm-new-checkout #gm-shipping-list ul#shipping_method{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:10px; }
 body.gm-new-checkout #gm-shipping-list ul#shipping_method li{
-  border:1.5px solid var(--gm-line); border-radius:14px; padding:14px 16px; margin:0;
-  display:flex; align-items:center; gap:12px; background:var(--gm-surface); transition:border-color .14s, background .14s; cursor:pointer;
+  border:1.5px solid var(--gm-line)!important; border-radius:14px!important; padding:13px 16px!important; margin:0!important;
+  display:flex!important; flex-direction:row!important; align-items:center!important; gap:12px; background:var(--gm-surface); transition:border-color .14s, background .14s; cursor:pointer; width:100%;
 }
-body.gm-new-checkout #gm-shipping-list ul#shipping_method li:has(input:checked){ border-color:var(--gm-accent); background:var(--gm-accent-soft); }
-body.gm-new-checkout #gm-shipping-list ul#shipping_method label{ flex:1; display:flex; align-items:center; gap:12px; font-weight:700; font-size:.92rem; margin:0; cursor:pointer; line-height:1.4; color:var(--gm-ink); }
+body.gm-new-checkout #gm-shipping-list ul#shipping_method li:has(input:checked){ border-color:var(--gm-accent)!important; background:var(--gm-accent-soft); }
+body.gm-new-checkout #gm-shipping-list ul#shipping_method input.shipping_method{ flex:none; margin:0; }
+body.gm-new-checkout #gm-shipping-list ul#shipping_method label{
+  flex:1; min-width:0; display:flex!important; flex-direction:row!important; flex-wrap:nowrap!important; align-items:center!important;
+  gap:12px; font-weight:700; font-size:.92rem; margin:0!important; padding:0!important; cursor:pointer; line-height:1.4; color:var(--gm-ink); width:auto!important;
+}
 body.gm-new-checkout .gm-ship-ic{ width:26px; height:26px; flex:none; fill:none; stroke:var(--gm-ink); stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
 body.gm-new-checkout #gm-shipping-list li:has(input:checked) .gm-ship-ic{ stroke:var(--gm-accent); }
 body.gm-new-checkout .gm-ship-txt{ flex:1; min-width:0; display:flex; flex-direction:column; }
@@ -105,8 +109,18 @@ body.gm-new-checkout #payment{ background:transparent; border:none; padding:0; }
 body.gm-new-checkout ul.wc_payment_methods{ list-style:none; margin:0 0 14px; padding:0; border:none; display:flex; flex-direction:column; gap:8px; }
 body.gm-new-checkout li.wc_payment_method{ border:1.5px solid var(--gm-line); border-radius:13px; padding:12px 14px; background:var(--gm-surface); transition:border-color .14s, background .14s; }
 body.gm-new-checkout li.wc_payment_method:has(input:checked){ border-color:var(--gm-accent); background:var(--gm-accent-soft); }
-body.gm-new-checkout li.wc_payment_method > label{ font-weight:800; font-size:.95rem; color:var(--gm-ink); display:inline-flex; align-items:center; gap:8px; cursor:pointer; margin:0; }
+body.gm-new-checkout li.wc_payment_method{ display:flex!important; flex-direction:row!important; align-items:center!important; flex-wrap:wrap; gap:10px; }
+body.gm-new-checkout li.wc_payment_method > input.input-radio{ flex:none; margin:0; }
+body.gm-new-checkout li.wc_payment_method > label{
+  flex:1; min-width:0; font-weight:800; font-size:.95rem; color:var(--gm-ink);
+  display:flex!important; flex-direction:row!important; align-items:center!important; gap:10px; cursor:pointer; margin:0!important; padding:0!important; width:auto!important;
+}
+body.gm-new-checkout .gm-pm-txt{ flex:1; min-width:0; display:flex; flex-direction:column; }
+body.gm-new-checkout .gm-pm-txt b{ font-weight:800; font-size:.95rem; }
+body.gm-new-checkout .gm-pm-txt span{ color:var(--gm-ink2); font-size:.8rem; font-weight:600; }
+body.gm-new-checkout .gm-pm-logos{ margin-inline-start:auto; display:inline-flex; align-items:center; gap:6px; flex:none; }
 body.gm-new-checkout li.wc_payment_method img{ max-height:24px; width:auto; vertical-align:middle; }
+body.gm-new-checkout li.wc_payment_method .payment_box{ flex-basis:100%; }
 body.gm-new-checkout .payment_box{ background:transparent!important; margin:12px 0 0!important; padding:0!important; box-shadow:none; }
 body.gm-new-checkout .payment_box::before{ display:none!important; }
 body.gm-new-checkout .payplus-checkout-image-container{ background:transparent; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
@@ -133,7 +147,11 @@ body.gm-new-checkout .woocommerce-checkout-review-order-table th,
 body.gm-new-checkout .woocommerce-checkout-review-order-table td{ border:none; padding:9px 0; text-align:start; }
 body.gm-new-checkout .woocommerce-checkout-review-order-table tr{ border-bottom:1px solid var(--gm-line); }
 body.gm-new-checkout .cart_item .product-name{ color:var(--gm-ink); font-weight:600; font-size:.9rem; }
-body.gm-new-checkout .cart_item .variation{ margin:4px 0 0; font-size:.78rem; color:var(--gm-ink2); }
+body.gm-new-checkout .cart_item .variation{ margin:4px 0 0; font-size:.78rem; color:var(--gm-ink2); display:block; }
+body.gm-new-checkout .cart_item .variation dt{ display:none; }
+body.gm-new-checkout .cart_item .variation dd{ display:inline; margin:0; }
+body.gm-new-checkout .cart_item .variation dd:not(:last-of-type)::after{ content:" · "; }
+body.gm-new-checkout .cart_item .product-quantity{ display:block; color:var(--gm-ink2); font-weight:600; font-size:.78rem; margin-top:2px; }
 /* product line with thumbnail (like the mockup) */
 body.gm-new-checkout .gm-oi{ display:flex; gap:12px; align-items:flex-start; }
 body.gm-new-checkout .gm-oi-img,
@@ -148,7 +166,8 @@ body.gm-new-checkout ul#shipping_method li{ border:1.5px solid var(--gm-line); b
 body.gm-new-checkout ul#shipping_method li:has(input:checked){ border-color:var(--gm-accent); background:var(--gm-accent-soft); }
 body.gm-new-checkout ul#shipping_method label{ font-weight:700; font-size:.88rem; margin:0; }
 
-/* place order button (rendered inside #payment via woocommerce_checkout_payment) */
+/* place order button — moved into the summary card by JS (mockup) */
+body.gm-new-checkout #gm-po-slot{ margin-top:16px; }
 body.gm-new-checkout #place_order{
   width:100%; background:var(--gm-accent)!important; color:#fff!important; border:none!important;
   border-radius:99px!important; padding:16px!important; font-weight:900!important; font-size:1.08rem!important;

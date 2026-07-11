@@ -1,8 +1,9 @@
 /* Green Mobile — new checkout behaviour (gated ?gmnew).
-   1) Relocates address fields into step-2 (JS-relocation pattern, form intact).
-   2) Decorates shipping options: icon + clean title/sub + price (mockup look).
-   3) Moves the PayPlus embedded iframe into the side column card (mockup slot).
-   Re-applies decoration after every WooCommerce updated_checkout fragment swap. */
+   1) Relocates address fields into step-2 + reorders/labels them like the mockup.
+   2) Decorates shipping options: icon + clean title/sub + price.
+   3) Decorates payment methods: clean title/sub + logos aligned left.
+   4) Moves the PayPlus embedded iframe into the side-column card.
+   Re-applies after every WooCommerce updated_checkout fragment swap. */
 jQuery(function ($) {
   var $ship = $('#gm-step-shipping');
   if (!$ship.length) return;
@@ -18,27 +19,45 @@ jQuery(function ($) {
     store: ic('<path d="M4 9.5 5.5 4h13L20 9.5M4 9.5h16M4 9.5v10.5h16V9.5M4 9.5a2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0"/>')
   };
 
-  /* ---------- 1: address fields into step 2 ---------- */
+  function setLabelText($field, text) {
+    var $l = $field.find('label').first();
+    if (!$l.length) return;
+    $l.contents().filter(function () { return this.nodeType === 3; }).first().replaceWith(text + ' ');
+  }
+
+  /* ---------- 1: address fields into step 2, mockup order + labels ---------- */
   (function relocateAddress() {
-    var addrSel = ['#billing_company_field', '#billing_country_field', '#billing_address_1_field',
-      '#billing_address_2_field', '#billing_postcode_field', '#billing_city_field', '#billing_state_field'].join(',');
-    var $addr = $(addrSel);
+    var $addr = $('#billing_company_field,#billing_country_field,#billing_address_1_field,#billing_address_2_field,#billing_postcode_field,#billing_city_field,#billing_state_field');
     if ($addr.length && !$('.gm-addr-block').length) {
       var $block = $('<div class="gm-addr-block"><div class="gm-addr-title">כתובת למשלוח</div><div class="gm-addr-fields"></div></div>');
       $ship.append($block);
-      $block.find('.gm-addr-fields').append($addr);
+      var $w = $block.find('.gm-addr-fields');
+      /* mockup order: עיר|מיקוד → רחוב|דירה → (מדינה, חברה — רוחב מלא בסוף) */
+      $w.append($('#billing_city_field'), $('#billing_postcode_field'),
+                $('#billing_address_1_field'), $('#billing_address_2_field'),
+                $('#billing_country_field'), $('#billing_company_field'), $('#billing_state_field'));
     }
     var $shipFields = $('.woocommerce-shipping-fields');
     if ($shipFields.length) $ship.append($shipFields);
     var $notes = $('.woocommerce-additional-fields');
     if ($notes.length) $ship.append($notes);
 
+    /* labels like the mockup */
+    setLabelText($('#billing_phone_field'), 'טלפון נייד');
+    setLabelText($('#billing_email_field'), 'דוא"ל');
+    setLabelText($('#billing_postcode_field'), 'מיקוד');
+    setLabelText($('#billing_address_1_field'), 'רחוב ומספר');
+    var $a2l = $('#billing_address_2_field label');
+    $a2l.removeClass('screen-reader-text').text('דירה / כניסה');
+    $('#order_comments_field label').text('הערות לשליח (אופציונלי)');
+
+    /* placeholders */
     $('#billing_first_name').attr('placeholder', 'ישראל');
     $('#billing_last_name').attr('placeholder', 'ישראלי');
     $('#billing_phone').attr('placeholder', '050-0000000');
     $('#billing_email').attr('placeholder', 'name@example.com');
-    $('#billing_address_1').attr('placeholder', 'רחוב ומספר');
-    $('#billing_address_2').attr('placeholder', 'דירה / כניסה (אופציונלי)');
+    $('#billing_address_1').attr('placeholder', 'הרצל 25');
+    $('#billing_address_2').attr('placeholder', 'דירה 4');
     $('#order_comments').attr('placeholder', 'קומה, קוד כניסה, שעות נוחות...');
   })();
 
@@ -62,16 +81,52 @@ jQuery(function ($) {
         + priceHtml);
       $li.data('gmDecorated', true);
     });
-    /* summary: "חינם!" -> "חינם" */
     $('.gm-shipping-total td').each(function () {
       var h = $(this).html();
       if (h && h.indexOf('חינם!') !== -1) $(this).html(h.replace(/חינם!/g, 'חינם'));
     });
   }
-  decorateShipping();
-  $(document.body).on('updated_checkout', decorateShipping);
 
-  /* ---------- 3: PayPlus embedded iframe -> side-column slot ---------- */
+  /* ---------- 3: payment methods decorated like the mockup ---------- */
+  var PM = {
+    'payment_method_payplus-payment-gateway':           { t: 'כרטיס אשראי', s: 'Visa / Mastercard · עד 12 תשלומים' },
+    'payment_method_payplus-payment-gateway-googlepay': { t: 'Google Pay',  s: '' },
+    'payment_method_payplus-payment-gateway-applepay':  { t: 'Apple Pay',   s: '' },
+    'payment_method_payplus-payment-gateway-bit':       { t: 'bit',         s: 'תשלום מהיר מהאפליקציה' },
+    'payment_method_blender':                           { t: 'Blender · תשלומים', s: 'פריסה נוחה לתשלומים' }
+  };
+  function decoratePayment() {
+    $('ul.wc_payment_methods > li.wc_payment_method').each(function () {
+      var $li = $(this);
+      if ($li.data('gmP')) return;
+      var m = this.className.match(/payment_method_[\w-]+/);
+      var conf = m && PM[m[0]];
+      if (!conf) return;
+      var $label = $li.children('label').first();
+      if (!$label.length) return;
+      var $imgs = $label.find('img').detach();
+      $label.html('<span class="gm-pm-txt"><b>' + conf.t + '</b>' + (conf.s ? '<span>' + conf.s + '</span>' : '') + '</span>');
+      if ($imgs.length) $label.append($('<span class="gm-pm-logos"></span>').append($imgs));
+      $li.data('gmP', 1);
+    });
+  }
+
+  /* ---------- place-order button lives in the summary card (mockup) ---------- */
+  function movePlaceOrder() {
+    var $btn = $('#place_order');
+    if (!$btn.length) return;
+    if (!$('#gm-po-slot').length) $('.gm-summary').append('<div id="gm-po-slot"></div>');
+    if (!$.contains($('#gm-po-slot')[0], $btn[0])) {
+      $('#gm-po-slot').append($btn);
+      $btn.html('אישור ותשלום');
+    }
+  }
+
+  function decorateAll() { decorateShipping(); decoratePayment(); movePlaceOrder(); }
+  decorateAll();
+  $(document.body).on('updated_checkout', decorateAll);
+
+  /* ---------- 4: PayPlus embedded iframe -> side-column slot ---------- */
   function movePP() {
     var $frame = $('#pp_iframe');
     if (!$frame.length) return;
