@@ -126,8 +126,6 @@ jQuery(function ($) {
     if ($b.length) $b.first().trigger('click');
     else $('form.checkout').trigger('submit');
   });
-  /* tapping the payment-form skeleton also starts the payment (loads the real form in place) */
-  $(document).on('click', '.gm-pp-skel', function () { $('#gm-pay-proxy').trigger('click'); });
 
   /* summary: "× 1" -> "כמות: 1" */
   function fixQty() {
@@ -137,26 +135,16 @@ jQuery(function ($) {
     });
   }
 
-  /* PayPlus side card follows the chosen method: placeholder for PayPlus methods, hidden for Blender */
+  /* PayPlus side card: hidden until the REAL PayPlus form loads (after אישור
+     ותשלום). The PayPlus page itself is branded via their dashboard editor.
+     Hides if the customer switches to Blender. */
   function ppSlotState() {
     var $c = $('input[name="payment_method"]:checked');
     var sig = ($c.val() || '') + ' ' + ($c.attr('id') || '') + ' ' + ($c.closest('li').attr('class') || '');
     var $slot = $('#gm-pp-slot');
     if (!$slot.length) return;
     if (/blender/.test(sig)) { $slot.prop('hidden', true).removeClass('show'); return; }
-    if (!$('#pp_iframe').length && !$slot.find('.gm-pp-skel').length) {
-      $slot.find('.gm-pp-body').html(
-        '<div class="gm-pp-skel">'
-        + '<div class="sk-title">פרטי תשלום</div>'
-        + '<div class="sk-wallets"><div class="sk-w apple">Pay</div><div class="sk-w google">G Pay</div><div class="sk-w bit">bit</div></div>'
-        + '<div class="sk-or">או בכרטיס אשראי</div>'
-        + '<div class="sk-lab">מספר כרטיס</div><div class="sk-field">0000 0000 0000 0000</div>'
-        + '<div class="sk-row"><div><div class="sk-lab">תוקף</div><div class="sk-field">חודש / שנה</div></div><div><div class="sk-lab">CVV</div><div class="sk-field">3 ספרות</div></div></div>'
-        + '<div class="sk-row"><div><div class="sk-lab">שם בעל/ת הכרטיס</div><div class="sk-field">כפי שמופיע בכרטיס</div></div><div><div class="sk-lab">מספר תשלומים</div><div class="sk-field">תשלום אחד</div></div></div>'
-        + '<div class="sk-note">הטופס יופעל לאחר לחיצה על "אישור ותשלום" — ההזנה מתבצעת מול PayPlus בלבד</div>'
-        + '</div>');
-    }
-    $slot.prop('hidden', false).addClass('show');
+    if ($('#pp_iframe').length) $slot.prop('hidden', false).addClass('show');
   }
   $(document.body).on('change', 'input[name="payment_method"]', ppSlotState);
 
