@@ -7189,9 +7189,9 @@ function gcwRender(){
       <div style="display:flex;gap:8px;align-items:flex-end">
         <input id="gcwCode" value="${escW(w.code||'')}" autocomplete="off" placeholder="סרוק או הקלד…" style="${inp};flex:1;direction:ltr;text-align:left;font-family:monospace"
           oninput="S._gcW.code=this.value" onkeydown="if(event.key==='Enter'){S._gcW.code=this.value;gcwLookup()}">
-        <button class="btn" style="padding:9px 14px" onclick="gcwLookup()" ${w.busy?'disabled':''}>${w.busy?'בודק…':'בדוק'}</button>
+        <button class="btn-primary" style="padding:9px 14px" onclick="gcwLookup()" ${w.busy?'disabled':''}>${w.busy?'בודק…':'בדוק'}</button>
       </div>`;
-    if(w.err) body+=`<div style="color:#b3261e;font-size:12px;margin-top:8px">${escW(w.err)}</div>`;
+    if(w.err) body+=`<div style="color:var(--red);font-size:12px;margin-top:8px">${escW(w.err)}</div>`;
     const r=w.res;
     if(r&&!r.found){
       body+=`<div class="muted" style="font-size:12px;margin-top:10px">הסריאל לא נמצא במלאי ואין עליו פוליסה. ודא סריקה נכונה (סריאל של המכשיר, לא של האריזה).</div>`;
@@ -7218,10 +7218,10 @@ function gcwRender(){
           body+=`<div class="muted" style="font-size:11.5px;margin-top:8px">לא נמצא מחיר למכשיר — הזן מחיר מכירה לחישוב הפוליסה:</div>
             <div style="display:flex;gap:8px;align-items:flex-end">
               <input type="number" value="${escW(w.manualPrice||'')}" oninput="S._gcW.manualPrice=this.value" onkeydown="if(event.key==='Enter'){S._gcW.manualPrice=this.value;gcwManual()}" placeholder="₪" style="${inp};flex:1">
-              <button class="btn" style="padding:9px 14px" onclick="gcwManual()">חשב</button>
+              <button class="btn-primary" style="padding:9px 14px" onclick="gcwManual()">חשב</button>
             </div>`;
         } else if(!pr.enabled||!((pr.tiers.gc&&pr.tiers.gc.on)||(pr.tiers.gcp&&pr.tiers.gcp.on))){
-          body+=`<div style="color:#b58900;font-size:12px;margin-top:10px">אין חבילות Green Care זמינות למכשיר זה${(pr.reasons||[]).length?': '+pr.reasons.join(' · '):''}</div>`;
+          body+=`<div style="color:var(--amber);font-size:12px;margin-top:10px">אין חבילות Green Care זמינות למכשיר זה${(pr.reasons||[]).length?': '+pr.reasons.join(' · '):''}</div>`;
         } else {
           if((pr.reasons||[]).length) body+=`<div class="muted" style="font-size:11px;margin-top:8px">${pr.reasons.map(escW).join(' · ')}</div>`;
           ['gc','gcp'].forEach(pl=>{ const t=pr.tiers[pl]; if(!t||!t.on) return;
@@ -7240,7 +7240,7 @@ function gcwRender(){
               <div><label class="muted" style="font-size:11.5px">שם הלקוח</label><input value="${escW(w.custName||'')}" oninput="S._gcW.custName=this.value" style="${inp}"></div>
               <div><label class="muted" style="font-size:11.5px">טלפון</label><input value="${escW(w.custPhone||'')}" oninput="S._gcW.custPhone=this.value" style="${inp};direction:ltr;text-align:left"></div>
             </div>
-            <button class="btn" style="width:100%;padding:11px;margin-top:12px;font-weight:800" onclick="gcwCreate()" ${(!w.plan||w.creating)?'disabled':''}>${w.creating?'יוצר פוליסה…':(w.plan?'צור פוליסה על הסריאל':'בחר מסלול כדי להמשיך')}</button>
+            <button class="btn-primary" style="width:100%;padding:11px;margin-top:12px;font-weight:800;background:#149c40${(!w.plan||w.creating)?';opacity:.55;cursor:default':''}" onclick="gcwCreate()" ${(!w.plan||w.creating)?'disabled':''}>${w.creating?'יוצר פוליסה…':(w.plan?'צור פוליסה על הסריאל':'בחר מסלול כדי להמשיך')}</button>
             <div class="muted" style="font-size:10.5px;margin-top:6px;text-align:center">לאחר היצירה: הוסף בקופה פריט greencare / greencare plus וגבה את המחיר</div>`;
         }
       }
