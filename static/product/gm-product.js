@@ -308,6 +308,11 @@
     var $raw = $('#gm-shortdesc-raw');
     var market = '', warranty = '';
     if ($raw.length) {
+      /* פורמט התיאורים של גלי: פסקת השיווק היא <strong> בתוך div — לא <p> */
+      $raw.find('strong').each(function () {
+        var t = $(this).text().trim();
+        if (t && !market && !/^(אחריות|תשלומים|משלוח)/.test(t)) market = t;
+      });
       $raw.find('p').each(function () {
         var txt = $(this).text().trim();
         if (!txt || $(this).find('img').length) return;
