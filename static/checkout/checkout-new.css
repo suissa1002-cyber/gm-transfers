@@ -19,39 +19,50 @@ body.gm-new-checkout .woocommerce-breadcrumb{ display:none; }
 body.gm-new-checkout .gm-co-title{ max-width:1180px; margin:6px auto 18px; font-size:clamp(1.5rem,3vw,2.1rem); font-weight:900; letter-spacing:-.01em; color:var(--gm-ink); }
 
 /* layout */
-body.gm-new-checkout .gm-co-grid{ display:flex; flex-direction:row; gap:26px; align-items:flex-start; max-width:1180px; margin:0 auto; }
-body.gm-new-checkout .gm-co-main{ flex:1 1 auto; min-width:0; display:flex; flex-direction:column; gap:16px; }
-body.gm-new-checkout .gm-co-side{ flex:0 0 400px; max-width:400px; position:sticky; top:18px; display:flex; flex-direction:column; gap:12px; }
+body.gm-new-checkout .gm-co-grid{ display:flex; flex-direction:row; gap:26px; align-items:flex-start; max-width:1200px; margin:0 auto; }
+body.gm-new-checkout .gm-co-main{ flex:1 1 55%; min-width:0; display:flex; flex-direction:column; gap:18px; }
+body.gm-new-checkout .gm-co-side{ flex:1 1 45%; min-width:0; max-width:none; position:sticky; top:18px; display:flex; flex-direction:column; gap:14px; }
 
 /* cards */
-body.gm-new-checkout .gm-card{ background:var(--gm-surface); border:1px solid var(--gm-line); border-radius:var(--gm-r); padding:22px 24px; box-shadow:var(--gm-shadow); }
-body.gm-new-checkout .gm-step-head{ display:flex; align-items:center; gap:10px; font-size:1.1rem; font-weight:900; color:var(--gm-ink); margin-bottom:18px; }
+body.gm-new-checkout .gm-card{ background:var(--gm-surface); border:1px solid var(--gm-line); border-radius:var(--gm-r); padding:26px 28px; box-shadow:var(--gm-shadow); }
+body.gm-new-checkout .gm-step-head{ display:flex; align-items:center; gap:10px; font-size:1.1rem; font-weight:900; color:var(--gm-ink); margin-bottom:20px; }
 body.gm-new-checkout .gm-badge{ width:26px; height:26px; border-radius:50%; background:var(--gm-accent); color:#fff; display:inline-flex; align-items:center; justify-content:center; font-size:.85rem; font-weight:800; flex:none; }
 
 /* WC field groups: flatten (our card is the container) */
 body.gm-new-checkout .woocommerce-billing-fields,
 body.gm-new-checkout .woocommerce-shipping-fields,
 body.gm-new-checkout .woocommerce-additional-fields{ background:none; border:none; box-shadow:none; padding:0; margin:0; }
-body.gm-new-checkout .woocommerce-billing-fields > h3,
+body.gm-new-checkout .woocommerce-billing-fields > h3{ display:none; }  /* step head is the title */
 body.gm-new-checkout .woocommerce-shipping-fields h3,
-body.gm-new-checkout .woocommerce-additional-fields > h3{ font-size:.95rem; font-weight:800; color:var(--gm-ink2); margin:14px 0 12px; }
+body.gm-new-checkout .woocommerce-additional-fields > h3{ font-size:.95rem; font-weight:800; color:var(--gm-ink2); margin:16px 0 12px; }
 body.gm-new-checkout #ship-to-different-address{ font-size:.95rem; font-weight:700; }
 
-/* fields */
+/* step 1 = personal details only: name pair + phone/email pair (address moved to step 2 by JS) */
+body.gm-new-checkout #billing_phone_field,
+body.gm-new-checkout #billing_email_field{ grid-column:auto; }
+
+/* address block inside step 2 */
+body.gm-new-checkout .gm-addr-block{ margin-top:20px; padding-top:20px; border-top:1px solid var(--gm-line); }
+body.gm-new-checkout .gm-addr-title{ font-size:.95rem; font-weight:800; color:var(--gm-ink2); margin:0 0 12px; }
+body.gm-new-checkout .gm-addr-fields{ display:grid; grid-template-columns:1fr 1fr; gap:0 16px; }
+body.gm-new-checkout .gm-addr-fields .form-row-wide{ grid-column:1 / -1; }
+
+/* fields — airy like the mockup */
 body.gm-new-checkout .woocommerce-billing-fields__field-wrapper,
-body.gm-new-checkout .woocommerce-shipping-fields__field-wrapper{ display:grid; grid-template-columns:1fr 1fr; gap:0 14px; }
+body.gm-new-checkout .woocommerce-shipping-fields__field-wrapper{ display:grid; grid-template-columns:1fr 1fr; gap:0 16px; }
 body.gm-new-checkout .form-row-wide,
 body.gm-new-checkout .woocommerce-additional-fields .form-row{ grid-column:1 / -1; }
-body.gm-new-checkout .form-row{ padding:0 0 13px; margin:0; float:none; width:auto; }
-body.gm-new-checkout .form-row label{ font-size:.83rem; font-weight:700; color:var(--gm-ink2); margin-bottom:6px; display:block; line-height:1.3; }
+body.gm-new-checkout .form-row{ padding:0 0 16px; margin:0; float:none; width:auto; }
+body.gm-new-checkout .form-row label{ font-size:.84rem; font-weight:700; color:var(--gm-ink2); margin-bottom:7px; display:block; line-height:1.3; }
 body.gm-new-checkout .form-row label .required{ color:var(--gm-deal); border:none; text-decoration:none; }
 body.gm-new-checkout .input-text,
 body.gm-new-checkout select,
 body.gm-new-checkout textarea{
   width:100%!important; border:1.5px solid var(--gm-line)!important; border-radius:12px!important;
-  padding:12px 14px!important; font-family:inherit; font-size:.95rem;
+  padding:13px 16px!important; font-family:inherit; font-size:.95rem;
   background:var(--gm-bg)!important; color:var(--gm-ink)!important; box-shadow:none!important; min-height:auto;
 }
+body.gm-new-checkout .input-text::placeholder{ color:#a6b0ab; }
 body.gm-new-checkout .input-text:focus,
 body.gm-new-checkout select:focus,
 body.gm-new-checkout textarea:focus{ border-color:var(--gm-accent)!important; background:var(--gm-surface)!important; outline:none; }
@@ -102,6 +113,11 @@ body.gm-new-checkout .woocommerce-checkout-review-order-table td{ border:none; p
 body.gm-new-checkout .woocommerce-checkout-review-order-table tr{ border-bottom:1px solid var(--gm-line); }
 body.gm-new-checkout .cart_item .product-name{ color:var(--gm-ink); font-weight:600; font-size:.9rem; }
 body.gm-new-checkout .cart_item .variation{ margin:4px 0 0; font-size:.78rem; color:var(--gm-ink2); }
+/* product line with thumbnail (like the mockup) */
+body.gm-new-checkout .gm-oi{ display:flex; gap:12px; align-items:flex-start; }
+body.gm-new-checkout .gm-oi-img,
+body.gm-new-checkout .gm-oi img{ width:56px; height:56px; object-fit:contain; background:#fff; border:1px solid var(--gm-line); border-radius:12px; flex:none; padding:4px; }
+body.gm-new-checkout .gm-oi-main{ flex:1; min-width:0; }
 body.gm-new-checkout .cart_item .product-total,
 body.gm-new-checkout .cart-subtotal .amount{ font-weight:800; font-variant-numeric:tabular-nums; }
 body.gm-new-checkout .order-total th{ font-weight:900; font-size:1.05rem; }
