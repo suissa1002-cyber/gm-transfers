@@ -112,21 +112,21 @@ jQuery(function ($) {
     });
   }
 
-  /* ---------- place-order button lives in the summary card (mockup) ----------
-     WooCommerce re-renders #payment (incl. a fresh #place_order) on every
-     updated_checkout — keep exactly ONE button: drop any stale copy in the slot
-     and adopt the freshest one. */
-  function movePlaceOrder() {
-    if (!$('#gm-po-slot').length) $('.gm-summary').append('<div id="gm-po-slot"></div>');
-    var $slot = $('#gm-po-slot');
-    var $btns = $('#place_order');
-    if (!$btns.length) return;
-    var $fresh = $btns.filter(function () { return !$.contains($slot[0], this); }).last();
-    if ($fresh.length) {
-      $slot.empty().append($fresh);
-      $fresh.text('אישור ותשלום');
+  /* ---------- our own pay button in the summary (proxy) ----------
+     The real #place_order stays where WooCommerce/PayPlus manage it (hidden by
+     CSS) — no more fighting over its text/ownership. Our proxy triggers it. */
+  function ensureProxy() {
+    if (!$('#gm-po-slot').length) {
+      $('.gm-summary').append('<div id="gm-po-slot"><button type="button" id="gm-pay-proxy">אישור ותשלום</button></div>');
     }
   }
+  $(document).on('click', '#gm-pay-proxy', function () {
+    var $b = $('form.checkout #place_order');
+    if ($b.length) $b.first().trigger('click');
+    else $('form.checkout').trigger('submit');
+  });
+  /* tapping the payment-form skeleton also starts the payment (loads the real form in place) */
+  $(document).on('click', '.gm-pp-skel', function () { $('#gm-pay-proxy').trigger('click'); });
 
   /* summary: "× 1" -> "כמות: 1" */
   function fixQty() {
@@ -159,20 +159,9 @@ jQuery(function ($) {
   }
   $(document.body).on('change', 'input[name="payment_method"]', ppSlotState);
 
-  function decorateAll() { decorateShipping(); decoratePayment(); movePlaceOrder(); fixQty(); ppSlotState(); }
+  function decorateAll() { decorateShipping(); decoratePayment(); ensureProxy(); fixQty(); ppSlotState(); }
   decorateAll();
   $(document.body).on('updated_checkout', function () { decorateAll(); setTimeout(decorateAll, 80); });
-
-  /* WooCommerce re-writes the button text from the gateway's order_button_text
-     after our handler — enforce ours whenever it changes */
-  (function enforceBtnText() {
-    var slot = document.getElementById('gm-po-slot');
-    if (!slot) return;
-    new MutationObserver(function () {
-      var b = document.getElementById('place_order');
-      if (b && b.textContent.trim() !== 'אישור ותשלום') b.textContent = 'אישור ותשלום';
-    }).observe(slot, { childList: true, subtree: true, characterData: true });
-  })();
 
   /* ---------- 4: PayPlus embedded iframe -> side-column slot ---------- */
   function movePP() {

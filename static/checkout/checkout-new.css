@@ -20,6 +20,7 @@ body.gm-new-checkout .gm-co-title{ max-width:1180px; margin:6px auto 18px; font-
 
 /* layout */
 body.gm-new-checkout .gm-co-grid{ display:flex; flex-direction:row; gap:26px; align-items:flex-start; max-width:1200px; margin:0 auto; }
+body.gm-new-checkout .gm-co-grid, body.gm-new-checkout .gm-co-grid *{ box-sizing:border-box; }
 body.gm-new-checkout .gm-co-main{ flex:1 1 55%; min-width:0; display:flex; flex-direction:column; gap:18px; }
 body.gm-new-checkout .gm-co-side{ flex:1 1 45%; min-width:0; max-width:none; position:sticky; top:18px; display:flex; flex-direction:column; gap:14px; }
 
@@ -151,7 +152,8 @@ body.gm-new-checkout .gm-pp-url{ margin-inline-start:auto; font-family:ui-monosp
 body.gm-new-checkout .gm-pp-body{ padding:14px; }
 body.gm-new-checkout .gm-pp-wait{ padding:24px 18px; text-align:center; color:var(--gm-ink2); font-size:.85rem; background:var(--gm-bg); border:1.5px dashed var(--gm-line); border-radius:12px; }
 /* mockup-style skeleton of the payment form (visual only, activates after אישור ותשלום) */
-body.gm-new-checkout .gm-pp-skel{ pointer-events:none; user-select:none; }
+body.gm-new-checkout .gm-pp-skel{ cursor:pointer; user-select:none; }
+body.gm-new-checkout .gm-pp-skel *{ pointer-events:none; }
 body.gm-new-checkout .gm-pp-skel .sk-title{ font-weight:900; font-size:1.05rem; margin:2px 0 14px; color:var(--gm-ink); text-align:start; }
 body.gm-new-checkout .gm-pp-skel .sk-wallets{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-bottom:14px; }
 body.gm-new-checkout .gm-pp-skel .sk-w{ border-radius:12px; padding:12px; text-align:center; font-weight:800; font-size:.9rem; }
@@ -206,14 +208,15 @@ body.gm-new-checkout ul#shipping_method li{ border:1.5px solid var(--gm-line); b
 body.gm-new-checkout ul#shipping_method li:has(input:checked){ border-color:var(--gm-accent); background:var(--gm-accent-soft); }
 body.gm-new-checkout ul#shipping_method label{ font-weight:700; font-size:.88rem; margin:0; }
 
-/* place order button — moved into the summary card by JS (mockup) */
+/* real WC button hidden (managed by WooCommerce/PayPlus); our proxy triggers it */
+body.gm-new-checkout form.checkout #place_order{ display:none!important; }
 body.gm-new-checkout #gm-po-slot{ margin-top:16px; }
-body.gm-new-checkout #place_order{
+body.gm-new-checkout #gm-pay-proxy{
   width:100%; background:var(--gm-accent)!important; color:#fff!important; border:none!important;
   border-radius:99px!important; padding:16px!important; font-weight:900!important; font-size:1.08rem!important;
   font-family:inherit!important; cursor:pointer; box-shadow:none!important; text-shadow:none!important; margin-top:8px; float:none; height:auto; line-height:1.2;
 }
-body.gm-new-checkout #place_order:hover{ filter:brightness(1.05); }
+body.gm-new-checkout #gm-pay-proxy:hover{ filter:brightness(1.05); }
 body.gm-new-checkout .woocommerce-terms-and-conditions-wrapper{ margin:6px 0 12px; font-size:.85rem; color:var(--gm-ink2); }
 body.gm-new-checkout .woocommerce-terms-and-conditions-link{ color:var(--gm-accent); font-weight:700; }
 body.gm-new-checkout .gm-secure-note{ text-align:center; color:var(--gm-ink2); font-size:.8rem; }
@@ -223,9 +226,19 @@ body.gm-new-checkout .woocommerce-info,
 body.gm-new-checkout .woocommerce-message{ border:1px solid var(--gm-line)!important; border-radius:12px; background:var(--gm-surface)!important; color:var(--gm-ink2); box-shadow:none; }
 
 /* responsive */
+/* mobile order: summary → 1 → 2 → 3 → payment form → note */
 @media (max-width:900px){
-  body.gm-new-checkout .gm-co-grid{ flex-direction:column; }
-  body.gm-new-checkout .gm-co-side{ flex:1 1 auto; max-width:none; position:static; order:-1; }
+  body.gm-new-checkout .gm-co-grid{ flex-direction:column; gap:16px; align-items:stretch; }
+  body.gm-new-checkout .gm-co-main,
+  body.gm-new-checkout .gm-co-side{ display:contents; }
+  body.gm-new-checkout .gm-co-grid > *,
+  body.gm-new-checkout .gm-card{ width:100%; }
+  body.gm-new-checkout .gm-summary{ order:1; }
+  body.gm-new-checkout #gm-step-details{ order:2; }
+  body.gm-new-checkout #gm-step-shipping{ order:3; }
+  body.gm-new-checkout #gm-step-payment{ order:4; }
+  body.gm-new-checkout #gm-pp-slot{ order:5; }
+  body.gm-new-checkout .gm-secure-note{ order:6; }
   body.gm-new-checkout .woocommerce-billing-fields__field-wrapper,
   body.gm-new-checkout .woocommerce-shipping-fields__field-wrapper{ grid-template-columns:1fr; }
 }
