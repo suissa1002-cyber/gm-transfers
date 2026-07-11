@@ -455,3 +455,30 @@
     storeNonce();  /* טוען את מצב הסל האמיתי לפיל ולדרור */
   });
 })(jQuery);
+
+/* ═══ r7: פלוס ירוק + באנר סיכום באפשרויות נוספות · מגן ירוק ולוגו גדול ב-Green Care ═══ */
+(function ($) {
+  'use strict';
+  function linkedNote() {
+    var $wrap = $('.gm-lp-wrap').first();
+    if (!$wrap.length) return;
+    var n = 0, sum = 0;
+    $wrap.find('.gm-lp-tile.in-cart').each(function () {
+      n++;
+      var m = ($(this).find('.gm-lp-tile-price').text().match(/[\d,]+/) || [''])[0].replace(/,/g, '');
+      sum += parseInt(m, 10) || 0;
+    });
+    var $note = $wrap.find('.gm-lp-note');
+    if (!n) { $note.remove(); return; }
+    if (!$note.length) { $note = $('<div class="gm-lp-note"></div>'); $wrap.append($note); }
+    var lab = n === 1 ? 'נוסף אביזר אחד' : 'נוספו ' + n + ' אביזרים';
+    $note.html('<svg viewBox="0 0 24 24" style="width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round"><path d="M4 12.5l5 5L20 6.5"/></svg> ' + lab + ' · +₪' + sum.toLocaleString('en-US'));
+  }
+  function gcIcon() {
+    var $gc = $('.gm-svc-addons .addon.greencare');
+    if (!$gc.length || $gc.find('.addon-ic').length) return;
+    $gc.prepend('<span class="addon-ic"><svg viewBox="0 0 24 24" style="width:20px;height:20px;fill:none;stroke:#fff;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg></span>');
+  }
+  $(function () { linkedNote(); gcIcon(); });
+  setInterval(function () { linkedNote(); gcIcon(); }, 900);
+})(jQuery);

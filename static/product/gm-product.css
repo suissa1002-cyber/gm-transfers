@@ -542,3 +542,13 @@ body.gm-product-new .gm-svc-addons .addon-btn:hover{background:var(--accent-soft
 @media (max-width:900px){
   body.gm-product-new .gm-svc-addons{grid-template-columns:1fr;}
 }
+/* r7: אפשרויות נוספות קטנות מעט, פלוס ירוק, באנר סיכום; Green Care — לוגו גדול + מגן ירוק */
+.gm-pdp-wrap .gm-lp-tile{padding:11px 10px 10px!important;}
+.gm-pdp-wrap .gm-lp-tile img{height:74px!important;}
+.gm-pdp-wrap .gm-lp-tile-name{font-size:.78rem!important;}
+.gm-pdp-wrap .gm-lp-plus{background:var(--accent)!important;color:#fff!important;border:none!important;box-shadow:none!important;width:26px!important;height:26px!important;line-height:26px!important;font-weight:800;}
+.gm-pdp-wrap .gm-lp-plus.added{background:var(--accent)!important;color:#fff!important;}
+.gm-pdp-wrap .gm-lp-note{grid-column:1/-1;display:flex;align-items:center;gap:8px;background:var(--accent-soft);color:var(--accent);font-weight:800;font-size:.95rem;border-radius:14px;padding:13px 16px;margin-top:2px;}
+.gm-pdp-wrap .gm-lp-strip{position:relative;}
+body.gm-product-new .gm-svc-addons .addon.greencare .gc-logo{font-size:1.32rem!important;}
+body.gm-product-new .gm-svc-addons .addon.greencare .addon-shield{display:none!important;}
