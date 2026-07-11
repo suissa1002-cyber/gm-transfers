@@ -41,13 +41,15 @@
   var origPrice = null;
 
   function labelRow($ul) {
-    /* "בחירת צבע" → "צבע: <הערך הנבחר>" */
+    /* "בחירת צבע" → "צבע: <הערך הנבחר>" — הערך נקרא מה-select הקנוני של WC */
     var $row = $ul.closest('tr, .value').closest('tr');
     var $label = $row.find('label').first();
     if (!$label.length) return;
-    var base = ($label.data('gmBase') || $label.text().trim().replace(/^בחירת\s+/, ''));
+    var base = ($label.data('gmBase') || $label.text().split(':')[0].trim().replace(/^בחירת\s+/, ''));
     $label.data('gmBase', base);
-    var cur = $ul.find('.variable-item.selected, .variable-item[aria-checked="true"]').attr('data-title') || '';
+    var $sel = $row.find('select').first();
+    var cur = '';
+    if ($sel.length && $sel.val()) cur = $sel.find('option:selected').text().trim();
     $label.html(base + (cur ? ': <span class="curval">' + cur + '</span>' : ''));
   }
   function labelAll() { $('.gm-atc .variable-items-wrapper').each(function () { labelRow($(this)); }); }
@@ -115,10 +117,17 @@
 
   /* הווידג'ט המקורי של המקושרים (עם הפופ-אפ) — עולה למיקום המוקאפ: לפני שורת הקנייה */
   function placeLinked() {
+    /* סדר המוקאפ: צבע → נפח → אפשרויות נוספות → כמות+הוספה לסל → וידג'טים */
     var $lp = $('.gm-lp-wrap').first();
-    if (!$lp.length || $lp.data('gmPlaced')) return;
-    var $anchor = $('.gm-atc');
-    if ($anchor.length) { $anchor.after($lp); $lp.data('gmPlaced', 1); }
+    if ($lp.length && !$lp.data('gmPlaced')) {
+      var $vars = $('.gm-atc table.variations');
+      if ($vars.length) { $vars.after($lp); $lp.data('gmPlaced', 1); }
+      else if ($('.gm-atc').length) { $('.gm-atc form.cart').prepend($lp); $lp.data('gmPlaced', 1); }
+    }
+    var $svc = $('.gm-svc-addons').first();
+    if ($svc.length && !$svc.data('gmPlaced') && $('.gm-atc').length) {
+      $('.gm-atc').after($svc); $svc.data('gmPlaced', 1);
+    }
   }
   $(placeLinked);
   setInterval(placeLinked, 900);

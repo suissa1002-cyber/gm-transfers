@@ -511,3 +511,34 @@ body.gm-product-new .gm-svc-cards .pw-ic, body.gm-product-new [class*="gm-svc"] 
 .gm-pdp-wrap .gm-lp-tile img{height:92px!important;border-radius:10px!important;background:#fff;}
 .gm-pdp-wrap .gm-lp-tile-name{font-size:.82rem!important;color:var(--ink)!important;font-weight:600!important;line-height:1.3!important;max-height:2.6em!important;}
 .gm-pdp-wrap .gm-lp-tile-price{font-size:.92rem!important;font-weight:800!important;color:var(--accent)!important;}
+
+/* ═══ r6 ═══ */
+/* 1) גלריה בלי מסגרת — כמו במוקאפ */
+body.gm-product-new .gmain{border:none!important;background:transparent!important;padding:0!important;}
+body.gm-product-new .gmain img{border:none!important;background:transparent!important;padding:0!important;}
+/* 2) טאבים נקיים: בלי העיגולים של התמה — קו תחתון ירוק לנבחר בלבד */
+body.gm-product-new .tabbar{display:flex;gap:26px;border-bottom:1px solid var(--line);margin-top:34px;}
+body.gm-product-new .tabbar button{background:none!important;border:none!important;border-radius:0!important;box-shadow:none!important;outline:none!important;padding:12px 2px 13px!important;font-family:inherit!important;font-size:1rem!important;font-weight:700!important;color:var(--ink2)!important;cursor:pointer;position:relative;}
+body.gm-product-new .tabbar button.sel{color:var(--ink)!important;}
+body.gm-product-new .tabbar button.sel::after{content:"";position:absolute;bottom:-1px;right:0;left:0;height:3px;background:var(--accent);border-radius:3px 3px 0 0;}
+body.gm-product-new .tabbar button::before{display:none!important;content:none!important;}
+/* 3) וידג'טי Green Care / טרייד-אין — קומפקטיים כמו במוקאפ: זה-לצד-זה, מלבניים */
+body.gm-product-new .gm-svc-addons{display:grid!important;grid-template-columns:1fr 1fr;gap:10px;margin:16px 0 0;}
+body.gm-product-new .gm-svc-addons .addon{
+  background:linear-gradient(180deg,#eef9f1,#f9fdf9)!important;border:1px solid #dff0e4!important;border-radius:16px!important;
+  padding:14px 16px!important;margin:0!important;display:flex!important;flex-direction:column;gap:4px;position:relative;min-height:0!important;height:auto!important;
+}
+body.gm-product-new .gm-svc-addons .addon-ic{position:absolute!important;top:14px;inset-inline-end:14px;width:40px!important;height:40px!important;border-radius:50%!important;background:var(--accent)!important;color:#fff!important;display:flex!important;align-items:center;justify-content:center;margin:0!important;}
+body.gm-product-new .gm-svc-addons .addon-ic svg{width:20px!important;height:20px!important;stroke:#fff!important;fill:none!important;}
+body.gm-product-new .gm-svc-addons .addon-shield,body.gm-product-new .gm-svc-addons img.addon-shield{display:none!important;}
+body.gm-product-new .gm-svc-addons .gc-logo{font-size:1.05rem!important;}
+body.gm-product-new .gm-svc-addons .addon-txt{font-size:.82rem!important;color:var(--ink2)!important;line-height:1.45!important;flex:1;padding-inline-end:48px;}
+body.gm-product-new .gm-svc-addons .addon b,body.gm-product-new .gm-svc-addons .addon strong{font-size:.98rem!important;color:var(--ink)!important;}
+body.gm-product-new .gm-svc-addons .addon-btn,body.gm-product-new .gm-svc-addons .btn{
+  background:transparent!important;border:1.5px solid var(--accent)!important;color:var(--accent)!important;border-radius:99px!important;
+  padding:8px 0!important;width:82%;align-self:center;text-align:center;font-weight:800!important;font-size:.9rem!important;cursor:pointer;box-shadow:none!important;text-decoration:none!important;margin-top:8px;
+}
+body.gm-product-new .gm-svc-addons .addon-btn:hover{background:var(--accent-soft)!important;}
+@media (max-width:900px){
+  body.gm-product-new .gm-svc-addons{grid-template-columns:1fr;}
+}
