@@ -106,19 +106,25 @@ jQuery(function ($) {
       if (!$label.length) return;
       var $imgs = $label.find('img').detach();
       $label.html('<span class="gm-pm-txt"><b>' + conf.t + '</b>' + (conf.s ? '<span>' + conf.s + '</span>' : '') + '</span>');
-      if ($imgs.length) $label.append($('<span class="gm-pm-logos"></span>').append($imgs));
+      /* logos sit right next to the radio (label start), like the mockup */
+      if ($imgs.length) $label.prepend($('<span class="gm-pm-logos"></span>').append($imgs));
       $li.data('gmP', 1);
     });
   }
 
-  /* ---------- place-order button lives in the summary card (mockup) ---------- */
+  /* ---------- place-order button lives in the summary card (mockup) ----------
+     WooCommerce re-renders #payment (incl. a fresh #place_order) on every
+     updated_checkout — keep exactly ONE button: drop any stale copy in the slot
+     and adopt the freshest one. */
   function movePlaceOrder() {
-    var $btn = $('#place_order');
-    if (!$btn.length) return;
     if (!$('#gm-po-slot').length) $('.gm-summary').append('<div id="gm-po-slot"></div>');
-    if (!$.contains($('#gm-po-slot')[0], $btn[0])) {
-      $('#gm-po-slot').append($btn);
-      $btn.html('אישור ותשלום');
+    var $slot = $('#gm-po-slot');
+    var $btns = $('#place_order');
+    if (!$btns.length) return;
+    var $fresh = $btns.filter(function () { return !$.contains($slot[0], this); }).last();
+    if ($fresh.length) {
+      $slot.empty().append($fresh);
+      $fresh.text('אישור ותשלום');
     }
   }
 

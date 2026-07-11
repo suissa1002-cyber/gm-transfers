@@ -47,8 +47,9 @@ body.gm-new-checkout .gm-addr-title{ font-size:.95rem; font-weight:800; color:va
 body.gm-new-checkout .gm-addr-fields{ display:grid; grid-template-columns:1fr 1fr; gap:0 16px; }
 body.gm-new-checkout .gm-addr-fields .form-row{ grid-column:auto!important; }
 body.gm-new-checkout .gm-addr-fields #billing_company_field,
-body.gm-new-checkout .gm-addr-fields #billing_country_field,
 body.gm-new-checkout .gm-addr-fields #billing_state_field{ grid-column:1 / -1!important; }
+/* Israel-only shipping — the country field stays in the form (submitted) but is not shown */
+body.gm-new-checkout #billing_country_field{ display:none!important; }
 
 /* fields — airy like the mockup */
 body.gm-new-checkout .woocommerce-billing-fields__field-wrapper,
@@ -86,7 +87,10 @@ body.gm-new-checkout #gm-shipping-list ul#shipping_method li{
   display:flex!important; flex-direction:row!important; align-items:center!important; gap:12px; background:var(--gm-surface); transition:border-color .14s, background .14s; cursor:pointer; width:100%;
 }
 body.gm-new-checkout #gm-shipping-list ul#shipping_method li:has(input:checked){ border-color:var(--gm-accent)!important; background:var(--gm-accent-soft); }
-body.gm-new-checkout #gm-shipping-list ul#shipping_method input.shipping_method{ flex:none; margin:0; }
+body.gm-new-checkout #gm-shipping-list ul#shipping_method input.shipping_method{
+  position:static!important; float:none!important; flex:none; margin:0!important;
+  width:18px!important; height:18px!important; inset:auto!important;
+}
 body.gm-new-checkout #gm-shipping-list ul#shipping_method label{
   flex:1; min-width:0; display:flex!important; flex-direction:row!important; flex-wrap:nowrap!important; align-items:center!important;
   gap:12px; font-weight:700; font-size:.92rem; margin:0!important; padding:0!important; cursor:pointer; line-height:1.4; color:var(--gm-ink); width:auto!important;
@@ -118,7 +122,7 @@ body.gm-new-checkout li.wc_payment_method > label{
 body.gm-new-checkout .gm-pm-txt{ flex:1; min-width:0; display:flex; flex-direction:column; }
 body.gm-new-checkout .gm-pm-txt b{ font-weight:800; font-size:.95rem; }
 body.gm-new-checkout .gm-pm-txt span{ color:var(--gm-ink2); font-size:.8rem; font-weight:600; }
-body.gm-new-checkout .gm-pm-logos{ margin-inline-start:auto; display:inline-flex; align-items:center; gap:6px; flex:none; }
+body.gm-new-checkout .gm-pm-logos{ display:inline-flex; align-items:center; gap:6px; flex:none; margin-inline-end:2px; }
 body.gm-new-checkout li.wc_payment_method img{ max-height:24px; width:auto; vertical-align:middle; }
 body.gm-new-checkout li.wc_payment_method .payment_box{ flex-basis:100%; }
 body.gm-new-checkout .payment_box{ background:transparent!important; margin:12px 0 0!important; padding:0!important; box-shadow:none; }
@@ -148,9 +152,11 @@ body.gm-new-checkout .woocommerce-checkout-review-order-table td{ border:none; p
 body.gm-new-checkout .woocommerce-checkout-review-order-table tr{ border-bottom:1px solid var(--gm-line); }
 body.gm-new-checkout .cart_item .product-name{ color:var(--gm-ink); font-weight:600; font-size:.9rem; }
 body.gm-new-checkout .cart_item .variation{ margin:4px 0 0; font-size:.78rem; color:var(--gm-ink2); display:block; }
-body.gm-new-checkout .cart_item .variation dt{ display:none; }
-body.gm-new-checkout .cart_item .variation dd{ display:inline; margin:0; }
-body.gm-new-checkout .cart_item .variation dd:not(:last-of-type)::after{ content:" · "; }
+body.gm-new-checkout .cart_item .variation dt{ display:none!important; }
+body.gm-new-checkout .cart_item .variation dd{ display:inline!important; margin:0!important; }
+body.gm-new-checkout .cart_item .variation dd p{ display:inline!important; margin:0!important; }
+body.gm-new-checkout .cart_item .variation dd::after{ content:" · "; }
+body.gm-new-checkout .cart_item .variation dd:last-of-type::after{ content:""; }
 body.gm-new-checkout .cart_item .product-quantity{ display:block; color:var(--gm-ink2); font-weight:600; font-size:.78rem; margin-top:2px; }
 /* product line with thumbnail (like the mockup) */
 body.gm-new-checkout .gm-oi{ display:flex; gap:12px; align-items:flex-start; }
