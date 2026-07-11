@@ -7184,8 +7184,9 @@ function gcwRender(){
       </div>
       <div style="background:#149c40;color:#fff;border-radius:12px;padding:12px 14px;margin-top:10px;text-align:center">
         <div style="font-size:11.5px;opacity:.9">עכשיו בקופה:</div>
-        <div style="font-weight:900;font-size:15px;margin-top:2px">הוסף פריט "${escW(w.created.pos_item||'greencare')}"</div>
-        <div style="font-weight:900;font-size:20px;margin-top:2px">וגבה ₪${Number(p.price_paid||0).toLocaleString()}</div>
+        <div style="font-weight:900;font-size:15px;margin-top:2px">הוסף פריט${w.created.pos_item_id?` <span style="direction:ltr;unicode-bidi:isolate">#${escW(w.created.pos_item_id)}</span>`:''}</div>
+        <div style="font-weight:800;font-size:13px;margin-top:2px">"${escW(w.created.pos_item||'')}"</div>
+        <div style="font-weight:900;font-size:20px;margin-top:4px">וגבה ₪${Number(p.price_paid||0).toLocaleString()}</div>
       </div>
       <button class="btn-ghost" style="width:100%;padding:10px;margin-top:12px" onclick="gcwReset()">סריקה חדשה</button>`;
   } else {
@@ -7203,7 +7204,7 @@ function gcwRender(){
     if(w.err) body+=`<div style="color:var(--red);font-size:12px;margin-top:8px">${escW(w.err)}</div>`;
     const r=w.res;
     if(r&&!r.found){
-      body+=`<div class="muted" style="font-size:12px;margin-top:10px">${pos?'מס׳ הפריט לא נמצא בקופה — בדוק את המספר.':'הסריאל לא נמצא במלאי ואין עליו פוליסה. ודא סריקה נכונה (סריאל של המכשיר, לא של האריזה).'}</div>`;
+      body+=`<div class="muted" style="font-size:12px;margin-top:10px">${r.is_policy_item?'זהו פריט הפוליסה עצמו — הזן את מס׳ הפריט של ה<b>מכשיר</b> שהלקוח מתעניין בו.':(pos?'מס׳ הפריט לא נמצא בקופה — בדוק את המספר.':'הסריאל לא נמצא במלאי ואין עליו פוליסה. ודא סריקה נכונה (סריאל של המכשיר, לא של האריזה).')}</div>`;
     }
     if(r&&r.found){
       // פוליסות קיימות על הסריאל
@@ -7255,7 +7256,7 @@ function gcwRender(){
             <input value="${escW(w.serialManual||'')}" autocomplete="off" placeholder="סרוק בעת המכירה…" style="${inp};direction:ltr;text-align:left;font-family:monospace"
               oninput="S._gcW.serialManual=this.value" onchange="gcwRender()">`:''}
             <button class="btn-primary" style="width:100%;padding:11px;margin-top:12px;font-weight:800;background:#149c40${(!w.plan||w.creating||!haveSerial)?';opacity:.55;cursor:default':''}" onclick="gcwCreate()" ${(!w.plan||w.creating)?'disabled':''}>${w.creating?'יוצר פוליסה…':(!w.plan?'בחר מסלול כדי להמשיך':(!haveSerial?'הזן סריאל ליצירת פוליסה':'צור פוליסה על הסריאל'))}</button>
-            <div class="muted" style="font-size:10.5px;margin-top:6px;text-align:center">לאחר היצירה: הוסף בקופה פריט greencare / greencare plus וגבה את המחיר</div>`;
+            <div class="muted" style="font-size:10.5px;margin-top:6px;text-align:center">לאחר היצירה תקבל את מס׳ פריט הפוליסה להוספה בקופה ולגבייה</div>`;
         }
       }
     }

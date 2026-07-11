@@ -2714,7 +2714,12 @@ def admin_os_gc_status(body: OSStatusIn, x_admin_key: Optional[str] = Header(Non
 # הנציג סורק את הסריאל של המכשיר הנמכר, המערכת מזהה את המוצר (serial_index),
 # מושכת את התמחור האפקטיבי המנוהל בעמוד ה-Green Care הניהולי (נוסחה + דריסות
 # על מוצר-ההורה באתר), ויוצרת פוליסה על הסריאל. הגבייה נסגרת בקופה — הנציג
-# מוסיף פריט "greencare" / "greencare plus" במחיר שהמערכת מציגה.
+# מוסיף את פריט הפוליסה במחיר שהמערכת מציגה.
+# פריטי הפוליסה בקופה (אסי יצר 11/07/2026, קטגוריית "ביטוחים GreenCare"):
+_GC_POS_ITEMS = {
+    "gc":  {"id": "520534", "name": "פוליסה - Green Care בסיסי"},
+    "gcp": {"id": "520535", "name": "פוליסה - + Green Care מורחב"},
+}
 def _gc_wc_by_id(base, k, s, wc_id) -> dict:
     import requests as _rq
     try:
@@ -2787,6 +2792,11 @@ def branch_gc_lookup(code: str = "", pos_id: str = "", wc_id: int = 0, price: fl
             return JSONResponse({"found": False, "serial": "", "policies": []},
                                 headers={"Cache-Control": "no-store"})
         pos_name = str(nop.get("name") or "")
+        # הנציג הקליד את מס' פריט-הפוליסה עצמו במקום מכשיר — הכוונה ידידותית
+        if pos_id in (i["id"] for i in _GC_POS_ITEMS.values()):
+            return JSONResponse({"found": False, "serial": "", "policies": [],
+                                 "is_policy_item": True},
+                                headers={"Cache-Control": "no-store"})
     else:
         if len(code) < 4:
             raise HTTPException(400, "קוד קצר מדי")
@@ -2947,8 +2957,10 @@ def branch_gc_create(body: BranchGCCreateIn,
         created_by=actor, serial=serial)
     logger.info("branch greencare: policy %s created on serial %s plan=%s by %s",
                 pid, serial, plan, actor or "?")
+    item = _GC_POS_ITEMS.get(plan) or {}
     return JSONResponse({"ok": True,
-                         "pos_item": "greencare plus" if plan == "gcp" else "greencare",
+                         "pos_item": item.get("name") or plan,
+                         "pos_item_id": item.get("id") or "",
                          **_policy_view(db.gc_policy_get(pid))},
                         headers={"Cache-Control": "no-store"})
 
