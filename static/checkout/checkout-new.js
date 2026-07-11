@@ -27,15 +27,16 @@ jQuery(function ($) {
 
   /* ---------- 1: address fields into step 2, mockup order + labels ---------- */
   (function relocateAddress() {
-    var $addr = $('#billing_company_field,#billing_country_field,#billing_address_1_field,#billing_address_2_field,#billing_postcode_field,#billing_city_field,#billing_state_field');
+    /* company stays in step 1 (invoice-name note); only address fields move */
+    var $addr = $('#billing_country_field,#billing_address_1_field,#billing_address_2_field,#billing_postcode_field,#billing_city_field,#billing_state_field');
     if ($addr.length && !$('.gm-addr-block').length) {
       var $block = $('<div class="gm-addr-block"><div class="gm-addr-title">כתובת למשלוח</div><div class="gm-addr-fields"></div></div>');
       $ship.append($block);
       var $w = $block.find('.gm-addr-fields');
-      /* mockup order: עיר|מיקוד → רחוב|דירה → (מדינה, חברה — רוחב מלא בסוף) */
+      /* mockup order: עיר|מיקוד → רחוב|דירה → (מדינה — מוסתרת, בסוף) */
       $w.append($('#billing_city_field'), $('#billing_postcode_field'),
                 $('#billing_address_1_field'), $('#billing_address_2_field'),
-                $('#billing_country_field'), $('#billing_company_field'), $('#billing_state_field'));
+                $('#billing_country_field'), $('#billing_state_field'));
     }
     var $shipFields = $('.woocommerce-shipping-fields');
     if ($shipFields.length) $ship.append($shipFields);
@@ -52,6 +53,7 @@ jQuery(function ($) {
     $('#order_comments_field label').text('הערות לשליח (אופציונלי)');
 
     /* placeholders */
+    $('#billing_company').attr('placeholder', 'הזן שם חברה במידה וצריך חשבונית על שם החברה');
     $('#billing_first_name').attr('placeholder', 'ישראל');
     $('#billing_last_name').attr('placeholder', 'ישראלי');
     $('#billing_phone').attr('placeholder', '050-0000000');

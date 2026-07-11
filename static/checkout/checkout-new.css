@@ -49,6 +49,7 @@ body.gm-new-checkout .gm-addr-fields{ display:grid; grid-template-columns:1fr 1f
 body.gm-new-checkout .gm-addr-fields .form-row{ grid-column:auto!important; }
 body.gm-new-checkout .gm-addr-fields #billing_company_field,
 body.gm-new-checkout .gm-addr-fields #billing_state_field{ grid-column:1 / -1!important; }
+body.gm-new-checkout #billing_company_field{ grid-column:1 / -1!important; }
 /* Israel-only shipping — the country field stays in the form (submitted) but is not shown */
 body.gm-new-checkout #billing_country_field{ display:none!important; }
 
@@ -278,8 +279,9 @@ body.gm-new-checkout .woocommerce-message{ border:1px solid var(--gm-line)!impor
   body.gm-new-checkout #gm-step-payment{ order:4; }
   body.gm-new-checkout #gm-pp-slot{ order:5; }
   body.gm-new-checkout .gm-secure-note{ order:6; }
-  body.gm-new-checkout .woocommerce-billing-fields__field-wrapper,
+  /* step-1 keeps field pairs on mobile (name|surname, phone|email); company spans full */
   body.gm-new-checkout .woocommerce-shipping-fields__field-wrapper{ grid-template-columns:1fr; }
+  body.gm-new-checkout .woocommerce-billing-fields__field-wrapper{ grid-template-columns:1fr 1fr; gap:0 10px; }
 
   /* compact mobile cards — no stretched-out sections */
   body.gm-new-checkout .gm-card{ padding:18px!important; border-radius:16px; }
