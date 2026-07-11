@@ -225,7 +225,10 @@ body.gm-new-checkout #order_review::after,
 body.gm-new-checkout .gm-summary::before,
 body.gm-new-checkout .gm-summary::after{ display:none!important; content:none!important; }
 body.gm-new-checkout .gm-summary .blockUI{ border:none!important; background:rgba(255,255,255,.6)!important; }
-body.gm-new-checkout .gm-summary h3#order_review_heading{ font-size:1.1rem; font-weight:900; margin:0 0 14px; }
+body.gm-new-checkout .gm-summary h3#order_review_heading{
+  font-size:1.1rem; font-weight:900; margin:0 0 14px;
+  border:none!important; padding:0!important; background:none!important;   /* Astra frames checkout headings (2px top+sides) */
+}
 body.gm-new-checkout .woocommerce-checkout-review-order-table{ width:100%; border:none; margin:0; }
 body.gm-new-checkout .woocommerce-checkout-review-order-table thead{ display:none; }
 body.gm-new-checkout .woocommerce-checkout-review-order-table th,
@@ -240,6 +243,11 @@ body.gm-new-checkout .gm-summary table.woocommerce-checkout-review-order-table{ 
 body.gm-new-checkout .gm-summary table.woocommerce-checkout-review-order-table tr.cart_item > td,
 body.gm-new-checkout .gm-summary table.woocommerce-checkout-review-order-table tr.cart_item > th{
   border-bottom:1px solid var(--gm-line)!important; padding:12px 0!important;
+  border-bottom-color:var(--gm-line)!important;   /* theme re-colors td borders separately — pin the hairline color */
+}
+body.gm-new-checkout .gm-summary table.woocommerce-checkout-review-order-table tr.order-total > td,
+body.gm-new-checkout .gm-summary table.woocommerce-checkout-review-order-table tr.order-total > th{
+  border-top-color:var(--gm-line)!important;
 }
 body.gm-new-checkout .gm-summary table.woocommerce-checkout-review-order-table tr.order-total > td,
 body.gm-new-checkout .gm-summary table.woocommerce-checkout-review-order-table tr.order-total > th{
