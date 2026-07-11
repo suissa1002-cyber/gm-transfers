@@ -174,9 +174,36 @@ jQuery(function ($) {
     var $wrap = $frame.closest('.pp_iframe');
     $slot.find('.gm-pp-wait,.gm-pp-skel').remove();
     $slot.find('.gm-pp-body').append($wrap.length ? $wrap : $frame);
+    /* grant Payment Request permission inside the cross-origin iframe —
+       without it Google Pay/Apple Pay fall back to opening a new tab */
+    if (!$frame.data('gmAllow')) {
+      $frame.attr('allow', 'payment');
+      $frame.attr('allowpaymentrequest', '');
+      $frame.data('gmAllow', 1);
+      var src = $frame.attr('src');
+      if (src) $frame.attr('src', src);   /* reload once so the permission applies */
+    }
     $slot.prop('hidden', false).addClass('show');
     $slot[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
   movePP();
   new MutationObserver(movePP).observe(document.body, { childList: true, subtree: true });
+
+  /* tapping the wallets zone (upper part of the PayPlus iframe) reveals fields at
+     the FORM'S BOTTOM (e.g. Apple Pay installments) — auto-scroll there so the
+     user sees that something happened. Clicks lower (card fields) don't scroll. */
+  var gmLastPt = { x: 0, y: 0 };
+  window.addEventListener('touchstart', function (e) {
+    if (e.touches && e.touches[0]) gmLastPt = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  }, true);
+  window.addEventListener('mousedown', function (e) { gmLastPt = { x: e.clientX, y: e.clientY }; }, true);
+  window.addEventListener('blur', function () {
+    var f = document.getElementById('pp_iframe');
+    if (!f || document.activeElement !== f) return;
+    var r = f.getBoundingClientRect();
+    var walletZone = Math.min(420, r.height * 0.45);
+    if (gmLastPt.y >= r.top && gmLastPt.y <= r.top + walletZone) {
+      setTimeout(function () { f.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, 350);
+    }
+  });
 });
