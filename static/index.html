@@ -761,6 +761,7 @@
     <button class="btn-ghost" id="ordersBtn" style="display:none;position:relative;align-items:center;gap:6px" onclick="openOrdersTab()" title="הזמנות"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg><span class="hlbl"> הזמנות</span><span class="gm-obadge wa-badge" style="display:none"></span></button>
     <button class="btn-ghost" id="adminBtn" style="display:none;align-items:center;gap:6px" onclick="toggleAdmin()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg><span class="hlbl"> ניהול</span></button>
     <button class="btn-ghost" id="stellrBtn" style="display:none;align-items:center;gap:6px;color:#7c3aed" onclick="stellrPosOpen()" title="הנפקת קוד דיגיטלי ללקוח"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg><span class="hlbl"> קוד דיגיטלי</span></button>
+    <button class="btn-ghost" id="tradeinBtn" style="display:none;align-items:center;gap:6px;color:#149c40" onclick="branchTiOpen()" title="תמחור טרייד-אין ללקוח בסניף"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px"><path d="M7 4 3.5 7.5 7 11"/><path d="M3.5 7.5H17a3.5 3.5 0 0 1 3.5 3.5"/><path d="M17 20l3.5-3.5L17 13"/><path d="M20.5 16.5H7A3.5 3.5 0 0 1 3.5 13"/></svg><span class="hlbl"> טרייד-אין</span></button>
     <span class="hlbl">סניף: </span><b id="branchName"></b>
     <button class="btn-ghost" style="align-items:center;gap:6px" onclick="changeBranch()" title="החלף סניף"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-2px"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg><span class="hlbl"> החלף סניף</span></button>
     <button class="btn-ghost" id="pbxDialBtn" style="display:none;align-items:center;gap:6px" onclick="pbxOpenDialer()" title="חייגן — חיוג מהמחשב"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span class="hlbl"> חייגן</span></button>
@@ -1569,6 +1570,8 @@ function render(){
   { const ob=document.getElementById('ordersBtn'); if(ob) ob.style.display=isAdminPC?'inline-flex':'none'; updateOrderBadge(); }
   { const sb=document.getElementById('stellrBtn');   // 🎫 הנפקת קוד — סניפי חנות בלבד (1-4)
     if(sb) sb.style.display=(S.branchId&&['1','2','3','4'].includes(String(S.branchId)))?'inline-flex':'none'; }
+  { const tb=document.getElementById('tradeinBtn');  // 🔄 מחשבון טרייד-אין — סניפי חנות בלבד (1-4)
+    if(tb) tb.style.display=(S.branchId&&['1','2','3','4'].includes(String(S.branchId)))?'inline-flex':'none'; }
   if(S.view==='home') return S.homeData?renderHome():loadHome(true);
   if(S.view==='embed') return renderEmbed(app);
   if(S.view==='tasks') return S.tasksData?renderTasks():loadTasks(true);
@@ -6940,6 +6943,14 @@ function osTiCondSummary(){
   if(t.brand==='Apple'&&c.power!=='no'&&t.batt) parts.push('סוללה: '+t.batt+'%');
   return parts.join(' · ');
 }
+// מחשבון תמחור לסניף (לוח ההעברות) — אותו מנוע, בלי יצירת רשומה: כלי ללקוח שמגיע פיזית
+function branchTiOpen(){
+  S._osTi={cat:null, brand:'', model:'', storage:'', cond:{}, manual:false,
+           mBrand:'', mModel:'', mStorage:'', branchMode:true};
+  api('/api/admin/tradein/catalog',null,30000).then(r=>{ if(r&&r.catalog){ S._osTi.cat=r.catalog; osTiPaint(); } })
+    .catch(()=>{ toast('הקטלוג לא נטען — נסה שוב',false); });
+  osTiPaint();
+}
 function osAttachTradein(){
   const data=S._osD||{}, det=data.detected||{}, dt=det.tradein||{};
   S._osTi={cat:null, brand:dt.brand||'', model:dt.model||'', storage:dt.storage||'', cond:{}, manual:false,
@@ -6998,7 +7009,7 @@ function osTiPaint(){
     </div>
     <label class="muted" style="font-size:12px;display:block;margin-top:10px">דגם</label>
     <select onchange="osTiSet('model',this.value)" ${t.brand?'':'disabled'} style="${inp}">${modelOpts}</select>
-    <div style="margin-top:6px;text-align:start"><a href="javascript:void(0)" onclick="S._osTi.manual=true;osTiPaint()" class="muted" style="font-size:11.5px;text-decoration:underline">הדגם לא מופיע בקטלוג? הזנה ידנית</a></div>`;
+    ${t.branchMode?'':`<div style="margin-top:6px;text-align:start"><a href="javascript:void(0)" onclick="S._osTi.manual=true;osTiPaint()" class="muted" style="font-size:11.5px;text-decoration:underline">הדגם לא מופיע בקטלוג? הזנה ידנית</a></div>`}`;
   }
   // שאלות מצב (תפקוד מוסתר כשהמכשיר לא נדלק — אין מה לבדוק)
   const condHTML=OSTI_QS.filter(q=>!(q.k==='func'&&t.cond.power==='no')).map(q=>`
@@ -7029,19 +7040,23 @@ function osTiPaint(){
   let estHTML='';
   if(est&&condDone){
     if(t._estAuto!==est.value){ t._estAuto=est.value; t.estVal=String(est.value); }
-    estHTML=`<div style="background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:9px 12px;margin-top:10px;font-size:12px">
-      <b>הערכה: ₪${est.value.toLocaleString()}</b> <span class="muted">· בסיס כמו-חדש ₪${est.base.toLocaleString()}${est.cuts.length?' · '+est.cuts.join(' · '):''}</span></div>`;
+    estHTML=t.branchMode
+      ?`<div style="background:var(--card2);border:1.5px solid #149c40;border-radius:12px;padding:14px;margin-top:12px;text-align:center">
+          <div class="muted" style="font-size:11.5px">הערכת טרייד-אין ללקוח</div>
+          <div style="font-weight:900;font-size:26px;color:#149c40;margin:2px 0">₪${est.value.toLocaleString()}</div>
+          <div class="muted" style="font-size:11px">בסיס כמו-חדש ₪${est.base.toLocaleString()}${est.cuts.length?' · '+est.cuts.join(' · '):''}</div>
+          <div class="muted" style="font-size:10.5px;margin-top:4px">הערכה בלבד — הסכום הסופי לאחר בדיקת המכשיר</div></div>`
+      :`<div style="background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:9px 12px;margin-top:10px;font-size:12px">
+          <b>הערכה: ₪${est.value.toLocaleString()}</b> <span class="muted">· בסיס כמו-חדש ₪${est.base.toLocaleString()}${est.cuts.length?' · '+est.cuts.join(' · '):''}</span></div>`;
   } else if(!t.manual&&cat){
     estHTML=`<div class="muted" style="font-size:11.5px;margin-top:10px">בחר דגם, נפח וכל שאלות המצב — ההערכה תחושב אוטומטית</div>`;
   }
-  document.getElementById('modalRoot').innerHTML=`<div class="overlay" onclick="closeModal()"><div class="modal" style="max-width:460px;max-height:88vh;overflow-y:auto;text-align:right;position:relative" onclick="event.stopPropagation()">
-    <button class="dr-x" style="position:absolute;top:10px;inset-inline-start:10px" onclick="paintWcOrder()">✕</button>
-    <div style="font-weight:800;margin-bottom:12px">🔄 צירוף טרייד-אין</div>
-    ${deviceHTML}
-    ${condHTML}
-    ${battHTML}
-    ${estHTML}
-    <div style="display:flex;gap:8px;align-items:flex-end;margin-top:10px">
+  const closeFn=t.branchMode?'closeModal()':'paintWcOrder()';
+  const footerHTML=t.branchMode
+    ?`<div style="display:flex;gap:8px;margin-top:14px">
+        <button class="btn-ghost" style="flex:1;padding:10px" onclick="closeModal()">סגור</button>
+      </div>`
+    :`<div style="display:flex;gap:8px;align-items:flex-end;margin-top:10px">
       <div style="flex:1"><label class="muted" style="font-size:12px">זיכוי משוער (₪)${est&&condDone?' — ניתן לעריכה':''}</label>
         <input id="ostiEst" type="number" value="${escW(t.estVal||'')}" oninput="S._osTi.estVal=this.value" style="${inp}"></div>
     </div>
@@ -7050,7 +7065,15 @@ function osTiPaint(){
     <div style="display:flex;gap:8px;margin-top:14px">
       <button class="btn-primary" style="flex:1;padding:10px" onclick="osCreateTradein()">צור רשומה</button>
       <button class="btn-ghost" style="padding:10px 16px" onclick="paintWcOrder()">ביטול</button>
-    </div></div></div>`;
+    </div>`;
+  document.getElementById('modalRoot').innerHTML=`<div class="overlay" onclick="closeModal()"><div class="modal" style="max-width:460px;max-height:88vh;overflow-y:auto;text-align:right;position:relative" onclick="event.stopPropagation()">
+    <button class="dr-x" style="position:absolute;top:10px;inset-inline-start:10px" onclick="${closeFn}">✕</button>
+    <div style="font-weight:800;margin-bottom:12px">${t.branchMode?'🔄 מחשבון טרייד-אין <span class="muted" style="font-weight:600;font-size:12px">· תמחור פנימי</span>':'🔄 צירוף טרייד-אין'}</div>
+    ${deviceHTML}
+    ${condHTML}
+    ${battHTML}
+    ${estHTML}
+    ${footerHTML}</div></div>`;
 }
 async function osCreateTradein(){
   const d=S._wcoD||{}; const t=S._osTi||{};
