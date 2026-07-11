@@ -57,6 +57,27 @@ body.gm-new-checkout select:focus,
 body.gm-new-checkout textarea:focus{ border-color:var(--gm-accent)!important; background:var(--gm-surface)!important; outline:none; }
 body.gm-new-checkout .select2-container--default .select2-selection--single{ height:auto!important; border:1.5px solid var(--gm-line)!important; border-radius:12px!important; padding:6px 8px; background:var(--gm-bg)!important; }
 
+/* step 2 — delivery options as cards (moved out of the summary) */
+body.gm-new-checkout #gm-shipping-list .gm-ship-table,
+body.gm-new-checkout #gm-shipping-list .gm-ship-table tbody,
+body.gm-new-checkout #gm-shipping-list .gm-ship-table tr,
+body.gm-new-checkout #gm-shipping-list .gm-ship-table th,
+body.gm-new-checkout #gm-shipping-list .gm-ship-table td{ display:block; width:100%; border:none; padding:0; margin:0; background:none; }
+body.gm-new-checkout #gm-shipping-list .gm-ship-table th{ display:none; }
+body.gm-new-checkout #gm-shipping-list .woocommerce-shipping-destination,
+body.gm-new-checkout #gm-shipping-list .woocommerce-shipping-calculator{ display:none; }
+body.gm-new-checkout #gm-shipping-list ul#shipping_method{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:10px; }
+body.gm-new-checkout #gm-shipping-list ul#shipping_method li{
+  border:1.5px solid var(--gm-line); border-radius:14px; padding:14px 16px; margin:0;
+  display:flex; align-items:center; gap:10px; background:var(--gm-surface); transition:border-color .14s, background .14s; cursor:pointer;
+}
+body.gm-new-checkout #gm-shipping-list ul#shipping_method li:has(input:checked){ border-color:var(--gm-accent); background:var(--gm-accent-soft); }
+body.gm-new-checkout #gm-shipping-list ul#shipping_method label{ flex:1; font-weight:700; font-size:.92rem; margin:0; cursor:pointer; line-height:1.45; color:var(--gm-ink); }
+body.gm-new-checkout #gm-shipping-list ul#shipping_method .woocommerce-Price-amount{ font-weight:800; }
+/* summary: simple shipping total row */
+body.gm-new-checkout .gm-shipping-total td{ font-weight:800; color:var(--gm-accent); }
+body.gm-new-checkout .gm-tax-note{ color:var(--gm-ink2); font-size:.75rem; font-weight:500; }
+
 /* payment methods as cards */
 body.gm-new-checkout #payment{ background:transparent; border:none; padding:0; }
 body.gm-new-checkout ul.wc_payment_methods{ list-style:none; margin:0 0 16px; padding:0; border:none; display:flex; flex-direction:column; gap:10px; }
