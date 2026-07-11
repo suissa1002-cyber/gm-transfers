@@ -476,3 +476,7 @@ body.gm-product-new *{text-indent:0!important;}
 .gm-svc-x{position:absolute;top:10px;inset-inline-start:10px;z-index:2;width:38px;height:38px;border-radius:50%;border:none;background:var(--bg);color:var(--ink);font-size:20px;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.18);}
 /* פסקת התיאור הקצר (תבנית v0.2) */
 .pshort{color:var(--ink2);font-size:.95rem;line-height:1.6;margin:4px 0 10px;max-width:60ch;}
+/* r3.1: ספציפיות גבוהה יותר מכללי ה-wvs לכפתורי הטקסט */
+.gm-atc ul.variable-items-wrapper li.variable-item.button-variable-item{padding:14px 30px!important;width:auto!important;height:auto!important;min-width:96px;}
+.gm-atc ul.variable-items-wrapper li.button-variable-item .variable-item-span{font-size:1.02rem!important;font-weight:800!important;}
+.gm-atc ul.variable-items-wrapper li.button-variable-item.selected .variable-item-span{color:var(--accent)!important;}
