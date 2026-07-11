@@ -41,11 +41,14 @@ body.gm-new-checkout #ship-to-different-address{ font-size:.95rem; font-weight:7
 body.gm-new-checkout #billing_phone_field,
 body.gm-new-checkout #billing_email_field{ grid-column:auto; }
 
-/* address block inside step 2 */
+/* address block inside step 2 — fields in pairs like the mockup */
 body.gm-new-checkout .gm-addr-block{ margin-top:20px; padding-top:20px; border-top:1px solid var(--gm-line); }
 body.gm-new-checkout .gm-addr-title{ font-size:.95rem; font-weight:800; color:var(--gm-ink2); margin:0 0 12px; }
 body.gm-new-checkout .gm-addr-fields{ display:grid; grid-template-columns:1fr 1fr; gap:0 16px; }
-body.gm-new-checkout .gm-addr-fields .form-row-wide{ grid-column:1 / -1; }
+body.gm-new-checkout .gm-addr-fields .form-row{ grid-column:auto!important; }
+body.gm-new-checkout .gm-addr-fields #billing_company_field,
+body.gm-new-checkout .gm-addr-fields #billing_country_field,
+body.gm-new-checkout .gm-addr-fields #billing_state_field{ grid-column:1 / -1!important; }
 
 /* fields — airy like the mockup */
 body.gm-new-checkout .woocommerce-billing-fields__field-wrapper,
@@ -80,19 +83,27 @@ body.gm-new-checkout #gm-shipping-list .woocommerce-shipping-calculator{ display
 body.gm-new-checkout #gm-shipping-list ul#shipping_method{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:10px; }
 body.gm-new-checkout #gm-shipping-list ul#shipping_method li{
   border:1.5px solid var(--gm-line); border-radius:14px; padding:14px 16px; margin:0;
-  display:flex; align-items:center; gap:10px; background:var(--gm-surface); transition:border-color .14s, background .14s; cursor:pointer;
+  display:flex; align-items:center; gap:12px; background:var(--gm-surface); transition:border-color .14s, background .14s; cursor:pointer;
 }
 body.gm-new-checkout #gm-shipping-list ul#shipping_method li:has(input:checked){ border-color:var(--gm-accent); background:var(--gm-accent-soft); }
-body.gm-new-checkout #gm-shipping-list ul#shipping_method label{ flex:1; font-weight:700; font-size:.92rem; margin:0; cursor:pointer; line-height:1.45; color:var(--gm-ink); }
+body.gm-new-checkout #gm-shipping-list ul#shipping_method label{ flex:1; display:flex; align-items:center; gap:12px; font-weight:700; font-size:.92rem; margin:0; cursor:pointer; line-height:1.4; color:var(--gm-ink); }
+body.gm-new-checkout .gm-ship-ic{ width:26px; height:26px; flex:none; fill:none; stroke:var(--gm-ink); stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
+body.gm-new-checkout #gm-shipping-list li:has(input:checked) .gm-ship-ic{ stroke:var(--gm-accent); }
+body.gm-new-checkout .gm-ship-txt{ flex:1; min-width:0; display:flex; flex-direction:column; }
+body.gm-new-checkout .gm-ship-txt b{ font-weight:800; font-size:.95rem; }
+body.gm-new-checkout .gm-ship-txt span{ color:var(--gm-ink2); font-size:.8rem; font-weight:600; }
+body.gm-new-checkout .gm-ship-price{ font-weight:800; white-space:nowrap; font-variant-numeric:tabular-nums; }
+body.gm-new-checkout .gm-ship-price.free{ color:var(--gm-accent); }
 body.gm-new-checkout #gm-shipping-list ul#shipping_method .woocommerce-Price-amount{ font-weight:800; }
 /* summary: simple shipping total row */
 body.gm-new-checkout .gm-shipping-total td{ font-weight:800; color:var(--gm-accent); }
 body.gm-new-checkout .gm-tax-note{ color:var(--gm-ink2); font-size:.75rem; font-weight:500; }
 
-/* payment methods as cards */
+/* payment methods as cards (slightly compact) */
+body.gm-new-checkout #gm-step-payment{ padding:22px 24px; }
 body.gm-new-checkout #payment{ background:transparent; border:none; padding:0; }
-body.gm-new-checkout ul.wc_payment_methods{ list-style:none; margin:0 0 16px; padding:0; border:none; display:flex; flex-direction:column; gap:10px; }
-body.gm-new-checkout li.wc_payment_method{ border:1.5px solid var(--gm-line); border-radius:14px; padding:14px 16px; background:var(--gm-surface); transition:border-color .14s, background .14s; }
+body.gm-new-checkout ul.wc_payment_methods{ list-style:none; margin:0 0 14px; padding:0; border:none; display:flex; flex-direction:column; gap:8px; }
+body.gm-new-checkout li.wc_payment_method{ border:1.5px solid var(--gm-line); border-radius:13px; padding:12px 14px; background:var(--gm-surface); transition:border-color .14s, background .14s; }
 body.gm-new-checkout li.wc_payment_method:has(input:checked){ border-color:var(--gm-accent); background:var(--gm-accent-soft); }
 body.gm-new-checkout li.wc_payment_method > label{ font-weight:800; font-size:.95rem; color:var(--gm-ink); display:inline-flex; align-items:center; gap:8px; cursor:pointer; margin:0; }
 body.gm-new-checkout li.wc_payment_method img{ max-height:24px; width:auto; vertical-align:middle; }
@@ -101,6 +112,16 @@ body.gm-new-checkout .payment_box::before{ display:none!important; }
 body.gm-new-checkout .payplus-checkout-image-container{ background:transparent; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
 body.gm-new-checkout .payplus-checkout-image{ max-height:26px; width:auto; }
 body.gm-new-checkout #pp_iframe{ width:100%!important; border:1px solid var(--gm-line)!important; border-radius:14px; min-height:520px; background:var(--gm-surface); }
+
+/* PayPlus embed slot in the side column (mockup) */
+body.gm-new-checkout .gm-pp-card{ padding:0; overflow:hidden; }
+body.gm-new-checkout .gm-pp-bar{ display:flex; align-items:center; gap:8px; background:var(--gm-bg); padding:11px 16px; border-bottom:1px solid var(--gm-line); font-size:.85rem; font-weight:800; color:var(--gm-ink2); }
+body.gm-new-checkout .gm-pp-url{ margin-inline-start:auto; font-family:ui-monospace,monospace; font-size:.72rem; opacity:.65; font-weight:500; direction:ltr; }
+body.gm-new-checkout .gm-pp-body{ padding:14px; }
+body.gm-new-checkout .gm-pp-body .pp_iframe{ margin:0; }
+/* edit link in the summary heading */
+body.gm-new-checkout .gm-edit{ float:left; font-size:.8rem; color:var(--gm-accent); font-weight:700; text-decoration:none; }
+body.gm-new-checkout .gm-edit:hover{ text-decoration:underline; }
 
 /* order summary (side) — kill the theme's old two-column widths/floats */
 body.gm-new-checkout #order_review,
