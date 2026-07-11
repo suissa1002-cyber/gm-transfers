@@ -7374,6 +7374,9 @@ function svcSwitchHTML(){
     <span style="font-weight:800;font-size:13px;color:var(--muted)">מתגי שירות באתר</span>
     ${row('greencare','Green Care',f.greencare)}
     ${row('tradein','טרייד-אין',f.tradein)}
+    <button class="btn-ghost" style="margin-inline-start:auto;display:inline-flex;align-items:center;gap:6px;color:#149c40;padding:8px 14px" onclick="branchTiOpen()" title="תמחור טרייד-אין — לא מקושר להזמנה">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4 3.5 7.5 7 11"/><path d="M3.5 7.5H17a3.5 3.5 0 0 1 3.5 3.5"/><path d="M17 20l3.5-3.5L17 13"/><path d="M20.5 16.5H7A3.5 3.5 0 0 1 3.5 13"/></svg>
+      מחשבון טרייד-אין</button>
   </div>`;
 }
 async function svcLoadFlags(){ try{ S.svcFlags=await api('/api/admin/service-flags'); }catch(e){ S.svcFlags={tradein:false,greencare:false}; } if(S.view==='admin'&&S.adminTab==='greencare') renderGreenCare(); }
