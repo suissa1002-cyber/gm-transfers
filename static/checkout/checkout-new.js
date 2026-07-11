@@ -209,7 +209,14 @@ jQuery(function ($) {
     }
   }
 
-  function decorateAll() { decorateShipping(); decoratePayment(); ensureProxy(); fixQty(); ppSlotState(); pickupUI(); }
+  function fixTotalLabel() {
+    /* mockup wording: the grand-total row reads "לתשלום" */
+    $('.gm-summary tr.order-total th').each(function () {
+      var n = this.firstChild;
+      if (n && n.nodeType === 3 && n.nodeValue.indexOf('לתשלום') === -1) n.nodeValue = 'לתשלום ';
+    });
+  }
+  function decorateAll() { decorateShipping(); decoratePayment(); ensureProxy(); fixQty(); fixTotalLabel(); ppSlotState(); pickupUI(); }
   decorateAll();
   $(document.body).on('updated_checkout', function () { decorateAll(); setTimeout(decorateAll, 80); });
 
