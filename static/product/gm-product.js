@@ -360,7 +360,9 @@
   }
   function money(cents, minor) { return '‏₪' + (cents / Math.pow(10, minor)).toLocaleString('en-US'); }
   function drawerRender(c) {
-    var $items = $('#cartItems'); if (!$items.length || !c || !c.totals) return;
+    if (!c || !c.totals) return;
+    drawerEnsure();                      /* הרינדור הראשון עשוי להקדים את יצירת הדרור */
+    var $items = $('#cartItems'); if (!$items.length) return;
     var minor = c.totals.currency_minor_unit || 0;
     var count = 0;
     if (!(c.items || []).length) $items.html('<div class="cart-empty">הסל ריק</div>');
