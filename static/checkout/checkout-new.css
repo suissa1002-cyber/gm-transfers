@@ -59,6 +59,10 @@ body.gm-new-checkout #gm-branch-pick{
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%234b4f58' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
   background-repeat:no-repeat; background-position:left 15px center;
 }
+body.gm-new-checkout #gm-branch-pick{
+  /* מרכוז אנכי דטרמיניסטי — select חד-שורתי; בלי תלות ב-line-height של התמה */
+  height:52px!important; padding-top:0!important; padding-bottom:0!important; line-height:50px!important;
+}
 body.gm-new-checkout #gm-branch-pick:focus{ outline:none; border-color:var(--gm-accent); }
 body.gm-new-checkout .gm-branch-note{ font-size:12.5px; color:var(--gm-ink2); margin-top:7px; font-weight:600; }
 body.gm-new-checkout .gm-addr-fields{ display:grid; grid-template-columns:1fr 1fr; gap:0 16px; }
@@ -178,7 +182,11 @@ body.gm-new-checkout li.wc_payment_method > label{
   display:flex!important; flex-direction:row!important; align-items:center!important; gap:10px; cursor:pointer; margin:0!important; padding:0!important; width:auto!important;
 }
 body.gm-new-checkout .gm-pm-txt{ flex:1; min-width:0; display:flex; flex-direction:column; }
-body.gm-new-checkout .gm-pm-txt b{ font-weight:800; font-size:15px; }
+body.gm-new-checkout .gm-pm-txt b{ font-weight:800; font-size:15px; display:flex; align-items:center; flex-wrap:wrap; gap:4px 10px; }
+/* card-brand icons live on the title row; the gateway box (icons+description) is folded away */
+body.gm-new-checkout .gm-cc-brands{ display:inline-flex; gap:5px; align-items:center; }
+body.gm-new-checkout .gm-cc-brands img{ height:18px!important; width:auto!important; max-width:none!important; display:block; }
+body.gm-new-checkout li.payment_method_payplus-payment-gateway .payment_box{ display:none!important; }
 body.gm-new-checkout .gm-pm-txt span{ color:var(--gm-ink2); font-size:13px; font-weight:600; }
 body.gm-new-checkout .gm-pm-logos{ display:inline-flex; align-items:center; gap:6px; flex:none; margin-inline-end:2px; }
 body.gm-new-checkout li.wc_payment_method img{ max-height:24px; width:auto; vertical-align:middle; }

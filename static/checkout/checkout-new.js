@@ -209,6 +209,20 @@ jQuery(function ($) {
     }
   }
 
+  function decorateCC() {
+    /* card-brand icons up to the title row; the box's bottom text becomes line 2 */
+    var $cc = $('li.payment_method_payplus-payment-gateway');
+    if (!$cc.length) return;
+    var $b = $cc.find('.gm-pm-txt b').first();
+    if (!$b.length || $b.find('.gm-cc-brands').length) return;
+    var $imgs = $cc.find('.payment_box .payplus-checkout-image');
+    if ($imgs.length) {
+      var $br = $('<span class="gm-cc-brands"></span>');
+      $imgs.each(function () { $br.append($(this).clone().removeAttr('style')); });
+      $b.append($br);
+    }
+    $cc.find('.gm-pm-txt > span').first().text('שלם בצורה מאובטחת עם פיי פלוס · עד 12 תשלומים');
+  }
   function fixTotalLabel() {
     /* mockup wording: the grand-total row reads "לתשלום" */
     $('.gm-summary tr.order-total th').each(function () {
@@ -216,7 +230,7 @@ jQuery(function ($) {
       if (n && n.nodeType === 3 && n.nodeValue.indexOf('לתשלום') === -1) n.nodeValue = 'לתשלום ';
     });
   }
-  function decorateAll() { decorateShipping(); decoratePayment(); ensureProxy(); fixQty(); fixTotalLabel(); ppSlotState(); pickupUI(); }
+  function decorateAll() { decorateShipping(); decoratePayment(); decorateCC(); ensureProxy(); fixQty(); fixTotalLabel(); ppSlotState(); pickupUI(); }
   decorateAll();
   $(document.body).on('updated_checkout', function () { decorateAll(); setTimeout(decorateAll, 80); });
 
