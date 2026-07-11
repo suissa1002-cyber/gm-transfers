@@ -302,6 +302,21 @@ def validate_claim(policy: dict, claims: list, claim_type: str) -> tuple:
 # ── השתתפות עצמית: מסך (50% ממחיר תיקון עדכני) ──
 _SCREEN_KEYS = ["מסך", "screen", "display", "מסך + סוללה", "מסך+סוללה"]
 
+# ── טרייד-אין פנימי: ניכוי בריאות-סוללה (Apple) — מחיר סוללה לדגם מהמחירון ──
+_BATTERY_KEYS = ["סוללה", "בטריה", "battery"]
+
+
+def _battery_price_from_repairs(repairs: dict) -> int:
+    """מחיר החלפת סוללה מתוך מפת התיקונים של דגם (הזול/מקורי הראשון).
+    מדלג על שורות משולבות ('מסך + סוללה') — סוללה בלבד."""
+    for key, tiers in (repairs or {}).items():
+        kl = str(key).lower()
+        if any(bk in kl for bk in _BATTERY_KEYS) and "מסך" not in kl and "screen" not in kl:
+            prices = [int(t["price"]) for t in (tiers or []) if t.get("price")]
+            if prices:
+                return min(prices)
+    return 0
+
 
 def _screen_price_from_repairs(repairs: dict) -> int:
     """מחיר תיקון המסך מתוך מפת התיקונים של דגם (המחיר הזול/מקורי הראשון שנמצא)."""

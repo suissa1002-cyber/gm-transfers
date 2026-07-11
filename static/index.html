@@ -6921,12 +6921,23 @@ function osTiEstimate(){
   if(c.body==='backglass') cut('גב שבור', gcut*0.35);
   if(c.func==='fault'&&c.power!=='no') cut('תקלה', gcut*0.55);
   if(c.power==='no') cut('לא נדלק', A-D);
+  // בריאות סוללה (Apple, פנימי בלבד): ניכוי כאחוז ממחיר החלפת סוללה לדגם
+  if(t.brand==='Apple' && c.power!=='no'){
+    const pct=parseFloat(t.batt);
+    const bp=(t.battPrice&&t.battPrice>0)?t.battPrice:(parseFloat(t.battManual)||0);
+    if(!isNaN(pct)&&pct>0&&bp>0){
+      let f=1;                                   // 25–79 → מלוא מחיר הסוללה
+      if(pct>=95)f=0; else if(pct>=90)f=0.10; else if(pct>=85)f=0.25; else if(pct>=80)f=0.50;
+      if(f>0){ const d=Math.round(bp*f); v-=d; cuts.push('סוללה '+pct+'% −₪'+d.toLocaleString()); }
+    }
+  }
   const val=Math.round(Math.max(v, Math.round(A*0.06))/10)*10;
   return {value:val, base:A, cuts};
 }
 function osTiCondSummary(){
-  const c=(S._osTi||{}).cond||{}; const parts=[];
+  const t=S._osTi||{}; const c=t.cond||{}; const parts=[];
   OSTI_QS.forEach(q=>{ const o=(q.o.find(x=>x[0]===c[q.k])||[])[1]; if(o&&c[q.k]) parts.push(q.q.replace('?','')+': '+o); });
+  if(t.brand==='Apple'&&c.power!=='no'&&t.batt) parts.push('סוללה: '+t.batt+'%');
   return parts.join(' · ');
 }
 function osAttachTradein(){
@@ -6939,10 +6950,19 @@ function osAttachTradein(){
     .catch(()=>{ S._osTi.manual=true; osTiPaint(); });
 }
 function osTiSet(k,v){ const t=S._osTi;
-  if(k==='brand'){ t.brand=v; t.model=''; t.storage=''; }
-  else if(k==='model'){ t.model=v; const st=Object.keys(((t.cat||{})[t.brand]||{})[v]||{}); t.storage=st.length===1?st[0]:''; }
+  if(k==='brand'){ t.brand=v; t.model=''; t.storage=''; t.batt=''; t.battPrice=null; t.battManual=''; t.battLoaded=false; }
+  else if(k==='model'){ t.model=v; const st=Object.keys(((t.cat||{})[t.brand]||{})[v]||{}); t.storage=st.length===1?st[0]:'';
+    t.batt=''; t.battManual=''; osTiFetchBatt(); }
   else t[k]=v;
   osTiPaint();
+}
+// מחיר סוללה לדגם מהמחירון החי — לניכוי בריאות-סוללה (Apple בלבד)
+function osTiFetchBatt(){ const t=S._osTi||{};
+  t.battPrice=null; t.battLoaded=false;
+  if(t.brand!=='Apple'||!t.model) return;
+  api('/api/admin/tradein/battery-price?model='+encodeURIComponent(t.model),null,20000)
+    .then(r=>{ t.battPrice=(r&&r.found)?r.price:0; t.battLoaded=true; osTiPaint(); })
+    .catch(()=>{ t.battPrice=0; t.battLoaded=true; osTiPaint(); });
 }
 function osTiCond(k,v){ S._osTi.cond=Object.assign({},S._osTi.cond,{[k]:v}); osTiPaint(); }
 function osTiPaint(){
@@ -6986,6 +7006,23 @@ function osTiPaint(){
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">
         ${q.o.map(([v,l])=>`<button type="button" onclick="osTiCond('${q.k}','${v}')" style="padding:6px 12px;border-radius:99px;font-size:12px;cursor:pointer;font-family:inherit;border:1.5px solid ${t.cond[q.k]===v?'var(--acc,#6366f1)':'var(--line)'};background:${t.cond[q.k]===v?'rgba(99,102,241,.12)':'var(--bg)'};color:var(--txt)">${l}</button>`).join('')}
       </div></div>`).join('');
+  // בריאות סוללה — Apple בלבד, מוסתר כשהמכשיר לא נדלק (פנימי — לא בצד לקוח)
+  let battHTML='';
+  if(!t.manual&&cat&&t.brand==='Apple'&&t.model&&t.cond.power!=='no'){
+    const hasPrice=t.battPrice&&t.battPrice>0;
+    const needManual=t.battLoaded&&!hasPrice;
+    battHTML=`<div style="margin-top:9px"><span class="muted" style="font-size:12px">מצב סוללה (Battery Health)</span>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:4px">
+        <input type="number" min="25" max="100" placeholder="%" value="${escW(t.batt||'')}"
+          oninput="S._osTi.batt=this.value" onchange="osTiPaint()"
+          style="width:90px;box-sizing:border-box;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--bg);color:var(--txt)">
+        ${hasPrice?`<span class="muted" style="font-size:11.5px">מחיר סוללה לדגם: ₪${(+t.battPrice).toLocaleString()} (מהמחירון)</span>`
+          : needManual?`<input type="number" placeholder="לא נמצא מחיר סוללה — הזן מחיר סוללה מקורית (₪)" value="${escW(t.battManual||'')}"
+              oninput="S._osTi.battManual=this.value" onchange="osTiPaint()"
+              style="flex:1;box-sizing:border-box;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--bg);color:var(--txt);font-size:11.5px">`
+          : `<span class="muted" style="font-size:11.5px">טוען מחיר סוללה…</span>`}
+      </div></div>`;
+  }
   // הערכה חיה
   const est=(!t.manual&&cat)?osTiEstimate():null;
   const condDone=OSTI_QS.every(q=>(q.k==='func'&&t.cond.power==='no')||t.cond[q.k]);
@@ -7002,6 +7039,7 @@ function osTiPaint(){
     <div style="font-weight:800;margin-bottom:12px">🔄 צירוף טרייד-אין</div>
     ${deviceHTML}
     ${condHTML}
+    ${battHTML}
     ${estHTML}
     <div style="display:flex;gap:8px;align-items:flex-end;margin-top:10px">
       <div style="flex:1"><label class="muted" style="font-size:12px">זיכוי משוער (₪)${est&&condDone?' — ניתן לעריכה':''}</label>

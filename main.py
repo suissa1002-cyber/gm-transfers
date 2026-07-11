@@ -2786,6 +2786,24 @@ def admin_tradein_catalog(x_admin_key: Optional[str] = Header(None),
                         headers={"Cache-Control": "no-store"})
 
 
+@app.get("/api/admin/tradein/battery-price")
+def admin_tradein_battery_price(model: str = "",
+                                x_admin_key: Optional[str] = Header(None),
+                                x_device_token: Optional[str] = Header(None)):
+    """מחיר החלפת סוללה לדגם מתוך מחירון התיקונים (החי, cache 30 דק') —
+    לניכוי בריאות-סוללה במחשבון הטרייד-אין הפנימי (Apple בלבד בצד ה-UI)."""
+    _require_admin_or_device(x_admin_key, x_device_token)
+    data = _repair_prices()
+    devices = data.get("devices") or {}
+    key, display = greencare._best_repair_match(model, devices)
+    if not key:
+        return {"found": False, "reason": "model"}
+    price = greencare._battery_price_from_repairs(devices[key].get("repairs") or {})
+    if not price:
+        return {"found": False, "reason": "battery", "matched": display}
+    return {"found": True, "price": price, "matched": display}
+
+
 # ── מתגי שירות גלובליים (טרייד-אין / Green Care) ──
 # מקור-האמת ל-on/off של הווידג'טים באתר החי. ברירת מחדל: כבוי (בטוח —
 # התוסף עולה כבוי ומדליקים כאן ידנית). האתר קורא את /api/public/service-flags.
