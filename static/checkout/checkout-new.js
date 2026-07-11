@@ -295,6 +295,11 @@ jQuery(function ($) {
     });
   }
   function decorateAll() { decorateShipping(); decoratePayment(); decorateCC(); ensureProxy(); fixQty(); fixTotalLabel(); ppSlotState(); pickupUI(); }
+  /* safety net: a third-party handler earlier in the updated_checkout chain can
+     throw (seen live: Jetpack-Boost bundle, variation_id TypeError) and abort the
+     dispatch before it reaches us. All decorators are idempotent — a light
+     interval guarantees the UI recovers within a second regardless. */
+  setInterval(function () { try { decorateAll(); } catch (e) {} }, 900);
   decorateAll();
   $(document.body).on('updated_checkout', function () { decorateAll(); setTimeout(decorateAll, 80); });
 

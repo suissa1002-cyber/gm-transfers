@@ -22,7 +22,9 @@ body.gm-new-checkout .gm-co-title{ max-width:1200px; margin:6px auto 18px; font-
 body.gm-new-checkout .gm-co-grid{ display:flex; flex-direction:row; gap:26px; align-items:flex-start; max-width:1200px; margin:0 auto; }
 body.gm-new-checkout .gm-co-grid, body.gm-new-checkout .gm-co-grid *{ box-sizing:border-box; }
 body.gm-new-checkout .gm-co-main{ flex:1 1 55%; min-width:0; display:flex; flex-direction:column; gap:18px; }
-body.gm-new-checkout .gm-co-side{ flex:1 1 45%; min-width:0; max-width:none; position:sticky; top:18px; display:flex; flex-direction:column; gap:14px; }
+body.gm-new-checkout .gm-co-side{ flex:1 1 45%; min-width:0; max-width:none; position:sticky; top:28px; display:flex; flex-direction:column; gap:14px; }
+/* מנהל מחובר: פס הניהול של WP מכסה 32px — הסיכום נדחף מתחתיו כדי שהמסגרת תיראה שלמה */
+body.admin-bar.gm-new-checkout .gm-co-side{ top:62px; }
 
 /* cards */
 body.gm-new-checkout .gm-card{ background:var(--gm-surface); border:1px solid var(--gm-line); border-radius:var(--gm-r); padding:26px 28px; box-shadow:var(--gm-shadow); }
