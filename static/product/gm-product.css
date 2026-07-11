@@ -382,3 +382,62 @@ body.gm-product-new *{text-indent:0!important;}
 .fulldesc img{max-width:100%;height:auto;display:block;margin:14px auto;}
 .instk.oos{color:#b58900;}
 .linked .ltile img{width:44px;height:44px;object-fit:contain;background:#fff;border-radius:8px;}
+
+/* ═══ live polish r2 — היישור מול המוקאפ ═══ */
+/* מחיר יחיד גדול (הווריאציה הנבחרת) */
+.pricebox{margin:6px 0 2px;}
+.pricebox .price{font-size:2.05rem!important;letter-spacing:-.01em;}
+.gm-atc .woocommerce-variation-price{display:none!important;}   /* המחיר חי למעלה — לא כפול בטופס */
+.pay{color:var(--ink2);font-size:.92rem;font-weight:600;margin:2px 0 6px;}
+.pay b{color:var(--ink);}
+.instk{color:var(--accent);font-weight:800;font-size:.95rem;margin:2px 0 10px;}
+/* שורת וריאציה: תווית "צבע: חום" */
+.gm-atc table.variations label{font-weight:800!important;font-size:.95rem!important;color:var(--ink)!important;}
+.gm-atc table.variations label .curval{font-weight:700;color:var(--ink2);}
+.gm-atc table.variations td.value{margin-top:2px;}
+/* בורר הווריאציות (תוסף ה-swatches) → מראה המוקאפ */
+.gm-atc .variable-items-wrapper{display:flex!important;flex-wrap:wrap;gap:10px!important;padding:0!important;margin:6px 0 2px!important;list-style:none!important;}
+.gm-atc .variable-item{border:1.5px solid var(--line)!important;border-radius:12px!important;background:#fff!important;box-shadow:none!important;cursor:pointer;margin:0!important;transition:border-color .14s, background .14s;}
+.gm-atc .image-variable-item{width:66px!important;height:66px!important;padding:5px!important;display:flex!important;align-items:center;justify-content:center;}
+.gm-atc .image-variable-item img{width:100%!important;height:100%!important;object-fit:contain;border-radius:8px;}
+.gm-atc .button-variable-item{padding:11px 22px!important;font-weight:700!important;font-size:.95rem!important;height:auto!important;width:auto!important;color:var(--ink)!important;}
+.gm-atc .variable-item.selected,.gm-atc .variable-item[aria-checked="true"]{border-color:var(--accent)!important;box-shadow:0 0 0 1px var(--accent)!important;background:var(--accent-soft)!important;}
+.gm-atc .variable-item:hover{border-color:var(--accent)!important;}
+.gm-atc .reset_variations{display:none!important;}
+/* שורת קנייה: כפתור ענק + בורר כמות בגלולה */
+.gm-atc .woocommerce-variation-add-to-cart, .gm-atc form.cart.gm-simple{display:flex!important;gap:10px;align-items:center;margin-top:16px;}
+.gm-atc .quantity.buttons_added{display:inline-flex!important;align-items:center;border:1.5px solid var(--line)!important;border-radius:99px!important;padding:4px 6px!important;background:var(--surface)!important;flex:none;}
+.gm-atc .quantity .minus,.gm-atc .quantity .plus{width:30px;height:30px;display:inline-flex!important;align-items:center;justify-content:center;border:none!important;background:none!important;color:var(--ink)!important;font-size:19px;font-weight:700;text-decoration:none!important;box-shadow:none!important;}
+.gm-atc .quantity input{border:none!important;width:34px!important;padding:0!important;text-align:center;font-weight:800;background:none!important;font-size:1rem;}
+.gm-atc .single_add_to_cart_button{flex:1;display:flex!important;align-items:center;justify-content:center;gap:9px;text-decoration:none!important;}
+.gm-atc .single_add_to_cart_button.disabled{opacity:.5;}
+/* קוביות אמון — כרטיסים 2x2 כמו במוקאפ */
+.trust{display:grid!important;grid-template-columns:1fr 1fr;gap:10px;margin-top:20px;}
+.trust .titem{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:13px 15px;display:flex;flex-direction:column;gap:2px;}
+.trust .titem b{font-size:.93rem;font-weight:800;color:var(--ink);}
+.trust .titem span{font-size:.78rem;color:var(--ink2);font-weight:600;}
+/* אפשרויות נוספות — כרטיסים כמו במוקאפ */
+.linked{margin:16px 0 0;}
+.linked-lab{font-weight:800;font-size:.95rem;margin-bottom:8px;}
+.linked-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.ltile{display:flex;flex-direction:column;align-items:center;gap:6px;background:var(--surface);border:1.5px solid var(--line);border-radius:14px;padding:14px 12px;text-decoration:none!important;color:var(--ink)!important;text-align:center;transition:border-color .14s;}
+.ltile:hover{border-color:var(--accent);}
+.ltile img{width:74px!important;height:74px!important;object-fit:contain;background:#fff;border-radius:10px;}
+.ltile .lt-n{font-size:.82rem;font-weight:600;line-height:1.3;max-height:2.6em;overflow:hidden;}
+.ltile .lt-p{font-weight:800;color:var(--accent);font-size:.92rem;}
+.ltile .lt-p del{color:var(--ink2);font-weight:600;margin-inline-start:6px;}
+/* כרטיסי Green Care / טרייד-אין */
+.pwidgets{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px;}
+.pw-card{background:var(--surface);border:1.5px solid var(--line);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:4px;}
+.pw-card.gc{background:var(--accent-soft);border-color:transparent;}
+.pw-card .pw-t{font-weight:800;font-size:.95rem;}
+.pw-card .pw-s{font-size:.8rem;color:var(--ink2);font-weight:600;flex:1;}
+.pw-card .pw-btn{margin-top:8px;align-self:flex-start;background:none;border:1.5px solid var(--accent);color:var(--accent);border-radius:99px;padding:7px 18px;font-weight:800;font-size:.85rem;text-decoration:none!important;}
+/* גלריה נקייה כמו במוקאפ */
+.gmain img{border:none!important;}
+.gmain{background:#fff;border:1px solid var(--line);border-radius:18px;padding:20px;}
+@media (max-width:900px){
+  .pwidgets,.linked-row{grid-template-columns:1fr 1fr;}
+  .gm-atc .woocommerce-variation-add-to-cart{flex-wrap:wrap;}
+  .gm-atc .single_add_to_cart_button{width:100%;flex:1 1 100%;order:2;}
+}
