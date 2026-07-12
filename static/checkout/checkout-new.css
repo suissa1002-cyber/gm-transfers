@@ -392,3 +392,23 @@ body.gm-new-checkout .woocommerce-message{ border:1px solid var(--gm-line)!impor
   body.gm-new-checkout .gm-pp-skel .sk-field{ padding:10px 12px; margin-bottom:10px; font-size:13.5px; }
   body.gm-new-checkout .gm-pp-skel .sk-w{ padding:10px; font-size:13.5px; }
 }
+
+/* ═══ הדר הצ'ק-אאוט מהמוקאפ: לוגו · המשך קנייה · תשלום מאובטח — במקום הדר התמה ═══ */
+body.gm-new-checkout #masthead,
+body.gm-new-checkout .ast-main-header-wrap,
+body.gm-new-checkout .ast-above-header-wrap,
+body.gm-new-checkout header.site-header{display:none!important;}
+body.gm-new-checkout .gm-co-head{background:#fff;border-bottom:1px solid var(--gm-line);}
+body.gm-new-checkout .gm-co-head .gm-co-hwrap{max-width:1200px;margin:0 auto;padding:0 clamp(18px,3vw,48px);display:flex;align-items:center;gap:20px;height:62px;}
+body.gm-new-checkout .gm-co-head .gm-logo-img{height:34px!important;width:auto!important;max-width:none!important;display:block;}
+body.gm-new-checkout .gm-co-back{display:inline-flex;align-items:center;gap:6px;color:var(--gm-ink2);text-decoration:none!important;font-weight:700;font-size:13.5px;}
+body.gm-new-checkout .gm-co-back:hover{color:var(--gm-accent);}
+body.gm-new-checkout .gm-co-secure{margin-inline-start:auto;display:inline-flex;align-items:center;gap:7px;color:var(--gm-ink2);font-size:13.5px;font-weight:700;}
+body.gm-new-checkout .gm-co-secure svg,body.gm-new-checkout .gm-co-back svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;flex:none;}
+body.gm-new-checkout .gm-co-secure svg{color:var(--gm-accent);stroke:var(--gm-accent);}
+@media (max-width:640px){
+  body.gm-new-checkout .gm-co-head .gm-co-hwrap{height:54px;gap:12px;}
+  body.gm-new-checkout .gm-co-head .gm-logo-img{height:27px!important;}
+  body.gm-new-checkout .gm-co-secure{font-size:12px;}
+  body.gm-new-checkout .gm-co-back{font-size:12px;}
+}

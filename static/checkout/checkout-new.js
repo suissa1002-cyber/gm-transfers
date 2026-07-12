@@ -294,6 +294,18 @@ jQuery(function ($) {
       if (n && n.nodeType === 3 && n.nodeValue.indexOf('לתשלום') === -1) n.nodeValue = 'לתשלום ';
     });
   }
+  /* הדר הצ'ק-אאוט מהמוקאפ — מוזרק במקום הדר התמה (שמוסתר ב-CSS) */
+  (function coHeader() {
+    if (document.querySelector('.gm-co-head')) return;
+    var h = document.createElement('div');
+    h.className = 'gm-co-head';
+    h.innerHTML = '<div class="gm-co-hwrap">' +
+      '<a class="gm-logo-wrap" href="/"><img class="gm-logo-img" src="https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2025/01/GREENMOBILE_LOGO-02.png" alt="green mobile"></a>' +
+      '<a class="gm-co-back" href="/"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg> המשך קנייה</a>' +
+      '<span class="gm-co-secure"><svg viewBox="0 0 24 24"><rect x="4.5" y="10.5" width="15" height="9.5" rx="2"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></svg> תשלום מאובטח ומוצפן</span></div>';
+    document.body.insertBefore(h, document.body.firstChild);
+  })();
+
   function decorateAll() { decorateShipping(); decoratePayment(); decorateCC(); ensureProxy(); fixQty(); fixTotalLabel(); ppSlotState(); pickupUI(); }
   /* safety net: a third-party handler earlier in the updated_checkout chain can
      throw (seen live: Jetpack-Boost bundle, variation_id TypeError) and abort the
