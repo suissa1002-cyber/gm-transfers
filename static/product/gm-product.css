@@ -569,3 +569,5 @@ body.gm-product-new .gm-svc-addons .addon.greencare .addon-shield{display:none!i
   .gm-atc .quantity.buttons_added{flex:none!important;}
   .gm-atc ul.variable-items-wrapper li.variable-item.button-variable-item{padding:10px 18px!important;min-width:72px;}
 }
+/* r8.1: בלוק "קשור" של Jetpack מזליג לתוך התיאור — לא שייך לעמוד המוצר החדש */
+body.gm-product-new .jp-relatedposts{display:none!important;}
