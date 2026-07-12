@@ -1,0 +1,199 @@
+<!doctype html>
+<html dir="rtl" lang="he">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JBL + Nothing — Green Mobile מול בג</title>
+</head>
+<body style="margin:0">
+<style>
+:root{
+  --paper:#FAFAF7; --card:#FFFFFF; --ink:#1b1d1b; --muted:#6b6f6a;
+  --line:rgba(0,0,0,.09); --line-soft:rgba(0,0,0,.055);
+  --brand:#1a7f45; --brand-bg:#e8f3ec;
+  --hi:#bf3a2d; --hi-bg:#f9e9e6;
+  --lo:#12795a; --lo-bg:#e3f2ec;
+  --chip-neutral:#eeede7;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --paper:#161718; --card:#1e2022; --ink:#ececea; --muted:#9a9e97;
+    --line:rgba(255,255,255,.12); --line-soft:rgba(255,255,255,.07);
+    --brand:#3fbf72; --brand-bg:#193627;
+    --hi:#f0796c; --hi-bg:#3a2320;
+    --lo:#4ecaa0; --lo-bg:#173029;
+    --chip-neutral:#2a2c2b;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#161718; --card:#1e2022; --ink:#ececea; --muted:#9a9e97;
+  --line:rgba(255,255,255,.12); --line-soft:rgba(255,255,255,.07);
+  --brand:#3fbf72; --brand-bg:#193627;
+  --hi:#f0796c; --hi-bg:#3a2320;
+  --lo:#4ecaa0; --lo-bg:#173029;
+  --chip-neutral:#2a2c2b;
+}
+:root[data-theme="light"]{
+  --paper:#FAFAF7; --card:#FFFFFF; --ink:#1b1d1b; --muted:#6b6f6a;
+  --line:rgba(0,0,0,.09); --line-soft:rgba(0,0,0,.055);
+  --brand:#1a7f45; --brand-bg:#e8f3ec;
+  --hi:#bf3a2d; --hi-bg:#f9e9e6;
+  --lo:#12795a; --lo-bg:#e3f2ec;
+  --chip-neutral:#eeede7;
+}
+*{box-sizing:border-box;}
+.gm-wrap{direction:rtl; text-align:right; background:var(--paper); color:var(--ink);
+  font-family:"Assistant","Heebo","Rubik",system-ui,"Segoe UI","Arial Hebrew",Arial,sans-serif;
+  -webkit-font-smoothing:antialiased; min-height:100vh; margin:0; padding:0;
+  font-variant-numeric:tabular-nums;}
+.gm-inner{max-width:920px; margin:0 auto; padding:40px 22px 72px;}
+.gm-eyebrow{font-size:13px; letter-spacing:.06em; color:var(--brand); font-weight:600; margin:0 0 6px;}
+.gm-h1{font-size:30px; line-height:1.15; font-weight:700; margin:0 0 8px; text-wrap:balance;}
+.gm-sub{font-size:15px; color:var(--muted); margin:0 0 4px; line-height:1.6;}
+.gm-date{font-size:13px; color:var(--muted); margin:0;}
+.gm-cards{display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin:26px 0 8px;}
+@media(max-width:560px){.gm-cards{grid-template-columns:repeat(2,1fr);}}
+.gm-card{border-radius:14px; padding:16px 16px 14px; background:var(--card); border:1px solid var(--line-soft);}
+.gm-card .n{font-size:30px; font-weight:700; line-height:1;}
+.gm-card .l{font-size:13px; margin-top:6px; color:var(--muted);}
+.gm-card.hi{background:var(--hi-bg);} .gm-card.hi .n{color:var(--hi);} .gm-card.hi .l{color:var(--hi);}
+.gm-card.lo{background:var(--lo-bg);} .gm-card.lo .n{color:var(--lo);} .gm-card.lo .l{color:var(--lo);}
+.gm-tools{display:flex; gap:10px; align-items:center; margin:24px 0 18px; flex-wrap:wrap;}
+.gm-search{flex:1; min-width:200px; height:42px; border:1px solid var(--line); background:var(--card);
+  border-radius:11px; padding:0 14px; font-size:15px; color:var(--ink); font-family:inherit;}
+.gm-search:focus{outline:2px solid var(--brand); outline-offset:1px;}
+.gm-secttl{display:flex; align-items:center; gap:9px; font-size:18px; font-weight:700; margin:30px 0 12px;}
+.gm-dot{width:10px; height:10px; border-radius:50%;}
+.gm-list{background:var(--card); border:1px solid var(--line-soft); border-radius:14px; overflow:hidden;}
+.gm-row{display:flex; align-items:center; gap:12px; padding:12px 16px; border-bottom:1px solid var(--line-soft);}
+.gm-row:last-child{border-bottom:none;}
+.gm-name{flex:1; min-width:0; font-size:15px; font-weight:500;}
+.gm-note{font-size:12.5px; color:var(--muted); font-weight:400;}
+.gm-prices{font-size:13.5px; color:var(--muted); white-space:nowrap;}
+.gm-prices b{color:var(--ink); font-weight:600;}
+.gm-diff{font-size:14px; font-weight:700; padding:3px 10px; border-radius:9px; min-width:58px;
+  text-align:center; white-space:nowrap;}
+.gm-diff.hi{color:var(--hi); background:var(--hi-bg);}
+.gm-diff.lo{color:var(--lo); background:var(--lo-bg);}
+.gm-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:2px 22px;
+  background:var(--card); border:1px solid var(--line-soft); border-radius:14px; padding:8px 16px;}
+.gm-gitem{display:flex; justify-content:space-between; gap:10px; padding:8px 0;
+  border-bottom:1px solid var(--line-soft); font-size:14px;}
+.gm-gitem b{color:var(--ink); font-weight:600; white-space:nowrap;}
+.gm-foot{margin-top:40px; padding-top:18px; border-top:1px solid var(--line); font-size:13px;
+  color:var(--muted); line-height:1.75;}
+.gm-foot b{color:var(--ink); font-weight:600;}
+.gm-hide{display:none !important;}
+a{color:var(--brand);}
+</style>
+
+<div class="gm-wrap">
+  <div class="gm-inner">
+    <p class="gm-eyebrow">Green Mobile · השוואת מחירים מול רשת בּג</p>
+    <h1 class="gm-h1">מחירי JBL ו-Nothing — אנחנו מול בּג</h1>
+    <p class="gm-sub">70 מוצרים נסקרו. המחירים בבּג נלקחו מעמוד המוצר באתר bug.co.il (מחיר מכירה ארצי, ללא "מחיר אילת").</p>
+    <p class="gm-date">עודכן: 12/07/2026</p>
+
+    <div class="gm-cards">
+      <div class="gm-card hi"><div class="n">23</div><div class="l">אנחנו יקרים יותר</div></div>
+      <div class="gm-card lo"><div class="n">7</div><div class="l">אנחנו זולים יותר</div></div>
+      <div class="gm-card"><div class="n">37</div><div class="l">מחיר זהה</div></div>
+      <div class="gm-card"><div class="n">3</div><div class="l">בּג לא מוכרים</div></div>
+    </div>
+
+    <div class="gm-tools">
+      <input class="gm-search" id="q" type="search" placeholder="חיפוש דגם… (למשל Flip, Charge, Tune 520)" aria-label="חיפוש דגם">
+    </div>
+
+    <div class="gm-secttl"><span class="gm-dot" style="background:var(--hi)"></span> אנחנו יקרים יותר מבּג · לפי גודל הפער</div>
+    <div class="gm-list" id="higher"></div>
+
+    <div class="gm-secttl"><span class="gm-dot" style="background:var(--lo)"></span> אנחנו זולים יותר מבּג</div>
+    <div class="gm-list" id="lower"></div>
+
+    <div class="gm-secttl"><span class="gm-dot" style="background:var(--muted)"></span> מחיר זהה · 37 מוצרים</div>
+    <div class="gm-grid" id="same"></div>
+
+    <div class="gm-secttl"><span class="gm-dot" style="background:var(--muted)"></span> בּג לא מוכרים / לא נמצא</div>
+    <div class="gm-grid" id="nf"></div>
+
+    <div class="gm-foot">
+      <b>הערות דיוק:</b> המחירים נכונים ליום 12/07/2026 לפי עמוד המוצר בבּג.
+      Boombox 3 בבּג (₪999) הוא מבצע מועדון MyBug עד 21/07 (מחיר רגיל ₪1199).
+      את "Tune 770BT" ו-"Live 770BTNC" בּג מוכרים תחת השם הרשמי 770NC — אותו מוצר פיזית.
+      דגמי Nothing ו-CMF (5) כולם בתמחור זהה לבּג.
+      נבדק ע"י צוות סוכני מחקר של Green Mobile.
+    </div>
+  </div>
+</div>
+
+<script>
+const higher=[
+["JBL Boombox 3",1359,999,"מבצע מועדון עד 21/07 · רגיל 1199"],
+["JBL Boombox 4",1679,1399,""],
+["JBL Xtreme 4",1149,999,""],
+["JBL Flip 6 · רמקול (2353)",499,379,""],
+["JBL Tune Buds 2",449,349,""],
+["JBL SoundGear Sense",599,499,""],
+["JBL Live 670NC",599,499,""],
+["JBL Endurance Race",269,199,""],
+["JBL Tune 720BT",259,199,""],
+["JBL Tune 770BT",349,299,"בבּג בשם 770NC"],
+["JBL Live 775",699,649,""],
+["JBL Sense Lite",499,449,""],
+["JBL Tune 520C",199,149,"חוטי USB-C"],
+["JBL Endurance Race 2",349,299,""],
+["JBL Quantum 100",199,159,""],
+["JBL Quantum 100P",219,179,""],
+["JBL Quantum 100X",219,179,""],
+["JBL Tune T125 BT",179,139,""],
+["JBL Charge 5",535,499,""],
+["JBL Go Essential 2",159,129,""],
+["JBL Grip",329,299,""],
+["JBL Flip 6 · רמקול (33053)",399,379,""],
+["JBL Go 4",159,149,""]];
+const lower=[
+["JBL Live 770BTNC",489,599,"בבּג בשם 770NC"],
+["JBL Wave Flex 2",209,299,""],
+["JBL Tune 520BT",175,249,""],
+["JBL Charge 6",535,569,""],
+["JBL Tune 510BT",169,199,""],
+["JBL Clip 5",215,239,""],
+["JBL Wave Beam 2",209,229,""]];
+const same=[
+["Nothing Ear (3)",629],["CMF Headphones Pro",399],["CMF Buds 2 Plus",329],["CMF Buds 2",269],["CMF Buds 2A",219],
+["JBL Xtreme 3",999],["JBL Tour Pro 3",999],["JBL Live Flex 3",649],["JBL Sense Pro",599],["JBL Tour Pro 2",599],
+["JBL Live Beam 3",569],["JBL Tune 775NC",499],["JBL Live Pro 2",499],["JBL SoundGear Clips",499],["JBL Quantum Air",499],
+["JBL Charge Essential 2",475],["JBL Endurance Peak 4",469],["JBL Tune 235 NC TWS",399],["JBL Endurance Zone",399],["JBL Flip 7",399],
+["JBL Tune 760BTNC",369],["JBL Flip Essential",329],["JBL Tune Flex 2",329],["JBL Tune Beam",299],["JBL Endurance Pace",299],
+["JBL Tune 730BT",269],["JBL Tune 570BT",219],["JBL Tune 530BT",199],["JBL Endurance Run 3",189],["JBL Junior 320BT",189],
+["JBL Clip 4",179],["JBL Tune 235BT",179],["JBL Vibe Beam",159],["JBL Tune 530C",149],["JBL Tune 500",149],
+["JBL Tune 530",129]];
+const nf=[["JBL Tune 245NC",399,"בּג לא מוכרים"],["JBL Tune 660BTNC",269,"עמוד בבּג 404 · אזל"],["JBL Wind 3",295,"לא נמכר בבּג"]];
+
+function esc(s){return String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));}
+function rowHTML(m,our,bug,note,tone){
+  const diff=our-bug, sign=diff>0?"+":"";
+  return `<div class="gm-row" data-name="${esc(m).toLowerCase()}">
+    <span class="gm-name">${esc(m)}${note?` <span class="gm-note">· ${esc(note)}</span>`:""}</span>
+    <span class="gm-prices">אנחנו <b>₪${our}</b> · בּג <b>₪${bug}</b></span>
+    <span class="gm-diff ${tone}">${sign}${diff}</span></div>`;
+}
+function gitemHTML(m,price,note){
+  return `<div class="gm-gitem" data-name="${esc(m).toLowerCase()}"><span>${esc(m)}${note?` <span class="gm-note">· ${esc(note)}</span>`:""}</span><b>₪${price}</b></div>`;
+}
+document.getElementById("higher").innerHTML=higher.map(r=>rowHTML(r[0],r[1],r[2],r[3],"hi")).join("");
+document.getElementById("lower").innerHTML=lower.map(r=>rowHTML(r[0],r[1],r[2],r[3],"lo")).join("");
+document.getElementById("same").innerHTML=same.map(r=>gitemHTML(r[0],r[1],"")).join("");
+document.getElementById("nf").innerHTML=nf.map(r=>gitemHTML(r[0],r[1],r[2])).join("");
+
+document.getElementById("q").addEventListener("input",function(e){
+  const t=e.target.value.trim().toLowerCase();
+  document.querySelectorAll("[data-name]").forEach(el=>{
+    el.classList.toggle("gm-hide", t && !el.getAttribute("data-name").includes(t));
+  });
+});
+</script>
+
+</body>
+</html>
