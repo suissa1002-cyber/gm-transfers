@@ -7487,12 +7487,19 @@ def _stellr_pos_find_doc(no, branch, bill):
     except Exception:  # noqa: BLE001
         now = _dt.now()
     bill = str(bill).strip().lstrip("#")
+    # מספר הקבלה מודפס עם קידומת סניף ("02-055413") ולעיתים אפסים מובילים. ב-NewOrder
+    # מספר הקבלה יושב דווקא ב-documentNumber (55413) ומספר התנועה ב-billNumber (20056041)
+    # — לכן מנרמלים את הקלט ואת שני השדות (הסרת קידומת-סניף + אפסים מובילים) כדי שאפשר
+    # יהיה להנפיק לפי מספר הקבלה *או* מספר התנועה, כמו שסוכם. (באג: קודם documentNumber
+    # הושווה ללא lstrip → "055413" לא התאים ל-"55413" והנפקה לפי מספר קבלה נכשלה.)
+    billn = bill.split("-")[-1].lstrip("0")
     docs = no.get_documents(branch_id=int(branch),
                             from_date=(now - _td(days=1)).strftime("%d/%m/%Y"),
                             to_date=now.strftime("%d/%m/%Y"), page_size=200) or []
     for d in docs:
-        if (str(d.get("billNumber") or "").lstrip("0") == bill.lstrip("0")
-                or str(d.get("documentNumber") or "") == bill):
+        dn = str(d.get("documentNumber") or "").lstrip("0")
+        bn = str(d.get("billNumber") or "").lstrip("0")
+        if billn and (bn == billn or dn == billn):
             return d, now
     return None, now
 
