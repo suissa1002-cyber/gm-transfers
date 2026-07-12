@@ -91,13 +91,13 @@ a{color:var(--brand);}
   <div class="gm-inner">
     <p class="gm-eyebrow">Green Mobile · השוואת מחירים מול רשת בּג</p>
     <h1 class="gm-h1">מחירי JBL ו-Nothing — אנחנו מול בּג</h1>
-    <p class="gm-sub">70 מוצרים נסקרו. המחירים בבּג נלקחו מעמוד המוצר באתר bug.co.il (מחיר מכירה ארצי, ללא "מחיר אילת").</p>
-    <p class="gm-date">עודכן: 12/07/2026</p>
+    <p class="gm-sub">69 מוצרים פעילים. <b>לאחר עדכון מחירים (12/07):</b> 26 מוצרים שהיינו יקרים/זולים בהם יושרו למחיר הרגיל של בּג. נשארו 3 שאנחנו זולים בהם (במכוון). המחירים בבּג — מחיר רגיל ארצי, ללא מחיר מועדון וללא "מחיר אילת".</p>
+    <p class="gm-date">עודכן: 12/07/2026 · אחרי יישור מחירים</p>
 
     <div class="gm-cards">
-      <div class="gm-card hi"><div class="n">23</div><div class="l">אנחנו יקרים יותר</div></div>
-      <div class="gm-card lo"><div class="n">7</div><div class="l">אנחנו זולים יותר</div></div>
-      <div class="gm-card"><div class="n">37</div><div class="l">מחיר זהה</div></div>
+      <div class="gm-card"><div class="n">0</div><div class="l">אנחנו יקרים יותר</div></div>
+      <div class="gm-card lo"><div class="n">3</div><div class="l">אנחנו זולים יותר</div></div>
+      <div class="gm-card"><div class="n">63</div><div class="l">מחיר זהה</div></div>
       <div class="gm-card"><div class="n">3</div><div class="l">בּג לא מוכרים</div></div>
     </div>
 
@@ -105,13 +105,13 @@ a{color:var(--brand);}
       <input class="gm-search" id="q" type="search" placeholder="חיפוש דגם… (למשל Flip, Charge, Tune 520)" aria-label="חיפוש דגם">
     </div>
 
-    <div class="gm-secttl"><span class="gm-dot" style="background:var(--hi)"></span> אנחנו יקרים יותר מבּג · לפי גודל הפער</div>
-    <div class="gm-list" id="higher"></div>
+    <div class="gm-secttl"><span class="gm-dot" style="background:var(--lo)"></span> יושרו למחיר בּג ✓</div>
+    <div class="gm-list" style="padding:14px 16px; font-size:14px; color:var(--muted);">כל 26 המוצרים שהיינו יקרים או זולים בהם עודכנו למחיר הרגיל של בּג (12/07). כעת אנחנו זהים לבּג בכולם. הם מופיעים ברשימת "מחיר זהה" למטה.</div>
 
     <div class="gm-secttl"><span class="gm-dot" style="background:var(--lo)"></span> אנחנו זולים יותר מבּג</div>
     <div class="gm-list" id="lower"></div>
 
-    <div class="gm-secttl"><span class="gm-dot" style="background:var(--muted)"></span> מחיר זהה · 37 מוצרים</div>
+    <div class="gm-secttl"><span class="gm-dot" style="background:var(--muted)"></span> מחיר זהה · 63 מוצרים</div>
     <div class="gm-grid" id="same"></div>
 
     <div class="gm-secttl"><span class="gm-dot" style="background:var(--muted)"></span> בּג לא מוכרים / לא נמצא</div>
@@ -122,54 +122,89 @@ a{color:var(--brand);}
       Boombox 3 בבּג (₪999) הוא מבצע מועדון MyBug עד 21/07 (מחיר רגיל ₪1199).
       את "Tune 770BT" ו-"Live 770BTNC" בּג מוכרים תחת השם הרשמי 770NC — אותו מוצר פיזית.
       דגמי Nothing ו-CMF (5) כולם בתמחור זהה לבּג.
-      נבדק ע"י צוות סוכני מחקר של Green Mobile.
+      נבדק ע"י צוות סוכני מחקר של Green Mobile. המחירים בבּג = מחיר רגיל בלבד (לא מחיר מועדון MyBug).
     </div>
   </div>
 </div>
 
 <script>
 const higher=[
-["JBL Boombox 3",1359,999,"מבצע מועדון עד 21/07 · רגיל 1199"],
-["JBL Boombox 4",1679,1399,""],
-["JBL Xtreme 4",1149,999,""],
-["JBL Flip 6 · רמקול (2353)",499,379,""],
-["JBL Tune Buds 2",449,349,""],
-["JBL SoundGear Sense",599,499,""],
-["JBL Live 670NC",599,499,""],
-["JBL Endurance Race",269,199,""],
-["JBL Tune 720BT",259,199,""],
-["JBL Tune 770BT",349,299,"בבּג בשם 770NC"],
-["JBL Live 775",699,649,""],
-["JBL Sense Lite",499,449,""],
-["JBL Tune 520C",199,149,"חוטי USB-C"],
-["JBL Endurance Race 2",349,299,""],
-["JBL Quantum 100",199,159,""],
-["JBL Quantum 100P",219,179,""],
-["JBL Quantum 100X",219,179,""],
-["JBL Tune T125 BT",179,139,""],
-["JBL Charge 5",535,499,""],
-["JBL Go Essential 2",159,129,""],
-["JBL Grip",329,299,""],
-["JBL Flip 6 · רמקול (33053)",399,379,""],
-["JBL Go 4",159,149,""]];
+];
 const lower=[
-["JBL Live 770BTNC",489,599,"בבּג בשם 770NC"],
-["JBL Wave Flex 2",209,299,""],
-["JBL Tune 520BT",175,249,""],
-["JBL Charge 6",535,569,""],
-["JBL Tune 510BT",169,199,""],
-["JBL Clip 5",215,239,""],
-["JBL Wave Beam 2",209,229,""]];
+["JBL Tune 520BT",175,249],
+["JBL Tune 510BT",169,199],
+["JBL Wave Beam 2",209,229]
+];
 const same=[
-["Nothing Ear (3)",629],["CMF Headphones Pro",399],["CMF Buds 2 Plus",329],["CMF Buds 2",269],["CMF Buds 2A",219],
-["JBL Xtreme 3",999],["JBL Tour Pro 3",999],["JBL Live Flex 3",649],["JBL Sense Pro",599],["JBL Tour Pro 2",599],
-["JBL Live Beam 3",569],["JBL Tune 775NC",499],["JBL Live Pro 2",499],["JBL SoundGear Clips",499],["JBL Quantum Air",499],
-["JBL Charge Essential 2",475],["JBL Endurance Peak 4",469],["JBL Tune 235 NC TWS",399],["JBL Endurance Zone",399],["JBL Flip 7",399],
-["JBL Tune 760BTNC",369],["JBL Flip Essential",329],["JBL Tune Flex 2",329],["JBL Tune Beam",299],["JBL Endurance Pace",299],
-["JBL Tune 730BT",269],["JBL Tune 570BT",219],["JBL Tune 530BT",199],["JBL Endurance Run 3",189],["JBL Junior 320BT",189],
-["JBL Clip 4",179],["JBL Tune 235BT",179],["JBL Vibe Beam",159],["JBL Tune 530C",149],["JBL Tune 500",149],
-["JBL Tune 530",129]];
-const nf=[["JBL Tune 245NC",399,"בּג לא מוכרים"],["JBL Tune 660BTNC",269,"עמוד בבּג 404 · אזל"],["JBL Wind 3",295,"לא נמכר בבּג"]];
+["CMF Headphones Pro",399],
+["Nothing Ear (3)",629],
+["CMF Buds 2",269],
+["CMF Buds 2A",219],
+["CMF Buds 2 Plus",329],
+["JBL Xtreme 3",999],
+["JBL Live Beam 3",569],
+["JBL Endurance Pace",299],
+["JBL Endurance Run 3 Wireless",189],
+["JBL Sense Pro",599],
+["JBL SoundGear Clips",499],
+["JBL Tune 530BT",199],
+["JBL Tune 730BT",269],
+["JBL Tune Flex 2",329],
+["JBL Tune 775NC",499],
+["JBL Tune 235",399],
+["JBL Tour Pro 3",999],
+["JBL Live Pro 2",499],
+["JBL Live Flex 3",649],
+["JBL Tune 760BTNC",369],
+["JBL Tour Pro 2",599],
+["JBL Tune 570BT",219],
+["JBL Quantum Air",499],
+["JBL Quantum 100 M2",169],
+["JBL Junior 320BT",189],
+["JBL Endurance Peak 4",469],
+["JBL Endurance Zone",399],
+["JBL Tune Beam",299],
+["JBL Tune 530",129],
+["JBL Tune 530C",149],
+["JBL Tune 500",149],
+["JBL Tune 235BT",179],
+["JBL Vibe Beam",159],
+["JBL Clip 4",179],
+["JBL Flip 7",399],
+["JBL Flip Essential",329],
+["JBL Charge Essential 2",475],
+["JBL Boombox 4",1399],
+["JBL Charge 5",499],
+["JBL Charge 6",569],
+["JBL Clip 5",239],
+["JBL Endurance Race",199],
+["JBL Endurance Race 2",299],
+["JBL Flip 6",379],
+["JBL Flip 6 (רמקול)",379],
+["JBL Go 4",149],
+["JBL Go Essential 2",129],
+["JBL Grip",299],
+["JBL Live 670NC",499],
+["JBL Live 770BTNC",599],
+["JBL Live 775",649],
+["JBL Quantum 100",159],
+["JBL Quantum 100P",179],
+["JBL Quantum 100X",179],
+["JBL Sense Lite",449],
+["JBL SoundGear Sense",499],
+["JBL Tune 520C",149],
+["JBL Tune 720BT",199],
+["JBL Tune 770BT",299],
+["JBL Tune Buds 2",349],
+["JBL Tune T125 BT",139],
+["JBL Wave Flex 2",299],
+["JBL Xtreme 4",999]
+];
+const nf=[
+["JBL Tune 245NC",399,"בג לא מוכרים 245NC"],
+["JBL Tune 660BTNC",269,"עמוד בבג מחזיר 404 - הוסר/אזל"],
+["JBL Wind 3",295,"לא נמכר בבג"]
+];
 
 function esc(s){return String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));}
 function rowHTML(m,our,bug,note,tone){
