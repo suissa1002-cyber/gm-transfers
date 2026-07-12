@@ -7165,11 +7165,11 @@ function gcwRender(){
   if(window.matchMedia('(max-width:1199px)').matches){ host.innerHTML=''; return; }
   const w=gcwState();
   if(!w.open){
-    host.innerHTML=`<div class="gcard gcw-widget" onclick="gcwToggle(true)" style="position:fixed;left:18px;bottom:18px;width:200px;z-index:5;padding:16px;text-align:center;cursor:pointer">
+    host.innerHTML=`<div class="gcard gcw-widget" onclick="gcwToggle(true)" style="position:fixed;left:18px;top:232px;width:200px;z-index:5;padding:16px;text-align:center;cursor:pointer">
       <div style="font-size:26px;line-height:1">🛡️</div>
       <div style="font-weight:800;font-size:13.5px;color:#149c40;margin-top:6px">Green Care</div>
       <div class="muted" style="font-size:11px;margin-top:2px">פוליסה חדשה / בדיקה לפי סריאל</div>
-      <div class="muted" style="font-size:15px;margin-top:4px">▴</div>
+      <div class="muted" style="font-size:15px;margin-top:4px">▾</div>
     </div>`;
     return;
   }
@@ -7261,7 +7261,7 @@ function gcwRender(){
       }
     }
   }
-  host.innerHTML=`<div class="gcard gcw-widget" style="position:fixed;left:18px;bottom:18px;width:302px;max-height:calc(100vh - 140px);overflow-y:auto;z-index:5;padding:14px 16px;text-align:right">
+  host.innerHTML=`<div class="gcard gcw-widget" style="position:fixed;left:18px;top:232px;width:302px;max-height:calc(100vh - 252px);overflow-y:auto;z-index:5;padding:14px 16px;text-align:right">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
       <span style="font-weight:800;font-size:13.5px;color:#149c40">🛡️ Green Care</span>
       <a href="javascript:void(0)" onclick="gcwReset()" class="muted" style="margin-inline-start:auto;font-size:11px;text-decoration:underline">נקה</a>
