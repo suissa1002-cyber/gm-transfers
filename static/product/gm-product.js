@@ -128,6 +128,10 @@
     if ($svc.length && !$svc.data('gmPlaced') && $('.gm-atc').length) {
       $('.gm-atc').after($svc); $svc.data('gmPlaced', 1);
     }
+    /* מוצר פשוט (בלי וריאציות) + בלי וידג'טי Green Care/טרייד-אין → העמודה
+       השמאלית ריקה: מעבירים את קוביות האמון שמאלה (class על body ל-CSS) */
+    var sparse = $('.gm-atc table.variations').length === 0 && $('.gm-svc-addons .addon').length === 0;
+    $('body').toggleClass('gm-trust-left', sparse);
   }
   $(placeLinked);
   setInterval(placeLinked, 900);

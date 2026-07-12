@@ -164,6 +164,10 @@ main{padding-bottom:70px;}
 .trust{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:18px 0 6px;}
 .trust-desk{margin-top:150px;}     /* dropped to align with the options/buy area (per marked line) */
 .trust-mob{display:none;}          /* desktop: the info-column copy is hidden */
+/* מוצר פשוט בלי וריאציות/וידג'טים → העמודה השמאלית (info) ריקה: מעבירים את
+   קוביות האמון לשם (מציגים את עותק ה-info, מסתירים את זה שתחת התמונה) */
+.gm-trust-left .trust-desk{display:none;}
+.gm-trust-left .info .trust-mob{display:grid;margin-top:22px;}
 .trust-item{display:flex;align-items:center;gap:10px;background:var(--alt);border-radius:14px;padding:11px 14px;font-size:.85rem;}
 .trust-item .ic{width:22px;height:22px;color:var(--accent);flex:none;}
 .trust-item b{display:block;font-size:.9rem;}
