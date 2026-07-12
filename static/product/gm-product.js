@@ -335,7 +335,19 @@
   }
 
   /* ---------- קוביות אמון — התוכן הדינמי של המוקאפ ---------- */
+  function ensureFourTrust() {
+    /* התבנית שולחת 2 קוביות במובייל — משלימים ל-4 (התוכן ממולא דינמית) */
+    $('.trust').each(function () {
+      var $t = $(this);
+      while ($t.find('.titem').length < 4) {
+        var $src = $t.find('.titem').first();
+        if (!$src.length) return;
+        $t.append($src.clone());
+      }
+    });
+  }
   function buildTrust(warranty) {
+    ensureFourTrust();
     var price = 0;
     var m = ($('.pricebox .price').text().match(/[\d,]+/) || [''])[0].replace(/,/g, '');
     price = parseInt(m, 10) || 0;

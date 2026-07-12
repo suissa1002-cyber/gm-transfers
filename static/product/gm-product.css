@@ -438,8 +438,6 @@ body.gm-product-new *{text-indent:0!important;}
 .gmain{background:#fff;border:1px solid var(--line);border-radius:18px;padding:20px;}
 @media (max-width:900px){
   .pwidgets,.linked-row{grid-template-columns:1fr 1fr;}
-  .gm-atc .woocommerce-variation-add-to-cart{flex-wrap:wrap;}
-  .gm-atc .single_add_to_cart_button{width:100%;flex:1 1 100%;order:2;}
 }
 
 /* ═══ polish r3 ═══ */
@@ -562,3 +560,12 @@ body.gm-product-new .gm-svc-addons .addon.greencare .addon-shield{display:none!i
 /* r7.2: הפלוס — קטן יותר ובפינה העליונה */
 .gm-pdp-wrap .gm-lp-plus{top:7px!important;transform:none!important;inset-inline-end:7px!important;width:21px!important;height:21px!important;line-height:21px!important;font-size:13px!important;}
 .gm-pdp-wrap .gm-lp-tile{padding-inline-end:34px!important;}
+/* r8: כפתורי נפח קטנים מעט (דסקטופ+מובייל) · מובייל: כפתור בשורה עם הכמות */
+.gm-atc ul.variable-items-wrapper li.variable-item.button-variable-item{padding:11px 22px!important;min-width:82px;}
+.gm-atc ul.variable-items-wrapper li.button-variable-item .variable-item-span{font-size:.95rem!important;}
+@media (max-width:900px){
+  .gm-atc .woocommerce-variation-add-to-cart,.gm-atc form.cart.gm-simple{display:flex!important;flex-wrap:nowrap!important;gap:8px;}
+  .gm-atc .single_add_to_cart_button{flex:1!important;width:auto!important;padding:12px 10px!important;font-size:.98rem!important;}
+  .gm-atc .quantity.buttons_added{flex:none!important;}
+  .gm-atc ul.variable-items-wrapper li.variable-item.button-variable-item{padding:10px 18px!important;min-width:72px;}
+}
