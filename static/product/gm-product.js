@@ -99,6 +99,28 @@
       .then(function (d) { var $e = gmEnsureSku(); if ($e) $e.attr('data-parent-sku', d.sku || ''); gmSetSku(d.sku || ''); })
       .catch(function () {});
   });
+  /* ── מונה צפיות (ביקון עמיד-מטמון): נורה מהלקוח פעם אחת לכל מוצר בסשן.
+     LiteSpeed/Cloudflare מגישים HTML ממטמון בלי PHP, אז ספירה בצד-שרת ברינדור
+     אינה אמינה — הביקון מבטיח ספירה בכל טעינה אמיתית של דפדפן. הצד השני:
+     gm-product/v1/view בתוסף greenmobile-product (סינון בוטים + דה-דופ IP). ── */
+  $(function () {
+    try {
+      var pid = (document.body.className.match(/postid-(\d+)/) || [])[1];
+      if (!pid || navigator.webdriver) return;
+      var k = 'gmv-' + pid;
+      if (sessionStorage.getItem(k)) return;
+      sessionStorage.setItem(k, '1');
+      var fire = function () {
+        fetch('/wp-json/gm-product/v1/view', {
+          method: 'POST', credentials: 'same-origin', keepalive: true,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: +pid })
+        }).catch(function () {});
+      };
+      if ('requestIdleCallback' in window) requestIdleCallback(fire, { timeout: 3000 });
+      else setTimeout(fire, 1500);
+    } catch (e) {}
+  });
   $(document).on('found_variation', 'form.variations_form', function (e, variation) {
     labelAll();
     if (variation && variation.price_html) $('.pricebox').html(variation.price_html);
