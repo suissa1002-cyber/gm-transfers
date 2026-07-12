@@ -573,3 +573,7 @@ body.gm-product-new .gm-svc-addons .addon.greencare .addon-shield{display:none!i
 body.gm-product-new .jp-relatedposts{display:none!important;}
 /* r8.2: שורת התשלומים מתחת למחיר — מיותרת (יש קוביית אמון) */
 body.gm-product-new .info > .pay{display:none!important;}
+/* r8.3: הספינר של תוסף הסינון הישן (HUSKY) מופיע גם בעמודי מוצר (נצפה בתוך המיני-סל) — אותו נטרול כמו בקטלוג */
+body.gm-product-new .green-filter-spinner,
+body.gm-product-new #woof_html_buffer,
+body.gm-product-new .woof_info_popup{display:none!important;visibility:hidden!important;}
