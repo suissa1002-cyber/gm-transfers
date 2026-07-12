@@ -232,6 +232,40 @@
       else $ins.addClass('oos').html('אזל מהמלאי · זמין בהזמנה מהספק');
     }
   }
+  /* בחירת ברירת-מחדל חכמה בטעינה: אם הצירוף שנבחר אוטומטית אזל מהמלאי —
+     קופצים לצירוף שיש במלאי (מעדיפים לשמור את הצבע הנוכחי; אחרת מחליפים צבע) */
+  function pickInStockDefault() {
+    if (!M.cfgs.length || !Object.keys(M.avail).length) return;
+    var color = curColor(), key = curCfg() + '||' + color;
+    if ((key in M.avail) && M.avail[key] !== 'out') return;   /* כבר במלאי — לא נוגעים */
+    var anyIn = Object.keys(M.avail).some(function (k) { return M.avail[k] !== 'out'; });
+    if (!anyIn) return;                                        /* הכל אזל — משאירים כמו שהוא */
+    /* 1) אותו צבע, תצורה אחרת במלאי */
+    var target = null;
+    M.cfgs.forEach(function (cfg) {
+      if (!target && M.avail[cfg + '||' + color] === 'in') target = cfg + '||' + color;
+    });
+    /* 2) אחרת — הצירוף הראשון במלאי (כל צבע) */
+    if (!target) {
+      Object.keys(M.avail).forEach(function (k) { if (!target && M.avail[k] === 'in') target = k; });
+    }
+    if (!target) return;
+    var parts = target.split('||'), tCfg = parts[0], tColor = parts[1];
+    function selCfg() {
+      tCfg.split('|').forEach(function (val, ai) {
+        if (!val || val === 'יחיד') return;
+        itemUL(M.cfgAttrs[ai]).find('.variable-item[data-value="' + val + '"]')
+          .removeClass('gm-off').trigger('click');
+      });
+      setTimeout(refreshSmart, 120);
+    }
+    if (M.colorAttr && tColor !== 'יחיד' && tColor !== color) {
+      itemUL(M.colorAttr).find('.variable-item[data-value="' + tColor + '"]').trigger('click');
+      setTimeout(selCfg, 150);                                /* קודם צבע, ואז תצורה */
+    } else {
+      selCfg();
+    }
+  }
   /* קפיצה חכמה: תצורה שלא קיימת בצבע הנוכחי → עוברים לצבע שיש בו (עדיפות במלאי) */
   $(document).on('click', '.gm-atc .variable-item.gm-off', function (e) {
     e.preventDefault(); e.stopImmediatePropagation();
@@ -460,7 +494,8 @@
   /* ---------- init ---------- */
   $(function () {
     buildMatrix();
-    setTimeout(refreshSmart, 700);
+    /* אחרי ש-autoSelect (350ms) בחר דיפולט — מתקנים אם אזל, ואז מרעננים */
+    setTimeout(function () { pickInStockDefault(); refreshSmart(); }, 700);
     buildSpec();
     var ex = extractShort();
     buildTrust(ex.warranty);
