@@ -88,15 +88,37 @@
     if (sku) { $s.find('.gm-sku-v').text(sku); $s.show(); } else { $s.hide(); }
   }
   function gmParentSku() { var $s = $('#gmSku'); return $s.length ? ($s.attr('data-parent-sku') || '') : ''; }
+  /* באדג'ים בעמוד המוצר (החליף את סניפט #42987): לפי product_tag + "יבואן רשמי"
+     לפי id. נטענים מ-Store API (שמחזיר tags) ומוזרקים כאוברליי על התמונה הראשית.
+     ⚠️ מקביל ל-build_category_data.py::_badges — לשמור מסונכרן. */
+  var GM_TAG_BADGES = { 3513: ['preorder', 'מכירה מוקדמת'], 3515: ['instock', 'זמין במלאי'], 3514: ['gifts', 'מתנה ברכישה'] };
+  var GM_IMPORTER_IDS = [43268];
+  function gmRenderBadges(d) {
+    try {
+      var $main = $('.gm-pdp-wrap .gmain'); if (!$main.length || !d) return;
+      var out = [];
+      (d.tags || []).forEach(function (t) { if (GM_TAG_BADGES[t.id]) out.push(GM_TAG_BADGES[t.id]); });
+      if (GM_IMPORTER_IDS.indexOf(d.id) !== -1) out.push(['importer', 'יבואן רשמי']);
+      $main.find('.gm-pdp-badges').remove();
+      if (!out.length) return;
+      var h = '<div class="gm-pdp-badges">' + out.map(function (b) {
+        return '<span class="badge ' + b[0] + '">' + b[1] + '</span>';
+      }).join('') + '</div>';
+      $main.append(h);
+    } catch (e) {}
+  }
   $(function () {
-    var $s = $('#gmSku');
-    var parent = $s.length ? ($s.attr('data-parent-sku') || null) : null;
-    if (parent) { gmSetSku(parent); return; }          /* התבנית סיפקה מק"ט אב */
     var m = (document.body.className.match(/postid-(\d+)/) || [])[1];
     if (!m) return;
+    var $s = $('#gmSku');
+    var parent = $s.length ? ($s.attr('data-parent-sku') || null) : null;
+    if (parent) gmSetSku(parent);                       /* התבנית סיפקה מק"ט אב */
     fetch('/wp-json/wc/store/v1/products/' + m, { credentials: 'same-origin' })
       .then(function (r) { return r.json(); })
-      .then(function (d) { var $e = gmEnsureSku(); if ($e) $e.attr('data-parent-sku', d.sku || ''); gmSetSku(d.sku || ''); })
+      .then(function (d) {
+        if (!parent) { var $e = gmEnsureSku(); if ($e) $e.attr('data-parent-sku', d.sku || ''); gmSetSku(d.sku || ''); }
+        gmRenderBadges(d);
+      })
       .catch(function () {});
   });
   /* ── מונה צפיות (ביקון עמיד-מטמון): נורה מהלקוח פעם אחת לכל מוצר בסשן.
