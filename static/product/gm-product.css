@@ -577,3 +577,10 @@ body.gm-product-new .info > .pay{display:none!important;}
 body.gm-product-new .green-filter-spinner,
 body.gm-product-new #woof_html_buffer,
 body.gm-product-new .woof_info_popup{display:none!important;visibility:hidden!important;}
+/* r8.4: תוספי YITH WAPO ("הוסף להזמנה וחסוך" + טבלת סה"כ) — מנוטרלים בעמוד החדש;
+   נבנה בהמשך גרסה עצמית יפה וחכמה (החלטת אסי 12/07) */
+body.gm-product-new #yith-wapo-container,
+body.gm-product-new .yith-wapo-container,
+body.gm-product-new #wapo-total-price-table,
+body.gm-product-new [id^="yith-wapo"],
+body.gm-product-new [class*="yith-wapo"]{display:none!important;}
