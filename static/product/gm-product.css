@@ -168,6 +168,9 @@ main{padding-bottom:70px;}
    קוביות האמון לשם (מציגים את עותק ה-info, מסתירים את זה שתחת התמונה) */
 .gm-trust-left .trust-desk{display:none!important;}   /* גובר על .trust{display:grid!important} שבהמשך */
 .gm-trust-left .info .trust-mob{display:grid!important;margin-top:22px;}
+/* מק"ט (POS) עדין מתחת לאזור הקנייה, לפני הטאבים; מתעדכן לפי וריאציה */
+.gm-sku{max-width:1240px;margin:0 auto;padding:16px 20px 0;font-size:.78rem;color:var(--ink2);letter-spacing:.02em;}
+.gm-sku .gm-sku-v{font-variant-numeric:tabular-nums;color:var(--ink);}
 .trust-item{display:flex;align-items:center;gap:10px;background:var(--alt);border-radius:14px;padding:11px 14px;font-size:.85rem;}
 .trust-item .ic{width:22px;height:22px;color:var(--accent);flex:none;}
 .trust-item b{display:block;font-size:.9rem;}

@@ -74,13 +74,40 @@
   });
 
   $(document).on('click', '.gm-atc .variable-item', function () { setTimeout(labelAll, 60); });
+  function gmEnsureSku() {
+    var $s = $('#gmSku');
+    if (!$s.length) {                       /* התבנית לא הועלתה — מזריקים לבד לפני הטאבים */
+      var $tabs = $('.tabs').first(); if (!$tabs.length) return null;
+      $s = $('<div id="gmSku" class="gm-sku" style="display:none">מק״ט: <span class="gm-sku-v"></span></div>');
+      $tabs.before($s);
+    }
+    return $s;
+  }
+  function gmSetSku(sku) {
+    var $s = gmEnsureSku(); if (!$s) return;
+    if (sku) { $s.find('.gm-sku-v').text(sku); $s.show(); } else { $s.hide(); }
+  }
+  function gmParentSku() { var $s = $('#gmSku'); return $s.length ? ($s.attr('data-parent-sku') || '') : ''; }
+  $(function () {
+    var $s = $('#gmSku');
+    var parent = $s.length ? ($s.attr('data-parent-sku') || null) : null;
+    if (parent) { gmSetSku(parent); return; }          /* התבנית סיפקה מק"ט אב */
+    var m = (document.body.className.match(/postid-(\d+)/) || [])[1];
+    if (!m) return;
+    fetch('/wp-json/wc/store/v1/products/' + m, { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { var $e = gmEnsureSku(); if ($e) $e.attr('data-parent-sku', d.sku || ''); gmSetSku(d.sku || ''); })
+      .catch(function () {});
+  });
   $(document).on('found_variation', 'form.variations_form', function (e, variation) {
     labelAll();
     if (variation && variation.price_html) $('.pricebox').html(variation.price_html);
+    gmSetSku(variation && variation.sku ? variation.sku : gmParentSku());  /* מק"ט הווריאציה */
   });
   $(document).on('reset_data', 'form.variations_form', function () {
     labelAll();
     if (origPrice) $('.pricebox').html(origPrice);
+    gmSetSku(gmParentSku());   /* חזרה למק"ט האב */
   });
 })(jQuery);
 
