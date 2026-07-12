@@ -461,6 +461,8 @@ def register_recurring_jobs():
     scheduler.add_job(_stellr_auto_job, "interval", minutes=5, id="stellr_auto", max_instances=1)
     # 🎫 Watcher ל-allowlist של Stellr (GET בלבד): מתריע ברגע שהקטלוג חי / מזכיר נדנוד
     scheduler.add_job(_stellr_watch_job, "interval", minutes=20, id="stellr_watch", max_instances=1)
+    # ⏰ מענים מתוזמנים של אלה — שליחה כשמגיע הזמן
+    scheduler.add_job(_scheduled_sends_job, "interval", minutes=1, id="scheduled_sends", max_instances=1)
     # 🪑 תג "בית לקוח" ↔ מלאי קופה (כיסאות כבדים): אזל→תיוג, חזר→הסרה
     scheduler.add_job(_beit_lakoach_sync_job, "interval", hours=6,
                       id="beit_lakoach_sync", max_instances=1, coalesce=True)
@@ -4602,6 +4604,75 @@ def wa_send_template(body: WaTemplate, x_admin_key: Optional[str] = Header(None)
     return _wa_guard(wa.send_template, body.phone, body.name, body.body)
 
 
+def _parse_schedule_at(at: str) -> int:
+    """'HH:MM' → epoch של המופע הבא (היום, ואם עבר → מחר), שעון ישראל. גם
+    'YYYY-MM-DD HH:MM' / ISO נתמכים."""
+    from datetime import datetime as _dt, timedelta as _td
+    try:
+        from zoneinfo import ZoneInfo
+        tz = ZoneInfo(cfg.TZ)
+    except Exception:  # noqa: BLE001
+        tz = None
+    now = _dt.now(tz) if tz else _dt.now()
+    s = str(at or "").strip()
+    m = re.match(r"^(\d{1,2}):(\d{2})$", s)
+    if m:
+        tgt = now.replace(hour=min(int(m.group(1)), 23), minute=min(int(m.group(2)), 59),
+                          second=0, microsecond=0)
+        if tgt <= now:
+            tgt = tgt + _td(days=1)
+        return int(tgt.timestamp())
+    for fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M:%S"):
+        try:
+            dt = _dt.strptime(s, fmt)
+            if tz:
+                dt = dt.replace(tzinfo=tz)
+            return int(dt.timestamp())
+        except ValueError:
+            continue
+    raise HTTPException(400, "פורמט זמן לא תקין — השתמש ב-HH:MM או YYYY-MM-DD HH:MM")
+
+
+@app.post("/api/admin/wa/schedule")
+def wa_schedule(body: dict, x_admin_key: Optional[str] = Header(None)):
+    """תזמון שליחת הודעה ללקוח לשעה עתידית (אלה משתמשת בזה כשאסי מבקש 'תזמני מענה
+    ל-HH:MM'). body: {phone, text, at:'HH:MM'|datetime, name?}. worker שולח בזמן."""
+    _require_admin(x_admin_key)
+    phone = re.sub(r"\D", "", str(body.get("phone") or ""))
+    if phone.startswith("0"):
+        phone = "972" + phone[1:]
+    text = str(body.get("text") or "").strip()
+    if len(phone) < 11 or not text:
+        raise HTTPException(400, "חסר טלפון תקין או טקסט")
+    send_at = _parse_schedule_at(body.get("at"))
+    sid = db.scheduled_send_add(phone, text, send_at, str(body.get("name") or "אלה"))
+    from datetime import datetime as _dt3
+    try:
+        from zoneinfo import ZoneInfo as _ZI3
+        when = _dt3.fromtimestamp(send_at, _ZI3(cfg.TZ)).strftime("%d/%m %H:%M")
+    except Exception:  # noqa: BLE001
+        when = _dt3.fromtimestamp(send_at).strftime("%d/%m %H:%M")
+    try:
+        _tg_admin(f"⏰ <b>מענה מתוזמן נקבע</b>\n{phone} · {when}\n{text[:220]}\n(מזהה {sid})")
+    except Exception:  # noqa: BLE001
+        pass
+    return {"ok": True, "id": sid, "send_at": send_at, "when": when}
+
+
+@app.get("/api/admin/wa/scheduled")
+def wa_scheduled_list(x_admin_key: Optional[str] = Header(None)):
+    """רשימת מענים מתוזמנים שממתינים."""
+    _require_admin(x_admin_key)
+    return {"scheduled": db.scheduled_sends_pending()}
+
+
+@app.delete("/api/admin/wa/scheduled/{sid}")
+def wa_scheduled_cancel(sid: int, x_admin_key: Optional[str] = Header(None)):
+    """ביטול מענה מתוזמן שטרם נשלח."""
+    _require_admin(x_admin_key)
+    return {"cancelled": bool(db.scheduled_send_cancel(sid))}
+
+
 @app.get("/api/admin/wa/flow-analysis")
 def wa_flow_analysis(x_admin_key: Optional[str] = Header(None)):
     """ניתוח כל ההיסטוריה — לבניית הבוט ה-native על בסיס נתונים אמיתיים."""
@@ -7179,6 +7250,30 @@ def _stellr_auto_job():
                           f"מנפיקה {res['issued']} קודים (ירוק מוחלט). לא הונפק בפועל.")
             except Exception:  # noqa: BLE001
                 pass
+
+
+def _scheduled_sends_job():
+    """שולח מענים מתוזמנים שהגיע זמנם (אלה תיזמנה בפאנל). מנסה טקסט רגיל; מחוץ לחלון
+    24ש → תבנית new_message מאושרת (עוברת תמיד). GET/שליחה בלבד לפי הזמן שנקבע."""
+    import time as _t
+    import wa
+    for s in db.scheduled_sends_due(_t.time()):
+        ok = False
+        try:
+            wa.send_text(s["phone"], s["text"])
+            ok = True
+        except Exception:  # noqa: BLE001 — מחוץ לחלון 24ש → תבנית
+            try:
+                wa.send_template(s["phone"], "", s["text"])
+                ok = True
+            except Exception as e:  # noqa: BLE001
+                logger.warning("scheduled send %s failed: %s", s.get("id"), e)
+        db.scheduled_send_mark(s["id"], "sent" if ok else "failed")
+        try:
+            _tg_admin(f"⏰{'✓' if ok else '⚠️'} <b>מענה מתוזמן {'נשלח' if ok else 'נכשל'}</b>\n"
+                      f"{s['phone']}\n{str(s['text'])[:200]}")
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def _stellr_watch_job():

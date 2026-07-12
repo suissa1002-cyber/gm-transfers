@@ -671,6 +671,20 @@ _SCHEMA = [
         error        TEXT
     )
     """.format(pk=_PK),
+    # ── תזמון מענה (אלה): שליחת הודעה ללקוח בשעה עתידית שאסי ביקש בפאנל ──
+    f"""
+    CREATE TABLE IF NOT EXISTS scheduled_sends (
+        id         {_PK},
+        phone      TEXT,
+        text       TEXT,
+        send_at    BIGINT,
+        status     TEXT DEFAULT 'pending',
+        created_by TEXT,
+        created_at BIGINT,
+        sent_at    BIGINT
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_sched_sends_due ON scheduled_sends(status, send_at)",
     # Green Care — דריסת הגדרות הגנה מורחבת פר מוצר-הורה (WooCommerce parent id).
     # ההגדרה חלה על כל הווריאציות (meta על ההורה). דריסה ריקה (NULL) = מחיר לפי נוסחה.
     """
@@ -3183,6 +3197,57 @@ def stellr_code_delete(code_id) -> int:
     with _conn() as c:
         cur = c.cursor()
         cur.execute(_q("DELETE FROM stellr_codes WHERE id = ?"), (int(code_id),))
+        return cur.rowcount
+
+
+# ── תזמון מענה (אלה) ──────────────────────────────────────────
+def scheduled_send_add(phone, text, send_at, created_by="אלה") -> int:
+    import time as _t
+    with _conn() as c:
+        cur = c.cursor()
+        args = (str(phone), str(text), int(send_at), "pending",
+                created_by or "", int(_t.time()))
+        if _USE_PG:
+            cur.execute(_q("""INSERT INTO scheduled_sends
+                (phone, text, send_at, status, created_by, created_at)
+                VALUES (?,?,?,?,?,?) RETURNING id"""), args)
+            return int(cur.fetchone()["id"])
+        cur.execute(_q("""INSERT INTO scheduled_sends
+            (phone, text, send_at, status, created_by, created_at)
+            VALUES (?,?,?,?,?,?)"""), args)
+        return int(cur.lastrowid)
+
+
+def scheduled_sends_due(now_ts) -> list:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM scheduled_sends WHERE status='pending' "
+                       "AND send_at <= ? ORDER BY send_at"), (int(now_ts),))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def scheduled_sends_pending() -> list:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM scheduled_sends WHERE status='pending' "
+                       "ORDER BY send_at"))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def scheduled_send_mark(sid, status, sent_at=None):
+    import time as _t
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("UPDATE scheduled_sends SET status=?, sent_at=? WHERE id=?"),
+                    (str(status), int(sent_at or _t.time()), int(sid)))
+        return cur.rowcount
+
+
+def scheduled_send_cancel(sid) -> int:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("UPDATE scheduled_sends SET status='cancelled' "
+                       "WHERE id=? AND status='pending'"), (int(sid),))
         return cur.rowcount
 
 
