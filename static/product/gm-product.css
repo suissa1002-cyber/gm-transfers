@@ -571,3 +571,5 @@ body.gm-product-new .gm-svc-addons .addon.greencare .addon-shield{display:none!i
 }
 /* r8.1: בלוק "קשור" של Jetpack מזליג לתוך התיאור — לא שייך לעמוד המוצר החדש */
 body.gm-product-new .jp-relatedposts{display:none!important;}
+/* r8.2: שורת התשלומים מתחת למחיר — מיותרת (יש קוביית אמון) */
+body.gm-product-new .info > .pay{display:none!important;}
