@@ -189,6 +189,21 @@ def _catalog_refresh_job():
         logger.warning("catalog_refresh failed: %s", e)
 
 
+def _home_refresh_job():
+    """רענון חי של דף הבית: רבי-מכר (60 יום)/מבצעים/חדש מ-WC → עמוד 48664."""
+    try:
+        import home_refresh
+        res = home_refresh.refresh_home()
+        if res.get("ok"):
+            logger.info("home_refresh ok: %s", res.get("counts"))
+        else:
+            logger.warning("home_refresh skipped: %s", res.get("error"))
+        return res
+    except Exception as e:  # noqa: BLE001
+        logger.warning("home_refresh failed: %s", e)
+        return {"ok": False, "error": str(e)}
+
+
 def _removals_ingest_job():
     try:
         import removals_ingest
@@ -492,6 +507,11 @@ def register_recurring_jobs():
         logger.info("removals ingest fresh — skipping initial run")
     # קטלוג מוצרים ל-DB: רענון כל 6 שעות. ריצה ראשונית רק אם הקטלוג ישן (נשמר ב-DB).
     scheduler.add_job(_catalog_refresh_job, "interval", hours=6, id="catalog_refresh", max_instances=1)
+    # 🏠 רענון דף הבית: רבי-מכר(60י')/מבצעים/חדש מ-WC → עמוד 48664. כל 4 שעות + ריצה ראשונית.
+    scheduler.add_job(_home_refresh_job, "interval", hours=4, id="home_refresh",
+                      max_instances=1, coalesce=True)
+    scheduler.add_job(_home_refresh_job, "date", id="home_refresh_initial",
+                      run_date=datetime.now() + timedelta(seconds=150))
     # גיבוי מדיה נכנסת ממטא (תמונות/מסמכים) — כל 5 דק', כדי שלא יאבד כשמטא ימחק (~30 יום)
     scheduler.add_job(_media_backup_job, "interval", minutes=5, id="media_backup", max_instances=1)
     scheduler.add_job(_media_backup_job, "date", id="media_backup_initial",
@@ -806,6 +826,13 @@ def wa_backfill_start(x_admin_key: Optional[str] = Header(None)):
     scheduler.add_job(_wa_backfill_job, "date", id="wa_backfill_manual", max_instances=1,
                       replace_existing=True)
     return {"started": True}
+
+
+@app.post("/api/admin/home/refresh")
+def home_refresh_now(x_admin_key: Optional[str] = Header(None)):
+    """רענון ידני של דף הבית (רבי-מכר 60י'/מבצעים/חדש → עמוד 48664)."""
+    _require_admin(x_admin_key)
+    return _home_refresh_job()
 
 
 @app.post("/api/admin/wa/backfill/stop")
