@@ -22,6 +22,27 @@ jQuery(function ($) {
   /* the legacy branch-pickup popup must not run on the new checkout */
   window.gmPickupInitialized = true;
 
+  /* ---------- safety net: never leave a bare red ❗ with no message ----------
+     A failed checkout AJAX (payment/gateway hiccup, empty server-side notice)
+     can inject an empty <div class="woocommerce-error"></div> — the red bar with
+     NO text that customers reported as "the exclamation mark". We upgrade any
+     *empty* error notice to a clear, actionable message. Errors that already
+     carry text (terms, field validation) are left exactly as WooCommerce wrote
+     them. Idempotent (gmFilled guard) — runs from decorateAll + checkout_error. */
+  function gmFillEmptyErrors() {
+    $('.woocommerce-error').each(function () {
+      var $e = $(this);
+      if ($e.data('gmFilled')) return;
+      if ($.trim($e.text()).length) return;   /* real text present — never touch */
+      $e.data('gmFilled', 1).html(
+        '<li>אירעה תקלה זמנית בעיבוד התשלום. רעננו את העמוד ונסו שוב — ' +
+        'ואם זה חוזר, נסו דפדפן או רשת אחרים (למשל נתוני סלולר במקום Wi-Fi). ' +
+        'אנחנו כאן לכל עזרה.</li>'
+      );
+    });
+  }
+  $(document.body).on('checkout_error', function () { setTimeout(gmFillEmptyErrors, 20); });
+
   function setLabelText($field, text) {
     var $l = $field.find('label').first();
     if (!$l.length) return;
@@ -306,7 +327,7 @@ jQuery(function ($) {
     document.body.insertBefore(h, document.body.firstChild);
   })();
 
-  function decorateAll() { decorateShipping(); decoratePayment(); decorateCC(); ensureProxy(); fixQty(); fixTotalLabel(); ppSlotState(); pickupUI(); }
+  function decorateAll() { decorateShipping(); decoratePayment(); decorateCC(); ensureProxy(); fixQty(); fixTotalLabel(); ppSlotState(); pickupUI(); gmFillEmptyErrors(); }
   /* safety net: a third-party handler earlier in the updated_checkout chain can
      throw (seen live: Jetpack-Boost bundle, variation_id TypeError) and abort the
      dispatch before it reaches us. All decorators are idempotent — a light
