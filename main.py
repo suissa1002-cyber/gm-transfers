@@ -6675,6 +6675,13 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
     if paid_no_tx:
         reasons.append("ℹ️ ההזמנה שולמה אך אין עסקת PayPlus מזוהה בנתונים "
                        "(חיוב ידני/היסטורי) — אין נתוני 3DS/כרטיס לבדיקה")
+    # אימות Turnstile נכשל בצ'קאאוט (fail-open): רוב המקרים = רשת/דפדפן של לקוח לגיטימי,
+    # לכן מידע בלבד (0 סיכון). מוצג כדי שנוכל ללמוד את הדפוס ולהצליב עם דגלים אחרים.
+    if str(meta.get("_gm_turnstile_failed") or "") == "1":
+        _tsr = str(meta.get("_gm_turnstile_fail_reason") or "").strip()
+        reasons.append("ℹ️ אימות Turnstile לא הושלם בצ'קאאוט (הזמנה עברה fail-open) — "
+                       "לרוב רשת/דפדפן חוסמים, לא חשד כשלעצמו"
+                       + (f" · {_tsr[:120]}" if _tsr else ""))
 
     # ── 1) רשת: VPN/פרוקסי/דאטה-סנטר + מדינת IP (הכי קשה לזיוף) ──
     geo = _ip_geo(ip) if ip else {}
