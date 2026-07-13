@@ -637,6 +637,17 @@ def _require_admin(x_admin_key: Optional[str] = Header(None)):
         raise HTTPException(401, "admin auth required")
 
 
+def _require_admin_or_bridge(x_admin_key, x_bridge_key):
+    """מנהל (סיסמה) **או** גשר אורי/אלה (URI_BRIDGE_KEY). אלה רצה כשירות Render נפרד
+    (uri-bridge) שאין לו ADMIN_PASSWORD ב-env, אבל כן יש לו URI_BRIDGE_KEY — כך שהיא
+    יכולה לתזמן מענה מבלי לקבל גישת אדמין מלאה."""
+    if not cfg.ADMIN_PASSWORD or (x_admin_key or "") == cfg.ADMIN_PASSWORD:
+        return
+    if URI_BRIDGE_KEY and (x_bridge_key or "") == URI_BRIDGE_KEY:
+        return
+    raise HTTPException(401, "admin or bridge key required")
+
+
 def _actor_name(x_admin_key, x_device_token) -> str:
     """מי ביצע את הפעולה — לקונסולה או למכשיר סניף מאושר (לתיעוד בבקשות העברה)."""
     if cfg.ADMIN_PASSWORD and (x_admin_key or "") == cfg.ADMIN_PASSWORD:
@@ -4676,10 +4687,12 @@ def _parse_schedule_at(at: str) -> int:
 
 
 @app.post("/api/admin/wa/schedule")
-def wa_schedule(body: dict, x_admin_key: Optional[str] = Header(None)):
+def wa_schedule(body: dict, x_admin_key: Optional[str] = Header(None),
+                x_bridge_key: Optional[str] = Header(None)):
     """תזמון שליחת הודעה ללקוח לשעה עתידית (אלה משתמשת בזה כשאסי מבקש 'תזמני מענה
-    ל-HH:MM'). body: {phone, text, at:'HH:MM'|datetime, name?}. worker שולח בזמן."""
-    _require_admin(x_admin_key)
+    ל-HH:MM'). body: {phone, text, at:'HH:MM'|datetime, name?}. worker שולח בזמן.
+    מקבל מפתח אדמין **או** מפתח גשר (אלה על uri-bridge שאין לו ADMIN_PASSWORD)."""
+    _require_admin_or_bridge(x_admin_key, x_bridge_key)
     phone = re.sub(r"\D", "", str(body.get("phone") or ""))
     if phone.startswith("0"):
         phone = "972" + phone[1:]
@@ -4702,16 +4715,18 @@ def wa_schedule(body: dict, x_admin_key: Optional[str] = Header(None)):
 
 
 @app.get("/api/admin/wa/scheduled")
-def wa_scheduled_list(x_admin_key: Optional[str] = Header(None)):
+def wa_scheduled_list(x_admin_key: Optional[str] = Header(None),
+                      x_bridge_key: Optional[str] = Header(None)):
     """רשימת מענים מתוזמנים שממתינים."""
-    _require_admin(x_admin_key)
+    _require_admin_or_bridge(x_admin_key, x_bridge_key)
     return {"scheduled": db.scheduled_sends_pending()}
 
 
 @app.delete("/api/admin/wa/scheduled/{sid}")
-def wa_scheduled_cancel(sid: int, x_admin_key: Optional[str] = Header(None)):
+def wa_scheduled_cancel(sid: int, x_admin_key: Optional[str] = Header(None),
+                        x_bridge_key: Optional[str] = Header(None)):
     """ביטול מענה מתוזמן שטרם נשלח."""
-    _require_admin(x_admin_key)
+    _require_admin_or_bridge(x_admin_key, x_bridge_key)
     return {"cancelled": bool(db.scheduled_send_cancel(sid))}
 
 
