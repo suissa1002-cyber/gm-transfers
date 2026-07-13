@@ -31,6 +31,14 @@ a{color:var(--brand)}
 .src b{color:var(--brand)}.src span{color:var(--muted);font-size:12.5px}
 .foot{margin-top:34px;padding-top:16px;border-top:1px solid var(--line);font-size:12.5px;color:var(--muted)}
 .cta{display:inline-block;background:var(--brand);color:#fff;border-radius:10px;padding:10px 18px;font-weight:600;text-decoration:none;font-size:15px}
+.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:16px;margin:14px 0}
+.ex{margin:0}
+.ex a{display:block}
+.ex img{width:100%;height:190px;object-fit:cover;object-position:top;border:1px solid var(--line);border-radius:10px;display:block;cursor:zoom-in;background:var(--card)}
+.ex figcaption{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.45}
+.vidwrap{background:var(--card);border:1px solid var(--line2);border-radius:12px;padding:14px;margin:12px 0}
+.vidwrap video{width:100%;max-width:300px;border-radius:10px;display:block;background:#000}
+.vidwrap figcaption{font-size:12.5px;color:var(--muted);margin-top:8px}
 </style></head><body><div class="wrap">
 
 <p class="eyebrow">Green Mobile · מרכז מידע · אירוע התיוג · חסוי</p>
@@ -115,12 +123,19 @@ a{color:var(--brand)}
 <div class="q dmg"><div class="who">וואטסאפ נכנס · 13/07 10:03</div><div class="t">"סרטון הונאת פישיניג. זה אתם?"</div></div>
 <div class="q mgr" style="border-right-color:var(--mgr);background:var(--mgrb)"><div class="who"><b>מעורבות משטרה</b> · וואטסאפ נכנס · 13/07 10:02<span class="pill mgr">משטרה</span></div><div class="t"><b>"אני חוקר פשיעה מקוונת מחוז מרכז משטרת ישראל · הוגשה תלונה"</b> — החוקר ביקש את פרטי העסקה למייל הרשמי Roeebram@police.gov.il, ואף כתב במפורש: <b>"ברור שזה לא קשור אליכם"</b>. כלומר נפתחה תלונה במשטרה, והחוקר עצמו קבע שאיננו מעורבים בהונאה.</div></div>
 
-<h2 id="s7">7. מוצגים (צילומי מסך)</h2>
-<p>צילומי מסך אותנטיים לתמיכה בעובדות. מוצגים נוספים (הצפת התגובות, התיוג, התגובות המכפישות) יתווספו כאן.</p>
-<figure style="margin:0 0 18px">
-<a href="exhibits/tx-48717-fraud.jpg" target="_blank"><img src="exhibits/tx-48717-fraud.jpg" alt="פירוט העסקה הכוזבת 48717" style="max-width:340px;width:100%;border:1px solid var(--line);border-radius:10px;display:block"></a>
-<figcaption style="font-size:12.5px;color:var(--muted);margin-top:6px">מוצג 1 — פירוט העסקה הכוזבת (הזמנה 48717, ₪990) ממערכת הבקרה שלנו: השם על הכרטיס "Mosa", מותג mastercard/isracard, 3DS במצב Challenge, מקור "דף תשלום". ההזמנה סומנה כהונאה במערכת שלנו ו<b>לא סופקה</b>.</figcaption>
-</figure>
+<h2 id="s7">7. מוצגים — סרטון מקור וצילומי מסך</h2>
+
+<h3>הסרטון המקורי (עותק משומר)</h3>
+<div class="vidwrap">
+<video controls preload="none" src="exhibits/moran-reel-original.mp4"></video>
+<figcaption>סרטון האינסטגרם המקורי של @morantarasov — עותק שנשמר אצלנו למניעת מחיקה/שינוי. מקור: <a href="https://www.instagram.com/reel/Das3Ue4q-uc/" target="_blank">instagram.com/reel/Das3Ue4q-uc</a></figcaption>
+</div>
+
+<h3>צילומי מסך <span style="font-weight:400;color:var(--muted)">(לחיצה על תמונה פותחת בגודל מלא)</span></h3>
+<p style="font-size:12.5px;color:var(--muted)">צילומים נוספים נכנסים לכאן אוטומטית ככל שנשמרים.</p>
+<div class="gallery" id="gallery">
+<figure class="ex"><a href="exhibits/tx-48717-fraud.jpg" target="_blank"><img src="exhibits/tx-48717-fraud.jpg" alt="עסקה כוזבת 48717"></a><figcaption>מוצג 1 — פירוט העסקה הכוזבת (48717, ₪990): שם "Mosa", 3DS Challenge, מקור "דף תשלום". סומנה כהונאה ו<b>לא סופקה</b>.</figcaption></figure>
+</div>
 
 <div class="foot">
 מסמך עבודה ראשוני שהוכן לצורך פגישת ייעוץ. הנתונים נאספו מה-API ומהעמודים הפומביים במכשיר מחובר; ניתן לגבות כל פריט בצילום מסך/PDF מהעמוד החי. הקטגוריזציה המשפטית היא הצעת מסגרת בלבד וכפופה לשיקול עורך הדין. איסוף התגובות נמשך (הסרטונים עדיין חיים).
