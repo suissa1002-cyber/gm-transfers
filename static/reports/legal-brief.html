@@ -51,17 +51,18 @@ a{color:var(--brand)}
 </ul>
 
 <h2>2. הפרסום הפוגעני והתפוצה (היקף החשיפה)</h2>
+<p style="font-size:12.5px;color:var(--muted);margin:0 0 12px">● עודכן לאחרונה: <span id="upd">…</span> · מתעדכן אוטומטית</p>
 <div class="grid">
-<div class="stat"><div class="n">~629K</div><div class="l">צפיות בשני הסרטונים שלה (IG+TikTok)</div></div>
-<div class="stat"><div class="n">7,055</div><div class="l">שיתופים של סרטון הטיקטוק</div></div>
-<div class="stat"><div class="n">~1,259</div><div class="l">תגובות (887 IG + 372 TikTok)</div></div>
+<div class="stat"><div class="n" id="s-views">~629K</div><div class="l">צפיות בשני הסרטונים שלה (IG+TikTok)</div></div>
+<div class="stat"><div class="n" id="s-shares">7,055</div><div class="l">שיתופים של סרטון הטיקטוק</div></div>
+<div class="stat"><div class="n" id="s-comments">~1,259</div><div class="l">תגובות (IG + TikTok)</div></div>
 <div class="stat"><div class="n">תיוג</div><div class="l">של @green__mobile מהטיקטוק שלה</div></div>
 </div>
-<p><b>פירוט החשיפה (נכון ל-13/07/2026, המספרים ממשיכים לעלות):</b></p>
+<p><b>פירוט החשיפה (המספרים חיים וממשיכים לעלות):</b></p>
 <ul>
-<li><b>ריל האינסטגרם שלה:</b> 292,465 צפיות · 7,901 לייקים · 887 תגובות.</li>
-<li><b>סרטון הטיקטוק שלה:</b> 336,500 צפיות · 21,800 לייקים · <b>7,055 שיתופים</b> · 372 תגובות.</li>
-<li><b>סה"כ מעל 628,000 צפיות</b> בשני הסרטונים, בתוספת 7,055 שיתופים שהפיצו את הפרסום הלאה (היא אף קראה במפורש "תפיצו!!").</li>
+<li><b>ריל האינסטגרם שלה:</b> <span id="ig-v">292,465</span> צפיות · <span id="ig-l">7,901</span> לייקים · <span id="ig-c">887</span> תגובות.</li>
+<li><b>סרטון הטיקטוק שלה:</b> <span id="tt-v">336,500</span> צפיות · <span id="tt-l">21,800</span> לייקים · <b><span id="tt-s">7,055</span> שיתופים</b> · <span id="tt-c">372</span> תגובות.</li>
+<li><b>סה"כ מעל <span id="tot-v">628,000</span> צפיות</b> בשני הסרטונים, בתוספת אלפי שיתופים שהפיצו את הפרסום הלאה (היא אף קראה במפורש "תפיצו!!").</li>
 </ul>
 <p>הכיתוב לסרטון הטיקטוק שלה: <b>"תיזהרו ⚠️ הונאת פישינג מתוחכמת ‼️ אני נפלתי 😢 תפיצו!!"</b> — ולצדו תיוג/הפניה לחשבון הטיקטוק שלנו <b>@green__mobile</b>, אשר הפנה את קהל העוקבים שלה ישירות אל הערוצים שלנו.</p>
 
@@ -102,4 +103,24 @@ a{color:var(--brand)}
 <div class="foot">
 מסמך עבודה ראשוני שהוכן לצורך פגישת ייעוץ. הנתונים נאספו מה-API ומהעמודים הפומביים במכשיר מחובר; ניתן לגבות כל פריט בצילום מסך/PDF מהעמוד החי. הקטגוריזציה המשפטית היא הצעת מסגרת בלבד וכפופה לשיקול עורך הדין. איסוף התגובות נמשך (הסרטונים עדיין חיים).
 </div>
-</div></body></html>
+</div>
+<script>
+(function(){
+  var nf=new Intl.NumberFormat('he-IL');
+  function kfmt(n){ return n>=1000?(Math.round(n/100)/10+'K'):(''+n); }
+  function set(id,v){ var e=document.getElementById(id); if(e&&v!=null) e.textContent=v; }
+  function load(){
+    fetch('brief-stats.json?t='+Date.now()).then(function(r){return r.json();}).then(function(d){
+      var ig=d.ig||{}, tt=d.tiktok||{};
+      set('ig-v',nf.format(ig.views)); set('ig-l',nf.format(ig.likes)); set('ig-c',nf.format(ig.comments));
+      set('tt-v',nf.format(tt.views)); set('tt-l',nf.format(tt.likes)); set('tt-s',nf.format(tt.shares)); set('tt-c',nf.format(tt.comments));
+      var tot=(ig.views||0)+(tt.views||0);
+      set('tot-v',nf.format(tot)); set('s-views','~'+kfmt(tot));
+      set('s-shares',nf.format(tt.shares)); set('s-comments','~'+nf.format((ig.comments||0)+(tt.comments||0)));
+      var u=d.updated||''; set('upd', u.replace('T',' '));
+    }).catch(function(){ set('upd','(סטטי)'); });
+  }
+  load(); setInterval(load, 60000);
+})();
+</script>
+</body></html>
