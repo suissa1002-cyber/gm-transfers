@@ -39,6 +39,11 @@ a{color:var(--brand)}
 .vidwrap{background:var(--card);border:1px solid var(--line2);border-radius:12px;padding:14px;margin:12px 0}
 .vidwrap video{width:100%;max-width:300px;border-radius:10px;display:block;background:#000}
 .vidwrap figcaption{font-size:12.5px;color:var(--muted);margin-top:8px}
+.lb{position:fixed;inset:0;background:rgba(0,0,0,.88);display:none;align-items:center;justify-content:center;z-index:9999;padding:24px}
+.lb.open{display:flex}
+.lb img{max-width:96%;max-height:92%;border-radius:8px;box-shadow:0 8px 40px rgba(0,0,0,.5)}
+.lb-cap{position:absolute;bottom:16px;left:0;right:0;text-align:center;color:#fff;font-size:13px;padding:0 20px}
+.lb-x{position:absolute;top:14px;left:18px;width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.15);color:#fff;border:none;font-size:22px;cursor:pointer;line-height:1}
 </style></head><body><div class="wrap">
 
 <p class="eyebrow">Green Mobile · מרכז מידע · אירוע התיוג · חסוי</p>
@@ -164,6 +169,20 @@ a{color:var(--brand)}
     }).catch(function(){ set('upd','(סטטי)'); });
   }
   load(); setInterval(load, 60000);
+})();
+</script>
+<div class="lb" id="lb"><button class="lb-x" aria-label="סגור">×</button><img id="lbimg" alt=""><div class="lb-cap" id="lbcap"></div></div>
+<script>
+(function(){
+  var lb=document.getElementById('lb'),lbimg=document.getElementById('lbimg'),lbcap=document.getElementById('lbcap');
+  function close(){lb.classList.remove('open');lbimg.src='';}
+  document.addEventListener('click',function(e){
+    var a=e.target.closest&&e.target.closest('.ex a');
+    if(a){e.preventDefault();var img=a.querySelector('img');lbimg.src=a.getAttribute('href')||(img&&img.src)||'';
+      var fig=a.closest('.ex'),cap=fig&&fig.querySelector('figcaption');lbcap.textContent=cap?cap.textContent:'';lb.classList.add('open');return;}
+    if(e.target===lb||(e.target.classList&&e.target.classList.contains('lb-x')))close();
+  });
+  document.addEventListener('keydown',function(e){if(e.key==='Escape')close();});
 })();
 </script>
 </body></html>
