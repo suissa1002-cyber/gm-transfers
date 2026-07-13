@@ -2577,6 +2577,20 @@ def wa_msg_upsert(wamid, phone, direction, mtype, text="", media_id="", media_mi
         return bool(getattr(cur, "rowcount", 0))
 
 
+def wa_search_inbound(since_ts, keywords, limit=500):
+    """חיפוש ראיות: הודעות נכנסות מ-since_ts שמכילות אחת ממילות המפתח. קריאה-בלבד."""
+    kws = [k for k in (keywords or []) if k]
+    if not kws:
+        return []
+    like = " OR ".join(["text LIKE ?" for _ in kws])
+    params = [int(since_ts or 0)] + [f"%{k}%" for k in kws] + [int(limit)]
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT phone, ts, text FROM wa_msg WHERE direction='in' "
+                       "AND ts >= ? AND (" + like + ") ORDER BY ts ASC LIMIT ?"), tuple(params))
+        return [{"phone": r["phone"], "ts": r["ts"], "text": r["text"]} for r in cur.fetchall()]
+
+
 def wa_msg_set_status(wamid: str, status: str, err: str = ""):
     if not wamid:
         return

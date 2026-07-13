@@ -4437,6 +4437,18 @@ def wa_thread(phone: str, limit: int = 60, x_admin_key: Optional[str] = Header(N
     return _wa_guard(wa.get_thread, phone, limit=min(limit, 200))
 
 
+@app.get("/api/admin/wa/search-evidence")
+def wa_search_evidence(since: int = 0, kw: str = "", limit: int = 500,
+                       x_admin_key: Optional[str] = Header(None)):
+    """חיפוש ראיות בהודעות נכנסות (אירוע התיוג): לפי זמן + מילות מפתח. קריאה-בלבד."""
+    _require_admin(x_admin_key)
+    default = ("מורן,טרסוב,פנגו,פישינג,עוקצ,רמאי,נוכל,השמצ,תיוג,סרטון,טיקטוק,ריל,"
+               "משפיענית,מפרסמת,פרסמת,הונאה,הכפש,morantarasov,מורן טרסוב")
+    kws = [k.strip() for k in (kw or default).split(",") if k.strip()]
+    rows = db.wa_search_inbound(since, kws, limit)
+    return {"count": len(rows), "since": since, "keywords": kws, "rows": rows}
+
+
 def _bot_handoff_on(phone):
     """מענה אנושי → השתלטות אוטומטית: מסמן את השיחה 'agent' (הבוט משתתק) ומרענן
     חותמת. כך עצם השליחה הידנית מוציאה את הלקוח מהבוט, בלי ללחוץ כפתור."""
