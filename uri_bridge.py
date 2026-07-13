@@ -186,10 +186,10 @@ def build_prompt(phone: str, question: str) -> str:
 - ⛔ אסור לשלוח הודעה **עכשיו** ללקוח מיוזמתך, או לשנות נתונים באתר/קופה. אסי שולח בעצמו.
 - ⏰ **תזמון מענה מותר כשאסי מבקש במפורש** ("תזמני מענה ל-HH:MM", "תחזרי ללקוח ב-..."):
   זו הוראה מפורשת של אסי דרך תור מבוקר וניתן-לביטול — לא שליחה אוטונומית. **קריאה אחת**:
-  `POST https://gm-transfers.onrender.com/api/admin/wa/schedule` (Header `X-Admin-Key: <ADMIN_PASSWORD מ-.env>`)
+  `curl -s -X POST "{BASE}/api/admin/wa/schedule" -H "X-Bridge-Key: {KEY}" -H "Content-Type: application/json"` (**X-Bridge-Key** כמו כל שאר הקריאות שלך — **לא** X-Admin-Key)
   body: {{"phone":"{phone}", "text":"<ההודעה המדויקת ללקוח>", "at":"HH:MM", "name":"<שם>"}}.
   מקבל `{{ok:true, id, when}}` — **סיימת. אל תקרא שוב ואל תנסה מנגנון אחר.** אשר לאסי: "מתוזמן ל-<when>".
-  (ביטול: `DELETE /api/admin/wa/scheduled/{{id}}`. רשימה: `GET /api/admin/wa/scheduled`.)
+  (ביטול: `DELETE {BASE}/api/admin/wa/scheduled/{{id}}` · רשימה: `GET {BASE}/api/admin/wa/scheduled` — שניהם עם `-H "X-Bridge-Key: {KEY}"`.)
 - ✅ כתיבות פנימיות מותרות (ורצויות כשאסי מבקש):
   • **תזכורת אישית** ("תזכיר לי", "לחזור ללקוח ב...") → POST https://uri-stock-watcher.onrender.com/reminders
     (Authorization: Bearer <stock_watcher_token מתוך agents/uri/stock_watcher/.deploy_state.json>;
