@@ -478,6 +478,9 @@ def register_recurring_jobs():
     scheduler.add_job(_stellr_watch_job, "interval", minutes=20, id="stellr_watch", max_instances=1)
     # ⏰ מענים מתוזמנים של אלה — שליחה כשמגיע הזמן
     scheduler.add_job(_scheduled_sends_job, "interval", minutes=1, id="scheduled_sends", max_instances=1)
+    # 🛟 רשת-ביטחון: שיחה שנתקעה על 'בודקת עבורך' (אלה לא ענתה) → מענה ביניים + נציג + התראה
+    scheduler.add_job(_uri_dropped_recover_job, "interval", minutes=3,
+                      id="uri_dropped_recover", max_instances=1)
     # 🪑 תג "בית לקוח" ↔ מלאי קופה (כיסאות כבדים): אזל→תיוג, חזר→הסרה
     scheduler.add_job(_beit_lakoach_sync_job, "interval", hours=6,
                       id="beit_lakoach_sync", max_instances=1, coalesce=True)
@@ -5001,7 +5004,7 @@ def _failed_conversations() -> list:
             ph, nm = c.get("phone"), c.get("name")
             if (not c.get("unread")) and ts and (now - ts > 600) \
                     and any(p in last for p in _CHECKING_PHRASES):
-                out.append({"phone": ph, "name": nm, "type": "dropped", "last": last[:50]})
+                out.append({"phone": ph, "name": nm, "type": "dropped", "last": last[:50], "ts": ts})
             elif c.get("unread") and any(w in last for w in _FRUSTR_WORDS):
                 out.append({"phone": ph, "name": nm, "type": "frustrated", "last": last[:50]})
             elif c.get("unread") and c.get("handoff") and not _digest_is_ack(last):
@@ -7336,6 +7339,61 @@ def _scheduled_sends_job():
                       f"{s['phone']}\n{str(s['text'])[:200]}")
         except Exception:  # noqa: BLE001
             pass
+
+
+_DROPPED_INTERIM = "מתנצלים על ההמתנה 🙏 נציג שלנו יחזור אליך בהקדם האפשרי."
+
+
+def _uri_dropped_recover_job():
+    """🛟 רשת-ביטחון לשיחות שנתקעו על 'בודקת עבורך' (אלה הבטיחה ולא ענתה >10 דק').
+    כשמשימת אורי/אלה מתה בשקט (error/תקיעה/ריצוד שירות) הלקוח היה נשאר תלוי — כאן:
+    מענה-ביניים ללקוח + השתקת הבוט (העברה לנציג) + התראת טלגרם, פעם אחת לכל drop.
+    נשען על הזיהוי הקיים ב-_failed_conversations (type='dropped'). קאפ 5 לסבב."""
+    import wa
+    try:
+        dropped = [c for c in _failed_conversations() if c.get("type") == "dropped"]
+    except Exception as e:  # noqa: BLE001
+        logger.warning("dropped-recover: list failed: %s", e)
+        return
+    handled = 0
+    for c in dropped:
+        if handled >= 5:                       # קאפ להתפרצות — השאר בסבב הבא (3 דק')
+            break
+        phone, name, ts = c.get("phone"), c.get("name") or "", c.get("ts") or 0
+        if not phone:
+            continue
+        # דדופ: אותה חותמת = אותה הודעת 'בודקת עבורך' → כבר טופל. drop חדש (ts חדש) יטופל שוב.
+        if db.sales_state_get(f"dropped_recovered:{phone}") == str(ts):
+            continue
+        # נציג אנושי כבר על השיחה (ענה בפועל) → לא נוגעים, רק מסמנים כדי לא לחזור
+        sess = db.bot_session_get(phone)
+        human_live = sess.get("state") == "agent" and (sess.get("data") or {}).get("human")
+        if not human_live:
+            try:                               # 1) מענה-ביניים (הלקוח כתב לפני דקות → חלון 24ש)
+                wa.send_text(phone, _DROPPED_INTERIM)
+            except Exception as e:  # noqa: BLE001
+                logger.warning("dropped-recover: send to %s failed: %s", phone, e)
+            try:                               # 2) השתקת בוט + העברה לנציג (בלי human — נציג עוד לא ענה)
+                from datetime import datetime as _dt, timezone as _tz
+                db.bot_session_set(phone, "agent",
+                                   {"note": "רשת-ביטחון: אלה נתקעה, הועבר לנציג",
+                                    "ts": _dt.now(_tz.utc).isoformat()})
+            except Exception:  # noqa: BLE001
+                pass
+            try:                               # 3) הערה בכרטיס + התראת צוות
+                db.wa_note_add(phone, "רשת-ביטחון: אלה לא ענתה על 'בודקת עבורך' — "
+                                      "נשלח מענה ביניים והועבר לנציג.", "מערכת")
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                _tg_admin(f"⚠️ <b>שיחה נתקעה על 'בודקת עבורך'</b>\n{name} {phone}\n"
+                          f"נשלח ללקוח מענה ביניים + הועבר לנציג. טפלו ידנית בקונסולה.")
+            except Exception:  # noqa: BLE001
+                pass
+        db.sales_state_set(f"dropped_recovered:{phone}", str(ts))
+        handled += 1
+    if handled:
+        logger.info("dropped-recover: handled %s stuck conversation(s)", handled)
 
 
 def _stellr_watch_job():
