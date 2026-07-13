@@ -6924,9 +6924,18 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
     # אימות "הטלפון תואם לכרטיס": 3DS = המנפיק שלח OTP לטלפון/אפליקציה הרשומים של בעל
     # הכרטיס, וההוא אישר → זו האינדיקציה הלגיטימית היחידה ש"בעל הכרטיס = מי שמשלם".
     cardholder_verified = bool(s3d)
-    if cardholder_verified:
+    if cardholder_verified and not is_digital_order:
         reasons.append("✅ 3DS: בעל הכרטיס אישר דרך OTP לטלפון הרשום אצל המנפיק "
                        "(אינדיקציית 'טלפון תואם לכרטיס')")
+    elif cardholder_verified and is_digital_order:
+        # ⚠️ פישינג בזמן אמת (AiTM) — 48717, 12/07: הקורבן הזין פרטי אשראי באתר מזויף
+        # (למשל "פנגו · חוב חניה 12₪"), הנוכל שיקף אותם *בזמן אמת* לצ'קאאוט שלנו, וה-OTP
+        # שהמנפיק שלח לקורבן אושר על ידו בחושבו שזה על החיוב הקטן. התוצאה: 3DS תקין על
+        # כרטיס אמיתי — אבל ההזמנה הונאה. לכן ב-קוד דיגיטלי 3DS *אינו* מנקה חשד.
+        reasons.append("⚠️ 3DS עבר — אך בקוד דיגיטלי זה **לא** מאמת שההזמנה לגיטימית: "
+                       "בהתקפת פישינג בזמן אמת (AiTM) הנוכל משקף פרטי כרטיס של קורבן "
+                       "לצ'קאאוט שלנו, והקורבן מאשר את ה-OTP בחושבו שזה חיוב אחר. אל תנפיק "
+                       "על סמך 3DS בלבד — אמת שהמזמין הוא בעל הכרטיס בערוץ שלא ניתן לשקף.")
 
     # ── רמה סופית ──
     if not paid:
@@ -6945,9 +6954,16 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
             level = base_level
             headline = "שולם — ללא פרטי עסקת PayPlus (חיוב ידני/היסטורי); אין נתוני 3DS/כרטיס"
         elif protected and not hard_fraud:
-            # הכסף מוגן מצ'ארג'בק ואין אינדיקציית-הונאה קשה → תקרה צהוב
-            level = "yellow" if base_level == "red" else base_level
-            headline = "אשראי + 3DS — מוגן מצ'ארג'בק"
+            # מוצר פיזי: 3DS מגן מצ'ארג'בק והמוצר ניתן-לעיכוב → אפשר לרכך אדום→צהוב.
+            # קוד דיגיטלי: ההפסד אינו צ'ארג'בק אלא הקוד הבלתי-הפיך שנמומש מיד, ו-AiTM
+            # מייצר 3DS תקין על כרטיס קורבן → 3DS *אינו* מרכך את הרמה לקוד דיגיטלי.
+            if is_digital_order:
+                level = base_level
+                headline = ("אשראי+3DS — 3DS אינו שולל הונאת פישינג (AiTM) בקוד דיגיטלי; "
+                            "אמת שהמזמין הוא בעל הכרטיס לפני הנפקה")
+            else:
+                level = "yellow" if base_level == "red" else base_level
+                headline = "אשראי + 3DS — מוגן מצ'ארג'בק"
         elif protected and hard_fraud:
             level = "red"
             headline = "אשראי+3DS מוגן מצ'ארג'בק — אבל יש אינדיקציית-הונאה קשה (לא להיות צינור)"
