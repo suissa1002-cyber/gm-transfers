@@ -191,10 +191,12 @@ def refresh_home():
     pr = requests.post(f"{_base()}/wp-json/wp/v2/pages/{WP_PAGE_ID}",
                        json={"content": content}, auth=wp, timeout=90)
     pr.raise_for_status()
-    # ניקוי cache של LiteSpeed כדי שהעדכון יופיע מיד
+    # ניקוי cache ממוקד: רק דף הבית (לא כל האתר) כדי שהעדכון יופיע מיד בלי
+    # לרוקן את מטמון האתר כולו כל 4 שעות. עדכון העמוד עצמו (wp/v2/pages) גם
+    # מפעיל auto-purge של LiteSpeed לעמוד הזה, אז זה חגורה+שלייקס.
     try:
-        requests.post(f"{_base()}/wp-json/gm-catalog/v1/live", json={"on": True},
-                      auth=wp, timeout=60)
+        requests.post(f"{_base()}/wp-json/gm-catalog/v1/purge",
+                      json={"url": _base() + "/"}, auth=wp, timeout=60)
     except Exception:
         pass
     return {"ok": True, "counts": counts, "bytes": len(content)}
