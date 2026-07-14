@@ -3626,6 +3626,8 @@ const WA_STATUS={pending:'ממתין',processing:'בטיפול',completed:'הו�
 function waTogglePanel(){
   if(S.waPanel && S.waPanelMode!=='info'){ S.waPanelMode='info'; renderWaThread(); loadWaContact(); return; }
   S.waPanel=!S.waPanel; S.waPanelMode='info';
+  // זוכרים את בחירת אסי: פרטי-שיחה פתוחים כברירת מחדל, אלא אם סגר ידנית
+  S.waInfoPref=S.waPanel; try{ localStorage.setItem('tr_wa_info', S.waPanel?'1':'0'); }catch(e){}
   renderWaThread(); if(S.waPanel) loadWaContact();
 }
 // ── ✨ אלה — צ'אט עם הסוכן לצד השיחה (רץ על המק של אסי, חיוב Max) ──
@@ -4739,6 +4741,9 @@ async function openWaConv(phone){
   }
   if(S.ellaPending===undefined) waEllaPendingLoad(true);   // 🎓 באדג' על ✨ כשמשהו מחכה
   S.waPhone=phone; S.waThread=null; S.waContact=null; S.waReplyTo=null;
+  // פרטי-שיחה פתוחים כברירת מחדל (העדפה נשמרת ב-tr_wa_info); לא דורסים פאנל אלה/מלאי פתוח
+  if(S.waInfoPref===undefined){ try{ S.waInfoPref=localStorage.getItem('tr_wa_info')!=='0'; }catch(e){ S.waInfoPref=true; } }
+  if(!(S.waPanel && (S.waPanelMode==='uri'||S.waPanelMode==='stock'))){ S.waPanel=S.waInfoPref; S.waPanelMode='info'; }
   const lay=document.getElementById('waLayout'); if(lay) lay.classList.add('thread-open');
   const bar=document.getElementById('waBar'); if(bar&&window.innerWidth<=760) bar.classList.add('wa-bar-hidden');
   // עדכון סימון active ברשימה בלי לרנדר הכל (שומר פוקוס/גלילה)
