@@ -764,8 +764,15 @@ def _entry_results_list(phone, results, query):
     rows.append(("search_again", "🔍 חיפוש חדש", ""))
     data["__q"] = query
     db.bot_session_set(phone, "new_pick", data)
+    fb = ["מצאתי כמה אפשרויות:", ""]
+    for p in results[:6]:
+        fb.append(f"• *{(p.get('name') or '')[:70]}* — {_price_label(p)}")
+        if p.get("permalink"):
+            fb.append(_short_link(p["permalink"]))
+    fb.append("\nהשב/י עם שם דגם לפרטים, או *נציג* לאדם.")
     wa.send_list(phone, "מצאתי כמה אפשרויות — בחר/י את המוצר:", rows,
-                 button_label="לתוצאות", section_title="תוצאות")
+                 button_label="לתוצאות", section_title="תוצאות",
+                 text_fallback="\n".join(fb))
 
 
 def _price_label(p, prefix=""):
@@ -820,6 +827,18 @@ def _new_order_results(phone, query):
                                 f"נסה/י שם מוצר אחר (למשל: אייפון 17, גלקסי S25), "
                                 f"או *תפריט* לחזרה / *נציג* לאדם.")
         return
+    # תוצאה בודדת ברורה (חיפוש ספציפי מאוד) → מדלגים על תפריט הבחירה ושולחים ישירות
+    # כרטיס מוצר: מחיר + מלאי + קישור. חוסך צעד מיותר ומונע את תחושת "הלולאה".
+    if len(results) == 1:
+        p = results[0]
+        pid = f"prod:{p['id']}"
+        data = {pid: {"name": p.get("name"), "price": p.get("price"),
+                      "permalink": p.get("permalink"), "sku": p.get("sku"),
+                      "stock": p.get("stock_status"), "type": p.get("type"),
+                      "image": p.get("image"), "brand": p.get("brand")},
+                "__q": query}
+        db.bot_session_set(phone, "new_pick", data)
+        return _product_card(phone, pid, data)
     rows, data = [], {}
     for p in results:
         pid = f"prod:{p['id']}"
@@ -839,7 +858,16 @@ def _new_order_results(phone, query):
                f"לצמצום, הוסף/י דגם מדויק (למשל {_narrow_hint(query)}). בחר/י לפרטים:")
     else:
         hdr = f"מצאתי {total} תוצאות ל'{query}'. בחר/י לפרטים:"
-    wa.send_list(phone, hdr, rows, button_label="לתוצאות", section_title="תוצאות חיפוש")
+    # רשת ביטחון לרשימה: אם מטא תדחה את הרשימה האינטראקטיבית — הלקוח יקבל טקסט עם
+    # שמות + מחירים + קישורים לחיצים (במקום שתיקה שמפילה ללולאה).
+    fb = [f"מצאתי {total} תוצאות ל'{query}':", ""]
+    for p in results[:6]:
+        fb.append(f"• *{(p.get('name') or '')[:70]}* — {_price_label(p)}")
+        if p.get("permalink"):
+            fb.append(_short_link(p["permalink"]))
+    fb.append("\nהשב/י עם שם דגם לפרטים, או *נציג* לאדם.")
+    wa.send_list(phone, hdr, rows, button_label="לתוצאות", section_title="תוצאות חיפוש",
+                 text_fallback="\n".join(fb))
     data["__q"] = query                  # שומרים את השאלה — לרמז צבע/וריאציה בהזמנה
     db.bot_session_set(phone, "new_pick", data)
     # כפתור "עוד באתר" — מבוסס על ה**קטגוריה המשותפת** של המוצרים שנמצאו (לא חיפוש

@@ -687,8 +687,11 @@ def send_buttons(phone: str, body: str, buttons: list, header: str = "",
 
 
 def send_list(phone: str, body: str, rows: list, button_label: str = "בחר",
-              header: str = "", section_title: str = "אפשרויות") -> str:
-    """רשימת בחירה (עד 10 שורות). rows = [(id, title, desc), ...] (title ≤24)."""
+              header: str = "", section_title: str = "אפשרויות",
+              text_fallback: str = "") -> str:
+    """רשימת בחירה (עד 10 שורות). rows = [(id, title, desc), ...] (title ≤24).
+    רשת ביטחון: אם מטא דוחה את הרשימה האינטראקטיבית (ולידציה/מגבלה) — נופלים לטקסט
+    (text_fallback אם סופק, אחרת רשימה ממוספרת מהשורות) במקום שתיקה שגורמת ללולאה."""
     payload = {"type": "list", "body": {"text": body},
                "action": {"button": button_label[:20], "sections": [{
                    "title": section_title[:24],
@@ -697,7 +700,18 @@ def send_list(phone: str, body: str, rows: list, button_label: str = "בחר",
                             for r in rows[:10]]}]}}
     if header:
         payload["header"] = {"type": "text", "text": header[:60]}
-    return _meta_interactive(phone, payload, f"[רשימה] {body}")
+    try:
+        return _meta_interactive(phone, payload, f"[רשימה] {body}")
+    except Exception as e:  # noqa: BLE001 — לעולם לא להשאיר לקוח בלי תשובה
+        logger.warning("send_list interactive failed (%s) — text fallback", e)
+        if not text_fallback:
+            _ln = [body, ""]
+            for _i, _r in enumerate(rows[:10], 1):
+                _t = _r[1] if len(_r) > 1 else ""
+                _d = (_r[2] if len(_r) > 2 else "") or ""
+                _ln.append(f"{_i}. {_t}" + (f" — {_d}" if _d else ""))
+            text_fallback = "\n".join(_ln)
+        return send_text(phone, text_fallback)
 
 
 def send_cta_url(phone: str, body: str, button_text: str, url: str,
