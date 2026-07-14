@@ -5651,8 +5651,8 @@ def bridge_answer(body: UriAnswer, x_bridge_key: Optional[str] = Header(None)):
             if _sess.get("state") == "agent" and (_sess.get("data") or {}).get("human"):
                 try:
                     db.wa_note_add(job["phone"],
-                                   "(אורי נחסם — נציג חי) " + (body.answer or "").strip()[:380],
-                                   "אורי ✨")
+                                   "(אלה נחסמה — נציג חי) " + (body.answer or "").strip()[:380],
+                                   "אלה ✨")
                 except Exception:  # noqa: BLE001
                     pass
                 logger.info("uri bot-answer SUPPRESSED (human handoff active) %s job %s",
@@ -5668,7 +5668,7 @@ def bridge_answer(body: UriAnswer, x_bridge_key: Optional[str] = Header(None)):
                 ans = _re.sub(r"\s*\[NOTE\].*", "", ans).strip()
                 for _n in _notes[:2]:
                     try:
-                        db.wa_note_add(job["phone"], _n.strip()[:400], "אורי ✨")
+                        db.wa_note_add(job["phone"], _n.strip()[:400], "אלה ✨")
                     except Exception:  # noqa: BLE001
                         pass
             # [HANDOFF]: אורי מבקש להעביר לנציג אמיתי → מסירים את הסימן, ואחרי השליחה
@@ -6014,7 +6014,7 @@ class BridgeNote(BaseModel):
 def bridge_note(body: BridgeNote, x_bridge_key: Optional[str] = Header(None)):
     """אורי לומד: שומר תובנה על הלקוח כהערה ב-GreenOS (מופיעה בפאנל ℹ️)."""
     _require_bridge(x_bridge_key)
-    nid = db.wa_note_add(body.phone, body.text.strip()[:400], "אורי ✨")
+    nid = db.wa_note_add(body.phone, body.text.strip()[:400], "אלה ✨")
     return {"ok": True, "id": nid}
 
 
