@@ -204,6 +204,22 @@ def _home_refresh_job():
         return {"ok": False, "error": str(e)}
 
 
+def _special_refresh_job():
+    """רענון עמודי הרשימה המלאים (best-sellers/deals/new-arrivals) — סוגר את
+    הפער מול סקשני דף הבית: אותם נתונים, אותה תדירות, אותו worker (GMLIST splice)."""
+    try:
+        import special_refresh
+        res = special_refresh.refresh_special()
+        if res.get("ok"):
+            logger.info("special_refresh ok: %s", {k: v for k, v in res.items() if k != "ok"})
+        else:
+            logger.warning("special_refresh partial/failed: %s", res)
+        return res
+    except Exception as e:  # noqa: BLE001
+        logger.warning("special_refresh failed: %s", e)
+        return {"ok": False, "error": str(e)}
+
+
 def _removals_ingest_job():
     try:
         import removals_ingest
@@ -515,6 +531,12 @@ def register_recurring_jobs():
                       max_instances=1, coalesce=True)
     scheduler.add_job(_home_refresh_job, "date", id="home_refresh_initial",
                       run_date=datetime.now() + timedelta(seconds=150))
+    # 📄 רענון עמודי הרשימה המלאים (best-sellers/deals/new-arrivals) — צמוד לדף הבית:
+    # אותם נתונים ואותה תדירות, כדי שלא ייווצר פער בין הסקשן לעמוד המלא (אסי 15/07).
+    scheduler.add_job(_special_refresh_job, "interval", hours=4, id="special_refresh",
+                      max_instances=1, coalesce=True)
+    scheduler.add_job(_special_refresh_job, "date", id="special_refresh_initial",
+                      run_date=datetime.now() + timedelta(seconds=210))
     # גיבוי מדיה נכנסת ממטא (תמונות/מסמכים) — כל 5 דק', כדי שלא יאבד כשמטא ימחק (~30 יום)
     scheduler.add_job(_media_backup_job, "interval", minutes=5, id="media_backup", max_instances=1)
     scheduler.add_job(_media_backup_job, "date", id="media_backup_initial",
@@ -847,6 +869,13 @@ def home_refresh_now(x_admin_key: Optional[str] = Header(None)):
     """רענון ידני של דף הבית (רבי-מכר 60י'/מבצעים/חדש → עמוד 48664)."""
     _require_admin(x_admin_key)
     return _home_refresh_job()
+
+
+@app.post("/api/admin/special/refresh")
+def special_refresh_now(x_admin_key: Optional[str] = Header(None)):
+    """רענון ידני של עמודי הרשימה המלאים (best-sellers/deals/new-arrivals)."""
+    _require_admin(x_admin_key)
+    return _special_refresh_job()
 
 
 @app.post("/api/admin/wa/backfill/stop")
