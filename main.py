@@ -8700,6 +8700,37 @@ def admin_order_return(oid: int, close: int = 0,
         "phone": b.get("phone") or "", "address": addr, "email": b.get("email") or ""}}
 
 
+@app.post("/api/admin/orders/{oid}/pay-link")
+def admin_order_pay_link(oid: int, payments: int = 1,
+                         x_admin_key: Optional[str] = Header(None)):
+    """מחדש קישור תשלום PayPlus להזמנה קיימת (למשל כשקישור קודם פג תוקף).
+    יוצר דף תשלום חדש, מעדכן את מטא ההזמנה ואת מיפוי ה-IPN, ומחזיר link+pru."""
+    _require_admin(x_admin_key)
+    import requests as _rq
+    base, k, s = _wc_creds()
+    r = _rq.get(f"{base}/wp-json/wc/v3/orders/{oid}", auth=(k, s), timeout=45)
+    if not r.ok:
+        raise HTTPException(404, "הזמנה לא נמצאה")
+    o = r.json()
+    if o.get("status") not in ("pending", "on-hold", "failed"):
+        raise HTTPException(400, f"ההזמנה בסטטוס '{o.get('status')}' — לא ממתינה לתשלום")
+    b = o.get("billing") or {}
+    pp = _payplus_link(float(o.get("total") or 0), str(o.get("number")),
+                       {"name": f"{b.get('first_name','')} {b.get('last_name','')}".strip(),
+                        "email": b.get("email") or "", "phone": b.get("phone") or ""},
+                       payments=payments)
+    db.sales_state_set(f"payplus_pru:{pp['pru']}", str(o["id"]))
+    try:
+        _rq.put(f"{base}/wp-json/wc/v3/orders/{oid}",
+                json={"meta_data": [{"key": "greenos_payplus_link", "value": pp["link"]},
+                                    {"key": "greenos_payplus_pru", "value": pp["pru"]}]},
+                auth=(k, s), timeout=30)
+    except Exception:  # noqa: BLE001
+        pass
+    return {"ok": True, "order_id": o["id"], "number": o.get("number"),
+            "total": o.get("total"), "pay_link": pp["link"], "pru": pp["pru"]}
+
+
 @app.post("/api/admin/orders/{oid}/auto-transfer")
 def admin_order_auto_transfer(oid: int, force: int = 0,
                               x_admin_key: Optional[str] = Header(None)):
