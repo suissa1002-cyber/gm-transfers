@@ -224,17 +224,33 @@ class NewOrderClient:
         employee, totalQuantity, stockItems[]}.
         ✅ סינון תאריכים עובד (תוקן ע"י NewOrder 06/2026). הפורמט הנדרש הוא DD/MM/YYYY;
         אפשר להעביר גם YYYY-MM-DD / datetime ו-`_fmt_date` ימיר אוטומטית.
-        ⚠️ include_items: NewOrder עשויים להפוך את stockItems לאופציונליים (includeItems,
-        07/2026) עם ברירת מחדל false לשליפות מהירות. אנחנו צורכים stockItems בליבה
-        (poller / removals_ingest / ron) ולכן שולחים includeItems=true כברירת מחדל —
-        כך שהפולר לא נשבר גם אם ברירת-המחדל בצד שלהם תתהפך. פרמטר לא-מוכר מתעלמים ממנו.
+        ⚠️ פריטי הפעולה (stockItems): NewOrder מימשו בסוף endpoint **נפרד**
+        (`/api/Products/stock-items/{operationId}`, רפי 15/07/2026) ולא דגל includeItems
+        על הרשימה. נכון להיום הרשימה עדיין מחזירה stockItems inline; אם/כאשר יסירו
+        אותם — ריפוי-עצמי כאן משלים כל פעולה חסרה מה-endpoint הנפרד, כך שכל הצרכנים
+        (poller / removals_ingest / ron) ממשיכים לעבוד בלי שינוי. includeItems נשלח
+        עדיין למקרה שיחזירו את הדגל; פרמטר לא-מוכר מתעלמים ממנו.
         """
-        return self._get("/api/Products/stock-operations", {
+        ops = self._get("/api/Products/stock-operations", {
             "branchId": branch_id,
             "fromDate": _fmt_date(from_date), "toDate": _fmt_date(to_date),
             "page_size": page_size, "page_num": page_num,
             "includeItems": "true" if include_items else "false",
         })
+        if include_items and isinstance(ops, list):
+            for op in ops:
+                if isinstance(op, dict) and op.get("stockItems") is None and op.get("id"):
+                    try:
+                        op["stockItems"] = self.get_stock_items(op["id"])
+                    except Exception:  # פעולה בודדת שנכשלה לא מפילה את כל הרשימה
+                        op["stockItems"] = []
+        return ops
+
+    def get_stock_items(self, operation_id: Union[str, int]) -> list[dict]:
+        """פריטי פעולת-מלאי בודדת — endpoint נפרד (NewOrder 07/2026).
+        מחזיר [{name, id (מק"ט), quantity, cost, remark, stockAfterOperation, serials[]}] —
+        אותו מבנה כמו stockItems ברשימה."""
+        return self._get(f"/api/Products/stock-items/{operation_id}")
 
     # ── Live stock helpers (used by Uri / customer service) ───────────
     def get_product_stock(self, product_id: Union[str, int]) -> dict[int, float]:
