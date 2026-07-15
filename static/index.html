@@ -4104,16 +4104,19 @@ function waMediaHTML(){
   const m=S.waMedia;
   if(!m||m.phone!==S.waPhone) return '<div class="muted">טוען מדיה…</div>';
   const items=m.items||[], saved=m.saved||[];
+  const savedBtn='flex:1;display:inline-flex;align-items:center;justify-content:center;gap:5px;font-size:12px;padding:5px 8px;white-space:nowrap;min-width:0';
   const uploader=`
-    <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
-      <button class="btn-ghost" onclick="document.getElementById('waSavedFile').click()"
-              title="שמירת קובץ בכרטיס הלקוח — בלי לשלוח בשיחה"
-              style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px">➕ הוסף מדיה שמורה</button>
-      <button class="btn-ghost" onclick="waSavedPaste()"
-              title="הדבקת תמונה מהלוח (צילום מסך / העתק תמונה) — נשמר בכרטיס בלי לשלוח"
-              style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px">${ico('clip',13)} הדבק מהלוח</button>
+    <div style="margin-bottom:8px">
+      <div style="display:flex;gap:6px">
+        <button class="btn-ghost" onclick="document.getElementById('waSavedFile').click()"
+                title="שמירת קובץ בכרטיס הלקוח — בלי לשלוח בשיחה"
+                style="${savedBtn}">${ico('image',13)} הוסף קובץ</button>
+        <button class="btn-ghost" onclick="waSavedPaste()"
+                title="הדבקת תמונה מהלוח (צילום מסך / העתק תמונה) — נשמר בכרטיס בלי לשלוח"
+                style="${savedBtn}">${ico('clip',13)} הדבק מהלוח</button>
+      </div>
       <input type="file" id="waSavedFile" style="display:none" onchange="waSavedDoUpload(this)">
-      <span class="muted" style="font-size:11px">נשמר בכרטיס בלבד — לא נשלח ללקוח</span>
+      <div class="muted" style="font-size:10.5px;margin-top:3px;text-align:center">מדיה שמורה — נשמר בכרטיס בלבד, לא נשלח ללקוח</div>
     </div>`;
   const savedImgs=saved.filter(x=>x.type==='image');
   const savedOther=saved.filter(x=>x.type!=='image');
