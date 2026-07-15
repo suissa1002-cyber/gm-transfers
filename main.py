@@ -5530,6 +5530,46 @@ def bridge_jobs(x_bridge_key: Optional[str] = Header(None)):
     return {"jobs": db.uri_jobs_pending()}
 
 
+# ── בריף בוקר יומי (רץ על גשר uri-bridge ב-Render, מייל לאסי 07:00) ──────────
+@app.get("/api/uri-bridge/brief-context")
+def bridge_brief_context(x_bridge_key: Optional[str] = Header(None)):
+    """הקשר לבריף הבוקר: מתי נשלח לאחרונה + kick ידני + מצב העברות מ-GreenOS —
+    כך שהגשר לא צריך מפתח אדמין."""
+    _require_bridge(x_bridge_key)
+    plan = db.plan_list()
+    oldest = min((ln.get("created_at") or "" for ln in plan), default="")
+    return {
+        "last_sent": db.sales_state_get("daily_brief_sent") or "",
+        "kick": bool(db.sales_state_get("daily_brief_kick")),
+        "transfers": db.stats(),
+        "plan_pending": {"count": len(plan), "oldest": oldest,
+                         "items": [{"name": ln.get("name") or ln.get("product_id"),
+                                    "from": cfg.branch_name(ln.get("from_branch")),
+                                    "to": cfg.branch_name(ln.get("to_branch")),
+                                    "created_at": ln.get("created_at")} for ln in plan[:8]]},
+    }
+
+
+class BriefStatus(BaseModel):
+    sent_date: str      # YYYY-MM-DD (שעון ישראל)
+
+
+@app.post("/api/uri-bridge/brief-status")
+def bridge_brief_status(body: BriefStatus, x_bridge_key: Optional[str] = Header(None)):
+    _require_bridge(x_bridge_key)
+    db.sales_state_set("daily_brief_sent", body.sent_date.strip()[:10])
+    db.sales_state_set("daily_brief_kick", "")
+    return {"ok": True}
+
+
+@app.post("/api/admin/brief/send-now")
+def admin_brief_kick(x_admin_key: Optional[str] = Header(None)):
+    """הפעלת בריף בוקר מיידית (בדיקות / 'שלח לי עכשיו') — הגשר קולט תוך ~5 דק'."""
+    _require_admin(x_admin_key)
+    db.sales_state_set("daily_brief_kick", "1")
+    return {"ok": True, "note": "הגשר ירים את הבריף בסבב הבא (עד ~5 דק')"}
+
+
 @app.post("/api/uri-bridge/ping")
 def bridge_ping(x_bridge_key: Optional[str] = Header(None)):
     """heartbeat קליל — נקרא ע"י thread נפרד בגשר כל 60ש, כך שהמצב 'חי' נשמר גם בזמן

@@ -683,6 +683,39 @@ def process(job: dict):
         log.error("answer post failed for #%s: %s", jid, e)
 
 
+def _daily_brief_loop():
+    """בריף בוקר יומי לאסי במייל — רץ בענן (לא תלוי במק). כל ~5 דק' בודק מול GreenOS:
+    האם הגיע 07:00 שעון ישראל והבריף של היום עוד לא נשלח (או kick ידני מהקונסולה) →
+    מריץ את daily_brief_prompt.md עם claude (Composio: GA4/Ads/Gmail) ומסמן שנשלח.
+    חלון אוטומטי 07:00–11:00 בלבד — deploy בערב לא ישלח בריף באיחור."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    prompt_path = ROOT / "daily_brief_prompt.md"
+    while True:
+        try:
+            now_il = datetime.now(ZoneInfo("Asia/Jerusalem"))
+            today = now_il.strftime("%Y-%m-%d")
+            ctx = requests.get(f"{BASE}/api/uri-bridge/brief-context", headers=H, timeout=20).json()
+            due = (ctx.get("last_sent") != today and 7 <= now_il.hour < 11)
+            if (due or ctx.get("kick")) and prompt_path.exists():
+                log.info("daily brief starting (due=%s kick=%s)", due, bool(ctx.get("kick")))
+                prompt = prompt_path.read_text(encoding="utf-8")
+                prompt += ("\n\n## GREENOS_CONTEXT (הוזרק אוטומטית)\n```json\n"
+                           + json.dumps({"transfers": ctx.get("transfers"),
+                                         "plan_pending": ctx.get("plan_pending")},
+                                        ensure_ascii=False) + "\n```\n")
+                ok, text, _sid = run_claude(prompt, timeout_s=900)
+                sent = ok and "BRIEF_SENT ok=true" in (text or "")
+                log.info("daily brief finished ok=%s sent=%s tail=%r", ok, sent, (text or "")[-160:])
+                # מסמנים גם על כשל — שלא ניכנס ללולאת ריטריי שמייצרת מיילים כפולים/עלות;
+                # כשל נראה בלוג, ואפשר להריץ שוב עם kick מהקונסולה.
+                requests.post(f"{BASE}/api/uri-bridge/brief-status", headers=H,
+                              json={"sent_date": today}, timeout=15)
+        except Exception as e:  # noqa: BLE001
+            log.warning("daily brief loop error: %s", e)
+        time.sleep(300)
+
+
 def _heartbeat_loop():
     """thread נפרד — שולח heartbeat כל 60ש בלי קשר ללולאת ה-jobs, כך ש-job ארוך
     (3 דק') לא יגרום ל'גשר לא מחובר' שקרי בקונסולה."""
@@ -700,6 +733,7 @@ def main():
         sys.exit(1)
     log.info("uri_bridge up — base=%s model=%s", BASE, MODEL)
     threading.Thread(target=_heartbeat_loop, daemon=True, name="uri-heartbeat").start()
+    threading.Thread(target=_daily_brief_loop, daemon=True, name="daily-brief").start()
     while True:
         try:
             r = requests.get(f"{BASE}/api/uri-bridge/jobs", headers=H, timeout=20)
