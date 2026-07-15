@@ -1,12 +1,12 @@
 {
- "updated": "2026-07-15T10:08",
+ "updated": "2026-07-15T12:42",
  "ig": {"views": 320653, "likes": 8590, "comments": 959, "removed": true, "removed_at": "2026-07-13"},
  "tiktok": {"views": 336500, "likes": 21800, "shares": 7055, "comments": 372, "removed": true, "removed_at": "2026-07-13"},
  "total_views": 657153,
  "correction": {
-  "ig": {"code": "DavHzW7KRLs", "media_id": "3940402514606232300", "views": 42438, "likes": 800, "comments": 59},
-  "tiktok": {"id": "7662021068869143815", "views": 117600, "likes": 5844, "comments": 82, "shares": 491},
-  "total_views": 160038,
+  "ig": {"code": "DavHzW7KRLs", "media_id": "3940402514606232300", "views": 42621, "likes": 804, "comments": 59},
+  "tiktok": {"id": "7662021068869143815", "views": 119000, "likes": 5895, "comments": 86, "shares": 501},
+  "total_views": 161621,
   "posted_at": "2026-07-13"
  },
  "snapshot_24h": {
