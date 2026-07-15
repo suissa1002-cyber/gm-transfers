@@ -5540,6 +5540,7 @@ def bridge_brief_context(x_bridge_key: Optional[str] = Header(None)):
     oldest = min((ln.get("created_at") or "" for ln in plan), default="")
     return {
         "last_sent": db.sales_state_get("daily_brief_sent") or "",
+        "last_result": db.sales_state_get("daily_brief_last") or "",
         "kick": bool(db.sales_state_get("daily_brief_kick")),
         "transfers": db.stats(),
         "plan_pending": {"count": len(plan), "oldest": oldest,
@@ -5552,6 +5553,7 @@ def bridge_brief_context(x_bridge_key: Optional[str] = Header(None)):
 
 class BriefStatus(BaseModel):
     sent_date: str      # YYYY-MM-DD (שעון ישראל)
+    result: str = ""    # זנב פלט הריצה — תצפית מרחוק על הצלחה/כשל
 
 
 @app.post("/api/uri-bridge/brief-status")
@@ -5559,6 +5561,8 @@ def bridge_brief_status(body: BriefStatus, x_bridge_key: Optional[str] = Header(
     _require_bridge(x_bridge_key)
     db.sales_state_set("daily_brief_sent", body.sent_date.strip()[:10])
     db.sales_state_set("daily_brief_kick", "")
+    if body.result:
+        db.sales_state_set("daily_brief_last", body.result.strip()[:1500])
     return {"ok": True}
 
 

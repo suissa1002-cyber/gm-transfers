@@ -708,9 +708,11 @@ def _daily_brief_loop():
                 sent = ok and "BRIEF_SENT ok=true" in (text or "")
                 log.info("daily brief finished ok=%s sent=%s tail=%r", ok, sent, (text or "")[-160:])
                 # מסמנים גם על כשל — שלא ניכנס ללולאת ריטריי שמייצרת מיילים כפולים/עלות;
-                # כשל נראה בלוג, ואפשר להריץ שוב עם kick מהקונסולה.
+                # הכשל נצפה מרחוק דרך last_result ב-brief-context, וריצה חוזרת = kick.
                 requests.post(f"{BASE}/api/uri-bridge/brief-status", headers=H,
-                              json={"sent_date": today}, timeout=15)
+                              json={"sent_date": today,
+                                    "result": f"ok={ok} sent={sent} | {(text or '')[-800:]}"},
+                              timeout=15)
         except Exception as e:  # noqa: BLE001
             log.warning("daily brief loop error: %s", e)
         time.sleep(300)
