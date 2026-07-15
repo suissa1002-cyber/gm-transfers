@@ -13,19 +13,35 @@
 הקרדנצ'לס במשתני סביבה: `WC_STORE_URL`, `WC_CONSUMER_KEY`, `WC_CONSUMER_SECRET`, `COMPOSIO_API_KEY`.
 בתחתית הפרומפט מוזרק בלוק `GREENOS_CONTEXT` עם מצב ההעברות — השתמש בו, אל תקרא ל-API של GreenOS.
 
-### גישה ל-Composio (GA4 / Google Ads / Gmail) — דרך ה-REST API, לא MCP
-בסביבה זו אין Composio MCP. השתמש ב-API עם המפתח מהסביבה:
+### גישה ל-Composio (Gmail / GA4 / Ads) — דרך ה-REST API, לא MCP
+בסביבה זו אין Composio MCP. עובדים מול backend.composio.dev עם `x-api-key: $COMPOSIO_API_KEY`.
+
+**שלב חובה ראשון:** `GET /api/v3/connected_accounts` → קח את ה-`user_id` של החשבונות
+(⚠️ הוא **לא** "default" — מזהה ארוך). את אותו user_id מעבירים לכל הרצת כלי.
+
+**שליחת מייל (עובד, נבדק):**
 ```
-curl -s -X POST "https://backend.composio.dev/api/v3/tools/execute/{TOOL_SLUG}" \
+curl -s -X POST "https://backend.composio.dev/api/v3/tools/execute/GMAIL_SEND_EMAIL" \
   -H "x-api-key: $COMPOSIO_API_KEY" -H "Content-Type: application/json" \
-  -d '{"user_id": "default", "arguments": { ... }}'
+  -d '{"user_id": "<USER_ID>", "arguments": {"recipient_email": "suissa1002@gmail.com",
+       "subject": "...", "body": "<html...>", "is_html": true}}'
 ```
-- סלאגים: `GOOGLE_ANALYTICS_RUN_REPORT`, `GOOGLEADS_SEARCH_STREAM_GAQL`, `GMAIL_SEND_EMAIL`.
-- אם המבנה שונה (שגיאת 400/404 על הצורה) — בדוק את התיעוד ב-https://docs.composio.dev
-  (חיפוש "tools execute API") והתאם; ייתכן שנדרש `connected_account_id` — אפשר לאתר עם
-  `GET /api/v3/connected_accounts` באותו מפתח.
-- אם `COMPOSIO_API_KEY` חסר/נדחה — הבריף ממשיך מנתוני WC+GreenOS בלבד, ומסתיים
-  ב-`BRIEF_SENT ok=false reason=...` (אי אפשר לשלוח מייל בלי Composio).
+(אם שם ארגומנט נדחה — `GET /api/v3/tools/GMAIL_SEND_EMAIL` מחזיר את הסכמה המדויקת.)
+
+**GA4 (רק אם למפתח יש הרשאת proxy_execute):** קטלוג ה-REST לא כולל RUN_REPORT — משתמשים
+ב-proxy שמזריק את ה-OAuth של החשבון המחובר לקריאה ישירה ל-Google:
+```
+POST /api/v3/tools/execute/proxy  body:
+{"connected_account_id": "<ca_ של google_analytics>", "method": "POST",
+ "endpoint": "https://analyticsdata.googleapis.com/v1beta/properties/347435457:runReport",
+ "body": {"dateRanges": [...], "metrics": [...], "dimensions": [...]}}
+```
+אם ה-proxy מחזיר 403 הרשאות (המפתח בלי proxy_execute) — GA4/Ads "לא זמין הבוקר", ממשיכים.
+**Google Ads:** נסה proxy ל-googleads.googleapis.com (GAQL searchStream); אם נכשל
+(דורש developer-token) — "לא זמין", ממשיכים בלי.
+
+- אם `COMPOSIO_API_KEY` חסר/נדחה לגמרי — הבריף ממשיך מ-WC+GreenOS אך בלי יכולת לשלוח,
+  ומסתיים ב-`BRIEF_SENT ok=false reason=...`.
 
 1. **מכירות אתר (WooCommerce REST)** — `curl -u "$WC_CONSUMER_KEY:$WC_CONSUMER_SECRET"
    "$WC_STORE_URL/wp-json/wc/v3/orders?after=...&before=...&per_page=100"` להזמנות של אתמול:
