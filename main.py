@@ -6119,6 +6119,9 @@ def _payplus_link(amount: float, order_number: str, customer: dict, payments: in
         # אכיפת 3D Secure על כל עסקה (קישור/חיוב טלפוני) — הוראת אסי 12/06.
         # הערה: גם כשה-3DS רץ, המנפיק רשאי לאשר frictionless (בלי קוד SMS) בסכומים קטנים.
         "secure3d": {"activate": True},
+        # תוקף הקישור בדקות — בלי זה PayPlus נופל להגדרת הדף (ולעיתים 30 דק' בלבד,
+        # קישור שנשלח בוואטסאפ מת לפני שהלקוח פותח — בתאל 48933, 15/07). שבוע.
+        "expiry_datetime": os.getenv("PAYPLUS_LINK_EXPIRY_MIN", "10080"),
         "payments": max(1, int(payments or 1)),
         "payments_selected": max(1, int(payments or 1)),   # התשלומים שנבחרו בטופס — מסומנים מראש בדף
         # חזרה אלינו בסיום (נטען בתוך iframe ב-GreenOS) + callback שרת-לשרת
