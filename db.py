@@ -4416,6 +4416,14 @@ def device_register(token, name, ua, ip, branch_hint, status, auto=False):
                now_iso() if status == "approved" else None))
 
 
+def device_set_name(token: str, name: str) -> bool:
+    """שם תצוגה לעמדה (מופיע ב'נוצרה ע"י' של פוליסות/העברות)."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("UPDATE devices SET name = ? WHERE token = ?"), (name, str(token)))
+        return cur.rowcount > 0
+
+
 def device_set_status(token: str, status: str) -> bool:
     with _conn() as c:
         cur = c.cursor()

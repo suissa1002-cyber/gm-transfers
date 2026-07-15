@@ -6795,6 +6795,7 @@ function osGreenCareBox(gc,d){
   const stCol={active:'#16a34a',pending:'#ca8a04',expired:'#6b7280',cancelled:'#dc2626'};
   const stTxt={active:'פעילה',pending:'טרם החלה',expired:'פגה',cancelled:'בוטלה'};
   const sn=p.status_now||'active';
+  if(sn==='pending'&&p.start_date){ const _sd=new Date(p.start_date); stTxt.pending='תחל בתום אחריות היצרן · '+(isNaN(_sd)?String(p.start_date).slice(0,10):_sd.toLocaleDateString('he-IL')); }
   const dstr=t=>{const x=new Date(t);return isNaN(x)?(t||'—'):x.toLocaleDateString('he-IL');};
   const cn=u.component||{}, sc=u.screen||{}, tl=u.total_loss||{}, rp=u.repair||{};
   let counters=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0">
@@ -7224,10 +7225,12 @@ function gcwBullets(plan,res){
     'לא מכסה: אובדן וגניבה'];
   return b;
 }
-function gcwStatusChip(st){
+function gcwStatusChip(st,start){
   const m={active:['בתוקף','#149c40'],pending:['טרם החלה','#b58900'],expired:['פג תוקף','#b3261e'],cancelled:['בוטלה','#b3261e']};
   const x=m[st]||[st,'var(--muted)'];
-  return `<span style="display:inline-block;padding:1px 8px;border-radius:99px;font-size:10.5px;font-weight:700;color:#fff;background:${x[1]}">${x[0]}</span>`;
+  let label=x[0];
+  if(st==='pending'&&start){ const d=new Date(start); label='תחל בתום אחריות היצרן · '+(isNaN(d)?String(start).slice(0,10):d.toLocaleDateString('he-IL')); }
+  return `<span style="display:inline-block;padding:1px 8px;border-radius:99px;font-size:10.5px;font-weight:700;color:#fff;background:${x[1]}">${label}</span>`;
 }
 function gcwRender(){
   const host=document.getElementById('gcWidgetHost'); if(!host) return;
@@ -7279,7 +7282,7 @@ function gcwRender(){
       // פוליסות קיימות על הסריאל
       (r.policies||[]).forEach(pv=>{ const p=pv.policy||{}; const u=pv.usage||{};
         body+=`<div style="background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-top:10px;font-size:12px">
-          <div style="display:flex;align-items:center;gap:6px"><b>פוליסה #${p.id}</b> ${gcwStatusChip(p.status_now||p.status)}</div>
+          <div style="display:flex;align-items:center;gap:6px"><b>פוליסה #${p.id}</b> ${gcwStatusChip(p.status_now||p.status,p.start_date)}</div>
           <div class="muted" style="margin-top:2px">${escW(p.plan_label||'')}</div>
           <div class="muted" style="margin-top:2px">${escW(p.start_date||'')} → ${escW(p.end_date||'')}${p.plan==='gcp'?` · שברים ${(u.component||{}).used||0}/4 · מסך ${(u.screen||{}).used||0}/1`:''}</div>
         </div>`; });
@@ -7760,7 +7763,7 @@ function gcPolCard(p){
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <b>#${p.id}</b>
         <span style="font-weight:700;font-size:13px;color:#149c40">${p.plan==='gcp'?'Green Care Plus':'Green Care'}</span>
-        ${gcwStatusChip(p.status_now)}
+        ${gcwStatusChip(p.status_now,p.start_date)}
         <span class="muted" style="font-size:12px">${src}</span>
         <span style="margin-inline-start:auto;font-weight:800">₪${Number(p.price_paid||0).toLocaleString()}</span>
         ${act}

@@ -3563,6 +3563,21 @@ def admin_device_set(body: DeviceSetIn, x_admin_key: Optional[str] = Header(None
     return {"ok": db.device_set_status(body.token, body.status)}
 
 
+class DeviceRenameIn(BaseModel):
+    token: str
+    name: str
+
+
+@app.post("/api/admin/devices/rename")
+def admin_device_rename(body: DeviceRenameIn, x_admin_key: Optional[str] = Header(None)):
+    """שם ברור לעמדת סניף (למשל 'סטאר עמדה 2') — מופיע ב'נוצרה ע\"י'."""
+    _require_admin(x_admin_key)
+    name = (body.name or "").strip()
+    if not name:
+        raise HTTPException(400, "name required")
+    return {"ok": db.device_set_name(body.token, name)}
+
+
 # ── Ops Hub: סטטוס Sentinel (דביר) ─────────────────────────────────
 # ה-Sentinel (GitHub Actions, שעתי) דוחף לכאן JSON בסוף כל ריצה; ה-hub מציג.
 from fastapi import Request  # noqa: E402
