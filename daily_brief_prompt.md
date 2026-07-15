@@ -10,17 +10,31 @@
 
 ## שלב 1 — איסוף נתונים (כשל במקור אחד לא מפיל את הבריף — מציינים "לא זמין" וממשיכים)
 
-הקרדנצ'לס במשתני סביבה: `WC_STORE_URL`, `WC_CONSUMER_KEY`, `WC_CONSUMER_SECRET`.
+הקרדנצ'לס במשתני סביבה: `WC_STORE_URL`, `WC_CONSUMER_KEY`, `WC_CONSUMER_SECRET`, `COMPOSIO_API_KEY`.
 בתחתית הפרומפט מוזרק בלוק `GREENOS_CONTEXT` עם מצב ההעברות — השתמש בו, אל תקרא ל-API של GreenOS.
+
+### גישה ל-Composio (GA4 / Google Ads / Gmail) — דרך ה-REST API, לא MCP
+בסביבה זו אין Composio MCP. השתמש ב-API עם המפתח מהסביבה:
+```
+curl -s -X POST "https://backend.composio.dev/api/v3/tools/execute/{TOOL_SLUG}" \
+  -H "x-api-key: $COMPOSIO_API_KEY" -H "Content-Type: application/json" \
+  -d '{"user_id": "default", "arguments": { ... }}'
+```
+- סלאגים: `GOOGLE_ANALYTICS_RUN_REPORT`, `GOOGLEADS_SEARCH_STREAM_GAQL`, `GMAIL_SEND_EMAIL`.
+- אם המבנה שונה (שגיאת 400/404 על הצורה) — בדוק את התיעוד ב-https://docs.composio.dev
+  (חיפוש "tools execute API") והתאם; ייתכן שנדרש `connected_account_id` — אפשר לאתר עם
+  `GET /api/v3/connected_accounts` באותו מפתח.
+- אם `COMPOSIO_API_KEY` חסר/נדחה — הבריף ממשיך מנתוני WC+GreenOS בלבד, ומסתיים
+  ב-`BRIEF_SENT ok=false reason=...` (אי אפשר לשלוח מייל בלי Composio).
 
 1. **מכירות אתר (WooCommerce REST)** — `curl -u "$WC_CONSUMER_KEY:$WC_CONSUMER_SECRET"
    "$WC_STORE_URL/wp-json/wc/v3/orders?after=...&before=...&per_page=100"` להזמנות של אתמול:
    סה"כ הזמנות ששולמו (date_paid לא ריק), מחזור, סל ממוצע, מוצרים בולטים, כושלות/בוטלו.
    אותו דבר ליום ההשוואה.
-2. **GA4 דרך Composio MCP** (נכס `properties/347435457`): sessions, activeUsers, transactions,
+2. **GA4 דרך Composio API** (נכס `properties/347435457`): sessions, activeUsers, transactions,
    purchaseRevenue לאתמול ולהשוואה; top 5 מקורות (sessionSource) ו-top 5 עמודים (pagePath).
    ⚠️ התג הותקן ב-15/07/2026 — יום בלי דאטה = "אין דאטה להשוואה", לא להמציא.
-3. **Google Ads דרך Composio MCP** (customer_id `6971776315`, GAQL על FROM customer):
+3. **Google Ads דרך Composio API** (customer_id `6971776315`, GAQL על FROM customer):
    cost_micros, clicks, conversions, conversions_value לאתמול ולהשוואה. חשב ROAS ו-CPC.
 4. **GreenOS** — מהבלוק המוזרק בלבד: העברות in_transit/partial, בקשות ממתינות (כמה + הכי ישנה).
 
@@ -32,7 +46,7 @@
 - **רעיון היום**: רעיון שיפור/הזדמנות אחד מבוסס-נתונים.
 
 ## שלב 3 — מייל
-שלח דרך Composio (GMAIL_SEND_EMAIL) אל `suissa1002@gmail.com`:
+שלח דרך Composio API (GMAIL_SEND_EMAIL) אל `suissa1002@gmail.com`:
 - subject: `☀️ בריף בוקר Green Mobile — <יום בשבוע> <DD/MM>`
 - גוף HTML (is_html=true), **RTL מלא** (`dir="rtl"`), עיצוב נקי: רקע `#f0f4f1`, קלפים לבנים
   `border-radius:14px`, ירוק מותג `#16a34a`, ענבר `#d97706` לאזהרות,
