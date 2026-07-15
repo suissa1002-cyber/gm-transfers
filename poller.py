@@ -69,8 +69,11 @@ def poll_once() -> dict:
     scanned = 0
     try:
         for page_num in range(1, 21):  # עד 20 עמודים × 200 = 4000 תנועות
+            # items_for: פריטים רק להעברות-בין-סניפים — כל פעולה אחרת מדולגת ממילא
+            # בלולאה למטה, וקריאת פריטים לכולן שורפת את מכסת ה-100/דקה (15/07)
             ops = client().get_stock_operations(
-                from_date=from_date, page_size=200, page_num=page_num)
+                from_date=from_date, page_size=200, page_num=page_num,
+                items_for=lambda op: op.get("operationType") == cfg.TRANSFER_OP_TYPE)
             if not ops:
                 break
             scanned += len(ops)

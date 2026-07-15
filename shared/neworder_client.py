@@ -109,6 +109,7 @@ class NewOrderClient:
         self.store_guid = store_guid
         self.timeout = timeout
         self._limiter = _RateLimiter()
+        self._stock_items_cache: dict[str, list] = {}   # פריטי פעולה (היסטוריים, לא משתנים)
         self.session = requests.Session()
         self.session.headers.update({
             "Authorization": f"Bearer {token}",
@@ -217,7 +218,8 @@ class NewOrderClient:
     def get_stock_operations(self, branch_id: Optional[int] = None,
                              from_date: Optional[str] = None, to_date: Optional[str] = None,
                              page_size: int = 200, page_num: int = 1,
-                             include_items: bool = True) -> list[dict]:
+                             include_items: bool = True,
+                             items_for=None) -> list[dict]:
         """
         היסטוריית תנועות מלאי. כולל העברות בין סניפים (opTypeName="העברה בין סניפים").
         כל תנועה: {id, createDate, operationType, opTypeName, documentNumber,
@@ -240,20 +242,37 @@ class NewOrderClient:
         if include_items and isinstance(ops, list):
             for op in ops:
                 # ⚠️ מאז 15/07/2026 הרשימה מחזירה stockItems=[] (ריק, לא חסר) — לכן
-                # התנאי הוא falsy ולא רק None. פעולה ריקה-באמת תעלה קריאה אחת מיותרת
-                # שמחזירה [] — לא מזיק (בפועל לכל פעולת מלאי יש פריטים).
-                if isinstance(op, dict) and not op.get("stockItems") and op.get("id"):
-                    try:
-                        op["stockItems"] = self.get_stock_items(op["id"])
-                    except Exception:  # פעולה בודדת שנכשלה לא מפילה את כל הרשימה
-                        op["stockItems"] = []
+                # התנאי הוא falsy ולא רק None.
+                # ⚠️ תקציב קריאות: 100/דקה לכל המערכת. items_for(op) מאפשר לצרכן להשלים
+                # פריטים רק לפעולות שרלוונטיות לו (הפולר: העברות בלבד) — בלי זה סריקת
+                # הפולר (עד אלפי פעולות כל כמה דקות) חונקת את המכסה ומפילה את המלאי
+                # החי בקונסולה (15/07). בנוסף מטמון פר-פעולה: פעולה היסטורית לא משתנה.
+                if not (isinstance(op, dict) and not op.get("stockItems") and op.get("id")):
+                    continue
+                if items_for is not None and not items_for(op):
+                    continue
+                try:
+                    op["stockItems"] = self.get_stock_items(op["id"])
+                except Exception:  # פעולה בודדת שנכשלה לא מפילה את כל הרשימה
+                    op["stockItems"] = []
         return ops
 
     def get_stock_items(self, operation_id: Union[str, int]) -> list[dict]:
         """פריטי פעולת-מלאי בודדת — endpoint נפרד (NewOrder 07/2026).
         מחזיר [{name, id (מק"ט), quantity, cost, remark, stockAfterOperation, serials[]}] —
-        אותו מבנה כמו stockItems ברשימה."""
-        return self._get(f"/api/Products/stock-items/{operation_id}")
+        אותו מבנה כמו stockItems ברשימה. עם מטמון: פעולה שנקראה פעם לא נקראת שוב
+        (פעולות מלאי היסטוריות אינן משתנות; הפולר סורק את אותו חלון שוב ושוב)."""
+        key = str(operation_id)
+        cached = self._stock_items_cache.get(key)
+        if cached is not None:
+            return cached
+        items = self._get(f"/api/Products/stock-items/{operation_id}")
+        if isinstance(items, list):
+            # תקרת מטמון פשוטה — מונעת גדילה אינסופית בתהליכים ארוכי-חיים
+            if len(self._stock_items_cache) > 5000:
+                self._stock_items_cache.clear()
+            self._stock_items_cache[key] = items
+        return items or []
 
     # ── Live stock helpers (used by Uri / customer service) ───────────
     def get_product_stock(self, product_id: Union[str, int]) -> dict[int, float]:
