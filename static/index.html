@@ -6799,14 +6799,15 @@ function osGreenCareBox(gc,d){
   const dstr=t=>{const x=new Date(t);return isNaN(x)?(t||'—'):x.toLocaleDateString('he-IL');};
   const cn=u.component||{}, sc=u.screen||{}, tl=u.total_loss||{}, rp=u.repair||{};
   let counters=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0">
-    ${osCounter('שברי רכיבים',cn.used||0,cn.limit||4,'#16a34a')}
-    ${osCounter('החלפת מסך',sc.used||0,sc.limit||1,'#2563eb')}
+    ${p.plan==='gcp'?osCounter('שברי רכיבים',cn.used||0,cn.limit||4,'#16a34a'):''}
+    ${p.plan==='gcp'?osCounter('החלפת מסך',sc.used||0,sc.limit||1,'#2563eb'):''}
     ${p.plan==='gcp'?osCounter('אובדן מוחלט',tl.used||0,tl.limit||1,'#7c3aed'):''}
     ${osCounter('תיקוני אחריות',rp.used||0,null,'#0d9488')}</div>`;
   // שורות השתתפות עצמית עדכנית
   let dedLines='';
   const scr=ded.screen||{};
-  if(scr.deductible){
+  if(p.plan!=='gcp'){ /* מסלול בסיסי: אין כיסויי נזק — אין השתתפות מסך */ }
+  else if(scr.deductible){
     dedLines+=`<div class="muted" style="font-size:12.5px">🔧 השתתפות עצמית מסך כרגע: <b style="color:var(--txt)">${fmt(scr.deductible)}</b> (לפי מחיר תיקון ${fmt(scr.repair_price)}${scr.display?` · ${escW(scr.display)}`:''})</div>`;
   }else if(scr.models&&scr.models.length){
     dedLines+=`<div class="muted" style="font-size:12.5px">🔧 לא זוהה דגם למחירון המסך — בחר בעת רישום מימוש</div>`;
@@ -6909,8 +6910,8 @@ async function osCreateGreenCare(){
 function osClaimDialog(policyId){
   const data=S._osD||{}, gc=data.greencare||{}, u=gc.usage||{}, ded=gc.deductibles||{}, p=gc.policy||{};
   const opts=[];
-  opts.push(`<option value="component" ${(u.component&&u.component.remaining<=0)?'disabled':''}>שבר רכיב — נותרו ${(u.component||{}).remaining||0}/${(u.component||{}).limit||4}</option>`);
-  opts.push(`<option value="screen" ${(u.screen&&u.screen.used_up)?'disabled':''}>החלפת מסך${(u.screen&&u.screen.used_up)?' (נוצל)':''}</option>`);
+  if(p.plan==='gcp') opts.push(`<option value="component" ${(u.component&&u.component.remaining<=0)?'disabled':''}>שבר רכיב — נותרו ${(u.component||{}).remaining||0}/${(u.component||{}).limit||4}</option>`);
+  if(p.plan==='gcp') opts.push(`<option value="screen" ${(u.screen&&u.screen.used_up)?'disabled':''}>החלפת מסך${(u.screen&&u.screen.used_up)?' (נוצל)':''}</option>`);
   if(p.plan==='gcp') opts.push(`<option value="total_loss" ${(u.total_loss&&!u.total_loss.allowed)?'disabled':''}>אובדן מוחלט${(u.total_loss&&!u.total_loss.allowed)?' (לא זמין)':''}</option>`);
   opts.push(`<option value="repair">תיקון אחריות רגיל (ללא הגבלה)</option>`);
   const scrDed=(ded.screen||{}).deductible||0;
@@ -7821,7 +7822,7 @@ function gcPolDetailHTML(p){
       ${F('תום כיסוי', dt(pol.end_date))}
       ${F('מחיר ששולם', '₪'+Number(pol.price_paid||0).toLocaleString())}
       ${F('השתתפות אובדן מוחלט', pol.plan==='gcp'?('₪'+Number(pol.tl_deductible||0).toLocaleString()):'—')}
-      ${F('השתתפות מסך (נכון להיום)', scr.deductible?('₪'+Number(scr.deductible).toLocaleString()):'—')}
+      ${F('השתתפות מסך (נכון להיום)', pol.plan==='gcp'?(scr.deductible?('₪'+Number(scr.deductible).toLocaleString()):'—'):'—')}
       ${F('נוצרה ע"י', pol.created_by?escW(pol.created_by):'')}
       ${F('נוצרה בתאריך', dtt(pol.created_at))}
     </div>

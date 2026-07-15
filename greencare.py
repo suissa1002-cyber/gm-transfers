@@ -272,10 +272,15 @@ def usage_summary(policy: dict, claims: list) -> dict:
     repair = sum(1 for c in claims if c.get("claim_type") == "repair")
     is_gcp = (policy or {}).get("plan") == "gcp"
     tl_allowed = bool(is_gcp and in_second_year(policy) and tl < TOTAL_LOSS_MAX)
+    # כיסויי נזק (שברי רכיבים / מסך / אובדן) = Green Care Plus בלבד.
+    # המסלול הבסיסי (gc) = הרחבת אחריות לתקלות בלבד — לפי התקנון:
+    # "אינו מכסה נזקי לקוח (שברים, נוזלים) — לכיסוי נזקים ראו Green Care+".
     return {
-        "component": {"used": comp, "limit": FREE_COMPONENT_CLAIMS,
-                      "remaining": max(0, FREE_COMPONENT_CLAIMS - comp)},
-        "screen": {"used": screen, "limit": SCREEN_MAX, "used_up": screen >= SCREEN_MAX},
+        "component": {"used": comp, "limit": (FREE_COMPONENT_CLAIMS if is_gcp else 0),
+                      "remaining": (max(0, FREE_COMPONENT_CLAIMS - comp) if is_gcp else 0),
+                      "plan_ok": is_gcp},
+        "screen": {"used": screen, "limit": (SCREEN_MAX if is_gcp else 0),
+                   "used_up": screen >= SCREEN_MAX, "plan_ok": is_gcp},
         "total_loss": {"used": tl, "limit": (TOTAL_LOSS_MAX if is_gcp else 0),
                        "used_up": tl >= TOTAL_LOSS_MAX, "allowed": tl_allowed,
                        "plan_ok": is_gcp, "year2": in_second_year(policy)},
@@ -287,11 +292,18 @@ def usage_summary(policy: dict, claims: list) -> dict:
 def validate_claim(policy: dict, claims: list, claim_type: str) -> tuple:
     """(ok, error_he) — אכיפת מגבלות התוכנית לפני רישום מימוש חדש."""
     u = usage_summary(policy, claims)
+    is_gcp = (policy or {}).get("plan") == "gcp"
     if claim_type == "component":
+        if not is_gcp:
+            return False, ("שברי רכיבים מכוסים רק במסלול Green Care Plus — "
+                           "הפוליסה הזו היא הרחבת אחריות בסיסית (תקלות בלבד).")
         if u["component"]["remaining"] <= 0:
             return False, (f"נוצלו כבר כל {FREE_COMPONENT_CLAIMS} מימושי שברי הרכיבים "
                            "החינמיים — לא ניתן לרשום מימוש נוסף.")
     elif claim_type == "screen":
+        if not is_gcp:
+            return False, ("החלפת מסך מכוסה רק במסלול Green Care Plus — "
+                           "הפוליסה הזו היא הרחבת אחריות בסיסית (תקלות בלבד).")
         if u["screen"]["used_up"]:
             return False, "החלפת מסך כבר נוצלה בפוליסה זו (פעם אחת בלבד)."
     elif claim_type == "total_loss":
