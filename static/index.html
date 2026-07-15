@@ -4109,6 +4109,9 @@ function waMediaHTML(){
       <button class="btn-ghost" onclick="document.getElementById('waSavedFile').click()"
               title="שמירת קובץ בכרטיס הלקוח — בלי לשלוח בשיחה"
               style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px">➕ הוסף מדיה שמורה</button>
+      <button class="btn-ghost" onclick="waSavedPaste()"
+              title="הדבקת תמונה מהלוח (צילום מסך / העתק תמונה) — נשמר בכרטיס בלי לשלוח"
+              style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px">${ico('clip',13)} הדבק מהלוח</button>
       <input type="file" id="waSavedFile" style="display:none" onchange="waSavedDoUpload(this)">
       <span class="muted" style="font-size:11px">נשמר בכרטיס בלבד — לא נשלח ללקוח</span>
     </div>`;
@@ -4143,15 +4146,35 @@ async function loadWaMedia(){
          const b=document.getElementById('waMediaBox'); if(b) b.innerHTML=waMediaHTML(); } }
   catch(e){}
 }
-async function waSavedDoUpload(inp){
-  const f=inp.files&&inp.files[0]; inp.value='';
+async function _waSavedSend(f, defCap){
   if(!f||!S.waPhone) return;
   if(f.size>25*1024*1024){ toast('קובץ גדול מדי (מקסימום 25MB)',false); return; }
-  const cap=prompt('כיתוב למדיה השמורה (לא חובה):', f.name)||f.name;
-  const fd=new FormData(); fd.append('phone',S.waPhone); fd.append('caption',cap); fd.append('file',f);
+  const cap=prompt('כיתוב למדיה השמורה (לא חובה):', defCap||f.name||'')||defCap||f.name||'';
+  const fd=new FormData(); fd.append('phone',S.waPhone); fd.append('caption',cap);
+  fd.append('file',f,f.name||'clipboard.png');
   try{ await api('/api/admin/wa/media-save',{method:'POST',body:fd},60000);
        toast('נשמר בכרטיס הלקוח',true); loadWaMedia(); }
   catch(e){ toast('השמירה נכשלה',false); }
+}
+async function waSavedDoUpload(inp){
+  const f=inp.files&&inp.files[0]; inp.value='';
+  await _waSavedSend(f);
+}
+// הדבקה מהלוח (clipboard API) — צילום מסך או "העתק תמונה"; דורש מחוות משתמש
+async function waSavedPaste(){
+  if(!S.waPhone) return;
+  if(!navigator.clipboard||!navigator.clipboard.read){
+    toast('הדפדפן לא תומך בקריאת הלוח — השתמש בבחירת קובץ',false); return; }
+  try{
+    const items=await navigator.clipboard.read();
+    for(const it of items){
+      const t=(it.types||[]).find(x=>x.startsWith('image/'));
+      if(t){ const blob=await it.getType(t);
+             const f=new File([blob],'clipboard.'+(t.split('/')[1]||'png').replace('+xml',''),{type:t});
+             await _waSavedSend(f,'הדבקה מהלוח'); return; }
+    }
+    toast('לא נמצאה תמונה בלוח — העתק תמונה/צילום מסך ונסה שוב',false);
+  }catch(e){ toast('אין הרשאת קריאה מהלוח — אשר בדפדפן או השתמש בבחירת קובץ',false); }
 }
 async function waSavedDel(id){
   if(!confirm('למחוק את המדיה השמורה?')) return;
