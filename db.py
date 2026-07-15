@@ -585,6 +585,19 @@ _SCHEMA = [
         created_at  TEXT
     )
     """,
+    # מדיה שמורה פר-לקוח — הועלתה ידנית בקונסולה לתיוק, בלי שליחה בשיחה.
+    # ה-bytes נשמרים ב-wa_media_blob תחת המפתח 'sv:<id>' (אותו מנגנון הגשה/גיבוי).
+    """
+    CREATE TABLE IF NOT EXISTS wa_saved_media (
+        id          {pk},
+        phone       TEXT,
+        mime        TEXT,
+        caption     TEXT,
+        author      TEXT,
+        created_at  TEXT
+    )
+    """.format(pk=_PK),
+    "CREATE INDEX IF NOT EXISTS idx_saved_media_phone ON wa_saved_media(phone)",
     # פלייבוק שירותי לאלה — לקחים שנצברים מהעבודה (מוזרק לפרומפט הבוט והפאנל)
     """
     CREATE TABLE IF NOT EXISTS service_kb (
@@ -2665,6 +2678,46 @@ def wa_media_blob_del(wamid: str):
     with _conn() as c:
         cur = c.cursor()
         cur.execute(_q("DELETE FROM wa_media_blob WHERE wamid = ?"), (wamid,))
+
+
+# ── מדיה שמורה פר-לקוח (הועלתה ידנית בקונסולה — לא נשלחה בשיחה) ──────────
+
+def wa_saved_media_add(phone: str, mime: str, caption: str, author: str, data: bytes) -> int:
+    """שומר קובץ לתיוק תחת הלקוח: שורת אינדקס + blob תחת 'sv:<id>'."""
+    with _conn() as c:
+        cur = c.cursor()
+        vals = (phone, mime or "", caption or "", author or "", now_iso())
+        if _USE_PG:
+            cur.execute(_q("""
+                INSERT INTO wa_saved_media (phone, mime, caption, author, created_at)
+                VALUES (?, ?, ?, ?, ?) RETURNING id
+            """), vals)
+            sid = cur.fetchone()["id"]
+        else:
+            cur.execute(_q("""
+                INSERT INTO wa_saved_media (phone, mime, caption, author, created_at)
+                VALUES (?, ?, ?, ?, ?)
+            """), vals)
+            sid = cur.lastrowid
+    wa_media_blob_set(f"sv:{sid}", mime, data)
+    return sid
+
+
+def wa_saved_media_list(phone: str) -> list:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""SELECT id, mime, caption, author, created_at
+                          FROM wa_saved_media WHERE phone = ? ORDER BY id DESC"""), (phone,))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def wa_saved_media_delete(sid: int) -> bool:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("DELETE FROM wa_saved_media WHERE id = ?"), (sid,))
+        deleted = cur.rowcount > 0
+    wa_media_blob_del(f"sv:{sid}")
+    return deleted
 
 
 def wa_contact_pic_phones() -> set:

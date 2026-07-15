@@ -4026,7 +4026,7 @@ function waPanelHTML(){
              onkeydown="if(event.key==='Enter')waAddNote()">
       <button class="btn-ghost" onclick="waAddNote()">➕</button>
     </div>`;
-  const mediaCount=S.waMedia&&S.waMedia.phone===S.waPhone?S.waMedia.items.length:undefined;
+  const mediaCount=S.waMedia&&S.waMedia.phone===S.waPhone?(S.waMedia.items.length+(S.waMedia.saved||[]).length):undefined;
   const invCount=S.waInv&&S.waInv.phone===S.waPhone?S.waInv.items.length:undefined;
   const pic=(S.waThread&&S.waThread.pic)||((S.waConvs||[]).find(x=>x.phone===S.waPhone)||{}).pic||'';
   return `
@@ -4103,11 +4103,35 @@ function waPicBust(phone, pic){
 function waMediaHTML(){
   const m=S.waMedia;
   if(!m||m.phone!==S.waPhone) return '<div class="muted">טוען מדיה…</div>';
-  const items=m.items||[];
-  if(!items.length) return '<div class="muted">אין מדיה בשיחה</div>';
+  const items=m.items||[], saved=m.saved||[];
+  const uploader=`
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+      <button class="btn-ghost" onclick="document.getElementById('waSavedFile').click()"
+              title="שמירת קובץ בכרטיס הלקוח — בלי לשלוח בשיחה"
+              style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px">➕ הוסף מדיה שמורה</button>
+      <input type="file" id="waSavedFile" style="display:none" onchange="waSavedDoUpload(this)">
+      <span class="muted" style="font-size:11px">נשמר בכרטיס בלבד — לא נשלח ללקוח</span>
+    </div>`;
+  const savedImgs=saved.filter(x=>x.type==='image');
+  const savedOther=saved.filter(x=>x.type!=='image');
+  const savedBlock=saved.length?`
+    <div style="margin-bottom:8px">
+      <div class="muted" style="font-size:11px;margin-bottom:4px">מדיה שמורה — לא בשיחה (${saved.length})</div>
+      ${savedImgs.length?`<div class="wa-gal">${savedImgs.map(x=>`<span style="position:relative;display:inline-block">
+        <img src="${escW(x.url)}" loading="lazy" onclick="waLightbox('${escW(x.url)}')" title="${escW(x.caption||'')}">
+        <span class="del" onclick="waSavedDel(${x.id})" title="מחיקת מדיה שמורה"
+              style="position:absolute;top:2px;left:2px;background:rgba(255,255,255,.85);border-radius:6px;padding:0 3px;cursor:pointer;font-size:11px">🗑</span>
+      </span>`).join('')}</div>`:''}
+      ${savedOther.map(x=>`<div class="wa-doc" style="display:flex;align-items:center;gap:6px;margin-top:5px">
+        <a style="flex:1" href="${escW(x.url)}" target="_blank">${x.type==='video'?'🎬':x.type==='audio'?'🎵':'📎'} ${escW(x.caption||x.type)}</a>
+        <span class="muted" style="font-size:11px">שמור</span>
+        <span class="del" onclick="waSavedDel(${x.id})" style="cursor:pointer">🗑</span></div>`).join('')}
+    </div>`:'';
+  if(!items.length&&!saved.length) return uploader+'<div class="muted">אין מדיה בשיחה</div>';
   const imgs=items.filter(x=>x.type==='image'||x.type==='sticker');
   const other=items.filter(x=>x.type!=='image'&&x.type!=='sticker');
-  return `
+  return uploader+savedBlock+`
+    ${(saved.length&&items.length)?`<div class="muted" style="font-size:11px;margin-bottom:4px">מדיה מהשיחה (${items.length})</div>`:''}
     ${imgs.length?`<div class="wa-gal">${imgs.map(x=>`<img src="${escW(x.url)}" loading="lazy" onclick="waLightbox('${escW(x.url)}')" title="${x.ts?fmtTime(new Date(x.ts*1000).toISOString()):''}">`).join('')}</div>`:''}
     ${other.map(x=>`<a class="wa-doc" style="display:block;margin-top:5px" href="${escW(x.url)}" target="_blank">
       ${x.type==='video'?'🎬':x.type==='audio'?'🎵':'📎'} ${escW(x.caption||x.type)} <span class="muted" style="font-size:11px">${x.ts?fmtTime(new Date(x.ts*1000).toISOString()):''}</span></a>`).join('')}`;
@@ -4115,9 +4139,24 @@ function waMediaHTML(){
 async function loadWaMedia(){
   const phone=S.waPhone; if(!phone) return;
   try{ const r=await api('/api/admin/wa/media/'+encodeURIComponent(phone));
-       if(S.waPhone===phone){ S.waMedia={phone, items:r.media||[]};
+       if(S.waPhone===phone){ S.waMedia={phone, items:r.media||[], saved:r.saved||[]};
          const b=document.getElementById('waMediaBox'); if(b) b.innerHTML=waMediaHTML(); } }
   catch(e){}
+}
+async function waSavedDoUpload(inp){
+  const f=inp.files&&inp.files[0]; inp.value='';
+  if(!f||!S.waPhone) return;
+  if(f.size>25*1024*1024){ toast('קובץ גדול מדי (מקסימום 25MB)',false); return; }
+  const cap=prompt('כיתוב למדיה השמורה (לא חובה):', f.name)||f.name;
+  const fd=new FormData(); fd.append('phone',S.waPhone); fd.append('caption',cap); fd.append('file',f);
+  try{ await api('/api/admin/wa/media-save',{method:'POST',body:fd},60000);
+       toast('נשמר בכרטיס הלקוח',true); loadWaMedia(); }
+  catch(e){ toast('השמירה נכשלה',false); }
+}
+async function waSavedDel(id){
+  if(!confirm('למחוק את המדיה השמורה?')) return;
+  try{ await api('/api/admin/wa/media-save/'+id,{method:'DELETE'},20000); loadWaMedia(); }
+  catch(e){ toast('המחיקה נכשלה',false); }
 }
 // ── חשבוניות שנקלטו ממייל הקופה — תצוגה + שליחה ללקוח בוואטסאפ ──
 function waInvHTML(){

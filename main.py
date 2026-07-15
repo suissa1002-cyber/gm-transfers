@@ -823,6 +823,13 @@ def wa_media(wamid: str, t: Optional[str] = None, x_admin_key: Optional[str] = H
     import wa
     if not (t and wa.media_token(wamid) == t):
         _require_admin(x_admin_key)
+    if wamid.startswith("sv:"):  # מדיה שמורה (הועלתה ידנית) — ישירות מהגיבוי
+        blob = db.wa_media_blob_get(wamid)
+        if not blob:
+            raise HTTPException(404, "מדיה שמורה לא נמצאה")
+        from fastapi.responses import Response
+        return Response(blob[1], media_type=blob[0] or "application/octet-stream",
+                        headers={"Cache-Control": "private, max-age=86400"})
     m = db.wa_msg_get(wamid)
     if not m:
         raise HTTPException(404, "הודעה לא נמצאה")
@@ -4835,11 +4842,44 @@ def wa_search(q: str = "", x_admin_key: Optional[str] = Header(None)):
 
 
 @app.get("/api/admin/wa/media/{phone}")
-def wa_media(phone: str, x_admin_key: Optional[str] = Header(None)):
-    """גלריית מדיה מרוכזת מהשיחה (לפאנל פרטי פונה)."""
+def wa_media_gallery(phone: str, x_admin_key: Optional[str] = Header(None)):
+    """גלריית מדיה מרוכזת: מהשיחה + מדיה שמורה שהועלתה ידנית (לפאנל פרטי פונה)."""
     _require_admin(x_admin_key)
     import wa
-    return {"media": _wa_guard(wa.media_list, phone)}
+    saved = []
+    for s in db.wa_saved_media_list(phone):
+        key = f"sv:{s['id']}"
+        saved.append({"id": s["id"], "type": (s.get("mime") or "").split("/")[0] or "file",
+                      "url": f"/api/wa/media?wamid={key}&t={wa.media_token(key)}",
+                      "caption": s.get("caption") or "", "author": s.get("author") or "",
+                      "ts": s.get("created_at") or ""})
+    return {"media": _wa_guard(wa.media_list, phone), "saved": saved}
+
+
+@app.post("/api/admin/wa/media-save")
+async def wa_media_save(request: Request, x_admin_key: Optional[str] = Header(None)):
+    """שמירת קובץ לתיוק תחת הלקוח — בלי שליחה בוואטסאפ (מדיה שמורה)."""
+    _require_admin(x_admin_key)
+    form = await request.form()
+    phone = str(form.get("phone") or "")
+    caption = str(form.get("caption") or "")
+    up = form.get("file")
+    if not phone or up is None or isinstance(up, str):
+        raise HTTPException(400, "phone + file required")
+    content = await up.read()
+    if not content:
+        raise HTTPException(400, "קובץ ריק")
+    if len(content) > 25 * 1024 * 1024:
+        raise HTTPException(413, "קובץ גדול מדי (מקסימום 25MB)")
+    mime = up.content_type or "application/octet-stream"
+    sid = db.wa_saved_media_add(phone, mime, caption or (up.filename or ""), "GreenOS", content)
+    return {"ok": True, "id": sid}
+
+
+@app.delete("/api/admin/wa/media-save/{sid}")
+def wa_media_save_del(sid: int, x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    return {"deleted": db.wa_saved_media_delete(sid)}
 
 
 @app.get("/api/admin/wa/tags")
