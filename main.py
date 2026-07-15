@@ -5717,7 +5717,13 @@ def bridge_answer(body: UriAnswer, x_bridge_key: Optional[str] = Header(None)):
             # להגיע אחרי שנציג כבר השתלט וענה ידנית. אם human handoff פעיל — לא שולחים
             # ללקוח; שומרים כהערה פנימית כדי שאסי יראה מה אורי היה עונה.
             _sess = db.bot_session_get(job["phone"])
-            if _sess.get("state") == "agent" and (_sess.get("data") or {}).get("human"):
+            # ⚠️ אותו כלל תפוגה כמו בצד הקליטה (wa_bot._agent_handoff_active, 12ש'):
+            # בלי התפוגה כאן נוצר מצב עקום — הבוט חוזר לענות אחרי 12ש' ("בודקת עבורך"),
+            # אבל התשובה של אלה נחסמה לנצח כי הדגל human מעולם לא פג (צחי, 15/07).
+            # נציג פעיל באמת (ענה ב-12ש' האחרונות; כל מענה ידני מרענן חותמת) → עדיין שקט.
+            import wa_bot as _wb_guard
+            if (_sess.get("state") == "agent" and (_sess.get("data") or {}).get("human")
+                    and _wb_guard._agent_handoff_active(_sess)):
                 try:
                     db.wa_note_add(job["phone"],
                                    "(אלה נחסמה — נציג חי) " + (body.answer or "").strip()[:380],
@@ -7452,9 +7458,12 @@ def _uri_dropped_recover_job():
         # דדופ: אותה חותמת = אותה הודעת 'בודקת עבורך' → כבר טופל. drop חדש (ts חדש) יטופל שוב.
         if db.sales_state_get(f"dropped_recovered:{phone}") == str(ts):
             continue
-        # נציג אנושי כבר על השיחה (ענה בפועל) → לא נוגעים, רק מסמנים כדי לא לחזור
+        # נציג אנושי כבר על השיחה (ענה בפועל ב-12ש' האחרונות) → לא נוגעים, רק מסמנים.
+        # אותה תפוגה כמו wa_bot/answer — דגל human ישן לא חוסם את רשת-הביטחון.
         sess = db.bot_session_get(phone)
-        human_live = sess.get("state") == "agent" and (sess.get("data") or {}).get("human")
+        import wa_bot as _wb_sn
+        human_live = (sess.get("state") == "agent" and (sess.get("data") or {}).get("human")
+                      and _wb_sn._agent_handoff_active(sess))
         if not human_live:
             try:                               # 1) מענה-ביניים (הלקוח כתב לפני דקות → חלון 24ש)
                 wa.send_text(phone, _DROPPED_INTERIM)
