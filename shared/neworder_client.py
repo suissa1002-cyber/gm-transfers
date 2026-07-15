@@ -239,7 +239,10 @@ class NewOrderClient:
         })
         if include_items and isinstance(ops, list):
             for op in ops:
-                if isinstance(op, dict) and op.get("stockItems") is None and op.get("id"):
+                # ⚠️ מאז 15/07/2026 הרשימה מחזירה stockItems=[] (ריק, לא חסר) — לכן
+                # התנאי הוא falsy ולא רק None. פעולה ריקה-באמת תעלה קריאה אחת מיותרת
+                # שמחזירה [] — לא מזיק (בפועל לכל פעולת מלאי יש פריטים).
+                if isinstance(op, dict) and not op.get("stockItems") and op.get("id"):
                     try:
                         op["stockItems"] = self.get_stock_items(op["id"])
                     except Exception:  # פעולה בודדת שנכשלה לא מפילה את כל הרשימה
