@@ -4424,6 +4424,22 @@ def device_set_name(token: str, name: str) -> bool:
         return cur.rowcount > 0
 
 
+def actor_rename(old: str, new: str) -> dict:
+    """שינוי שם עמדה מתפשט גם לרישומים היסטוריים — 'נוצרה ע"י' הוא צילום טקסט,
+    אחרת שם ישן ('מכשיר קיים (2)') נשאר להופיע לנצח בפאנלים."""
+    out = {}
+    with _conn() as c:
+        cur = c.cursor()
+        for table in ("greencare_policies", "greencare_claims", "transfer_plan"):
+            try:
+                cur.execute(_q(f"UPDATE {table} SET created_by = ? WHERE created_by = ?"),
+                            (new, old))
+                out[table] = cur.rowcount
+            except Exception:
+                out[table] = -1
+    return out
+
+
 def device_set_status(token: str, status: str) -> bool:
     with _conn() as c:
         cur = c.cursor()

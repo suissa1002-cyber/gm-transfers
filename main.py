@@ -3570,12 +3570,22 @@ class DeviceRenameIn(BaseModel):
 
 @app.post("/api/admin/devices/rename")
 def admin_device_rename(body: DeviceRenameIn, x_admin_key: Optional[str] = Header(None)):
-    """שם ברור לעמדת סניף (למשל 'סטאר עמדה 2') — מופיע ב'נוצרה ע\"י'."""
+    """שם ברור לעמדת סניף (למשל 'סטאר עמדה 2') — מופיע ב'נוצרה ע\"י'.
+    מתפשט גם לרישומים היסטוריים (פוליסות/מימושים/תוכנית העברות)."""
     _require_admin(x_admin_key)
     name = (body.name or "").strip()
     if not name:
         raise HTTPException(400, "name required")
-    return {"ok": db.device_set_name(body.token, name)}
+    d = db.device_get(body.token)
+    if not d:
+        raise HTTPException(404, "device not found")
+    bh = (d.get("branch_hint") or "").strip()
+    old_nm = (d.get("name") or "").strip()
+    old_actor = f"{old_nm} ({bh})" if old_nm and bh else (old_nm or bh)
+    new_actor = f"{name} ({bh})" if bh else name
+    ok = db.device_set_name(body.token, name)
+    hist = db.actor_rename(old_actor, new_actor) if (ok and old_actor and old_actor != new_actor) else {}
+    return {"ok": ok, "history_updated": hist}
 
 
 # ── Ops Hub: סטטוס Sentinel (דביר) ─────────────────────────────────
