@@ -194,6 +194,12 @@ def _unmark_unmatched(number):
         logger.warning("unmatched unmark failed for %s: %s", number, e)
 
 
+# שמות ציבוריים של סניפים כפי שמופיעים באתר (meta _gm_pickup_branch) כשהשם בקופה שונה.
+# "סיטי" בקופה נקרא "מחסן\מרלוג" — בלי המיפוי הזה הזמנת איסוף-בסיטי נופלת לברירת
+# המחדל (סטאר) והפריט משודר מהסניף הלא נכון (הזמנה 48958, 16/07).
+PICKUP_ALIASES = {"סיטי": 3}
+
+
 def _pickup_branch(o: dict) -> int:
     """סניף האיסוף שנבחר בהזמנת איסוף עצמי (מ-meta _gm_pickup_branch). None אם לא איסוף."""
     titles = " ".join((sl.get("method_title") or "") for sl in (o.get("shipping_lines") or []))
@@ -203,6 +209,9 @@ def _pickup_branch(o: dict) -> int:
     raw = str(meta.get("_gm_pickup_branch") or "").split(" - ")[0].replace("סניף", "").strip()
     if not raw:
         return None
+    for alias, bid in PICKUP_ALIASES.items():
+        if alias in raw:
+            return bid
     for bid, nm in cfg.BRANCHES.items():
         if bid != SITE_BRANCH and (nm == raw or raw in nm or nm in raw):
             return bid
