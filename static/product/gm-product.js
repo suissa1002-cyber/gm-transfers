@@ -12,6 +12,49 @@
     $('.gmain img').attr('src', full).removeAttr('srcset sizes');
   });
 
+  /* לייטבוקס: לחיצה על התמונה הראשית מגדילה למסך מלא, עם דפדוף בין תמונות
+     הגלריה (חיצים/מקלדת/לחיצה על הרקע לסגירה) */
+  function gmLbImgs() {
+    var list = $('.gth').map(function () { return $(this).data('full'); }).get().filter(Boolean);
+    if (!list.length) { var s = $('.gmain img').attr('src'); if (s) list = [s]; }
+    return list;
+  }
+  function gmLbShow(i) {
+    var imgs = $('#gmLb').data('imgs') || []; if (!imgs.length) return;
+    i = ((i % imgs.length) + imgs.length) % imgs.length;
+    $('#gmLb').data('idx', i).find('.gm-lb-img').attr('src', imgs[i]);
+    $('#gmLb .gm-lb-cnt').text((i + 1) + ' / ' + imgs.length);
+    $('#gmLb .gm-lb-prev,#gmLb .gm-lb-next').toggle(imgs.length > 1);
+    $('#gmLb .gm-lb-cnt').toggle(imgs.length > 1);
+  }
+  function gmLbClose() { $('#gmLb').removeClass('open'); document.body.style.overflow = ''; }
+  $(document).on('click', '.gm-pdp-wrap .gmain img', function () {
+    var imgs = gmLbImgs(); if (!imgs.length) return;
+    if (!$('#gmLb').length) {
+      $('body').append(
+        '<div id="gmLb" aria-modal="true" role="dialog" aria-label="תצוגת תמונה מוגדלת">' +
+        '<button type="button" class="gm-lb-x" aria-label="סגור">×</button>' +
+        '<button type="button" class="gm-lb-prev" aria-label="הקודמת">‹</button>' +
+        '<img class="gm-lb-img" alt="">' +
+        '<button type="button" class="gm-lb-next" aria-label="הבאה">›</button>' +
+        '<div class="gm-lb-cnt"></div></div>');
+      $('#gmLb').on('click', function (e) { if (e.target === this || $(e.target).is('.gm-lb-x')) gmLbClose(); });
+      $('#gmLb .gm-lb-prev').on('click', function () { gmLbShow(($('#gmLb').data('idx') || 0) - 1); });
+      $('#gmLb .gm-lb-next').on('click', function () { gmLbShow(($('#gmLb').data('idx') || 0) + 1); });
+      $(document).on('keydown', function (e) {
+        if (!$('#gmLb').hasClass('open')) return;
+        if (e.key === 'Escape') gmLbClose();
+        else if (e.key === 'ArrowLeft') gmLbShow(($('#gmLb').data('idx') || 0) + 1);
+        else if (e.key === 'ArrowRight') gmLbShow(($('#gmLb').data('idx') || 0) - 1);
+      });
+    }
+    var cur = $('.gmain img').attr('src');
+    var idx = Math.max(0, imgs.indexOf(cur));
+    $('#gmLb').data('imgs', imgs).addClass('open');
+    document.body.style.overflow = 'hidden';
+    gmLbShow(idx);
+  });
+
   /* טאבים: תיאור / מפרט */
   $(document).on('click', '.tabbar button', function () {
     var t = $(this).data('tab');
