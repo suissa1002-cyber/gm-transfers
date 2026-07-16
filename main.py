@@ -3353,7 +3353,21 @@ async def shift_bot_webhook(request: Request):
         try:
             if str(tg).strip() in db.tg_blocklist():
                 logger.warning("shift register BLOCKED for %s (%s) — tg_blocklist", name, tg)
-                _tg_admin(f"🚨 ניסיון רישום מ-telegram_id חסום: {name} ({tg}) — נדחה")
+                # ויסות התראה: החשבון הפרוץ מנסה שוב ושוב → מתריעים לאסי לכל היותר
+                # פעם ב-6 שעות פר-id, שלא נציף אותו (הוא ביקש שיפסיק — 16/07).
+                try:
+                    from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+                    k = f"tgblock_alert:{str(tg).strip()}"
+                    last = db.sales_state_get(k)
+                    fire = True
+                    if last:
+                        fire = (_dt.now(_tz.utc) - _dt.fromisoformat(last)) > _td(hours=6)
+                    if fire:
+                        _tg_admin(f"🔒 חשבון חסום מנסה להירשם לבוט: {name} ({tg}) — נדחה "
+                                  "(המערכת חוסמת; לא נדרשת פעולה). מושתק ל-6 שעות.")
+                        db.sales_state_set(k, _dt.now(_tz.utc).isoformat())
+                except Exception:  # noqa: BLE001
+                    pass
                 return
         except Exception:  # noqa: BLE001
             pass
