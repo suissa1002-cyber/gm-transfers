@@ -547,7 +547,10 @@ def send_typing(message_id: str) -> bool:
 # ל-TinyURL אמיתי. slug אנגלי / לא-מוצר נשאר כמו שהוא. כשל קיצור → קישור מקורי.
 _SHORTEN_CACHE: dict = {}
 _SHORTEN_LOCK = Lock()
-_GM_PRODUCT_RE = re.compile(r'https?://(?:www\.)?greenmobile\.co\.il/product/[^\s)>\]"\']+')
+# כל קישור לאתר — לא רק /product/: גם עמוד קטגוריה עם פילטר עברי ב-query
+# (pa_features=%D7%91...) נשבר בוואטסאפ (כשל 16/07). ההחלטה אם לקצר נשארת
+# אצל _slug_is_hebrew, שבודק עברית/אחוזים בכל ה-URL — קישור אנגלי נקי לא נגעים בו.
+_GM_PRODUCT_RE = re.compile(r'https?://(?:www\.)?greenmobile\.co\.il/[^\s)>\]"\']+')
 
 
 def _slug_is_hebrew(url: str) -> bool:
@@ -575,7 +578,7 @@ def _tinyurl(long_url: str) -> str:
 
 
 def _shorten_he_product_links(text: str) -> str:
-    if not text or "greenmobile.co.il/product/" not in text:
+    if not text or "greenmobile.co.il/" not in text:
         return text
 
     def _repl(m):
