@@ -5822,8 +5822,19 @@ def bridge_filter(q: str = "", max_price: int = 0, min_price: int = 0,
                if p.get("catalog_visibility") != "hidden" and p.get("type") not in ("external", "grouped")]
     except Exception:  # noqa: BLE001
         res = []
+    # קישור לרשימה המסוננת באתר (עמוד הקטגוריה החדש תומך ב-?fv=<ערך> מ-16/07) —
+    # כדי שאלה תשלח קישור אמיתי ולא תמציא פרמטרים (pa_features=... שבור, כשל אריאל).
+    # ממופה רק לתכונות-אוזניות; תכונות אחרות — בלי list_url (עדיף כלום מקישור שגוי).
+    _HEADPHONES_CAT = ("https://greenmobile.co.il/product-category/"
+                       "%d7%90%d7%95%d7%96%d7%a0%d7%99%d7%95%d7%aa-%d7%95%d7%a8%d7%9e%d7%a7%d7%95%d7%9c%d7%99%d7%9d/")
+    _FV_CATS = {"pa_more_features": _HEADPHONES_CAT, "pa_earphones-use": _HEADPHONES_CAT,
+                "pa_headphones-type": _HEADPHONES_CAT, "pa_headphones-connect": _HEADPHONES_CAT}
+    list_url = None
+    if best and best_score > 0 and best.get("attr") in _FV_CATS:
+        import urllib.parse as _up2
+        list_url = _FV_CATS[best["attr"]] + "?fv=" + _up2.quote(best["name"])
     return {"feature": (best["name"] if best and best_score > 0 else None),
-            "max_price": max_price or None, "count": len(res),
+            "max_price": max_price or None, "count": len(res), "list_url": list_url,
             "results": [{"name": p.get("name"), "price": p.get("price"),
                          "in_stock": p.get("stock_status") == "instock",
                          "url": p.get("permalink")} for p in res[:25]]}
