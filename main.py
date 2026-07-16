@@ -9726,6 +9726,11 @@ def bot_smart_search(q: str, limit: int = 20) -> dict:
     q = (q or "").strip()
     if len(q) < 2:
         return {"results": [], "meta": {}}
+    # נרמול יחידות נפח בעברית אל מונחי ה-taxonomy: "1 טרה"→"1TB", "256 ג'יגה"→"256GB".
+    # בלי זה נפח בעברית לא מסנן כלום (כשל 16/07: "אייפון 17 פרו מקס 1 טרה" החזיר
+    # את כל המשפחה בלי סינון נפח).
+    q = re.sub(r"(\d+)\s*(?:טרהבייט|טרה|tb)\b", r"\1TB", q, flags=re.I)
+    q = re.sub(r"(\d+)\s*(?:ג'יגה|ג׳יגה|גיגה|ג״ב|ג\"ב|gb)\b", r"\1GB", q, flags=re.I)
     vocab = _search_vocab()
     # היוריסטיקה (חינם) קודם; Haiku רק כשהיא לא זיהתה מבנה — חוסך ~רוב קריאות ה-API
     facets = _understand_heuristic(q, vocab)
