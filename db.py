@@ -2080,6 +2080,34 @@ def shift_employees_all() -> list:
         return [dict(r) for r in cur.fetchall()]
 
 
+# ── חסימת טלגרם (אבטחה): חשבון עובד שנפרץ — שום הודעה לא יוצאת אליו ─────────
+
+def tg_blocklist() -> set:
+    """קבוצת telegram_ids חסומים (sales_state 'tg_blocklist', מופרד בפסיקים)."""
+    raw = sales_state_get("tg_blocklist") or ""
+    return {x.strip() for x in raw.split(",") if x.strip()}
+
+
+def tg_block_add(telegram_id) -> set:
+    ids = tg_blocklist()
+    ids.add(str(telegram_id).strip())
+    sales_state_set("tg_blocklist", ",".join(sorted(ids)))
+    return ids
+
+
+def shift_employee_delete(name: str = "", telegram_id: str = "") -> int:
+    """מחיקת רישום עובד מהתראות המשמרות — לפי שם או telegram_id."""
+    with _conn() as c:
+        cur = c.cursor()
+        if telegram_id:
+            cur.execute(_q("DELETE FROM shift_employees WHERE telegram_id = ?"), (str(telegram_id),))
+        elif name:
+            cur.execute(_q("DELETE FROM shift_employees WHERE TRIM(name) = ?"), (name.strip(),))
+        else:
+            return 0
+        return cur.rowcount
+
+
 def shift_telegram_ids_for_names(names: list) -> list:
     """telegram_ids של עובדים לפי שמות (להפניית DM לפי הסידור). התאמה לא-רגישה לרווחים."""
     norm = {(n or "").strip() for n in names if (n or "").strip()}

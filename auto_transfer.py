@@ -436,6 +436,13 @@ def shift_send_chat(chat_id, text, reply_markup=None) -> bool:
     tok = os.getenv("SHIFT_BOT_TOKEN", "").strip()
     if not tok or not chat_id:
         return False
+    # 🔒 חסימת אבטחה: חשבון טלגרם שנפרץ (tg_blocklist) — שום מידע לא יוצא אליו
+    try:
+        if str(chat_id).strip() in db.tg_blocklist():
+            logger.warning("shift DM BLOCKED to %s (tg_blocklist)", chat_id)
+            return False
+    except Exception:  # noqa: BLE001
+        pass
     import requests as _rq
     payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML",
                "disable_web_page_preview": True}

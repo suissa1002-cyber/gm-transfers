@@ -3287,6 +3287,13 @@ _SHIFT_NAMES = [n.strip() for n in os.getenv("SHIFT_EMPLOYEE_NAMES",
 def _shift_send(chat_id, text, reply_markup=None):
     if not (SHIFT_BOT and chat_id):
         return
+    # 🔒 חסימת אבטחה: telegram_id ברשימה החסומה (חשבון שנפרץ) — לא שולחים כלום
+    try:
+        if str(chat_id).strip() in db.tg_blocklist():
+            logger.warning("shift-bot send BLOCKED to %s (tg_blocklist)", chat_id)
+            return
+    except Exception:  # noqa: BLE001
+        pass
     payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML",
                "disable_web_page_preview": True}
     if reply_markup:
@@ -3298,6 +3305,41 @@ def _shift_send(chat_id, text, reply_markup=None):
         logger.warning("shift bot send failed: %s", e)
 
 
+class TgBlock(BaseModel):
+    name: str = ""          # שם עובד כפי שרשום ב-shift_employees (למשל "אירה")
+    telegram_id: str = ""   # או חסימה ישירה לפי id
+
+
+@app.post("/api/admin/tg/block")
+def admin_tg_block(body: TgBlock, x_admin_key: Optional[str] = Header(None)):
+    """🔒 חסימת חשבון טלגרם (עובד שנפרץ): מוסיף ל-tg_blocklist + מוחק את הרישום —
+    שום DM לא יישלח אליו והוא לא יוכל להירשם מחדש דרך הבוט."""
+    _require_admin(x_admin_key)
+    ids = set()
+    if body.telegram_id.strip():
+        ids.add(body.telegram_id.strip())
+    if body.name.strip():
+        for e in db.shift_employees_all():
+            if (e.get("name") or "").strip() == body.name.strip() and e.get("telegram_id"):
+                ids.add(str(e["telegram_id"]))
+    if not ids:
+        raise HTTPException(404, "לא נמצא עובד/telegram_id לחסימה")
+    removed = 0
+    for tid in ids:
+        db.tg_block_add(tid)
+        removed += db.shift_employee_delete(telegram_id=tid)
+    logger.warning("tg block applied: ids=%s removed_regs=%d (name=%r)", ids, removed, body.name)
+    return {"ok": True, "blocked_ids": sorted(ids), "registrations_removed": removed,
+            "blocklist": sorted(db.tg_blocklist())}
+
+
+@app.get("/api/admin/tg/block")
+def admin_tg_block_list(x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    return {"blocklist": sorted(db.tg_blocklist()),
+            "registered": db.shift_employees_all()}
+
+
 @app.post("/api/shift-bot/webhook")
 async def shift_bot_webhook(request: Request):
     """webhook של בוט המשמרות: /start → כפתורי שמות; בחירת שם → רישום ה-telegram_id."""
@@ -3307,6 +3349,14 @@ async def shift_bot_webhook(request: Request):
         return {"ok": True}
     def _shift_register(name, tg, chat_id):
         name = (name or "").strip()[:60]
+        # 🔒 telegram_id חסום (חשבון שנפרץ) לא יכול להירשם מחדש ולחדש קבלת מידע
+        try:
+            if str(tg).strip() in db.tg_blocklist():
+                logger.warning("shift register BLOCKED for %s (%s) — tg_blocklist", name, tg)
+                _tg_admin(f"🚨 ניסיון רישום מ-telegram_id חסום: {name} ({tg}) — נדחה")
+                return
+        except Exception:  # noqa: BLE001
+            pass
         try:
             db.shift_employee_register(name, tg)
         except Exception as e:  # noqa: BLE001
