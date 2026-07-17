@@ -467,8 +467,12 @@
   /* ---------- חילוץ התיאור הקצר: פסקת שיווק + אחריות לקוביות (כמו fetch_product) ---------- */
   function extractShort() {
     var $raw = $('#gm-shortdesc-raw');
-    var market = '', warranty = '';
+    var market = '', warranty = '', note = '';
     if ($raw.length) {
+      /* הערת מציאון: בלוק .gm-outlet-note. מחלצים ומסירים מה-DOM לפני זיהוי פסקת
+         השיווק — אחרת ה-<strong>מציאון</strong> שבתוכה נתפס כפסקת השיווק ודורס אותה. */
+      var $note = $raw.find('.gm-outlet-note').first();
+      if ($note.length) { note = $note.text().trim(); $note.remove(); }
       /* פורמט התיאורים של גלי: פסקת השיווק היא <strong> בתוך div — לא <p> */
       $raw.find('strong').each(function () {
         var t = $(this).text().trim();
@@ -483,6 +487,12 @@
       });
     }
     if (market) $('#gmPshort').text(market); else $('#gmPshort').remove();
+    if (note) {
+      var txt = note.replace(/^\s*מציאון\s*[–\-]\s*/, '');   /* התווית מגיעה מהעיצוב */
+      $('<div class="pnote"><b>מציאון</b><span></span></div>')
+        .find('span').text(txt).end()
+        .insertBefore($('#gmPshort').length ? $('#gmPshort') : $('.gm-atc'));
+    }
     return { warranty: warranty || 'שנה אחריות יבואן' };
   }
 
