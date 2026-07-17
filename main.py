@@ -9730,10 +9730,125 @@ def bot_wc_title_search(query: str, limit: int = 20) -> list:
             and p.get("type") not in ("external", "grouped")]
 
 
-def bot_smart_search(q: str, limit: int = 20) -> dict:
+# ════════════════ פיצול כוונות-בחירה (multi-intent) ════════════════
+# WHY: לקוח ששוקל שני מוצרים שולח שאילתה *אחת* עם מפריד-בחירה —
+# "או oppo find 9 או vivo x300", "רמקול JBL או Sony", "iPhone 17 vs S25".
+# חיפוש WooCommerce הוא AND על כל המילים, אז חיפוש מילולי על כל המחרוזת (כולל
+# "או"/"vs") מחזיר תערובת אקראית או 0 תוצאות (כשל אמיתי 17/07). הפתרון המבני:
+# לזהות מפריד-בחירה, לפצל לשאילתות מוצר נפרדות, לחפש כל אחת לגופה, ולשלב את
+# התוצאות round-robin כך שכל מוצר שהוזכר מקבל ייצוג הוגן ברשימה.
+# עיקרון-בטיחות: מפצלים רק כשיש מפריד **וגם** ≥2 קטעים שכל אחד מפנה למוצר מובחן
+# (מותג ידוע) — אחרת לא נוגעים בשאילתה (מוצר בודד כמו "אייפון 17 פרו מקס 256"
+# לעולם לא מפוצל).
+_CHOICE_SPLIT_RE = re.compile(r"\s*(?:\bאו\b|\bor\b|\bvs\.?\b|\bלעומת\b|\s/\s|,)\s*", re.I)
+_HE_PREFIXES = ("ב", "ל", "ה", "מ", "ו", "ש", "כ")   # אותיות-שימוש לפני שם-עצם
+# שמות-עצם של קטגוריה שנפוץ להקדים לבחירת מותג ("רמקול JBL או Sony") — כדי להצמיד
+# את ההקשר המשותף לכל האופציות, לא רק לראשונה שבהן.
+_CATEGORY_NOUNS = {"רמקול", "רמקולים", "אוזניות", "אוזנייה", "אוזניה", "שעון", "שעונים",
+                   "טאבלט", "טאבלטים", "מטען", "מטענים", "כבל", "כבלים", "מסך", "מסכים",
+                   "טלוויזיה", "מקרן", "סוללה", "פאוורבנק", "מקלדת", "עכבר", "ראוטר",
+                   "מצלמה", "מצלמות", "טלפון", "סמארטפון", "רחפן", "גימבל", "דיבורית",
+                   "סטרימר", "מיקרופון", "שעון-חכם"}
+# מותגים (טוקנים) לזיהוי "האם קטע הוא הפניה למוצר מובחן". רשימה סטטית קלה — משמשת
+# רק להחלטת-הפיצול; המיפוי המדויק נעשה אח"כ מול ה-taxonomy החי של החנות.
+_BRAND_TOKENS = {"apple", "iphone", "ipad", "macbook", "imac", "airpods", "samsung",
+                 "galaxy", "xiaomi", "redmi", "poco", "oppo", "vivo", "realme", "oneplus",
+                 "huawei", "honor", "google", "pixel", "nothing", "motorola", "nokia",
+                 "sony", "jbl", "bose", "anker", "soundcore", "marshall", "beats",
+                 "sennheiser", "logitech", "razer", "lenovo", "asus", "hp", "dell", "lg",
+                 "tcl", "dji", "gopro", "garmin", "nubia", "tecno", "infinix"}
+_BRAND_TOKENS |= {k for k in _HE_BRAND_ALIAS} | {v for v in _HE_BRAND_ALIAS.values()}
+# מונחי דגם עבריים נפוצים המתפקדים כזיהוי-מותג בשאילתות השוואה ("אייפון 16 או גלקסי S25")
+_BRAND_TOKENS |= {"אייפון", "איפון", "אייפד", "מקבוק", "גלקסי", "רדמי", "פיקסל",
+                  "וואנפלוס", "רחפן"}
+
+
+def _strip_he_prefix(tok):
+    """מסיר אות-שימוש בודדת מתחילת טוקן ('ברמקול'→'רמקול') לזיהוי קטגוריה/מותג."""
+    if len(tok) > 3 and tok[0] in _HE_PREFIXES:
+        return tok[1:]
+    return tok
+
+
+def _seg_has_brand(seg):
+    """האם הקטע מכיל טוקן-מותג ידוע (עם/בלי אות-שימוש מקדימה)."""
+    for t in re.split(r"[\s/,\-]+", (seg or "").lower()):
+        if t and (t in _BRAND_TOKENS or _strip_he_prefix(t) in _BRAND_TOKENS):
+            return True
+    return False
+
+
+def _seg_category_noun(seg):
+    """מחזיר שם-עצם-קטגוריה שמופיע בקטע (לצורך הצמדת הקשר משותף), או None."""
+    for t in re.split(r"[\s/,\-]+", seg or ""):
+        base = _strip_he_prefix(t)
+        if base in _CATEGORY_NOUNS or t in _CATEGORY_NOUNS:
+            return base if base in _CATEGORY_NOUNS else t
+    return None
+
+
+def _split_search_intents(q):
+    """מפצל שאילתת-בחירה בין מוצרים ל-N שאילתות מוצר נפרדות.
+    מחזיר רשימה — [q] בודד כשזו כוונה יחידה (אין מפריד או אין השוואת-מוצרים).
+    דוגמאות:
+      'או oppo find 9 או vivo x300' → ['oppo find 9', 'vivo x300']
+      'רמקול JBL או Sony'           → ['רמקול JBL', 'רמקול Sony']  (הקשר משותף)
+      'אייפון 17 פרו מקס 256'        → ['אייפון 17 פרו מקס 256']    (לא מפוצל)."""
+    q = (q or "").strip()
+    if not q:
+        return [q]
+    parts = [p.strip() for p in _CHOICE_SPLIT_RE.split(q) if p and p.strip()]
+    if len(parts) < 2:
+        return [q]
+    # דורשים ≥2 קטעים שכל אחד מזוהה כמוצר מובחן (מותג). כך "או" בתוך משפט רגיל
+    # ('אולי') או פסיק בתוך תיאור לא ישברו שאילתה תמימה.
+    branded = [p for p in parts if _seg_has_brand(p)]
+    if len(branded) < 2:
+        return [q]
+    # שם-עצם-קטגוריה שהקדים לאופציה הראשונה ("רמקול JBL או Sony") מוצמד לכל אופציה
+    # שאין בה קטגוריה משלה — כדי ש-'Sony' לבד לא ייפול לחיפוש-מותג רחב בין כל
+    # הקטגוריות אלא יישאר בהקשר "רמקול".
+    shared = _seg_category_noun(parts[0])
+    out = []
+    for p in parts:
+        if not _seg_has_brand(p):
+            continue                       # קטע-שארית ('ש...', מילות-שיח) — לא מוצר
+        if shared and not _seg_category_noun(p):
+            p = f"{shared} {p}"
+        out.append(p)
+    return out or [q]
+
+
+def _multi_intent_search(intents, limit):
+    """מריץ חיפוש נפרד לכל כוונת-מוצר ומשלב round-robin: תוצאה מכל כוונה בתורה,
+    כדי שכל מוצר שהלקוח הזכיר יקבל ייצוג הוגן ולא ייבלע ע"י מוצר אחר."""
+    per = max(2, (limit // max(1, len(intents))) + 1)
+    lists, labels = [], []
+    for sub in intents:
+        r = bot_smart_search(sub, limit=per + 2, _no_split=True)
+        lists.append([p for p in (r.get("results") or []) if p.get("id")][:per + 2])
+        labels.append(sub)
+    merged, seen, idx = [], set(), 0
+    while len(merged) < limit and any(idx < len(lst) for lst in lists):
+        for lst in lists:
+            if idx < len(lst):
+                p = lst[idx]
+                if p.get("id") not in seen:
+                    seen.add(p.get("id"))
+                    merged.append(p)
+                    if len(merged) >= limit:
+                        break
+        idx += 1
+    return {"results": merged,
+            "meta": {"via": "multi_intent", "intents": labels,
+                     "counts": [len(lst) for lst in lists]}}
+
+
+def bot_smart_search(q: str, limit: int = 20, _no_split: bool = False) -> dict:
     """חיפוש חכם: מבין כוונה (Claude Haiku אם יש מפתח, אחרת היוריסטיקה), ממפה
     אל ה-taxonomy של החנות, ומסנן עם WooCommerce. מחזיר {results, meta}.
-    אם לא זוהה אף facet מובנה — נופל לחיפוש המילולי הקיים (שמות/דגמים)."""
+    אם לא זוהה אף facet מובנה — נופל לחיפוש המילולי הקיים (שמות/דגמים).
+    _no_split=True — פנימי, מונע רקורסיה בפיצול ריבוי-הכוונות."""
     q = (q or "").strip()
     if len(q) < 2:
         return {"results": [], "meta": {}}
@@ -9742,6 +9857,12 @@ def bot_smart_search(q: str, limit: int = 20) -> dict:
     # את כל המשפחה בלי סינון נפח).
     q = re.sub(r"(\d+)\s*(?:טרהבייט|טרה|tb)\b", r"\1TB", q, flags=re.I)
     q = re.sub(r"(\d+)\s*(?:ג'יגה|ג׳יגה|גיגה|ג״ב|ג\"ב|gb)\b", r"\1GB", q, flags=re.I)
+    # ריבוי-כוונות: "או X או Y" / "X vs Y" → חיפוש נפרד לכל מוצר ושילוב התוצאות.
+    # לפני מיפוי ה-facet, כי facet יחיד לא יכול לייצג שני מוצרים שונים בו-זמנית.
+    if not _no_split:
+        intents = _split_search_intents(q)
+        if len(intents) > 1:
+            return _multi_intent_search(intents, limit)
     vocab = _search_vocab()
     # היוריסטיקה (חינם) קודם; Haiku רק כשהיא לא זיהתה מבנה — חוסך ~רוב קריאות ה-API
     facets = _understand_heuristic(q, vocab)
