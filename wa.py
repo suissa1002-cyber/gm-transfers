@@ -933,9 +933,14 @@ def send_code(phone: str, label: str, code: str):
         return send_template(phone, "", f"🎁 {label} — הקוד שלך: {code} — אישי וחד-פעמי, שמרו עליו!")
 
 
+SERVICE_TEMPLATE = "service_update"   # UTILITY — לא כפוף למגבלת תדירות-שיווק (131049)
+
+
 def send_template(phone: str, name: str, body: str):
     """
-    שליחה מחוץ לחלון: template `new_message` (מאושר מטא) עם [שם, גוף].
+    שליחה מחוץ לחלון. עדיפות: template `service_update` (UTILITY — עדכוני שירות,
+    לא נחסם ב-131049 של תבניות שיווק, קרה לג'יזל 19/07). fallback: `new_message`
+    (MARKETING) אם service_update עדיין לא אושר / נכשל.
     הגוף חייב שורה אחת — מקפלים שורות/טאבים ל-" — ".
     """
     body = re.sub(r"\s*\n+\s*", " — ", (body or "").strip())
@@ -946,6 +951,14 @@ def send_template(phone: str, name: str, body: str):
     name = (name or "").strip()
     if not name or re.sub(r"[\s\-+()]", "", name).isdigit():
         name = "לקוח/ה יקר/ה"
+    try:
+        mid = _meta_send_template(phone, SERVICE_TEMPLATE, [name, body], [])
+        _store_outbound(phone, f"היי {name}, עדכון שירות מ-Green Mobile לגבי הפנייה שלך: {body} — צוות השירות, Green Mobile",
+                        wamid=mid, mtype="template")
+        logger.info("wa send template %s (meta) -> %s", SERVICE_TEMPLATE, phone)
+        return {"sent": True, "via": "template", "message_id": mid}
+    except Exception as e:  # noqa: BLE001
+        logger.warning("service_update template failed (%s) — fallback to new_message", e)
     mid = _meta_send_template(phone, "new_message", [name, body], [])
     _store_outbound(phone, (name + ": " if name else "") + body, wamid=mid, mtype="template")
     logger.info("wa send template new_message (meta) -> %s", phone)
