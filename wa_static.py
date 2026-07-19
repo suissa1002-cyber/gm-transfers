@@ -5,6 +5,13 @@
 
 TEMPLATE_REGISTRY = [
   {
+    # UTILITY (19/07/2026) — עדכוני שירות מחוץ לחלון; לא כפוף למגבלת תדירות-שיווק (131049)
+    "id": "service_update",
+    "language": "he",
+    "params": 2,
+    "body": "היי {{1}}, עדכון שירות מ-Green Mobile לגבי הפנייה שלך: {{2}} — צוות השירות, Green Mobile"
+  },
+  {
     "id": "abonded_cart",
     "language": "he",
     "params": 1,
