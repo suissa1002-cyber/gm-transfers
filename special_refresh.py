@@ -135,6 +135,8 @@ def _pcard(p, facets):
                 bh = f'<span class="badge deal">{pct}%- מבצע</span>'
         except (TypeError, ValueError, ZeroDivisionError):
             pass
+    if any(t.get("id") == 3709 for t in (p.get("tags") or [])):
+        bh += '<span class="badge outlet">מציאון</span>'
     badge = f'<div class="badges">{bh}</div>' if bh else ""
     regline = f'<s class="reg">‏₪{reg}</s>' if onsale else ""
     link = p.get("permalink") or f'{base}/?p={p["id"]}'

@@ -46,6 +46,7 @@ def _slim(p):
             "price": p.get("price") or p.get("regular_price") or "",
             "regular": p.get("regular_price") or "",
             "type": p.get("type", "simple"), "link": p.get("permalink"),
+            "outlet": any(t.get("id") == 3709 for t in (p.get("tags") or [])),
             "img": imgs[0]["src"] if imgs else ""}
 
 
@@ -136,7 +137,9 @@ def _card(p, kind):
     elif kind == "best":
         badge = '<span class="badge best">רב־מכר</span>'
     elif kind == "new":
-        badge = '<span class="badge new">חדש</span>'
+        # מציאון גובר על "חדש" (אסי 15/07) — כמו ב-generate_mockup.card
+        badge = ('<span class="badge outlet">מציאון</span>' if p.get("outlet")
+                 else '<span class="badge new">חדש</span>')
     regline = f'<s class="reg">‏₪{reg}</s>' if (kind == "sale" and reg and reg != price) else ""
     link = p.get("link") or f'{_base()}/?p={p.get("id")}'
     is_var = p.get("type") != "simple"
