@@ -2180,7 +2180,7 @@ function renderPlan(){
         const clr=l.color?` <span style="display:inline-block;font-size:11px;font-weight:700;padding:1px 8px;border-radius:999px;border:1px solid var(--line);background:var(--bg);color:var(--txt);margin-inline-start:6px;vertical-align:middle">🎨 ${_esc(l.color)}</span>`:'';
         const noteI=(l.note||'').trim()?` <span title="${String(l.note).replace(/"/g,'&quot;')}" style="cursor:pointer" onclick='openNoteEditor(${JSON.stringify(String(l.product_id))})'>📝</span>`:'';
         return `<tr><td style="font-family:monospace;direction:ltr;text-align:right">${l.product_id}</td><td>${l.name}${clr}${noteI}</td>
-        <td><b>${l.qty}</b></td><td>${l.to_name}</td><td>${tag}</td><td class="muted" style="font-size:12px">${_esc(l.created_by||'—')}</td><td style="white-space:nowrap"><button class="btn-ghost" title="שנה שידור לסניף אחר" style="width:34px;height:34px;padding:0;font-size:14px;line-height:1;vertical-align:middle" onclick='openReroute(${l.id},${JSON.stringify(String(l.product_id))},${Number(l.from_branch)||0},${Number(l.to_branch)||0},${JSON.stringify(l.name||"")})'>⇄</button> <button class="btn-ghost" style="width:34px;height:34px;padding:0;font-size:14px;line-height:1;vertical-align:middle" onclick="deletePlanLine(${l.id})">✕</button></td></tr>`;}).join('')}
+        <td><b>${l.qty}</b></td><td>${l.to_name}</td><td>${tag}</td><td class="muted" style="font-size:12px">${_esc(l.created_by||'—')}</td><td style="white-space:nowrap"><button class="btn-ghost" title="הערה לסניף (רשמי / eSIM / ערכת צילום…)" style="width:34px;height:34px;padding:0;line-height:1;vertical-align:middle;${(l.note||'').trim()?'color:var(--amber,#f5a524)':''}" onclick='openPlanNoteEditor(${JSON.stringify(String(l.product_id))},${JSON.stringify(l.name||"")},${JSON.stringify(l.note||"")})'>${ico('pencil',14)}</button> <button class="btn-ghost" title="שנה שידור לסניף אחר" style="width:34px;height:34px;padding:0;font-size:14px;line-height:1;vertical-align:middle" onclick='openReroute(${l.id},${JSON.stringify(String(l.product_id))},${Number(l.from_branch)||0},${Number(l.to_branch)||0},${JSON.stringify(l.name||"")})'>⇄</button> <button class="btn-ghost" style="width:34px;height:34px;padding:0;font-size:14px;line-height:1;vertical-align:middle" onclick="deletePlanLine(${l.id})">✕</button></td></tr>`;}).join('')}
       </tbody></table></div>`;
   });
   app.innerHTML=`<h1 class="title" style="display:flex;align-items:center;gap:8px">${ico('wrench',19)} ניהול אופרציה</h1>${adminTabsHTML()}
@@ -2220,6 +2220,32 @@ async function doReroute(lineId, branchId){
   closeModal();
   try{ S.planData=await api('/api/admin/plan'); S.planCount=(S.planData.lines||[]).length; }catch(e){}
   if(S.adminTab==='plan') renderPlan();
+}
+
+// ── הערה חופשית לסניף על שורת בקשה (אייקון ✏️ בטאב "בקשות העברה") ──
+// עובד ישירות מנתוני הבקשה (l.note) — לא תלוי בטאב "איזון מלאי". ההערה נשלחת עם
+// הבקשה לסניף (רשמי / eSIM / ערכת צילום וכו') לפני שמשדרים.
+function openPlanNoteEditor(pid, name, note){
+  document.getElementById('modalRoot').innerHTML=`<div class="overlay" onclick="closeModal()"><div class="modal" style="max-width:460px;text-align:right" onclick="event.stopPropagation()">
+    <h3 style="margin:0 0 4px;display:flex;align-items:center;gap:6px">${ico('pencil',16)} הערה לסניף</h3>
+    <div class="muted" style="font-size:13px;margin-bottom:12px">${_esc(name||pid)}</div>
+    <textarea id="noteTxt" rows="3" placeholder="לדוגמה: רשמי - eSIM · לא לשכוח לצרף ערכת צילום" style="width:100%;padding:11px 13px;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--txt);font:inherit;resize:vertical;box-sizing:border-box">${_esc(note||'')}</textarea>
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button class="btn-primary" style="flex:1" onclick='savePlanNote(${JSON.stringify(String(pid))})'>שמור</button>
+      <button class="btn-ghost" onclick="closeModal()">ביטול</button>
+    </div>
+    <div class="muted" style="font-size:12px;margin-top:8px">ההערה תופיע בבקשה ובדף השידור/צילום לסניף.</div>
+  </div></div>`;
+  setTimeout(()=>{const t=document.getElementById('noteTxt');if(t){t.focus();t.setSelectionRange(t.value.length,t.value.length);}},40);
+}
+async function savePlanNote(pid){
+  const txt=(document.getElementById('noteTxt')||{}).value||'';
+  try{ await api('/api/admin/plan/note',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({product_id:String(pid),note:txt})}); }
+  catch(e){ alert('שגיאה בשמירת ההערה'); return; }
+  closeModal();
+  try{ S.planData=await api('/api/admin/plan'); S.planCount=(S.planData.lines||[]).length; }catch(e){}
+  if(S.adminTab==='plan') renderPlan(); else renderRebalance();
 }
 
 // ── הערה חופשית לסניף על פריט (קליק ימני באיזון-מלאי) ──
