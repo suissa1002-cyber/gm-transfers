@@ -39,8 +39,9 @@ POST /api/v3/tools/execute/proxy  body:
 אם ה-proxy מחזיר 403 הרשאות (המפתח בלי proxy_execute) — GA4/Ads "לא זמין הבוקר", ממשיכים.
 **Google Ads (דרך proxy — הכלי המובנה GOOGLEADS_* שבור, קורא גרסת API מתה v19→404):**
 משתמשים ב-proxy עם ה-connected_account של googleads (מ-connected_accounts, toolkit=googleads).
-Google Ads API דורש header `developer-token`; Composio managed מזריק אותו אוטומטית בפרוקסי
-לרוב. נסה כך (התאם גרסה אם 404 — נסה v21 ואז v20 ואז v19):
+Google Ads API דורש header `developer-token` — Composio managed מזריק אותו אוטומטית (מאומת:
+הפרוקסי מגיע ל-Google Ads, לא חוסם token/version). ⚠️ **קריאה אחת בלבד, גרסה v21 מקובעת** —
+בלי לולאת גרסאות (כל ניסיון כושל שורף מכסה → 429). קריאה יחידה:
 ```
 POST /api/v3/tools/execute/proxy
 {"user_id":"<USER_ID>","connected_account_id":"<ca_ של googleads>","method":"POST",
@@ -48,8 +49,8 @@ POST /api/v3/tools/execute/proxy
  "body":{"query":"SELECT metrics.cost_micros, metrics.clicks, metrics.conversions, metrics.conversions_value FROM customer WHERE segments.date DURING YESTERDAY"}}
 ```
 פענוח: cost_micros/1e6 = הוצאה בש"ח; ROAS = conversions_value/הוצאה; CPC = הוצאה/clicks.
-אם 403 developer-token / 404 בכל הגרסאות / proxy_execute חסר — "Google Ads לא זמין הבוקר",
-ממשיכים בלי (אל תדגל כבעיה — זו מגבלת אינטגרציה, לא תקלה עסקית).
+אם התוצאה 429 (quota) / 403 / שגיאה — "Google Ads לא זמין הבוקר", ממשיכים בלי, ו**לא מנסים
+שוב** (ניסיון חוזר רק שורף עוד מכסה). אל תדגל כבעיה — מגבלת אינטגרציה, לא תקלה עסקית.
 
 - אם `COMPOSIO_API_KEY` חסר/נדחה לגמרי — הבריף ממשיך מ-WC+GreenOS אך בלי יכולת לשלוח,
   ומסתיים ב-`BRIEF_SENT ok=false reason=...`.
