@@ -47,9 +47,13 @@ POST /api/v3/tools/execute/proxy  body:
    "$WC_STORE_URL/wp-json/wc/v3/orders?after=...&before=...&per_page=100"` להזמנות של אתמול:
    סה"כ הזמנות ששולמו (date_paid לא ריק), מחזור, סל ממוצע, מוצרים בולטים, כושלות/בוטלו.
    אותו דבר ליום ההשוואה.
-2. **GA4 דרך Composio API** (נכס `properties/347435457`): sessions, activeUsers, transactions,
-   purchaseRevenue לאתמול ולהשוואה; top 5 מקורות (sessionSource) ו-top 5 עמודים (pagePath).
+2. **GA4 דרך Composio API** (נכס `properties/347435457`): sessions, activeUsers,
+   top 5 מקורות (sessionSource) ו-top 5 עמודים (pagePath) — לאתמול ולהשוואה.
    ⚠️ התג הותקן ב-15/07/2026 — יום בלי דאטה = "אין דאטה להשוואה", לא להמציא.
+   ⚠️⚠️ **GA4 = תנועה בלבד בבריף, לא מכירות.** ה-`transactions`/`purchaseRevenue` של GA4
+   מתעדכנים בעיכוב עיבוד של שעות (בבוקר עדיין ~0 גם כשהיו מכירות) → **אסור לדגל
+   "GA4 transactions < הזמנות WooCommerce" כבעיה — זו אזעקת שווא ידועה.** מקור האמת
+   היחיד למכירות/מחזור/המרות הוא WooCommerce (שלב 1). GA4 משמש רק לביקורים ומקורות תנועה.
 3. **Google Ads דרך Composio API** (customer_id `6971776315`, GAQL על FROM customer):
    cost_micros, clicks, conversions, conversions_value לאתמול ולהשוואה. חשב ROAS ו-CPC.
 4. **GreenOS** — מהבלוק המוזרק בלבד: העברות in_transit/partial, בקשות ממתינות (כמה + הכי ישנה).
