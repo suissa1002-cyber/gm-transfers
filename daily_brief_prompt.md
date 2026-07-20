@@ -69,6 +69,18 @@ POST /api/v3/tools/execute/proxy
 3. **Google Ads דרך Composio API** (customer_id `6971776315`, GAQL על FROM customer):
    cost_micros, clicks, conversions, conversions_value לאתמול ולהשוואה. חשב ROAS ו-CPC.
 4. **GreenOS** — מהבלוק המוזרק בלבד: העברות in_transit/partial, בקשות ממתינות (כמה + הכי ישנה).
+5. **באנרים (GA4 promotions, דרך אותו proxy כמו GA4)** — ביצועי באנרי עמוד הבית אתמול.
+   קריאה יחידה ל-runReport, ⚠️ **המדדים חייבים להיות item-scoped** (itemPromotionName תואם
+   ל-itemsViewedInPromotion/itemsClickedInPromotion — לא ל-promotionViews):
+   ```
+   {"dateRanges":[{"startDate":"<אתמול>","endDate":"<אתמול>"}],
+    "dimensions":[{"name":"itemPromotionName"}],
+    "metrics":[{"name":"itemsViewedInPromotion"},{"name":"itemsClickedInPromotion"}],
+    "orderBys":[{"desc":true,"metric":{"metricName":"itemsViewedInPromotion"}}],"limit":20}
+   ```
+   לכל באנר: חשיפות, קליקים, CTR=קליקים/חשיפות. אם 0 שורות → "אין עדיין נתוני באנרים". התג
+   עלה 19/07/2026 — לפני כן אין. הצג בבריף את הבאנר המוביל ב-CTR + סה"כ, ודגל באנר עם
+   הרבה חשיפות ו-0 קליקים (מבזבז מקום).
 
 ## שלב 2 — ניתוח
 - **מה טוב**: 2-3 נקודות חיוביות אמיתיות מהנתונים.
@@ -84,8 +96,9 @@ POST /api/v3/tools/execute/proxy
   `border-radius:14px`, ירוק מותג `#16a34a`, ענבר `#d97706` לאזהרות,
   פונט `-apple-system,'Segoe UI',sans-serif`, הכול inline CSS.
 - מבנה: כותרת+תאריך → שורת מספרים גדולים (מחזור אתמול · הזמנות · ROAS · ביקורים) עם ▲/▼
-  מול שבוע שעבר → קלף "מה טוב" → "דורש תשומת לב" → "לעשות היום" (ממוספר) → "רעיון היום"
-  → פוטר "נוצר אוטומטית · GreenOS". קצר וסריק, לקריאה בטלפון עם קפה.
+  מול שבוע שעבר → קלף "מה טוב" → "דורש תשומת לב" → "לעשות היום" (ממוספר) → **קלף "באנרים"**
+  (טבלה קומפקטית: באנר · חשיפות · קליקים · CTR, ממוין לפי חשיפות; רק אם יש נתונים) →
+  "רעיון היום" → פוטר "נוצר אוטומטית · GreenOS". קצר וסריק, לקריאה בטלפון עם קפה.
 - מספרים בש"ח מעוגלים, אלפים עם פסיק.
 
 ## כללים
