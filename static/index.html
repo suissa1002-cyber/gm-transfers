@@ -1682,6 +1682,8 @@ function bpAmountVal(){
   const v=parseFloat(String(S.bpAmount==null?'':S.bpAmount).replace(/[^\d.]/g,''));
   return (isFinite(v)&&v>0)?v:0;
 }
+// טווח ההלוואה בטופס הסוכן (בחנות) — נקרא מהטופס של Blender עצמו, שונה מהאתר
+const BP_AGENT_MIN=3000, BP_AGENT_MAX=10000;
 // נוסחת Blender: החזר חודשי = סכום/מספר-תשלומים + (סכום/1000)*PricePerK, מעוגל כלפי מעלה
 function bpRows(amount,cfg){
   return (cfg.opts||[]).map(o=>({t:o.T, v:Math.ceil(amount/o.T + amount/1000*o.K)}))
@@ -1709,7 +1711,9 @@ async function loadBpCfg(){
 function bpUpdate(){
   const box=document.getElementById('bpOpts'); if(!box) return;
   const cfg=S.bpCfg||BP_FALLBACK;
-  const min=Number(cfg.min||1000), max=Number(cfg.max||0), amt=bpAmountVal();
+  // ⚠️ הטווח בחנות (טופס הסוכן של Blender) שונה מהאתר: minLoanAmount=3000 / maxLoanAmount=10000.
+  // באתר המינימום 1,000 (הגדרת השער), ולכן לא לוקחים כאן את cfg.min — הוא של הצ'קאאוט.
+  const min=BP_AGENT_MIN, max=BP_AGENT_MAX, amt=bpAmountVal();
   const mEl=document.getElementById('bpMin'); if(mEl) mEl.textContent=bpNum(min);
   if(!amt){
     box.innerHTML='<div class="bp-hint">הקלד סכום עסקה כדי לראות את ההחזר החודשי בכל מסלול</div>';
@@ -1735,8 +1739,12 @@ function bpUpdate(){
 function renderBlender(){
   const app=document.getElementById('app');
   const amt=String(S.bpAmount==null?'':S.bpAmount).replace(/"/g,'&quot;');
-  const chips=[1000,2000,3500,5000,7000,10000];
-  app.innerHTML=`${branchTabsHTML()}
+  const chips=[3000,4000,5000,7000,10000];   // בטווח ההלוואה בחנות (3,000-10,000)
+  // סרגל הטאבים לפי ההקשר: אדמין רואה את טאבי הניהול, מכשיר סניפי את טאבי הסניף
+  const tabs=isAdminCtx()
+    ? `<h1 class="title" style="display:flex;align-items:center;gap:8px">${ico('wrench',19)} ניהול אופרציה</h1>${adminTabsHTML()}`
+    : branchTabsHTML();
+  app.innerHTML=`${tabs}
     <h1 class="title" style="display:flex;align-items:center;gap:8px">${ico('wallet',19)} blenderPay — מימון ללקוח</h1>
     <div class="bp-grid">
       <div class="bp-card">
@@ -1777,7 +1785,7 @@ function renderBlender(){
             <li>השמות נרשמים <b>בדיוק כפי שהם מופיעים בתעודת הזהות</b> — בלי כינויים או קיצורים.</li>
             <li>צריך ביד: <b>מספר ת״ז</b>, <b>תאריך הנפקת התעודה</b> ו<b>תאריך לידה</b>.</li>
             <li>הלקוח מקבל <b>SMS לאימות</b> ומשלים את הבקשה בעצמו.</li>
-            <li>סכום עסקה מינימלי: <b>₪<span id="bpMin">1,000</span></b>.</li>
+            <li>טווח ההלוואה בחנות: <b>₪<span id="bpMin">3,000</span></b> עד <b>₪10,000</b>. <span class="muted">(באתר המינימום ₪1,000)</span></li>
           </ul>
         </div>
       </div>
@@ -2120,12 +2128,13 @@ function adminTabsHTML(){
   const pc=S.planCount?` (${S.planCount})`:'';
   const oc=S.orderCount?` (${S.orderCount})`:'';
   const a=t=>S.adminTab===t?'active':'';
-  const base=['rebalance','plan','reco','order','removals','live','wa'].includes(S.adminTab)?'':'active';
+  const base=['rebalance','plan','reco','order','removals','live','wa','blender'].includes(S.adminTab)?'':'active';
   return `<div class="tabs">
     <button class="${base}" onclick="setAdminTab('transfers')">${ico('pkg',15)} העברות</button>
     <button class="${a('live')}" onclick="setAdminTab('live')">${ico('search',15)} מלאי חי</button>
     <button class="${a('wa')}" onclick="setAdminTab('wa')">${ico('chat',15)} וואטסאפ</button>
     <button class="${a('wcorders')}" style="position:relative" onclick="setAdminTab('wcorders')">${ico('receipt',15)} הזמנות<span class="gm-obadge" style="display:${(S.newOrdersCount||0)>0?'':'none'}">${(S.newOrdersCount||0)>99?'99+':(S.newOrdersCount||0)}</span></button>
+    <button class="${a('blender')}" onclick="setAdminTab('blender')">${ico('wallet',15)} blenderPay</button>
     <div class="tabgroup">
       <button class="${a('rebalance')}" onclick="setAdminTab('rebalance')">${ico('scale',15)} איזון מלאי</button>
       <button class="${a('plan')}" onclick="setAdminTab('plan')">${ico('pencil',15)} בקשות העברה${pc}</button>
@@ -2150,6 +2159,7 @@ function setAdminTab(tab){
   else if(tab==='removals'){ if(!S.removalsData) loadRemovals(true); else renderRemovals(); }
   else if(tab==='greencare'){ renderGreenCare(); }
   else if(tab==='wcorders'){ renderWcOrders(); }
+  else if(tab==='blender'){ renderBlender(); }
   else if(tab==='wa'){ if(!S.waConvs) loadWa(true); else renderWa(); }
   else renderAdmin();
 }
@@ -8376,7 +8386,7 @@ function startPoll(){ clearInterval(S.pollTimer);
       return;
     }
     if(S.view==='board'){
-      if(S.branchTab==='live'||S.branchTab==='wcorders') return;   // טאבים עם חיפוש/עריכה — אין רענון לוח שידרוס
+      if(S.branchTab==='live'||S.branchTab==='wcorders'||S.branchTab==='blender') return;   // טאבים עם חיפוש/עריכה — אין רענון לוח שידרוס (blender: אסי דיווח שהוחזר לקליטה אחרי ~30ש, 21/07)
       // לא מרעננים תוך כדי הקלדה/סריקה פעילה כדי לא לשבש
       const bs=document.getElementById('boardScan');
       if(bs && document.activeElement===bs && bs.value) return;
