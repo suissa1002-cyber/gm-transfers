@@ -57,6 +57,25 @@ def _enrich_barcodes(op: dict):
             it["barcode"] = _barcode_for(it.get("id"))
 
 
+def _needs_items(op) -> bool:
+    """האם למשוך את פריטי הפעולה מה-endpoint הנפרד של NewOrder.
+
+    ⚠️ מכסה: NewOrder התלוננו (21/07) שאנחנו קוראים אצלם יותר מכל הלקוחות יחד.
+    השורש: מאז 15/07 השלמנו פריטים לכל העברה בחלון (3 ימים) בכל סבב — כלומר גם
+    לפעולות שכבר מזמן ב-DB, ובכל restart של Render (=כל deploy) המטמון התאפס
+    והכול נמשך מחדש. אבל `upsert_transfer` מתעלם לגמרי מפעולה קיימת
+    ("כבר קיים — לא נוגעים"), ולכן הפריטים שלה מיותרים.
+    ⇒ מושכים פריטים **רק לפעולת העברה שעוד לא ב-DB**. במצב יציב: אפס קריאות.
+    (אותו דפוס בדיוק כמו `_enrich_barcodes` שכבר מגודר ב-transfer_exists.)
+    """
+    if op.get("operationType") != cfg.TRANSFER_OP_TYPE:
+        return False
+    try:
+        return not db.transfer_exists(op.get("id"))
+    except Exception:  # noqa: BLE001
+        return True     # ספק → מושכים (עדיף קריאה מיותרת מפעולה בלי פריטים)
+
+
 def poll_once() -> dict:
     """
     סבב יחיד: מושך תנועות מ-N הימים האחרונים, מסנן העברות (type 5), ומכניס חדשות ל-DB.
@@ -73,7 +92,7 @@ def poll_once() -> dict:
             # בלולאה למטה, וקריאת פריטים לכולן שורפת את מכסת ה-100/דקה (15/07)
             ops = client().get_stock_operations(
                 from_date=from_date, page_size=200, page_num=page_num,
-                items_for=lambda op: op.get("operationType") == cfg.TRANSFER_OP_TYPE)
+                items_for=_needs_items)
             if not ops:
                 break
             scanned += len(ops)

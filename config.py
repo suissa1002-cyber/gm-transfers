@@ -36,7 +36,9 @@ SQLITE_PATH = os.getenv("TRANSFERS_DB_PATH",
                         os.path.join(os.path.dirname(__file__), "transfers.db"))
 
 # ── Poller ──
-POLL_INTERVAL_SEC = int(os.getenv("POLL_INTERVAL_SEC", "30"))
+# 60ש (היה 30): NewOrder ביקשו להוריד תדירות — אנחנו קראנו אצלם יותר מכל הלקוחות
+# יחד (רפי, 21/07). ראה גם poller._needs_items שמאפס את קריאות הפריטים במצב יציב.
+POLL_INTERVAL_SEC = int(os.getenv("POLL_INTERVAL_SEC", "60"))
 # כמה ימים אחורה למשוך בכל סבב (חלון בטיחות; העברות פתוחות נשארות ב-DB ממילא)
 POLL_LOOKBACK_DAYS = int(os.getenv("POLL_LOOKBACK_DAYS", "3"))
 
