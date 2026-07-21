@@ -465,6 +465,8 @@
   }
 
   /* ---------- חילוץ התיאור הקצר: פסקת שיווק + אחריות לקוביות (כמו fetch_product) ---------- */
+  /* רוחב מינימלי לבאנר מתנה — מפריד בין באנר אמיתי (700+) לאייקוני קישוט (72) */
+  var GIFT_MIN_W = 400;
   function extractShort() {
     var $raw = $('#gm-shortdesc-raw');
     var market = '', warranty = '', note = '', giftImgs = [], giftText = '';
@@ -479,7 +481,14 @@
       $raw.find('img').each(function () {
         /* LiteSpeed lazy-load מחליף src ב-placeholder; הכתובת האמיתית ב-data-src */
         var src = $(this).attr('data-src') || $(this).attr('data-lazy-src') || $(this).attr('src') || '';
-        if (src && src.indexOf('data:') !== 0 && src.indexOf('Xnip2023') < 0 && src.indexOf('GREENMOBILE_PROFILE') < 0) giftImgs.push(src);
+        if (!src || src.indexOf('data:') === 0) return;
+        if (src.indexOf('Xnip2023') > -1 || src.indexOf('GREENMOBILE_PROFILE') > -1) return;
+        /* תיאורים ישנים מכילים אייקוני קישוט זעירים (72×80) — באנר אמיתי רחב
+           (700+). מסננים לפי מאפיין הרוחב; מי שאין לו נבדק שוב לפי הגודל
+           האמיתי ב-GIFT_MIN_W אחרי הטעינה. */
+        var w = parseInt($(this).attr('width'), 10);
+        if (w && w < GIFT_MIN_W) return;
+        giftImgs.push(src);
       });
       /* פורמט התיאורים של גלי: פסקת השיווק היא <strong> בתוך div — לא <p> */
       $raw.find('strong').each(function () {
@@ -505,7 +514,13 @@
       }
       giftImgs.forEach(function (src) {
         /* בלי loading=lazy — תמונה דינמית עם lazy לא נטענת תחת LiteSpeed */
-        $('<img alt="מתנה ברכישה">').attr('src', src).appendTo($g);
+        $('<img alt="מתנה ברכישה">').attr('src', src)
+          .on('load', function () {                    /* גיבוי לתמונה בלי מאפיין רוחב */
+            if (this.naturalWidth && this.naturalWidth < GIFT_MIN_W) $(this).remove();
+            if (!$g.children().length) $g.remove();
+          })
+          .on('error', function () { $(this).remove(); if (!$g.children().length) $g.remove(); })
+          .appendTo($g);
       });
       $g.insertAfter($('#gmPshort').length ? $('#gmPshort') : $('.pricebox'));
     }
