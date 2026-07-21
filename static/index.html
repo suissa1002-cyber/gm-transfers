@@ -2939,14 +2939,24 @@ function removalRow(r){
     <td>${r.name||''}</td>
     <td>${brandOf(r.name)||'—'}</td>
     <td style="font-weight:700;text-align:center">${r.qty}</td>
-    <td style="text-align:center;white-space:nowrap">${Number(r.amount)>0
-      ? `<b style="color:#16a34a">₪${Number(r.amount).toLocaleString('he-IL')}</b>${r.amount_manual?' <span class="muted" style="font-size:10px">(ידני)</span>':''}`
-      : `<span style="display:inline-flex;gap:4px;align-items:center;justify-content:center"><input id="ramt_${r.id}" type="number" inputmode="numeric" placeholder="₪" style="width:74px;padding:4px 6px;border:1px solid var(--line);border-radius:7px;text-align:center;font-size:13px" onkeydown="if(event.key==='Enter')saveRemovalAmount('${r.id}','${escW(String(r.op_id||''))}')"><button class="btn-ghost" style="padding:3px 8px" title="הוסף סכום" onclick="saveRemovalAmount('${r.id}','${escW(String(r.op_id||''))}')">✓</button></span>`}</td>
+    <td style="text-align:center;white-space:nowrap"><span id="ramtbox_${r.id}">${Number(r.amount)>0
+      ? `<span style="display:inline-flex;gap:5px;align-items:center;justify-content:center"><b style="color:#16a34a">₪${Number(r.amount).toLocaleString('he-IL')}</b>${r.amount_manual?'<span class="muted" style="font-size:10px">(ידני)</span>':''}<button class="btn-ghost" style="padding:3px 5px;display:inline-flex" title="תקן סכום" onclick="editRemovalAmount('${r.id}','${escW(String(r.op_id||''))}',${Number(r.amount)})">${ico('pencil',13)}</button></span>`
+      : removalAmtInput(r.id, r.op_id, '')}</span></td>
     <td style="direction:ltr;text-align:right;font-family:monospace;font-size:12px">${r.serials||'—'}</td>
     <td>${r.employee||'—'}</td>
     <td>${r.note?r.note:'<span class="muted">—</span>'}</td>
     <td class="muted">${fmtTime(r.removed_at)}</td>
   </tr>`;
+}
+// תיבת הזנת סכום להורדת-מלאי (משמשת גם לשורה ריקה וגם לתיקון סכום קיים)
+function removalAmtInput(rid, op, val){
+  const o=escW(String(op||''));
+  return `<span style="display:inline-flex;gap:4px;align-items:center;justify-content:center"><input id="ramt_${rid}" type="number" inputmode="numeric" placeholder="₪" value="${val===''?'':Number(val)}" style="width:74px;padding:4px 6px;border:1px solid var(--line);border-radius:7px;text-align:center;font-size:13px" onkeydown="if(event.key==='Enter')saveRemovalAmount('${rid}','${o}')"><button class="btn-ghost" style="padding:3px 5px;display:inline-flex" title="שמור סכום" onclick="saveRemovalAmount('${rid}','${o}')">${ico('check',13)}</button></span>`;
+}
+function editRemovalAmount(rid, op, cur){
+  const box=document.getElementById('ramtbox_'+rid); if(!box) return;
+  box.innerHTML=removalAmtInput(rid, op, cur);
+  const el=document.getElementById('ramt_'+rid); if(el){ el.focus(); el.select(); }
 }
 async function saveRemovalAmount(rid, op){
   const el=document.getElementById('ramt_'+rid); if(!el) return;
@@ -4638,6 +4648,7 @@ const _IPATHS={
   cart:'<circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>',
   tag:'<path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/>',
   pencil:'<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
+  check:'<polyline points="20 6 9 17 4 12"/>',
   sliders:'<line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>',
   mail:'<rect x="2" y="4" width="20" height="16" rx="2"/><polyline points="22,6 12,13 2,6"/>',
   download:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',

@@ -4074,7 +4074,9 @@ def _parse_removal_amount(note) -> float:
 
 
 def removal_amount_set(op_id, amount) -> None:
-    """סכום ידני להורדת-מלאי (op) — כשהעובד שכח לרשום בהערה. נשמר אצלנו (לא בקופה)."""
+    """סכום ידני להורדת-מלאי (op) — כשהעובד שכח לרשום בהערה, **או כשטעה בסכום**.
+    נשמר אצלנו (לא בקופה) ו**גובר על הסכום שבהערה** (ראה removal_effective_amount).
+    amount=0 מנקה את העקיפה וחוזרים לסכום שבהערה."""
     sales_state_set(f"rem_amt:{op_id}", str(round(float(amount or 0), 2)))
 
 
@@ -4087,14 +4089,15 @@ def removal_amount_get(op_id) -> float:
 
 
 def removal_effective_amount(note, op_id) -> float:
-    """סכום הורדה אפקטיבי: מההערה אם יש, אחרת הסכום הידני שהוזן אצלנו."""
-    return _parse_removal_amount(note) or removal_amount_get(op_id)
+    """סכום הורדה אפקטיבי: **הסכום הידני שהוזן אצלנו גובר** (=תיקון מפורש של אסי, גם כשהעובד
+    רשם סכום שגוי בהערה), ורק בהיעדרו נופלים לסכום שנפרס מההערה."""
+    return removal_amount_get(op_id) or _parse_removal_amount(note)
 
 
 def _city_removal_sales(cur, since, until=None) -> list:
     """הורדות-מלאי סיטי (סניף 3, חצי-קופה) כ'מכירות' — מאוחדות לפי op. ⚠️ ה-note עם הסכום
     הוא ברמת ה-op אך מאוחסן על כל שורות-הפריט שלו, לכן סופרים את הסכום **פעם אחת לכל op**
-    (אחרת כפל-ספירה ב-op רב-פריטי). הסכום: מההערה, ואם העובד שכח — מהסכום הידני שהוזן אצלנו.
+    (אחרת כפל-ספירה ב-op רב-פריטי). הסכום: הידני שהוזן אצלנו אם קיים (תיקון), אחרת מההערה.
     מחזיר [{op_id, product_id, name, amount, removed_at}]. since/until = טווח removed_at."""
     if until is not None:
         cur.execute(_q("""SELECT op_id, product_id, name, note, removed_at FROM removals
@@ -4116,7 +4119,7 @@ def _city_removal_sales(cur, since, until=None) -> list:
                 op["name"] = r["name"].strip()
     out = []
     for op in ops.values():
-        amt = op["note_amt"] or removal_amount_get(op["op_id"])   # נפילה לסכום ידני
+        amt = removal_amount_get(op["op_id"]) or op["note_amt"]   # תיקון ידני גובר על ההערה
         if not amt:
             continue
         out.append({"op_id": op["op_id"], "product_id": op["product_id"],

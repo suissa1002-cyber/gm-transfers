@@ -4320,11 +4320,11 @@ def admin_removals(days: int = 30, from_date: Optional[str] = None, to_date: Opt
     else:
         since = (_date.today() - _td(days=int(days or 30))).isoformat()
         rows = db.removals_list(since)
-    # סכום אפקטיבי לכל שורה: מההערה אם יש, אחרת הסכום הידני שהוזן אצלנו (op). manual=הוזן ידנית.
+    # סכום אפקטיבי לכל שורה: **הידני שהוזן אצלנו גובר** (תיקון לסכום שגוי בהערה), אחרת מההערה.
     for r in rows:
         note_amt = db._parse_removal_amount(r.get("note"))
-        manual = db.removal_amount_get(r.get("op_id")) if not note_amt else 0.0
-        r["amount"] = note_amt or manual
+        manual = db.removal_amount_get(r.get("op_id"))
+        r["amount"] = manual or note_amt
         r["amount_manual"] = bool(manual)
         r["note_amount"] = note_amt
     return {"rows": rows, "summary": db.removals_summary(),
