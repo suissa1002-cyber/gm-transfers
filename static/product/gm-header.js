@@ -102,7 +102,7 @@ if (!window.toggleNav) { window.toggleNav = function () {
   function gmBpCartHtml(){
     var C=window.gmBpCfg;
     if(!C||!C.opts||!C.opts.length) return '';
-    var logo=C.logo?'<img class="gm-bp-cart-logo skip-lazy" src="'+C.logo+'" alt="Blender" width="61" height="28" decoding="async" data-no-lazy="1">':'';
+    var logo=C.logo?'<img class="gm-bp-cart-logo skip-lazy" src="'+C.logo+'" alt="Blender" width="65" height="30" decoding="async" data-no-lazy="1">':'';
     return '<div class="gm-bp-cart" id="gmBpCart" hidden>'+logo+
       '<span class="gm-bp-cart-txt">או בעד <b class="gm-bp-cart-t">0</b> תשלומים החל מ־<b class="gm-bp-cart-v">₪0</b> לחודש'+
       '<span class="gm-bp-cart-sub">הוראת קבע ללא תפיסת מסגרת</span></span></div>';
