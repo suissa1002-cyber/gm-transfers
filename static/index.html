@@ -781,11 +781,12 @@
           font-weight:800;text-decoration:none;border:none}
   .bp-cta:hover{filter:brightness(1.08)}
   .bp-qr{display:flex;gap:14px;align-items:center;margin-top:14px}
-  .bp-qr svg{width:118px;height:118px;flex:none;border-radius:8px;background:#fff}
+  /* > svg בכוונה: רק ה-QR עצמו, שלא ינפח את אייקון ה-SVG שבכפתור "העתק קישור" */
+  .bp-qr>svg{width:118px;height:118px;flex:none;border-radius:8px;background:#fff}
   .bp-21{background:var(--amber-bg);border:1px solid var(--amber);border-radius:14px;padding:15px 16px;
          display:flex;gap:13px;align-items:center}
   .bp-21 .n{background:var(--amber);color:#1a1204;font-weight:900;font-size:19px;border-radius:12px;
-            padding:9px 12px;flex:none;line-height:1}
+            padding:9px 12px;flex:none;line-height:1;direction:ltr;unicode-bidi:isolate}
   .bp-21 b{color:var(--amber-ink);font-size:15px;display:block;margin-bottom:3px}
   .bp-21 span{color:var(--muted);font-size:13px;line-height:1.5}
   .bp-rules{margin:12px 0 0;padding-inline-start:19px;color:var(--muted);font-size:13.5px;line-height:1.75}
@@ -795,7 +796,7 @@
     .bp-card{padding:15px}
     .bp-amt input{font-size:21px}
     .bp-qr{flex-direction:column;align-items:stretch;text-align:center}
-    .bp-qr svg{width:150px;height:150px;margin:0 auto}
+    .bp-qr>svg{width:150px;height:150px;margin:0 auto}
   }
 </style>
 </head>
