@@ -504,7 +504,8 @@
           .find('span').text(giftText).end().appendTo($g);
       }
       giftImgs.forEach(function (src) {
-        $('<img loading="lazy" alt="מתנה ברכישה">').attr('src', src).appendTo($g);
+        /* בלי loading=lazy — תמונה דינמית עם lazy לא נטענת תחת LiteSpeed */
+        $('<img alt="מתנה ברכישה">').attr('src', src).appendTo($g);
       });
       $g.insertAfter($('#gmPshort').length ? $('#gmPshort') : $('.pricebox'));
     }
