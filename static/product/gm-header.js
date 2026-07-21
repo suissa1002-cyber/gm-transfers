@@ -89,10 +89,38 @@ if (!window.toggleNav) { window.toggleNav = function () {
       '<div class="cart-items" id="cartItems"></div>'+
       '<div class="cart-foot"><div class="cart-subtotal"><span>סכום ביניים</span><span class="cs-amt" id="cartSubtotal">‏₪0</span></div>'+
       '<div class="cart-note">המשלוח מחושב בעמוד התשלום</div>'+
+      gmBpCartHtml()+
       '<a class="cart-checkout" href="/מעבר-לתשלום/">מעבר לתשלום</a></div></aside>';
     while(w.firstChild) document.body.appendChild(w.firstChild);
     document.getElementById('cartOverlay').addEventListener('click',close);
     document.getElementById('cartClose').addEventListener('click',close);
+  }
+  /* ── שורת "תשלום חודשי" של Blender בתחתית המגירה ──
+     מבוססת על סכום הסל (לא על מחיר מוצר). הנתונים מגיעים מ-window.gmBpCfg
+     שמוזרק ב-wp_head ע"י סניפט 49143 (מטמון התמחור של התוסף, בלי קריאת API).
+     אין cfg / הסל מתחת לסף Blender → השורה פשוט לא מוצגת. */
+  function gmBpCartHtml(){
+    var C=window.gmBpCfg;
+    if(!C||!C.opts||!C.opts.length) return '';
+    var logo=C.logo?'<img class="gm-bp-cart-logo skip-lazy" src="'+C.logo+'" alt="Blender" width="61" height="28" decoding="async" data-no-lazy="1">':'';
+    return '<div class="gm-bp-cart" id="gmBpCart" hidden>'+logo+
+      '<span class="gm-bp-cart-txt">או בעד <b class="gm-bp-cart-t">0</b> תשלומים החל מ־<b class="gm-bp-cart-v">₪0</b> לחודש'+
+      '<span class="gm-bp-cart-sub">הוראת קבע ללא תפיסת מסגרת</span></span></div>';
+  }
+  function gmBpCartLine(sub){
+    var el=document.getElementById('gmBpCart'); if(!el) return;
+    var C=window.gmBpCfg;
+    if(!C||!C.opts||!C.opts.length||!(sub>0)||sub<(C.min||1000)||(C.max&&sub>C.max)){ el.hidden=true; return; }
+    var best=null,i,pay;
+    for(i=0;i<C.opts.length;i++){
+      pay=Math.ceil(sub/C.opts[i].T+sub/1000*C.opts[i].K);
+      if(!best||pay<best.v) best={t:C.opts[i].T,v:pay};
+    }
+    if(!best){ el.hidden=true; return; }
+    var t=el.querySelector('.gm-bp-cart-t'), v=el.querySelector('.gm-bp-cart-v');
+    if(!t||!v){ el.hidden=true; return; }
+    t.textContent=best.t; v.textContent='₪'+best.v.toLocaleString('en-US');
+    el.hidden=false;
   }
   function render(c){
     if(!c||!c.totals) return;
@@ -118,6 +146,7 @@ if (!window.toggleNav) { window.toggleNav = function () {
       if(sub>=TH) ship.innerHTML='<b>קיבלת משלוח חינם!</b><div class="bar"><div class="fill" style="width:100%"></div></div>';
       else ship.innerHTML='עוד <b>‏₪'+(TH-sub).toLocaleString('en-US')+'</b> ותיהנו ממשלוח חינם<div class="bar"><div class="fill" style="width:'+Math.min(100,Math.round(sub/TH*100))+'%"></div></div>';
     }
+    gmBpCartLine(sub);
   }
   function open(){ ensure(); document.getElementById('cartDrawer').classList.add('open'); document.getElementById('cartOverlay').classList.add('open'); document.body.style.overflow='hidden'; get().then(render); }
   function close(){ var d=document.getElementById('cartDrawer'),o=document.getElementById('cartOverlay'); if(d)d.classList.remove('open'); if(o)o.classList.remove('open'); document.body.style.overflow=''; }
