@@ -477,8 +477,9 @@
          או אייקון המותג — מוצגות מתחת לפסקת השיווק. בלעדיהן הבאדג' בקטלוג מבטיח
          מתנה שהעמוד לא מראה. */
       $raw.find('img').each(function () {
-        var src = $(this).attr('src') || '';
-        if (src && src.indexOf('Xnip2023') < 0 && src.indexOf('GREENMOBILE_PROFILE') < 0) giftImgs.push(src);
+        /* LiteSpeed lazy-load מחליף src ב-placeholder; הכתובת האמיתית ב-data-src */
+        var src = $(this).attr('data-src') || $(this).attr('data-lazy-src') || $(this).attr('src') || '';
+        if (src && src.indexOf('data:') !== 0 && src.indexOf('Xnip2023') < 0 && src.indexOf('GREENMOBILE_PROFILE') < 0) giftImgs.push(src);
       });
       /* פורמט התיאורים של גלי: פסקת השיווק היא <strong> בתוך div — לא <p> */
       $raw.find('strong').each(function () {
