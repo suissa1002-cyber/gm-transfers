@@ -1877,6 +1877,99 @@ def _wc_creds():
     return (u, k, s) if (u and k and s) else None
 
 
+# ──────────────────────────────────────────────────────────────
+# 💳 blenderPay — תמחור מסלולי הלוואה לקונסולת הסניף
+# ──────────────────────────────────────────────────────────────
+# מקור האמת הוא תוסף Blender שבאתר: הוא מושך את התמחור מה-API של Blender
+# ושומר אותו ב-wp_option `woocommerce_blender_pricing_cache` (24ש׳).
+# GreenOS הוא אפליקציה נפרדת (Render) ואין לו את window.gmBpCfg של האתר,
+# ולכן הוא קורא את אותו option דרך גשר דביר (`/dvir/v1/debug/options`,
+# קריאה-בלבד) ומחזיק מטמון משלו ל-24ש׳ — בדיוק כמו מחזור החיים של Blender.
+# ⛔ אבטחה: ה-option של הגדרות השער (`woocommerce_blender_settings`) מכיל
+#    מפתח RSA פרטי. אנחנו קוראים ממנו אך ורק שני מספרים (סכום מינימום/מקסימום
+#    לעסקה) — שום שדה אחר לא נשמר, לא מוחזר ללקוח ולא נכתב ללוג.
+_BP_FALLBACK_OPTS = [{"T": 12, "K": 8.00}, {"T": 18, "K": 8.01}, {"T": 24, "K": 8.00},
+                     {"T": 30, "K": 8.01}, {"T": 36, "K": 8.00}]
+_BP_MIN_DEFAULT = 1000.0
+_bp_cache: dict = {}          # {"at": epoch, "data": {...}}
+_BP_TTL_SEC = 24 * 3600
+
+
+def _bp_wp_options(prefix: str, timeout: int = 20):
+    """קריאת wp_options לפי prefix דרך גשר דביר (read-only). dict או None."""
+    base = os.getenv("WC_STORE_URL", "").rstrip("/")
+    u, p = os.getenv("WP_USERNAME", ""), os.getenv("WP_APP_PASSWORD", "")
+    if not (base and u and p):
+        return None
+    import requests as _rq
+    # UA דמוי-דפדפן: Cloudflare SBFM חוסם User-Agent של ספריות מדאטה-סנטר
+    r = _rq.get(base + "/wp-json/dvir/v1/debug/options",
+                params={"prefix": prefix}, auth=(u, p),
+                headers={"User-Agent": "Mozilla/5.0 (compatible; GreenOS/1.0; greenmobile.co.il)"},
+                timeout=timeout)
+    if r.status_code != 200:
+        return None
+    return (r.json() or {}).get("options") or {}
+
+
+def _bp_fetch_pricing() -> dict:
+    """מושך opts + סף מינימום/מקסימום מהאתר. תמיד מחזיר מבנה שמיש."""
+    out = {"opts": [o.copy() for o in _BP_FALLBACK_OPTS], "min": _BP_MIN_DEFAULT,
+           "max": 0.0, "source": "fallback", "stamp": None}
+    try:
+        opts_raw = _bp_wp_options("woocommerce_blender_pricing_cache")
+        cache = (opts_raw or {}).get("woocommerce_blender_pricing_cache") or {}
+        offers = cache.get("offerOptions") if isinstance(cache, dict) else None
+        parsed = []
+        for o in (offers or []):
+            try:
+                t = int(o.get("T") or 0)
+                k = float(o.get("PricePerK"))
+            except Exception:
+                continue
+            if t > 0 and k >= 0:
+                parsed.append({"T": t, "K": k})
+        if parsed:
+            parsed.sort(key=lambda x: x["T"])
+            out["opts"] = parsed
+            out["source"] = "wp"
+            out["stamp"] = cache.get("timeStamp")
+    except Exception as e:
+        logger.warning("blender pricing fetch failed: %s", type(e).__name__)
+    try:
+        # ⛔ מהאובייקט הזה נלקחים שני מספרים בלבד — ראה הערת האבטחה למעלה
+        st = (_bp_wp_options("woocommerce_blender_settings") or {}).get(
+            "woocommerce_blender_settings") or {}
+        mn, mx = st.get("min_order_total"), st.get("max_order_total")
+        st = None
+        if mn is not None and float(mn) > 0:
+            out["min"] = float(mn)
+        if mx is not None and float(mx) > 0:
+            out["max"] = float(mx)
+    except Exception as e:
+        logger.warning("blender limits fetch failed: %s", type(e).__name__)
+    return out
+
+
+@app.get("/api/blender/pricing")
+def blender_pricing(refresh: int = 0,
+                    x_admin_key: Optional[str] = Header(None),
+                    x_device_token: Optional[str] = Header(None)):
+    """{opts,min,max,source} למחשבון התשלומים בטאב blenderPay.
+    פתוח למנהל וגם למכשיר סניפי מאושר — הטאב נועד למוכרים בסניפים."""
+    import time as _t
+    _require_admin_or_device(x_admin_key, x_device_token)
+    hit = _bp_cache.get("data")
+    if hit and not refresh and (_t.time() - _bp_cache.get("at", 0)) < _BP_TTL_SEC:
+        return dict(hit, cached=True)
+    data = _bp_fetch_pricing()
+    # משיכה שנכשלה לא דורסת מטמון תקין קיים (עדיף נתון אמיתי ישן מגיבוי)
+    if data.get("source") == "fallback" and hit and hit.get("source") == "wp":
+        return dict(hit, cached=True, stale=True)
+    _bp_cache["data"], _bp_cache["at"] = data, _t.time()
+    return dict(data, cached=False)
+
+
 # ── חיפוש למוקאפ: פרוקסי באותו-מקור למנוע החיפוש של האתר ──
 # מנוע החיפוש החי הוא FiboSearch Pro (dgwt-wcas). ה-AJAX שלו חסום ב-Cloudflare
 # לגישה חוצת-מקור/דאטה-סנטר, ולכן המוקאפ (שמוגש מכאן, אותו מקור) שולף הצעות

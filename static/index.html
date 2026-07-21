@@ -748,6 +748,55 @@
     table.serials{display:block;overflow-x:auto;white-space:nowrap}
     .modal{padding:18px 14px}
   }
+  /* ── 💳 blenderPay (טאב סניף) ── */
+  .bp-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:14px;align-items:start}
+  .bp-col{display:flex;flex-direction:column;gap:14px}
+  .bp-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px}
+  .bp-card h3{margin:0;font-size:16px;display:flex;align-items:center;gap:8px}
+  .bp-sub{color:var(--muted);font-size:13px;margin-top:5px;line-height:1.5}
+  .bp-amt{display:flex;align-items:center;gap:9px;margin:14px 0 9px}
+  .bp-amt input{flex:1;min-width:0;background:var(--card2);color:var(--txt);border:1px solid var(--line);
+                border-radius:12px;padding:13px 16px;font-size:23px;font-weight:800;font-family:inherit;
+                text-align:center;font-variant-numeric:tabular-nums}
+  .bp-amt input:focus{outline:none;border-color:var(--blue)}
+  .bp-cur{font-size:22px;font-weight:800;color:var(--muted)}
+  .bp-quick{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px}
+  .bp-quick button{background:transparent;border:1px solid var(--line);color:var(--muted);
+                   border-radius:999px;padding:6px 12px;font-size:13px;font-weight:700}
+  .bp-quick button:hover{border-color:var(--blue);color:var(--txt)}
+  .bp-opts{display:flex;flex-direction:column;gap:8px}
+  .bp-opt{display:flex;justify-content:space-between;align-items:center;gap:10px;
+          background:var(--card2);border:1px solid transparent;border-radius:12px;padding:12px 15px}
+  .bp-opt-t{display:flex;align-items:center;gap:8px;font-weight:700;font-size:14px;color:var(--muted)}
+  .bp-opt-v{font-weight:900;font-size:19px;font-variant-numeric:tabular-nums}
+  .bp-opt.best{background:rgba(46,206,125,.10);border-color:var(--green)}
+  .bp-opt.best .bp-opt-t,.bp-opt.best .bp-opt-v{color:var(--green)}
+  .bp-tag{background:rgba(46,206,125,.18);color:var(--green);font-size:11px;font-weight:800;
+          border-radius:999px;padding:2px 8px}
+  .bp-hint{color:var(--muted);font-size:13px;text-align:center;padding:18px 6px;line-height:1.6}
+  .bp-hint b{color:var(--amber-ink)}
+  .bp-note{color:var(--muted);font-size:12px;margin-top:11px;padding-top:10px;border-top:1px solid var(--line)}
+  .bp-cta{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;
+          background:var(--blue);color:#fff;border-radius:12px;padding:14px 16px;font-size:16px;
+          font-weight:800;text-decoration:none;border:none}
+  .bp-cta:hover{filter:brightness(1.08)}
+  .bp-qr{display:flex;gap:14px;align-items:center;margin-top:14px}
+  .bp-qr svg{width:118px;height:118px;flex:none;border-radius:8px;background:#fff}
+  .bp-21{background:var(--amber-bg);border:1px solid var(--amber);border-radius:14px;padding:15px 16px;
+         display:flex;gap:13px;align-items:center}
+  .bp-21 .n{background:var(--amber);color:#1a1204;font-weight:900;font-size:19px;border-radius:12px;
+            padding:9px 12px;flex:none;line-height:1}
+  .bp-21 b{color:var(--amber-ink);font-size:15px;display:block;margin-bottom:3px}
+  .bp-21 span{color:var(--muted);font-size:13px;line-height:1.5}
+  .bp-rules{margin:12px 0 0;padding-inline-start:19px;color:var(--muted);font-size:13.5px;line-height:1.75}
+  .bp-rules b{color:var(--txt)}
+  @media(max-width:760px){
+    .bp-grid{grid-template-columns:1fr}
+    .bp-card{padding:15px}
+    .bp-amt input{font-size:21px}
+    .bp-qr{flex-direction:column;align-items:stretch;text-align:center}
+    .bp-qr svg{width:150px;height:150px;margin:0 auto}
+  }
 </style>
 </head>
 <body>
@@ -790,6 +839,7 @@ const S = { branchId:null, branchName:null, employee:null, adminKey:null,
             lsLive:{}, lsSeq:0, lsSerialHits:null, _refocusLs:false, _lsDetail:null, lsWc:{}, lsWcOff:false,
             tasksData:null, tkGroup:'', tkStatus:'open', tkSearch:'', _refocusTk:false,
             gcQuery:'', gcResults:null, gcSel:null, gcForm:null, gcBusy:false, _refocusGc:false,
+            bpCfg:null, bpAmount:'', bpErr:false,
             branchTab:'board', deviceToken:null };
 
 // ── ערכת נושא (כהה/בהיר) ──
@@ -1578,6 +1628,7 @@ function render(){
   if(S.view==='admin') return S.adminData?renderAdmin():loadAdmin(true);
   if(S.view==='scan')  return renderScan(app);
   if(S.branchTab==='live') return S.lsCat?renderLive():loadLiveCatalog(true);
+  if(S.branchTab==='blender') return renderBlender();
   if(S.branchTab==='wcorders'&&isAdminCtx()) return renderWcOrders();
   return renderBoard(app);
 }
@@ -1588,6 +1639,7 @@ function branchTabsHTML(){
   return `<div class="tabs">
     <button class="${(!t||t==='board')?'active':''}" onclick="setBranchTab('board')">${ico('inbox',15)} קליטת העברות</button>
     <button class="${t==='live'?'active':''}" onclick="setBranchTab('live')">🔎 מלאי חי</button>
+    <button class="${t==='blender'?'active':''}" onclick="setBranchTab('blender')">${ico('wallet',15)} blenderPay</button>
     ${isAdminCtx()?`<button class="${t==='wcorders'?'active':''}" style="position:relative" onclick="setBranchTab('wcorders')">${ico('receipt',15)} הזמנות<span class="gm-obadge" style="display:${(S.newOrdersCount||0)>0?'':'none'}">${(S.newOrdersCount||0)>99?'99+':(S.newOrdersCount||0)}</span></button>`:''}
   </div>`;
 }
@@ -1596,7 +1648,141 @@ function setBranchTab(t){
   if(t==='wcorders'){ S.newOrdersCount=0; }   // נכנס לטאב — מאפס את ספירת ההזמנות החדשות
   if(t==='live'){ if(!S.lsCat) loadLiveCatalog(true); else renderLive(); }
   else if(t==='wcorders'){ renderWcOrders(); }
+  else if(t==='blender'){ renderBlender(); }
   else render();
+}
+
+// ═══ 💳 blenderPay — טאב מימון למוכר בסניף ═══════════════════════
+// למוכרים בסניפים אין גישה לאזור האישי של Blender, ולכן הטאב נותן להם בדיוק
+// את שני הדברים שהם צריכים בעמידה מול לקוח: תמחור מהיר של ההחזר החודשי,
+// ופתיחת בקשת הלוואה בקליק אחד.
+// ⚠️ BP_URL הוא קישור-הסוכן שלנו — טוען את הטופס המלא בלי שום התחברות.
+//    חובה הקישור הנקי בלבד, בלי פרמטרי _gl=... (linker זמני של Google
+//    Analytics שפג עם הסשן ולא מוסיף כלום).
+// ⚠️ אי אפשר להטמיע ב-iframe: ה-frame-ancestors של Blender מתיר רק דומיינים
+//    שלהם + dooplex.co.il. אם יוסיפו אותנו — ההחלפה היא נקודתית: להחליף את
+//    ה-<a class="bp-cta"> ב-<iframe src="${BP_URL}"> באותו כרטיס. שום דבר
+//    אחר בטאב לא תלוי בשיטת הפתיחה.
+const BP_URL='https://www.blender.co.il/ag?p=gaalgroup12';
+// ערכי גיבוי אם /api/blender/pricing לא זמין (התעריפים שהיו בתוקף ב-21/07/2026)
+const BP_FALLBACK={opts:[{T:12,K:8},{T:18,K:8.01},{T:24,K:8},{T:30,K:8.01},{T:36,K:8}],
+                   min:1000, max:0, source:'fallback'};
+// QR של BP_URL — נוצר מראש ומוטמע כ-SVG. בלי שום ספרייה חיצונית בזמן ריצה
+// (עצמאות + CSP). QR version 3, ECC-M, 29x29 מודולים + quiet zone של 2.
+// אם BP_URL משתנה — לחולל מחדש עם segno (מפורט ב-README של הפריסה).
+const BP_QR_D='M0 0h7v1h-7zM9 0h2v1h-2zM12 0h2v1h-2zM18 0h1v1h-1zM20 0h1v1h-1zM22 0h7v1h-7zM0 1h1v1h-1zM6 1h1v1h-1zM8 1h1v1h-1zM13 1h1v1h-1zM16 1h2v1h-2zM20 1h1v1h-1zM22 1h1v1h-1zM28 1h1v1h-1zM0 2h1v1h-1zM2 2h3v1h-3zM6 2h1v1h-1zM8 2h5v1h-5zM16 2h1v1h-1zM18 2h3v1h-3zM22 2h1v1h-1zM24 2h3v1h-3zM28 2h1v1h-1zM0 3h1v1h-1zM2 3h3v1h-3zM6 3h1v1h-1zM8 3h1v1h-1zM10 3h1v1h-1zM13 3h1v1h-1zM16 3h2v1h-2zM19 3h2v1h-2zM22 3h1v1h-1zM24 3h3v1h-3zM28 3h1v1h-1zM0 4h1v1h-1zM2 4h3v1h-3zM6 4h1v1h-1zM10 4h4v1h-4zM16 4h5v1h-5zM22 4h1v1h-1zM24 4h3v1h-3zM28 4h1v1h-1zM0 5h1v1h-1zM6 5h1v1h-1zM9 5h6v1h-6zM18 5h1v1h-1zM20 5h1v1h-1zM22 5h1v1h-1zM28 5h1v1h-1zM0 6h7v1h-7zM8 6h1v1h-1zM10 6h1v1h-1zM12 6h1v1h-1zM14 6h1v1h-1zM16 6h1v1h-1zM18 6h1v1h-1zM20 6h1v1h-1zM22 6h7v1h-7zM8 7h3v1h-3zM12 7h1v1h-1zM14 7h1v1h-1zM16 7h1v1h-1zM19 7h1v1h-1zM0 8h1v1h-1zM6 8h1v1h-1zM8 8h2v1h-2zM11 8h4v1h-4zM17 8h1v1h-1zM21 8h2v1h-2zM25 8h3v1h-3zM0 9h1v1h-1zM3 9h1v1h-1zM5 9h1v1h-1zM8 9h1v1h-1zM11 9h1v1h-1zM15 9h1v1h-1zM17 9h3v1h-3zM23 9h2v1h-2zM26 9h2v1h-2zM2 10h2v1h-2zM5 10h4v1h-4zM10 10h2v1h-2zM14 10h3v1h-3zM21 10h1v1h-1zM4 11h2v1h-2zM7 11h4v1h-4zM12 11h1v1h-1zM14 11h1v1h-1zM18 11h3v1h-3zM22 11h2v1h-2zM25 11h1v1h-1zM0 12h1v1h-1zM3 12h4v1h-4zM10 12h1v1h-1zM12 12h1v1h-1zM15 12h2v1h-2zM18 12h1v1h-1zM20 12h1v1h-1zM22 12h2v1h-2zM28 12h1v1h-1zM0 13h1v1h-1zM2 13h2v1h-2zM5 13h1v1h-1zM7 13h2v1h-2zM11 13h2v1h-2zM14 13h6v1h-6zM22 13h1v1h-1zM24 13h1v1h-1zM27 13h2v1h-2zM0 14h1v1h-1zM2 14h1v1h-1zM5 14h2v1h-2zM9 14h3v1h-3zM15 14h3v1h-3zM22 14h2v1h-2zM25 14h2v1h-2zM0 15h2v1h-2zM3 15h1v1h-1zM5 15h1v1h-1zM9 15h2v1h-2zM12 15h1v1h-1zM14 15h1v1h-1zM16 15h1v1h-1zM19 15h2v1h-2zM22 15h3v1h-3zM26 15h1v1h-1zM28 15h1v1h-1zM0 16h1v1h-1zM3 16h1v1h-1zM5 16h2v1h-2zM10 16h1v1h-1zM13 16h1v1h-1zM15 16h1v1h-1zM17 16h1v1h-1zM20 16h1v1h-1zM23 16h1v1h-1zM25 16h2v1h-2zM0 17h1v1h-1zM3 17h1v1h-1zM5 17h1v1h-1zM7 17h2v1h-2zM14 17h3v1h-3zM18 17h3v1h-3zM22 17h3v1h-3zM26 17h3v1h-3zM0 18h2v1h-2zM3 18h4v1h-4zM9 18h1v1h-1zM13 18h3v1h-3zM17 18h3v1h-3zM22 18h1v1h-1zM25 18h1v1h-1zM28 18h1v1h-1zM0 19h1v1h-1zM4 19h1v1h-1zM7 19h3v1h-3zM14 19h3v1h-3zM20 19h2v1h-2zM23 19h2v1h-2zM0 20h1v1h-1zM2 20h1v1h-1zM4 20h1v1h-1zM6 20h2v1h-2zM9 20h2v1h-2zM12 20h2v1h-2zM15 20h1v1h-1zM17 20h1v1h-1zM20 20h5v1h-5zM26 20h3v1h-3zM8 21h1v1h-1zM10 21h1v1h-1zM12 21h1v1h-1zM15 21h1v1h-1zM18 21h1v1h-1zM20 21h1v1h-1zM24 21h2v1h-2zM0 22h7v1h-7zM10 22h1v1h-1zM13 22h1v1h-1zM15 22h3v1h-3zM19 22h2v1h-2zM22 22h1v1h-1zM24 22h3v1h-3zM0 23h1v1h-1zM6 23h1v1h-1zM9 23h1v1h-1zM12 23h1v1h-1zM16 23h1v1h-1zM19 23h2v1h-2zM24 23h1v1h-1zM28 23h1v1h-1zM0 24h1v1h-1zM2 24h3v1h-3zM6 24h1v1h-1zM9 24h6v1h-6zM18 24h8v1h-8zM27 24h1v1h-1zM0 25h1v1h-1zM2 25h3v1h-3zM6 25h1v1h-1zM10 25h3v1h-3zM15 25h1v1h-1zM17 25h1v1h-1zM21 25h1v1h-1zM23 25h1v1h-1zM25 25h2v1h-2zM28 25h1v1h-1zM0 26h1v1h-1zM2 26h3v1h-3zM6 26h1v1h-1zM9 26h2v1h-2zM12 26h2v1h-2zM15 26h1v1h-1zM17 26h1v1h-1zM19 26h1v1h-1zM21 26h7v1h-7zM0 27h1v1h-1zM6 27h1v1h-1zM9 27h5v1h-5zM16 27h1v1h-1zM21 27h1v1h-1zM23 27h1v1h-1zM25 27h2v1h-2zM28 27h1v1h-1zM0 28h7v1h-7zM8 28h1v1h-1zM15 28h3v1h-3zM19 28h1v1h-1zM21 28h6v1h-6z';
+function bpQrSvg(){
+  return '<svg viewBox="-2 -2 33 33" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges"'
+    +' role="img" aria-label="קוד QR לפתיחת בקשת הלוואה"><rect x="-2" y="-2" width="33" height="33"'
+    +' fill="#fff"/><path d="'+BP_QR_D+'" fill="#000"/></svg>';
+}
+function bpNum(n){ return Math.round(n).toLocaleString('en-US'); }
+function bpAmountVal(){
+  const v=parseFloat(String(S.bpAmount==null?'':S.bpAmount).replace(/[^\d.]/g,''));
+  return (isFinite(v)&&v>0)?v:0;
+}
+// נוסחת Blender: החזר חודשי = סכום/מספר-תשלומים + (סכום/1000)*PricePerK, מעוגל כלפי מעלה
+function bpRows(amount,cfg){
+  return (cfg.opts||[]).map(o=>({t:o.T, v:Math.ceil(amount/o.T + amount/1000*o.K)}))
+                       .sort((a,b)=>a.v-b.v);
+}
+function bpSetAmount(v){ S.bpAmount=v; bpUpdate(); }
+function bpQuick(v){
+  S.bpAmount=String(v);
+  const el=document.getElementById('bpAmt'); if(el){ el.value=String(v); el.focus(); }
+  bpUpdate();
+}
+function bpCopy(){
+  try{ navigator.clipboard.writeText(BP_URL)
+        .then(()=>toast('הקישור הועתק',true),()=>toast('העתקה נכשלה',false)); }
+  catch(e){ toast('העתקה נכשלה',false); }
+}
+async function loadBpCfg(){
+  try{
+    const d=await api('/api/blender/pricing');
+    if(d&&d.opts&&d.opts.length){ S.bpCfg=d; S.bpErr=false; }
+  }catch(e){ S.bpErr=true; }
+  if(S.branchTab==='blender') bpUpdate();
+}
+// עדכון אזור התוצאות בלבד — בלי לרנדר מחדש, שהמקלדת/הפוקוס לא יקפצו בכל הקלדה
+function bpUpdate(){
+  const box=document.getElementById('bpOpts'); if(!box) return;
+  const cfg=S.bpCfg||BP_FALLBACK;
+  const min=Number(cfg.min||1000), max=Number(cfg.max||0), amt=bpAmountVal();
+  const mEl=document.getElementById('bpMin'); if(mEl) mEl.textContent=bpNum(min);
+  if(!amt){
+    box.innerHTML='<div class="bp-hint">הקלד סכום עסקה כדי לראות את ההחזר החודשי בכל מסלול</div>';
+    return;
+  }
+  if(amt<min){
+    box.innerHTML='<div class="bp-hint">מתחת למינימום של Blender (<b>₪'+bpNum(min)+'</b>)'
+      +'<br>מתחת לסכום הזה לא ניתן לפתוח בקשת הלוואה.</div>';
+    return;
+  }
+  if(max>0&&amt>max){
+    box.innerHTML='<div class="bp-hint">מעל המקסימום של Blender (<b>₪'+bpNum(max)+'</b>)</div>';
+    return;
+  }
+  const src=(S.bpCfg&&S.bpCfg.source==='wp')?'המעודכנים מהאתר':'לפי ערכי גיבוי (התמחור לא נמשך מהאתר)';
+  box.innerHTML=bpRows(amt,cfg).map((r,i)=>'<div class="bp-opt'+(i===0?' best':'')+'">'
+      +'<span class="bp-opt-t">'+r.t+' תשלומים'
+      +(i===0?'<span class="bp-tag">ההחזר הנמוך ביותר</span>':'')+'</span>'
+      +'<span class="bp-opt-v">₪'+bpNum(r.v)+'</span></div>').join('')
+    +'<div class="bp-note">החישוב לפי סכום של <b>₪'+bpNum(amt)+'</b> ותעריפי Blender '+src
+    +' · אין באמור משום הצעה או התחייבות; העמדת ההלוואה ותנאיה בהתאם לשיקול דעת Blender ומדיניותה.</div>';
+}
+function renderBlender(){
+  const app=document.getElementById('app');
+  const amt=String(S.bpAmount==null?'':S.bpAmount).replace(/"/g,'&quot;');
+  const chips=[1000,2000,3500,5000,7000,10000];
+  app.innerHTML=`${branchTabsHTML()}
+    <h1 class="title" style="display:flex;align-items:center;gap:8px">${ico('wallet',19)} blenderPay — מימון ללקוח</h1>
+    <div class="bp-grid">
+      <div class="bp-card">
+        <h3>${ico('scale',17)} מחשבון תשלומים</h3>
+        <div class="bp-sub">הקלד את סכום העסקה — ההחזר החודשי בכל מסלול מתעדכן מיד.</div>
+        <div class="bp-amt">
+          <input id="bpAmt" inputmode="numeric" autocomplete="off" placeholder="סכום העסקה"
+                 value="${amt}" oninput="bpSetAmount(this.value)">
+          <span class="bp-cur">₪</span>
+        </div>
+        <div class="bp-quick">
+          ${chips.map(v=>`<button onclick="bpQuick(${v})">₪${v.toLocaleString('en-US')}</button>`).join('')}
+        </div>
+        <div class="bp-opts" id="bpOpts"></div>
+      </div>
+      <div class="bp-col">
+        <div class="bp-card">
+          <h3>${ico('card',17)} פתיחת בקשת הלוואה</h3>
+          <div class="bp-sub">נפתח בלשונית חדשה — טופס Blender המקושר לחשבון של Green Mobile. אין צורך בהתחברות.</div>
+          <a class="bp-cta" style="margin-top:14px" href="${BP_URL}" target="_blank" rel="noopener">
+            ${ico('globe',17)} צור בקשת הלוואה</a>
+          <div class="bp-qr">
+            ${bpQrSvg()}
+            <div class="bp-sub" style="margin:0">מעדיף שהלקוח ימלא מהנייד שלו? שיסרוק את הקוד — אותו טופס בדיוק.
+              <br><button class="btn-ghost" style="margin-top:9px;display:inline-flex;align-items:center;gap:6px"
+                          onclick="bpCopy()">${ico('copy',14)} העתק קישור</button></div>
+          </div>
+        </div>
+        <div class="bp-card">
+          <h3>${ico('info',17)} חוקים למוכר</h3>
+          <div class="bp-21" style="margin-top:12px">
+            <span class="n">21+</span>
+            <span><b>הלקוח חייב להיות בגיל 21 ומעלה</b>
+              <span>מתחת לגיל 21 Blender לא מאשרים הלוואה — אין טעם להתחיל את התהליך.</span></span>
+          </div>
+          <ul class="bp-rules">
+            <li><b>תושב/ת ישראל</b> בלבד.</li>
+            <li>השמות נרשמים <b>בדיוק כפי שהם מופיעים בתעודת הזהות</b> — בלי כינויים או קיצורים.</li>
+            <li>צריך ביד: <b>מספר ת״ז</b>, <b>תאריך הנפקת התעודה</b> ו<b>תאריך לידה</b>.</li>
+            <li>הלקוח מקבל <b>SMS לאימות</b> ומשלים את הבקשה בעצמו.</li>
+            <li>סכום עסקה מינימלי: <b>₪<span id="bpMin">1,000</span></b>.</li>
+          </ul>
+        </div>
+      </div>
+    </div>`;
+  bpUpdate();
+  if(!S.bpCfg) loadBpCfg();
 }
 
 async function renderPicker(app){
