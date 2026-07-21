@@ -467,16 +467,25 @@
   /* ---------- חילוץ התיאור הקצר: פסקת שיווק + אחריות לקוביות (כמו fetch_product) ---------- */
   function extractShort() {
     var $raw = $('#gm-shortdesc-raw');
-    var market = '', warranty = '', note = '';
+    var market = '', warranty = '', note = '', giftImgs = [], giftText = '';
     if ($raw.length) {
       /* הערת מציאון: בלוק .gm-outlet-note. מחלצים ומסירים מה-DOM לפני זיהוי פסקת
          השיווק — אחרת ה-<strong>מציאון</strong> שבתוכה נתפס כפסקת השיווק ודורס אותה. */
       var $note = $raw.find('.gm-outlet-note').first();
       if ($note.length) { note = $note.text().trim(); $note.remove(); }
+      /* באנר מתנות (תג "מתנות ברכישה"): תמונות בתיאור הקצר שאינן באנר המשלוחים
+         או אייקון המותג — מוצגות מתחת לפסקת השיווק. בלעדיהן הבאדג' בקטלוג מבטיח
+         מתנה שהעמוד לא מראה. */
+      $raw.find('img').each(function () {
+        var src = $(this).attr('src') || '';
+        if (src && src.indexOf('Xnip2023') < 0 && src.indexOf('GREENMOBILE_PROFILE') < 0) giftImgs.push(src);
+      });
       /* פורמט התיאורים של גלי: פסקת השיווק היא <strong> בתוך div — לא <p> */
       $raw.find('strong').each(function () {
         var t = $(this).text().trim();
-        if (t && !market && !/^(אחריות|תשלומים|משלוח)/.test(t)) market = t;
+        if (!t) return;
+        if (/מתנ/.test(t) && !/^(אחריות|תשלומים|משלוח)/.test(t)) { if (!giftText) giftText = t; return; }
+        if (!market && !/^(אחריות|תשלומים|משלוח)/.test(t)) market = t;
       });
       $raw.find('p').each(function () {
         var txt = $(this).text().trim();
@@ -487,6 +496,17 @@
       });
     }
     if (market) $('#gmPshort').text(market); else $('#gmPshort').remove();
+    if (giftImgs.length || giftText) {
+      var $g = $('<div class="pgift"></div>');
+      if (giftText) {
+        $('<div class="pgift-t"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="18" height="18" aria-hidden="true"><rect x="3" y="8" width="18" height="4"/><path d="M5 12v8h14v-8"/><line x1="12" y1="8" x2="12" y2="20"/><path d="M12 8c-1.5-3.5-6-3.5-6-1s4.5 2.5 6 1zm0 0c1.5-3.5 6-3.5 6-1s-4.5 2.5-6 1z"/></svg><span></span></div>')
+          .find('span').text(giftText).end().appendTo($g);
+      }
+      giftImgs.forEach(function (src) {
+        $('<img loading="lazy" alt="מתנה ברכישה">').attr('src', src).appendTo($g);
+      });
+      $g.insertAfter($('#gmPshort').length ? $('#gmPshort') : $('.pricebox'));
+    }
     if (note) {
       var txt = note.replace(/^\s*מציאון\s*[–\-]\s*/, '');   /* התווית מגיעה מהעיצוב */
       $('<div class="pnote"><b>מציאון</b><span></span></div>')

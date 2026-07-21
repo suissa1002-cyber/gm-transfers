@@ -513,6 +513,13 @@ body.gm-product-new *{text-indent:0!important;}
        border-radius:8px;padding:10px 14px;margin:4px 0 14px;max-width:60ch;color:#7c2d12;
        font-size:.95rem;line-height:1.6;}
 .pnote b{font-weight:800;white-space:nowrap;}
+/* באנר/הערת מתנות — מוצג מתמונות/טקסט מודגש בתיאור הקצר (תג "מתנות ברכישה") */
+.pgift{margin:4px 0 14px;max-width:60ch;}
+.pgift img{display:block;width:100%;height:auto;border-radius:12px;border:1px solid var(--line);margin-top:8px;}
+.pgift img:first-child{margin-top:0;}
+.pgift-t{display:flex;gap:8px;align-items:center;background:var(--accent-soft);border-inline-start:4px solid var(--accent);
+         border-radius:8px;padding:10px 14px;color:var(--ink);font-size:.95rem;font-weight:700;line-height:1.5;}
+.pgift-t svg{flex:0 0 auto;color:var(--accent);}
 /* r3.1: ספציפיות גבוהה יותר מכללי ה-wvs לכפתורי הטקסט */
 .gm-atc ul.variable-items-wrapper li.variable-item.button-variable-item{padding:14px 30px!important;width:auto!important;height:auto!important;min-width:96px;}
 .gm-atc ul.variable-items-wrapper li.button-variable-item .variable-item-span{font-size:1.02rem!important;font-weight:800!important;}
