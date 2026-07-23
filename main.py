@@ -9010,6 +9010,40 @@ def admin_order_pay_link(oid: int, payments: int = 1,
             "total": o.get("total"), "pay_link": pp["link"], "pru": pp["pru"]}
 
 
+@app.post("/api/admin/orders/{oid}/mark-broadcast")
+def admin_order_mark_broadcast(oid: int, x_admin_key: Optional[str] = Header(None)):
+    """סימון 'שודר ידנית' — להזמנה שאסי שידר בעצמו מחוץ ל-GreenOS.
+
+    ⚠️ הפער שזה סוגר: הריפוי-העצמי (`_rescan_flagged`) משדר לבד כל הזמנה מדוגלת
+    (חסר-מלאי / ללא-מק"ט) שאין לה שורת-תוכנית או דגל שידור. הזמנה ששודרה ידנית
+    לא מייצרת אף אחד מהשניים — ולכן ברגע שהחסימה נפתרת (חובר מק"ט / הוחלף פריט)
+    היא משודרת שוב אוטומטית, והסניף מקבל בקשה כפולה. כאן מסמנים במפורש 'שודר',
+    ומנקים את דגלי החוסר/ללא-מק"ט שכבר לא רלוונטיים.
+    """
+    _require_admin(x_admin_key)
+    import requests as _rq
+    import auto_transfer
+    base, k, s = _wc_creds()
+    r = _rq.get(f"{base}/wp-json/wc/v3/orders/{oid}", auth=(k, s), timeout=45)
+    if not r.ok:
+        raise HTTPException(404, "הזמנה לא נמצאה")
+    o = r.json()
+    number = str(o.get("number") or oid)
+    db.sales_state_set(f"auto_tr_bcast:{number}", "1")
+    try:
+        auto_transfer._unmark_unmatched(number)
+        auto_transfer._unmark_oos(number)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("mark-broadcast: flag clear failed for %s: %s", number, e)
+    try:
+        _rq.post(f"{base}/wp-json/wc/v3/orders/{oid}/notes",
+                 json={"note": "סומן ב-GreenOS כ'שודר ידנית' — השידור האוטומטי לא ייגע בהזמנה.",
+                       "customer_note": False}, auth=(k, s), timeout=20)
+    except Exception:  # noqa: BLE001
+        pass
+    return {"ok": True, "order_id": oid, "number": number, "marked": True}
+
+
 @app.post("/api/admin/orders/{oid}/auto-transfer")
 def admin_order_auto_transfer(oid: int, force: int = 0,
                               x_admin_key: Optional[str] = Header(None)):
