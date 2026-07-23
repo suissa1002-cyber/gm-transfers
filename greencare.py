@@ -24,7 +24,10 @@ import db
 # ── כללי זמינות ברירת-מחדל (הכרעות אסי 09/07/2026; דריסה ידנית תמיד גוברת) ──
 # שלב השקה: רק קטגוריית סמארטפונים. הרחבה עתידית (שעונים/טאבלטים) — הוספת מילות מפתח.
 ALLOWED_CATEGORY_KEYWORDS = ["סמארטפון", "smartphone"]
-FOLDABLE_KEYWORDS = ["fold", "flip", "razr", "מתקפל"]          # מתקפלים — ללא שום חבילה
+FOLDABLE_KEYWORDS = ["fold", "flip", "razr", "מתקפל", "trifold", "magic v"]   # רשת-ביטחון בשם
+# ⚠️ מקור-האמת למתקפל = **הקטגוריה** "מכשירים מתקפלים", לא השם: "Honor Magic V6"
+# הוא מתקפל ששמו אינו מכיל אף מילת-מפתח — ולכן דלף והציע ביטוח (אסי, 21/07).
+FOLDABLE_CATEGORY_KEYWORDS = ["מתקפל"]
 IPHONE_KEYWORDS = ["iphone", "אייפון"]                          # אייפון — ללא חבילת בסיס
 GC_BASIC_PRICE_CAP = 2999                                        # מעל זה — ללא חבילת בסיס
 
@@ -47,9 +50,12 @@ def default_availability(name: str, price: float, categories) -> dict:
     if not any(_norm_he(k) in cats for k in ALLOWED_CATEGORY_KEYWORDS):
         return {"enabled": False, "tier_gc": False, "tier_gcp": False,
                 "reasons": ["מחוץ לקטגוריית מכשירים — כבוי בשלב ההשקה"]}
+    if any(_norm_he(k) in cats for k in FOLDABLE_CATEGORY_KEYWORDS):
+        return {"enabled": False, "tier_gc": False, "tier_gcp": False,
+                "reasons": ["קטגוריית מכשירים מתקפלים — ללא חבילות"]}
     if any(_norm_he(k) in nm for k in FOLDABLE_KEYWORDS):
         return {"enabled": False, "tier_gc": False, "tier_gcp": False,
-                "reasons": ["מכשיר מתקפל — ללא חבילות"]}
+                "reasons": ["מכשיר מתקפל (זוהה בשם) — ללא חבילות"]}
     reasons, gc_on = [], True
     if any(_norm_he(k) in nm for k in IPHONE_KEYWORDS):
         gc_on = False
