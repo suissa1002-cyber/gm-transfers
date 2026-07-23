@@ -1832,6 +1832,12 @@ def admin_live_stock(pid: str, serials: int = 0, fresh: int = 0,
         "branches": [{"id": b, "name": cfg.branch_name(b), "qty": stock.get(b, 0) or 0}
                      for b in cfg.BRANCHES],
     }
+    # ⚠️ ה-pid כאן הוא **מזהה הקופה** (=המק"ט), לא מזהה WooCommerce. לקופה אין מושג
+    # על מזהי WC, ולכן מזהה זר מחזיר אפס שורות — שנראה בדיוק כמו "אפס בכל הסניפים".
+    # בלי הדגל הזה קריאה עם ה-pid הלא-נכון נקראת בטעות כ"המוצר חסר במלאי".
+    if not stock:
+        out["unknown_product"] = True
+        out["note"] = "הקופה לא מכירה מזהה זה — ודא שזה מק\"ט (מזהה קופה) ולא מזהה WooCommerce"
     if serials:
         try:
             raw = no.get_product_serials(pid) or []
