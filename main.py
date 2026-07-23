@@ -1493,6 +1493,26 @@ _live_stock_cache: dict = {}
 # הטוקן המשותף (100/דקה). 90ש' מספיק טרי למענה ללקוח על "יש במלאי?".
 _LIVE_STOCK_TTL_SEC = 90
 
+# "האם הקופה מכירה את המזהה הזה בכלל" — תשובה יציבה (מוצר לא נעלם מהקופה),
+# ולכן נשמרת לתמיד בזיכרון התהליך. נשאל רק כשהמלאי אפס בכל הסניפים.
+_pos_known_cache: dict = {}
+
+
+def _pos_product_unknown(pid: str) -> bool:
+    """True אם הקופה לא מכירה את המזהה (למשל הועבר מזהה WooCommerce במקום מק"ט).
+    ⚠️ /stock מחזיר אפס-לכל-סניף גם למזהה שגוי, ולכן זו הבדיקה היחידה שמבדילה.
+    בספק (שגיאת API) מחזירים False — עדיף לא לצעוק 'מזהה שגוי' על תקלת רשת."""
+    key = str(pid)
+    if key in _pos_known_cache:
+        return _pos_known_cache[key]
+    try:
+        unknown = not poller.client().get_product(key)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("pos product probe failed for %s: %s", key, e)
+        return False
+    _pos_known_cache[key] = unknown
+    return unknown
+
 
 def _apply_dynamic(out: dict, pid: str) -> dict:
     """מזריק שכבת שריון/העברה (מ-DB שלנו) על תשובה — תמיד טרי, גם מ-cache.
@@ -1833,11 +1853,15 @@ def admin_live_stock(pid: str, serials: int = 0, fresh: int = 0,
                      for b in cfg.BRANCHES],
     }
     # ⚠️ ה-pid כאן הוא **מזהה הקופה** (=המק"ט), לא מזהה WooCommerce. לקופה אין מושג
-    # על מזהי WC, ולכן מזהה זר מחזיר אפס שורות — שנראה בדיוק כמו "אפס בכל הסניפים".
-    # בלי הדגל הזה קריאה עם ה-pid הלא-נכון נקראת בטעות כ"המוצר חסר במלאי".
-    if not stock:
-        out["unknown_product"] = True
-        out["note"] = "הקופה לא מכירה מזהה זה — ודא שזה מק\"ט (מזהה קופה) ולא מזהה WooCommerce"
+    # על מזהי WC, ומדובק: /stock מחזיר לשניהם בדיוק אותו דבר — שורה לכל סניף עם 0.
+    # כלומר "אפס בכל הסניפים" לא מבדיל בין מוצר שבאמת חסר לבין מזהה שגוי לגמרי
+    # (כך נקרא בטעות מוצר שהיה במלאי כ"חסר"). ההבדל היחיד: get_product מחזיר None
+    # למזהה לא-מוכר. קוראים לו **רק כשהכול אפס** (ומטמון) כדי לא לבזבז מכסה.
+    if not any((b["qty"] or 0) for b in out["branches"]):
+        out["unknown_product"] = _pos_product_unknown(pid)
+        if out["unknown_product"]:
+            out["note"] = ("הקופה לא מכירה מזהה זה — ודא שהעברת מק\"ט (מזהה קופה) "
+                           "ולא מזהה WooCommerce. זה **לא** אומר שהמוצר חסר במלאי.")
     if serials:
         try:
             raw = no.get_product_serials(pid) or []
