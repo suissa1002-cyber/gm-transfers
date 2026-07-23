@@ -398,6 +398,19 @@
   .ord-st{display:inline-block;padding:3px 11px;border-radius:999px;border:1px solid;font-size:12px;font-weight:700;white-space:nowrap}
   .wco-cards{display:none}
   @media (max-width:760px){ .wco-table{display:none} .wco-cards{display:block} }
+  /* בחירה מרובה בהזמנות: תיבות סימון עדינות + סרגל פעולה צף */
+  .wco-cb{width:34px;text-align:center;padding-inline:6px!important}
+  .wco-cb input,.wco-cbi{width:16px;height:16px;accent-color:#16a34a;cursor:pointer;vertical-align:-2px;margin:0}
+  .ls-row.sel{background:rgba(34,197,94,.09)}
+  .ls-row.sel td:first-child{box-shadow:inset 3px 0 0 #16a34a}
+  .ls-card.sel{border-color:#16a34a;background:rgba(34,197,94,.06)}
+  /* לא חוסם את שורות הרשימה: צף מעל, ומרווח תחתון נוסף כדי שהשורה האחרונה תישאר נגישה */
+  .wco-bulk{position:fixed;inset-inline:0;bottom:18px;display:flex;justify-content:center;
+            z-index:70;pointer-events:none;padding-inline:12px}
+  .wco-bulk-in{pointer-events:auto;display:inline-flex;align-items:center;gap:10px;flex-wrap:wrap;
+               background:var(--card);border:1px solid var(--line);border-radius:14px;
+               box-shadow:0 12px 40px rgba(0,0,0,.28);padding:10px 14px;max-width:100%}
+  body:has(.wco-bulk) .wco-cards,body:has(.wco-bulk) .wco-table{padding-bottom:76px}
   /* reply בלחיצה ארוכה: במובייל מנטרלים את תפריט המגע של הדפדפן על הבועות */
   @media (pointer:coarse){ .wa-b{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none} }
   .wa-replybar{display:flex;align-items:center;gap:8px;max-width:920px;width:100%;margin-inline:auto;
@@ -4649,6 +4662,7 @@ const _IPATHS={
   tag:'<path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/>',
   pencil:'<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
   check:'<polyline points="20 6 9 17 4 12"/>',
+  checkSquare:'<polyline points="9 11 12 14 20 6"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/>',
   sliders:'<line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>',
   mail:'<rect x="2" y="4" width="20" height="16" rx="2"/><polyline points="22,6 12,13 2,6"/>',
   download:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
@@ -6705,6 +6719,7 @@ function renderWcOrders(){
              oninput="clearTimeout(S._wcoT);S._wcoT=setTimeout(()=>{S.wco.q=this.value;S.wco.page=1;loadWcOrders()},450)" onkeydown="if(event.key==='Enter'){S.wco.q=this.value;S.wco.page=1;loadWcOrders()}">
       <button class="btn-ghost wa-ico" onclick="wcoCalToggle()" title="סינון לפי טווח תאריכים" style="position:relative${(W.after||W.before)?';border-color:#16a34a;color:#16a34a':''}">${ico('calendar',15)}</button>
       <button class="btn-ghost wa-ico" onclick="payLinksOpen()" title="תשלומים מהירים — קישורים ידניים">${ico('zap',15)}</button>
+      <button class="btn-ghost wa-ico" onclick="wcoSelMode()" title="בחירה מרובה — שינוי סטטוס לכמה הזמנות יחד"${W.selMode?' style="border-color:#16a34a;color:#16a34a"':''}>${ico('checkSquare',15)}</button>
       <button class="btn-ghost wa-ico" id="wcoRefreshBtn" onclick="loadWcOrders()" title="רענן">${ico('refresh',15)}</button>
     </div>
     ${(W.after||W.before)?`<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:13px">
@@ -6773,6 +6788,7 @@ function wcoCalPick(ds){
 }
 async function loadWcOrders(){
   const W=S.wco; W.loading=true;
+  W.sel={}; W.selLast=null;   // רשימה חדשה (עמוד/סינון/רענון) = בחירה מתאפסת, לא נגררת
   const box=document.getElementById('wcoList');
   if(box&&W.rows===null) box.innerHTML='<div class="empty">טוען הזמנות…</div>';
   const rb=document.getElementById('wcoRefreshBtn');   // חיווי: הכפתור מסתובב בזמן טעינה
@@ -6802,8 +6818,14 @@ function wcoListHTML(){
   const W=S.wco;
   if(!(W.rows||[]).length) return '<div class="empty">אין הזמנות תואמות</div>';
   const fmtD=d=>{ const x=new Date(d); return isNaN(x)?'':x.toLocaleDateString('he-IL')+' '+x.toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'}); };
-  const rows=W.rows.map(o=>`
-    <tr class="ls-row" onclick="openWcOrder(${o.id})"${o.status==='trash'?' style="opacity:.5;filter:grayscale(1)" title="הזמנה בפח"':''}>
+  // ── בחירה מרובה: בתוך המצב, קליק על שורה מסמן ולא פותח (אחרת אי אפשר לסמן) ──
+  const sel=W.sel||(W.sel={});
+  const SM=!!W.selMode;
+  const box=(o,i)=>SM?`<td class="wco-cb" onclick="event.stopPropagation();wcoSelRow(${o.id},${i},event)"><input type="checkbox" ${sel[o.id]?'checked':''} onclick="event.stopPropagation();wcoSelRow(${o.id},${i},event)"></td>`:'';
+  const rowClick=(o,i)=>SM?`wcoSelRow(${o.id},${i},event)`:`openWcOrder(${o.id})`;
+  const rows=W.rows.map((o,i)=>`
+    <tr class="ls-row${SM&&sel[o.id]?' sel':''}" onclick="${rowClick(o,i)}"${o.status==='trash'?' style="opacity:.5;filter:grayscale(1)" title="הזמנה בפח"':''}>
+      ${box(o,i)}
       <td><b>#${o.number}</b>${o.greenos?' <span title="נוצרה ב-GreenOS" style="color:#16a34a">●</span>':''}</td>
       <td class="muted" style="font-size:12px;white-space:nowrap">${fmtD(o.date)}${o.ship_tag?`<div style="font-size:10.5px;margin-top:2px">${shipTagHTML(o.ship_tag,11)}</div>`:''}</td>
       <td><b>${escW(o.name||'—')}</b><div class="muted" style="font-size:11.5px;direction:ltr;text-align:end">${escW(o.phone||'')}</div></td>
@@ -6814,10 +6836,10 @@ function wcoListHTML(){
       <td><div style="display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap">${ordTag(o.status)}${impDeliveryTag(o.importer_delivery)}${cargoStTag(o.cargo_status)}${ordFlagIcons(o,16)}</div></td>
 
     </tr>`).join('');
-  const cards=W.rows.map(o=>`
-    <div class="ls-card" onclick="openWcOrder(${o.id})"${o.status==='trash'?' style="opacity:.5;filter:grayscale(1)"':''}>
+  const cards=W.rows.map((o,i)=>`
+    <div class="ls-card${SM&&sel[o.id]?' sel':''}" onclick="${rowClick(o,i)}"${o.status==='trash'?' style="opacity:.5;filter:grayscale(1)"':''}>
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-        <b>#${o.number} · ${escW(o.name||'—')}</b><div style="display:inline-flex;align-items:center;gap:6px;flex:none;flex-wrap:wrap;justify-content:flex-end">${impDeliveryTag(o.importer_delivery)}${cargoStTag(o.cargo_status)}${ordFlagIcons(o,15)}${ordTag(o.status)}</div>
+        <b>${SM?`<input type="checkbox" class="wco-cbi" ${sel[o.id]?'checked':''} onclick="event.stopPropagation();wcoSelRow(${o.id},${i},event)"> `:''}#${o.number} · ${escW(o.name||'—')}</b><div style="display:inline-flex;align-items:center;gap:6px;flex:none;flex-wrap:wrap;justify-content:flex-end">${impDeliveryTag(o.importer_delivery)}${cargoStTag(o.cargo_status)}${ordFlagIcons(o,15)}${ordTag(o.status)}</div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;margin-top:4px">${orderThumbs(o)}<div class="muted" style="font-size:12px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.35">${escW(o.items||'')}${o.items_n>1?` <b>(${o.items_n})</b>`:''}</div></div>
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:5px;font-size:13px">
@@ -6830,10 +6852,78 @@ function wcoListHTML(){
     <span class="muted" style="font-size:13px">עמוד ${W.page} מתוך ${W.pages} · ${W.total} הזמנות</span>
     <button class="btn-ghost" ${W.page<=1?'disabled':''} onclick="S.wco.page--;loadWcOrders()">→ הקודם</button>
   </div>`:'';
+  const nSel=Object.keys(sel).length;
+  const allOn=W.rows.length&&W.rows.every(o=>sel[o.id]);
+  const headCb=SM?`<th class="wco-cb"><input type="checkbox" ${allOn?'checked':''}
+      title="${allOn?'נקה בחירה':'בחר את כל ההזמנות בעמוד'}" onclick="wcoSelAll(this.checked)"></th>`:'';
   return `<div class="wco-table"><table class="serials" style="width:100%"><thead>
-    <tr><th>#</th><th>תאריך</th><th>לקוח</th><th>פריטים</th><th>סה״כ</th><th>סטטוס</th></tr>
+    <tr>${headCb}<th>#</th><th>תאריך</th><th>לקוח</th><th>פריטים</th><th>סה״כ</th><th>סטטוס</th></tr>
     </thead><tbody>${rows}</tbody></table></div>
-    <div class="wco-cards">${cards}</div>${pager}`;
+    <div class="wco-cards">${cards}</div>${pager}${SM?wcoBulkBarHTML(nSel):''}`;
+}
+// ── סרגל פעולה צף: מופיע רק כשיש בחירה, ולא מסתיר את הרשימה ──
+function wcoBulkBarHTML(n){
+  const W=S.wco;
+  const keys=Object.keys(S.wcoStatuses||{});
+  const opts=(keys.length?keys:['pending','processing','on-hold','completed','cancelled','refunded','failed'])
+    .filter(s=>s!=='trash')
+    .map(s=>`<option value="${s}" ${W.bulkSt===s?'selected':''}>${escW(ordStName(s))}</option>`).join('');
+  return `<div class="wco-bulk">
+    <div class="wco-bulk-in">
+      <span style="display:inline-flex;align-items:center;gap:7px;font-size:13.5px;white-space:nowrap">
+        ${ico('checkSquare',15)} <b>${n}</b> ${n===1?'הזמנה נבחרה':'הזמנות נבחרו'}</span>
+      <span style="width:1px;height:22px;background:var(--line);flex:none"></span>
+      <select id="wcoBulkSt" onchange="S.wco.bulkSt=this.value"
+        style="min-width:150px;padding:8px 11px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:13px">${opts}</select>
+      <button class="btn-primary" style="padding:8px 16px;border-radius:10px;white-space:nowrap"
+        ${n?'':'disabled'} onclick="wcoBulkStatus()">עדכן סטטוס</button>
+      <button class="btn-ghost" style="padding:8px 12px;border-radius:10px;white-space:nowrap" onclick="wcoSelMode()">בטל</button>
+    </div>
+  </div>`;
+}
+// ── מצב בחירה ──
+function wcoSelMode(){
+  const W=S.wco||(S.wco={});
+  W.selMode=!W.selMode; W.sel={}; W.selLast=null;
+  renderWcOrders();
+}
+function wcoSelRow(id, idx, ev){
+  const W=S.wco; const sel=W.sel||(W.sel={});
+  // Shift+קליק = טווח מהשורה הקודמת שנלחצה (כמו בכל מנהל קבצים) — חוסך 20 קליקים
+  if(ev&&ev.shiftKey&&W.selLast!=null&&W.rows){
+    const [a,b]=[Math.min(W.selLast,idx),Math.max(W.selLast,idx)];
+    const on=!sel[id];
+    for(let i=a;i<=b;i++){ const r=W.rows[i]; if(!r) continue; if(on) sel[r.id]=1; else delete sel[r.id]; }
+  } else {
+    if(sel[id]) delete sel[id]; else sel[id]=1;
+  }
+  W.selLast=idx;
+  const box=document.getElementById('wcoList'); if(box) box.innerHTML=wcoListHTML();
+}
+function wcoSelAll(on){
+  const W=S.wco; W.sel={};
+  if(on) (W.rows||[]).forEach(o=>{ W.sel[o.id]=1; });
+  const box=document.getElementById('wcoList'); if(box) box.innerHTML=wcoListHTML();
+}
+async function wcoBulkStatus(){
+  const W=S.wco;
+  const ids=Object.keys(W.sel||{}).map(Number);
+  const st=(document.getElementById('wcoBulkSt')||{}).value||W.bulkSt;
+  if(!ids.length||!st) return;
+  // פעולה קבוצתית = בלתי-הפיכה בקליק אחד (ומעירה התראה ללקוח בכל הזמנה) → אישור מפורש
+  if(!confirm(`לעדכן ${ids.length} הזמנות לסטטוס "${ordStName(st)}"?\nהלקוחות יקבלו התראה על השינוי.`)) return;
+  showLoading(`מעדכן ${ids.length} הזמנות…`);
+  let r=null;
+  try{
+    r=await api('/api/admin/orders/bulk-status',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ids,status:st})},Math.max(60000,ids.length*3000));
+  }catch(e){ toast('עדכון קבוצתי נכשל',false); }
+  hideLoading();
+  if(!r) return;
+  const bad=(r.failed||[]).length;
+  toast(bad?`עודכנו ${r.updated} · נכשלו ${bad}`:`${r.updated} הזמנות עודכנו ✓`, !bad);
+  W.sel={}; W.selMode=false; W.selLast=null;
+  renderWcOrders(); loadWcOrders();
 }
 async function payLinksOpen(q){
   showLoading('טוען תשלומים מהירים…');

@@ -9136,6 +9136,48 @@ def admin_order_status(oid: int, body: OrderStatusIn, x_admin_key: Optional[str]
     return {"ok": True, "status": o.get("status")}
 
 
+class BulkStatusIn(BaseModel):
+    ids: list[int]
+    status: str
+
+
+@app.post("/api/admin/orders/bulk-status")
+def admin_orders_bulk_status(body: BulkStatusIn, x_admin_key: Optional[str] = Header(None)):
+    """שינוי סטטוס לקבוצת הזמנות (בחירה מרובה במסך ההזמנות).
+
+    מאמת את הסטטוס **פעם אחת** ואז רץ הזמנה-הזמנה — כשל בהזמנה אחת לא מפיל
+    את השאר, ומוחזר דיווח מלא כדי שהמסך יראה בדיוק מה עבר ומה לא.
+    ההתראה ללקוח נשלחת פר-הזמנה בדיוק כמו בעדכון בודד (אותו `_notify_order_status`).
+    """
+    _require_admin(x_admin_key)
+    import requests as _rq
+    ids = list(dict.fromkeys(int(i) for i in (body.ids or [])))   # ייחודי, בסדר המקורי
+    if not ids:
+        raise HTTPException(400, "לא נבחרו הזמנות")
+    if len(ids) > 100:
+        raise HTTPException(400, "עד 100 הזמנות בפעולה אחת")
+    st = _normalize_status(body.status)
+    base, k, s = _wc_creds()
+    ok, failed = [], []
+    for oid in ids:
+        try:
+            r = _rq.put(f"{base}/wp-json/wc/v3/orders/{oid}", json={"status": st},
+                        auth=(k, s), timeout=45)
+            if not r.ok:
+                failed.append({"id": oid, "error": f"{r.status_code}: {r.text[:120]}"})
+                continue
+            ok.append(oid)
+            try:
+                _notify_order_status(r.json(), force=True)
+            except Exception as e:  # noqa: BLE001
+                logger.warning("bulk status-notify failed for %s: %s", oid, e)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("bulk status failed for %s: %s", oid, e)
+            failed.append({"id": oid, "error": str(e)[:120]})
+    return {"ok": True, "status": st, "updated": len(ok), "failed": failed,
+            "ids": ok}
+
+
 def _normalize_status(st: str) -> str:
     """מאמת סטטוס מול רשימת הסטטוסים האמיתית של האתר (כולל מותאמים)."""
     base, k, s = _wc_creds()
