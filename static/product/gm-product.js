@@ -142,7 +142,11 @@
       var out = [];
       (d.tags || []).forEach(function (t) {
         if (GM_TAG_BADGES[t.id]) out.push(GM_TAG_BADGES[t.id]);
-        if (t.id === 3513) { GM_PRE.isPre = true; applyPreorder(); }   /* מכירה מוקדמת */
+        if (t.id === 3513) {                                           /* מכירה מוקדמת */
+          window.GM_PRE = window.GM_PRE || { isPre: false, date: '' };
+          window.GM_PRE.isPre = true;
+          if (window.gmApplyPreorder) window.gmApplyPreorder();
+        }
       });
       if (GM_IMPORTER_IDS.indexOf(d.id) !== -1) out.push(['importer', 'יבואן רשמי']);
       $main.find('.gm-pdp-badges').remove();
@@ -471,8 +475,10 @@
   /* ---------- חילוץ התיאור הקצר: פסקת שיווק + אחריות לקוביות (כמו fetch_product) ---------- */
   /* רוחב מינימלי לבאנר מתנה — מפריד בין באנר אמיתי (700+) לאייקוני קישוט (72) */
   var GIFT_MIN_W = 400;
-  /* מכירה מוקדמת: נקבע מתגית 3513 ו/או משורת "אספקה החל מ-…" בתיאור הקצר */
-  var GM_PRE = { isPre: false, date: '' };
+  /* מכירה מוקדמת: נקבע מתגית 3513 ו/או משורת "אספקה החל מ-…" בתיאור הקצר.
+     ⚠️ משותף בין ה-IIFE הזה לבין gmRenderBadges שב-IIFE אחר — לכן על window
+     ולא משתנה מקומי (אחרת ReferenceError שנבלע ב-try/catch של הבאדג'ים). */
+  var GM_PRE = window.GM_PRE = window.GM_PRE || { isPre: false, date: '' };
   /* במוצר במכירה מוקדמת "במלאי · מוכן למשלוח" הוא הבטחה שגויה — המוצר עוד לא
      יצא. מחליפים בשורת מכירה מוקדמת עם תאריך האספקה שפורסם. */
   function applyPreorder() {
@@ -487,6 +493,7 @@
     $i.removeClass('oos').addClass('gm-pre')
       .html(ico + 'מכירה מוקדמת · ' + (GM_PRE.date ? 'אספקה מ-' + GM_PRE.date : 'אספקה בהמשך'));
   }
+  window.gmApplyPreorder = applyPreorder;   /* נקרא גם מ-gmRenderBadges (IIFE אחר) */
   function extractShort() {
     var $raw = $('#gm-shortdesc-raw');
     var market = '', warranty = '', note = '', giftImgs = [], giftText = '', notes = [];
@@ -535,6 +542,9 @@
          וחסין-לעתיד: מסירים את מה שכבר טופל, וכל מה שנשאר — מוצג. */
       if ($marketEl) $marketEl.remove();
       if ($giftEl) $giftEl.remove();
+      /* ⚠️ noscript חובה: LiteSpeed מזריק בו עותק של ה-<img> כ*טקסט*, ובלעדיו
+         תגית ה-HTML הגולמית של באנר המשלוחים נקראת כשורת מידע. */
+      $raw.find('img,noscript,style,script').remove();
       $raw.find('p,div').each(function () {
         var t = $(this).text().trim();
         /* שורת שירות = מתחילה בתווית ואינה עוטפת בלוקים אחרים (עד ~250 תווים) */
@@ -544,6 +554,7 @@
         .split('\n').forEach(function (line) {
           var t = line.replace(/[ \t ]+/g, ' ').trim();
           if (t.length < 8 || notes.indexOf(t) > -1) return;
+          if (/<[a-z!\/]/i.test(t)) return;              /* שריד תגיות — לא תוכן */
           notes.push(t);
         });
       var dm = (notes.join(' ') + ' ' + market).match(/אספקה[^\d]{0,14}(\d{1,2}[.\/]\d{1,2}[.\/]\d{2,4})/);
