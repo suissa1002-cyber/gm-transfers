@@ -140,7 +140,10 @@
     try {
       var $main = $('.gm-pdp-wrap .gmain'); if (!$main.length || !d) return;
       var out = [];
-      (d.tags || []).forEach(function (t) { if (GM_TAG_BADGES[t.id]) out.push(GM_TAG_BADGES[t.id]); });
+      (d.tags || []).forEach(function (t) {
+        if (GM_TAG_BADGES[t.id]) out.push(GM_TAG_BADGES[t.id]);
+        if (t.id === 3513) { GM_PRE.isPre = true; applyPreorder(); }   /* מכירה מוקדמת */
+      });
       if (GM_IMPORTER_IDS.indexOf(d.id) !== -1) out.push(['importer', 'יבואן רשמי']);
       $main.find('.gm-pdp-badges').remove();
       if (!out.length) return;
@@ -346,7 +349,8 @@
     if (key in M.avail) {
       var ok = M.avail[key] !== 'out';
       var $ins = $('.instk');
-      if (ok) $ins.removeClass('oos').html('✓ במלאי · מוכן למשלוח');
+      if ($ins.hasClass('gm-pre')) { /* מכירה מוקדמת — לא נדרסת ע"י מצב המלאי */ }
+      else if (ok) $ins.removeClass('oos').html('✓ במלאי · מוכן למשלוח');
       else $ins.addClass('oos').html('אזל מהמלאי · זמין בהזמנה מהספק');
     }
   }
@@ -467,9 +471,26 @@
   /* ---------- חילוץ התיאור הקצר: פסקת שיווק + אחריות לקוביות (כמו fetch_product) ---------- */
   /* רוחב מינימלי לבאנר מתנה — מפריד בין באנר אמיתי (700+) לאייקוני קישוט (72) */
   var GIFT_MIN_W = 400;
+  /* מכירה מוקדמת: נקבע מתגית 3513 ו/או משורת "אספקה החל מ-…" בתיאור הקצר */
+  var GM_PRE = { isPre: false, date: '' };
+  /* במוצר במכירה מוקדמת "במלאי · מוכן למשלוח" הוא הבטחה שגויה — המוצר עוד לא
+     יצא. מחליפים בשורת מכירה מוקדמת עם תאריך האספקה שפורסם. */
+  function applyPreorder() {
+    if (!GM_PRE.isPre && !GM_PRE.date) return;
+    var $i = $('.instk');
+    if (!$i.length) return;
+    var ico = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" ' +
+      'stroke-linecap="round" stroke-linejoin="round" width="15" height="15" aria-hidden="true" ' +
+      'style="vertical-align:-2px;margin-inline-end:6px"><rect x="3" y="5" width="18" height="16" rx="2"/>' +
+      '<line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="3" x2="8" y2="7"/>' +
+      '<line x1="16" y1="3" x2="16" y2="7"/></svg>';
+    $i.removeClass('oos').addClass('gm-pre')
+      .html(ico + 'מכירה מוקדמת · ' + (GM_PRE.date ? 'אספקה מ-' + GM_PRE.date : 'אספקה בהמשך'));
+  }
   function extractShort() {
     var $raw = $('#gm-shortdesc-raw');
-    var market = '', warranty = '', note = '', giftImgs = [], giftText = '';
+    var market = '', warranty = '', note = '', giftImgs = [], giftText = '', notes = [];
+    var $marketEl = null, $giftEl = null;
     if ($raw.length) {
       /* הערת מציאון: בלוק .gm-outlet-note. מחלצים ומסירים מה-DOM לפני זיהוי פסקת
          השיווק — אחרת ה-<strong>מציאון</strong> שבתוכה נתפס כפסקת השיווק ודורס אותה. */
@@ -493,19 +514,55 @@
       /* פורמט התיאורים של גלי: פסקת השיווק היא <strong> בתוך div — לא <p> */
       $raw.find('strong').each(function () {
         var t = $(this).text().trim();
-        if (!t) return;
-        if (/מתנ/.test(t) && !/^(אחריות|תשלומים|משלוח)/.test(t)) { if (!giftText) giftText = t; return; }
-        if (!market && !/^(אחריות|תשלומים|משלוח)/.test(t)) market = t;
+        if (!t || /^(אחריות|תשלומים|משלוח)/.test(t)) return;
+        if (!market) { market = t; $marketEl = $(this); return; }
+        /* שורת מתנה מודגשת — נתפסת רק *אחרי* פסקת השיווק. אחרת פסקה שמזכירה
+           "מתנה" (כמו ב-GTA 6) הייתה נגנבת לקוביית המתנה והתיאור נעלם. */
+        if (!giftText && /מתנ/.test(t) && this !== $marketEl[0] && !$.contains($marketEl[0], this)) {
+          giftText = t; $giftEl = $(this);
+        }
       });
       $raw.find('p').each(function () {
         var txt = $(this).text().trim();
         if (!txt || $(this).find('img').length) return;
         if (/^אחריות|אחריות:/.test(txt)) { warranty = (txt.split(':')[1] || txt).trim(); }
         else if (/משלוח מהיר|אקספרס|^משלוח חינם/.test(txt)) { /* שורות שירות — לקוביות בלבד */ }
-        else if (!market && txt.indexOf('תשלומים') < 0) market = txt;
+        else if (!market && txt.indexOf('תשלומים') < 0) { market = txt; $marketEl = $(this); }
       });
+      /* ── שורות מידע נוספות: מכירה מוקדמת, תאריך אספקה, "קוד להורדה בלבד" ──
+         עד כה נמשכו רק אלמנטים מוכרים (<strong> ו-<p>), וכל טקסט חופשי מופרד
+         ב-<br> נזרק בשקט — כולל גילויים מחייבים ללקוח. ההיגיון כאן הפוך
+         וחסין-לעתיד: מסירים את מה שכבר טופל, וכל מה שנשאר — מוצג. */
+      if ($marketEl) $marketEl.remove();
+      if ($giftEl) $giftEl.remove();
+      $raw.find('p,div').each(function () {
+        var t = $(this).text().trim();
+        /* שורת שירות = מתחילה בתווית ואינה עוטפת בלוקים אחרים (עד ~250 תווים) */
+        if (t.length < 250 && /^(אחריות|תשלומים|משלוח|שירות ושילוח)/.test(t)) $(this).remove();
+      });
+      ($('<div>').html(($raw.html() || '').replace(/<br\s*\/?>/gi, '\n')).text() || '')
+        .split('\n').forEach(function (line) {
+          var t = line.replace(/[ \t ]+/g, ' ').trim();
+          if (t.length < 8 || notes.indexOf(t) > -1) return;
+          notes.push(t);
+        });
+      var dm = (notes.join(' ') + ' ' + market).match(/אספקה[^\d]{0,14}(\d{1,2}[.\/]\d{1,2}[.\/]\d{2,4})/);
+      if (dm) GM_PRE.date = dm[1];
     }
     if (market) $('#gmPshort').text(market); else $('#gmPshort').remove();
+    var $anchor = $('#gmPshort').length ? $('#gmPshort') : $('.pricebox');
+    if (notes.length) {
+      var $n = $('<div class="pinfo"></div>');
+      notes.forEach(function (t) {
+        /* אמוג'י מגיעים מהתוכן שהעלו — בממשק שלנו הסימון הוא SVG (מדריך המותג) */
+        var clean = t.replace(/^(?:[\uD800-\uDBFF][\uDC00-\uDFFF]|[←-⯿️‍])+\s*/, '').trim();
+        if (!clean) return;
+        $('<div class="pinfo-r"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15" aria-hidden="true"><circle cx="12" cy="12" r="9"/><line x1="12" y1="11" x2="12" y2="16.5"/><line x1="12" y1="7.6" x2="12" y2="7.7"/></svg><span></span></div>')
+          .find('span').text(clean).end().appendTo($n);
+      });
+      if ($n.children().length) { $n.insertAfter($anchor); $anchor = $n; }
+    }
+    applyPreorder();
     if (giftImgs.length || giftText) {
       var $g = $('<div class="pgift"></div>');
       if (giftText) {
@@ -522,7 +579,7 @@
           .on('error', function () { $(this).remove(); if (!$g.children().length) $g.remove(); })
           .appendTo($g);
       });
-      $g.insertAfter($('#gmPshort').length ? $('#gmPshort') : $('.pricebox'));
+      $g.insertAfter($anchor);
     }
     if (note) {
       var txt = note.replace(/^\s*מציאון\s*[–\-]\s*/, '');   /* התווית מגיעה מהעיצוב */
