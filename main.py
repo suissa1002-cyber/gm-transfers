@@ -9246,14 +9246,23 @@ def zap_selftest(x_admin_key: Optional[str] = Header(None)):
         ("טלפון סלולרי OPPO Find X9 Ultra 512GB 12GB RAM",
          "טלפון סלולרי OPPO Find X9 Ultra 512GB 16GB RAM אופו", False),
     ]
+    acc = [("סמארטפון Xiaomi Redmi A7 Pro 128GB מסך 6.9″ 120Hz וסוללה 6000mAh", False),
+           ("סוללה חלופית ל-iPhone 15", True),
+           ("כיסוי סיליקון ל-Galaxy S26", True)]
     out, bad = [], 0
+    for nm, want_acc in acc:
+        got = zap_scan._is_accessory(nm)
+        if got != want_acc:
+            bad += 1
+        out.append({"query": "accessory? " + nm[:40], "want": want_acc,
+                    "got": got, "ok": got == want_acc})
     for ours, zap, want in cases:
         q = zap_scan._clean_query(ours)
         got = zap_scan._match_ok(q, zap)
         if got != want:
             bad += 1
         out.append({"query": q, "want": want, "got": got, "ok": got == want})
-    return {"ok": bad == 0, "passed": len(cases) - bad, "total": len(cases),
+    return {"ok": bad == 0, "passed": len(out) - bad, "total": len(out),
             "has_feed_skus": hasattr(zap_scan, "_feed_skus"), "cases": out}
 
 

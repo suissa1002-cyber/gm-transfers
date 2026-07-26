@@ -297,6 +297,22 @@ def _model_title(mid: int) -> str:
     return re.sub(r"\s+", " ", m.group(1)).strip() if m else ""
 
 
+PHONE_LEAD = ("סמארטפון", "טלפון סלולרי", "טלפון חכם", "smartphone", "phone",
+              "טלפון", "מכשיר סלולרי")
+
+
+def _is_accessory(name: str) -> bool:
+    """⚠️ המסנן נועד לקטלוג הקופה, שבו אביזרים יושבים בקטגוריית טלפונים.
+    מול הפיד הוא הזיק: שמות שיווקיים מתארים תכונות ("וסוללה 6000mAh",
+    "סוללה עוצמתית"), והמילה "סוללה" פסלה את שתי עמדות המלאי הגדולות שלנו —
+    Redmi A7 Pro (92 יח׳) ו-Galaxy A07 (41 יח׳) — ששתיהן קיימות בזאפ
+    (אסי, 27/07/2026). שם שנפתח ב"סמארטפון"/"טלפון סלולרי" הוא טלפון, נקודה."""
+    low = (name or "").strip().lower()
+    if any(low.startswith(p) for p in PHONE_LEAD):
+        return False
+    return any(a in low for a in ACCESSORY)
+
+
 def resolve_modelid(name: str, sku: str) -> int | None:
     """modelid של הדגם בזאפ, **מאומת מול שם המוצר**. נשמר לצמיתות.
     '0' = חיפשנו ולא נמצאה התאמה תקפה, כדי לא לחפש שוב כל יום.
@@ -311,7 +327,7 @@ def resolve_modelid(name: str, sku: str) -> int | None:
     cached = db.sales_state_get(key)
     if cached:                            # '' = אופס ידנית → מחשבים מחדש
         return int(cached) or None
-    if any(a in (name or "").lower() for a in ACCESSORY):
+    if _is_accessory(name):
         db.sales_state_set(key, "0")      # אביזר שסווג בטעות כטלפון בקופה
         return None
     q = _clean_query(name)
