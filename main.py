@@ -9249,7 +9249,20 @@ def zap_selftest(x_admin_key: Optional[str] = Header(None)):
     acc = [("סמארטפון Xiaomi Redmi A7 Pro 128GB מסך 6.9″ 120Hz וסוללה 6000mAh", False),
            ("סוללה חלופית ל-iPhone 15", True),
            ("כיסוי סיליקון ל-Galaxy S26", True)]
+    # ניקוי שאילתה — הצד שנושא את המותג הוא הצד עם הדגם
+    qs = [("סמארטפון מתקפל Google Pixel 10 Pro Fold 256GB אפור מונסטון - מציאון",
+           "Google Pixel 10 Pro Fold 256GB"),
+          ("סמארטפון עם מסך Super AMOLED, מצלמה מתקדמת, סוללה עוצמתית וביצועים חכמים - Samsung Galaxy A07",
+           "Samsung Galaxy A07"),
+          ("סמארטפון Xiaomi Redmi A7 Pro 128GB מסך 6.9″ 120Hz וסוללה 6000mAh",
+           "Xiaomi Redmi A7 Pro 128GB")]
     out, bad = [], 0
+    for nm, want_q in qs:
+        got_q = zap_scan._clean_query(nm)
+        if got_q != want_q:
+            bad += 1
+        out.append({"query": "clean: " + got_q, "want": want_q, "got": got_q,
+                    "ok": got_q == want_q})
     for nm, want_acc in acc:
         got = zap_scan._is_accessory(nm)
         if got != want_acc:
