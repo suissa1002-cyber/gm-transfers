@@ -45,6 +45,15 @@ def _cap_slug(text: str) -> str | None:
     return m.group(1).lower() if m else None
 
 
+def _cap_from_text(text: str) -> str | None:
+    """נפח מתוך שם חופשי — גיבוי כשאין אטריביוטים על הווריאציה."""
+    m = re.search(r"(\d+)\s*(TB|GB)\b", text or "", re.I)
+    if not m:
+        return None
+    gb = int(m.group(1)) * (1024 if m.group(2).upper() == "TB" else 1)
+    return f"{gb:05d}gb"
+
+
 def _cap_from_attrs(attrs: list) -> str | None:
     """הנפח של הווריאציה, מנורמל לסלאג של זאפ: 512GB → 00512gb, 1TB → 01024gb."""
     for a in attrs or []:
@@ -61,11 +70,14 @@ def find_by_sku(sku: str) -> dict | None:
     base, auth = _wc()
     r = requests.get(f"{base}/wp-json/wc/v3/products", auth=auth, timeout=45,
                      params={"sku": sku, "per_page": 10,
-                             "_fields": "id,name,type,price,regular_price,parent_id"})
+                             "_fields": "id,name,type,price,regular_price,parent_id,attributes"})
     for p in (r.json() if r.ok else []):
-        if str(p.get("id")):
-            return {"kind": "product", "id": p["id"], "parent": p.get("parent_id") or p["id"],
-                    "name": p.get("name"), "price": p.get("price")}
+        # ⚠️ WC מחזיר כאן גם וריאציות. בלי לחלץ מהן נפח, סנכרון הצל היה מיישר
+        # את הצל של 1TB למחיר של 512GB (קרה בפועל, 26/07/2026). לכן תמיד cap.
+        cap = _cap_from_attrs(p.get("attributes")) or _cap_from_text(p.get("name"))
+        return {"kind": "variation" if p.get("parent_id") else "product",
+                "id": p["id"], "parent": p.get("parent_id") or p["id"],
+                "name": p.get("name"), "price": p.get("price"), "cap": cap}
     # מק"ט של וריאציה אינו נתפס בחיפוש המוצרים — עוברים על ההורים המשתנים
     page = 1
     while page <= 8:
@@ -128,8 +140,14 @@ def set_price(sku: str, price: float, sync_shadow: bool = True) -> dict:
     synced, skipped = [], []
     if sync_shadow:
         for sh in shadows_for(tgt["parent"]):
-            # מסנכרנים רק את הצל של אותו נפח; צל של נפח אחר אינו קשור לשינוי
-            if tgt.get("cap") and sh.get("cap") and sh["cap"] != tgt["cap"]:
+            # ⛔ בלי התאמת נפח ודאית לא נוגעים בצל. שקט-והמשך היה מיישר את הצל
+            # של 1TB למחיר של 512GB (קרה בפועל 26/07/2026) — עדיף לא לסנכרן
+            # ולדווח, מאשר לדרוס מחיר של דגם אחר.
+            if not tgt.get("cap") or not sh.get("cap"):
+                skipped.append({"id": sh["id"], "name": sh["name"],
+                                "reason": "נפח לא ודאי — לא סונכרן מחשש לדריסה"})
+                continue
+            if sh["cap"] != tgt["cap"]:
                 skipped.append({"id": sh["id"], "name": sh["name"], "reason": "נפח אחר"})
                 continue
             rr = requests.put(f"{base}/wp-json/wc/v3/products/{sh['id']}", auth=auth,
@@ -158,8 +176,10 @@ def sync_shadow_only(sku: str) -> dict:
     if price <= 0:
         return {"ok": False, "error": "אין מחיר תקף לווריאציה"}
     synced = []
+    if not tgt.get("cap"):
+        return {"ok": False, "error": "לא זוהה נפח לווריאציה — לא מסנכרנים מחשש לדריסת צל אחר"}
     for sh in shadows_for(tgt["parent"]):
-        if tgt.get("cap") and sh.get("cap") and sh["cap"] != tgt["cap"]:
+        if sh.get("cap") != tgt["cap"]:      # כולל צל בלי נפח מזוהה
             continue
         if str(sh.get("price") or "") == f"{price:.2f}".rstrip("0").rstrip("."):
             continue                                  # כבר מסונכרן
