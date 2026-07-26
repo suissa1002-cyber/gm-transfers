@@ -413,53 +413,75 @@
   body:has(.wco-bulk) .wco-cards,body:has(.wco-bulk) .wco-table{padding-bottom:76px}
 
   /* ── כלי עבודה זאפ ── */
-  .zk{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--line);
-      border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:14px}
-  .zk>div{background:var(--card);padding:13px 15px;display:flex;flex-direction:column;gap:3px}
-  .zk .l{font-size:12px;color:var(--muted)}
-  .zk .v{font-size:24px;font-weight:800;letter-spacing:-.02em;line-height:1.1}
-  .zk .s{font-size:11.5px;color:var(--muted)}
-  .zbar{display:flex;gap:9px;align-items:center;flex-wrap:wrap;background:var(--card);
-        border:1px solid var(--line);border-radius:11px;padding:10px 13px;margin-bottom:10px}
-  .zbar input[type=search]{flex:1;min-width:190px;font-family:inherit;font-size:13.5px;color:var(--txt);
-        background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:8px 11px}
-  .zbar select{font-family:inherit;font-size:13px;color:var(--txt);background:var(--bg);
-        border:1px solid var(--line);border-radius:9px;padding:7px 9px;cursor:pointer}
-  .zchips{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px}
+  .zk{display:grid;grid-template-columns:repeat(auto-fit,minmax(158px,1fr));gap:var(--s3);margin-bottom:var(--s5)}
+  .zk>div{background:var(--card);border:1px solid var(--line);border-radius:var(--r-md);
+          padding:var(--s4) var(--s5);box-shadow:var(--sh-1);display:flex;flex-direction:column;gap:2px}
+  .zk .l{font-size:12px;color:var(--txt-3);letter-spacing:.01em}
+  .zk .v{font-size:28px;font-weight:800;letter-spacing:-.03em;line-height:1.15;
+         font-variant-numeric:tabular-nums}
+  .zk .s{font-size:11.5px;color:var(--txt-3)}
+  .zbar{display:flex;gap:var(--s2);align-items:center;flex-wrap:wrap;background:var(--card);
+        border:1px solid var(--line);border-radius:var(--r-md);padding:var(--s3);margin-bottom:var(--s3);
+        box-shadow:var(--sh-1)}
+  .zbar input[type=search],.zbar select{font-family:inherit;font-size:13.5px;color:var(--txt);
+        background:var(--bg);border:1px solid var(--line);border-radius:var(--r-xs);padding:9px 12px;outline:0}
+  .zbar input[type=search]{flex:1;min-width:200px}
+  .zbar input:focus,.zbar select:focus{border-color:var(--brand)}
+  .zbar select{cursor:pointer}
+  .zchips{display:flex;gap:var(--s2);flex-wrap:wrap;margin-bottom:var(--s4)}
   .zchip{appearance:none;font-family:inherit;font-size:12.5px;cursor:pointer;text-decoration:none;
-        background:var(--card);color:var(--txt-2,var(--txt));border:1px solid var(--line);
-        border-radius:999px;padding:6px 12px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
-  .zchip b{font-family:ui-monospace,Menlo,monospace}
-  .zchip:hover{border-color:var(--brand)}
-  .zchip.on{background:var(--brand);border-color:var(--brand);color:#fff}
-  .zwrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--card)}
-  table.ztab{width:100%;border-collapse:collapse;font-size:13.5px;min-width:960px}
-  table.ztab th,table.ztab td{padding:10px 12px;text-align:right;white-space:nowrap;
-        border-bottom:1px solid var(--line);border-inline-start:1px solid var(--line)}
-  table.ztab th:last-child,table.ztab td:last-child{border-inline-start:0}
-  table.ztab thead th{font-size:11px;font-weight:700;letter-spacing:.05em;color:var(--muted);
-        background:var(--bg);position:sticky;top:0;z-index:2}
-  table.ztab tbody tr:nth-child(4n+3) td{background:rgba(127,127,127,.045)}
-  table.ztab tbody tr.zrow:hover td{background:rgba(34,197,94,.09);cursor:pointer}
-  table.ztab td.n{font-family:ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
-  .zname{white-space:normal;line-height:1.3;max-width:330px}
-  .zname b{font-weight:700;font-size:13.5px}
-  .zname small{display:block;color:var(--muted);font-size:11px;margin-top:2px;font-weight:400}
-  .zpill{display:inline-block;padding:3px 9px;border-radius:999px;font-size:11.5px;font-weight:700}
-  .zedit{appearance:none;background:transparent;border:0;color:var(--muted);cursor:pointer;
-        padding:2px 4px;border-radius:5px;vertical-align:-2px}
-  .zedit:hover{color:var(--brand);background:rgba(34,197,94,.12)}
-  .zdot{color:#d97706;font-size:15px;vertical-align:-1px}
-  .zpend{border:1px solid #d97706;background:rgba(217,119,6,.08);border-radius:12px;
-        padding:13px 16px;margin-bottom:12px}
-  .zpend .h{display:flex;align-items:center;gap:8px;color:#d97706;margin-bottom:8px;flex-wrap:wrap}
+        background:var(--card);color:var(--txt-2);border:1px solid var(--line);border-radius:var(--r-pill);
+        padding:7px 14px;display:inline-flex;align-items:center;gap:7px;white-space:nowrap;transition:.13s}
+  .zchip b{font-variant-numeric:tabular-nums;color:var(--txt)}
+  .zchip:hover{border-color:var(--line-2);color:var(--txt)}
+  .zchip.on{background:var(--brand-bg);border-color:var(--brand);color:var(--brand-ink)}
+  .zchip.on b{color:var(--brand-ink)}
+  .zwrap{border:1px solid var(--line);border-radius:var(--r-md);background:var(--card);
+         overflow:hidden;box-shadow:var(--sh-1)}
+  .zscroll{overflow-x:auto}
+  table.ztab{width:100%;border-collapse:collapse;font-size:13.5px;min-width:780px}
+  table.ztab th,table.ztab td{padding:13px var(--s4);text-align:right;vertical-align:middle}
+  table.ztab thead th{font-size:11px;font-weight:700;letter-spacing:.07em;color:var(--txt-3);
+        background:var(--bg);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:2}
+  table.ztab tbody td{border-bottom:1px solid var(--line)}
+  table.ztab tbody tr:last-child td{border-bottom:0}
+  table.ztab tbody tr.zrow{cursor:pointer;transition:background .12s}
+  table.ztab tbody tr.zrow:hover td{background:var(--card-2)}
+  table.ztab tbody tr.open td{background:var(--card-2)}
+  .znum{font-variant-numeric:tabular-nums;white-space:nowrap}
+  .zname{white-space:normal;line-height:1.35;min-width:230px;max-width:380px}
+  .zname b{font-weight:700;font-size:14px;display:block}
+  .zname small{display:block;color:var(--txt-3);font-size:11.5px;margin-top:3px}
+  .zstock{font-size:19px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1}
+  .zstock i{font-style:normal;font-size:11px;color:var(--txt-3);font-weight:400;margin-inline-start:3px}
+  .zprice{font-size:14.5px;font-weight:700;font-variant-numeric:tabular-nums}
+  .zsh{display:block;font-size:11px;margin-top:3px}
+  .zpill{display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:var(--r-pill);
+         font-size:12px;font-weight:700;white-space:nowrap}
+  .p-ok{background:var(--brand-bg);color:var(--brand-ink)}
+  .p-warn{background:var(--amber-bg);color:var(--amber-ink)}
+  .p-bad{background:var(--red-bg);color:var(--red-ink)}
+  .p-off{background:var(--card-3);color:var(--txt-3)}
+  .zcut{font-size:15px;font-weight:800;font-variant-numeric:tabular-nums}
+  .zact{display:inline-flex;gap:5px}
+  .zib{appearance:none;width:30px;height:30px;display:inline-grid;place-items:center;cursor:pointer;
+       background:var(--card-2);border:1px solid var(--line);border-radius:var(--r-xs);color:var(--txt-2)}
+  .zib:hover{border-color:var(--brand);color:var(--brand-ink);background:var(--brand-bg)}
+  .zdot{color:var(--amber-ink);font-size:13px;vertical-align:1px}
+  .zpend{border:1px solid var(--amber-ink);background:var(--amber-bg);border-radius:var(--r-md);
+         padding:var(--s4) var(--s5);margin-bottom:var(--s4)}
+  .zpend .h{display:flex;align-items:center;gap:var(--s2);color:var(--amber-ink);margin-bottom:var(--s3);flex-wrap:wrap}
   .zsub{width:100%;border-collapse:collapse;font-size:12.5px}
-  .zsub td,.zsub th{padding:5px 9px;border-bottom:1px solid var(--line);text-align:right}
-  .zsub tr.mine td{background:rgba(34,197,94,.12);font-weight:700}
-  .zsub tr.beat td{color:#c0492c}
-  .zcb{display:block;height:8px;border-radius:4px;background:rgba(127,127,127,.18);overflow:hidden}
-  .zcb>span{display:block;height:100%;border-radius:4px;background:currentColor;opacity:.45}
-
+  .zsub td,.zsub th{padding:7px 10px;border-bottom:1px solid var(--line);text-align:right;
+        font-variant-numeric:tabular-nums}
+  .zsub th{font-size:10.5px;letter-spacing:.06em;color:var(--txt-3);font-weight:700}
+  .zsub tr:last-child td{border-bottom:0}
+  .zsub tr.mine td{background:var(--brand-bg);color:var(--brand-ink);font-weight:700}
+  .zsub tr.beat td{color:var(--red-ink)}
+  .zdetbox{padding:var(--s4) var(--s5);background:var(--bg);border-top:1px solid var(--line)}
+  .zdh{font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--txt-3);margin-bottom:var(--s2)}
+  .zcb{display:block;height:6px;border-radius:3px;background:var(--card-3);overflow:hidden}
+  .zcb>span{display:block;height:100%;border-radius:3px;background:currentColor;opacity:.5}
   /* reply בלחיצה ארוכה: במובייל מנטרלים את תפריט המגע של הדפדפן על הבועות */
   @media (pointer:coarse){ .wa-b{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none} }
   .wa-replybar{display:flex;align-items:center;gap:8px;max-width:920px;width:100%;margin-inline:auto;
@@ -1416,10 +1438,11 @@ async function loadZap(spinner){
 }
 function zapSet(k,v){ const Z=zapInit(); Z[k]=v; renderZap(); }
 function zapState(r){
-  if(r.status==='listed')  return {k:'listed', t:'רשום #'+(r.rank||'?'), c:'var(--brand)'};
-  if(r.status==='missing') return {k:'missing',t:'לא בדף', c:'var(--fall)'};
-  if(r.status==='suspect') return {k:'suspect',t:'התאמה חשודה', c:'var(--flag)'};
-  return {k:'nomodel', t:'אין דגם', c:'var(--muted)'};
+  if(r.status==='listed')
+    return {k:'listed', t:'#'+(r.rank||'?')+' בזאפ', p:(r.rank||99)<=5?'p-ok':'p-warn'};
+  if(r.status==='missing') return {k:'missing',t:'לא בדף',      p:'p-bad'};
+  if(r.status==='suspect') return {k:'suspect',t:'התאמה חשודה', p:'p-warn'};
+  return {k:'nomodel', t:'אין דגם בזאפ', p:'p-off'};
 }
 function renderZap(){
   const Z=zapInit(), app=document.getElementById('app'); if(!app) return;
@@ -1490,59 +1513,100 @@ function zapTable(rows){
   const Z=zapInit();
   if(!rows.length) return `<div class="empty">${Z.reason?escW(Z.reason):'אין שורות תואמות'}</div>`;
   const ils=n=>'₪'+Number(n||0).toLocaleString('en-US');
-  return `<div class="zwrap"><table class="ztab"><thead><tr>
-    <th>דגם בזאפ</th><th>מלאי</th><th>מחיר שלנו</th><th>צל</th><th>מיקום</th>
-    <th>הזול</th><th>פער</th><th>לטופ 5</th><th>פעולות</th></tr></thead><tbody>
+  return `<div class="zwrap"><div class="zscroll"><table class="ztab"><thead><tr>
+      <th>דגם בזאפ</th><th>מלאי</th><th>המחיר שלנו</th><th>מיקום</th><th>הזול בזאפ</th><th>לטופ 5</th><th></th>
+    </tr></thead><tbody>
     ${rows.map((r,i)=>{
       const st=zapState(r), pend=Z.pend[r.sku];
-      const cut=r.cut_top5==null?'—':(r.cut_top5<=0
-        ?'<span style="color:var(--brand);font-weight:800">כבר שם</span>':'<b>'+ils(r.cut_top5)+'</b>');
-      const gap=r.gap_pct==null?'—':`<span style="color:${r.gap_pct>0?'#c0492c':'var(--brand)'}">${r.gap_pct>0?'+':''}${r.gap_pct}%</span>`;
-      const nc=(r.colors||1)>1?` · ${r.colors} צבעים`:'';
-      return `<tr class="zrow" onclick="zapToggleRow(${i})">
-        <td class="zname"><b>${escW(r.zap_title?r.zap_title.replace(' - זאפ השוואת מחירים',''):r.name)}</b>
-          <small>${escW(r.brand)}${nc} · ${escW(r.name.slice(0,40))}</small></td>
-        <td class="n"><b style="font-size:15px">${r.stock||0}</b></td>
-        <td class="n">${r.our_price?ils(r.our_price):'—'}${pend?' <span class="zdot" title="שונה כאן, לא בקופה">●</span>':''}
-          <button class="zedit" onclick="event.stopPropagation();zapEditPrice('${escW(r.sku)}',${r.our_price||0})">${ico('pencil',12)}</button></td>
-        <td class="n" id="zsh${escW(r.sku)}">${zapShadowCell(r)}</td>
-        <td><span class="zpill" style="color:${st.c};background:${st.c}1f">${st.t}</span></td>
-        <td class="n">${r.low?ils(r.low):'—'}<small style="display:block;font-size:10.5px;color:var(--muted)">${escW((r.low_seller||'').slice(0,18))}</small></td>
-        <td class="n">${gap}</td><td class="n">${cut}</td>
-        <td onclick="event.stopPropagation()" style="white-space:nowrap">
-          <button class="zchip" title="סנכרן צל למחיר האתר" onclick="zapSyncSh('${escW(r.sku)}')">סנכרן</button>
-          <button class="zchip" title="צור מוצר צל" onclick="zapMakeShadow('${escW(r.sku)}')">+צל</button>
-          ${r.url?`<a class="zchip" href="${escW(r.url)}" target="_blank" rel="noopener">זאפ ↗</a>`:''}
-        </td></tr>
-      <tr class="zdet" id="zrow${i}" hidden><td colspan="9" style="padding:0;background:var(--bg)">${zapComp(r)}</td></tr>`;
-    }).join('')}</tbody></table></div>`;
+      const cv=r.cut_top5;
+      const cut = cv==null ? '<span style="color:var(--txt-3)">—</span>'
+        : (cv<=0 ? '<span class="zpill p-ok">כבר בטופ 5</span>'
+        : `<span class="zcut" style="color:${cv<=300?'var(--amber-ink)':'var(--red-ink)'}">−${ils(cv)}</span>`);
+      const gap = r.gap_pct==null ? '' :
+        `<small style="display:block;font-size:11px;color:${r.gap_pct>0?'var(--red-ink)':'var(--brand-ink)'}">${r.gap_pct>0?'+':''}${r.gap_pct}% מהזול</small>`;
+      const colors=(r.colors||1)>1?` · ${r.colors} צבעים`:'';
+      const title=r.zap_title
+        ? r.zap_title.replace(' - זאפ השוואת מחירים','').replace(/^טלפון סלולרי /,'')
+        : r.name;
+      return `<tr class="zrow" id="ztr${i}" onclick="zapToggleRow(${i})">
+        <td class="zname"><b>${escW(title)}</b><small>${escW(r.brand)}${colors} · ${escW(r.sku||'')}</small></td>
+        <td class="znum"><span class="zstock">${r.stock||0}</span><i>יח׳</i></td>
+        <td class="znum"><span class="zprice">${r.our_price?ils(r.our_price):'—'}</span>${pend?' <span class="zdot" title="שונה כאן — טרם עודכן בקופה">●</span>':''}
+          <span class="zsh" id="zsh${escW(r.sku)}">${zapShadowCell(r)}</span></td>
+        <td><span class="zpill ${st.p}">${st.t}</span>${r.sellers?`<small style="display:block;font-size:11px;color:var(--txt-3);margin-top:4px">מתוך ${r.sellers} מוכרים</small>`:''}</td>
+        <td class="znum">${r.low?`<span class="zprice">${ils(r.low)}</span>`:'—'}
+          <small style="display:block;font-size:11px;color:var(--txt-3)">${escW((r.low_seller||'').slice(0,20))}</small>${gap}</td>
+        <td class="znum">${cut}</td>
+        <td onclick="event.stopPropagation()"><span class="zact">
+          <button class="zib" title="ערוך מחיר באתר" onclick="zapEditPrice('${escW(r.sku)}',${r.our_price||0})">${ico('pencil',13)}</button>
+          <button class="zib" title="סנכרן מוצר צל למחיר האתר" onclick="zapSyncSh('${escW(r.sku)}')">${ico('refresh',13)}</button>
+          <button class="zib" title="צור מוצר צל לתצורה הזו" onclick="zapMakeShadow('${escW(r.sku)}')">${ico('zap',13)}</button>
+          ${r.url?`<a class="zib" title="פתח בזאפ" href="${escW(r.url)}" target="_blank" rel="noopener">${ico('globe',13)}</a>`:''}
+        </span></td></tr>
+      <tr class="zdet" id="zrow${i}" hidden><td colspan="7" style="padding:0">${zapComp(r)}</td></tr>`;
+    }).join('')}</tbody></table></div></div>`;
 }
 function zapComp(r){
   const ils=n=>'₪'+Number(n||0).toLocaleString('en-US');
   const vars=(r.variants||[]);
-  const varHtml = vars.length>1 ? `<div style="padding:12px 16px 4px">
-    <div style="font-size:12px;font-weight:700;margin-bottom:6px">המלאי שמרכיב את ${r.stock||0} היחידות</div>
-    <table class="zsub"><tbody>${vars.map(v=>`<tr>
-      <td>${escW(v.name)}</td><td class="n">${escW(v.sku)}</td>
-      <td class="n"><b>${v.stock||0}</b> יח׳</td><td class="n">${v.price?ils(v.price):'—'}</td>
-      </tr>`).join('')}</tbody></table></div>` : '';
+  let out='<div class="zdetbox">';
+  if(vars.length>1){
+    out+=`<div class="zdh">המלאי שמרכיב את ${r.stock||0} היחידות</div>
+      <table class="zsub"><tbody>${vars.map(v=>`<tr>
+        <td>${escW(v.name)}</td><td style="color:var(--txt-3)">${escW(v.sku)}</td>
+        <td><b>${v.stock||0}</b> יח׳</td><td>${v.price?ils(v.price):'—'}</td></tr>`).join('')}
+      </tbody></table><div style="height:14px"></div>`;
+  }
   const c=r.competitors||[];
-  if(!c.length) return varHtml||'<div class="muted" style="padding:12px 16px">אין פירוט</div>';
+  if(!c.length){ return out+(vars.length>1?'':'<div style="color:var(--txt-3)">אין פירוט מתחרים</div>')+'</div>'; }
   const our=r.our_price||0, max=c[c.length-1].price;
   const list=c.map(o=>({seller:o.seller,price:o.price,us:false}));
   if(our && r.status!=='listed') list.push({seller:'גרין מובייל',price:our,us:true});
   list.sort((a,b)=>a.price-b.price||(a.us?1:0)-(b.us?1:0));
-  return varHtml+`<div style="padding:12px 16px 14px">
-    <div style="font-size:12px;font-weight:700;margin-bottom:6px">כל המוכרים · ${c.length}</div>
+  out+=`<div class="zdh">כל המוכרים על הדגם · ${c.length}</div>
     <table class="zsub"><tbody>${list.map((o,i)=>`
       <tr class="${o.us?'mine':(our&&o.price<our?'beat':'')}">
-        <td class="n" style="width:46px"><b>#${i+1}</b></td>
-        <td>${o.us?'<b>גרין מובייל</b> <span class="muted">— סימולציה</span>':escW(o.seller)}</td>
-        <td class="n" style="width:90px"><b>${ils(o.price)}</b></td>
-        <td style="width:42%;color:${o.us?'var(--brand)':'var(--txt)'}"><span class="zcb"><span style="width:${(o.price/max*100).toFixed(1)}%"></span></span></td>
-      </tr>`).join('')}</tbody></table></div>`;
+        <td style="width:46px"><b>#${i+1}</b></td>
+        <td>${o.us?'<b>גרין מובייל</b> — סימולציה במחיר הנוכחי':escW(o.seller)}</td>
+        <td style="width:96px"><b>${ils(o.price)}</b></td>
+        <td style="width:40%;color:${o.us?'var(--brand-ink)':'var(--txt-2)'}"><span class="zcb"><span style="width:${(o.price/max*100).toFixed(1)}%"></span></span></td>
+      </tr>`).join('')}</tbody></table>`;
+  return out+'</div>';
 }
-function zapToggleRow(i){ const d=document.getElementById('zrow'+i); if(d) d.hidden=!d.hidden; }
+function zapShadowCell(r){
+  const Z=zapInit(), s=(Z.sh||{})[r.sku];
+  if(!s) return `<a href="#" style="color:var(--txt-3);text-decoration:none;border-bottom:1px dotted var(--txt-3)"
+     onclick="event.preventDefault();event.stopPropagation();zapLoadShadow('${escW(r.sku)}')">בדוק צל</a>`;
+  const ils=n=>'₪'+Number(n||0).toLocaleString('en-US');
+  if(s.state==='no_shadow') return `<span style="color:var(--amber-ink)" title="אין מוצר צל — התצורה לא תופיע בזאפ">אין מוצר צל</span>`;
+  if(s.state==='synced')    return `<span style="color:var(--brand-ink)">צל מסונכרן ✓</span>`;
+  if(s.state==='drift')     return `<span style="color:var(--red-ink)" title="זאפ מציג מחיר ישן">צל ${ils(s.shadow_price)} ⚠</span>`;
+  return `<span style="color:var(--txt-3)">—</span>`;
+}
+async function zapLoadShadow(sku){
+  const Z=zapInit(); Z.sh=Z.sh||{};
+  const el=document.getElementById('zsh'+sku); if(el) el.textContent='…';
+  try{ Z.sh[sku]=await api('/api/admin/zap/shadow-state?sku='+encodeURIComponent(sku),null,90000); }
+  catch(e){ Z.sh[sku]={state:'err'}; }
+  const r=(Z.rows||[]).find(x=>x.sku===sku);
+  if(el&&r) el.innerHTML=zapShadowCell(r);
+}
+async function zapMakeShadow(sku){
+  if(!confirm('ליצור מוצר צל לזאפ לתצורה הזו?\nההורה יוסתר מזאפ אוטומטית.')) return;
+  showLoading('יוצר מוצר צל…');
+  try{
+    const j=await api('/api/admin/zap/create-shadow?sku='+encodeURIComponent(sku),{method:'POST'},120000);
+    hideLoading();
+    if(!j.ok){ toast(j.error||'נכשל',false); return; }
+    toast('נוצר מוצר צל #'+j.shadow_id+' — ודא שהכותרת תואמת לזאפ',true);
+    const Z=zapInit(); if(Z.sh) delete Z.sh[sku];
+    zapLoadShadow(sku);
+  }catch(e){ hideLoading(); toast('שגיאת רשת',false); }
+}
+function zapToggleRow(i){
+  const d=document.getElementById('zrow'+i), t=document.getElementById('ztr'+i);
+  if(!d) return; d.hidden=!d.hidden; if(t) t.classList.toggle('open',!d.hidden);
+}
 async function zapEditPrice(sku,cur){
   const v=prompt('מחיר חדש באתר עבור '+sku+'\n(הקופה לא תשתנה — יסומן כממתין)',cur||'');
   if(v===null) return;
