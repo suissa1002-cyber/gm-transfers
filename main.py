@@ -9209,6 +9209,22 @@ def zap_sync_shadow(sku: str, x_admin_key: Optional[str] = Header(None)):
     return zap_price.sync_shadow_only(sku.strip())
 
 
+@app.get("/api/admin/zap/shadow-state")
+def zap_shadow_state(sku: str, x_admin_key: Optional[str] = Header(None)):
+    """מחיר הצל מול מחיר האתר — לוודא שמה שזאפ רואה זה מה שההורה מציג."""
+    _require_admin(x_admin_key)
+    import zap_price
+    return zap_price.shadow_state(sku.strip())
+
+
+@app.post("/api/admin/zap/create-shadow")
+def zap_create_shadow(sku: str, x_admin_key: Optional[str] = Header(None)):
+    """יצירת מוצר צל לזאפ לווריאציה (חמשת השלבים המתועדים)."""
+    _require_admin(x_admin_key)
+    import zap_price
+    return zap_price.create_shadow(sku.strip())
+
+
 @app.post("/api/admin/zap/visibility")
 def zap_visibility_set(product_id: int, hidden: int = 1,
                        x_admin_key: Optional[str] = Header(None)):

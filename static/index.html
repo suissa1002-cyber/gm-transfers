@@ -1449,7 +1449,7 @@ function zapTable(rows){
   if(!rows.length) return `<div class="empty">${Z.reason?escW(Z.reason):'אין שורות תואמות'}</div>`;
   const ils=n=>'₪'+Number(n||0).toLocaleString('en-US');
   return `<div class="tbox"><table><thead><tr>
-    <th>דגם</th><th>מלאי</th><th>מחיר אתר</th><th>מצב בזאפ</th><th>מוכרים</th><th>הזול</th><th>פער</th><th>לטופ 5</th><th>פעולות</th>
+    <th>דגם</th><th>מלאי</th><th>מחיר אתר</th><th>מחיר צל</th><th>מצב בזאפ</th><th>מוכרים</th><th>הזול</th><th>פער</th><th>לטופ 5</th><th>פעולות</th>
     </tr></thead><tbody>${rows.map((r,i)=>{
       const st=zapState(r), pend=Z.pend[r.sku];
       const cut=v=>v==null?'—':(v<=0?'<span style="color:var(--brand);font-weight:800">כבר שם</span>':'<b>'+ils(v)+'</b>');
@@ -1458,16 +1458,19 @@ function zapTable(rows){
         <td class="n">${r.stock||0}</td>
         <td class="n">${r.our_price?ils(r.our_price):'—'}${pend?' <span class="penddot" title="שונה כאן, לא בקופה">●</span>':''}
           <button class="zedit" onclick="event.stopPropagation();zapEditPrice('${escW(r.sku)}',${r.our_price||0})">${ico('pencil',12)}</button></td>
+        <td class="n" id="zsh${escW(r.sku)}">${zapShadowCell(r)}</td>
         <td><span class="rankpill" style="color:${st.c};border:1px solid ${st.c}55;background:${st.c}14">${st.t}</span></td>
         <td class="n">${r.sellers||'—'}</td>
         <td class="n">${r.low?ils(r.low):'—'}<small class="muted" style="display:block;font-size:11px">${escW(r.low_seller||'')}</small></td>
         <td class="n">${r.gap_pct==null?'—':(r.gap_pct>0?'+':'')+r.gap_pct+'%'}</td>
         <td class="n">${cut(r.cut_top5)}</td>
         <td onclick="event.stopPropagation()">
-          <button class="zchip" title="סנכרן מוצר צל לזאפ" onclick="zapSyncSh('${escW(r.sku)}')">סנכרן צל</button>
+          <button class="zchip" title="סנכרן מוצר צל למחיר האתר" onclick="zapSyncSh('${escW(r.sku)}')">סנכרן צל</button>
+          <button class="zchip" title="הסתר/הצג את המוצר בפיד זאפ" onclick="zapHide('${escW(r.sku)}')">${ico('eye',12)}</button>
+          <button class="zchip" title="צור מוצר צל לתצורה הזו" onclick="zapMakeShadow('${escW(r.sku)}')">+ צל</button>
           ${r.url?`<a class="zchip" href="${escW(r.url)}" target="_blank" rel="noopener">זאפ</a>`:''}
         </td></tr>
-      <tr class="zdet" id="zrow${i}" hidden><td colspan="9">${zapComp(r)}</td></tr>`;
+      <tr class="zdet" id="zrow${i}" hidden><td colspan="10">${zapComp(r)}</td></tr>`;
     }).join('')}</tbody></table></div>`;
 }
 function zapComp(r){
@@ -1486,6 +1489,47 @@ function zapComp(r){
         <td class="n"><b>${ils(o.price)}</b></td>
         <td style="width:44%"><span class="cbar${o.us?' mine-bar':''}"><span style="width:${(o.price/max*100).toFixed(1)}%"></span></span></td>
       </tr>`).join('')}</tbody></table></div>`;
+}
+// מחיר הצל נטען עצלנית לכל שורה — הוא דורש קריאה נפרדת לכל מק"ט
+function zapShadowCell(r){
+  const Z=zapInit(), s=(Z.sh||{})[r.sku];
+  if(!s) return `<button class="zchip" onclick="event.stopPropagation();zapLoadShadow('${escW(r.sku)}')">בדוק</button>`;
+  if(s.state==='no_shadow') return `<span style="color:var(--flag)" title="אין מוצר צל — הדגם לא ייראה בזאפ">אין צל</span>`;
+  const ils=n=>'₪'+Number(n||0).toLocaleString('en-US');
+  if(s.state==='synced') return `<span style="color:var(--brand)">${ils(s.shadow_price)} ✓</span>`;
+  return `<span style="color:var(--fall)" title="הצל מציג מחיר אחר — זאפ רואה מחיר ישן">${ils(s.shadow_price)} ⚠</span>`;
+}
+async function zapLoadShadow(sku){
+  const Z=zapInit(); Z.sh=Z.sh||{};
+  const el=document.getElementById('zsh'+sku); if(el) el.textContent='…';
+  try{ Z.sh[sku]=await api('/api/admin/zap/shadow-state?sku='+encodeURIComponent(sku),null,60000); }
+  catch(e){ Z.sh[sku]={state:'err'}; }
+  const r=(Z.rows||[]).find(x=>x.sku===sku);
+  if(el&&r) el.innerHTML=zapShadowCell(r);
+}
+async function zapHide(sku){
+  const Z=zapInit(); Z.sh=Z.sh||{};
+  if(!Z.sh[sku]){ await zapLoadShadow(sku); }
+  const s=Z.sh[sku]||{};
+  const pid=s.shadow_id;
+  if(!pid){ toast('אין מוצר צל להסתרה — הסתרה מתבצעת על הצל',false); return; }
+  if(!confirm('להסתיר את המוצר מפיד זאפ?')) return;
+  try{
+    const j=await api('/api/admin/zap/visibility?product_id='+pid+'&hidden=1',{method:'POST'},45000);
+    toast(j.ok?'הוסתר מזאפ':'נכשל', !!j.ok);
+  }catch(e){ toast('שגיאת רשת',false); }
+}
+async function zapMakeShadow(sku){
+  if(!confirm('ליצור מוצר צל לזאפ לתצורה הזו?\nההורה יוסתר מזאפ אוטומטית.')) return;
+  showLoading('יוצר מוצר צל…');
+  try{
+    const j=await api('/api/admin/zap/create-shadow?sku='+encodeURIComponent(sku),{method:'POST'},90000);
+    hideLoading();
+    if(!j.ok){ toast(j.error||'נכשל',false); return; }
+    toast('נוצר מוצר צל #'+j.shadow_id+' — ודא שהכותרת תואמת לזאפ',true);
+    const Z=zapInit(); if(Z.sh) delete Z.sh[sku];
+    zapLoadShadow(sku);
+  }catch(e){ hideLoading(); toast('שגיאת רשת',false); }
 }
 function zapToggleRow(i){ const d=document.getElementById('zrow'+i); if(d) d.hidden=!d.hidden; }
 async function zapEditPrice(sku,cur){

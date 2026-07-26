@@ -65,20 +65,84 @@ def _cap_from_attrs(attrs: list) -> str | None:
     return None
 
 
+_TERM_CACHE = {}
+
+
+def _term_slugs(base, auth) -> dict:
+    """{taxonomy: {שם-אופציה-lower: slug}} — כדי לתרגם "512GB" ל-"00512gb".
+    ⚠️ ה-REST מחזיר בווריאציה את **שם** האופציה, ומוצר הצל נושא ב-URL את
+    ה-**slug**. בלי המפה הזו ההשוואה נכשלת וסונכרן הצל הלא נכון."""
+    if _TERM_CACHE:
+        return _TERM_CACHE
+    try:
+        attrs = requests.get(f"{base}/wp-json/wc/v3/products/attributes", auth=auth,
+                             timeout=45).json()
+    except Exception:  # noqa: BLE001
+        return {}
+    for a in (attrs if isinstance(attrs, list) else []):
+        tax = "pa_" + str(a.get("slug") or "")
+        m = {}
+        page = 1
+        while page <= 5:
+            try:
+                t = requests.get(f"{base}/wp-json/wc/v3/products/attributes/{a['id']}/terms",
+                                 auth=auth, timeout=45,
+                                 params={"per_page": 100, "page": page,
+                                         "_fields": "name,slug"}).json()
+            except Exception:  # noqa: BLE001
+                break
+            if not isinstance(t, list) or not t:
+                break
+            for x in t:
+                m[str(x.get("name", "")).strip().lower()] = str(x.get("slug", ""))
+            page += 1
+        if m:
+            _TERM_CACHE[tax] = m
+    return _TERM_CACHE
+
+
+def _shadow_attrs(url: str) -> dict:
+    """{taxonomy: slug} מתוך ה-external_url של מוצר הצל — כמו gm_zap_sync_shadow."""
+    from urllib.parse import urlparse, parse_qs
+    q = parse_qs(urlparse(url or "").query)
+    out = {}
+    for k, v in q.items():
+        if k.startswith("attribute_") and v and v[0]:
+            out[k[len("attribute_"):]] = v[0].lower()
+    return out
+
+
+def _variation_slugs(base, auth, var: dict) -> dict:
+    """{taxonomy: slug} של וריאציה — תרגום שמות האופציות לסלאגים."""
+    terms = _term_slugs(base, auth)
+    out = {}
+    for a in var.get("attributes") or []:
+        nm = str(a.get("name") or "")
+        opt = str(a.get("option") or "").strip().lower()
+        tax = None
+        for t in terms:
+            if opt in terms[t]:
+                tax = t
+                break
+        if tax:
+            out[tax] = terms[tax][opt]
+        elif nm:
+            out["pa_" + nm.strip().replace(" ", "-")] = opt
+    return out
+
+
 def find_by_sku(sku: str) -> dict | None:
-    """הווריאציה (או המוצר הפשוט) שנושאת את המק"ט, יחד עם ההורה שלה."""
+    """הווריאציה (או המוצר הפשוט) שנושאת את המק"ט, יחד עם ההורה והאטריביוטים."""
     base, auth = _wc()
     r = requests.get(f"{base}/wp-json/wc/v3/products", auth=auth, timeout=45,
                      params={"sku": sku, "per_page": 10,
                              "_fields": "id,name,type,price,regular_price,parent_id,attributes"})
     for p in (r.json() if r.ok else []):
-        # ⚠️ WC מחזיר כאן גם וריאציות. בלי לחלץ מהן נפח, סנכרון הצל היה מיישר
-        # את הצל של 1TB למחיר של 512GB (קרה בפועל, 26/07/2026). לכן תמיד cap.
-        cap = _cap_from_attrs(p.get("attributes")) or _cap_from_text(p.get("name"))
         return {"kind": "variation" if p.get("parent_id") else "product",
                 "id": p["id"], "parent": p.get("parent_id") or p["id"],
-                "name": p.get("name"), "price": p.get("price"), "cap": cap}
-    # מק"ט של וריאציה אינו נתפס בחיפוש המוצרים — עוברים על ההורים המשתנים
+                "name": p.get("name"), "price": p.get("price"),
+                "attrs": _variation_slugs(base, auth, p),
+                "cap": _cap_from_attrs(p.get("attributes")) or _cap_from_text(p.get("name"))}
     page = 1
     while page <= 8:
         rr = requests.get(f"{base}/wp-json/wc/v3/products", auth=auth, timeout=60,
@@ -95,32 +159,22 @@ def find_by_sku(sku: str) -> dict | None:
                 if str(x.get("sku")) == str(sku):
                     return {"kind": "variation", "id": x["id"], "parent": par["id"],
                             "name": par.get("name"), "price": x.get("price"),
+                            "attrs": _variation_slugs(base, auth, x),
                             "cap": _cap_from_attrs(x.get("attributes"))}
         page += 1
     return None
 
 
-def shadows_for(parent_id: int) -> list:
-    """מוצרי הצל של אותו הורה. ⚠️ הם type=external ו-hidden, ולכן לא מופיעים
-    בשליפות קטלוג רגילות — מחפשים לפי המטא gm_parent_product_id."""
-    base, auth = _wc()
-    out = []
-    page = 1
-    while page <= 4:
-        r = requests.get(f"{base}/wp-json/wc/v3/products", auth=auth, timeout=60,
-                         params={"per_page": 100, "page": page, "type": "external",
-                                 "status": "any", "_fields": "id,name,price,regular_price,"
-                                                             "external_url,meta_data"})
-        rows = r.json() if r.ok else []
-        if not rows:
-            break
-        for p in rows:
-            meta = {m["key"]: str(m["value"]) for m in (p.get("meta_data") or [])}
-            if str(meta.get("gm_parent_product_id") or "") == str(parent_id):
-                out.append({"id": p["id"], "name": p.get("name"), "price": p.get("price"),
-                            "cap": _cap_slug(p.get("external_url") or "")})
-        page += 1
-    return out
+def _shadow_matches(tgt: dict, sh: dict) -> bool:
+    """האם מוצר הצל מתאר בדיוק את הווריאציה. מיישר לחוקי התוסף
+    (gm_zap_sync_shadow): כל אטריביוט שמופיע ב-URL של הצל חייב להתאים.
+    ⛔ אם אין במה להשוות — מחזירים False. עדיף לא לסנכרן מאשר לדרוס דגם אחר."""
+    a, b = tgt.get("attrs") or {}, sh.get("attrs") or {}
+    if a and b:
+        common = set(a) & set(b)
+        if common:
+            return all(a[k] == b[k] for k in common)
+    return bool(tgt.get("cap")) and tgt["cap"] == sh.get("cap")
 
 
 def set_price(sku: str, price: float, sync_shadow: bool = True) -> dict:
@@ -143,12 +197,8 @@ def set_price(sku: str, price: float, sync_shadow: bool = True) -> dict:
             # ⛔ בלי התאמת נפח ודאית לא נוגעים בצל. שקט-והמשך היה מיישר את הצל
             # של 1TB למחיר של 512GB (קרה בפועל 26/07/2026) — עדיף לא לסנכרן
             # ולדווח, מאשר לדרוס מחיר של דגם אחר.
-            if not tgt.get("cap") or not sh.get("cap"):
-                skipped.append({"id": sh["id"], "name": sh["name"],
-                                "reason": "נפח לא ודאי — לא סונכרן מחשש לדריסה"})
-                continue
-            if sh["cap"] != tgt["cap"]:
-                skipped.append({"id": sh["id"], "name": sh["name"], "reason": "נפח אחר"})
+            if not _shadow_matches(tgt, sh):
+                skipped.append({"id": sh["id"], "name": sh["name"], "reason": "תצורה אחרת"})
                 continue
             rr = requests.put(f"{base}/wp-json/wc/v3/products/{sh['id']}", auth=auth,
                               timeout=45, json={"regular_price": f"{price:.2f}"})
@@ -176,10 +226,8 @@ def sync_shadow_only(sku: str) -> dict:
     if price <= 0:
         return {"ok": False, "error": "אין מחיר תקף לווריאציה"}
     synced = []
-    if not tgt.get("cap"):
-        return {"ok": False, "error": "לא זוהה נפח לווריאציה — לא מסנכרנים מחשש לדריסת צל אחר"}
     for sh in shadows_for(tgt["parent"]):
-        if sh.get("cap") != tgt["cap"]:      # כולל צל בלי נפח מזוהה
+        if not _shadow_matches(tgt, sh):
             continue
         if str(sh.get("price") or "") == f"{price:.2f}".rstrip("0").rstrip("."):
             continue                                  # כבר מסונכרן
@@ -244,3 +292,64 @@ def feed(cat: int = 1934) -> list:
                     "sku": g("CATALOG_NUMBER"), "price": g("PRICE"),
                     "code": g("PRODUCTCODE")})
     return out
+
+
+def shadow_state(sku: str) -> dict:
+    """מצב מוצר הצל מול הווריאציה — לעמודת "מחיר צל" ולחיווי פער.
+    המטרה (אסי): לוודא שהמחיר שזאפ רואה זהה למחיר שההורה מציג."""
+    tgt = find_by_sku(sku)
+    if not tgt:
+        return {"ok": False, "error": "לא נמצא מוצר"}
+    site = float(tgt.get("price") or 0)
+    mine = [sh for sh in shadows_for(tgt["parent"]) if _shadow_matches(tgt, sh)]
+    if not mine:
+        return {"ok": True, "sku": sku, "site_price": site, "shadow": None,
+                "state": "no_shadow"}     # דרוש צל — הדגם לא ייראה בזאפ בלי
+    sh = mine[0]
+    sp = float(sh.get("price") or 0)
+    return {"ok": True, "sku": sku, "site_price": site, "shadow_id": sh["id"],
+            "shadow_name": sh.get("name"), "shadow_price": sp,
+            "drift": round(sp - site, 2),
+            "state": "synced" if abs(sp - site) < 0.5 else "drift"}
+
+
+def create_shadow(sku: str) -> dict:
+    """יוצר מוצר צל לזאפ לווריאציה. חמשת השלבים כפי שתועדו אצלנו:
+    external+hidden, URL עם האטריביוט, קטגוריות+מותג מההורה, תמונה, והסתרת
+    ההורה מזאפ. ⚠️ הערך של _woocommerce_zap_disable חייב להיות 'yes'.
+    ⚠️ הכותרת חייבת להתאים לכותרת דגם ההשוואה בזאפ (שם + נפח + RAM), אחרת
+    זאפ לא ישייך את המוצר לשום דף — זו הסיבה שמוצר צל קיים בכלל."""
+    base, auth = _wc()
+    tgt = find_by_sku(sku)
+    if not tgt:
+        return {"ok": False, "error": f"לא נמצא מוצר עם מק\"ט {sku}"}
+    if tgt["kind"] != "variation":
+        return {"ok": False, "error": "מוצר צל נדרש רק לווריאציה של מוצר משתנה"}
+    exist = [sh for sh in shadows_for(tgt["parent"]) if _shadow_matches(tgt, sh)]
+    if exist:
+        return {"ok": False, "error": "כבר קיים מוצר צל לתצורה הזו",
+                "shadow_id": exist[0]["id"]}
+    par = requests.get(f"{base}/wp-json/wc/v3/products/{tgt['parent']}", auth=auth,
+                       timeout=45).json()
+    qs = "&".join(f"attribute_{k}={v}" for k, v in (tgt.get("attrs") or {}).items())
+    if not qs:
+        return {"ok": False, "error": "לא זוהו אטריביוטים לווריאציה — לא ניתן לבנות URL"}
+    payload = {
+        "name": f"{par.get('name','')} {tgt.get('cap','')}".strip(),
+        "type": "external", "status": "publish", "catalog_visibility": "hidden",
+        "external_url": f"{par.get('permalink','').rstrip('/')}/?{qs}",
+        "regular_price": str(tgt.get("price") or ""),
+        "categories": par.get("categories") or [],
+        "brands": par.get("brands") or [],
+        "images": (par.get("images") or [])[:1],
+        "meta_data": [{"key": "gm_parent_product_id", "value": str(tgt["parent"])}],
+    }
+    r = requests.post(f"{base}/wp-json/wc/v3/products", auth=auth, timeout=60, json=payload)
+    if not r.ok:
+        return {"ok": False, "error": f"יצירה נכשלה ({r.status_code})", "detail": r.text[:200]}
+    new = r.json()
+    # ההורה חייב להיות מוסתר מזאפ, אחרת גם הוא וגם הצללים יופיעו
+    zap_visibility(tgt["parent"], True)
+    return {"ok": True, "shadow_id": new.get("id"), "name": new.get("name"),
+            "url": payload["external_url"], "parent_hidden": True,
+            "note": "⚠️ ודא שהכותרת תואמת לכותרת דגם ההשוואה בזאפ (שם + נפח + RAM)"}
