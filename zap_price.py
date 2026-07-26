@@ -131,6 +131,39 @@ def _variation_slugs(base, auth, var: dict) -> dict:
     return out
 
 
+def shadow_map() -> dict:
+    """כל מוצרי הצל בשליפה **אחת**, ממופים לפי מזהה מוצר-האב.
+    ⚠️ shadows_for עושה עד 4 עמודות של 100 מוצרים **לכל שורה**, ולכן בדיקת
+    הצל לשורה בודדת לקחה עשרות שניות ונראתה כאילו לא קרה כלום (אסי,
+    27/07/2026). כאן זו שליפה אחת שמשרתת את כל הטבלה."""
+    base, auth = _wc()
+    out: dict = {}
+    page = 1
+    while page <= 6:
+        try:
+            r = requests.get(f"{base}/wp-json/wc/v3/products", auth=auth, timeout=60,
+                             params={"per_page": 100, "page": page, "type": "external",
+                                     "status": "any",
+                                     "_fields": "id,name,price,external_url,meta_data"})
+            rows = r.json() if r.ok else []
+        except Exception as e:  # noqa: BLE001
+            logger.warning("zap shadow_map page %s failed: %s", page, e)
+            break
+        if not isinstance(rows, list) or not rows:
+            break
+        for p in rows:
+            meta = {m["key"]: str(m["value"]) for m in (p.get("meta_data") or [])}
+            par = meta.get("gm_parent_product_id")
+            if not par:
+                continue
+            url = p.get("external_url") or ""
+            out.setdefault(str(par), []).append(
+                {"id": p["id"], "name": p.get("name"),
+                 "price": float(p.get("price") or 0), "cap": _cap_slug(url)})
+        page += 1
+    return out
+
+
 def shadows_for(parent_id: int) -> list:
     """מוצרי הצל של אותו הורה. ⚠️ הם type=external ו-hidden, ולכן לא מופיעים
     בשליפות קטלוג רגילות — מחפשים לפי המטא gm_parent_product_id.

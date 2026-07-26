@@ -9222,6 +9222,17 @@ def zap_shadow_state(sku: str = "", pid: Optional[int] = None,
     return zap_price.shadow_state(sku.strip(), pid)
 
 
+@app.get("/api/admin/zap/shadows")
+def zap_shadows(x_admin_key: Optional[str] = Header(None)):
+    """כל מוצרי הצל בשליפה אחת, ממופים לפי מזהה מוצר-האב — כדי שעמודת
+    "מחיר צל" תיפתר לכל הטבלה בבת אחת ולא בקליק איטי לכל שורה."""
+    _require_admin(x_admin_key)
+    import zap_price
+    m = zap_price.shadow_map()
+    return {"ok": True, "parents": len(m),
+            "shadows": sum(len(v) for v in m.values()), "map": m}
+
+
 @app.post("/api/admin/zap/create-shadow")
 def zap_create_shadow(sku: str = "", pid: Optional[int] = None,
                       x_admin_key: Optional[str] = Header(None)):
