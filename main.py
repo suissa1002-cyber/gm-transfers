@@ -9184,6 +9184,47 @@ def zap_report():
     return out
 
 
+class ZapPriceIn(BaseModel):
+    sku: str
+    price: float
+    sync_shadow: bool = True
+
+
+@app.post("/api/admin/zap/price")
+def zap_set_price(body: ZapPriceIn, x_admin_key: Optional[str] = Header(None)):
+    """עדכון מחיר האתר מתוך דוח זאפ + סנכרון מוצר הצל. ⚠️ לא נוגע בקופה —
+    השינוי נרשם כ'ממתין לקופה' עד סימון ידני (ראה zap_price.py)."""
+    _require_admin(x_admin_key)
+    import zap_price
+    if float(body.price) <= 0:
+        raise HTTPException(400, "מחיר חייב להיות חיובי")
+    return zap_price.set_price(body.sku.strip(), float(body.price), body.sync_shadow)
+
+
+@app.post("/api/admin/zap/sync-shadow")
+def zap_sync_shadow(sku: str, x_admin_key: Optional[str] = Header(None)):
+    """מיישר את מוצרי הצל של זאפ למחיר הנוכחי של הווריאציה, בלי לשנות מחיר."""
+    _require_admin(x_admin_key)
+    import zap_price
+    return zap_price.sync_shadow_only(sku.strip())
+
+
+@app.get("/api/zap/pending")
+def zap_pending_list():
+    """שינויי מחיר שנעשו מהדוח וטרם עודכנו בקופה. ציבורי-לקריאה כמו הדוח."""
+    import zap_price
+    return {"ok": True, "rows": zap_price.pending()}
+
+
+@app.post("/api/admin/zap/pending-done")
+def zap_pending_done(sku: str, x_admin_key: Optional[str] = Header(None)):
+    """סימון ששינוי המחיר עודכן גם בקופה — מסיר את החיווי."""
+    _require_admin(x_admin_key)
+    import zap_price
+    zap_price.clear_pending(sku.strip())
+    return {"ok": True, "sku": sku}
+
+
 @app.post("/api/admin/zap/scan-now")
 def zap_scan_now(limit: int = 0, reset: int = 0, x_admin_key: Optional[str] = Header(None)):
     """מפעיל סריקה. ⚠️ סריקה מלאה (~250 דגמים) נמשכת 6-8 דקות — הרבה מעבר

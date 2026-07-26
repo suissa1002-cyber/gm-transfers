@@ -257,6 +257,16 @@ table.brands tr.tot td{border-top:2px solid var(--rule); background:var(--track)
 .zapname small{display:block; color:var(--muted); font-weight:400; font-size:11.5px; margin-top:2px}
 .empty{padding:30px; text-align:center; color:var(--muted); background:var(--panel);
   border:1px solid var(--rule); border-radius:13px; font-size:14px}
+.penddot{color:var(--flag); font-size:15px; vertical-align:-1px}
+.zedit{appearance:none; background:transparent; border:0; color:var(--muted); cursor:pointer;
+  padding:2px 4px; margin-inline-start:5px; border-radius:5px; vertical-align:-1px}
+.zedit:hover{color:var(--brand); background:var(--brand-soft)}
+.pendbox{border:1px solid var(--flag); background:var(--flag-soft); border-radius:13px;
+  padding:14px 17px; margin-bottom:4px}
+.pendh{display:flex; align-items:center; gap:9px; flex-wrap:wrap; margin-bottom:9px; color:var(--flag)}
+.pendh b{font-size:14px}
+.pendh .u{font-size:12.5px}
+.pendbox .comp-t th{border-bottom-color:var(--flag)}
 .zchips{display:flex; gap:8px; flex-wrap:wrap}
 .zchip{appearance:none; font-family:inherit; font-size:13px; cursor:pointer;
   background:var(--panel); color:var(--ink-2); border:1px solid var(--rule);
@@ -1007,6 +1017,7 @@ tr.zdet > td{padding:0 !important; background:var(--track) !important; border-in
           <option value="missing">✗ לא רשומים — הדגם קיים, אנחנו לא בו</option>
           <option value="nomodel">אין דגם בזאפ בכלל</option>
           <option value="suspect">⚠ התאמה חשודה — לבדיקה</option>
+          <option value="pending">● נערך כאן — ממתין לקופה</option>
         </select></label>
       <label>מצב תמחור
         <select id="zapState" onchange="zapRender()">
@@ -1024,6 +1035,7 @@ tr.zdet > td{padding:0 !important; background:var(--track) !important; border-in
         </select></label>
       <span class="muted" id="zapCount" style="margin-inline-start:auto;font-size:12.5px"></span>
     </div>
+    <div id="zapPending"></div>
     <div class="zchips" id="zapChips"></div>
     <div id="zapTable"><div class="empty">טוען נתוני זאפ…</div></div>
   </section>
@@ -1124,6 +1136,23 @@ tr.zdet > td{padding:0 !important; background:var(--track) !important; border-in
     }).join('');
   }
 
+  function renderPending(){
+    var box=document.getElementById('zapPending'); if(!box) return;
+    var rows=Object.keys(ZPEND).map(function(k){return ZPEND[k];});
+    if(!rows.length){ box.innerHTML=''; return; }
+    box.innerHTML='<div class="pendbox"><div class="pendh">'+
+      '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>'+
+      '<b>'+rows.length+' שינויי מחיר ממתינים לעדכון בקופה</b>'+
+      '<span class="u">עודכנו כאן באתר — הקופה לא מתעדכנת אוטומטית</span></div>'+
+      '<table class="comp-t"><thead><tr><th>דגם</th><th>מק״ט</th><th>לפני</th><th>אחרי</th><th>מתי</th><th></th></tr></thead><tbody>'+
+      rows.map(function(x){
+        return '<tr><td>'+esc(x.name||'')+'</td><td class="n">'+esc(x.sku)+'</td>'+
+          '<td class="n u">'+(x.old?ils(x.old):'—')+'</td><td class="n"><b>'+ils(x.new)+'</b></td>'+
+          '<td class="n u">'+esc((x.at||'').replace('T',' ').slice(0,16))+'</td>'+
+          '<td><button class="zchip" onclick="zapDone(\''+esc(x.sku)+'\')">✓ עודכן בקופה</button> '+
+          '<button class="zchip" onclick="zapSyncShadow(\''+esc(x.sku)+'\')">סנכרן צל</button></td></tr>';
+      }).join('')+'</tbody></table></div>';
+  }
   function zapRender(){
     var box=document.getElementById('zapTable'); if(!box||!ZAP) return;
     var b=document.getElementById('zapBrand').value,
@@ -1138,6 +1167,7 @@ tr.zdet > td{padding:0 !important; background:var(--track) !important; border-in
       if(q && !pr && !st) return true;      // חיפוש חופשי גובר על שאר הסינונים
       if(pr==='nomodel') return r.status==='no_model';
       if(pr==='suspect') return r.status==='suspect';
+      if(pr==='pending') return !!ZPEND[r.sku];
       if(!pr && r.status==='suspect') return true;
       if(pr==='listed'  && r.status!=='listed')  return false;
       if(pr==='missing' && r.status!=='missing') return false;
@@ -1194,7 +1224,7 @@ tr.zdet > td{padding:0 !important; background:var(--track) !important; border-in
             : ' · <b style="color:var(--fall)">לא רשומים</b> — הדגם קיים, אנחנו לא בו')+'</small></td>'+
           '<td class="n"><span class="minitrack"><span class="mini" style="width:'+
             ((r.stock||0)/maxStock*62).toFixed(0)+'px"></span></span> '+(r.stock||0)+'</td>'+
-          '<td class="n">'+(r.our_price?ils(r.our_price):'—')+'</td>'+
+          '<td class="n">'+priceCell(r)+'</td>'+
           '<td class="n">'+ils(r.low)+'<small class="u" style="display:block;font-size:11px">'+esc(r.low_seller||'')+'</small></td>'+
           '<td class="n">'+r.sellers+'</td>'+
           '<td class="n"><span class="rankpill '+cls+'">'+(r.rank?'#'+r.rank:'—')+'</span></td>'+
@@ -1242,11 +1272,65 @@ tr.zdet > td{padding:0 !important; background:var(--track) !important; border-in
     var d=document.getElementById('zdet'+i), c=document.getElementById('zchev'+i);
     if(!d) return; d.hidden=!d.hidden; if(c) c.textContent=d.hidden?'▾':'▴';
   }
+  // ── עריכת מחיר ישירות מהדוח ──
+  var ZKEY=null, ZPEND={};
+  function priceCell(r){
+    if(!r.our_price) return '—';
+    var pend=ZPEND[r.sku];
+    return '<span id="zp'+r.sku+'">'+ils(r.our_price)+
+      (pend?' <span class="penddot" title="עודכן כאן ב-'+esc(pend.at||'')+' — טרם עודכן בקופה">●</span>':'')+
+      '</span>'+
+      '<button class="zedit" title="ערוך מחיר באתר" onclick="event.stopPropagation();zapEdit(\''+r.sku+'\','+r.our_price+')">'+
+      '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>';
+  }
+  function zapKey(){
+    if(ZKEY) return ZKEY;
+    ZKEY=prompt('מפתח מנהל (נשמר לסשן הזה בלבד):')||'';
+    return ZKEY;
+  }
+  function zapEdit(sku, cur){
+    var v=prompt('מחיר חדש באתר עבור '+sku+'\n(המחיר בקופה לא ישתנה — יסומן כממתין)', cur);
+    if(v===null) return;
+    var p=parseFloat(String(v).replace(/[^\d.]/g,''));
+    if(!(p>0)){ alert('מחיר לא תקין'); return; }
+    var k=zapKey(); if(!k) return;
+    var el=document.getElementById('zp'+sku); if(el) el.textContent='שומר…';
+    fetch(ZAP_API.replace('/api/zap/report','/api/admin/zap/price'),{
+      method:'POST', headers:{'Content-Type':'application/json','X-Admin-Key':k},
+      body:JSON.stringify({sku:sku, price:p, sync_shadow:true})
+    }).then(function(r){return r.json();}).then(function(j){
+      if(!j.ok){ alert('העדכון נכשל: '+(j.error||j.detail||'')); ZKEY=null; zapLoad(); return; }
+      var n=(j.shadows_synced||[]).length;
+      alert('עודכן ל־₪'+p+(n?('\nסונכרנו '+n+' מוצרי צל לזאפ'):'\n(לא נמצא מוצר צל לסנכרון)')+
+            '\n\n⚠️ הקופה לא עודכנה — הדגם מסומן כממתין.');
+      zapLoad();
+    }).catch(function(){ alert('שגיאת רשת'); zapLoad(); });
+  }
+  function zapSyncShadow(sku){
+    var k=zapKey(); if(!k) return;
+    fetch(ZAP_API.replace('/api/zap/report','/api/admin/zap/sync-shadow?sku='+encodeURIComponent(sku)),
+      {method:'POST', headers:{'X-Admin-Key':k}})
+      .then(function(r){return r.json();}).then(function(j){
+        alert(j.ok? ('סונכרנו '+(j.synced||[]).length+' מוצרי צל למחיר ₪'+j.price)
+                  : ('נכשל: '+(j.error||'')));
+      });
+  }
+  function zapDone(sku){
+    var k=zapKey(); if(!k) return;
+    fetch(ZAP_API.replace('/api/zap/report','/api/admin/zap/pending-done?sku='+encodeURIComponent(sku)),
+      {method:'POST', headers:{'X-Admin-Key':k}})
+      .then(function(){ zapLoad(); });
+  }
   function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){
     return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 
   function zapLoad(){
     zapMonths();
+    fetch(ZAP_API.replace('/api/zap/report','/api/zap/pending'))
+      .then(function(r){return r.json();}).then(function(j){
+        ZPEND={}; (j.rows||[]).forEach(function(x){ ZPEND[x.sku]=x; });
+        renderPending(); if(ZAP) zapRender();
+      }).catch(function(){});
     fetch(ZAP_API).then(function(r){return r.json();}).then(function(j){
       if(!j.ok){ document.getElementById('zapTable').innerHTML=
         '<div class="empty">'+esc(j.reason||'אין נתונים עדיין')+'</div>'; return; }
