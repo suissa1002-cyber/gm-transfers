@@ -98,9 +98,12 @@ def build_targets() -> list:
             price = float(f.get("price") or 0)
         except (TypeError, ValueError):
             price = 0
-        out.append({"sku": sku, "name": name, "brand": brand_of(name),
+        pid = str(f.get("num") or "").strip()
+        if not pid:
+            continue                      # בלי מזהה אין זהות — ולא ממטמנים
+        out.append({"id": pid, "sku": sku, "name": name, "brand": brand_of(name),
                     "stock": stock.get(sku, 0), "our_price": price or None,
-                    "product_id": f.get("num"), "site_url": f.get("url")})
+                    "product_id": pid, "site_url": f.get("url")})
     return out
 
 
@@ -222,7 +225,14 @@ def _model_title(mid: int) -> str:
 
 def resolve_modelid(name: str, sku: str) -> int | None:
     """modelid של הדגם בזאפ, **מאומת מול שם המוצר**. נשמר לצמיתות.
-    '0' = חיפשנו ולא נמצאה התאמה תקפה, כדי לא לחפש שוב כל יום."""
+    '0' = חיפשנו ולא נמצאה התאמה תקפה, כדי לא לחפש שוב כל יום.
+    ⚠️ `sku` כאן הוא מזהה-הזהות של השורה, ולא בהכרח מק"ט: ל-45 מתוך 65
+    מוצרי הפיד אין CATALOG_NUMBER (המק"ט יושב על הוריאציה, לא על ההורה),
+    ואז כולם חלקו את המפתח הריק `zap_mid:` — הראשון שנפתר קבע, ו-45 דגמים
+    שונים מופו לאותו modelid (אסי, 26/07/2026). בלי מזהה — לא ממטמנים."""
+    if not (sku or "").strip():
+        logger.warning("zap: refusing to cache modelid without an id (%s)", name[:60])
+        return None
     key = f"zap_mid:{sku}"
     cached = db.sales_state_get(key)
     if cached:                            # '' = אופס ידנית → מחשבים מחדש
@@ -290,8 +300,9 @@ def _price_for_rank(offers: list, rank: int) -> float | None:
 
 
 def analyse(t: dict) -> dict:
-    mid = resolve_modelid(t["name"], t["sku"])
-    row = {"sku": t["sku"], "name": t["name"], "brand": t["brand"],
+    ident = t.get("id") or t.get("sku")
+    mid = resolve_modelid(t["name"], ident)
+    row = {"id": ident, "sku": t["sku"], "name": t["name"], "brand": t["brand"],
            "stock": t["stock"], "our_price": t.get("our_price"), "modelid": mid,
            "product_id": t.get("product_id"), "site_url": t.get("site_url"),
            "zap_hidden": 0}   # מגיע מהפיד ⇒ מוצג בזאפ בהגדרה
@@ -311,7 +322,7 @@ def analyse(t: dict) -> dict:
     op = t.get("our_price")
     if op and not ours and (op < prices[0] / 2.5 or op > prices[-1] * 2.5):
         row.update({"status": "suspect", "url": f"{BASE}/model.aspx?modelid={mid}",
-                    "zap_title": db.sales_state_get(f"zap_title:{t['sku']}") or "",
+                    "zap_title": db.sales_state_get(f"zap_title:{ident}") or "",
                     "sellers": data["offer_count"], "low": prices[0], "high": prices[-1],
                     "note": "המחיר שלנו רחוק מטווח הדגם בזאפ — ההתאמה כנראה שגויה"})
         logger.warning("zap: suspect match sku=%s ours=%s range=%s-%s",
@@ -319,7 +330,7 @@ def analyse(t: dict) -> dict:
         return row
     row.update({
         "url": f"{BASE}/model.aspx?modelid={mid}",
-        "zap_title": db.sales_state_get(f"zap_title:{t['sku']}") or "",
+        "zap_title": db.sales_state_get(f"zap_title:{ident}") or "",
         "sellers": data["offer_count"],
         "low": prices[0], "low_seller": offers[0]["seller"],
         "median": prices[len(prices) // 2], "high": prices[-1],
