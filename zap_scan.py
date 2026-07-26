@@ -173,7 +173,7 @@ def resolve_modelid(name: str, sku: str) -> int | None:
     '0' = חיפשנו ולא נמצאה התאמה תקפה, כדי לא לחפש שוב כל יום."""
     key = f"zap_mid:{sku}"
     cached = db.sales_state_get(key)
-    if cached is not None:
+    if cached:                            # '' = אופס ידנית → מחשבים מחדש
         return int(cached) or None
     if any(a in (name or "").lower() for a in ACCESSORY):
         db.sales_state_set(key, "0")      # אביזר שסווג בטעות כטלפון בקופה
@@ -276,6 +276,17 @@ def analyse(t: dict) -> dict:
             p = row.get(f"p_top{k}")
             row[f"cut_top{k}"] = round(max(0.0, row["our_price"] - p), 0) if p else None
     return row
+
+
+def reset_mapping() -> int:
+    """מנקה את מטמון דגם→modelid. נדרש אחרי שינוי בלוגיקת ההתאמה — אחרת
+    מיפויים שנוצרו בגרסה קודמת נשארים תקועים לנצח (המטמון לצמיתות בכוונה)."""
+    n = 0
+    for pref in ("zap_mid:", "zap_title:"):
+        for k, _ in db.sales_state_prefix(pref):
+            db.sales_state_set(k, "")     # ריק ≠ '0' → ייחשב כלא-נבדק ויחושב מחדש
+            n += 1
+    return n
 
 
 def run(limit: int | None = None, sleep: float = 1.1) -> dict:

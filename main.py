@@ -9167,12 +9167,15 @@ def zap_report():
 
 
 @app.post("/api/admin/zap/scan-now")
-def zap_scan_now(limit: int = 0, x_admin_key: Optional[str] = Header(None)):
+def zap_scan_now(limit: int = 0, reset: int = 0, x_admin_key: Optional[str] = Header(None)):
     """מפעיל סריקה. ⚠️ סריקה מלאה (~250 דגמים) נמשכת 6-8 דקות — הרבה מעבר
     לתקרת הזמן של הפרוקסי של Render (502). לכן היא נזרקת ל-scheduler ומחזירים
     מיד; המעקב דרך GET /api/zap/report. limit>0 קטן רץ סינכרוני לבדיקה."""
     _require_admin(x_admin_key)
     import zap_scan
+    if reset:
+        n = zap_scan.reset_mapping()
+        logger.info("zap: mapping cache reset (%d keys)", n)
     if limit and limit <= 25:
         return zap_scan.run(limit=limit).get("summary")
     scheduler.add_job(_zap_scan_job, "date", id="zap_scan_manual",
