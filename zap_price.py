@@ -227,7 +227,12 @@ def find_target(sku: str = "", pid=None) -> dict | None:
 
 
 def find_by_sku(sku: str) -> dict | None:
-    """הווריאציה (או המוצר הפשוט) שנושאת את המק"ט, יחד עם ההורה והאטריביוטים."""
+    """הווריאציה (או המוצר הפשוט) שנושאת את המק"ט, יחד עם ההורה והאטריביוטים.
+    ⚠️ מק"ט ריק חייב להחזיר None. WooCommerce **מתעלם** מ-?sku= ריק ומחזיר את
+    כל הקטלוג, החדש ראשון — והקוד לקח את הראשון ברשימה. כך "הסתר מזאפ" על
+    Pixel 9a הסתיר אוזניות JBL והחזיר הצלחה (אסי, 27/07/2026)."""
+    if not (sku or "").strip():
+        return None
     base, auth = _wc()
     r = requests.get(f"{base}/wp-json/wc/v3/products", auth=auth, timeout=45,
                      params={"sku": sku, "per_page": 10,
@@ -356,9 +361,9 @@ def zap_visibility(product_id: int = 0, hidden: bool = True, sku: str = "") -> d
     ⚠️ הערך חייב להיות 'yes' ולא '1' — התוסף מצפה בדיוק לזה (נלמד בכאב).
     הדגל יושב תמיד על מוצר-האב; לוריאציה אין הגדרת זאפ משלה."""
     if not product_id:
-        tgt = find_by_sku(sku)
+        tgt = find_target(sku, None)
         if not tgt:
-            return {"ok": False, "error": "לא נמצא מוצר למק״ט הזה"}
+            return {"ok": False, "error": "לא נמצא מוצר — צריך מק״ט או מזהה מוצר"}
         product_id = tgt["parent"]
     base, auth = _wc()
     r = requests.put(f"{base}/wp-json/wc/v3/products/{product_id}", auth=auth, timeout=45,

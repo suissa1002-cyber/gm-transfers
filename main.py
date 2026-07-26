@@ -9275,6 +9275,15 @@ def zap_selftest(x_admin_key: Optional[str] = Header(None)):
         if got != want:
             bad += 1
         out.append({"query": q, "want": want, "got": got, "ok": got == want})
+    # ⚠️ מק"ט ריק אסור שיחזיר מוצר: WooCommerce מתעלם מ-?sku= ריק ומחזיר את כל
+    # הקטלוג, ו"הסתר מזאפ" הסתיר את המוצר הראשון ברשימה (27/07/2026).
+    import zap_price
+    for bad_sku in ("", "   "):
+        got = zap_price.find_by_sku(bad_sku)
+        if got is not None:
+            bad += 1
+        out.append({"query": f"find_by_sku({bad_sku!r}) → None", "want": None,
+                    "got": got, "ok": got is None})
     return {"ok": bad == 0, "passed": len(out) - bad, "total": len(out),
             "has_feed_skus": hasattr(zap_scan, "_feed_skus"), "cases": out}
 
@@ -9300,13 +9309,17 @@ def zap_create_shadow(sku: str = "", pid: Optional[int] = None,
 
 
 @app.post("/api/admin/zap/visibility")
-def zap_visibility_set(product_id: int = 0, hidden: int = 1, sku: str = "",
+def zap_visibility_set(product_id: int = 0, pid: int = 0, hidden: int = 1, sku: str = "",
                        x_admin_key: Optional[str] = Header(None)):
     """הצג/הסתר מוצר בפיד זאפ — אותו צ׳קבוקס שבעריכת המוצר.
-    מקבל product_id או מק״ט (הכלי כולו מק״ט-מונחה)."""
+    ⚠️ הממשק שולח `pid` (כמו שאר פעולות הזאפ) והפרמטר כאן נקרא product_id,
+    ולכן המזהה נבלע בשקט ונשארנו עם מק״ט ריק. שני השמות מתקבלים."""
     _require_admin(x_admin_key)
     import zap_price
-    return zap_price.zap_visibility(product_id, bool(hidden), sku)
+    target = product_id or pid
+    if not target and not sku.strip():
+        raise HTTPException(400, "צריך מק״ט או מזהה מוצר")
+    return zap_price.zap_visibility(target, bool(hidden), sku)
 
 
 @app.get("/api/admin/zap/feed")
