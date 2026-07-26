@@ -126,6 +126,16 @@ def _capacity(s: str) -> str | None:
     return str(max(vals)) if vals else None
 
 
+RAM_RE = re.compile(r"(\d{1,2})\s*GB\s*RAM", re.I)
+
+
+def _ram(s: str) -> str | None:
+    """זאפ מחזיק דף נפרד לכל RAM ("512GB 12GB RAM" מול "512GB 16GB RAM"),
+    ולכן בלי בדיקת RAM ההתאמה נופלת על הדף השכן (אסי, 26/07/2026)."""
+    m = RAM_RE.search(s or "")
+    return m.group(1) if m else None
+
+
 def _quals(s: str) -> set:
     low = " " + re.sub(r"[^a-z0-9+ ]", " ", (s or "").lower()) + " "
     out, seen = set(), low
@@ -158,6 +168,9 @@ def _match_ok(our_name: str, zap_title: str) -> bool:
     if ca and not cb:
         return False
     if _quals(our_name) != _quals(zap_title):   # Pro / Pro Max / Ultra / FE חייבים להתאים
+        return False
+    ra, rb = _ram(our_name), _ram(zap_title)
+    if ra and rb and ra != rb:
         return False
     ta, tb = _model_tokens(our_name), _model_tokens(zap_title)
     return bool(ta & tb) if ta else True
@@ -353,30 +366,57 @@ def reset_mapping() -> int:
 
 
 def run(limit: int | None = None, sleep: float = 1.1) -> dict:
-    """סבב מלא. ~250 דגמים ≈ 5 דקות. נשמר תחת zap_snap:<date> ו-zap_snap:latest."""
+    """סבב מלא. ⚠️ שורה = **דגם בזאפ**, לא מק"ט: דף השוואה אחד מייצג את כל
+    הצבעים של אותה תצורה, ולכן המלאי מצטבר (אסי: "Oppo X9 Ultra 512 —
+    2 שחור + 2 כתום ⇒ 4 במלאי"), וכך אפשר להחליט מהר אם שווה לחתוך מחיר."""
     targets = build_targets()
     if limit:
         targets = targets[:limit]
     total = len(targets)
-    rows = []
+    by_model: dict = {}
+    orphans = []
     for i, t in enumerate(targets, 1):
         try:
-            rows.append(analyse(t))
+            r = analyse(t)
         except Exception as e:  # noqa: BLE001
             logger.warning("zap analyse failed for %s: %s", t.get("sku"), e)
-        # ⚠️ שמירה מצטברת: הסריקה נמשכת עשרות דקות (בעיקר כשמטמון המיפוי ריק
-        # ולכל דגם נדרש חיפוש + אימות מועמדים). בלי זה אין חיווי התקדמות, וכל
-        # restart של Render — כלומר כל deploy — מאבד את כל העבודה.
+            continue
+        mid = r.get("modelid")
+        if not mid:
+            orphans.append(r)
+        else:
+            g = by_model.get(mid)
+            if g is None:
+                g = dict(r)
+                g["variants"] = []
+                g["stock"] = 0
+                by_model[mid] = g
+            g["variants"].append({"sku": r["sku"], "name": r["name"],
+                                  "stock": r.get("stock") or 0,
+                                  "price": r.get("our_price")})
+            g["stock"] += r.get("stock") or 0
+            # המחיר שמתחרה בזאפ הוא הזול מבין הצבעים
+            if r.get("our_price") and (not g.get("our_price") or r["our_price"] < g["our_price"]):
+                g["our_price"] = r["our_price"]
+                g["sku"] = r["sku"]
         if i % 15 == 0 or i == total:
             try:
                 db.sales_state_set("zap_progress", json.dumps(
                     {"done": i, "total": total, "at": t.get("name", "")[:60]}, ensure_ascii=False))
                 db.sales_state_set("zap_snap:partial", json.dumps(
                     {"date": date.today().isoformat(), "partial": True,
-                     "rows": rows, "summary": _summarise(rows, partial=True)}, ensure_ascii=False))
+                     "rows": list(by_model.values()) + orphans,
+                     "summary": _summarise(list(by_model.values()) + orphans, partial=True)},
+                    ensure_ascii=False))
             except Exception:  # noqa: BLE001
                 pass
         time.sleep(sleep)
+    # מחיר/מיקום מחושבים מחדש על המחיר הזול של הקבוצה
+    for g in by_model.values():
+        g["colors"] = len(g["variants"])
+        if g.get("our_price") and g.get("low"):
+            g["gap_pct"] = round((g["our_price"] / g["low"] - 1) * 100, 1)
+    rows = sorted(by_model.values(), key=lambda r: -(r.get("stock") or 0)) + orphans
     snap = {"date": date.today().isoformat(), "rows": rows, "summary": _summarise(rows)}
     try:
         db.sales_state_set("zap_progress", "")

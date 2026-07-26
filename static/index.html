@@ -411,6 +411,55 @@
                background:var(--card);border:1px solid var(--line);border-radius:14px;
                box-shadow:0 12px 40px rgba(0,0,0,.28);padding:10px 14px;max-width:100%}
   body:has(.wco-bulk) .wco-cards,body:has(.wco-bulk) .wco-table{padding-bottom:76px}
+
+  /* ── כלי עבודה זאפ ── */
+  .zk{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--line);
+      border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:14px}
+  .zk>div{background:var(--card);padding:13px 15px;display:flex;flex-direction:column;gap:3px}
+  .zk .l{font-size:12px;color:var(--muted)}
+  .zk .v{font-size:24px;font-weight:800;letter-spacing:-.02em;line-height:1.1}
+  .zk .s{font-size:11.5px;color:var(--muted)}
+  .zbar{display:flex;gap:9px;align-items:center;flex-wrap:wrap;background:var(--card);
+        border:1px solid var(--line);border-radius:11px;padding:10px 13px;margin-bottom:10px}
+  .zbar input[type=search]{flex:1;min-width:190px;font-family:inherit;font-size:13.5px;color:var(--txt);
+        background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:8px 11px}
+  .zbar select{font-family:inherit;font-size:13px;color:var(--txt);background:var(--bg);
+        border:1px solid var(--line);border-radius:9px;padding:7px 9px;cursor:pointer}
+  .zchips{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px}
+  .zchip{appearance:none;font-family:inherit;font-size:12.5px;cursor:pointer;text-decoration:none;
+        background:var(--card);color:var(--txt-2,var(--txt));border:1px solid var(--line);
+        border-radius:999px;padding:6px 12px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+  .zchip b{font-family:ui-monospace,Menlo,monospace}
+  .zchip:hover{border-color:var(--brand)}
+  .zchip.on{background:var(--brand);border-color:var(--brand);color:#fff}
+  .zwrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+  table.ztab{width:100%;border-collapse:collapse;font-size:13.5px;min-width:960px}
+  table.ztab th,table.ztab td{padding:10px 12px;text-align:right;white-space:nowrap;
+        border-bottom:1px solid var(--line);border-inline-start:1px solid var(--line)}
+  table.ztab th:last-child,table.ztab td:last-child{border-inline-start:0}
+  table.ztab thead th{font-size:11px;font-weight:700;letter-spacing:.05em;color:var(--muted);
+        background:var(--bg);position:sticky;top:0;z-index:2}
+  table.ztab tbody tr:nth-child(4n+3) td{background:rgba(127,127,127,.045)}
+  table.ztab tbody tr.zrow:hover td{background:rgba(34,197,94,.09);cursor:pointer}
+  table.ztab td.n{font-family:ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+  .zname{white-space:normal;line-height:1.3;max-width:330px}
+  .zname b{font-weight:700;font-size:13.5px}
+  .zname small{display:block;color:var(--muted);font-size:11px;margin-top:2px;font-weight:400}
+  .zpill{display:inline-block;padding:3px 9px;border-radius:999px;font-size:11.5px;font-weight:700}
+  .zedit{appearance:none;background:transparent;border:0;color:var(--muted);cursor:pointer;
+        padding:2px 4px;border-radius:5px;vertical-align:-2px}
+  .zedit:hover{color:var(--brand);background:rgba(34,197,94,.12)}
+  .zdot{color:#d97706;font-size:15px;vertical-align:-1px}
+  .zpend{border:1px solid #d97706;background:rgba(217,119,6,.08);border-radius:12px;
+        padding:13px 16px;margin-bottom:12px}
+  .zpend .h{display:flex;align-items:center;gap:8px;color:#d97706;margin-bottom:8px;flex-wrap:wrap}
+  .zsub{width:100%;border-collapse:collapse;font-size:12.5px}
+  .zsub td,.zsub th{padding:5px 9px;border-bottom:1px solid var(--line);text-align:right}
+  .zsub tr.mine td{background:rgba(34,197,94,.12);font-weight:700}
+  .zsub tr.beat td{color:#c0492c}
+  .zcb{display:block;height:8px;border-radius:4px;background:rgba(127,127,127,.18);overflow:hidden}
+  .zcb>span{display:block;height:100%;border-radius:4px;background:currentColor;opacity:.45}
+
   /* reply בלחיצה ארוכה: במובייל מנטרלים את תפריט המגע של הדפדפן על הבועות */
   @media (pointer:coarse){ .wa-b{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none} }
   .wa-replybar{display:flex;align-items:center;gap:8px;max-width:920px;width:100%;margin-inline:auto;
@@ -1375,14 +1424,12 @@ function zapState(r){
 function renderZap(){
   const Z=zapInit(), app=document.getElementById('app'); if(!app) return;
   if(!Z.rows){ app.innerHTML=`<h1 class="title">${ico('zap',19)} זאפ</h1>${adminTabsHTML()}<div class="empty">טוען…</div>`; return; }
-  const s=Z.summary||{};
-  const q=(Z.q||'').toLowerCase();
+  const s=Z.summary||{}, q=(Z.q||'').toLowerCase();
   let rows=Z.rows.filter(r=>{
-    if(q && (r.name+' '+(r.zap_title||'')+' '+r.brand+' '+r.sku).toLowerCase().indexOf(q)<0) return false;
+    if(q && (r.name+' '+(r.zap_title||'')+' '+r.brand+' '+(r.sku||'')).toLowerCase().indexOf(q)<0) return false;
     if(Z.brand && r.brand!==Z.brand) return false;
-    const st=zapState(r).k;
     if(Z.state==='pending') return !!Z.pend[r.sku];
-    if(Z.state && Z.state!==st) return false;
+    if(Z.state && Z.state!==zapState(r).k) return false;
     return true;
   });
   const key={cut5:r=>r.cut_top5==null?1e9:r.cut_top5, rank:r=>r.rank||999,
@@ -1390,146 +1437,110 @@ function renderZap(){
   rows.sort((a,b)=>key(a)-key(b));
   const cnt=k=>Z.rows.filter(r=>zapState(r).k===k).length;
   const brands=[...new Set(Z.rows.map(r=>r.brand))].sort();
-  const chip=(v,lab,n,col)=>`<button class="zchip${Z.state===v?' on':''}" onclick="zapSet('state','${v}')">
-      <span style="color:${Z.state===v?'#fff':col}">●</span> ${lab} <b>${n}</b></button>`;
+  const chip=(v,lab,n)=>`<button class="zchip${Z.state===v?' on':''}" onclick="zapSet('state','${v}')">${lab} <b>${n}</b></button>`;
   app.innerHTML=`
     <h1 class="title" style="display:flex;align-items:center;gap:8px">${ico('zap',19)} זאפ — כלי עבודה</h1>
     ${adminTabsHTML()}
-    <div class="kpis" style="margin-bottom:14px">
-      <div class="kpi"><span class="lab">נסרקו</span><span class="val num">${s.scanned||0}</span><span class="sub">${Z.date||''}</span></div>
-      <div class="kpi"><span class="lab">רשומים בזאפ</span><span class="val num up">${cnt('listed')}</span><span class="sub">מופיעים בדף השוואה</span></div>
-      <div class="kpi"><span class="lab">בטופ 5</span><span class="val num">${s.in_top5||0}</span><span class="sub">במחיר הנוכחי</span></div>
-      <div class="kpi"><span class="lab">ממתין לקופה</span><span class="val num ${Z.pendN?'warn':''}">${Z.pendN}</span><span class="sub">שונה כאן, לא בקופה</span></div>
+    <div class="zk">
+      <div><span class="l">דגמים בזאפ</span><span class="v">${s.on_zap||0}</span><span class="s">נסרק ${escW(Z.date||'')}</span></div>
+      <div><span class="l">רשומים</span><span class="v" style="color:var(--brand)">${cnt('listed')}</span><span class="s">מופיעים בדף ההשוואה</span></div>
+      <div><span class="l">בטופ 5</span><span class="v">${s.in_top5||0}</span><span class="s">במחיר הנוכחי</span></div>
+      <div><span class="l">ממתין לקופה</span><span class="v" style="color:${Z.pendN?'#d97706':'inherit'}">${Z.pendN}</span><span class="s">שונה כאן, לא בקופה</span></div>
     </div>
-    ${Z.progress?`<div class="pendbox" style="border-color:var(--brand);background:var(--brand-soft)">
-      <div class="pendh" style="color:var(--brand)"><b>סריקה רצה — ${Z.progress.done}/${Z.progress.total}</b>
+    ${Z.progress?`<div class="zpend" style="border-color:var(--brand);background:rgba(34,197,94,.08)">
+      <div class="h" style="color:var(--brand)"><b>סריקה רצה — ${Z.progress.done}/${Z.progress.total}</b>
       <span class="muted">${escW(Z.progress.at||'')}</span></div></div>`:''}
     ${Z.pendN?zapPendBox():''}
-    <div class="zap-controls" style="margin-bottom:12px">
+    <div class="zbar">
       <input id="zq" type="search" placeholder="חיפוש דגם / מק״ט" value="${escW(Z.q)}"
-             oninput="S.zap.q=this.value;renderZap();document.getElementById('zq').focus()">
-      <label>מותג <select onchange="zapSet('brand',this.value)">
-        <option value="">הכל</option>
-        ${brands.map(b=>`<option value="${escW(b)}" ${Z.brand===b?'selected':''}>${escW(b)}</option>`).join('')}
-      </select></label>
-      <label>מיון <select onchange="zapSet('sort',this.value)">
+             oninput="S.zap.q=this.value;renderZap();const e=document.getElementById('zq');e.focus();e.setSelectionRange(e.value.length,e.value.length)">
+      <select onchange="zapSet('brand',this.value)"><option value="">כל המותגים</option>
+        ${brands.map(b=>`<option value="${escW(b)}" ${Z.brand===b?'selected':''}>${escW(b)}</option>`).join('')}</select>
+      <select onchange="zapSet('sort',this.value)">
         <option value="cut5" ${Z.sort==='cut5'?'selected':''}>הכי קל לשפר</option>
-        <option value="rank" ${Z.sort==='rank'?'selected':''}>מיקום</option>
-        <option value="gap"  ${Z.sort==='gap'?'selected':''}>פער מהזול</option>
         <option value="stock"${Z.sort==='stock'?'selected':''}>מלאי</option>
-      </select></label>
-      <button class="btn-ghost" style="padding:7px 13px" onclick="loadZap(true)">${ico('refresh',14)} רענן</button>
+        <option value="rank" ${Z.sort==='rank'?'selected':''}>מיקום</option>
+        <option value="gap"  ${Z.sort==='gap'?'selected':''}>פער מהזול</option></select>
+      <button class="zchip" onclick="loadZap(true)">${ico('refresh',13)} רענן</button>
       <span class="muted" style="margin-inline-start:auto;font-size:12.5px">${rows.length} שורות</span>
     </div>
-    <div class="zchips" style="margin-bottom:12px">
+    <div class="zchips">
       <button class="zchip${!Z.state?' on':''}" onclick="zapSet('state','')">הכל <b>${Z.rows.length}</b></button>
-      ${chip('listed','רשומים',cnt('listed'),'var(--brand)')}
-      ${chip('missing','לא בדף',cnt('missing'),'var(--fall)')}
-      ${chip('nomodel','אין דגם',cnt('nomodel'),'var(--muted)')}
-      ${chip('suspect','חשוד',cnt('suspect'),'var(--flag)')}
+      ${chip('listed','רשומים',cnt('listed'))}
+      ${chip('missing','לא בדף',cnt('missing'))}
+      ${chip('nomodel','אין דגם',cnt('nomodel'))}
+      ${chip('suspect','חשוד',cnt('suspect'))}
       <button class="zchip${Z.state==='pending'?' on':''}" onclick="zapSet('state','pending')">● ממתין לקופה <b>${Z.pendN}</b></button>
     </div>
-    <div id="zapBody">${zapTable(rows)}</div>`;
+    ${zapTable(rows)}`;
 }
 function zapPendBox(){
-  const Z=zapInit(), rows=Object.values(Z.pend);
-  return `<div class="pendbox"><div class="pendh">
-    ${ico('clock',15)}<b>${rows.length} שינויי מחיר ממתינים לעדכון בקופה</b>
-    <span class="muted">עודכנו באתר — הקופה לא מתעדכנת אוטומטית</span></div>
-    <table class="comp-t"><thead><tr><th>דגם</th><th>מק״ט</th><th>לפני</th><th>אחרי</th><th>מתי</th><th></th></tr></thead><tbody>
-    ${rows.map(x=>`<tr><td>${escW(x.name||'')}</td><td class="n">${escW(x.sku)}</td>
-      <td class="n muted">${x.old?'₪'+Number(x.old).toLocaleString('en-US'):'—'}</td>
-      <td class="n"><b>₪${Number(x.new).toLocaleString('en-US')}</b></td>
+  const Z=zapInit(), rows=Object.values(Z.pend), ils=n=>'₪'+Number(n||0).toLocaleString('en-US');
+  return `<div class="zpend"><div class="h">${ico('clock',15)}
+    <b>${rows.length} שינויי מחיר ממתינים לעדכון בקופה</b>
+    <span class="muted" style="font-size:12px">עודכנו באתר — הקופה לא מתעדכנת אוטומטית</span></div>
+    <table class="zsub"><tbody>${rows.map(x=>`<tr>
+      <td>${escW(x.name||'')}</td><td class="n">${escW(x.sku)}</td>
+      <td class="n muted">${x.old?ils(x.old):'—'}</td><td class="n"><b>${ils(x.new)}</b></td>
       <td class="n muted">${escW((x.at||'').replace('T',' ').slice(0,16))}</td>
-      <td><button class="zchip" onclick="zapPendDone('${escW(x.sku)}')">✓ עודכן בקופה</button></td></tr>`).join('')}
-    </tbody></table></div>`;
+      <td style="text-align:start"><button class="zchip" onclick="zapPendDone('${escW(x.sku)}')">✓ עודכן בקופה</button></td>
+      </tr>`).join('')}</tbody></table></div>`;
 }
 function zapTable(rows){
   const Z=zapInit();
   if(!rows.length) return `<div class="empty">${Z.reason?escW(Z.reason):'אין שורות תואמות'}</div>`;
   const ils=n=>'₪'+Number(n||0).toLocaleString('en-US');
-  return `<div class="tbox"><table><thead><tr>
-    <th>דגם</th><th>מלאי</th><th>מחיר אתר</th><th>מחיר צל</th><th>מצב בזאפ</th><th>מוכרים</th><th>הזול</th><th>פער</th><th>לטופ 5</th><th>פעולות</th>
-    </tr></thead><tbody>${rows.map((r,i)=>{
+  return `<div class="zwrap"><table class="ztab"><thead><tr>
+    <th>דגם בזאפ</th><th>מלאי</th><th>מחיר שלנו</th><th>צל</th><th>מיקום</th>
+    <th>הזול</th><th>פער</th><th>לטופ 5</th><th>פעולות</th></tr></thead><tbody>
+    ${rows.map((r,i)=>{
       const st=zapState(r), pend=Z.pend[r.sku];
-      const cut=v=>v==null?'—':(v<=0?'<span style="color:var(--brand);font-weight:800">כבר שם</span>':'<b>'+ils(v)+'</b>');
+      const cut=r.cut_top5==null?'—':(r.cut_top5<=0
+        ?'<span style="color:var(--brand);font-weight:800">כבר שם</span>':'<b>'+ils(r.cut_top5)+'</b>');
+      const gap=r.gap_pct==null?'—':`<span style="color:${r.gap_pct>0?'#c0492c':'var(--brand)'}">${r.gap_pct>0?'+':''}${r.gap_pct}%</span>`;
+      const nc=(r.colors||1)>1?` · ${r.colors} צבעים`:'';
       return `<tr class="zrow" onclick="zapToggleRow(${i})">
-        <td class="zapname"><b>${escW(r.name)}</b><small>${escW(r.brand)}${r.zap_title?' · '+escW(r.zap_title.slice(0,44)):''}</small></td>
-        <td class="n">${r.stock||0}</td>
-        <td class="n">${r.our_price?ils(r.our_price):'—'}${pend?' <span class="penddot" title="שונה כאן, לא בקופה">●</span>':''}
+        <td class="zname"><b>${escW(r.zap_title?r.zap_title.replace(' - זאפ השוואת מחירים',''):r.name)}</b>
+          <small>${escW(r.brand)}${nc} · ${escW(r.name.slice(0,40))}</small></td>
+        <td class="n"><b style="font-size:15px">${r.stock||0}</b></td>
+        <td class="n">${r.our_price?ils(r.our_price):'—'}${pend?' <span class="zdot" title="שונה כאן, לא בקופה">●</span>':''}
           <button class="zedit" onclick="event.stopPropagation();zapEditPrice('${escW(r.sku)}',${r.our_price||0})">${ico('pencil',12)}</button></td>
         <td class="n" id="zsh${escW(r.sku)}">${zapShadowCell(r)}</td>
-        <td><span class="rankpill" style="color:${st.c};border:1px solid ${st.c}55;background:${st.c}14">${st.t}</span></td>
-        <td class="n">${r.sellers||'—'}</td>
-        <td class="n">${r.low?ils(r.low):'—'}<small class="muted" style="display:block;font-size:11px">${escW(r.low_seller||'')}</small></td>
-        <td class="n">${r.gap_pct==null?'—':(r.gap_pct>0?'+':'')+r.gap_pct+'%'}</td>
-        <td class="n">${cut(r.cut_top5)}</td>
-        <td onclick="event.stopPropagation()">
-          <button class="zchip" title="סנכרן מוצר צל למחיר האתר" onclick="zapSyncSh('${escW(r.sku)}')">סנכרן צל</button>
-          <button class="zchip" title="הסתר/הצג את המוצר בפיד זאפ" onclick="zapHide('${escW(r.sku)}')">${ico('eye',12)}</button>
-          <button class="zchip" title="צור מוצר צל לתצורה הזו" onclick="zapMakeShadow('${escW(r.sku)}')">+ צל</button>
-          ${r.url?`<a class="zchip" href="${escW(r.url)}" target="_blank" rel="noopener">זאפ</a>`:''}
+        <td><span class="zpill" style="color:${st.c};background:${st.c}1f">${st.t}</span></td>
+        <td class="n">${r.low?ils(r.low):'—'}<small style="display:block;font-size:10.5px;color:var(--muted)">${escW((r.low_seller||'').slice(0,18))}</small></td>
+        <td class="n">${gap}</td><td class="n">${cut}</td>
+        <td onclick="event.stopPropagation()" style="white-space:nowrap">
+          <button class="zchip" title="סנכרן צל למחיר האתר" onclick="zapSyncSh('${escW(r.sku)}')">סנכרן</button>
+          <button class="zchip" title="צור מוצר צל" onclick="zapMakeShadow('${escW(r.sku)}')">+צל</button>
+          ${r.url?`<a class="zchip" href="${escW(r.url)}" target="_blank" rel="noopener">זאפ ↗</a>`:''}
         </td></tr>
-      <tr class="zdet" id="zrow${i}" hidden><td colspan="10">${zapComp(r)}</td></tr>`;
+      <tr class="zdet" id="zrow${i}" hidden><td colspan="9" style="padding:0;background:var(--bg)">${zapComp(r)}</td></tr>`;
     }).join('')}</tbody></table></div>`;
 }
 function zapComp(r){
-  const c=r.competitors||[];
-  if(!c.length) return '<div class="muted" style="padding:10px">אין פירוט מתחרים</div>';
   const ils=n=>'₪'+Number(n||0).toLocaleString('en-US');
+  const vars=(r.variants||[]);
+  const varHtml = vars.length>1 ? `<div style="padding:12px 16px 4px">
+    <div style="font-size:12px;font-weight:700;margin-bottom:6px">המלאי שמרכיב את ${r.stock||0} היחידות</div>
+    <table class="zsub"><tbody>${vars.map(v=>`<tr>
+      <td>${escW(v.name)}</td><td class="n">${escW(v.sku)}</td>
+      <td class="n"><b>${v.stock||0}</b> יח׳</td><td class="n">${v.price?ils(v.price):'—'}</td>
+      </tr>`).join('')}</tbody></table></div>` : '';
+  const c=r.competitors||[];
+  if(!c.length) return varHtml||'<div class="muted" style="padding:12px 16px">אין פירוט</div>';
   const our=r.our_price||0, max=c[c.length-1].price;
   const list=c.map(o=>({seller:o.seller,price:o.price,us:false}));
   if(our && r.status!=='listed') list.push({seller:'גרין מובייל',price:our,us:true});
   list.sort((a,b)=>a.price-b.price||(a.us?1:0)-(b.us?1:0));
-  return `<div class="comp"><div class="comp-h">כל המוכרים · ${c.length}</div>
-    <table class="comp-t"><tbody>${list.map((o,i)=>`
+  return varHtml+`<div style="padding:12px 16px 14px">
+    <div style="font-size:12px;font-weight:700;margin-bottom:6px">כל המוכרים · ${c.length}</div>
+    <table class="zsub"><tbody>${list.map((o,i)=>`
       <tr class="${o.us?'mine':(our&&o.price<our?'beat':'')}">
-        <td class="n" style="width:52px"><b>#${i+1}</b></td>
+        <td class="n" style="width:46px"><b>#${i+1}</b></td>
         <td>${o.us?'<b>גרין מובייל</b> <span class="muted">— סימולציה</span>':escW(o.seller)}</td>
-        <td class="n"><b>${ils(o.price)}</b></td>
-        <td style="width:44%"><span class="cbar${o.us?' mine-bar':''}"><span style="width:${(o.price/max*100).toFixed(1)}%"></span></span></td>
+        <td class="n" style="width:90px"><b>${ils(o.price)}</b></td>
+        <td style="width:42%;color:${o.us?'var(--brand)':'var(--txt)'}"><span class="zcb"><span style="width:${(o.price/max*100).toFixed(1)}%"></span></span></td>
       </tr>`).join('')}</tbody></table></div>`;
-}
-// מחיר הצל נטען עצלנית לכל שורה — הוא דורש קריאה נפרדת לכל מק"ט
-function zapShadowCell(r){
-  const Z=zapInit(), s=(Z.sh||{})[r.sku];
-  if(!s) return `<button class="zchip" onclick="event.stopPropagation();zapLoadShadow('${escW(r.sku)}')">בדוק</button>`;
-  if(s.state==='no_shadow') return `<span style="color:var(--flag)" title="אין מוצר צל — הדגם לא ייראה בזאפ">אין צל</span>`;
-  const ils=n=>'₪'+Number(n||0).toLocaleString('en-US');
-  if(s.state==='synced') return `<span style="color:var(--brand)">${ils(s.shadow_price)} ✓</span>`;
-  return `<span style="color:var(--fall)" title="הצל מציג מחיר אחר — זאפ רואה מחיר ישן">${ils(s.shadow_price)} ⚠</span>`;
-}
-async function zapLoadShadow(sku){
-  const Z=zapInit(); Z.sh=Z.sh||{};
-  const el=document.getElementById('zsh'+sku); if(el) el.textContent='…';
-  try{ Z.sh[sku]=await api('/api/admin/zap/shadow-state?sku='+encodeURIComponent(sku),null,60000); }
-  catch(e){ Z.sh[sku]={state:'err'}; }
-  const r=(Z.rows||[]).find(x=>x.sku===sku);
-  if(el&&r) el.innerHTML=zapShadowCell(r);
-}
-async function zapHide(sku){
-  const Z=zapInit(); Z.sh=Z.sh||{};
-  if(!Z.sh[sku]){ await zapLoadShadow(sku); }
-  const s=Z.sh[sku]||{};
-  const pid=s.shadow_id;
-  if(!pid){ toast('אין מוצר צל להסתרה — הסתרה מתבצעת על הצל',false); return; }
-  if(!confirm('להסתיר את המוצר מפיד זאפ?')) return;
-  try{
-    const j=await api('/api/admin/zap/visibility?product_id='+pid+'&hidden=1',{method:'POST'},45000);
-    toast(j.ok?'הוסתר מזאפ':'נכשל', !!j.ok);
-  }catch(e){ toast('שגיאת רשת',false); }
-}
-async function zapMakeShadow(sku){
-  if(!confirm('ליצור מוצר צל לזאפ לתצורה הזו?\nההורה יוסתר מזאפ אוטומטית.')) return;
-  showLoading('יוצר מוצר צל…');
-  try{
-    const j=await api('/api/admin/zap/create-shadow?sku='+encodeURIComponent(sku),{method:'POST'},90000);
-    hideLoading();
-    if(!j.ok){ toast(j.error||'נכשל',false); return; }
-    toast('נוצר מוצר צל #'+j.shadow_id+' — ודא שהכותרת תואמת לזאפ',true);
-    const Z=zapInit(); if(Z.sh) delete Z.sh[sku];
-    zapLoadShadow(sku);
-  }catch(e){ hideLoading(); toast('שגיאת רשת',false); }
 }
 function zapToggleRow(i){ const d=document.getElementById('zrow'+i); if(d) d.hidden=!d.hidden; }
 async function zapEditPrice(sku,cur){
