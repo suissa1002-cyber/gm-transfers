@@ -197,14 +197,18 @@
     Object.keys(v.attributes).forEach(function (k) {
       var val = v.attributes[k];
       if (!val) return;
+      var $s = $f.find('select').filter(function () { return this.name === k; });
+      /* ⚠️ לחיצה על סוואץ' שכבר נבחר *מבטלת* אותו — בלי הבדיקה הזו החלת
+         הקישור הייתה מרוקנת את הבחירה והמחיר חוזר לטווח. */
+      if ($s.length && $s.val() === val) return;
       var $ul = $f.find('ul.variable-items-wrapper[data-attribute_name="' + k + '"]');
       var $li = $ul.find('li.variable-item').filter(function () {
         return $(this).attr('data-value') === val;
       });
       if ($li.length) { $li.trigger('click'); return; }
-      var $s = $f.find('select').filter(function () { return this.name === k; });
       if ($s.length) $s.val(val).trigger('change');
     });
+    $f.trigger('check_variations');
     return true;
   }
   function gmMountShare() {
