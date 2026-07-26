@@ -163,6 +163,30 @@ def _match_ok(our_name: str, zap_title: str) -> bool:
     return bool(ta & tb) if ta else True
 
 
+def _clean_query(name: str) -> str:
+    """שם המוצר בלי הצבע. ⚠️ רשימת צבעים קשיחה לא מספיקה — "Umber", "Moonstone"
+    ו-"Graygreen" אינם בה, נשארו בשאילתה, וזאפ החזיר תוצאות אקראיות לגמרי.
+    הכלל המבני: בשמות שלנו הצבע הוא תמיד הקטע האחרון אחרי " - " ואין בו נפח."""
+    q = re.sub(r"\s+", " ", (name or "")).strip()
+    if " - " in q:
+        head, tail = q.rsplit(" - ", 1)
+        if head and not CAP_RE.search(tail):      # הזנב הוא צבע, לא תצורה
+            q = head
+    return q.strip(" -")
+
+
+def _short_query(q: str) -> str:
+    """נפילה אחורה: מותג + אסימוני דגם + נפח בלבד, בלי מילות תיאור."""
+    b = brand_of(q)
+    if b == "אחר":
+        return ""
+    toks = sorted(_model_tokens(q))
+    cap = CAP_RE.search(q)
+    parts = [b] + toks + ([cap.group(0)] if cap else [])
+    out = " ".join(parts)
+    return out if out.strip().lower() != q.strip().lower() else ""
+
+
 def _model_title(mid: int) -> str:
     try:
         html = _get(f"{BASE}/model.aspx?modelid={mid}")
@@ -182,23 +206,26 @@ def resolve_modelid(name: str, sku: str) -> int | None:
     if any(a in (name or "").lower() for a in ACCESSORY):
         db.sales_state_set(key, "0")      # אביזר שסווג בטעות כטלפון בקופה
         return None
-    q = re.sub(r"\s+", " ", (name or "")).strip()
-    q = re.sub(r"\s*-\s*(שחור|לבן|כחול|סגול|ורוד|ירוק|אדום|זהב|כסוף|אפור|תכלת|כתום|"
-               r"black|white|blue|purple|pink|green|red|gold|silver|gray|grey|orange|navy)\b.*$",
-               "", q, flags=re.I)
-    try:
-        html = _get(f"{BASE}/search.aspx?keyword={urllib.parse.quote(q)}")
-    except Exception as e:  # noqa: BLE001
-        logger.warning("zap search failed for %s: %s", q, e)
-        return None                       # שגיאת רשת — לא נועלים מטמון
+    q = _clean_query(name)
     mid = 0
-    for cand in list(dict.fromkeys(re.findall(r"modelid=(\d+)", html)))[:5]:
-        title = _model_title(int(cand))
-        if _match_ok(q, title):
-            mid = int(cand)
-            db.sales_state_set(f"zap_title:{sku}", title[:160])
+    # שתי שאילתות: המלאה, ואם נכשלה — מקוצרת (מותג + אסימוני דגם + נפח). זאפ
+    # מדרדר לתוצאות אקראיות כשיש בשאילתה מילה שהוא לא מכיר, ואז המועמדים
+    # חסרי קשר לגמרי (Oppo Find X9 → אייפון, מקבוק, מקרר).
+    for attempt in [a for a in (q, _short_query(q)) if a]:
+        try:
+            html = _get(f"{BASE}/search.aspx?keyword={urllib.parse.quote(attempt)}")
+        except Exception as e:  # noqa: BLE001
+            logger.warning("zap search failed for %s: %s", attempt, e)
+            return None                   # שגיאת רשת — לא נועלים מטמון
+        for cand in list(dict.fromkeys(re.findall(r"modelid=(\d+)", html)))[:6]:
+            title = _model_title(int(cand))
+            if _match_ok(q, title):
+                mid = int(cand)
+                db.sales_state_set(f"zap_title:{sku}", title[:160])
+                break
+            time.sleep(0.35)
+        if mid:
             break
-        time.sleep(0.4)
     if not mid:
         logger.info("zap: no valid match for %s", q)
     db.sales_state_set(key, str(mid))
