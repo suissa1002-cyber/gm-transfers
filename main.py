@@ -9158,12 +9158,30 @@ def admin_order_status(oid: int, body: OrderStatusIn, x_admin_key: Optional[str]
 def zap_report():
     """נתוני זאפ לעמוד הדוח. ציבורי-לקריאה בכוונה — הדוח מתארח כקובץ סטטי
     ואין לו מפתח; מוחזרים רק מחירים שממילא גלויים לכל אחד בזאפ."""
+    import json as _j
     import zap_scan
     snap = zap_scan.latest()
+    prog = db.sales_state_get("zap_progress") or ""
+    # סריקה בעיצומה: מציגים את התוצאה החלקית במקום נתון ישן ומטעה
+    if prog:
+        part = db.sales_state_get("zap_snap:partial")
+        if part:
+            try:
+                p = _j.loads(part)
+                if not snap or len(p.get("rows", [])) > len(snap.get("rows", [])):
+                    snap = p
+            except Exception:  # noqa: BLE001
+                pass
     if not snap:
         return {"ok": False, "reason": "אין עדיין סריקה — הסריקה הראשונה רצה ב-05:20"}
-    return {"ok": True, "date": snap.get("date"), "summary": snap.get("summary"),
-            "rows": snap.get("rows", []), "history": zap_scan.history(30)}
+    out = {"ok": True, "date": snap.get("date"), "summary": snap.get("summary"),
+           "rows": snap.get("rows", []), "history": zap_scan.history(30)}
+    if prog:
+        try:
+            out["progress"] = _j.loads(prog)
+        except Exception:  # noqa: BLE001
+            pass
+    return out
 
 
 @app.post("/api/admin/zap/scan-now")

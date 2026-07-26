@@ -278,6 +278,25 @@ def analyse(t: dict) -> dict:
     return row
 
 
+def _summarise(rows: list, partial: bool = False) -> dict:
+    ranked = [r for r in rows if r.get("rank")]
+    listed = [r for r in rows if r.get("status") == "listed"]
+    missing = [r for r in rows if r.get("status") == "missing"]
+    gaps = [r["gap_pct"] for r in rows if r.get("gap_pct") is not None]
+    return {
+        "scanned": len(rows),
+        "on_zap": len(listed) + len(missing),          # יש דף מודל מאומת בזאפ
+        "listed": len(listed),
+        "missing": len(missing),                       # יש דגם — ואנחנו לא בו
+        "no_model": sum(1 for r in rows if r.get("status") == "no_model"),
+        "in_top5": sum(1 for r in ranked if r["rank"] <= 5),
+        "in_top3": sum(1 for r in ranked if r["rank"] <= 3),
+        "median_rank": sorted(r["rank"] for r in ranked)[len(ranked) // 2] if ranked else None,
+        "avg_gap_pct": round(sum(gaps) / len(gaps), 1) if gaps else None,
+        "partial": partial,
+    }
+
+
 def reset_mapping() -> int:
     """מנקה את מטמון דגם→modelid. נדרש אחרי שינוי בלוגיקת ההתאמה — אחרת
     מיפויים שנוצרו בגרסה קודמת נשארים תקועים לנצח (המטמון לצמיתות בכוונה)."""
@@ -294,33 +313,29 @@ def run(limit: int | None = None, sleep: float = 1.1) -> dict:
     targets = build_targets()
     if limit:
         targets = targets[:limit]
+    total = len(targets)
     rows = []
-    for t in targets:
+    for i, t in enumerate(targets, 1):
         try:
             rows.append(analyse(t))
         except Exception as e:  # noqa: BLE001
             logger.warning("zap analyse failed for %s: %s", t.get("sku"), e)
+        # ⚠️ שמירה מצטברת: הסריקה נמשכת עשרות דקות (בעיקר כשמטמון המיפוי ריק
+        # ולכל דגם נדרש חיפוש + אימות מועמדים). בלי זה אין חיווי התקדמות, וכל
+        # restart של Render — כלומר כל deploy — מאבד את כל העבודה.
+        if i % 15 == 0 or i == total:
+            try:
+                db.sales_state_set("zap_progress", json.dumps(
+                    {"done": i, "total": total, "at": t.get("name", "")[:60]}, ensure_ascii=False))
+                db.sales_state_set("zap_snap:partial", json.dumps(
+                    {"date": date.today().isoformat(), "partial": True,
+                     "rows": rows, "summary": _summarise(rows, partial=True)}, ensure_ascii=False))
+            except Exception:  # noqa: BLE001
+                pass
         time.sleep(sleep)
-    ranked = [r for r in rows if r.get("rank")]
-    listed = [r for r in rows if r.get("status") == "listed"]
-    missing = [r for r in rows if r.get("status") == "missing"]
-    gaps = [r["gap_pct"] for r in rows if r.get("gap_pct") is not None]
-    snap = {
-        "date": date.today().isoformat(),
-        "rows": rows,
-        "summary": {
-            "scanned": len(rows),
-            "on_zap": len(listed) + len(missing),      # יש דף מודל בזאפ
-            "listed": len(listed),
-            "missing": len(missing),                   # יש דגם — ואנחנו לא בו
-            "no_model": sum(1 for r in rows if r.get("status") == "no_model"),
-            "in_top5": sum(1 for r in ranked if r["rank"] <= 5),
-            "in_top3": sum(1 for r in ranked if r["rank"] <= 3),
-            "median_rank": sorted(r["rank"] for r in ranked)[len(ranked) // 2] if ranked else None,
-            "avg_gap_pct": round(sum(gaps) / len(gaps), 1) if gaps else None,
-        },
-    }
+    snap = {"date": date.today().isoformat(), "rows": rows, "summary": _summarise(rows)}
     try:
+        db.sales_state_set("zap_progress", "")
         db.sales_state_set(f"zap_snap:{snap['date']}", json.dumps(snap, ensure_ascii=False))
         db.sales_state_set("zap_snap:latest", json.dumps(snap, ensure_ascii=False))
     except Exception as e:  # noqa: BLE001
