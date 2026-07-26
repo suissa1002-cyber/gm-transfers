@@ -74,6 +74,53 @@ def _pos_stock() -> dict:
         return {}
 
 
+def _feed_skus(pids: list) -> dict:
+    """מזהה מוצר → כל המק"טים שמתחתיו, כדי לצרף מלאי קופה.
+    ⚠️ ל-45 מתוך 65 רשומות הפיד אין CATALOG_NUMBER (המק"ט על הוריאציה),
+    ולכן עמודת המלאי הראתה 0 לכל שורה (אסי, 27/07/2026). למוצר צל אין מלאי
+    משלו — לוקחים את הוריאציות של ההורה שתואמות לנפח שהצל מייצג."""
+    import requests
+    base = os.getenv("WC_STORE_URL", "https://greenmobile.co.il").rstrip("/")
+    auth = (os.getenv("WC_CONSUMER_KEY", ""), os.getenv("WC_CONSUMER_SECRET", ""))
+    import zap_price
+    info, out = {}, {}
+    for i in range(0, len(pids), 50):
+        try:
+            r = requests.get(f"{base}/wp-json/wc/v3/products", auth=auth, timeout=60,
+                             params={"include": ",".join(pids[i:i + 50]), "per_page": 100,
+                                     "_fields": "id,sku,type,external_url,meta_data"})
+            for p in (r.json() if r.ok else []):
+                info[str(p["id"])] = p
+        except Exception as e:  # noqa: BLE001
+            logger.warning("zap: sku batch failed: %s", e)
+
+    def variations(par, cap=None):
+        try:
+            v = requests.get(f"{base}/wp-json/wc/v3/products/{par}/variations", auth=auth,
+                             timeout=45, params={"per_page": 100, "_fields": "sku,attributes"})
+            rows = v.json() if v.ok else []
+        except Exception:  # noqa: BLE001
+            return []
+        if cap:
+            rows = [x for x in rows if zap_price._cap_from_attrs(x.get("attributes")) == cap]
+        return [str(x["sku"]) for x in rows if x.get("sku")]
+
+    for pid in pids:
+        p = info.get(pid)
+        if not p:
+            continue
+        if p.get("type") == "external":
+            meta = {m["key"]: str(m["value"]) for m in (p.get("meta_data") or [])}
+            par = meta.get("gm_parent_product_id")
+            if par:
+                out[pid] = variations(par, zap_price._cap_slug(p.get("external_url") or ""))
+        elif p.get("type") == "variable":
+            out[pid] = variations(pid)
+        elif p.get("sku"):
+            out[pid] = [str(p["sku"])]
+    return out
+
+
 def build_targets() -> list:
     """⚠️ מקור-האמת הוא **הפיד שאנחנו משדרים לזאפ**, לא קטלוג הקופה.
     הסריקה הישנה רצה על מק"טים עם מלאי בקופה וחיפשה לפי שם ה-WC, ולכן
@@ -90,6 +137,7 @@ def build_targets() -> list:
         logger.warning("zap: feed returned nothing — לא סורקים על סמך הקופה")
         return []
     stock = _pos_stock()
+    skumap = _feed_skus([str(f.get("num") or "").strip() for f in rows if f.get("num")])
     out = []
     for f in rows:
         sku = str(f.get("sku") or "")
@@ -101,8 +149,11 @@ def build_targets() -> list:
         pid = str(f.get("num") or "").strip()
         if not pid:
             continue                      # בלי מזהה אין זהות — ולא ממטמנים
-        out.append({"id": pid, "sku": sku, "name": name, "brand": brand_of(name),
-                    "stock": stock.get(sku, 0), "our_price": price or None,
+        skus = skumap.get(pid) or ([sku] if sku else [])
+        out.append({"id": pid, "sku": sku or (skus[0] if skus else ""),
+                    "name": name, "brand": brand_of(name),
+                    "stock": sum(stock.get(k, 0) for k in skus),
+                    "our_price": price or None,
                     "product_id": pid, "site_url": f.get("url")})
     return out
 
@@ -119,7 +170,8 @@ ACCESSORY = ("case", "cover", "כיסוי", "מגן", "נרתיק", "sandstone",
 
 # תוספות דגם שמבדילות בין גרסאות — חייבות להיות זהות בשני הצדדים.
 # ⚠️ הסדר חשוב: "pro max" נבדק לפני "pro", אחרת Pro Max יזוהה כ-Pro.
-QUALIFIERS = (("pro max", "promax"), ("pro+", "proplus"), ("pro", "pro"),
+QUALIFIERS = (("pro max", "promax"), ("pro plus", "proplus"), ("pro+", "proplus"),
+              ("pro", "pro"),
               ("plus", "plus"), ("ultra", "ultra"), ("mini", "mini"),
               ("air", "air"), ("lite", "lite"), ("fe", "fe"), ("edge", "edge"))
 
@@ -211,7 +263,10 @@ def _clean_query(name: str) -> str:
     q = re.sub(r"\s+", " ", (name or "")).strip()
     if " - " in q:
         head, tail = q.rsplit(" - ", 1)
-        if head and not CAP_RE.search(tail):      # הזנב הוא צבע, לא תצורה
+        # ⚠️ והראש חייב לשאת את שם הדגם. בשמות שיווקיים ("סמארטפון מהיר,
+        # מעוצב ובעל ביצועים עוצמתיים - Samsung Galaxy A17 5G") הדגם הוא
+        # דווקא הזנב, וקיצוץ עיוור השאיר שאילתה עברית ריקה (27/07/2026).
+        if head and not CAP_RE.search(tail) and re.search(r"[A-Za-z]", head):
             q = head
     # ⚠️ ניקוי המפרט חייב לקרות **לפני** הסרת העברית: הגרשיים של גודל המסך
     # (״, U+05F4) הוא תו עברי, ולכן "מסך 6.59״" הפך ל-"6.59" חשוף שנקרא
