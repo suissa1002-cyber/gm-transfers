@@ -236,6 +236,9 @@ table.brands tr.tot td{border-top:2px solid var(--rule); background:var(--track)
 .zap-controls{display:flex; gap:14px; align-items:center; flex-wrap:wrap;
   background:var(--panel); border:1px solid var(--rule); border-radius:13px; padding:13px 16px; box-shadow:var(--shadow)}
 .zap-controls label{display:inline-flex; align-items:center; gap:7px; font-size:13px; color:var(--muted)}
+.zap-controls #zapQ{flex:1; min-width:200px; font-family:inherit; font-size:13.5px; color:var(--ink);
+  background:var(--ground); border:1px solid var(--rule); border-radius:9px; padding:8px 12px}
+.zap-controls #zapQ:focus-visible{outline:2px solid var(--brand); outline-offset:1px}
 .zap-controls select{font-family:inherit; font-size:13.5px; color:var(--ink); background:var(--bg,var(--ground));
   border:1px solid var(--rule); border-radius:9px; padding:7px 10px; cursor:pointer}
 .zap-controls select:focus-visible{outline:2px solid var(--brand); outline-offset:1px}
@@ -985,6 +988,8 @@ tr.zdet > td{padding:0 !important; background:var(--track) !important; border-in
       וכמה שקלים צריך לחתוך כדי להגיע למקום <b>5</b>, <b>3</b> או <b>1</b>.
       «חיסכון» שלילי = אנחנו כבר מתחת למחיר הזה.</p>
     <div class="zap-controls">
+      <input id="zapQ" type="search" placeholder="חיפוש דגם — למשל 'find x9' או 'a57'"
+             oninput="zapRender()" autocomplete="off">
       <label>מותג
         <select id="zapBrand" onchange="zapRender()"><option value="">הכל</option></select></label>
       <label>נוכחות בזאפ
@@ -1116,9 +1121,12 @@ tr.zdet > td{padding:0 !important; background:var(--track) !important; border-in
         pr=document.getElementById('zapPresence').value,
         st=document.getElementById('zapState').value,
         so=document.getElementById('zapSort').value;
+    var q=(document.getElementById('zapQ').value||'').trim().toLowerCase();
     var rows=ZAP.rows.filter(function(r){
+      if(q && (r.name+' '+(r.zap_title||'')+' '+r.brand).toLowerCase().indexOf(q)<0) return false;
       if(b && r.brand!==b) return false;
       // נוכחות: רשומים / לא רשומים / אין דגם — הציר הראשון להחלטה
+      if(q && !pr && !st) return true;      // חיפוש חופשי גובר על שאר הסינונים
       if(pr==='nomodel') return r.status==='no_model';
       if(pr==='listed'  && r.status!=='listed')  return false;
       if(pr==='missing' && r.status!=='missing') return false;
