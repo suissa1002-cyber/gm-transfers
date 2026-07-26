@@ -205,6 +205,22 @@ table.brands tr.tot td{border-top:2px solid var(--rule); background:var(--track)
 .callout p{margin:0; font-size:14.5px; line-height:1.55}
 .callout b{font-weight:800}
 .foot{padding-top:26px; border-top:1px solid var(--rule); font-size:12.5px; color:var(--muted); line-height:1.7}
+
+/* ---------- טאבים ---------- */
+.tabs{display:flex; gap:8px; flex-wrap:wrap; border-bottom:1px solid var(--rule); padding-bottom:0; margin-top:-16px}
+.tabs button{appearance:none; background:transparent; border:0; border-bottom:2.5px solid transparent;
+  font-family:inherit; color:var(--muted); cursor:pointer; text-align:start;
+  padding:11px 16px 13px; display:flex; flex-direction:column; gap:2px; margin-bottom:-1px;
+  border-radius:9px 9px 0 0; transition:color .12s, background .12s}
+.tabs button .t{font-size:15.5px; font-weight:800; letter-spacing:-.01em}
+.tabs button .s{font-size:12px; font-weight:400}
+.tabs button:hover{color:var(--ink-2); background:var(--track)}
+.tabs button[aria-selected="true"]{color:var(--ink); border-bottom-color:var(--brand); background:transparent}
+.tabs button[aria-selected="true"] .s{color:var(--brand)}
+.tabs button:focus-visible{outline:2px solid var(--brand); outline-offset:2px}
+.panel{display:flex; flex-direction:column; gap:clamp(40px,6vw,72px)}
+.panel[hidden]{display:none}
+.u{color:var(--muted)}
 .foot b{color:var(--ink-2); font-weight:700}
 </style>
 </head>
@@ -219,11 +235,24 @@ table.brands tr.tot td{border-top:2px solid var(--rule); background:var(--track)
       <span class="mark"></span><b>Green Mobile</b>
       <span>· ניתוח מכירות · יוני–יולי <span class="num">2025</span> מול <span class="num">2026</span></span>
     </div>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="בחירת ניתוח">
+    <button role="tab" id="tab-a" aria-controls="panel-a" aria-selected="true"  onclick="gmTab('a')">
+      <span class="t">התמונה הכוללת</span><span class="s">מה קרה ביוני–יולי</span></button>
+    <button role="tab" id="tab-b" aria-controls="panel-b" aria-selected="false" onclick="gmTab('b')">
+      <span class="t">אייפון וסמסונג</span><span class="s">מחירים, מתחרים ורשתות</span></button>
+  </nav>
+
+  <!-- ══════════════════ פאנל א ══════════════════ -->
+  <div class="panel" id="panel-a" role="tabpanel" aria-labelledby="tab-a">
+
+  <div class="mast" style="gap:18px">
     <h1>לא איבדנו לקוחות —<br>הפסקנו למכור להם <em>מכשירים יקרים</em>.</h1>
     <hr>
     <p class="dek">ההזמנות באתר עלו ב־<span class="num">67%</span>, הצ׳קאאוט עובד טוב מתמיד, וההכנסה שאינה ממכשירים הוכפלה.
       כל הירידה יושבת בקטגוריה אחת — ומותג בודד מסביר <span class="num">41%</span> ממנה.</p>
-  </header>
+  </div>
 
   <div class="kpis">
     <div class="kpi"><span class="lab">הזמנות באתר · יולי</span><span class="val up num">+67%</span><span class="sub">90 ← 150 בחלון זהה</span></div>
@@ -615,6 +644,250 @@ table.brands tr.tot td{border-top:2px solid var(--rule); background:var(--track)
       </div>
     </div>
   </section>
+  </div><!-- /panel-a -->
+
+  <!-- ══════════════════ פאנל ב — אייפון וסמסונג ══════════════════ -->
+  <div class="panel" id="panel-b" role="tabpanel" aria-labelledby="tab-b" hidden>
+
+  <div class="mast" style="gap:18px">
+    <h1>המחיר בשוק צנח.<br><em>אנחנו לא ירדנו איתו.</em></h1>
+    <hr>
+    <p class="dek">מול KSP אנחנו דווקא זולים יותר על כל קו iPhone 17. מי שמכה בנו הוא לא רשת האלקטרוניקה
+      אלא <b>רשתות המזון</b> — ומה שאיבדנו בפועל הוא לא לקוחות אלא <b>מלאי בטווח הבינוני</b>.</p>
+  </div>
+
+  <div class="kpis">
+    <div class="kpi"><span class="lab">יחידות iPhone · יולי</span><span class="val down num">−63%</span><span class="sub">73 ← 27</span></div>
+    <div class="kpi"><span class="lab">מחיר ממוצע iPhone</span><span class="val up num">+3%</span><span class="sub">₪3,521 ← ₪3,621</span></div>
+    <div class="kpi"><span class="lab">יחידות Samsung</span><span class="val down num">−54%</span><span class="sub">137 ← 63</span></div>
+    <div class="kpi"><span class="lab">מחיר ממוצע Samsung</span><span class="val up num">+10%</span><span class="sub">₪2,014 ← ₪2,214</span></div>
+  </div>
+
+  <!-- ═══ המבחן ═══ -->
+  <section>
+    <div class="eyebrow"><span class="tag">01</span><h2>המבחן שהכריע</h2>
+      <span class="note">קופה · יולי מול יולי</span></div>
+    <p class="lede">ההשערה המתבקשת הייתה "מחיר האייפון בישראל קרס ולכן המחזור ירד". בדקתי אותה מול הנתונים שלנו —
+      <b>והיא נפסלה.</b> המחיר הממוצע שגבינו לא ירד; הוא עלה.</p>
+    <div class="tbox">
+      <table>
+        <thead><tr><th>מותג</th><th>יחידות 2025</th><th>יחידות 2026</th><th>שינוי</th><th>מחיר ממוצע 2025</th><th>מחיר ממוצע 2026</th><th>שינוי</th></tr></thead>
+        <tbody>
+          <tr><td>Apple iPhone</td><td class="n">73</td><td class="n">27</td><td class="n down d">−63%</td><td class="n">₪3,521</td><td class="n">₪3,621</td><td class="n up d">+3%</td></tr>
+          <tr><td>Samsung</td><td class="n">137</td><td class="n">63</td><td class="n down d">−54%</td><td class="n">₪2,014</td><td class="n">₪2,214</td><td class="n up d">+10%</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="var(--flag)" stroke-width="2" stroke-linecap="round" style="flex:none;margin-top:2px"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="13"/><line x1="12" y1="16.5" x2="12.01" y2="16.5"/></svg>
+      <p><b>הירידה היא 100% בכמות.</b> לא הורדנו מחירים ולא נשחק לנו המרווח ליחידה — פשוט מכרנו הרבה פחות מכשירים.
+        זה מפנה את החקירה משאלת תמחור לשאלת <b>מלאי ומבחר</b>.</p>
+    </div>
+  </section>
+
+  <!-- ═══ סולם המחירים ═══ -->
+  <section>
+    <div class="eyebrow"><span class="tag">02</span><h2>סולם המחירים התרוקן</h2>
+      <span class="note">יולי 2025 מול יולי 2026</span></div>
+    <p class="lede">ב־2025 מכרנו אייפונים בחמישה דורות במקביל, מ־₪1,499 עד ₪7,000. ב־2026 מכרנו כמעט
+      <b>רק iPhone 17</b> — 23 מתוך 27 יחידות. לא איבדנו את קונה האייפון היקר; איבדנו את כל מי שקנה בין ₪1,500 ל־₪3,500.</p>
+    <div class="tbox">
+      <table>
+        <thead><tr><th>Apple · לפי דור</th><th>יחידות 2025</th><th>מחזור 2025</th><th>יחידות 2026</th><th>מחזור 2026</th></tr></thead>
+        <tbody>
+          <tr class="hl"><td>iPhone 16</td><td class="n">36</td><td class="n">₪164,845</td><td class="n">1</td><td class="n">₪2,099</td></tr>
+          <tr class="hl"><td>iPhone 13</td><td class="n">16</td><td class="n">₪35,186</td><td class="n">1</td><td class="n">₪700</td></tr>
+          <tr class="hl"><td>iPhone 15</td><td class="n">10</td><td class="n">₪33,147</td><td class="n">0</td><td class="n">₪0</td></tr>
+          <tr class="hl"><td>iPhone 14</td><td class="n">9</td><td class="n">₪21,237</td><td class="n">2</td><td class="n">₪4,399</td></tr>
+          <tr class="pos"><td>iPhone 17</td><td class="n">0</td><td class="n">₪0</td><td class="n">23</td><td class="n">₪87,559</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="tbox">
+      <table>
+        <thead><tr><th>Samsung · לפי סדרה</th><th>יחידות 2025</th><th>מחזור 2025</th><th>יחידות 2026</th><th>מחזור 2026</th><th>Δ יחידות</th></tr></thead>
+        <tbody>
+          <tr><td>S — דגל</td><td class="n">51</td><td class="n">₪162,685</td><td class="n">33</td><td class="n">₪107,894</td><td class="n down d">−18</td></tr>
+          <tr class="hl"><td>A — בסיס וביניים</td><td class="n">81</td><td class="n">₪82,596</td><td class="n">30</td><td class="n">₪31,580</td><td class="n d">−51</td></tr>
+          <tr><td>Z — מתקפלים</td><td class="n">4</td><td class="n">₪29,238</td><td class="n">0</td><td class="n">₪0</td><td class="n down d">−4</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="lede"><b>סדרת A היא הירידה הגדולה ביותר בכמות בכל הניתוח</b> — 51 יחידות.
+      וזה בדיוק מסביר למה Xiaomi לא נפגע: הוא משחק בטווח שננטש.</p>
+  </section>
+
+  <!-- ═══ מי שבר את המחיר ═══ -->
+  <section>
+    <div class="eyebrow"><span class="tag">03</span><h2>מי שבר את המחיר בשוק</h2>
+      <span class="note">iPhone 17 256GB · מחיר רחוב בישראל</span></div>
+    <div class="chart">
+      <h3>מחיר iPhone 17 256GB ירד 31% בעשרה חודשים</h3>
+      <p class="cap">רשתות המזון והפארם נכנסו לשוק הסלולר — עבורן הטלפון הוא מוצר פיתיון לתנועה, לא מקור רווח</p>
+      <div class="rows">
+        <div class="row"><div class="rlab">השקה רשמית<small>ספטמבר 2025</small></div>
+          <div class="pair"><div class="bar"><div class="track"><div class="fill f-old" style="width:100%"></div></div><div class="bval"><b>₪3,999</b></div></div></div></div>
+        <div class="row"><div class="rlab">KSP<small>היום</small></div>
+          <div class="pair"><div class="bar"><div class="track"><div class="fill f-old" style="width:85%"></div></div><div class="bval"><b>₪3,399</b></div></div></div></div>
+        <div class="row"><div class="rlab">אנחנו<small>מחיר האתר</small></div>
+          <div class="pair"><div class="bar"><div class="track"><div class="fill f-new-up" style="width:77.5%"></div></div><div class="bval"><b>₪3,099</b></div></div></div></div>
+        <div class="row"><div class="rlab">אושר עד<small>נובמבר 2025</small></div>
+          <div class="pair"><div class="bar"><div class="track"><div class="fill f-new-fl" style="width:75%"></div></div><div class="bval"><b>₪2,999</b></div></div></div></div>
+        <div class="row"><div class="rlab">סופר־פארם<small>יוני 2026</small></div>
+          <div class="pair"><div class="bar"><div class="track"><div class="fill f-new-dn" style="width:67.5%"></div></div><div class="bval"><b>₪2,699</b></div></div></div></div>
+        <div class="row"><div class="rlab">ויקטורי<small>מאי 2026</small></div>
+          <div class="pair"><div class="bar"><div class="track"><div class="fill f-new-dn" style="width:65%"></div></div><div class="bval"><b>₪2,599</b></div></div></div></div>
+        <div class="row"><div class="rlab">רמי לוי<small>יוני 2026</small></div>
+          <div class="pair"><div class="bar"><div class="track"><div class="fill f-new-dn" style="width:62.3%"></div></div><div class="bval"><b>₪2,490</b></div></div></div></div>
+      </div>
+      <div class="legend"><span><span class="sw f-new-dn"></span>רשתות מזון ופארם</span><span><span class="sw f-new-up"></span>אנחנו</span><span><span class="sw f-old"></span>קמעונאות סלולר</span></div>
+    </div>
+    <div class="callout">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="var(--flag)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px"><path d="M3 6h18l-2 13H5z"/><path d="M8 6V4a4 4 0 0 1 8 0v2"/></svg>
+      <p><b>שני המותגים שקרסו אצלנו הם בדיוק שני המותגים שהסופרמרקטים התחילו למכור.</b>
+        המותג שנשאר יציב אצלנו — Xiaomi — הוא היחיד שהם לא נגעו בו. גם KSP נחתך: אנחנו יושבים בדיוק ביניהם.</p>
+    </div>
+  </section>
+
+  <!-- ═══ השוואת מחירים ═══ -->
+  <section>
+    <div class="eyebrow"><span class="tag">04</span><h2>אנחנו מול KSP ומול השוק</h2>
+      <span class="note">מחירי אתר · נשלפו 26/07/2026</span></div>
+    <p class="lede">KSP נמשך ישירות מהקטלוג שלהם (475 מוצרים בקטגוריית הסלולר). «הזול בשוק» = המחיר הנמוך ביותר
+      ב־Zap/Bug/Ivory, ברובו יבוא מקביל.</p>
+    <div class="tbox">
+      <table>
+        <thead><tr><th>דגם</th><th>אנחנו</th><th>KSP</th><th>הזול בשוק</th><th>מול KSP</th><th>מול הזול</th></tr></thead>
+        <tbody>
+          <tr class="pos"><td>iPhone 17 Pro Max 256GB</td><td class="n">₪4,545</td><td class="n">₪4,999</td><td class="n">₪4,182</td><td class="n up d">−9%</td><td class="n">+9%</td></tr>
+          <tr class="pos"><td>iPhone 17 Pro 256GB</td><td class="n">₪4,289</td><td class="n">₪4,599</td><td class="n">₪3,900</td><td class="n up d">−7%</td><td class="n">+10%</td></tr>
+          <tr class="pos"><td>iPhone 17 256GB</td><td class="n">₪3,099</td><td class="n">₪3,399</td><td class="n">₪2,743</td><td class="n up d">−9%</td><td class="n">+13%</td></tr>
+          <tr class="pos"><td>iPhone 17e 256GB</td><td class="n">₪2,489</td><td class="n">₪2,499</td><td class="n">₪2,280</td><td class="n up d">−0%</td><td class="n">+9%</td></tr>
+          <tr class="pos"><td>iPhone 16 128GB</td><td class="n">₪2,499</td><td class="n">₪2,690</td><td class="n">₪2,277</td><td class="n up d">−7%</td><td class="n">+10%</td></tr>
+          <tr class="pos"><td>iPhone 16 Plus 128GB</td><td class="n">₪3,199</td><td class="n">₪3,279</td><td class="n">₪2,859</td><td class="n up d">−2%</td><td class="n">+12%</td></tr>
+          <tr><td>iPhone 15 256GB</td><td class="n">₪2,899</td><td class="n">₪2,819</td><td class="n">₪2,419</td><td class="n">+3%</td><td class="n">+20%</td></tr>
+          <tr><td>Galaxy S25 Ultra 256GB</td><td class="n">₪2,999</td><td class="n">₪2,990</td><td class="n">₪2,680</td><td class="n">+0%</td><td class="n">+12%</td></tr>
+          <tr><td>Galaxy S26 Ultra 256GB</td><td class="n">₪3,399</td><td class="n">₪3,220</td><td class="n">₪3,066</td><td class="n">+6%</td><td class="n">+11%</td></tr>
+          <tr><td>Galaxy S25 FE 256GB</td><td class="n">₪1,888</td><td class="n">₪1,770</td><td class="n">₪1,659</td><td class="n">+7%</td><td class="n">+14%</td></tr>
+          <tr><td>Galaxy S26 Ultra 512GB</td><td class="n">₪4,275</td><td class="n">₪3,849</td><td class="n">₪3,699</td><td class="n warn d">+11%</td><td class="n">+16%</td></tr>
+          <tr><td>Galaxy A57 256GB</td><td class="n">₪1,485</td><td class="n">₪1,299</td><td class="n">₪1,226</td><td class="n warn d">+14%</td><td class="n">+21%</td></tr>
+          <tr class="hl"><td>Galaxy Z Fold 7 256GB</td><td class="n">₪6,249</td><td class="n">₪4,990</td><td class="n">₪4,499</td><td class="n d">+25%</td><td class="n">+39%</td></tr>
+          <tr class="hl"><td>Galaxy Z Fold 7 512GB</td><td class="n">₪6,899</td><td class="n">₪5,389</td><td class="n">₪4,988</td><td class="n d">+28%</td><td class="n">+38%</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="lede"><b>באייפון אנחנו זולים מ־KSP ב־7%–9% על כל הקו.</b> זה מפרק את ההשערה שהצניחה באייפון
+      נובעת מחוסר תחרותיות — לקוח שמשווה אותנו מול KSP בוחר בנו. <b>בסמסונג התמונה הפוכה</b>, ו־Z Fold 7 הוא החריג הבולט.</p>
+  </section>
+
+  <!-- ═══ החור בטווח הבינוני ═══ -->
+  <section>
+    <div class="eyebrow"><span class="tag">05</span><h2>החור האמיתי: הטווח הבינוני</h2>
+      <span class="note">₪600–1,500 · מלאי KSP היום</span></div>
+    <div class="feature">
+      <div class="top">
+        <div>
+          <h3>ל־KSP יש 141 דגמים בטווח שאנחנו נטשנו</h3>
+          <p>ביולי 2025 מכרנו Galaxy A16 בכמות 13, A56 בכמות 15, A26 בכמות 8, A36 בכמות 5.
+             היום כמעט אין לנו נוכחות בטווח הזה — בזמן שהמתחרה הגדול מציע בו 141 דגמים,
+             מהם 83 של Samsung ו־36 של Xiaomi.</p>
+        </div>
+        <div class="bigdrop"><div class="pct num">141</div><div class="cap">דגמים ב־KSP · ₪600–1,500</div></div>
+      </div>
+      <div class="btm">
+        <div class="fstat"><div class="k">Galaxy A26 128GB</div><div class="v num">₪749</div></div>
+        <div class="fstat"><div class="k">Galaxy A36 128GB</div><div class="v num">₪899</div></div>
+        <div class="fstat"><div class="k">Galaxy A36 256GB</div><div class="v num">₪1,049</div></div>
+        <div class="fstat"><div class="k">Redmi Note 15 Pro 256GB</div><div class="v num">₪1,129</div></div>
+      </div>
+    </div>
+    <div class="callout">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="var(--flag)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px"><path d="M2 3h4l2.7 12.4a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.6L22 7H6.2"/><circle cx="10" cy="20.5" r="1.3"/><circle cx="18" cy="20.5" r="1.3"/></svg>
+      <p><b>זו לא בעיית מחיר אלא בעיית מבחר.</b> 51 היחידות שאיבדנו בסדרת A לא הלכו למתחרה שמוכר Samsung זול יותר —
+        הן הלכו ל־Redmi. הורדת מחיר על Samsung לא תחזיר אותן; רכש בטווח הזה כן.</p>
+    </div>
+  </section>
+
+  <!-- ═══ הקשר ובנצ׳מרק ═══ -->
+  <section>
+    <div class="eyebrow"><span class="tag">06</span><h2>כמה מזה בכלל אנחנו</h2>
+      <span class="note">בדיקות שליליות</span></div>
+    <div class="split">
+      <div class="col">
+        <h3><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 17 9 11 13 15 21 7"/><polyline points="15 7 21 7 21 13"/></svg>
+          מה שנבדק ונפסל</h3>
+        <ul>
+          <li><span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="12" x2="18" y2="12"/></svg></span>
+            <span><b>"השקל החזק אכל את המחזור."</b><i>בדולרים במקום בשקלים: iPhone −50% במקום −55%. מסביר 5 נקודות בלבד.</i></span></li>
+          <li><span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="12" x2="18" y2="12"/></svg></span>
+            <span><b>"יולי 2025 היה חודש שיא חריג."</b><i>נכון חלקית. מול ממוצע 2025 הירידה −37% במקום −45%. שמונה נקודות מוסברות בבסיס.</i></span></li>
+          <li><span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="12" x2="18" y2="12"/></svg></span>
+            <span><b>"מיתון בישראל."</b><i>הפוך — הצריכה בשיא: יוני 2026 ₪51.5 מיליארד בכרטיסי חיוב, +23.6% שנתי.</i></span></li>
+          <li><span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="12" x2="18" y2="12"/></svg></span>
+            <span><b>"אנחנו יקרים מהרשתות."</b><i>לא באייפון — שם אנחנו זולים מ־KSP ב־7%–9%.</i></span></li>
+        </ul>
+      </div>
+      <div class="col" style="border-color:var(--fall)">
+        <h3 style="color:var(--fall)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="16.2" y1="16.2" x2="21" y2="21"/></svg>
+          מה שכן הוכח</h3>
+        <ul>
+          <li><span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--fall)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 8 12 16 20 8"/></svg></span>
+            <span><b>רשתות המזון שברו את מחיר הרחוב.</b><i>iPhone 17 256GB: מ־₪3,999 ל־₪2,490 בעשרה חודשים</i></span></li>
+          <li><span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--fall)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 8 12 16 20 8"/></svg></span>
+            <span><b>שכבת הבסיס נחנקה בצד ההיצע.</b><i>IDC: משלוחים גלובליים −12.9%; מכשירים מתחת ל־$400 צפויים −22%; רכיבי זיכרון = 59% מעלות החומרה</i></span></li>
+          <li><span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--fall)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 8 12 16 20 8"/></svg></span>
+            <span><b>הקטגוריה כולה ירדה, לא רק אנחנו.</b><i>קמעונאי מזגנים בישראל: −40% ביוני–יולי 2026 (כלכליסט, 22/07)</i></span></li>
+          <li><span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--fall)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 8 12 16 20 8"/></svg></span>
+            <span><b>הפער האמיתי הוא במלאי הבינוני.</b><i>שם אין לנו כמעט מה למכור, ושם השוק זז</i></span></li>
+        </ul>
+      </div>
+    </div>
+    <div class="tbox">
+      <table>
+        <thead><tr><th>בנצ׳מרק</th><th>ירידה ביולי</th><th>מצב</th></tr></thead>
+        <tbody>
+          <tr><td>קמעונאות מוצרי חשמל בישראל <span class="u" style="color:var(--muted);font-size:12px">(מזגנים, כלכליסט 22/07/2026)</span></td><td class="n">−40%</td><td>—</td></tr>
+          <tr class="pos"><td>Samsung אצלנו</td><td class="n">−40%</td><td>בדיוק על השוק</td></tr>
+          <tr class="hl"><td>iPhone אצלנו</td><td class="n">−55%</td><td>חורג ב־15 נקודות</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ═══ פעולות ═══ -->
+  <section>
+    <div class="eyebrow"><span class="tag">07</span><h2>מה לעשות</h2><span class="note">לפי סדר השפעה</span></div>
+    <div class="acts">
+      <div class="act">
+        <span class="rank num">1</span>
+        <div><h4>רכש בטווח ₪700–1,500</h4>
+          <p>זו הפעולה המרכזית, והיא איננה תמחור. להחזיר עומק בסדרת A הזולה ולהכניס Redmi Note בכמות —
+             הטווח שבו איבדנו 51 יחידות, ושבו Xiaomi כבר הוכח אצלנו כיציב (+5%).</p></div>
+        <div class="amt"><span class="num">51</span><small>יחידות שאבדו</small></div>
+      </div>
+      <div class="act">
+        <span class="rank num">2</span>
+        <div><h4>לתקן את Z Fold 7</h4>
+          <p>‏25%–28% מעל KSP, שש יחידות שלא זזו חודשיים. להוריד ל־₪4,890 ו־₪5,290 — עדיין מתחת ל־KSP.</p></div>
+        <div class="amt"><span class="num">+28%</span><small>מעל KSP</small></div>
+      </div>
+      <div class="act">
+        <span class="rank num">3</span>
+        <div><h4>לחסל מלאי ישן שמתומחר לפי עלות</h4>
+          <p>iPhone 14 Pro 512GB ב־₪3,899 כשטווח השוק ₪2,790–2,950; 13 Pro 256GB ב־₪2,799 מול ₪2,068.
+             דגמים ש־KSP כבר לא מחזיקים בכלל.</p></div>
+        <div class="amt"><span class="num">+40%</span><small>מעל השוק</small></div>
+      </div>
+      <div class="act">
+        <span class="rank num">4</span>
+        <div><h4>לא לרדוף אחרי מחיר הסופרמרקטים</h4>
+          <p>רמי לוי ב־₪2,490 לא צריך להרוויח על הטלפון; אנחנו כן. להתמקד בתצורות שהרשתות לא מחזיקות —
+             ‏512GB/1TB, Pro Max, צבעים חריגים — ולמנף SIM פיזי, אחריות ומעבדה מול יבוא ה־eSIM שלהן.</p></div>
+        <div class="amt"><span class="num">₪2,490</span><small>מחיר רמי לוי</small></div>
+      </div>
+    </div>
+  </section>
+  </div><!-- /panel-b -->
 
   <div class="foot">
     <b>מקורות ומתודולוגיה.</b>
@@ -625,11 +898,42 @@ table.brands tr.tot td{border-top:2px solid var(--rule); background:var(--track)
     כל השוואת יולי מוצגת ליום או בחלון זהה (1–26 בשתי השנים). ההשוואות של יוני הן 30 מול 30.<br>
     <b>הסתייגויות.</b> רישום חריג של ₪436 אלף ב־15/06 וביטולו ב־16/06 נוטרל מחישובי האתר.
     שלושת הימים האחרונים בנתוני Ads מציגים המרות נמוכות בגלל השהיית ייחוס ולא ירידה אמיתית.
-    ‏42 מוצרים שנמחקו מהקטלוג ב־2025 סווגו ידנית לפי שם; בלעדיהם ההשוואה הייתה מעוותת.
+    ‏42 מוצרים שנמחקו מהקטלוג ב־2025 סווגו ידנית לפי שם; בלעדיהם ההשוואה הייתה מעוותת.<br>
+    <b>מחירים (טאב אייפון וסמסונג).</b> «אנחנו» = מחיר הווריאציה החיה באתר, לא מחיר הקופה.
+    KSP נמשך ישירות מקטלוג המוצרים שלהם (475 פריטים בקטגוריית הסלולר) ב־26/07/2026.
+    «הזול בשוק» = הנמוך ב־Zap/Bug/Ivory באותו יום, ברובו יבוא מקביל — כשהווריאציה שלנו רשמית, ההשוואה אינה תפוח־לתפוח.
+    מחירי רשתות המזון מדיווחי ynet, ice, כלכליסט ו־mako; נתוני ההיצע מ־IDC ו־TrendForce.
+    מחירים בשוק הזה זזים שבועית.
   </div>
 
 </div>
 </div>
+
+<script>
+  // טאבים: מצב נשמר ב-hash כדי שאפשר יהיה לשלוח קישור ישיר לניתוח מסוים
+  function gmTab(k){
+    ['a','b'].forEach(function(x){
+      var btn=document.getElementById('tab-'+x), pan=document.getElementById('panel-'+x);
+      var on = x===k;
+      btn.setAttribute('aria-selected', on ? 'true' : 'false');
+      pan.hidden = !on;
+    });
+    if(history.replaceState) history.replaceState(null,'','#'+k);
+    window.scrollTo({top:0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
+  }
+  (function(){
+    var k=(location.hash||'').replace('#','');
+    if(k==='b') gmTab('b');
+    // ניווט מקלדת בין הטאבים (חצים), כמצופה מ-role="tablist"
+    document.querySelector('.tabs').addEventListener('keydown', function(e){
+      if(e.key!=='ArrowLeft' && e.key!=='ArrowRight') return;
+      var cur=document.getElementById('tab-a').getAttribute('aria-selected')==='true' ? 'a' : 'b';
+      gmTab(cur==='a' ? 'b' : 'a');
+      document.getElementById('tab-'+(cur==='a'?'b':'a')).focus();
+      e.preventDefault();
+    });
+  })();
+</script>
 
 </body>
 </html>
