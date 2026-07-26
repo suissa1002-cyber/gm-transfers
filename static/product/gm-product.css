@@ -517,9 +517,11 @@ body.gm-product-new *{text-indent:0!important;}
    ברירת מחדל = אייקון בלבד; הטקסט נפתח רק אחרי ההעתקה (משוב), כדי לא להעמיס. */
 .gm-metarow{display:flex;align-items:center;gap:9px;flex-wrap:wrap;}
 .gm-metarow .gm-sku{margin:0;}
-.gm-share{display:inline-flex;align-items:center;gap:6px;padding:0 8px;height:28px;
+/* flex:0 0 auto — בלעדיו הכפתור נדחס ע"י שורת ה-flex והאייקון נחתך */
+.gm-share{display:inline-flex;flex:0 0 auto;align-items:center;justify-content:center;gap:6px;
+  padding:0 9px;height:28px;min-width:30px;box-sizing:border-box;
   background:none;border:1.5px solid var(--line);border-radius:99px;font-family:inherit;
-  font-size:.8rem;font-weight:700;color:var(--ink2);cursor:pointer;max-width:100%;
+  font-size:.8rem;font-weight:700;color:var(--ink2);cursor:pointer;
   transition:border-color .15s,color .15s;}
 .gm-share:hover{border-color:var(--accent);color:var(--accent);}
 .gm-share.done{border-color:var(--accent);color:var(--accent);}
