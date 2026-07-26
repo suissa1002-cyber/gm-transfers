@@ -9222,6 +9222,41 @@ def zap_shadow_state(sku: str = "", pid: Optional[int] = None,
     return zap_price.shadow_state(sku.strip(), pid)
 
 
+@app.get("/api/admin/zap/selftest")
+def zap_selftest(x_admin_key: Optional[str] = Header(None)):
+    """רגרסיה של מנוע ההתאמה — גם בדיקת תקינות וגם סמן פריסה.
+    ⚠️ פעמיים הרצתי סריקה על קוד ישן כי ניחשתי כמה זמן לוקח deploy ל-Render;
+    כאן רואים בוודאות שהגרסה החדשה עלתה, בלי POST ובלי לשנות מצב."""
+    _require_admin(x_admin_key)
+    import zap_scan
+    cases = [
+        ("סמארטפון מתקפל Motorola Razr Fold 512GB RAM 16GB מסך 8.1״",
+         "טלפון סלולרי Motorola Razr Fold 512GB 16GB RAM מוטורולה", True),
+        ("סמארטפון Samsung Galaxy S26 12GB Ram",
+         "טלפון סלולרי Samsung Galaxy S26 SM-S942B/DS 256GB 12GB RAM סמסונג", True),
+        ("סמארטפון Infinix HOT 60 Pro+ 8GB 256GB",
+         "טלפון סלולרי Infinix Hot 60 Pro Plus 256GB 8GB RAM", True),
+        ("סמארטפון מהיר, מעוצב ובעל ביצועים עוצמתיים - Samsung Galaxy A17 5G",
+         "טלפון סלולרי Samsung Galaxy A17 SM-A175F/DS 128GB 4GB RAM סמסונג", True),
+        # אלה חייבים להישאר דחויים — הגארד נגד מיפוי שגוי
+        ("סמארטפון Xiaomi Redmi A7 Pro 128GB מסך 6.9″ 120Hz",
+         "טלפון סלולרי Apple iPhone 17 256GB אפל", False),
+        ("סמארטפון Xiaomi Redmi Note 15 Pro+ 5G 512GB 12GB RAM",
+         "טלפון סלולרי Xiaomi Redmi Note 15 Pro 5G 512GB 12GB RAM שיאומי", False),
+        ("טלפון סלולרי OPPO Find X9 Ultra 512GB 12GB RAM",
+         "טלפון סלולרי OPPO Find X9 Ultra 512GB 16GB RAM אופו", False),
+    ]
+    out, bad = [], 0
+    for ours, zap, want in cases:
+        q = zap_scan._clean_query(ours)
+        got = zap_scan._match_ok(q, zap)
+        if got != want:
+            bad += 1
+        out.append({"query": q, "want": want, "got": got, "ok": got == want})
+    return {"ok": bad == 0, "passed": len(cases) - bad, "total": len(cases),
+            "has_feed_skus": hasattr(zap_scan, "_feed_skus"), "cases": out}
+
+
 @app.get("/api/admin/zap/shadows")
 def zap_shadows(x_admin_key: Optional[str] = Header(None)):
     """כל מוצרי הצל בשליפה אחת, ממופים לפי מזהה מוצר-האב — כדי שעמודת
