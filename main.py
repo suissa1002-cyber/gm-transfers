@@ -9168,10 +9168,17 @@ def zap_report():
 
 @app.post("/api/admin/zap/scan-now")
 def zap_scan_now(limit: int = 0, x_admin_key: Optional[str] = Header(None)):
-    """הרצה מיידית (limit>0 לבדיקה מהירה על חלק מהדגמים)."""
+    """מפעיל סריקה. ⚠️ סריקה מלאה (~250 דגמים) נמשכת 6-8 דקות — הרבה מעבר
+    לתקרת הזמן של הפרוקסי של Render (502). לכן היא נזרקת ל-scheduler ומחזירים
+    מיד; המעקב דרך GET /api/zap/report. limit>0 קטן רץ סינכרוני לבדיקה."""
     _require_admin(x_admin_key)
     import zap_scan
-    return zap_scan.run(limit=limit or None).get("summary")
+    if limit and limit <= 25:
+        return zap_scan.run(limit=limit).get("summary")
+    scheduler.add_job(_zap_scan_job, "date", id="zap_scan_manual",
+                      run_date=datetime.now() + timedelta(seconds=2), replace_existing=True)
+    return {"ok": True, "started": True,
+            "note": "הסריקה רצה ברקע (6-8 דק׳). התוצאה תופיע ב-/api/zap/report"}
 
 
 class BulkStatusIn(BaseModel):
