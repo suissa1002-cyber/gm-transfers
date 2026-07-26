@@ -102,22 +102,101 @@ def build_targets() -> list:
 
 
 # ─────────────────────────── זאפ ───────────────────────────
+CAP_RE = re.compile(r"(\d+)\s*(TB|GB)\b", re.I)
+ACCESSORY = ("case", "cover", "כיסוי", "מגן", "נרתיק", "sandstone", "silicone",
+             "כבל", "מטען", "אוזני", "סוללה", "מעמד", "זכוכית")
+
+
+# תוספות דגם שמבדילות בין גרסאות — חייבות להיות זהות בשני הצדדים.
+# ⚠️ הסדר חשוב: "pro max" נבדק לפני "pro", אחרת Pro Max יזוהה כ-Pro.
+QUALIFIERS = (("pro max", "promax"), ("pro+", "proplus"), ("pro", "pro"),
+              ("plus", "plus"), ("ultra", "ultra"), ("mini", "mini"),
+              ("air", "air"), ("lite", "lite"), ("fe", "fe"), ("edge", "edge"))
+
+
+def _capacity(s: str) -> str | None:
+    """נפח האחסון, מנורמל ל-GB. ⚠️ בכותרות זאפ מופיע גם ה-RAM ("12GB+256GB"),
+    ולכן לוקחים את **הגדול** מבין הערכים — האחסון תמיד ≥ הזיכרון."""
+    vals = [int(n) * (1024 if u.upper() == "TB" else 1)
+            for n, u in CAP_RE.findall(s or "")]
+    return str(max(vals)) if vals else None
+
+
+def _quals(s: str) -> set:
+    low = " " + re.sub(r"[^a-z0-9+ ]", " ", (s or "").lower()) + " "
+    out, seen = set(), low
+    for pat, tag in QUALIFIERS:
+        if f" {pat} " in seen:
+            out.add(tag)
+            seen = seen.replace(f" {pat} ", " ")   # שלא ייספר שוב כחלק קצר יותר
+    return out
+
+
+def _model_tokens(s: str) -> set:
+    """אסימוני דגם: מספרים ושילובי אות+מספר (17, A57, X9, V6, Note)."""
+    low = (s or "").lower()
+    low = CAP_RE.sub(" ", low)                       # הנפח נבדק בנפרד
+    toks = set(re.findall(r"\b([a-z]{0,2}\d{1,4}[a-z]?)\b", low))
+    return {t for t in toks if not re.fullmatch(r"\d{4,}", t)}   # לא מק"טים
+
+
+def _match_ok(our_name: str, zap_title: str) -> bool:
+    """האם דף המודל בזאפ באמת מתאר את המוצר שלנו.
+    ⚠️ בלי זה החיפוש מחזיר את התוצאה הראשונה בעמוד גם כשהיא דגם אחר לגמרי —
+    כך 'Redmi A7 Pro' ו-'S26 Ultra' מופו בטעות ל-iPhone 17 (26/07/2026)."""
+    if not zap_title:
+        return False
+    if brand_of(our_name) != brand_of(zap_title):
+        return False
+    ca, cb = _capacity(our_name), _capacity(zap_title)
+    if ca and cb and ca != cb:
+        return False
+    if ca and not cb:
+        return False
+    if _quals(our_name) != _quals(zap_title):   # Pro / Pro Max / Ultra / FE חייבים להתאים
+        return False
+    ta, tb = _model_tokens(our_name), _model_tokens(zap_title)
+    return bool(ta & tb) if ta else True
+
+
+def _model_title(mid: int) -> str:
+    try:
+        html = _get(f"{BASE}/model.aspx?modelid={mid}")
+    except Exception:  # noqa: BLE001
+        return ""
+    m = re.search(r"<title>(.*?)</title>", html, re.S)
+    return re.sub(r"\s+", " ", m.group(1)).strip() if m else ""
+
+
 def resolve_modelid(name: str, sku: str) -> int | None:
-    """modelid של הדגם בזאפ. נשמר לצמיתות — החיפוש רץ פעם אחת לכל מק"ט.
-    ערך '0' שמור = 'חיפשנו ולא נמצא', כדי לא לחפש שוב כל יום."""
+    """modelid של הדגם בזאפ, **מאומת מול שם המוצר**. נשמר לצמיתות.
+    '0' = חיפשנו ולא נמצאה התאמה תקפה, כדי לא לחפש שוב כל יום."""
     key = f"zap_mid:{sku}"
     cached = db.sales_state_get(key)
     if cached is not None:
         return int(cached) or None
+    if any(a in (name or "").lower() for a in ACCESSORY):
+        db.sales_state_set(key, "0")      # אביזר שסווג בטעות כטלפון בקופה
+        return None
     q = re.sub(r"\s+", " ", (name or "")).strip()
-    q = re.sub(r"\s*-\s*(שחור|לבן|כחול|סגול|ורוד|ירוק|אדום|זהב|כסוף|אפור|תכלת|כתום).*$", "", q)
+    q = re.sub(r"\s*-\s*(שחור|לבן|כחול|סגול|ורוד|ירוק|אדום|זהב|כסוף|אפור|תכלת|כתום|"
+               r"black|white|blue|purple|pink|green|red|gold|silver|gray|grey|orange|navy)\b.*$",
+               "", q, flags=re.I)
     try:
         html = _get(f"{BASE}/search.aspx?keyword={urllib.parse.quote(q)}")
-        m = re.search(r"modelid=(\d+)", html)
     except Exception as e:  # noqa: BLE001
         logger.warning("zap search failed for %s: %s", q, e)
         return None                       # שגיאת רשת — לא נועלים מטמון
-    mid = int(m.group(1)) if m else 0
+    mid = 0
+    for cand in list(dict.fromkeys(re.findall(r"modelid=(\d+)", html)))[:5]:
+        title = _model_title(int(cand))
+        if _match_ok(q, title):
+            mid = int(cand)
+            db.sales_state_set(f"zap_title:{sku}", title[:160])
+            break
+        time.sleep(0.4)
+    if not mid:
+        logger.info("zap: no valid match for %s", q)
     db.sales_state_set(key, str(mid))
     return mid or None
 
@@ -171,9 +250,13 @@ def analyse(t: dict) -> dict:
     prices = [o["price"] for o in offers]
     row.update({
         "url": f"{BASE}/model.aspx?modelid={mid}",
+        "zap_title": db.sales_state_get(f"zap_title:{t['sku']}") or "",
         "sellers": data["offer_count"],
         "low": prices[0], "low_seller": offers[0]["seller"],
         "median": prices[len(prices) // 2], "high": prices[-1],
+        # רשימת המתחרים המלאה — לתצוגת ההרחבה בדוח (מי, באיזה מקום, באיזה מחיר)
+        "competitors": [{"rank": i + 1, "seller": o["seller"], "price": o["price"]}
+                        for i, o in enumerate(offers[:25])],
         "listed": bool(ours) or data["we_listed"],
         "status": "listed" if (ours or data["we_listed"]) else "missing",
         # כמה צריך לגבות כדי להגיע למקום 1 / 3 / 5 — זה כלי ההחלטה
