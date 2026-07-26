@@ -102,6 +102,13 @@
     $('.gm-atc .variable-items-wrapper').each(function () {
       var $ul = $(this);
       if ($ul.find('.variable-item.selected').length) return;
+      /* ⚠️ ה-select הוא מקור האמת: כשמגיעים מקישור עמוק השרת כבר סימן בו את
+         הערך, אבל מחלקת ה-selected על הסוואץ' עדיין לא הוחלה. בלי הבדיקה הזו
+         היינו לוחצים על האופציה הראשונה ודורסים את מה שהקישור ביקש — כך
+         "יבואן רשמי" בקישור ששותף הפך ל"יבואן מקביל" (הפרש ₪374). */
+      var $sel = $ul.closest('tr, .value').find('select[name^="attribute_"]').first();
+      if (!$sel.length) $sel = $ul.siblings('select[name^="attribute_"]').first();
+      if ($sel.length && $sel.val()) return;
       var $first = $ul.find('.variable-item:not(.disabled)').first();
       if ($first.length) $first.trigger('click');
     });
