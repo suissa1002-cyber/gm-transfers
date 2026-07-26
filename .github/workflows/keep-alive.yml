@@ -26,9 +26,11 @@ jobs:
             6)         [ "$H" -ge 17 ] && [ "$H" -lt 23 ] && active=1 ;;  # שבת 17-23
           esac
           if [ "$active" != 1 ]; then echo "outside active hours (IL day=$D hour=$H) — skip"; exit 0; fi
-          # POST /api/poll מעיר את השירות (אם נרדם) וגם קולט העברות חדשות.
+          # ⚠️ 26/07: GET /health בלבד — היה POST /api/poll, שהריץ סבב פולר מלא (קריאה
+          # ל-NewOrder) כל 5 דק'. איסוף ההעברות שייך ל-worker שרץ 24/7; כאן רק מעירים
+          # את ה-web כדי שהקונסולה לא תיפתח על cold-start. /health לא נוגע ב-NewOrder.
           # timeout ארוך כי cold-start יכול לקחת ~60ש'. לא נכשלים על timeout (רק מדווחים).
-          code=$(curl -s -o /tmp/resp -w "%{http_code}" -X POST "$SERVICE_URL/api/poll" --max-time 90 || echo 000)
-          echo "POST $SERVICE_URL/api/poll → $code"
+          code=$(curl -s -o /tmp/resp -w "%{http_code}" "$SERVICE_URL/health" --max-time 90 || echo 000)
+          echo "GET $SERVICE_URL/health → $code"
           head -c 400 /tmp/resp 2>/dev/null || true
           exit 0

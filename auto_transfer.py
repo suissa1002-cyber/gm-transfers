@@ -591,6 +591,20 @@ def _rescan_flagged(orders, catalog):
             flagged.add(str(x.get("number")))
     if not flagged:
         return
+    # ⏱️ ויסות (26/07, מכסת NewOrder): הסריקה הזו רצה בכל סבב (כל 5 דק') ומריצה
+    # `_handle_order` מלא — קריאת מלאי (ולפעמים סריאלים) לכל שורה — על הזמנות
+    # שתקועות בחוסר-מלאי לימים. 288 ריצות/יום על אותו מידע. מספיק כל 30 דק':
+    # מק"ט שנוצר/חובר עכשיו ייקלט בסבב הבא, וזה ממילא תלוי בקטלוג שמתרענן כל 6ש.
+    _RESCAN_EVERY_SEC = 1800
+    try:
+        _last = db.sales_state_get("auto_tr_rescan_at")
+        if _last:
+            _age = (datetime.now() - datetime.fromisoformat(str(_last))).total_seconds()
+            if 0 <= _age < _RESCAN_EVERY_SEC:
+                return
+    except Exception:  # noqa: BLE001
+        pass          # חותמת פגומה → סורקים (עדיף סריקה מיותרת מהזמנה תקועה)
+    db.sales_state_set("auto_tr_rescan_at", datetime.now().isoformat(timespec="seconds"))
     plan_nums = set()
     for ln in db.plan_list():
         m = _re.search(r"הזמנת אתר #(\d+)", ln.get("created_by") or "")

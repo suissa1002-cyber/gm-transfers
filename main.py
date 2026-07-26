@@ -114,7 +114,12 @@ def _rebalance_job():
 def _sales_ingest_job():
     try:
         import sales_ingest
-        sales_ingest.ingest_incremental()
+        # ⚠️ מכסת NewOrder (26/07): ברוב הריצות (כל 15 דק') אוספים **רק את היום** —
+        # קריאה אחת. ימים סגורים לא משתנים, וקראנו אותם מחדש כל רבע שעה. החפיפה
+        # המלאה (3 ימים, לתפוס מסמך שנרשם באיחור) רצה בריצה הראשונה של כל שעה.
+        from datetime import datetime as _dtq
+        full = _dtq.now().minute < 15
+        sales_ingest.ingest_incremental(lookback_days=None if full else 0)
     except Exception as e:  # noqa: BLE001
         logger.warning("sales_ingest failed: %s", e)
     _sold_reconcile_job()   # אחרי כל קליטת מכירות — מזהה מכשירים שנמכרו לפני קליטה
@@ -484,8 +489,11 @@ def register_recurring_jobs():
     # אינדקס סריאל→מוצר: סבב baseline כל 3 שעות. ריצה ראשונית רק אם האינדקס ישן —
     # הוא נשמר ב-DB, ואין סיבה לשרוף ~555 קריאות אחרי כל deploy/restart
     # (זה גם מה שגרם ל"שגיאת קופה" בטאב מלאי חי: הסנכרון הרווה את מגבלת הקצב).
-    scheduler.add_job(_serial_sync_job, "interval", hours=3, id="serial_sync", max_instances=1)
-    if _is_stale(db.serial_index_last_sync(), hours=3):
+    # ⚠️ שבועי, לא כל 3 שעות (26/07): מיפוי סריאל→מוצר **לא משתנה לעולם**, ובכל זאת
+    # בנינו אותו מחדש 8 פעמים ביום = ~3,400 קריאות/יום ל-NewOrder — הצרכן #2 בדוח של
+    # רפי. סריאל חדש נקלט ממילא חי: מה-poller (פריטי העברה) ומ-misroute בסריקה.
+    scheduler.add_job(_serial_sync_job, "interval", days=7, id="serial_sync", max_instances=1)
+    if _is_stale(db.serial_index_last_sync(), hours=168):
         scheduler.add_job(_serial_sync_job, "date", id="serial_sync_initial",
                           run_date=datetime.now() + timedelta(seconds=60))
     else:
@@ -512,7 +520,9 @@ def register_recurring_jobs():
     scheduler.add_job(_uri_dropped_recover_job, "interval", minutes=3,
                       id="uri_dropped_recover", max_instances=1)
     # 🪑 תג "בית לקוח" ↔ מלאי קופה (כיסאות כבדים): אזל→תיוג, חזר→הסרה
-    scheduler.add_job(_beit_lakoach_sync_job, "interval", hours=6,
+    # יומי (היה כל 6ש, 26/07): ~62 קריאות מלאי לריצה = 248/יום ל-NewOrder על קטגוריה
+    # שזזה לאט (כיסאות גיימינג כבדים). קיצוץ מכסה אחרי תלונת רפי.
+    scheduler.add_job(_beit_lakoach_sync_job, "interval", hours=24,
                       id="beit_lakoach_sync", max_instances=1, coalesce=True)
     scheduler.add_job(_fraud_triage_job, "date", id="fraud_triage_initial",
                       run_date=datetime.now() + timedelta(seconds=90))
@@ -1195,8 +1205,19 @@ def admin_overview(days: int = 7, x_admin_key: Optional[str] = Header(None)):
     return {"summary": summary, "transfers": out, "misroutes": mis}
 
 
+_manual_poll_at = {"t": 0.0}
+
+
 @app.post("/api/poll")
 def manual_poll():
+    """סבב פולר ידני. ⚠️ מגודר בקצב (26/07): זו נקודת קצה **ציבורית** שמריצה קריאה
+    ל-NewOrder, ושתי שכבות keep-alive הפגיזו אותה כל דקה = פולר שני שלא נספר
+    (תלונת המכסה של רפי). מעכשיו: לכל היותר סבב אחד לדקה, השאר מוחזר כ-throttled."""
+    import time as _t
+    now = _t.time()
+    if now - _manual_poll_at["t"] < 60:
+        return {"skipped": "throttled", "age_sec": int(now - _manual_poll_at["t"])}
+    _manual_poll_at["t"] = now
     return poller.poll_once()
 
 
@@ -1566,8 +1587,11 @@ def admin_repairs_summary(fresh: int = 0, x_admin_key: Optional[str] = Header(No
     _require_admin(x_admin_key)
     import time as _t
     from datetime import datetime as _dt, timedelta as _td
+    # מטמון שעה (היה 5 דק'): כל רענון = **10 קריאות** ל-NewOrder (10 פרוסות שבועיות),
+    # והקלף מתרענן לבד כל עוד הקונסולה פתוחה → 840 קריאות/יום בדוח של רפי (26/07).
+    # נתוני מעבדה אינם זזים ברזולוציה של דקות; כפתור הרענון (fresh=1) עוקף מיידית.
     if _repairs_sum_cache["data"] and not fresh \
-            and _t.time() - _repairs_sum_cache["at"] < 300:
+            and _t.time() - _repairs_sum_cache["at"] < 3600:
         return _repairs_sum_cache["data"]
     no = poller.client()
     try:

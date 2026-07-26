@@ -27,12 +27,23 @@ def _dd(d: date) -> str:
     return d.strftime("%d/%m/%Y")
 
 
-def _fetch_ops(no, start: date, end: date) -> list:
-    """כל תנועות המלאי של סניף מרלוג בטווח (כל הדפים)."""
+def _fetch_ops(no, start: date, end: date, skip_ops: set = None) -> list:
+    """כל תנועות המלאי של סניף מרלוג בטווח (כל הדפים).
+
+    `skip_ops` = פעולות שכבר ב-DB → לא מושכים להן פריטים. בלי זה כל ריצה (כל 3ש)
+    השלימה פריטים לכל הורדה בחלון, גם לישנות שנקלטו מזמן (מכסת NewOrder, 26/07).
+    """
+    skip_ops = skip_ops or set()
+
+    def _needs(op):
+        return (op.get("operationType") == REMOVAL_OP_TYPE
+                and str(op.get("id")) not in skip_ops)
+
     out = []
     for pn in range(1, 60):
         batch = no.get_stock_operations(branch_id=REMOVAL_BRANCH, from_date=_dd(start),
-                                        to_date=_dd(end), page_size=200, page_num=pn)
+                                        to_date=_dd(end), page_size=200, page_num=pn,
+                                        items_for=_needs)
         if not batch:
             break
         out.extend(batch)
@@ -42,7 +53,7 @@ def _fetch_ops(no, start: date, end: date) -> list:
 
 
 def _ingest_range(no, start: date, end: date, skip_ops: set) -> dict:
-    ops = _fetch_ops(no, start, end)
+    ops = _fetch_ops(no, start, end, skip_ops)
     removals = [o for o in ops if o.get("operationType") == REMOVAL_OP_TYPE]
     rows = []
     new_ops = 0

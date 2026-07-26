@@ -26,9 +26,18 @@ def full_sync(max_products: int = 5000) -> dict:
     _running = True
     try:
         no = poller.client()
-        products = no.get_all_products() or []
-        targets = [p for p in products
-                   if p.get("isSerial") and (p.get("currentStock") or 0) > 0][:max_products]
+        # ⚠️ מקור הדגמים = הקטלוג ב-DB (מרוענן ע"י catalog_refresh כל 6ש), לא
+        # get_all_products — שהוא ~28 קריאות ל-NewOrder בכל ריצה על מידע שכבר יש לנו.
+        # (חלק מקיצוץ המכסה 26/07 אחרי תלונת NewOrder.)
+        catalog = db.catalog_load() or {}
+        targets = [{"id": pid, "name": c.get("name") or ""}
+                   for pid, c in catalog.items()
+                   if c.get("kind") == "serial" and (c.get("stock") or 0) > 0][:max_products]
+        if not targets:      # קטלוג ריק (טרם רוענן) — נפילה למקור הישן, פעם אחת
+            logger.warning("serial full_sync: catalog empty — falling back to get_all_products")
+            targets = [{"id": p.get("id"), "name": p.get("name") or ""}
+                       for p in (no.get_all_products() or [])
+                       if p.get("isSerial") and (p.get("currentStock") or 0) > 0][:max_products]
         logger.info("serial full_sync: %d serial products with stock", len(targets))
         total_serials = 0
         batch = []

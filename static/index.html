@@ -9266,7 +9266,7 @@ function homeRepBranch(b){ S.homeLastTouch=Date.now(); S.homeRepBranch=String(b)
 function homeRepairsRefresh(){ S.homeLastTouch=Date.now(); loadHomeRepairs(true); }
 async function loadHomeRepairs(force){
   if(S.homeRepairsLoading) return;
-  if(!force&&S.homeRepairs&&(Date.now()-(S.homeRepairsAt||0))<240000) return; // מטמון 4 דק' בצד לקוח (השרת ממילא 5 דק')
+  if(!force&&S.homeRepairs&&(Date.now()-(S.homeRepairsAt||0))<1800000) return; // מטמון 30 דק' בצד לקוח (השרת שעה — 10 קריאות NewOrder לרענון)
   S.homeRepairsLoading=true; if(S.view==='home')renderHome();
   try{
     const r=await api('/api/admin/repairs/summary'+(force?'?fresh=1':''));

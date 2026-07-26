@@ -108,8 +108,14 @@ def _ingest_range(no, start: date, end: date, skip: set, max_new_docs=None) -> d
             "lines": lines_in, "stopped_early": stopped_early}
 
 
-def ingest_incremental() -> dict:
-    """איסוף יומי: מאז ה-cursor (עם חפיפה) עד היום, יום-יום. מדלג על קיימים."""
+def ingest_incremental(lookback_days: int = None) -> dict:
+    """איסוף יומי: מאז ה-cursor (עם חפיפה) עד היום, יום-יום. מדלג על קיימים.
+
+    `lookback_days=0` → **היום בלבד** (קריאה אחת). זה המצב הרגיל: הג'וב רץ כל 15 דק',
+    ויום שנסגר לא משתנה — אבל קראנו אותו מחדש 96 פעמים ביום (4-5 קריאות × 96 =
+    ~424/יום ל-NewOrder, מה שראינו בדוח של רפי). החפיפה המלאה (3 ימים, לתפוס מסמך
+    שנרשם באיחור) רצה עכשיו פעם בשעה בלבד — ראה `_sales_ingest_job` ב-main.
+    """
     global _running
     if _running:
         return {"skipped": "already running"}
@@ -117,14 +123,16 @@ def ingest_incremental() -> dict:
     try:
         no = poller.client()
         today = date.today()
+        lb = DEFAULT_INCREMENTAL_LOOKBACK if lookback_days is None else max(0, int(lookback_days))
         last = db.sales_state_get("last_date")
         if last:
             try:
-                start = datetime.fromisoformat(last).date() - timedelta(days=DEFAULT_INCREMENTAL_LOOKBACK)
+                start = datetime.fromisoformat(last).date() - timedelta(days=lb)
             except Exception:
-                start = today - timedelta(days=DEFAULT_INCREMENTAL_LOOKBACK)
+                start = today - timedelta(days=lb)
         else:
-            start = today - timedelta(days=DEFAULT_INCREMENTAL_LOOKBACK)
+            start = today - timedelta(days=lb)
+        start = min(start, today)
         skip = db.sales_docids_since(start.isoformat())
         res = _ingest_range(no, start, today, skip)
         db.sales_state_set("last_date", today.isoformat())

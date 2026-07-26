@@ -36,9 +36,13 @@ SQLITE_PATH = os.getenv("TRANSFERS_DB_PATH",
                         os.path.join(os.path.dirname(__file__), "transfers.db"))
 
 # ── Poller ──
-# 60ש (היה 30): NewOrder ביקשו להוריד תדירות — אנחנו קראנו אצלם יותר מכל הלקוחות
-# יחד (רפי, 21/07). ראה גם poller._needs_items שמאפס את קריאות הפריטים במצב יציב.
-POLL_INTERVAL_SEC = int(os.getenv("POLL_INTERVAL_SEC", "60"))
+# ⚠️ רצפה קשיחה של 120ש — לא רק ברירת מחדל. השיעור מ-21/07: שינינו את ברירת המחדל
+# 30→60 וזה לא עשה כלום, כי ב-Render מוגדר `POLL_INTERVAL_SEC=30` מפורשות והוא גובר.
+# NewOrder עדיין התלוננו (רפי, 23/07). מדידה חיה 26/07: הפולר רץ כל ~30ש בפועל.
+# ⇒ הערך האפקטיבי לא יורד מ-120ש גם אם ה-env אומר אחרת; להאיץ = להעלות את הרצפה כאן,
+# בקוד, במודע. חלון הבטיחות (3 ימים) ממילא קולט כל העברה שהוחמצה בסבב.
+_POLL_FLOOR_SEC = 120
+POLL_INTERVAL_SEC = max(_POLL_FLOOR_SEC, int(os.getenv("POLL_INTERVAL_SEC", "180")))
 # כמה ימים אחורה למשוך בכל סבב (חלון בטיחות; העברות פתוחות נשארות ב-DB ממילא)
 POLL_LOOKBACK_DAYS = int(os.getenv("POLL_LOOKBACK_DAYS", "3"))
 
