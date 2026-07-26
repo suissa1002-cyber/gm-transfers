@@ -1206,17 +1206,25 @@ def admin_overview(days: int = 7, x_admin_key: Optional[str] = Header(None)):
 
 
 _manual_poll_at = {"t": 0.0}
+_MANUAL_POLL_MIN_SEC = 600      # רשת ביטחון חיצונית — לכל היותר סבב אחד ל-10 דק'
 
 
 @app.post("/api/poll")
 def manual_poll():
     """סבב פולר ידני. ⚠️ מגודר בקצב (26/07): זו נקודת קצה **ציבורית** שמריצה קריאה
-    ל-NewOrder, ושתי שכבות keep-alive הפגיזו אותה כל דקה = פולר שני שלא נספר
-    (תלונת המכסה של רפי). מעכשיו: לכל היותר סבב אחד לדקה, השאר מוחזר כ-throttled."""
+    ל-NewOrder, ושתי שכבות keep-alive הפגיזו אותה כל דקה = פולר שני ושלישי שלא נספרו
+    (תלונת המכסה של רפי).
+
+    הרצפה כאן היא **הגנת האמת** — היא לא תלויה בשאלה מי קורא, מאיזה חשבון Cloudflare,
+    או אם מישהו יחזיר workflow ישן. איסוף ההעברות הוא ממילא באחריות ה-worker שרץ
+    24/7 (כל 3 דק'); הקריאה החיצונית היא רק רשת ביטחון למקרה שהוא נפל, ולזה מספיק
+    סבב אחד ל-10 דק'.
+    """
     import time as _t
     now = _t.time()
-    if now - _manual_poll_at["t"] < 60:
-        return {"skipped": "throttled", "age_sec": int(now - _manual_poll_at["t"])}
+    if now - _manual_poll_at["t"] < _MANUAL_POLL_MIN_SEC:
+        return {"skipped": "throttled", "age_sec": int(now - _manual_poll_at["t"]),
+                "min_interval_sec": _MANUAL_POLL_MIN_SEC}
     _manual_poll_at["t"] = now
     return poller.poll_once()
 
