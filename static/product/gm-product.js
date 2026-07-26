@@ -80,6 +80,10 @@
 /* ═══ polish r2: תוויות חכמות, בחירת ברירת-מחדל, מחיר חי, אייקון בכפתור ═══ */
 (function ($) {
   'use strict';
+  /* ⚠️ נקרא *פעם אחת* בזמן פרסינג: תוסף הסוואצ'ים משכתב את הכתובת עם
+     הפרמטרים שלו ומוחק את gmv, לפני שנתוני הוריאציות בכלל נטענו. קריאה
+     מ-location.search בזמן הניסיון החוזר מחזירה ריק והקישור מתעלם בשקט. */
+  var GM_DEEP_VID = (location.search.match(/[?&]gmv=(\d+)/) || [])[1] || '';
   var CART_SVG = '<svg style="width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8" viewBox="0 0 24 24"><circle cx="9" cy="19.5" r="1.4"/><circle cx="17" cy="19.5" r="1.4"/><path d="M3 4h2.5l2.2 11.5h10.4L20.5 8H7"/></svg>';
   var origPrice = null;
 
@@ -183,10 +187,6 @@
   }
   /* החלת קישור עמוק לפי gmv — לוחצים על הסוואצ'ים של הוריאציה כדי שגם הממשק
      וגם ה-select יתעדכנו, ולא רק המחיר. */
-  /* ⚠️ נקרא *פעם אחת* בזמן פרסינג: תוסף הסוואצ'ים משכתב את הכתובת עם
-     הפרמטרים שלו ומוחק את gmv, לפני שנתוני הוריאציות בכלל נטענו. קריאה
-     מ-location.search בזמן הניסיון החוזר מחזירה ריק והקישור מתעלם בשקט. */
-  var GM_DEEP_VID = (location.search.match(/[?&]gmv=(\d+)/) || [])[1] || '';
   function gmApplyDeepLink() {
     var m = GM_DEEP_VID ? [null, GM_DEEP_VID] : null;
     if (!m) return false;
