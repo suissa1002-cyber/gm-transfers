@@ -149,6 +149,19 @@
     var ok = false; try { ok = document.execCommand('copy'); } catch (e) {}
     document.body.removeChild(ta); ok ? done() : fallback();
   }
+  /* ⚠️ באג בתוסף הסוואצ'ים: הוא כותב לכתובת את שם התכונה העברית מקודד *פעמיים*
+     (%25d7%2590 במקום %d7%90), ואז WooCommerce לא מזהה אותה — הקישור נוחת על
+     תצורת ברירת מחדל ולא על מה שנבחר. לכן בונים את קישור השיתוף מהטופס עצמו:
+     ה-name/value של ה-select כבר בקידוד היחיד שהמנוע מצפה לו. */
+  function gmVariationUrl() {
+    var base = location.origin + location.pathname;
+    var parts = [];
+    $('form.variations_form select[name^="attribute_"]').each(function () {
+      if (!this.value) return;
+      parts.push(this.name + '=' + this.value);
+    });
+    return parts.length ? base + '?' + parts.join('&') : base;
+  }
   function gmMountShare() {
     if (document.getElementById('gmShare')) return;
     var anchor = document.getElementById('gmSku') || document.querySelector('.gm-atc');
@@ -159,7 +172,7 @@
     b.innerHTML = GM_LINK_SVG + '<span></span>';
     b.addEventListener('click', function () {
       $(b).removeClass('done').find('span').text('');
-      var url = location.href;
+      var url = gmVariationUrl();
       fetch('/wp-json/gm-short/v1/make', { method: 'POST', credentials: 'same-origin',
             headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: url }) })
         .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
