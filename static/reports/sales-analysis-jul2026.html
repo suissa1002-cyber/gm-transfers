@@ -998,6 +998,7 @@ tr.zdet > td{padding:0 !important; background:var(--track) !important; border-in
           <option value="listed">✓ רשומים — אנחנו בדף</option>
           <option value="missing">✗ לא רשומים — הדגם קיים, אנחנו לא בו</option>
           <option value="nomodel">אין דגם בזאפ בכלל</option>
+          <option value="suspect">⚠ התאמה חשודה — לבדיקה</option>
         </select></label>
       <label>מצב תמחור
         <select id="zapState" onchange="zapRender()">
@@ -1128,6 +1129,8 @@ tr.zdet > td{padding:0 !important; background:var(--track) !important; border-in
       // נוכחות: רשומים / לא רשומים / אין דגם — הציר הראשון להחלטה
       if(q && !pr && !st) return true;      // חיפוש חופשי גובר על שאר הסינונים
       if(pr==='nomodel') return r.status==='no_model';
+      if(pr==='suspect') return r.status==='suspect';
+      if(!pr && r.status==='suspect') return true;
       if(pr==='listed'  && r.status!=='listed')  return false;
       if(pr==='missing' && r.status!=='missing') return false;
       if(!pr && st && r.status==='no_model') return false;
@@ -1162,6 +1165,11 @@ tr.zdet > td{padding:0 !important; background:var(--track) !important; border-in
       '<th>דגם</th><th>מלאי</th><th>המחיר שלנו</th><th>הזול בזאפ</th><th>מוכרים</th>'+
       '<th>מיקום</th><th>לטופ 5</th><th>לטופ 3</th><th>למקום 1</th></tr></thead><tbody>'+
       rows.map(function(r){
+        if(r.status==='suspect')
+          return '<tr><td class="zapname">'+esc(r.name)+'<small>'+r.brand+'</small></td>'+
+            '<td class="n">'+(r.stock||0)+'</td><td class="n">'+(r.our_price?ils(r.our_price):'—')+'</td>'+
+            '<td colspan="6" style="color:var(--flag)">⚠ '+esc(r.note||'התאמה חשודה')+
+            ' <a href="'+r.url+'" target="_blank" rel="noopener" class="u">בדוק בזאפ</a></td></tr>';
         if(r.status==='no_model')
           return '<tr><td class="zapname">'+esc(r.name)+'<small>'+r.brand+'</small></td>'+
             '<td class="n">'+(r.stock||0)+'</td><td class="n">'+(r.our_price?ils(r.our_price):'—')+'</td>'+

@@ -252,6 +252,18 @@ def analyse(t: dict) -> dict:
     offers = data["offers"]
     ours = next((o for o in offers if any(k in o["seller"].lower() for k in OURS)), None)
     prices = [o["price"] for o in offers]
+    # רשת ביטחון: אם המחיר שלנו רחוק מסדר-הגודל של השוק לדגם הזה, כמעט בוודאות
+    # ההתאמה שגויה (כך Redmi A7 ב-₪499 הושווה לרשימת iPhone 17). עדיף לסמן
+    # "חשוד" מאשר להציג מיקום שקרי שעליו מתקבלת החלטת תמחור.
+    op = t.get("our_price")
+    if op and not ours and (op < prices[0] / 2.5 or op > prices[-1] * 2.5):
+        row.update({"status": "suspect", "url": f"{BASE}/model.aspx?modelid={mid}",
+                    "zap_title": db.sales_state_get(f"zap_title:{t['sku']}") or "",
+                    "sellers": data["offer_count"], "low": prices[0], "high": prices[-1],
+                    "note": "המחיר שלנו רחוק מטווח הדגם בזאפ — ההתאמה כנראה שגויה"})
+        logger.warning("zap: suspect match sku=%s ours=%s range=%s-%s",
+                       t["sku"], op, prices[0], prices[-1])
+        return row
     row.update({
         "url": f"{BASE}/model.aspx?modelid={mid}",
         "zap_title": db.sales_state_get(f"zap_title:{t['sku']}") or "",
@@ -293,6 +305,7 @@ def _summarise(rows: list, partial: bool = False) -> dict:
         "listed": len(listed),
         "missing": len(missing),                       # יש דגם — ואנחנו לא בו
         "no_model": sum(1 for r in rows if r.get("status") == "no_model"),
+        "suspect": sum(1 for r in rows if r.get("status") == "suspect"),
         "in_top5": sum(1 for r in ranked if r["rank"] <= 5),
         "in_top3": sum(1 for r in ranked if r["rank"] <= 3),
         "median_rank": sorted(r["rank"] for r in ranked)[len(ranked) // 2] if ranked else None,
