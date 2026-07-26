@@ -153,10 +153,18 @@ def _quals(s: str) -> set:
     return out
 
 
+# מספרי מפרט שיווקי — גודל מסך, סוללה, מגה-פיקסל, רענון, הספק טעינה.
+# ⚠️ בלי הניקוי הזה "מסך 8.1״" תרם אסימוני דגם מדומים 8 ו-1, ומכיוון שבכותרת
+# של זאפ ("Motorola Razr Fold 512GB 16GB RAM") אין מספרים כאלה, החיתוך יצא
+# ריק והדגם נדחה — למרות שהכותרות זהות (אסי, 26/07/2026).
+SPEC_RE = re.compile(r"\d+(?:\.\d+)?\s*(?:[\"״”'׳]|mah|mp|hz|w\b|inch|אינץ)", re.I)
+
+
 def _model_tokens(s: str) -> set:
     """אסימוני דגם: מספרים ושילובי אות+מספר (17, A57, X9, V6, Note)."""
     low = (s or "").lower()
     low = CAP_RE.sub(" ", low)                       # הנפח נבדק בנפרד
+    low = SPEC_RE.sub(" ", low)                      # וגם מפרט שיווקי אינו דגם
     toks = set(re.findall(r"\b([a-z]{0,2}\d{1,4}[a-z]?)\b", low))
     return {t for t in toks if not re.fullmatch(r"\d{4,}", t)}   # לא מק"טים
 
@@ -180,7 +188,10 @@ def _match_ok(our_name: str, zap_title: str) -> bool:
     if ra and rb and ra != rb:
         return False
     ta, tb = _model_tokens(our_name), _model_tokens(zap_title)
-    return bool(ta & tb) if ta else True
+    # דורשים חיתוך רק כששני הצדדים נושאים אסימוני דגם. כשלכותרת של זאפ אין
+    # מספר דגם כלל ("Motorola Razr Fold") היעדר חיתוך אינו ראיה נגד — המותג,
+    # הנפח וה-RAM כבר שמרו על ההתאמה.
+    return bool(ta & tb) if (ta and tb) else True
 
 
 HEB_RE = re.compile(r"[֐-׿]+")

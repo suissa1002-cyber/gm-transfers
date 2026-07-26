@@ -131,6 +131,42 @@ def _variation_slugs(base, auth, var: dict) -> dict:
     return out
 
 
+def find_by_pid(pid) -> dict | None:
+    """אותה תשובה כמו find_by_sku, אבל לפי מזהה מוצר ב-WC.
+    ⚠️ נחוץ כי ל-45 מתוך 65 מוצרי הפיד אין מק"ט על ההורה (הוא יושב על
+    הוריאציה), ובלי זה כפתורי הפעולה בשורות האלה פשוט לא עושים כלום."""
+    base, auth = _wc()
+    r = requests.get(f"{base}/wp-json/wc/v3/products/{pid}", auth=auth, timeout=45,
+                     params={"_fields": "id,name,type,price,regular_price,attributes"})
+    if not r.ok:
+        return None
+    p = r.json()
+    if p.get("type") == "variable":
+        v = requests.get(f"{base}/wp-json/wc/v3/products/{pid}/variations", auth=auth,
+                         timeout=45, params={"per_page": 100,
+                                             "_fields": "id,sku,price,regular_price,attributes"})
+        vs = [x for x in (v.json() if v.ok else []) if float(x.get("price") or 0) > 1]
+        if vs:   # הזולה היא זו שמתחרה בזאפ
+            x = min(vs, key=lambda z: float(z.get("price") or 0))
+            return {"kind": "variation", "id": x["id"], "parent": int(pid),
+                    "sku": x.get("sku"), "name": p.get("name"), "price": x.get("price"),
+                    "attrs": _variation_slugs(base, auth, x),
+                    "cap": _cap_from_attrs(x.get("attributes"))}
+    return {"kind": "product", "id": p["id"], "parent": p["id"], "sku": p.get("sku"),
+            "name": p.get("name"), "price": p.get("price"),
+            "attrs": _variation_slugs(base, auth, p),
+            "cap": _cap_from_attrs(p.get("attributes")) or _cap_from_text(p.get("name"))}
+
+
+def find_target(sku: str = "", pid=None) -> dict | None:
+    """זהות השורה בכלי זאפ: מק"ט אם יש, אחרת מזהה המוצר."""
+    if (sku or "").strip():
+        t = find_by_sku(sku)
+        if t:
+            return t
+    return find_by_pid(pid) if pid else None
+
+
 def find_by_sku(sku: str) -> dict | None:
     """הווריאציה (או המוצר הפשוט) שנושאת את המק"ט, יחד עם ההורה והאטריביוטים."""
     base, auth = _wc()
@@ -177,10 +213,10 @@ def _shadow_matches(tgt: dict, sh: dict) -> bool:
     return bool(tgt.get("cap")) and tgt["cap"] == sh.get("cap")
 
 
-def set_price(sku: str, price: float, sync_shadow: bool = True) -> dict:
+def set_price(sku: str, price: float, sync_shadow: bool = True, pid=None) -> dict:
     """מעדכן את מחיר האתר למק"ט, ואופציונלית מסנכרן את מוצר הצל התואם."""
     base, auth = _wc()
-    tgt = find_by_sku(sku)
+    tgt = find_target(sku, pid)
     if not tgt:
         return {"ok": False, "error": f"לא נמצא מוצר באתר עם מק\"ט {sku}"}
     old = tgt.get("price")
@@ -216,10 +252,10 @@ def set_price(sku: str, price: float, sync_shadow: bool = True) -> dict:
             "target": tgt, "shadows_synced": synced, "shadows_skipped": skipped}
 
 
-def sync_shadow_only(sku: str) -> dict:
+def sync_shadow_only(sku: str, pid=None) -> dict:
     """מיישר את מוצרי הצל למחיר הנוכחי של הווריאציה, בלי לשנות מחיר."""
     base, auth = _wc()
-    tgt = find_by_sku(sku)
+    tgt = find_target(sku, pid)
     if not tgt:
         return {"ok": False, "error": f"לא נמצא מוצר עם מק\"ט {sku}"}
     price = float(tgt.get("price") or 0)
@@ -300,10 +336,10 @@ def feed(cat: int = 1934) -> list:
     return out
 
 
-def shadow_state(sku: str) -> dict:
+def shadow_state(sku: str, pid=None) -> dict:
     """מצב מוצר הצל מול הווריאציה — לעמודת "מחיר צל" ולחיווי פער.
     המטרה (אסי): לוודא שהמחיר שזאפ רואה זהה למחיר שההורה מציג."""
-    tgt = find_by_sku(sku)
+    tgt = find_target(sku, pid)
     if not tgt:
         return {"ok": False, "error": "לא נמצא מוצר"}
     site = float(tgt.get("price") or 0)
@@ -319,14 +355,14 @@ def shadow_state(sku: str) -> dict:
             "state": "synced" if abs(sp - site) < 0.5 else "drift"}
 
 
-def create_shadow(sku: str) -> dict:
+def create_shadow(sku: str, pid=None) -> dict:
     """יוצר מוצר צל לזאפ לווריאציה. חמשת השלבים כפי שתועדו אצלנו:
     external+hidden, URL עם האטריביוט, קטגוריות+מותג מההורה, תמונה, והסתרת
     ההורה מזאפ. ⚠️ הערך של _woocommerce_zap_disable חייב להיות 'yes'.
     ⚠️ הכותרת חייבת להתאים לכותרת דגם ההשוואה בזאפ (שם + נפח + RAM), אחרת
     זאפ לא ישייך את המוצר לשום דף — זו הסיבה שמוצר צל קיים בכלל."""
     base, auth = _wc()
-    tgt = find_by_sku(sku)
+    tgt = find_target(sku, pid)
     if not tgt:
         return {"ok": False, "error": f"לא נמצא מוצר עם מק\"ט {sku}"}
     if tgt["kind"] != "variation":

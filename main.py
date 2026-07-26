@@ -9185,9 +9185,10 @@ def zap_report():
 
 
 class ZapPriceIn(BaseModel):
-    sku: str
+    sku: str = ""
     price: float
     sync_shadow: bool = True
+    pid: Optional[int] = None   # שורות הפיד בלי מק"ט — הזהות היא מזהה המוצר
 
 
 @app.post("/api/admin/zap/price")
@@ -9198,31 +9199,36 @@ def zap_set_price(body: ZapPriceIn, x_admin_key: Optional[str] = Header(None)):
     import zap_price
     if float(body.price) <= 0:
         raise HTTPException(400, "מחיר חייב להיות חיובי")
-    return zap_price.set_price(body.sku.strip(), float(body.price), body.sync_shadow)
+    if not (body.sku.strip() or body.pid):
+        raise HTTPException(400, "צריך מק״ט או מזהה מוצר")
+    return zap_price.set_price(body.sku.strip(), float(body.price), body.sync_shadow, body.pid)
 
 
 @app.post("/api/admin/zap/sync-shadow")
-def zap_sync_shadow(sku: str, x_admin_key: Optional[str] = Header(None)):
+def zap_sync_shadow(sku: str = "", pid: Optional[int] = None,
+                    x_admin_key: Optional[str] = Header(None)):
     """מיישר את מוצרי הצל של זאפ למחיר הנוכחי של הווריאציה, בלי לשנות מחיר."""
     _require_admin(x_admin_key)
     import zap_price
-    return zap_price.sync_shadow_only(sku.strip())
+    return zap_price.sync_shadow_only(sku.strip(), pid)
 
 
 @app.get("/api/admin/zap/shadow-state")
-def zap_shadow_state(sku: str, x_admin_key: Optional[str] = Header(None)):
+def zap_shadow_state(sku: str = "", pid: Optional[int] = None,
+                     x_admin_key: Optional[str] = Header(None)):
     """מחיר הצל מול מחיר האתר — לוודא שמה שזאפ רואה זה מה שההורה מציג."""
     _require_admin(x_admin_key)
     import zap_price
-    return zap_price.shadow_state(sku.strip())
+    return zap_price.shadow_state(sku.strip(), pid)
 
 
 @app.post("/api/admin/zap/create-shadow")
-def zap_create_shadow(sku: str, x_admin_key: Optional[str] = Header(None)):
+def zap_create_shadow(sku: str = "", pid: Optional[int] = None,
+                      x_admin_key: Optional[str] = Header(None)):
     """יצירת מוצר צל לזאפ לווריאציה (חמשת השלבים המתועדים)."""
     _require_admin(x_admin_key)
     import zap_price
-    return zap_price.create_shadow(sku.strip())
+    return zap_price.create_shadow(sku.strip(), pid)
 
 
 @app.post("/api/admin/zap/visibility")
