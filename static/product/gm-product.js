@@ -155,9 +155,10 @@
     if (!anchor || !anchor.parentNode) return;
     var b = document.createElement('button');
     b.type = 'button'; b.className = 'gm-share'; b.id = 'gmShare';
-    b.innerHTML = GM_LINK_SVG + '<span>העתקת קישור למוצר</span>';
+    b.title = 'העתקת קישור למוצר'; b.setAttribute('aria-label', 'העתקת קישור למוצר');
+    b.innerHTML = GM_LINK_SVG + '<span></span>';
     b.addEventListener('click', function () {
-      $(b).removeClass('done').find('span').text('מקצר…');
+      $(b).removeClass('done').find('span').text('');
       var url = location.href;
       fetch('/wp-json/gm-short/v1/make', { method: 'POST', credentials: 'same-origin',
             headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: url }) })
@@ -165,12 +166,19 @@
         .then(function (d) { gmCopyText(d.short || url, b); })
         .catch(function () { gmCopyText(url, b); });   /* נפילה לכתובת המלאה */
     });
-    anchor.parentNode.insertBefore(b, anchor.nextSibling);
+    /* שורה אחת: מק"ט + אייקון קטן לצידו. עוטפים בשורה כדי שהאייקון יישאר
+       גלוי גם כשאין מק"ט (שורת המק"ט מוסתרת במקרה כזה). */
+    var row = document.createElement('div');
+    row.className = 'gm-metarow';
+    anchor.parentNode.insertBefore(row, anchor);
+    row.appendChild(anchor);
+    row.appendChild(b);
   }
   /* הכפתור מאפס את עצמו בכל החלפת תצורה — אחרת "הועתק ✓" נשאר מוצג
      בזמן שהקישור בלוח כבר מצביע על וריאציה אחרת. */
   $(document).on('found_variation reset_data', 'form.variations_form', function () {
-    var $b = $('#gmShare'); if ($b.length) $b.removeClass('done').removeAttr('title').find('span').text('העתקת קישור למוצר');
+    var $b = $('#gmShare');
+    if ($b.length) $b.removeClass('done').attr('title', 'העתקת קישור למוצר').find('span').text('');
   });
   /* באדג'ים בעמוד המוצר (החליף את סניפט #42987): לפי product_tag + "יבואן רשמי"
      לפי id. נטענים מ-Store API (שמחזיר tags) ומוזרקים כאוברליי על התמונה הראשית.
@@ -208,7 +216,13 @@
     fetch('/wp-json/wc/store/v1/products/' + m, { credentials: 'same-origin' })
       .then(function (r) { return r.json(); })
       .then(function (d) {
-        if (!parent) { var $e = gmEnsureSku(); if ($e) $e.attr('data-parent-sku', d.sku || ''); gmSetSku(d.sku || ''); }
+        if (!parent) {
+          var $e = gmEnsureSku(); if ($e) $e.attr('data-parent-sku', d.sku || '');
+          /* ⚠️ לא לדרוס מק"ט שכבר הוצג מהוריאציה: התשובה כאן אסינכרונית ומגיעה
+             *אחרי* found_variation, ובמוצר משתנה ה-sku של האב לרוב ריק — מה
+             שגרם למק"ט להופיע לכמה שניות ואז להיעלם. */
+          if (!$('#gmSku .gm-sku-v').text().trim()) gmSetSku(d.sku || '');
+        }
         gmRenderBadges(d);
       })
       .catch(function () {});
@@ -243,7 +257,9 @@
   $(document).on('reset_data', 'form.variations_form', function () {
     labelAll();
     if (origPrice) $('.pricebox').html(origPrice);
-    gmSetSku(gmParentSku());   /* חזרה למק"ט האב */
+    /* reset_data נורה גם באתחול הסוואצ'ים, לפני found_variation — לא לאפס
+       את המק"ט כשוריאציה בפועל נבחרת. */
+    if (!$(this).find('input.variation_id').val()) gmSetSku(gmParentSku());
   });
 })(jQuery);
 
