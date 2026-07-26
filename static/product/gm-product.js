@@ -149,16 +149,18 @@
     var ok = false; try { ok = document.execCommand('copy'); } catch (e) {}
     document.body.removeChild(ta); ok ? done() : fallback();
   }
-  /* ⚠️ באג בתוסף הסוואצ'ים: הוא כותב לכתובת את שם התכונה העברית מקודד *פעמיים*
-     (%25d7%2590 במקום %d7%90), ואז WooCommerce לא מזהה אותה — הקישור נוחת על
-     תצורת ברירת מחדל ולא על מה שנבחר. לכן בונים את קישור השיתוף מהטופס עצמו:
-     ה-name/value של ה-select כבר בקידוד היחיד שהמנוע מצפה לו. */
+  /* ⚠️ קידוד כפול כאן הוא *נכון*, לא באג: הטקסונומיה והערך של תכונה עברית
+     נשמרים ב-WP כשהם עצמם מקודדים (pa_%d7%90…), ולכן כדי ש-PHP יקבל את
+     המחרוזת הזו צריך שכבת קידוד נוספת (%25d7%2590…). אומת חי מול וריאציה
+     45613: בקידוד יחיד התכונה נופלת לברירת המחדל והמחיר שגוי ב-₪750.
+     בונים מהטופס ולא מ-location.href כדי לא להיות תלויים במה שתוסף
+     הסוואצ'ים הספיק לכתוב לכתובת. */
   function gmVariationUrl() {
     var base = location.origin + location.pathname;
     var parts = [];
     $('form.variations_form select[name^="attribute_"]').each(function () {
       if (!this.value) return;
-      parts.push(this.name + '=' + this.value);
+      parts.push(encodeURIComponent(this.name) + '=' + encodeURIComponent(this.value));
     });
     return parts.length ? base + '?' + parts.join('&') : base;
   }
