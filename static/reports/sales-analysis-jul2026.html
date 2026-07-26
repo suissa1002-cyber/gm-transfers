@@ -254,6 +254,20 @@ table.brands tr.tot td{border-top:2px solid var(--rule); background:var(--track)
 .zapname small{display:block; color:var(--muted); font-weight:400; font-size:11.5px; margin-top:2px}
 .empty{padding:30px; text-align:center; color:var(--muted); background:var(--panel);
   border:1px solid var(--rule); border-radius:13px; font-size:14px}
+/* הרחבת שורה: כל המתחרים על הדגם */
+tr.zrow{cursor:pointer}
+tr.zrow .chev{color:var(--muted); font-size:11px; margin-inline-end:3px}
+tr.zdet > td{padding:0 !important; background:var(--track) !important; border-inline-start:0}
+.comp{padding:14px 18px 18px}
+.comp-h{font-size:13px; font-weight:700; margin-bottom:9px}
+.comp-t{width:100%; min-width:0; font-size:13px}
+.comp-t th{background:transparent; border-bottom:1px solid var(--rule); padding:6px 10px; font-size:11px}
+.comp-t td{padding:6px 10px; border-bottom:1px solid var(--rule-2); border-inline-start:0; white-space:nowrap}
+.comp-t tr.beat td{color:var(--fall)}
+.comp-t tr.mine td{background:var(--brand-soft); font-weight:700}
+.cbar{display:block; height:9px; border-radius:5px; background:var(--track); overflow:hidden}
+.cbar > span{display:block; height:100%; border-radius:5px; background:var(--ink); opacity:.35}
+.cbar.mine-bar > span{background:var(--brand); opacity:1}
 .foot b{color:var(--ink-2); font-weight:700}
 </style>
 </head>
@@ -1113,7 +1127,10 @@ table.brands tr.tot td{border-top:2px solid var(--rule); background:var(--track)
         var cls=!r.rank?'r-none':(r.rank<=5?'r-top':(r.rank<=12?'r-mid':'r-low'));
         var cut=function(v){ if(v==null) return '—';
           return v<=0 ? '<span class="cut0">כבר שם</span>' : '<b>'+ils(v)+'</b>'; };
-        return '<tr><td class="zapname"><a href="'+r.url+'" target="_blank" rel="noopener">'+esc(r.name)+'</a>'+
+        var i=ZAP.rows.indexOf(r);
+        return '<tr class="zrow" onclick="zapToggle('+i+')" title="לחץ לרשימת המתחרים המלאה">'+
+          '<td class="zapname"><span class="chev" id="zchev'+i+'">▾</span> '+
+            '<a href="'+r.url+'" target="_blank" rel="noopener" onclick="event.stopPropagation()">'+esc(r.name)+'</a>'+
           '<small>'+r.brand+(r.listed?' · רשומים':' · לא רשומים')+'</small></td>'+
           '<td class="n"><span class="minitrack"><span class="mini" style="width:'+
             ((r.stock||0)/maxStock*62).toFixed(0)+'px"></span></span> '+(r.stock||0)+'</td>'+
@@ -1121,8 +1138,40 @@ table.brands tr.tot td{border-top:2px solid var(--rule); background:var(--track)
           '<td class="n">'+ils(r.low)+'<small class="u" style="display:block;font-size:11px">'+esc(r.low_seller||'')+'</small></td>'+
           '<td class="n">'+r.sellers+'</td>'+
           '<td class="n"><span class="rankpill '+cls+'">'+(r.rank?'#'+r.rank:'—')+'</span></td>'+
-          '<td class="n">'+cut(r.cut_top5)+'</td><td class="n">'+cut(r.cut_top3)+'</td><td class="n">'+cut(r.cut_top1)+'</td></tr>';
+          '<td class="n">'+cut(r.cut_top5)+'</td><td class="n">'+cut(r.cut_top3)+'</td><td class="n">'+cut(r.cut_top1)+'</td></tr>'+
+          '<tr class="zdet" id="zdet'+i+'" hidden><td colspan="9">'+compHTML(r)+'</td></tr>';
       }).join('')+'</tbody></table></div>';
+  }
+
+  // ─── רשימת המתחרים המלאה לדגם: מי, באיזה מקום, ובכמה ───
+  function compHTML(r){
+    var c=r.competitors||[];
+    if(!c.length) return '<div class="u" style="padding:8px">אין פירוט מתחרים לדגם הזה</div>';
+    var our=r.our_price||0;
+    var max=c[c.length-1].price;
+    var mine=our && !r.listed;
+    var rows=c.map(function(o){
+      var pos=(o.price/max*100).toFixed(1);
+      var beat = our && o.price < our;    // מוכר שזול מאיתנו
+      return '<tr class="'+(beat?'beat':'')+'"><td class="n"><span class="rankpill '+
+        (o.rank<=3?'r-top':(o.rank<=10?'r-mid':'r-none'))+'">#'+o.rank+'</span></td>'+
+        '<td>'+esc(o.seller)+'</td>'+
+        '<td class="n"><b>'+ils(o.price)+'</b></td>'+
+        '<td style="width:46%"><span class="cbar"><span style="width:'+pos+'%"></span></span></td>'+
+        '<td class="n u">'+(our? (o.price<our? '−'+ils(our-o.price) : '+'+ils(o.price-our)) : '')+'</td></tr>';
+    }).join('');
+    var mineRow = mine ? '<tr class="mine"><td class="n"><span class="rankpill r-low">#'+(r.rank||'?')+'</span></td>'+
+      '<td><b>גרין מובייל</b> <span class="u">(לא רשומים — זה המקום שהיינו מקבלים)</span></td>'+
+      '<td class="n"><b>'+ils(our)+'</b></td><td><span class="cbar mine-bar"><span style="width:'+
+      (our/max*100).toFixed(1)+'%"></span></span></td><td></td></tr>' : '';
+    return '<div class="comp"><div class="comp-h">כל המוכרים על '+esc(r.zap_title||r.name)+
+      ' <span class="u">· '+c.length+' מתוך '+r.sellers+'</span></div>'+
+      '<table class="comp-t"><thead><tr><th>מקום</th><th>מוכר</th><th>מחיר</th><th>יחסי</th><th>מולנו</th></tr></thead>'+
+      '<tbody>'+mineRow+rows+'</tbody></table></div>';
+  }
+  function zapToggle(i){
+    var d=document.getElementById('zdet'+i), c=document.getElementById('zchev'+i);
+    if(!d) return; d.hidden=!d.hidden; if(c) c.textContent=d.hidden?'▾':'▴';
   }
   function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){
     return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
