@@ -9196,10 +9196,13 @@ def zap_scan_now(limit: int = 0, reset: int = 0, x_admin_key: Optional[str] = He
         logger.info("zap: mapping cache reset (%d keys)", n)
     if limit and limit <= 25:
         return zap_scan.run(limit=limit).get("summary")
-    scheduler.add_job(_zap_scan_job, "date", id="zap_scan_manual",
-                      run_date=datetime.now() + timedelta(seconds=2), replace_existing=True)
+    # ⚠️ לא דרך ה-scheduler: הוא מוגדר לשעון ישראל ו-datetime.now() על Render הוא
+    # UTC — כלומר run_date נופל 3 שעות אחורה, נחשב misfire ומושמט בשקט. ת'רד
+    # פשוט הוא גם הנכון כאן, כי זו משימה חד-פעמית ארוכה ולא מחזור מתוזמן.
+    import threading
+    threading.Thread(target=_zap_scan_job, name="zap-scan", daemon=True).start()
     return {"ok": True, "started": True,
-            "note": "הסריקה רצה ברקע (6-8 דק׳). התוצאה תופיע ב-/api/zap/report"}
+            "note": "הסריקה רצה ברקע. ההתקדמות מתעדכנת ב-/api/zap/report"}
 
 
 class BulkStatusIn(BaseModel):
