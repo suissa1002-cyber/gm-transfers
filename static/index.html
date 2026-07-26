@@ -1349,6 +1349,11 @@ const HUB_APPS=[
   {key:'checks',     icon:'bank',    title:'ניהול צ׳קים',                  url:'/checks'},
   {key:'schedule',   icon:'bell',    title:'סידור עבודה',                  url:'/schedule'},
 ];
+// דוחות שמתארחים אצלנו כקבצים סטטיים — אותו קישור שנשלח לבעלים, בלי כפילות
+const HUB_REPORTS=[
+  {key:'sales2607', icon:'trendDown', title:'ניתוח מכירות · יוני–יולי',
+   url:'/static/reports/sales-analysis-jul2026.html'},
+];
 function renderDrawer(){
   const d=document.getElementById('drawer');
   const act=(v)=>S.view===v?'active':'';
@@ -1371,6 +1376,11 @@ function renderDrawer(){
     ${HUB_APPS.map(a=>`
       <div class="dr-item ${S.view==='embed'&&S.embedApp&&S.embedApp.key===a.key?'active':''}" onclick="hubOpen('${a.key}')">
         <span>${ico(a.icon,16)}</span><span>${a.title}${lock}</span>
+      </div>`).join('')}
+    <div class="dr-sec">דוחות</div>
+    ${HUB_REPORTS.map(r=>`
+      <div class="dr-item" onclick="hubReport('${r.key}')">
+        <span>${ico(r.icon,16)}</span><span>${r.title}</span>
       </div>`).join('')}
     <div class="dr-sec">הגדרות כלליות</div>
     <div class="dr-item" id="drPushItem" onclick="drawerPushClick()">
@@ -1445,6 +1455,12 @@ function hubGoCrm(){
   if(!ensureAdmin(hubGoCrm)) return;
   S.view='crm'; S.embedApp=null;                          // דף ייעודי עצמאי, לא בתוך קונסולת הניהול
   if(_crmStats) renderCrm(); else loadCrm(true);
+}
+// דוח סטטי — ניווט מלא (אותו origin), לא iframe: הדוח כולל טאבים ו-hash משלו
+function hubReport(key){
+  const r=HUB_REPORTS.find(x=>x.key===key); if(!r) return;
+  toggleDrawer(false);
+  window.location.href=r.url;
 }
 async function hubOpen(key){
   const a=HUB_APPS.find(x=>x.key===key); if(!a) return;
