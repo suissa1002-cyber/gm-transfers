@@ -1590,6 +1590,7 @@ function zapShadowCell(r){
   if(!s) return `<a href="#" style="color:var(--txt-3);text-decoration:none;border-bottom:1px dotted var(--txt-3)"
      onclick="event.preventDefault();event.stopPropagation();zapLoadShadow(${i})">בדוק צל</a>`;
   const ils=n=>'₪'+Number(n||0).toLocaleString('en-US');
+  if(s.state==='is_shadow') return `<span style="color:var(--brand-ink)" title="השורה עצמה היא המוצר שזאפ קורא — אין מה לסנכרן">מוצר זאפ ישיר ✓</span>`;
   if(s.state==='no_shadow') return `<span style="color:var(--amber-ink)" title="אין מוצר צל — התצורה לא תופיע בזאפ">אין מוצר צל</span>`;
   if(s.state==='synced')    return `<span style="color:var(--brand-ink)">צל מסונכרן ✓</span>`;
   if(s.state==='drift')     return `<span style="color:var(--red-ink)" title="זאפ מציג מחיר ישן">צל ${ils(s.shadow_price)} ⚠</span>`;

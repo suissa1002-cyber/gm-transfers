@@ -131,6 +131,32 @@ def _variation_slugs(base, auth, var: dict) -> dict:
     return out
 
 
+def shadows_for(parent_id: int) -> list:
+    """מוצרי הצל של אותו הורה. ⚠️ הם type=external ו-hidden, ולכן לא מופיעים
+    בשליפות קטלוג רגילות — מחפשים לפי המטא gm_parent_product_id.
+    ⚠️ נמחקה בטעות בקומיט c369ba2 — כל קריאה ל-shadow_state החזירה 500 בשקט
+    ועמודת "מחיר צל" לא עבדה מאז. שוחזרה 27/07/2026, כולל attrs להשוואה."""
+    base, auth = _wc()
+    out = []
+    page = 1
+    while page <= 4:
+        r = requests.get(f"{base}/wp-json/wc/v3/products", auth=auth, timeout=60,
+                         params={"per_page": 100, "page": page, "type": "external",
+                                 "status": "any", "_fields": "id,name,price,regular_price,"
+                                                             "external_url,meta_data"})
+        rows = r.json() if r.ok else []
+        if not rows:
+            break
+        for p in rows:
+            meta = {m["key"]: str(m["value"]) for m in (p.get("meta_data") or [])}
+            if str(meta.get("gm_parent_product_id") or "") == str(parent_id):
+                url = p.get("external_url") or ""
+                out.append({"id": p["id"], "name": p.get("name"), "price": p.get("price"),
+                            "cap": _cap_slug(url), "attrs": _shadow_attrs(url)})
+        page += 1
+    return out
+
+
 def find_by_pid(pid) -> dict | None:
     """אותה תשובה כמו find_by_sku, אבל לפי מזהה מוצר ב-WC.
     ⚠️ נחוץ כי ל-45 מתוך 65 מוצרי הפיד אין מק"ט על ההורה (הוא יושב על
@@ -153,7 +179,7 @@ def find_by_pid(pid) -> dict | None:
                     "attrs": _variation_slugs(base, auth, x),
                     "cap": _cap_from_attrs(x.get("attributes"))}
     return {"kind": "product", "id": p["id"], "parent": p["id"], "sku": p.get("sku"),
-            "name": p.get("name"), "price": p.get("price"),
+            "type": p.get("type"), "name": p.get("name"), "price": p.get("price"),
             "attrs": _variation_slugs(base, auth, p),
             "cap": _cap_from_attrs(p.get("attributes")) or _cap_from_text(p.get("name"))}
 
@@ -343,6 +369,10 @@ def shadow_state(sku: str, pid=None) -> dict:
     if not tgt:
         return {"ok": False, "error": "לא נמצא מוצר"}
     site = float(tgt.get("price") or 0)
+    if tgt.get("type") == "external":
+        # השורה **היא** מוצר הצל — זה בדיוק מה שזאפ קורא, אין למה לסנכרן.
+        return {"ok": True, "sku": sku, "site_price": site, "state": "is_shadow",
+                "shadow_id": tgt["id"], "shadow_price": site, "drift": 0}
     mine = [sh for sh in shadows_for(tgt["parent"]) if _shadow_matches(tgt, sh)]
     if not mine:
         return {"ok": True, "sku": sku, "site_price": site, "shadow": None,
