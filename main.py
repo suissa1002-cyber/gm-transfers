@@ -9284,7 +9284,10 @@ def zap_selftest(x_admin_key: Optional[str] = Header(None)):
             bad += 1
         out.append({"query": f"find_by_sku({bad_sku!r}) → None", "want": None,
                     "got": got, "ok": got is None})
-    return {"ok": bad == 0, "passed": len(out) - bad, "total": len(out),
+    # ⚠️ הגרסה שרצה בשרת בפועל. בלי זה ניחשתי ארבע פעמים כמה זמן לוקח deploy
+    # ל-Render, הרצתי סריקות ואימותים על קוד ישן, והסקתי מסקנות שגויות.
+    sha = (os.getenv("RENDER_GIT_COMMIT") or "")[:7]
+    return {"ok": bad == 0, "commit": sha, "passed": len(out) - bad, "total": len(out),
             "has_feed_skus": hasattr(zap_scan, "_feed_skus"), "cases": out}
 
 
