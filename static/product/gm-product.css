@@ -513,6 +513,14 @@ body.gm-product-new *{text-indent:0!important;}
        border-radius:8px;padding:10px 14px;margin:4px 0 14px;max-width:60ch;color:#7c2d12;
        font-size:.95rem;line-height:1.6;}
 .pnote b{font-weight:800;white-space:nowrap;}
+/* שיתוף: קישור מקוצר לתצורה שנבחרה (מתחת לשורת המק״ט) */
+.gm-share{display:inline-flex;align-items:center;gap:7px;margin:10px 0 4px;padding:8px 15px;
+  background:none;border:1.5px solid var(--line);border-radius:99px;font-family:inherit;
+  font-size:.88rem;font-weight:700;color:var(--ink2);cursor:pointer;max-width:100%;}
+.gm-share:hover{border-color:var(--accent);color:var(--accent);}
+.gm-share.done{border-color:var(--accent);color:var(--accent);}
+.gm-share svg{flex:0 0 auto;width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;}
+.gm-share span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 /* שורות מידע מהתיאור הקצר (מכירה מוקדמת, תאריך אספקה, "קוד להורדה בלבד") */
 .pinfo{margin:4px 0 14px;max-width:60ch;display:flex;flex-direction:column;gap:7px;
        background:var(--bg2,#f8fafc);border:1px solid var(--line);border-radius:10px;padding:11px 13px;}

@@ -131,6 +131,47 @@
     if (sku) { $s.find('.gm-sku-v').text(sku); $s.show(); } else { $s.hide(); }
   }
   function gmParentSku() { var $s = $('#gmSku'); return $s.length ? ($s.attr('data-parent-sku') || '') : ''; }
+  /* ── שיתוף: קישור מקוצר לתצורה שנבחרה ──
+     תוסף הסוואצ'ים כבר כותב את התצורה לכתובת, אבל שם תכונה בעברית + ערך
+     נשמרים מקודדי-URL והקישור יוצא ~256 תווים. המקצר (/s/XXXXXX) הופך אותו
+     ל-34, וזה המקרה השכיח ביותר: לקוח שואל על צבע ונפח מסוימים. */
+  var GM_LINK_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/>' +
+                    '<path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>';
+  function gmCopyText(txt, btn) {
+    var $t = $(btn).find('span');
+    var done = function () { $(btn).addClass('done'); $t.text('הקישור הועתק ✓'); };
+    /* אם ההעתקה נחסמה — מציגים את הקישור עצמו, שתמיד תהיה דרך לקבל אותו */
+    var fallback = function () { $(btn).addClass('done'); $t.text(txt.replace(/^https?:\/\//, '')); btn.title = txt; };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(txt).then(done).catch(fallback); return;
+    }
+    var ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select();
+    var ok = false; try { ok = document.execCommand('copy'); } catch (e) {}
+    document.body.removeChild(ta); ok ? done() : fallback();
+  }
+  function gmMountShare() {
+    if (document.getElementById('gmShare')) return;
+    var anchor = document.getElementById('gmSku') || document.querySelector('.gm-atc');
+    if (!anchor || !anchor.parentNode) return;
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'gm-share'; b.id = 'gmShare';
+    b.innerHTML = GM_LINK_SVG + '<span>העתקת קישור למוצר</span>';
+    b.addEventListener('click', function () {
+      $(b).removeClass('done').find('span').text('מקצר…');
+      var url = location.href;
+      fetch('/wp-json/gm-short/v1/make', { method: 'POST', credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: url }) })
+        .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
+        .then(function (d) { gmCopyText(d.short || url, b); })
+        .catch(function () { gmCopyText(url, b); });   /* נפילה לכתובת המלאה */
+    });
+    anchor.parentNode.insertBefore(b, anchor.nextSibling);
+  }
+  /* הכפתור מאפס את עצמו בכל החלפת תצורה — אחרת "הועתק ✓" נשאר מוצג
+     בזמן שהקישור בלוח כבר מצביע על וריאציה אחרת. */
+  $(document).on('found_variation reset_data', 'form.variations_form', function () {
+    var $b = $('#gmShare'); if ($b.length) $b.removeClass('done').removeAttr('title').find('span').text('העתקת קישור למוצר');
+  });
   /* באדג'ים בעמוד המוצר (החליף את סניפט #42987): לפי product_tag + "יבואן רשמי"
      לפי id. נטענים מ-Store API (שמחזיר tags) ומוזרקים כאוברליי על התמונה הראשית.
      ⚠️ מקביל ל-build_category_data.py::_badges — לשמור מסונכרן. */
@@ -163,6 +204,7 @@
     var $s = $('#gmSku');
     var parent = $s.length ? ($s.attr('data-parent-sku') || null) : null;
     if (parent) gmSetSku(parent);                       /* התבנית סיפקה מק"ט אב */
+    gmMountShare();
     fetch('/wp-json/wc/store/v1/products/' + m, { credentials: 'same-origin' })
       .then(function (r) { return r.json(); })
       .then(function (d) {
