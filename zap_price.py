@@ -335,7 +335,8 @@ def sync_shadow_only(sku: str, pid=None) -> dict:
                           timeout=45, json={"regular_price": f"{price:.2f}"})
         if rr.ok:
             synced.append({"id": sh["id"], "name": sh["name"], "price": price})
-    return {"ok": True, "sku": sku, "price": price, "synced": synced}
+    return {"ok": True, "sku": sku, "price": price, "synced": synced,
+            "name": tgt.get("name") or ""}
 
 
 def pending() -> list:
@@ -371,7 +372,13 @@ def zap_visibility(product_id: int = 0, hidden: bool = True, sku: str = "") -> d
                                           "value": "yes" if hidden else ""}]})
     if not r.ok:
         return {"ok": False, "error": f"HTTP {r.status_code}", "detail": r.text[:200]}
-    return {"ok": True, "product_id": product_id, "hidden": hidden}
+    # ⚠️ מחזירים את השם **שהשרת ראה** ולא את זה שהמסך הציג: כך טעות זהות
+    # נראית מיד באישור, במקום להתגלות בפיד יומיים אחרי (אסי, 27/07/2026).
+    try:
+        affected = (r.json() or {}).get("name") or ""
+    except Exception:  # noqa: BLE001
+        affected = ""
+    return {"ok": True, "product_id": product_id, "hidden": hidden, "name": affected}
 
 
 def feed(cat: int = 1934) -> list:

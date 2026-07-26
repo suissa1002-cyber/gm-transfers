@@ -1589,6 +1589,26 @@ function zapComp(r){
 function zapRid(r){ return String((r&&(r.id||r.product_id))||(r&&r.sku)||''); }
 function zapQS(r){ const q=[]; if(r.sku) q.push('sku='+encodeURIComponent(r.sku));
   const p=r.id||r.product_id; if(p) q.push('pid='+encodeURIComponent(p)); return q.join('&'); }
+// ⚠️ רשת ביטחון לפעולות הרסניות: משווים את השם ש**השרת** דיווח עליו לשם
+// בשורה שנלחצה. כך "הסתר מזאפ" על Pixel 9a שפגע באוזניות JBL היה נתפס
+// באישור עצמו, במקום להתגלות בפיד (אסי, 27/07/2026).
+function zapLatin(s){
+  return new Set(String(s||'').toLowerCase().match(/[a-z0-9]{2,}/g)||[]);
+}
+function zapSameProduct(a,b){
+  const A=zapLatin(a), B=zapLatin(b);
+  if(!A.size||!B.size) return true;          // אין על מה להשוות — לא מרעישים
+  for(const t of A) if(B.has(t)) return true;
+  return false;
+}
+function zapDone(r, serverName, msg){
+  if(serverName && !zapSameProduct(r.name, serverName)){
+    toast('⚠️ הפעולה בוצעה על מוצר אחר: '+serverName+' — בדוק מיד',false);
+    return false;
+  }
+  toast(msg+(serverName?': '+String(serverName).slice(0,44):''),true);
+  return true;
+}
 // ⚠️ לפי זהות ולא לפי מיקום: הטבלה מרנדרת רשימה מסוננת/ממוינת, ולכן אינדקס
 // השורה המוצגת אינו האינדקס ב-Z.rows — לחיצה על "ערוך מחיר" בשורה הראשונה
 // פתחה את הדגם השגוי (אסי, 27/07/2026).
@@ -1640,7 +1660,7 @@ async function zapMakeShadow(rid){
     const j=await api('/api/admin/zap/create-shadow?'+zapQS(r),{method:'POST'},120000);
     hideLoading();
     if(!j.ok){ toast(j.error||'נכשל',false); return; }
-    toast('נוצר מוצר צל #'+j.shadow_id+' — ודא שהכותרת תואמת לזאפ',true);
+    zapDone(r, j.name, 'נוצר מוצר צל #'+j.shadow_id+' — ודא שהכותרת תואמת לזאפ');
     const Z=zapInit(); if(Z.sh) delete Z.sh[zapRid(r)];
     zapLoadShadow(rid);
   }catch(e){ hideLoading(); toast('שגיאת רשת',false); }
@@ -1662,7 +1682,7 @@ async function zapEditPrice(rid){
     hideLoading();
     if(!j.ok){ toast(j.error||'העדכון נכשל',false); return; }
     const n=(j.shadows_synced||[]).length, sk=(j.shadows_skipped||[]).length;
-    toast(`עודכן ל-₪${p}${n?` · ${n} צל סונכרן`:''}${sk?` · ${sk} דולג`:''}`,true);
+    zapDone(r, (j.target||{}).name, `עודכן ל-₪${p}${n?` · ${n} צל סונכרן`:''}${sk?` · ${sk} דולג`:''}`);
     loadZap(false);
   }catch(e){ hideLoading(); toast('שגיאת רשת',false); }
 }
@@ -1677,8 +1697,8 @@ async function zapVis(rid,hide){
     const j=await api(`/api/admin/zap/visibility?${zapQS(r)}&hidden=${hide?1:0}`,{method:'POST'},60000);
     hideLoading();
     if(!j.ok){ toast(j.error||'הפעולה נכשלה',false); return; }
-    toast(hide?'הוסתר מזאפ':'הוחזר לזאפ',true);
-    r.zap_hidden=hide?1:0; renderZap();
+    if(zapDone(r, j.name, hide?'הוסתר מזאפ':'הוחזר לזאפ')){ r.zap_hidden=hide?1:0; }
+    renderZap();
   }catch(e){ hideLoading(); toast('שגיאת רשת',false); }
 }
 async function zapSyncSh(rid){
@@ -1687,7 +1707,8 @@ async function zapSyncSh(rid){
   try{
     const j=await api('/api/admin/zap/sync-shadow?'+zapQS(r),{method:'POST'},90000);
     hideLoading();
-    toast(j.ok?`סונכרנו ${(j.synced||[]).length} מוצרי צל`:(j.error||'נכשל'), !!j.ok);
+    if(!j.ok) toast(j.error||'נכשל',false);
+    else zapDone(r, j.name, `סונכרנו ${(j.synced||[]).length} מוצרי צל`);
     if(j.ok){ const Z=zapInit(); if(Z.sh) delete Z.sh[zapRid(r)]; zapLoadShadow(rid); }
   }catch(e){ hideLoading(); toast('שגיאת רשת',false); }
 }
