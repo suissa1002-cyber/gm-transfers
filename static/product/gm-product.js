@@ -120,7 +120,10 @@
     $('.gm-atc form.cart').not('.variations_form').addClass('gm-simple');
     origPrice = $('.pricebox').html();
     labelAll();
-    setTimeout(autoSelect, 350);
+    /* קישור עמוק (gmv) גובר על הבחירה האוטומטית; מאשררים שוב אחרי אתחול
+       הסוואצ'ים, שמריצים בחירה משלהם. */
+    setTimeout(function () { if (!gmApplyDeepLink()) autoSelect(); }, 350);
+    setTimeout(function () { gmApplyDeepLink(); }, 1200);
   });
 
   $(document).on('click', '.gm-atc .variable-item', function () { setTimeout(labelAll, 60); });
@@ -169,7 +172,40 @@
       if (!this.value) return;
       parts.push(encodeURIComponent(this.name) + '=' + encodeURIComponent(this.value));
     });
+    /* ⚠️ מזהה הוריאציה הוא העוגן האמיתי. אומת מול השרת: כשטקסונומיית התכונה
+       היא עברית (pa_%d7%90…) WooCommerce *לא* מסמן אותה מפרמטרי הכתובת בשום
+       קידוד — sanitize_title מסלק את סימני ה-% ולכן שם הפרמטר לעולם לא תואם.
+       פרמטרי ה-attribute נשארים לתאימות/SEO, ו-gmv הוא מה שמבטיח דיוק. */
+    var vid = $('form.variations_form input.variation_id').val();
+    if (vid) parts.push('gmv=' + vid);
     return parts.length ? base + '?' + parts.join('&') : base;
+  }
+  /* החלת קישור עמוק לפי gmv — לוחצים על הסוואצ'ים של הוריאציה כדי שגם הממשק
+     וגם ה-select יתעדכנו, ולא רק המחיר. */
+  function gmApplyDeepLink() {
+    var m = location.search.match(/[?&]gmv=(\d+)/);
+    if (!m) return false;
+    var $f = $('form.variations_form').first();
+    if (!$f.length) return false;
+    var list = $f.data('product_variations');
+    if (!list || !list.length) return false;
+    var v = null;
+    for (var i = 0; i < list.length; i++) {
+      if (String(list[i].variation_id) === m[1]) { v = list[i]; break; }
+    }
+    if (!v || !v.attributes) return false;
+    Object.keys(v.attributes).forEach(function (k) {
+      var val = v.attributes[k];
+      if (!val) return;
+      var $ul = $f.find('ul.variable-items-wrapper[data-attribute_name="' + k + '"]');
+      var $li = $ul.find('li.variable-item').filter(function () {
+        return $(this).attr('data-value') === val;
+      });
+      if ($li.length) { $li.trigger('click'); return; }
+      var $s = $f.find('select').filter(function () { return this.name === k; });
+      if ($s.length) $s.val(val).trigger('change');
+    });
+    return true;
   }
   function gmMountShare() {
     if (document.getElementById('gmShare')) return;
