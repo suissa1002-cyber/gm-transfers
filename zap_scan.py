@@ -126,9 +126,13 @@ QUALIFIERS = (("pro max", "promax"), ("pro+", "proplus"), ("pro", "pro"),
 
 def _capacity(s: str) -> str | None:
     """נפח האחסון, מנורמל ל-GB. ⚠️ בכותרות זאפ מופיע גם ה-RAM ("12GB+256GB"),
-    ולכן לוקחים את **הגדול** מבין הערכים — האחסון תמיד ≥ הזיכרון."""
+    ולכן לוקחים את **הגדול** מבין הערכים — האחסון תמיד ≥ הזיכרון.
+    ⚠️ וכשבשם אין אחסון בכלל ("Samsung Galaxy S26 12GB Ram") ה-RAM היה נקרא
+    כאחסון והושווה ל-256GB של זאפ — הדף הנכון נדחה. אין היום סמארטפון עם
+    פחות מ-64GB אחסון, ולכן ערך קטן מזה הוא זיכרון ולא נפח (27/07/2026)."""
     vals = [int(n) * (1024 if u.upper() == "TB" else 1)
             for n, u in CAP_RE.findall(s or "")]
+    vals = [v for v in vals if v >= 64]
     return str(max(vals)) if vals else None
 
 
@@ -209,6 +213,10 @@ def _clean_query(name: str) -> str:
         head, tail = q.rsplit(" - ", 1)
         if head and not CAP_RE.search(tail):      # הזנב הוא צבע, לא תצורה
             q = head
+    # ⚠️ ניקוי המפרט חייב לקרות **לפני** הסרת העברית: הגרשיים של גודל המסך
+    # (״, U+05F4) הוא תו עברי, ולכן "מסך 6.59״" הפך ל-"6.59" חשוף שנקרא
+    # כמספר דגם והרס גם את השאילתה וגם את ההתאמה (27/07/2026).
+    q = SPEC_RE.sub(" ", q)
     core = re.sub(r"\s+", " ", HEB_RE.sub(" ", q)).strip(" -,")
     return core or q.strip(" -")
 
