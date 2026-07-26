@@ -220,6 +220,20 @@ def _special_refresh_job():
         return {"ok": False, "error": str(e)}
 
 
+def _zap_scan_job():
+    """סריקת זאפ יומית — המיקום שלנו מול המתחרים על כל סמארטפון עם מלאי.
+    ~250 דגמים, ~1.1ש בין קריאות ⇒ כ-5 דקות. רץ בשעה שקטה כדי לא להתחרות
+    בעומס היום. ⚠️ בניגוד ל-KSP, זאפ נענה ישירות ל-urllib (בלי דפדפן)."""
+    try:
+        import zap_scan
+        snap = zap_scan.run()
+        logger.info("zap_scan ok: %s", snap.get("summary"))
+        return snap.get("summary")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("zap_scan failed: %s", e)
+        return {"ok": False, "error": str(e)}
+
+
 def _removals_ingest_job():
     try:
         import removals_ingest
@@ -537,6 +551,10 @@ def register_recurring_jobs():
                       max_instances=1, coalesce=True)
     scheduler.add_job(_special_refresh_job, "date", id="special_refresh_initial",
                       run_date=datetime.now() + timedelta(seconds=210))
+    # 🏷️ זאפ — סריקה יומית של המיקום שלנו מול המתחרים (05:20, לפני פתיחת החנויות,
+    # כדי שהנתון על השולחן בבוקר). ראה zap_scan.py לרקע ולממצא שהוליד את זה.
+    scheduler.add_job(_zap_scan_job, "cron", hour=5, minute=20, id="zap_scan",
+                      max_instances=1, coalesce=True, misfire_grace_time=3600)
     # גיבוי מדיה נכנסת ממטא (תמונות/מסמכים) — כל 5 דק', כדי שלא יאבד כשמטא ימחק (~30 יום)
     scheduler.add_job(_media_backup_job, "interval", minutes=5, id="media_backup", max_instances=1)
     scheduler.add_job(_media_backup_job, "date", id="media_backup_initial",
@@ -9134,6 +9152,26 @@ def admin_order_status(oid: int, body: OrderStatusIn, x_admin_key: Optional[str]
     except Exception as e:  # noqa: BLE001
         logger.warning("immediate status-notify failed for %s: %s", oid, e)
     return {"ok": True, "status": o.get("status")}
+
+
+@app.get("/api/zap/report")
+def zap_report():
+    """נתוני זאפ לעמוד הדוח. ציבורי-לקריאה בכוונה — הדוח מתארח כקובץ סטטי
+    ואין לו מפתח; מוחזרים רק מחירים שממילא גלויים לכל אחד בזאפ."""
+    import zap_scan
+    snap = zap_scan.latest()
+    if not snap:
+        return {"ok": False, "reason": "אין עדיין סריקה — הסריקה הראשונה רצה ב-05:20"}
+    return {"ok": True, "date": snap.get("date"), "summary": snap.get("summary"),
+            "rows": snap.get("rows", []), "history": zap_scan.history(30)}
+
+
+@app.post("/api/admin/zap/scan-now")
+def zap_scan_now(limit: int = 0, x_admin_key: Optional[str] = Header(None)):
+    """הרצה מיידית (limit>0 לבדיקה מהירה על חלק מהדגמים)."""
+    _require_admin(x_admin_key)
+    import zap_scan
+    return zap_scan.run(limit=limit or None).get("summary")
 
 
 class BulkStatusIn(BaseModel):
