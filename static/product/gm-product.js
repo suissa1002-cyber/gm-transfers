@@ -120,10 +120,11 @@
     $('.gm-atc form.cart').not('.variations_form').addClass('gm-simple');
     origPrice = $('.pricebox').html();
     labelAll();
-    /* קישור עמוק (gmv) גובר על הבחירה האוטומטית; מאשררים שוב אחרי אתחול
-       הסוואצ'ים, שמריצים בחירה משלהם. */
-    setTimeout(function () { if (!gmApplyDeepLink()) autoSelect(); }, 350);
-    setTimeout(function () { gmApplyDeepLink(); }, 1200);
+    /* קישור עמוק (gmv) גובר על הבחירה האוטומטית. ⚠️ נתוני הוריאציות נטענים
+       מאוחר ובזמן משתנה לפי כובד העמוד, ולכן מנסים שוב עד שהוריאציה בפועל
+       היא המבוקשת — ניסיון בודד בתזמון קבוע נכשל בשקט. */
+    if (/[?&]gmv=\d+/.test(location.search)) gmDeepLinkRetry();
+    else setTimeout(autoSelect, 350);
   });
 
   $(document).on('click', '.gm-atc .variable-item', function () { setTimeout(labelAll, 60); });
@@ -210,6 +211,18 @@
     });
     $f.trigger('check_variations');
     return true;
+  }
+  /* ניסיון חוזר עד שהוריאציה בפועל היא המבוקשת (או עד תקרת ניסיונות) */
+  function gmDeepLinkRetry() {
+    var m = location.search.match(/[?&]gmv=(\d+)/);
+    if (!m) return;
+    var tries = 0;
+    (function attempt() {
+      tries++;
+      gmApplyDeepLink();
+      if ($('form.variations_form input.variation_id').val() === m[1] || tries >= 14) return;
+      setTimeout(attempt, 400);
+    })();
   }
   function gmMountShare() {
     if (document.getElementById('gmShare')) return;
