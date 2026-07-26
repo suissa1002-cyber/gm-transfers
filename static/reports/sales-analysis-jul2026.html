@@ -254,6 +254,15 @@ table.brands tr.tot td{border-top:2px solid var(--rule); background:var(--track)
 .zapname small{display:block; color:var(--muted); font-weight:400; font-size:11.5px; margin-top:2px}
 .empty{padding:30px; text-align:center; color:var(--muted); background:var(--panel);
   border:1px solid var(--rule); border-radius:13px; font-size:14px}
+.zchips{display:flex; gap:8px; flex-wrap:wrap}
+.zchip{appearance:none; font-family:inherit; font-size:13px; cursor:pointer;
+  background:var(--panel); color:var(--ink-2); border:1px solid var(--rule);
+  border-radius:999px; padding:7px 14px; display:inline-flex; align-items:center; gap:7px}
+.zchip b{font-family:ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--ink)}
+.zchip:hover{border-color:var(--ink-2)}
+.zchip.on{background:var(--brand); border-color:var(--brand); color:#fff}
+.zchip.on b{color:#fff}
+.zchip:focus-visible{outline:2px solid var(--brand); outline-offset:2px}
 /* הרחבת שורה: כל המתחרים על הדגם */
 tr.zrow{cursor:pointer}
 tr.zrow .chev{color:var(--muted); font-size:11px; margin-inline-end:3px}
@@ -978,13 +987,19 @@ tr.zdet > td{padding:0 !important; background:var(--track) !important; border-in
     <div class="zap-controls">
       <label>מותג
         <select id="zapBrand" onchange="zapRender()"><option value="">הכל</option></select></label>
-      <label>מצב
+      <label>נוכחות בזאפ
+        <select id="zapPresence" onchange="zapRender()">
+          <option value="">הכל</option>
+          <option value="listed">✓ רשומים — אנחנו בדף</option>
+          <option value="missing">✗ לא רשומים — הדגם קיים, אנחנו לא בו</option>
+          <option value="nomodel">אין דגם בזאפ בכלל</option>
+        </select></label>
+      <label>מצב תמחור
         <select id="zapState" onchange="zapRender()">
           <option value="">הכל</option>
           <option value="near">קרוב לטופ 5 (עד ₪300)</option>
           <option value="top5">כבר בטופ 5</option>
           <option value="far">רחוק (מעל ₪300)</option>
-          <option value="nomodel">אין דגם בזאפ</option>
         </select></label>
       <label>מיון
         <select id="zapSort" onchange="zapRender()">
@@ -995,6 +1010,7 @@ tr.zdet > td{padding:0 !important; background:var(--track) !important; border-in
         </select></label>
       <span class="muted" id="zapCount" style="margin-inline-start:auto;font-size:12.5px"></span>
     </div>
+    <div class="zchips" id="zapChips"></div>
     <div id="zapTable"><div class="empty">טוען נתוני זאפ…</div></div>
   </section>
 
@@ -1097,12 +1113,17 @@ tr.zdet > td{padding:0 !important; background:var(--track) !important; border-in
   function zapRender(){
     var box=document.getElementById('zapTable'); if(!box||!ZAP) return;
     var b=document.getElementById('zapBrand').value,
+        pr=document.getElementById('zapPresence').value,
         st=document.getElementById('zapState').value,
         so=document.getElementById('zapSort').value;
     var rows=ZAP.rows.filter(function(r){
       if(b && r.brand!==b) return false;
-      if(st==='nomodel') return r.status==='no_model';
-      if(r.status==='no_model') return false;
+      // נוכחות: רשומים / לא רשומים / אין דגם — הציר הראשון להחלטה
+      if(pr==='nomodel') return r.status==='no_model';
+      if(pr==='listed'  && r.status!=='listed')  return false;
+      if(pr==='missing' && r.status!=='missing') return false;
+      if(!pr && st && r.status==='no_model') return false;
+      if(r.status==='no_model') return !st;
       if(st==='top5') return r.rank && r.rank<=5;
       if(st==='near') return r.cut_top5>0 && r.cut_top5<=300;
       if(st==='far')  return r.cut_top5>300;
@@ -1114,6 +1135,19 @@ tr.zdet > td{padding:0 !important; background:var(--track) !important; border-in
              stock:function(r){return -(r.stock||0);}}[so];
     rows.sort(function(x,y){return key(x)-key(y);});
     document.getElementById('zapCount').textContent=rows.length+' דגמים';
+    // שורת קיצור: כמה בכל קבוצה + מעבר מהיר ביניהן
+    var all=ZAP.rows, nL=0,nM=0,nN=0;
+    all.forEach(function(r){ if(r.status==='listed')nL++; else if(r.status==='missing')nM++;
+                             else if(r.status==='no_model')nN++; });
+    var chips=document.getElementById('zapChips');
+    if(chips) chips.innerHTML=
+      '<button class="zchip'+(pr==='listed'?' on':'')+'" onclick="zapPresence(\'listed\')">'+
+        '✓ רשומים <b>'+nL+'</b></button>'+
+      '<button class="zchip'+(pr==='missing'?' on':'')+'" onclick="zapPresence(\'missing\')">'+
+        '✗ לא רשומים <b>'+nM+'</b></button>'+
+      '<button class="zchip'+(pr==='nomodel'?' on':'')+'" onclick="zapPresence(\'nomodel\')">'+
+        'אין דגם בזאפ <b>'+nN+'</b></button>'+
+      '<button class="zchip'+(!pr?' on':'')+'" onclick="zapPresence(\'\')">הכל <b>'+all.length+'</b></button>';
     if(!rows.length){ box.innerHTML='<div class="empty">אין דגמים תואמים לסינון</div>'; return; }
     var maxStock=Math.max.apply(null, rows.map(function(r){return r.stock||0;}))||1;
     box.innerHTML='<div class="tbox"><table><thead><tr>'+
@@ -1131,7 +1165,9 @@ tr.zdet > td{padding:0 !important; background:var(--track) !important; border-in
         return '<tr class="zrow" onclick="zapToggle('+i+')" title="לחץ לרשימת המתחרים המלאה">'+
           '<td class="zapname"><span class="chev" id="zchev'+i+'">▾</span> '+
             '<a href="'+r.url+'" target="_blank" rel="noopener" onclick="event.stopPropagation()">'+esc(r.name)+'</a>'+
-          '<small>'+r.brand+(r.listed?' · רשומים':' · לא רשומים')+'</small></td>'+
+          '<small>'+r.brand+(r.listed
+            ? ' · <b style="color:var(--brand)">רשומים בזאפ</b>'
+            : ' · <b style="color:var(--fall)">לא רשומים</b> — הדגם קיים, אנחנו לא בו')+'</small></td>'+
           '<td class="n"><span class="minitrack"><span class="mini" style="width:'+
             ((r.stock||0)/maxStock*62).toFixed(0)+'px"></span></span> '+(r.stock||0)+'</td>'+
           '<td class="n">'+(r.our_price?ils(r.our_price):'—')+'</td>'+
@@ -1149,25 +1185,34 @@ tr.zdet > td{padding:0 !important; background:var(--track) !important; border-in
     if(!c.length) return '<div class="u" style="padding:8px">אין פירוט מתחרים לדגם הזה</div>';
     var our=r.our_price||0;
     var max=c[c.length-1].price;
-    var mine=our && !r.listed;
-    var rows=c.map(function(o){
-      var pos=(o.price/max*100).toFixed(1);
-      var beat = our && o.price < our;    // מוכר שזול מאיתנו
-      return '<tr class="'+(beat?'beat':'')+'"><td class="n"><span class="rankpill '+
-        (o.rank<=3?'r-top':(o.rank<=10?'r-mid':'r-none'))+'">#'+o.rank+'</span></td>'+
-        '<td>'+esc(o.seller)+'</td>'+
+    var mine=our && !r.listed;            // לא רשומים בזאפ → משבצים שורה מדומה
+    // בונים רשימה אחת ממוינת, כדי שהמספור יהיה רציף ולא יופיעו שני "#3"
+    var list=c.map(function(o){return {seller:o.seller, price:o.price, us:false};});
+    if(mine) list.push({seller:'גרין מובייל', price:our, us:true});
+    list.sort(function(a,b){return a.price-b.price || (a.us?1:0)-(b.us?1:0);});
+    var rows=list.map(function(o,i){
+      var rank=i+1, pos=(o.price/max*100).toFixed(1);
+      var beat = our && !o.us && o.price < our;
+      var pill=o.us ? 'r-low' : (rank<=3?'r-top':(rank<=10?'r-mid':'r-none'));
+      var name = o.us
+        ? '<b>גרין מובייל</b> <span class="u">— לא רשומים; זה המקום שהיינו מקבלים במחיר הזה</span>'
+        : esc(o.seller);
+      return '<tr class="'+(o.us?'mine':(beat?'beat':''))+'">'+
+        '<td class="n"><span class="rankpill '+pill+'">#'+rank+'</span></td>'+
+        '<td>'+name+'</td>'+
         '<td class="n"><b>'+ils(o.price)+'</b></td>'+
-        '<td style="width:46%"><span class="cbar"><span style="width:'+pos+'%"></span></span></td>'+
-        '<td class="n u">'+(our? (o.price<our? '−'+ils(our-o.price) : '+'+ils(o.price-our)) : '')+'</td></tr>';
+        '<td style="width:44%"><span class="cbar'+(o.us?' mine-bar':'')+'"><span style="width:'+pos+'%"></span></span></td>'+
+        '<td class="n u">'+(o.us? '' : (our? (o.price<our? '−'+ils(our-o.price) : '+'+ils(o.price-our)) : ''))+'</td></tr>';
     }).join('');
-    var mineRow = mine ? '<tr class="mine"><td class="n"><span class="rankpill r-low">#'+(r.rank||'?')+'</span></td>'+
-      '<td><b>גרין מובייל</b> <span class="u">(לא רשומים — זה המקום שהיינו מקבלים)</span></td>'+
-      '<td class="n"><b>'+ils(our)+'</b></td><td><span class="cbar mine-bar"><span style="width:'+
-      (our/max*100).toFixed(1)+'%"></span></span></td><td></td></tr>' : '';
     return '<div class="comp"><div class="comp-h">כל המוכרים על '+esc(r.zap_title||r.name)+
-      ' <span class="u">· '+c.length+' מתוך '+r.sellers+'</span></div>'+
+      ' <span class="u">· '+c.length+' מוכרים בזאפ'+(mine?' + השורה שלנו (סימולציה)':'')+'</span></div>'+
       '<table class="comp-t"><thead><tr><th>מקום</th><th>מוכר</th><th>מחיר</th><th>יחסי</th><th>מולנו</th></tr></thead>'+
-      '<tbody>'+mineRow+rows+'</tbody></table></div>';
+      '<tbody>'+rows+'</tbody></table></div>';
+  }
+  function zapPresence(v){
+    document.getElementById('zapPresence').value=v;
+    if(v) document.getElementById('zapState').value='';   // הנוכחות היא הציר הראשי
+    zapRender();
   }
   function zapToggle(i){
     var d=document.getElementById('zdet'+i), c=document.getElementById('zchev'+i);
