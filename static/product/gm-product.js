@@ -123,7 +123,7 @@
     /* קישור עמוק (gmv) גובר על הבחירה האוטומטית. ⚠️ נתוני הוריאציות נטענים
        מאוחר ובזמן משתנה לפי כובד העמוד, ולכן מנסים שוב עד שהוריאציה בפועל
        היא המבוקשת — ניסיון בודד בתזמון קבוע נכשל בשקט. */
-    if (/[?&]gmv=\d+/.test(location.search)) gmDeepLinkRetry();
+    if (GM_DEEP_VID) gmDeepLinkRetry();
     else setTimeout(autoSelect, 350);
   });
 
@@ -183,8 +183,12 @@
   }
   /* החלת קישור עמוק לפי gmv — לוחצים על הסוואצ'ים של הוריאציה כדי שגם הממשק
      וגם ה-select יתעדכנו, ולא רק המחיר. */
+  /* ⚠️ נקרא *פעם אחת* בזמן פרסינג: תוסף הסוואצ'ים משכתב את הכתובת עם
+     הפרמטרים שלו ומוחק את gmv, לפני שנתוני הוריאציות בכלל נטענו. קריאה
+     מ-location.search בזמן הניסיון החוזר מחזירה ריק והקישור מתעלם בשקט. */
+  var GM_DEEP_VID = (location.search.match(/[?&]gmv=(\d+)/) || [])[1] || '';
   function gmApplyDeepLink() {
-    var m = location.search.match(/[?&]gmv=(\d+)/);
+    var m = GM_DEEP_VID ? [null, GM_DEEP_VID] : null;
     if (!m) return false;
     var $f = $('form.variations_form').first();
     if (!$f.length) return false;
@@ -214,13 +218,12 @@
   }
   /* ניסיון חוזר עד שהוריאציה בפועל היא המבוקשת (או עד תקרת ניסיונות) */
   function gmDeepLinkRetry() {
-    var m = location.search.match(/[?&]gmv=(\d+)/);
-    if (!m) return;
+    if (!GM_DEEP_VID) return;
     var tries = 0;
     (function attempt() {
       tries++;
       gmApplyDeepLink();
-      if ($('form.variations_form input.variation_id').val() === m[1] || tries >= 14) return;
+      if ($('form.variations_form input.variation_id').val() === GM_DEEP_VID || tries >= 14) return;
       setTimeout(attempt, 400);
     })();
   }
