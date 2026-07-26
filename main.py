@@ -9209,6 +9209,25 @@ def zap_sync_shadow(sku: str, x_admin_key: Optional[str] = Header(None)):
     return zap_price.sync_shadow_only(sku.strip())
 
 
+@app.post("/api/admin/zap/visibility")
+def zap_visibility_set(product_id: int, hidden: int = 1,
+                       x_admin_key: Optional[str] = Header(None)):
+    """הצג/הסתר מוצר בפיד זאפ — אותו צ׳קבוקס שבעריכת המוצר."""
+    _require_admin(x_admin_key)
+    import zap_price
+    return zap_price.zap_visibility(product_id, bool(hidden))
+
+
+@app.get("/api/admin/zap/feed")
+def zap_feed(cat: int = 1934, x_admin_key: Optional[str] = Header(None)):
+    """הפיד החי שנשלח לזאפ — מקור-האמת למה שזאפ בכלל רואה."""
+    _require_admin(x_admin_key)
+    import zap_price
+    rows = zap_price.feed(cat)
+    return {"ok": bool(rows), "count": len(rows), "rows": rows,
+            **({} if rows else {"reason": "אין ZAP_FEED_KEY או שהפיד לא נגיש"})}
+
+
 @app.get("/api/zap/pending")
 def zap_pending_list():
     """שינויי מחיר שנעשו מהדוח וטרם עודכנו בקופה. ציבורי-לקריאה כמו הדוח."""

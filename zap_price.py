@@ -205,3 +205,42 @@ def pending() -> list:
 
 def clear_pending(sku: str) -> None:
     db.sales_state_set(f"zap_pending:{sku}", "")
+
+
+# ─────────────────────── הצגה/הסתרה בזאפ ───────────────────────
+def zap_visibility(product_id: int, hidden: bool) -> dict:
+    """הדלקה/כיבוי של המוצר בפיד זאפ — אותו צ׳קבוקס שבעריכת המוצר.
+    ⚠️ הערך חייב להיות 'yes' ולא '1' — התוסף מצפה בדיוק לזה (נלמד בכאב)."""
+    base, auth = _wc()
+    r = requests.put(f"{base}/wp-json/wc/v3/products/{product_id}", auth=auth, timeout=45,
+                     json={"meta_data": [{"key": "_woocommerce_zap_disable",
+                                          "value": "yes" if hidden else ""}]})
+    if not r.ok:
+        return {"ok": False, "error": f"HTTP {r.status_code}", "detail": r.text[:200]}
+    return {"ok": True, "product_id": product_id, "hidden": hidden}
+
+
+def feed(cat: int = 1934) -> list:
+    """הפיד החי שנשלח לזאפ. ⚠️ Cloudflare חוסם את /zap/ לכל בקשה שאינה דפדפן;
+    הכלל שנוסף (26/07/2026) מדלג רק כשמגיעה הכותרת x-gm-feed עם הסוד."""
+    import xml.etree.ElementTree as ET
+    base = os.getenv("WC_STORE_URL", "https://greenmobile.co.il").rstrip("/")
+    key = os.getenv("ZAP_FEED_KEY", "")
+    if not key:
+        logger.warning("zap feed: ZAP_FEED_KEY missing")
+        return []
+    try:
+        r = requests.get(f"{base}/zap/", params={"product_cat": cat}, timeout=90,
+                         headers={"x-gm-feed": key, "User-Agent": "GreenOS/1.0"})
+        r.raise_for_status()
+        root = ET.fromstring(r.content)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("zap feed failed: %s", e)
+        return []
+    out = []
+    for p in root.iter("PRODUCT"):
+        g = lambda t: (p.findtext(t) or "").strip()   # noqa: E731
+        out.append({"num": p.get("NUM"), "url": g("PRODUCT_URL"), "name": g("PRODUCT_NAME"),
+                    "sku": g("CATALOG_NUMBER"), "price": g("PRICE"),
+                    "code": g("PRODUCTCODE")})
+    return out

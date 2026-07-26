@@ -1341,6 +1341,182 @@ function closeCamera(){
   const root=document.getElementById('modalRoot'); if(root) root.innerHTML='';
 }
 
+
+// ══════════════ כלי עבודה — זאפ ══════════════
+// משטח עבודה מתמשך כמו איזון מלאי: המצב (סינון/חיפוש/בחירה) נשמר ב-S.zap,
+// כך שאפשר לעבור טאב ולחזור להמשיך בדיוק מאותה נקודה.
+function zapInit(){
+  if(!S.zap) S.zap={rows:null,pend:{},q:'',brand:'',state:'',sort:'cut5',sel:{},pendN:0,date:''};
+  return S.zap;
+}
+async function loadZap(spinner){
+  const Z=zapInit();
+  if(spinner) showLoading('טוען נתוני זאפ…');
+  try{
+    const r=await api('/api/zap/report',null,60000);
+    if(r.ok){ Z.rows=r.rows||[]; Z.date=r.date||''; Z.summary=r.summary||{}; Z.progress=r.progress||null; }
+    else { Z.rows=[]; Z.reason=r.reason||''; }
+  }catch(e){ Z.rows=[]; Z.reason='טעינה נכשלה'; }
+  try{
+    const p=await api('/api/zap/pending',null,30000);
+    Z.pend={}; (p.rows||[]).forEach(x=>{ Z.pend[x.sku]=x; });
+    Z.pendN=Object.keys(Z.pend).length;
+  }catch(e){}
+  if(spinner) hideLoading();
+  if(S.view==='admin'&&S.adminTab==='zap') renderZap();
+}
+function zapSet(k,v){ const Z=zapInit(); Z[k]=v; renderZap(); }
+function zapState(r){
+  if(r.status==='listed')  return {k:'listed', t:'רשום #'+(r.rank||'?'), c:'var(--brand)'};
+  if(r.status==='missing') return {k:'missing',t:'לא בדף', c:'var(--fall)'};
+  if(r.status==='suspect') return {k:'suspect',t:'התאמה חשודה', c:'var(--flag)'};
+  return {k:'nomodel', t:'אין דגם', c:'var(--muted)'};
+}
+function renderZap(){
+  const Z=zapInit(), app=document.getElementById('app'); if(!app) return;
+  if(!Z.rows){ app.innerHTML=`<h1 class="title">${ico('zap',19)} זאפ</h1>${adminTabsHTML()}<div class="empty">טוען…</div>`; return; }
+  const s=Z.summary||{};
+  const q=(Z.q||'').toLowerCase();
+  let rows=Z.rows.filter(r=>{
+    if(q && (r.name+' '+(r.zap_title||'')+' '+r.brand+' '+r.sku).toLowerCase().indexOf(q)<0) return false;
+    if(Z.brand && r.brand!==Z.brand) return false;
+    const st=zapState(r).k;
+    if(Z.state==='pending') return !!Z.pend[r.sku];
+    if(Z.state && Z.state!==st) return false;
+    return true;
+  });
+  const key={cut5:r=>r.cut_top5==null?1e9:r.cut_top5, rank:r=>r.rank||999,
+             gap:r=>r.gap_pct==null?1e9:-r.gap_pct, stock:r=>-(r.stock||0)}[Z.sort];
+  rows.sort((a,b)=>key(a)-key(b));
+  const cnt=k=>Z.rows.filter(r=>zapState(r).k===k).length;
+  const brands=[...new Set(Z.rows.map(r=>r.brand))].sort();
+  const chip=(v,lab,n,col)=>`<button class="zchip${Z.state===v?' on':''}" onclick="zapSet('state','${v}')">
+      <span style="color:${Z.state===v?'#fff':col}">●</span> ${lab} <b>${n}</b></button>`;
+  app.innerHTML=`
+    <h1 class="title" style="display:flex;align-items:center;gap:8px">${ico('zap',19)} זאפ — כלי עבודה</h1>
+    ${adminTabsHTML()}
+    <div class="kpis" style="margin-bottom:14px">
+      <div class="kpi"><span class="lab">נסרקו</span><span class="val num">${s.scanned||0}</span><span class="sub">${Z.date||''}</span></div>
+      <div class="kpi"><span class="lab">רשומים בזאפ</span><span class="val num up">${cnt('listed')}</span><span class="sub">מופיעים בדף השוואה</span></div>
+      <div class="kpi"><span class="lab">בטופ 5</span><span class="val num">${s.in_top5||0}</span><span class="sub">במחיר הנוכחי</span></div>
+      <div class="kpi"><span class="lab">ממתין לקופה</span><span class="val num ${Z.pendN?'warn':''}">${Z.pendN}</span><span class="sub">שונה כאן, לא בקופה</span></div>
+    </div>
+    ${Z.progress?`<div class="pendbox" style="border-color:var(--brand);background:var(--brand-soft)">
+      <div class="pendh" style="color:var(--brand)"><b>סריקה רצה — ${Z.progress.done}/${Z.progress.total}</b>
+      <span class="muted">${escW(Z.progress.at||'')}</span></div></div>`:''}
+    ${Z.pendN?zapPendBox():''}
+    <div class="zap-controls" style="margin-bottom:12px">
+      <input id="zq" type="search" placeholder="חיפוש דגם / מק״ט" value="${escW(Z.q)}"
+             oninput="S.zap.q=this.value;renderZap();document.getElementById('zq').focus()">
+      <label>מותג <select onchange="zapSet('brand',this.value)">
+        <option value="">הכל</option>
+        ${brands.map(b=>`<option value="${escW(b)}" ${Z.brand===b?'selected':''}>${escW(b)}</option>`).join('')}
+      </select></label>
+      <label>מיון <select onchange="zapSet('sort',this.value)">
+        <option value="cut5" ${Z.sort==='cut5'?'selected':''}>הכי קל לשפר</option>
+        <option value="rank" ${Z.sort==='rank'?'selected':''}>מיקום</option>
+        <option value="gap"  ${Z.sort==='gap'?'selected':''}>פער מהזול</option>
+        <option value="stock"${Z.sort==='stock'?'selected':''}>מלאי</option>
+      </select></label>
+      <button class="btn-ghost" style="padding:7px 13px" onclick="loadZap(true)">${ico('refresh',14)} רענן</button>
+      <span class="muted" style="margin-inline-start:auto;font-size:12.5px">${rows.length} שורות</span>
+    </div>
+    <div class="zchips" style="margin-bottom:12px">
+      <button class="zchip${!Z.state?' on':''}" onclick="zapSet('state','')">הכל <b>${Z.rows.length}</b></button>
+      ${chip('listed','רשומים',cnt('listed'),'var(--brand)')}
+      ${chip('missing','לא בדף',cnt('missing'),'var(--fall)')}
+      ${chip('nomodel','אין דגם',cnt('nomodel'),'var(--muted)')}
+      ${chip('suspect','חשוד',cnt('suspect'),'var(--flag)')}
+      <button class="zchip${Z.state==='pending'?' on':''}" onclick="zapSet('state','pending')">● ממתין לקופה <b>${Z.pendN}</b></button>
+    </div>
+    <div id="zapBody">${zapTable(rows)}</div>`;
+}
+function zapPendBox(){
+  const Z=zapInit(), rows=Object.values(Z.pend);
+  return `<div class="pendbox"><div class="pendh">
+    ${ico('clock',15)}<b>${rows.length} שינויי מחיר ממתינים לעדכון בקופה</b>
+    <span class="muted">עודכנו באתר — הקופה לא מתעדכנת אוטומטית</span></div>
+    <table class="comp-t"><thead><tr><th>דגם</th><th>מק״ט</th><th>לפני</th><th>אחרי</th><th>מתי</th><th></th></tr></thead><tbody>
+    ${rows.map(x=>`<tr><td>${escW(x.name||'')}</td><td class="n">${escW(x.sku)}</td>
+      <td class="n muted">${x.old?'₪'+Number(x.old).toLocaleString('en-US'):'—'}</td>
+      <td class="n"><b>₪${Number(x.new).toLocaleString('en-US')}</b></td>
+      <td class="n muted">${escW((x.at||'').replace('T',' ').slice(0,16))}</td>
+      <td><button class="zchip" onclick="zapPendDone('${escW(x.sku)}')">✓ עודכן בקופה</button></td></tr>`).join('')}
+    </tbody></table></div>`;
+}
+function zapTable(rows){
+  const Z=zapInit();
+  if(!rows.length) return `<div class="empty">${Z.reason?escW(Z.reason):'אין שורות תואמות'}</div>`;
+  const ils=n=>'₪'+Number(n||0).toLocaleString('en-US');
+  return `<div class="tbox"><table><thead><tr>
+    <th>דגם</th><th>מלאי</th><th>מחיר אתר</th><th>מצב בזאפ</th><th>מוכרים</th><th>הזול</th><th>פער</th><th>לטופ 5</th><th>פעולות</th>
+    </tr></thead><tbody>${rows.map((r,i)=>{
+      const st=zapState(r), pend=Z.pend[r.sku];
+      const cut=v=>v==null?'—':(v<=0?'<span style="color:var(--brand);font-weight:800">כבר שם</span>':'<b>'+ils(v)+'</b>');
+      return `<tr class="zrow" onclick="zapToggleRow(${i})">
+        <td class="zapname"><b>${escW(r.name)}</b><small>${escW(r.brand)}${r.zap_title?' · '+escW(r.zap_title.slice(0,44)):''}</small></td>
+        <td class="n">${r.stock||0}</td>
+        <td class="n">${r.our_price?ils(r.our_price):'—'}${pend?' <span class="penddot" title="שונה כאן, לא בקופה">●</span>':''}
+          <button class="zedit" onclick="event.stopPropagation();zapEditPrice('${escW(r.sku)}',${r.our_price||0})">${ico('pencil',12)}</button></td>
+        <td><span class="rankpill" style="color:${st.c};border:1px solid ${st.c}55;background:${st.c}14">${st.t}</span></td>
+        <td class="n">${r.sellers||'—'}</td>
+        <td class="n">${r.low?ils(r.low):'—'}<small class="muted" style="display:block;font-size:11px">${escW(r.low_seller||'')}</small></td>
+        <td class="n">${r.gap_pct==null?'—':(r.gap_pct>0?'+':'')+r.gap_pct+'%'}</td>
+        <td class="n">${cut(r.cut_top5)}</td>
+        <td onclick="event.stopPropagation()">
+          <button class="zchip" title="סנכרן מוצר צל לזאפ" onclick="zapSyncSh('${escW(r.sku)}')">סנכרן צל</button>
+          ${r.url?`<a class="zchip" href="${escW(r.url)}" target="_blank" rel="noopener">זאפ</a>`:''}
+        </td></tr>
+      <tr class="zdet" id="zrow${i}" hidden><td colspan="9">${zapComp(r)}</td></tr>`;
+    }).join('')}</tbody></table></div>`;
+}
+function zapComp(r){
+  const c=r.competitors||[];
+  if(!c.length) return '<div class="muted" style="padding:10px">אין פירוט מתחרים</div>';
+  const ils=n=>'₪'+Number(n||0).toLocaleString('en-US');
+  const our=r.our_price||0, max=c[c.length-1].price;
+  const list=c.map(o=>({seller:o.seller,price:o.price,us:false}));
+  if(our && r.status!=='listed') list.push({seller:'גרין מובייל',price:our,us:true});
+  list.sort((a,b)=>a.price-b.price||(a.us?1:0)-(b.us?1:0));
+  return `<div class="comp"><div class="comp-h">כל המוכרים · ${c.length}</div>
+    <table class="comp-t"><tbody>${list.map((o,i)=>`
+      <tr class="${o.us?'mine':(our&&o.price<our?'beat':'')}">
+        <td class="n" style="width:52px"><b>#${i+1}</b></td>
+        <td>${o.us?'<b>גרין מובייל</b> <span class="muted">— סימולציה</span>':escW(o.seller)}</td>
+        <td class="n"><b>${ils(o.price)}</b></td>
+        <td style="width:44%"><span class="cbar${o.us?' mine-bar':''}"><span style="width:${(o.price/max*100).toFixed(1)}%"></span></span></td>
+      </tr>`).join('')}</tbody></table></div>`;
+}
+function zapToggleRow(i){ const d=document.getElementById('zrow'+i); if(d) d.hidden=!d.hidden; }
+async function zapEditPrice(sku,cur){
+  const v=prompt('מחיר חדש באתר עבור '+sku+'\n(הקופה לא תשתנה — יסומן כממתין)',cur||'');
+  if(v===null) return;
+  const p=parseFloat(String(v).replace(/[^\d.]/g,''));
+  if(!(p>0)){ toast('מחיר לא תקין',false); return; }
+  showLoading('מעדכן מחיר…');
+  try{
+    const j=await api('/api/admin/zap/price',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({sku,price:p,sync_shadow:true})},60000);
+    hideLoading();
+    if(!j.ok){ toast(j.error||'העדכון נכשל',false); return; }
+    const n=(j.shadows_synced||[]).length, sk=(j.shadows_skipped||[]).length;
+    toast(`עודכן ל-₪${p}${n?` · ${n} צל סונכרן`:''}${sk?` · ${sk} דולג`:''}`,true);
+    loadZap(false);
+  }catch(e){ hideLoading(); toast('שגיאת רשת',false); }
+}
+async function zapSyncSh(sku){
+  showLoading('מסנכרן מוצר צל…');
+  try{
+    const j=await api('/api/admin/zap/sync-shadow?sku='+encodeURIComponent(sku),{method:'POST'},60000);
+    hideLoading();
+    toast(j.ok?`סונכרנו ${(j.synced||[]).length} מוצרי צל`:(j.error||'נכשל'), !!j.ok);
+  }catch(e){ hideLoading(); toast('שגיאת רשת',false); }
+}
+async function zapPendDone(sku){
+  try{ await api('/api/admin/zap/pending-done?sku='+encodeURIComponent(sku),{method:'POST'},30000); }catch(e){}
+  loadZap(false);
+}
+
 // ── Ops Hub: תפריט בורגר + הטמעת אפליקציות הסוכנים (App-Shell) ──
 // כל אפליקציה ממשיכה לרוץ עצמאית; כאן רק מטמיעים אותה ב-iframe. לא נוגעים בכלום.
 const HUB_APPS=[
@@ -1349,11 +1525,7 @@ const HUB_APPS=[
   {key:'checks',     icon:'bank',    title:'ניהול צ׳קים',                  url:'/checks'},
   {key:'schedule',   icon:'bell',    title:'סידור עבודה',                  url:'/schedule'},
 ];
-// דוחות שמתארחים אצלנו כקבצים סטטיים — אותו קישור שנשלח לבעלים, בלי כפילות
-const HUB_REPORTS=[
-  {key:'sales2607', icon:'trendDown', title:'ניתוח מכירות · יוני–יולי',
-   url:'/static/reports/sales-analysis-jul2026.html'},
-];
+// (הדוח לבעלים נשאר כקישור חיצוני בלבד — בתפריט רוצים כלי עבודה, לא דוחות)
 function renderDrawer(){
   const d=document.getElementById('drawer');
   const act=(v)=>S.view===v?'active':'';
@@ -1377,11 +1549,7 @@ function renderDrawer(){
       <div class="dr-item ${S.view==='embed'&&S.embedApp&&S.embedApp.key===a.key?'active':''}" onclick="hubOpen('${a.key}')">
         <span>${ico(a.icon,16)}</span><span>${a.title}${lock}</span>
       </div>`).join('')}
-    <div class="dr-sec">דוחות</div>
-    ${HUB_REPORTS.map(r=>`
-      <div class="dr-item" onclick="hubReport('${r.key}')">
-        <span>${ico(r.icon,16)}</span><span>${r.title}</span>
-      </div>`).join('')}
+    <div class="dr-item ${S.view==='admin'&&S.adminTab==='zap'?'active':''}" onclick="toggleDrawer(false);if(ensureAdmin(()=>{hubGo('admin');setAdminTab('zap');})){hubGo('admin');setAdminTab('zap');}"><span>${ico('zap',16)}</span><span>זאפ — מחירים וסנכרון${lock}</span></div>
     <div class="dr-sec">הגדרות כלליות</div>
     <div class="dr-item" id="drPushItem" onclick="drawerPushClick()">
       <span id="drPushIco">${ico('bell',16)}</span><span id="drPushLabel">התראות במכשיר הזה</span></div>
@@ -1455,12 +1623,6 @@ function hubGoCrm(){
   if(!ensureAdmin(hubGoCrm)) return;
   S.view='crm'; S.embedApp=null;                          // דף ייעודי עצמאי, לא בתוך קונסולת הניהול
   if(_crmStats) renderCrm(); else loadCrm(true);
-}
-// דוח סטטי — ניווט מלא (אותו origin), לא iframe: הדוח כולל טאבים ו-hash משלו
-function hubReport(key){
-  const r=HUB_REPORTS.find(x=>x.key===key); if(!r) return;
-  toggleDrawer(false);
-  window.location.href=r.url;
 }
 async function hubOpen(key){
   const a=HUB_APPS.find(x=>x.key===key); if(!a) return;
@@ -2164,6 +2326,7 @@ function adminTabsHTML(){
     <button class="${a('wa')}" onclick="setAdminTab('wa')">${ico('chat',15)} וואטסאפ</button>
     <button class="${a('wcorders')}" style="position:relative" onclick="setAdminTab('wcorders')">${ico('receipt',15)} הזמנות<span class="gm-obadge" style="display:${(S.newOrdersCount||0)>0?'':'none'}">${(S.newOrdersCount||0)>99?'99+':(S.newOrdersCount||0)}</span></button>
     <button class="${a('blender')}" onclick="setAdminTab('blender')">${ico('wallet',15)} blenderPay</button>
+    <button class="${a('zap')}" onclick="setAdminTab('zap')">${ico('zap',15)} זאפ${(S.zap&&S.zap.pendN)?` (${S.zap.pendN})`:''}</button>
     <div class="tabgroup">
       <button class="${a('rebalance')}" onclick="setAdminTab('rebalance')">${ico('scale',15)} איזון מלאי</button>
       <button class="${a('plan')}" onclick="setAdminTab('plan')">${ico('pencil',15)} בקשות העברה${pc}</button>
@@ -2189,6 +2352,7 @@ function setAdminTab(tab){
   else if(tab==='greencare'){ renderGreenCare(); }
   else if(tab==='wcorders'){ renderWcOrders(); }
   else if(tab==='blender'){ renderBlender(); }
+  else if(tab==='zap'){ if(!S.zap||!S.zap.rows) loadZap(true); else renderZap(); }
   else if(tab==='wa'){ if(!S.waConvs) loadWa(true); else renderWa(); }
   else renderAdmin();
 }
@@ -8370,6 +8534,7 @@ function renderAdmin(){
   if(S.adminTab==='reco') return S.recoData?renderReco():loadReco(true);
   if(S.adminTab==='order') return S.orderData?renderOrder():loadOrder(true);
   if(S.adminTab==='removals') return S.removalsData?renderRemovals():loadRemovals(true);
+  if(S.adminTab==='zap') return (S.zap&&S.zap.rows)?renderZap():loadZap(true);
   if(S.adminTab==='greencare') return renderGreenCare();
   if(S.adminTab==='wcorders') return renderWcOrders();
   const app=document.getElementById('app');
