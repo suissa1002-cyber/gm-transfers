@@ -9226,12 +9226,13 @@ def zap_create_shadow(sku: str, x_admin_key: Optional[str] = Header(None)):
 
 
 @app.post("/api/admin/zap/visibility")
-def zap_visibility_set(product_id: int, hidden: int = 1,
+def zap_visibility_set(product_id: int = 0, hidden: int = 1, sku: str = "",
                        x_admin_key: Optional[str] = Header(None)):
-    """הצג/הסתר מוצר בפיד זאפ — אותו צ׳קבוקס שבעריכת המוצר."""
+    """הצג/הסתר מוצר בפיד זאפ — אותו צ׳קבוקס שבעריכת המוצר.
+    מקבל product_id או מק״ט (הכלי כולו מק״ט-מונחה)."""
     _require_admin(x_admin_key)
     import zap_price
-    return zap_price.zap_visibility(product_id, bool(hidden))
+    return zap_price.zap_visibility(product_id, bool(hidden), sku)
 
 
 @app.get("/api/admin/zap/feed")

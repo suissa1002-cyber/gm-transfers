@@ -62,42 +62,45 @@ def _get(url: str, timeout: int = 30) -> str:
 
 
 # ─────────────────────────── מה סורקים ───────────────────────────
-def build_targets() -> list:
-    """כל סמארטפון עם מלאי בקופה + מחיר האתר (מקור-האמת למחיר שלנו).
-    ⚠️ מק"ט אחד בקופה יושב על כמה וריאציות באתר (eSIM / מקביל-רשמי) — לוקחים
-    את הזולה שבהן, כי היא זו שמתחרה בזאפ."""
-    import requests
-    import poller
-    base = os.getenv("WC_STORE_URL", "https://greenmobile.co.il").rstrip("/")
-    auth = (os.getenv("WC_CONSUMER_KEY", ""), os.getenv("WC_CONSUMER_SECRET", ""))
+def _pos_stock() -> dict:
+    """מק"ט → מלאי בקופה. נכשל בשקט: מלאי הוא חיווי, לא תנאי לסריקה."""
     try:
-        prods = poller.client().get_all_products(category=3)
+        import poller
+        return {str(p["id"]): (p.get("currentStock") or 0)
+                for p in poller.client().get_all_products(category=3)
+                if p.get("isActive")}
     except Exception as e:  # noqa: BLE001
-        logger.warning("zap: POS catalog failed: %s", e)
+        logger.warning("zap: POS stock failed: %s", e)
+        return {}
+
+
+def build_targets() -> list:
+    """⚠️ מקור-האמת הוא **הפיד שאנחנו משדרים לזאפ**, לא קטלוג הקופה.
+    הסריקה הישנה רצה על מק"טים עם מלאי בקופה וחיפשה לפי שם ה-WC, ולכן
+    ספרה 2 מוצרים רשומים במקום 57 (אסי, 26/07/2026): מוצר נמצא בזאפ אם
+    ורק אם הוא בפיד — מלאי בקופה לא קובע, ושם ה-WC אינו השם ששודר.
+    המחיר בפיד הוא בדיוק המחיר שזאפ מציג, ולכן גם מחיר-האמת להשוואה."""
+    import zap_price
+    try:
+        rows = zap_price.feed(1934)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("zap: feed failed: %s", e)
         return []
-    live = [p for p in prods if p.get("isActive") and (p.get("currentStock") or 0) > 0]
-
-    prices = {}
-    for chunk in range(0, len(live), 50):
-        skus = ",".join(str(p["id"]) for p in live[chunk:chunk + 50])
-        try:
-            r = requests.get(f"{base}/wp-json/wc/v3/products", auth=auth, timeout=60,
-                             params={"sku": skus, "per_page": 100,
-                                     "_fields": "sku,price,status,stock_status"})
-            for w in (r.json() if r.ok else []):
-                p = float(w.get("price") or 0)
-                if p > 1 and w.get("status") == "publish":
-                    k = str(w.get("sku"))
-                    prices[k] = min(p, prices.get(k, p))
-        except Exception as e:  # noqa: BLE001
-            logger.warning("zap: wc price chunk failed: %s", e)
-
+    if not rows:
+        logger.warning("zap: feed returned nothing — לא סורקים על סמך הקופה")
+        return []
+    stock = _pos_stock()
     out = []
-    for p in live:
-        sku = str(p["id"])
-        out.append({"sku": sku, "name": p["name"], "brand": brand_of(p["name"]),
-                    "stock": p.get("currentStock") or 0,
-                    "our_price": prices.get(sku) or (p.get("price") if (p.get("price") or 0) > 1 else None)})
+    for f in rows:
+        sku = str(f.get("sku") or "")
+        name = f.get("name") or ""
+        try:
+            price = float(f.get("price") or 0)
+        except (TypeError, ValueError):
+            price = 0
+        out.append({"sku": sku, "name": name, "brand": brand_of(name),
+                    "stock": stock.get(sku, 0), "our_price": price or None,
+                    "product_id": f.get("num"), "site_url": f.get("url")})
     return out
 
 
@@ -126,7 +129,8 @@ def _capacity(s: str) -> str | None:
     return str(max(vals)) if vals else None
 
 
-RAM_RE = re.compile(r"(\d{1,2})\s*GB\s*RAM", re.I)
+# ⚠️ \b חובה: בלעדיו "512GB RAM" מחזיר 12 (שתי הספרות האחרונות) ושובר את ההתאמה
+RAM_RE = re.compile(r"\b(\d{1,2})\s*GB\s*RAM", re.I)
 
 
 def _ram(s: str) -> str | None:
@@ -176,16 +180,23 @@ def _match_ok(our_name: str, zap_title: str) -> bool:
     return bool(ta & tb) if ta else True
 
 
+HEB_RE = re.compile(r"[֐-׿]+")
+
+
 def _clean_query(name: str) -> str:
     """שם המוצר בלי הצבע. ⚠️ רשימת צבעים קשיחה לא מספיקה — "Umber", "Moonstone"
     ו-"Graygreen" אינם בה, נשארו בשאילתה, וזאפ החזיר תוצאות אקראיות לגמרי.
-    הכלל המבני: בשמות שלנו הצבע הוא תמיד הקטע האחרון אחרי " - " ואין בו נפח."""
+    הכלל המבני: בשמות שלנו הצבע הוא תמיד הקטע האחרון אחרי " - " ואין בו נפח.
+    שמות הפיד עברית-מובילה ("טלפון סלולרי OPPO Find X9 Ultra 1TB 16GB RAM"),
+    והמילים העבריות — סוג המוצר, הצבע, "מציאון" — הן רעש שמדרדר את החיפוש;
+    הליבה הלטינית+מספרית היא מה שזאפ מזהה."""
     q = re.sub(r"\s+", " ", (name or "")).strip()
     if " - " in q:
         head, tail = q.rsplit(" - ", 1)
         if head and not CAP_RE.search(tail):      # הזנב הוא צבע, לא תצורה
             q = head
-    return q.strip(" -")
+    core = re.sub(r"\s+", " ", HEB_RE.sub(" ", q)).strip(" -,")
+    return core or q.strip(" -")
 
 
 def _short_query(q: str) -> str:
@@ -281,7 +292,9 @@ def _price_for_rank(offers: list, rank: int) -> float | None:
 def analyse(t: dict) -> dict:
     mid = resolve_modelid(t["name"], t["sku"])
     row = {"sku": t["sku"], "name": t["name"], "brand": t["brand"],
-           "stock": t["stock"], "our_price": t.get("our_price"), "modelid": mid}
+           "stock": t["stock"], "our_price": t.get("our_price"), "modelid": mid,
+           "product_id": t.get("product_id"), "site_url": t.get("site_url"),
+           "zap_hidden": 0}   # מגיע מהפיד ⇒ מוצג בזאפ בהגדרה
     if not mid:
         row["status"] = "no_model"        # אין דגם תואם בזאפ
         return row

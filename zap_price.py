@@ -256,9 +256,15 @@ def clear_pending(sku: str) -> None:
 
 
 # ─────────────────────── הצגה/הסתרה בזאפ ───────────────────────
-def zap_visibility(product_id: int, hidden: bool) -> dict:
+def zap_visibility(product_id: int = 0, hidden: bool = True, sku: str = "") -> dict:
     """הדלקה/כיבוי של המוצר בפיד זאפ — אותו צ׳קבוקס שבעריכת המוצר.
-    ⚠️ הערך חייב להיות 'yes' ולא '1' — התוסף מצפה בדיוק לזה (נלמד בכאב)."""
+    ⚠️ הערך חייב להיות 'yes' ולא '1' — התוסף מצפה בדיוק לזה (נלמד בכאב).
+    הדגל יושב תמיד על מוצר-האב; לוריאציה אין הגדרת זאפ משלה."""
+    if not product_id:
+        tgt = find_by_sku(sku)
+        if not tgt:
+            return {"ok": False, "error": "לא נמצא מוצר למק״ט הזה"}
+        product_id = tgt["parent"]
     base, auth = _wc()
     r = requests.put(f"{base}/wp-json/wc/v3/products/{product_id}", auth=auth, timeout=45,
                      json={"meta_data": [{"key": "_woocommerce_zap_disable",

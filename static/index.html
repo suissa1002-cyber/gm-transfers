@@ -463,10 +463,13 @@
   .p-bad{background:var(--red-bg);color:var(--red-ink)}
   .p-off{background:var(--card-3);color:var(--txt-3)}
   .zcut{font-size:15px;font-weight:800;font-variant-numeric:tabular-nums}
-  .zact{display:inline-flex;gap:5px}
-  .zib{appearance:none;width:30px;height:30px;display:inline-grid;place-items:center;cursor:pointer;
-       background:var(--card-2);border:1px solid var(--line);border-radius:var(--r-xs);color:var(--txt-2)}
-  .zib:hover{border-color:var(--brand);color:var(--brand-ink);background:var(--brand-bg)}
+  .zact{display:inline-flex;gap:1px;align-items:center}
+  .zib{appearance:none;background:none;border:0;padding:0;text-decoration:none;
+       width:28px;height:28px;display:inline-grid;place-items:center;cursor:pointer;
+       color:var(--txt-3);border-radius:999px;transition:background .12s ease,color .12s ease}
+  .zib:hover{background:var(--brand-bg);color:var(--brand-ink)}
+  .zib:active{transform:scale(.9)}
+  .zib.dg:hover{background:var(--red-bg);color:var(--red-ink)}
   .zdot{color:var(--amber-ink);font-size:13px;vertical-align:1px}
   .zpend{border:1px solid var(--amber-ink);background:var(--amber-bg);border-radius:var(--r-md);
          padding:var(--s4) var(--s5);margin-bottom:var(--s4)}
@@ -1538,10 +1541,11 @@ function zapTable(rows){
           <small style="display:block;font-size:11px;color:var(--txt-3)">${escW((r.low_seller||'').slice(0,20))}</small>${gap}</td>
         <td class="znum">${cut}</td>
         <td onclick="event.stopPropagation()"><span class="zact">
-          <button class="zib" title="ערוך מחיר באתר" onclick="zapEditPrice('${escW(r.sku)}',${r.our_price||0})">${ico('pencil',13)}</button>
-          <button class="zib" title="סנכרן מוצר צל למחיר האתר" onclick="zapSyncSh('${escW(r.sku)}')">${ico('refresh',13)}</button>
-          <button class="zib" title="צור מוצר צל לתצורה הזו" onclick="zapMakeShadow('${escW(r.sku)}')">${ico('zap',13)}</button>
-          ${r.url?`<a class="zib" title="פתח בזאפ" href="${escW(r.url)}" target="_blank" rel="noopener">${ico('globe',13)}</a>`:''}
+          <button class="zib" title="ערוך מחיר באתר" onclick="zapEditPrice('${escW(r.sku)}',${r.our_price||0})">${ico('pencil',16)}</button>
+          <button class="zib" title="סנכרן מוצר צל למחיר האתר" onclick="zapSyncSh('${escW(r.sku)}')">${ico('refresh',16)}</button>
+          <button class="zib" title="צור מוצר צל לתצורה הזו" onclick="zapMakeShadow('${escW(r.sku)}')">${ico('copy',16)}</button>
+          <button class="zib${r.zap_hidden?'':' dg'}" title="${r.zap_hidden?'הצג את המוצר בזאפ':'הסתר את המוצר מזאפ'}" onclick="zapVis('${escW(r.sku)}',${r.zap_hidden?0:1})">${ico(r.zap_hidden?'eyeOff':'eye',16)}</button>
+          ${r.url?`<a class="zib" title="פתח בזאפ" href="${escW(r.url)}" target="_blank" rel="noopener">${ico('globe',16)}</a>`:''}
         </span></td></tr>
       <tr class="zdet" id="zrow${i}" hidden><td colspan="7" style="padding:0">${zapComp(r)}</td></tr>`;
     }).join('')}</tbody></table></div></div>`;
@@ -1621,6 +1625,20 @@ async function zapEditPrice(sku,cur){
     const n=(j.shadows_synced||[]).length, sk=(j.shadows_skipped||[]).length;
     toast(`עודכן ל-₪${p}${n?` · ${n} צל סונכרן`:''}${sk?` · ${sk} דולג`:''}`,true);
     loadZap(false);
+  }catch(e){ hideLoading(); toast('שגיאת רשת',false); }
+}
+async function zapVis(sku,hide){
+  // הדגל יושב על מוצר-האב — הסתרה מסירה את כל הוריאציות שלו מהפיד
+  if(!confirm(hide?('להסתיר מזאפ את המוצר של '+sku+'?\nכל התצורות של הדגם ייעלמו מדף ההשוואה.')
+                  :('להחזיר לזאפ את המוצר של '+sku+'?'))) return;
+  showLoading(hide?'מסתיר מזאפ…':'מחזיר לזאפ…');
+  try{
+    const j=await api(`/api/admin/zap/visibility?sku=${encodeURIComponent(sku)}&hidden=${hide?1:0}`,{method:'POST'},60000);
+    hideLoading();
+    if(!j.ok){ toast(j.error||'הפעולה נכשלה',false); return; }
+    toast(hide?'הוסתר מזאפ':'הוחזר לזאפ',true);
+    const Z=zapInit(); (Z.rows||[]).forEach(r=>{ if(r.sku===sku) r.zap_hidden=hide?1:0; });
+    renderZap();
   }catch(e){ hideLoading(); toast('שגיאת רשת',false); }
 }
 async function zapSyncSh(sku){
@@ -4988,6 +5006,7 @@ const _IPATHS={
   pkgx:'<path d="M21 10V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0"/><path d="m7.5 4.27 9 5.15"/><polyline points="3.29 7 12 12 20.71 7"/><line x1="12" y1="22" x2="12" y2="12"/><path d="m17 13 5 5"/><path d="m22 13-5 5"/>',
   card:'<rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/>',
   eye:'<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
+  eyeOff:'<path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M6.61 6.61A18.15 18.15 0 0 0 1 12s4 8 11 8a9.12 9.12 0 0 0 5.39-1.61"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>',
   copy:'<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
   printer:'<polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>',
   globe:'<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>',
@@ -8794,7 +8813,7 @@ function startPoll(){ clearInterval(S.pollTimer);
       renderBoard(a, true);
     } else if(S.view==='admin'){
       if(S.adminTab==='wa'){ waPollTick(); return; }   // וואטסאפ: רענון שקט של רשימה+שיחה
-      if(['rebalance','reco','order','removals','live','wcorders'].includes(S.adminTab)) return;   // נתונים מחושבים/עריכה/חיפוש חי — לא מרעננים אוטומטית
+      if(['rebalance','reco','order','removals','live','wcorders','zap'].includes(S.adminTab)) return;   // נתונים מחושבים/עריכה/חיפוש חי — לא מרעננים אוטומטית (zap: אסי דיווח שרשימת המתחרים נסגרת אחרי ~15ש, 26/07)
       const ae=document.activeElement;   // אל תרענן תוך כדי שימוש בסינון
       if(ae && ae.closest && ae.closest('.filters')) return;
       loadAdmin(false);   // רענון שקט ברקע
