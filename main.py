@@ -9454,6 +9454,17 @@ def zap_acts():
     return {"ok": True, "acts": zap_price.acts()}
 
 
+@app.post("/api/admin/zap/act-log")
+def zap_act_log(pid: int, kind: str = "title", detail: str = "", at: str = "",
+                x_admin_key: Optional[str] = Header(None)):
+    """רישום פעולה שבוצעה **ידנית** (למשל שינוי כותרת ישירות בוורדפרס), כדי
+    שהחיווי "ממתין לשיוך זאפ" יופיע גם עליה. `at` בפורמט ISO; ריק = עכשיו."""
+    _require_admin(x_admin_key)
+    import zap_price
+    zap_price.act_log(pid, kind, detail, at)
+    return {"ok": True, "pid": pid, "kind": kind, "at": at or "now"}
+
+
 @app.post("/api/admin/zap/act-clear")
 def zap_act_clear(pid: int, x_admin_key: Optional[str] = Header(None)):
     """הסרת החיווי — כשכבר אין טעם לחכות או שהשיוך הושלם."""

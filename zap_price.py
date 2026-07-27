@@ -403,14 +403,15 @@ def clear_pending(key: str) -> None:
 
 # ─────────────────────── הצגה/הסתרה בזאפ ───────────────────────
 # ─────────── פעולות שממתינות לסריקה הבאה של זאפ ───────────
-def act_log(pid, kind: str, detail: str = "") -> None:
+def act_log(pid, kind: str, detail: str = "", at: str = "") -> None:
     """רישום פעולה שהשפעתה תיראה רק אחרי שזאפ יסרוק מחדש (6-24 שעות).
     ⚠️ בלי זה אי אפשר לדעת מהטבלה על מה כבר עבדת: אסי שינה כותרת, והשורה
     נראתה בדיוק כמו קודם (27/07/2026)."""
     try:
         db.sales_state_set(f"zap_act:{pid}", json.dumps(
             {"pid": str(pid), "kind": kind, "detail": detail[:160],
-             "at": datetime.now().isoformat(timespec="seconds")}, ensure_ascii=False))
+             "at": at or datetime.now().isoformat(timespec="seconds")},
+            ensure_ascii=False))
     except Exception as e:  # noqa: BLE001
         logger.warning("zap act_log failed: %s", e)
 
