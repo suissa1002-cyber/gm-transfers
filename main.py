@@ -9517,12 +9517,32 @@ def zap_pending_done(sku: str = "", key: str = "",
 
 
 @app.post("/api/admin/zap/scan-now")
-def zap_scan_now(limit: int = 0, reset: int = 0, x_admin_key: Optional[str] = Header(None)):
+def zap_scan_now(limit: int = 0, reset: int = 0, force: int = 0,
+                 x_admin_key: Optional[str] = Header(None)):
     """מפעיל סריקה. ⚠️ סריקה מלאה (~250 דגמים) נמשכת 6-8 דקות — הרבה מעבר
     לתקרת הזמן של הפרוקסי של Render (502). לכן היא נזרקת ל-scheduler ומחזירים
     מיד; המעקב דרך GET /api/zap/report. limit>0 קטן רץ סינכרוני לבדיקה."""
     _require_admin(x_admin_key)
     import zap_scan
+    # ⚠️ שתי סריקות במקביל כותבות לאותו מפתח התקדמות, והמונה קופץ אחורה
+    # (17 → 11). הן גם מכפילות את העומס על זאפ ומסכנות חסימה (אסי,
+    # 27/07/2026). פעימת לב טרייה = סריקה חיה; force=1 עוקף במודע.
+    if not force:
+        try:
+            cur = db.sales_state_get("zap_progress") or ""
+            if cur:
+                import json as _jj
+                d0 = _jj.loads(cur)
+                beat = d0.get("beat")
+                fresh = (not beat or (datetime.now()
+                         - datetime.fromisoformat(beat)).total_seconds() < 360)
+                if fresh:
+                    return {"ok": False, "running": True,
+                            "progress": d0,
+                            "error": f"סריקה כבר רצה ({d0.get('done')}/{d0.get('total')}) — "
+                                     "המתן לסיומה"}
+        except Exception:  # noqa: BLE001
+            pass
     if reset:
         n = zap_scan.reset_mapping()
         logger.info("zap: mapping cache reset (%d keys)", n)

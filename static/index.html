@@ -473,6 +473,8 @@
   .zbarw{height:6px;border-radius:999px;background:var(--card-2);overflow:hidden}
   .zbarw i{display:block;height:100%;background:var(--brand);border-radius:999px;
            transition:width .6s ease}
+  .zbarw.idle i{opacity:.35;animation:zpulse 1.4s ease-in-out infinite}
+  @keyframes zpulse{0%,100%{opacity:.2}50%{opacity:.5}}
   .zact-b{display:inline-flex;align-items:center;gap:4px;margin-top:4px;font-size:11px;
           color:var(--brand-ink);background:var(--brand-bg);border-radius:var(--r-pill);
           padding:2px 8px;white-space:nowrap}
@@ -1507,10 +1509,10 @@ function renderZap(){
     </div>
     ${Z.progress?(()=>{const p=Z.progress,pc=p.total?Math.round(p.done/p.total*100):0;
       return `<div class="zpend zscan">
-      <div class="h"><b>סריקה רצה — ${p.done}/${p.total}</b>
+      <div class="h"><b>${p.total?`סריקה רצה — ${p.done}/${p.total}`:'הסריקה מתחילה…'}</b>
       <span class="muted">${escW(p.at||'')}</span>
       <span class="pc">${pc}%</span></div>
-      <div class="zbarw"><i style="width:${pc}%"></i></div></div>`;})():''}
+      <div class="zbarw${p.total?'':' idle'}"><i style="width:${p.total?pc:100}%"></i></div></div>`;})():''}
     ${Z.pendN?zapPendBox():''}
     <div class="zbar">
       <input id="zq" type="search" placeholder="חיפוש דגם / מק״ט" value="${escW(Z.q)}"
@@ -1766,7 +1768,9 @@ async function zapScanRun(reset){
   try{
     const j=await api('/api/admin/zap/scan-now'+(reset?'?reset=1':''),{method:'POST'},60000);
     hideLoading();
-    if(!j.ok&&!j.started){ toast(j.error||'ההפעלה נכשלה',false); return; }
+    if(!j.ok&&!j.started){ toast(j.error||'ההפעלה נכשלה',false);
+      if(j.running&&j.progress){ const Z=zapInit(); Z.progress=j.progress; renderZap(); zapScanPoll(); }
+      return; }
     toast(reset?'סריקה מאופסת רצה ברקע':'הסריקה רצה ברקע',true);
     const Z=zapInit(); Z.progress={done:0,total:0,at:''}; renderZap(); zapScanPoll();
   }catch(e){ hideLoading(); toast('שגיאת רשת',false); }

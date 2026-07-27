@@ -880,12 +880,26 @@ def run(limit: int | None = None, sleep: float = 1.1) -> dict:
     """סבב מלא. ⚠️ שורה = **דגם בזאפ**, לא מק"ט: דף השוואה אחד מייצג את כל
     הצבעים של אותה תצורה, ולכן המלאי מצטבר (אסי: "Oppo X9 Ultra 512 —
     2 שחור + 2 כתום ⇒ 4 במלאי"), וכך אפשר להחליט מהר אם שווה לחתוך מחיר."""
+    # ⚠️ בניית רשימת היעדים לוקחת 2-3 דקות (קטלוג + וריאציות), ורק אחריה
+    # מתחיל הלולאה שכותבת התקדמות. בלי סימון מוקדם המסך נראה כאילו כלום
+    # לא קורה אחרי הלחיצה (אסי, 27/07/2026).
+    def _beat(done, total, at):
+        try:
+            db.sales_state_set("zap_progress", json.dumps(
+                {"done": done, "total": total, "at": at,
+                 "beat": datetime.now().isoformat(timespec="seconds")},
+                ensure_ascii=False))
+        except Exception:  # noqa: BLE001
+            pass
+
+    _beat(0, 0, "בונה את רשימת המוצרים…")
     targets = build_targets()
     # ⚠️ סריקה בלי יעדים לא כותבת תמונת מצב. כשל רגעי בפיד (Cloudflare/timeout)
     # החזיר 0 יעדים, ו-run() דרס את התמונה הטובה של היום באפס שורות — כל
     # הנתונים נעלמו מהמסך (אסי, 27/07/2026). אין נתונים ⇒ משאירים מה שהיה.
     if not targets:
         logger.warning("zap: 0 targets — משאירים את התמונה הקודמת על כנה")
+        db.sales_state_set("zap_progress", "")
         return {"ok": False, "error": "הפיד לא החזיר מוצרים — התמונה הקודמת נשמרה",
                 "rows": [], "summary": _summarise([])}
     if limit:
@@ -922,13 +936,7 @@ def run(limit: int | None = None, sleep: float = 1.1) -> dict:
         # ההתקדמות במסך. ⚠️ חותמת זמן חובה: כשהת'רד מת (deploy באמצע סריקה)
         # הדגל נשאר ב-DB לנצח, המסך הראה "סריקה רצה 15/104" שעה שלמה
         # והכפתור נותר מושבת (אסי, 27/07/2026).
-        try:
-            db.sales_state_set("zap_progress", json.dumps(
-                {"done": i, "total": total, "at": t.get("name", "")[:60],
-                 "beat": datetime.now().isoformat(timespec="seconds")},
-                ensure_ascii=False))
-        except Exception:  # noqa: BLE001
-            pass
+        _beat(i, total, t.get("name", "")[:60])
         # תמונת הביניים כבדה — כל 15 מוצרים מספיק
         if i % 15 == 0 or i == total:
             try:
