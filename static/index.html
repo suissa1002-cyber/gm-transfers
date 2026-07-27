@@ -1742,21 +1742,30 @@ async function zapPlan(rid){
   if(!j.ok){ toast(j.error||'הבדיקה נכשלה',false); return; }
   S.zapPlan=j;
   const ils=n=>'₪'+Number(n||0).toLocaleString('en-US');
-  const badge=st=>({ok:['p-ok','מוכן'],need_shadow:['p-warn','חסר מוצר צל'],
-    shadow_drift:['p-bad','מחיר הצל לא מעודכן'],no_model:['p-off','אין דגם בזאפ']})[st]||['p-off','—'];
+  const badge=st=>({
+    ok:['p-ok','רשומים ✓'], shadow_ready:['p-ok','צל מוכן'],
+    need_shadow:['p-warn','חסר מוצר צל'], shadow_drift:['p-bad','מחיר הצל ישן'],
+    need_title:['p-warn','כותרת לא תואמת'], need_unhide:['p-warn','מוסתר מזאפ'],
+    need_feed:['p-warn','לא בפיד'], no_model:['p-off','אין דגם בזאפ']})[st]||['p-off','—'];
+  const act=(s,i)=>{
+    if(s.state==='need_shadow') return `<button class="btn sm" onclick="zapPlanCreate(${i})">צור מוצר צל</button>`;
+    if(s.state==='shadow_drift') return `<button class="btn sm" onclick="zapSyncSh('${escW(rid)}')">סנכרן מחיר</button>`;
+    if(s.state==='need_unhide') return `<button class="btn sm" onclick="zapVis('${escW(rid)}',0)">הצג בזאפ</button>`;
+    if(s.state==='need_title') return `<button class="btn sm" onclick="zapCopy(${i})">העתק כותרת</button>`;
+    return '';
+  };
   const rows=(j.steps||[]).map((s,i)=>{
     const [cls,lab]=badge(s.state);
     return `<tr>
       <td><b>${escW(s.label)}</b><small style="display:block;color:var(--txt-3)">${ils(s.price)}</small></td>
-      <td><span class="zpill ${cls}">${lab}</span></td>
-      <td style="max-width:340px">
+      <td><span class="zpill ${cls}">${lab}</span>
+        <small style="display:block;font-size:11px;color:var(--txt-3);margin-top:4px">${escW(s.action||'')}</small></td>
+      <td style="max-width:320px">
         ${s.modelid?`<a href="https://www.zap.co.il/model.aspx?modelid=${s.modelid}" target="_blank" rel="noopener"
             style="color:var(--brand-ink)">${escW(s.zap_title)}</a>`
-          :`<span style="color:var(--txt-3)">זאפ לא מכיר דגם לנפח הזה — חיפשנו "${escW(s.query)}"</span>`}
+          :`<span style="color:var(--txt-3)">חיפשנו "${escW(s.query)}" — אין דגם תואם</span>`}
       </td>
-      <td>${s.state==='need_shadow'&&s.modelid
-        ?`<button class="btn sm" onclick="zapPlanCreate(${i})">צור בכותרת הזו</button>`
-        :s.state==='shadow_drift'?`<button class="btn sm" onclick="zapSyncSh('${escW(rid)}')">סנכרן מחיר</button>`:''}</td>
+      <td>${act(s,i)}</td>
     </tr>`;}).join('');
   const su=j.summary||{};
   document.getElementById('modalRoot').innerHTML=`<div class="overlay" onclick="closeModal()">
@@ -1765,21 +1774,29 @@ async function zapPlan(rid){
     <div class="muted" style="font-size:12.5px;margin-bottom:var(--s4)">${escW(j.name||'')}</div>
     <div class="zpend" style="border-color:var(--line);background:var(--card-2)">
       <div class="h" style="color:var(--txt)">
-        <b>${su.caps} נפחים</b> · מוכנים ${su.ready} · חסר צל ${su.need_shadow} · אין דגם ${su.no_model}
+        <b>${su.caps===1?'נפח יחיד':su.caps+' נפחים'}</b> · מוכנים ${su.ready} · דורש טיפול ${su.todo} · אין דגם ${su.no_model}
       </div>
       <div class="muted" style="font-size:12.5px">
-        ${j.hidden?'ההורה מוסתר מזאפ — ':''}${su.parent_should_stay_hidden
-          ?'<b>ההורה חייב להישאר מוסתר.</b> כותרת אחת לא יכולה לייצג כמה נפחים; כל נפח מופיע דרך מוצר הצל שלו.'
-          :'נפח יחיד — אפשר לשדר את המוצר עצמו בלי מוצרי צל.'}
+        ${su.shadows_needed
+          ? '<b>ההורה חייב להישאר מוסתר.</b> כותרת אחת לא יכולה לייצג כמה נפחים — זאפ משייך לפי שם + נפח, ולכן כל נפח מגיע דרך מוצר הצל שלו.'
+          : 'נפח יחיד — <b>אין צורך במוצר צל.</b> המוצר עצמו אמור להשתדר, ולכן התיקון הוא בכותרת שלו ובכך שהוא לא מוסתר.'}
       </div>
     </div>
     <table class="zsub"><thead><tr><th>נפח</th><th>מצב</th><th>דגם ההשוואה בזאפ</th><th></th></tr></thead>
       <tbody>${rows}</tbody></table>
     <p class="muted" style="font-size:12px;margin-top:var(--s3)">
-      הכותרת שנוצרת זהה לכותרת דגם ההשוואה — זאפ משייך לפי שם + נפח (+RAM),
-      וזו הדרך היחידה להבטיח שיוך בסריקה הראשונה. עדכון מתגלגל תוך 6-24 שעות.</p>
+      זאפ משייך לפי שם + נפח (+RAM), ולכן הכותרת המומלצת זהה לכותרת דגם
+      ההשוואה — זו הדרך היחידה להבטיח שיוך בסריקה הראשונה שלו.
+      כל שינוי אצלנו מתגלגל לזאפ תוך 6-24 שעות.</p>
     <div style="text-align:left;margin-top:var(--s4)"><button class="btn" onclick="closeModal()">סגור</button></div>
     </div></div>`;
+}
+function zapCopy(i){
+  const st=((S.zapPlan||{}).steps||[])[i]; if(!st) return;
+  const t=st.suggested_name||'';
+  navigator.clipboard.writeText(t).then(
+    ()=>toast('הכותרת הועתקה — הדבק בשם המוצר בווקומרס',true),
+    ()=>prompt('העתק את הכותרת:',t));
 }
 async function zapPlanCreate(i){
   const j=S.zapPlan, st=(j.steps||[])[i]; if(!st) return;

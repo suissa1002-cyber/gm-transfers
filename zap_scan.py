@@ -615,8 +615,16 @@ def plan(pid) -> dict:
     except Exception:  # noqa: BLE001
         pass
 
+    # האם המוצר בכלל משודר כרגע
+    in_feed = False
+    try:
+        in_feed = any(str(f.get("num")) == pid for f in (zap_price.feed(1934) or []))
+    except Exception:  # noqa: BLE001
+        pass
+
     core = re.sub(r"\s*\d+\s*(TB|GB)\b", "", _clean_query(p.get("name") or ""), flags=re.I)
     core = re.sub(r"\s+", " ", core).strip(" -,")
+    multi = len(by_cap) > 1
     steps = []
     for cap in sorted(by_cap, key=lambda c: int(re.sub(r"\D", "", c) or 0)):
         info = by_cap[cap]
@@ -636,25 +644,54 @@ def plan(pid) -> dict:
             logger.warning("zap plan search failed for %s: %s", q, e)
         clean_title = re.sub(r"\s*-\s*זאפ השוואת מחירים\s*$", "", title).strip()
         sh = shadows.get(cap)
+
+        # האם אנחנו כבר על דף ההשוואה? זו השאלה שקובעת אם בכלל צריך לפעול.
+        listed = False
+        if mid:
+            data = fetch_model(mid)
+            listed = bool(data and data.get("we_listed"))
+
+        # ⚠️ מוצר צל הוא הפתרון **רק** לכמה נפחים תחת כותרת אחת. בנפח יחיד
+        # המוצר עצמו אמור להשתדר, והתיקון הוא כותרת/הסתרה — לא צל
+        # (אסי, 27/07/2026: "נפח יחיד, לא צריך מוצר צל").
+        if listed:
+            state, action = "ok", "רשומים בדף ההשוואה"
+        elif not mid:
+            state, action = "no_model", "זאפ לא מכיר דגם לנפח הזה"
+        elif multi:
+            if sh and abs(float(sh.get("price") or 0) - info["price"]) < 0.5:
+                state, action = "shadow_ready", "מוצר הצל קיים ומעודכן — ממתין לסריקת זאפ"
+            elif sh:
+                state, action = "shadow_drift", "מוצר הצל קיים אך במחיר ישן — לסנכרן"
+            else:
+                state, action = "need_shadow", "ליצור מוצר צל בכותרת דגם ההשוואה"
+        elif hidden:
+            state, action = "need_unhide", "להסיר את ההסתרה מזאפ — המוצר לא משודר"
+        elif not in_feed:
+            state, action = "need_feed", "המוצר לא נכלל בפיד — לבדוק מלאי/מחיר/קטגוריה"
+        else:
+            state, action = "need_title", "לשנות את כותרת המוצר לכותרת דגם ההשוואה"
+
         steps.append({
             "cap": cap, "label": label, "price": info["price"], "sku": info["sku"],
-            "modelid": mid, "zap_title": clean_title, "query": q,
-            "shadow_id": (sh or {}).get("id"),
-            "shadow_price": (sh or {}).get("price"),
+            "modelid": mid, "zap_title": clean_title, "query": q, "listed": listed,
+            "shadow_id": (sh or {}).get("id"), "shadow_price": (sh or {}).get("price"),
             "suggested_name": clean_title or f"{core} {label}".strip(),
-            "state": ("no_model" if not mid else
-                      "ok" if sh and abs(float(sh.get("price") or 0) - info["price"]) < 0.5 else
-                      "shadow_drift" if sh else "need_shadow"),
+            "state": state, "action": action,
         })
         time.sleep(0.8)
 
-    need = [s for s in steps if s["state"] in ("need_shadow", "shadow_drift")]
-    nomodel = [s for s in steps if s["state"] == "no_model"]
+    ok = [x for x in steps if x["state"] in ("ok", "shadow_ready")]
+    nomodel = [x for x in steps if x["state"] == "no_model"]
+    todo = [x for x in steps if x["state"] not in ("ok", "shadow_ready", "no_model")]
     return {"ok": True, "product_id": int(pid), "name": p.get("name"),
-            "hidden": hidden, "type": p.get("type"), "steps": steps,
-            "summary": {"caps": len(steps), "ready": len(steps) - len(need) - len(nomodel),
-                        "need_shadow": len(need), "no_model": len(nomodel),
-                        "parent_should_stay_hidden": bool(steps) and len(steps) > 1}}
+            "hidden": hidden, "in_feed": in_feed, "type": p.get("type"),
+            "multi": len(steps) > 1, "steps": steps,
+            "summary": {"caps": len(steps), "ready": len(ok), "todo": len(todo),
+                        "no_model": len(nomodel),
+                        # מוצרי צל נחוצים אך ורק כשכמה נפחים חולקים כותרת אחת
+                        "shadows_needed": len(steps) > 1,
+                        "parent_should_stay_hidden": len(steps) > 1}}
 
 
 def _summarise(rows: list, partial: bool = False) -> dict:
