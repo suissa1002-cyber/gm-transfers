@@ -645,6 +645,19 @@ def _title_gap(ours: str, zap_title: str) -> list:
     return missing
 
 
+def _our_style(zap_title: str) -> str:
+    """כותרת דגם ההשוואה בסגנון החנות שלנו: בלי הקידומת "טלפון סלולרי"
+    ובלי שם המותג בעברית בסוף. ⚠️ למוצר **צל** משתמשים בכותרת המדויקת של
+    זאפ (הוא מוסתר מהלקוחות והדיוק מקסימלי), אבל כותרת **ההורה** גלויה
+    בחנות ולכן שומרים על הסגנון שלנו. כל האסימונים הדרושים לשיוך — יצרן,
+    דגם, דור רשת, נפח ו-RAM — נשארים (אסי, 27/07/2026)."""
+    t = re.sub(r"^\s*טלפון סלולרי\s*", "", zap_title or "").strip()
+    words = t.split()
+    while words and HEB_RE.fullmatch(words[-1]):
+        words.pop()                       # שם המותג בעברית בסוף
+    return ("סמארטפון " + " ".join(words)).strip() if words else ""
+
+
 def plan(pid) -> dict:
     """מה בדיוק צריך לעשות כדי שהמוצר **בוודאות** יופיע בדף ההשוואה.
 
@@ -788,6 +801,7 @@ def plan(pid) -> dict:
             "modelid": mid, "zap_title": clean_title, "query": q, "listed": listed,
             "shadow_id": (sh or {}).get("id"), "shadow_price": (sh or {}).get("price"),
             "suggested_name": clean_title or f"{core} {label}".strip(),
+            "suggested_our": _our_style(clean_title) or f"{core} {label}".strip(),
             "state": state, "action": action,
         })
         time.sleep(0.8)

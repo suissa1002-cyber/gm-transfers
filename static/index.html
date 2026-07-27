@@ -1752,7 +1752,8 @@ async function zapPlan(rid){
     if(s.state==='need_shadow') return `<button class="btn sm" onclick="zapPlanCreate(${i})">צור מוצר צל</button>`;
     if(s.state==='shadow_drift') return `<button class="btn sm" onclick="zapSyncSh('${escW(rid)}')">סנכרן מחיר</button>`;
     if(s.state==='need_unhide') return `<button class="btn sm" onclick="zapVis('${escW(rid)}',0)">הצג בזאפ</button>`;
-    if(s.state==='need_title') return `<button class="btn sm" onclick="zapCopy(${i})">העתק כותרת</button>`;
+    if(s.state==='need_title') return `<button class="btn sm" onclick="zapRename(${i})">שנה כותרת</button>
+      <button class="zib" title="העתק בלבד" onclick="zapCopy(${i})">${ico('copy',15)}</button>`;
     if(s.state==='zap_side') return `<span class="muted" style="font-size:11px">פנייה לזאפ</span>`;
     return '';
   };
@@ -1795,9 +1796,31 @@ async function zapPlan(rid){
     <div style="text-align:left;margin-top:var(--s4)"><button class="btn" onclick="closeModal()">סגור</button></div>
     </div></div>`;
 }
+// שינוי הכותרת ישירות מהמרשם — הפעולה שסוגרת פער כותרת בלי לצאת לוורדפרס.
+// ⚠️ הכותרת גלויה ללקוחות, ולכן מציגים ישן מול חדש לפני האישור.
+async function zapRename(i){
+  const j=S.zapPlan, st=(j.steps||[])[i]; if(!st) return;
+  // כותרת ההורה גלויה ללקוחות ⇒ סגנון החנות. הכותרת המדויקת של זאפ שמורה
+  // למוצרי צל, שמוסתרים ממילא.
+  const nw=st.suggested_our||st.suggested_name; if(!nw) return;
+  const cur=j.feed_name||j.name||'';
+  if(!confirm('לשנות את כותרת המוצר?\n\nכעת:\n'+cur+'\n\nלאחר השינוי:\n'+nw
+      +'\n\nהכותרת גלויה ללקוחות באתר. הקישור (slug) לא משתנה.'
+      +'\nזאפ יסרוק מחדש תוך 6-24 שעות.')) return;
+  showLoading('משנה כותרת…');
+  try{
+    const res=await api('/api/admin/zap/rename',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({pid:j.product_id,name:nw})},60000);
+    hideLoading();
+    if(!res.ok){ toast(res.error||'נכשל',false); return; }
+    toast('הכותרת שונתה: '+String(res.name||'').slice(0,40),true);
+    closeModal(); loadZap(false);
+  }catch(e){ hideLoading(); toast('שגיאת רשת',false); }
+}
 function zapCopy(i){
   const st=((S.zapPlan||{}).steps||[])[i]; if(!st) return;
-  const t=st.suggested_name||'';
+  const t=st.suggested_our||st.suggested_name||'';
   navigator.clipboard.writeText(t).then(
     ()=>toast('הכותרת הועתקה — הדבק בשם המוצר בווקומרס',true),
     ()=>prompt('העתק את הכותרת:',t));

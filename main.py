@@ -9366,6 +9366,20 @@ def zap_selftest(x_admin_key: Optional[str] = Header(None)):
             "has_feed_skus": hasattr(zap_scan, "_feed_skus"), "cases": out}
 
 
+class ZapRenameIn(BaseModel):
+    pid: int
+    name: str
+
+
+@app.post("/api/admin/zap/rename")
+def zap_rename(body: ZapRenameIn, x_admin_key: Optional[str] = Header(None)):
+    """שינוי כותרת המוצר לכותרת דגם ההשוואה — הפעולה שסוגרת פער כותרת.
+    ⚠️ הכותרת גלויה ללקוחות; הממשק מציג ישן מול חדש לפני האישור."""
+    _require_admin(x_admin_key)
+    import zap_price
+    return zap_price.rename(body.pid, body.name)
+
+
 @app.get("/api/admin/zap/plan")
 def zap_plan(pid: int, x_admin_key: Optional[str] = Header(None)):
     """מה בדיוק צריך כדי שהמוצר יופיע בוודאות בדף ההשוואה — לכל נפח בנפרד.

@@ -390,6 +390,30 @@ def clear_pending(sku: str) -> None:
 
 
 # ─────────────────────── הצגה/הסתרה בזאפ ───────────────────────
+def rename(pid, name: str) -> dict:
+    """שינוי שם המוצר באתר. ⚠️ הכותרת גלויה ללקוחות, ולכן הפעולה מוצגת
+    לאישור עם השם הישן והחדש זה מול זה. ה-slug (הקישור) אינו משתנה —
+    WooCommerce משנה רק את הכותרת, וקישורים קיימים נשארים תקינים."""
+    name = (name or "").strip()
+    if not name:
+        return {"ok": False, "error": "כותרת ריקה"}
+    base, auth = _wc()
+    r = requests.get(f"{base}/wp-json/wc/v3/products/{pid}", auth=auth, timeout=45,
+                     params={"_fields": "id,name,slug"})
+    if not r.ok:
+        return {"ok": False, "error": f"לא נמצא מוצר ({r.status_code})"}
+    before = r.json()
+    w = requests.put(f"{base}/wp-json/wc/v3/products/{pid}", auth=auth, timeout=45,
+                     json={"name": name})
+    if not w.ok:
+        return {"ok": False, "error": f"העדכון נכשל ({w.status_code})",
+                "detail": w.text[:200]}
+    after = w.json()
+    return {"ok": True, "product_id": int(pid), "old": before.get("name"),
+            "name": after.get("name"), "slug": after.get("slug"),
+            "note": "⚠️ זאפ סורק את הפיד מחדש תוך 6-24 שעות"}
+
+
 def zap_visibility(product_id: int = 0, hidden: bool = True, sku: str = "") -> dict:
     """הדלקה/כיבוי של המוצר בפיד זאפ — אותו צ׳קבוקס שבעריכת המוצר.
     ⚠️ הערך חייב להיות 'yes' ולא '1' — התוסף מצפה בדיוק לזה (נלמד בכאב).
