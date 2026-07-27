@@ -225,20 +225,31 @@ def build_targets() -> list:
     return out
 
 
+def _needs_shadow(row: dict) -> bool:
+    """מוצר שמשודר בכותרת אחת אך נושא כמה נפחים, ואין לו מוצרי צל.
+    ⚠️ זאפ משייך לפי שם + נפח (+RAM), ולכן כותרת אחת יכולה להתאים לכל היותר
+    לנפח אחד — שאר הנפחים פשוט לא קיימים שם. זה נכון **גם** כשנמצא דגם
+    תואם: הדגם שנמצא מייצג נפח אחד בלבד (אסי, 27/07/2026)."""
+    return bool(row.get("in_feed")) and len(row.get("caps") or []) > 1 \
+        and not (row.get("shadows") or 0)
+
+
 def _reason(row: dict) -> tuple:
-    """(קוד, טקסט) — למה השורה אינה מחוברת לדגם בזאפ. זה הפלט שמאפשר לפעול."""
-    if row.get("status") == "listed":
-        return ("listed", "רשומים בדף ההשוואה")
+    """(קוד, טקסט) — למה השורה אינה מחוברת (או מחוברת חלקית) לדגם בזאפ."""
+    caps = row.get("caps") or []
     if row.get("zap_hidden"):
         n = row.get("shadows") or 0
         return (("hidden_shadows", f"מוסתר בכוונה · {n} מוצרי צל משודרים במקומו")
                 if n else ("hidden", "מוסתר מזאפ — לא משודר כלל"))
     if not row.get("in_feed"):
         return ("off_feed", "לא נכלל בפיד (בדוק מלאי/מחיר/קטגוריה)")
-    caps = row.get("caps") or []
-    if not row.get("modelid") and len(caps) > 1:
+    if _needs_shadow(row):
+        # קודם לכל השאר: גם אם נמצא דגם, הוא מכסה נפח אחד מתוך כמה
+        extra = " — הדגם שנמצא מכסה נפח אחד בלבד" if row.get("modelid") else ""
         return ("needs_shadow",
-                f"{len(caps)} נפחים בכותרת אחת — זאפ דורש נפח (ורצוי RAM) בכותרת")
+                f"{len(caps)} נפחים בכותרת אחת · זאפ דורש נפח בכותרת{extra}")
+    if row.get("status") == "listed":
+        return ("listed", "רשומים בדף ההשוואה")
     if not row.get("modelid"):
         return ("no_model", "זאפ לא מכיר דגם תואם לכותרת הזו")
     return ("missing", "יש דף השוואה — איננו רשומים עליו")
@@ -554,7 +565,7 @@ def _summarise(rows: list, partial: bool = False) -> dict:
         "catalog": len(rows),
         "in_feed": sum(1 for r in rows if r.get("in_feed")),
         "hidden": sum(1 for r in rows if r.get("zap_hidden")),
-        "needs_shadow": sum(1 for r in rows if r.get("reason_code") == "needs_shadow"),
+        "needs_shadow": sum(1 for r in rows if r.get("needs_shadow")),
         "off_feed": sum(1 for r in rows if r.get("reason_code") == "off_feed"),
         "suspect": sum(1 for r in rows if r.get("status") == "suspect"),
         "in_top5": sum(1 for r in ranked if r["rank"] <= 5),
@@ -638,6 +649,7 @@ def run(limit: int | None = None, sleep: float = 1.1) -> dict:
             g["gap_pct"] = round((g["our_price"] / g["low"] - 1) * 100, 1)
     rows = sorted(by_model.values(), key=lambda r: -(r.get("stock") or 0)) + orphans
     for r in rows:
+        r["needs_shadow"] = 1 if _needs_shadow(r) else 0
         r["reason_code"], r["reason"] = _reason(r)
     # רשת ביטחון שנייה: קריסה חדה במספר השורות היא כמעט תמיד תקלה ולא שינוי
     # אמיתי בקטלוג. עדיף להציג נתון של אתמול מאשר מסך ריק.

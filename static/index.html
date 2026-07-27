@@ -1467,7 +1467,7 @@ function renderZap(){
     if(Z.state==='pending') return !!Z.pend[r.sku];
     // דלי לפי הסיבה — כך אפשר לעבוד על "מוסתרים" ועל "דורש מוצר צל" כרשימות
     if(Z.state==='hidden')  return !!r.zap_hidden;
-    if(Z.state==='shadow')  return r.reason_code==='needs_shadow';
+    if(Z.state==='shadow')  return !!r.needs_shadow;
     if(Z.state==='offfeed') return r.reason_code==='off_feed';
     if(Z.state && Z.state!==zapState(r).k) return false;
     return true;
@@ -1512,7 +1512,7 @@ function renderZap(){
       ${chip('suspect','חשוד',cnt('suspect'))}
       <span class="zsep"></span>
       <button class="zchip${Z.state==='hidden'?' on':''}" onclick="zapSet('state','hidden')">${ico('eyeOff',13)} מוסתרים <b>${Z.rows.filter(r=>r.zap_hidden).length}</b></button>
-      <button class="zchip${Z.state==='shadow'?' on':''}" onclick="zapSet('state','shadow')">${ico('copy',13)} דורש מוצר צל <b>${Z.rows.filter(r=>r.reason_code==='needs_shadow').length}</b></button>
+      <button class="zchip${Z.state==='shadow'?' on':''}" onclick="zapSet('state','shadow')">${ico('copy',13)} דורש מוצר צל <b>${Z.rows.filter(r=>r.needs_shadow).length}</b></button>
       <button class="zchip${Z.state==='offfeed'?' on':''}" onclick="zapSet('state','offfeed')">לא בפיד <b>${Z.rows.filter(r=>r.reason_code==='off_feed').length}</b></button>
       <button class="zchip${Z.state==='pending'?' on':''}" onclick="zapSet('state','pending')">● ממתין לקופה <b>${Z.pendN}</b></button>
     </div>
