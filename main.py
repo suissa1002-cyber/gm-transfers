@@ -9446,6 +9446,23 @@ def zap_feed(cat: int = 1934, x_admin_key: Optional[str] = Header(None)):
             **({} if rows else {"reason": "אין ZAP_FEED_KEY או שהפיד לא נגיש"})}
 
 
+@app.get("/api/zap/acts")
+def zap_acts():
+    """פעולות שבוצעו אצלנו וממתינות לסריקה הבאה של זאפ (6-24 שעות).
+    קריאה ציבורית כמו הדוח — הקונסולה מציגה אותן כחיווי בשורה."""
+    import zap_price
+    return {"ok": True, "acts": zap_price.acts()}
+
+
+@app.post("/api/admin/zap/act-clear")
+def zap_act_clear(pid: int, x_admin_key: Optional[str] = Header(None)):
+    """הסרת החיווי — כשכבר אין טעם לחכות או שהשיוך הושלם."""
+    _require_admin(x_admin_key)
+    import zap_price
+    zap_price.act_clear(pid)
+    return {"ok": True, "pid": pid}
+
+
 @app.get("/api/zap/pending")
 def zap_pending_list():
     """שינויי מחיר שנעשו מהדוח וטרם עודכנו בקופה. ציבורי-לקריאה כמו הדוח."""

@@ -402,6 +402,37 @@ def clear_pending(key: str) -> None:
 
 
 # ─────────────────────── הצגה/הסתרה בזאפ ───────────────────────
+# ─────────── פעולות שממתינות לסריקה הבאה של זאפ ───────────
+def act_log(pid, kind: str, detail: str = "") -> None:
+    """רישום פעולה שהשפעתה תיראה רק אחרי שזאפ יסרוק מחדש (6-24 שעות).
+    ⚠️ בלי זה אי אפשר לדעת מהטבלה על מה כבר עבדת: אסי שינה כותרת, והשורה
+    נראתה בדיוק כמו קודם (27/07/2026)."""
+    try:
+        db.sales_state_set(f"zap_act:{pid}", json.dumps(
+            {"pid": str(pid), "kind": kind, "detail": detail[:160],
+             "at": datetime.now().isoformat(timespec="seconds")}, ensure_ascii=False))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("zap act_log failed: %s", e)
+
+
+def acts() -> dict:
+    """מזהה מוצר → הפעולה האחרונה שנעשתה עליו וממתינה לזאפ."""
+    out = {}
+    for k, v in db.sales_state_prefix("zap_act:"):
+        if not v:
+            continue
+        try:
+            r = json.loads(v)
+            out[str(r.get("pid"))] = r
+        except Exception:  # noqa: BLE001
+            pass
+    return out
+
+
+def act_clear(pid) -> None:
+    db.sales_state_set(f"zap_act:{pid}", "")
+
+
 def rename(pid, name: str) -> dict:
     """שינוי שם המוצר באתר. ⚠️ הכותרת גלויה ללקוחות, ולכן הפעולה מוצגת
     לאישור עם השם הישן והחדש זה מול זה. ה-slug (הקישור) אינו משתנה —
@@ -421,6 +452,7 @@ def rename(pid, name: str) -> dict:
         return {"ok": False, "error": f"העדכון נכשל ({w.status_code})",
                 "detail": w.text[:200]}
     after = w.json()
+    act_log(pid, "title", after.get("name") or name)
     return {"ok": True, "product_id": int(pid), "old": before.get("name"),
             "name": after.get("name"), "slug": after.get("slug"),
             "note": "⚠️ זאפ סורק את הפיד מחדש תוך 6-24 שעות"}
@@ -447,6 +479,7 @@ def zap_visibility(product_id: int = 0, hidden: bool = True, sku: str = "") -> d
         affected = (r.json() or {}).get("name") or ""
     except Exception:  # noqa: BLE001
         affected = ""
+    act_log(product_id, "hidden" if hidden else "shown", affected)
     return {"ok": True, "product_id": product_id, "hidden": hidden, "name": affected}
 
 
@@ -542,6 +575,7 @@ def create_shadow(sku: str, pid=None) -> dict:
     new = r.json()
     # ההורה חייב להיות מוסתר מזאפ, אחרת גם הוא וגם הצללים יופיעו
     zap_visibility(tgt["parent"], True)
+    act_log(tgt["parent"], "shadow", new.get("name") or "")
     return {"ok": True, "shadow_id": new.get("id"), "name": new.get("name"),
             "url": payload["external_url"], "parent_hidden": True,
             "note": "⚠️ ודא שהכותרת תואמת לכותרת דגם ההשוואה בזאפ (שם + נפח + RAM)"}

@@ -934,6 +934,16 @@ def run(limit: int | None = None, sleep: float = 1.1) -> dict:
     for r in rows:
         r["needs_shadow"] = 1 if _needs_shadow(r) else 0
         r["reason_code"], r["reason"] = _reason(r)
+    # החיווי "ממתין לשיוך זאפ" נמחק מעצמו ברגע שהשיוך קרה — אין טעם לבקש
+    # מאסי לנקות ידנית משהו שהסריקה כבר יודעת
+    try:
+        import zap_price
+        done = zap_price.acts()
+        for r in rows:
+            if r.get("reason_code") == "listed" and str(r.get("id")) in done:
+                zap_price.act_clear(r["id"])
+    except Exception as e:  # noqa: BLE001
+        logger.warning("zap: act cleanup failed: %s", e)
     # רשת ביטחון שנייה: קריסה חדה במספר השורות היא כמעט תמיד תקלה ולא שינוי
     # אמיתי בקטלוג. עדיף להציג נתון של אתמול מאשר מסך ריק.
     prev = latest() or {}

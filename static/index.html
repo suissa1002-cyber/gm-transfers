@@ -467,6 +467,10 @@
         overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .zalt{display:block;font-size:11.5px;color:var(--txt-3);max-width:330px;
         overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .zact-b{display:inline-flex;align-items:center;gap:4px;margin-top:4px;font-size:11px;
+          color:var(--brand-ink);background:var(--brand-bg);border-radius:var(--r-pill);
+          padding:2px 8px;white-space:nowrap}
+  .zact-b.late{color:var(--amber-ink);background:var(--amber-bg)}
   .zsku{display:inline-block;font-variant-numeric:tabular-nums;background:var(--card-2);
         border:1px solid var(--line);border-radius:var(--r-xs);padding:1px 6px;margin:1px 2px}
   .zsep{width:1px;align-self:stretch;background:var(--line);margin:0 var(--s2)}
@@ -1443,6 +1447,8 @@ async function loadZap(spinner){
     Z.pend={}; (p.rows||[]).forEach(x=>{ Z.pend[x.sku]=x; });
     Z.pendN=Object.keys(Z.pend).length;
   }catch(e){}
+  // פעולות שממתינות לסריקה הבאה של זאפ — חיווי בשורה בלי לפתוח את המרשם
+  try{ const A=await api('/api/zap/acts',null,30000); Z.acts=A.acts||{}; }catch(e){}
   // מפת מוצרי הצל בשליפה אחת — כדי שעמודת הצל תיפתר לכל הטבלה מיד
   try{
     const m=await api('/api/admin/zap/shadows',null,90000);
@@ -1584,6 +1590,7 @@ function zapTable(rows){
         <td class="znum"><span class="zprice">${r.our_price?ils(r.our_price):'—'}</span>${pend?' <span class="zdot" title="שונה כאן — טרם עודכן בקופה">●</span>':''}
           <span class="zsh" id="zsh${escW(zapRid(r))}">${zapShadowCell(r)}</span></td>
         <td><span class="zpill ${st.p}">${st.t}</span>
+          ${zapActBadge(r)}
           ${r.reason&&r.reason_code!=='listed'?`<small class="zwhy" title="${escW(r.reason)}">${escW(r.reason)}</small>`:''}
           ${r.sellers?`<small style="display:block;font-size:11px;color:var(--txt-3);margin-top:4px">מתוך ${r.sellers} מוכרים</small>`:''}</td>
         <td class="znum">${r.low?`<span class="zprice">${ils(r.low)}</span>`:'—'}
@@ -1660,6 +1667,21 @@ function zapDone(r, serverName, msg){
 // פתחה את הדגם השגוי (אסי, 27/07/2026).
 function zapRow(rid){ return (zapInit().rows||[]).find(r=>zapRid(r)===String(rid)); }
 
+// חיווי "בוצע אצלנו — ממתין לזאפ". ⚠️ בלי זה אי אפשר לדעת מהטבלה על מה כבר
+// עבדת: שינוי כותרת נכנס לתוקף מיד אצלנו, אבל השורה נראית בדיוק כמו קודם
+// עד שזאפ סורק מחדש — 6-24 שעות (אסי, 27/07/2026).
+const ZACT={title:'שונתה כותרת',shadow:'נוצר מוצר צל',hidden:'הוסתר מזאפ',shown:'הוחזר לזאפ'};
+function zapActBadge(r){
+  const a=((zapInit().acts)||{})[String(r.id||r.product_id)];
+  if(!a) return '';
+  if(r.reason_code==='listed') return '';       // כבר שויך — אין על מה לחכות
+  const t=String(a.at||'').replace('T',' ');
+  const when=t.slice(11,16)+' '+t.slice(8,10)+'/'+t.slice(5,7);
+  const hrs=(Date.now()-new Date(a.at).getTime())/36e5;
+  const late=hrs>24;
+  return `<small class="zact-b${late?' late':''}" title="${escW((ZACT[a.kind]||a.kind)+' · '+(a.detail||''))}">
+    ${ico('clock',11)} ${escW(ZACT[a.kind]||a.kind)} ${escW(when)} · ${late?'עברו 24ש׳ — כדאי לבדוק':'ממתין לשיוך זאפ'}</small>`;
+}
 function zapShadowCell(r){
   // ⚠️ המטרה (אסי): לוודא שהמחיר שזאפ קורא זהה למחיר שההורה מציג. נפתר מתוך
   // מפת הצללים שנטענת פעם אחת — בלי קליק וללא המתנה לכל שורה.
