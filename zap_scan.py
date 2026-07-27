@@ -258,7 +258,12 @@ def _reason(row: dict) -> tuple:
     gap = _title_gap(row.get("name") or "", row.get("zap_title") or "")
     if gap:
         return ("need_title", "חסר בכותרת: " + ", ".join(gap[:4]))
-    return ("missing", "הכותרת תואמת והמוצר משודר — השיוך תלוי בזאפ")
+    # ⚠️ אין מלאי ⇒ זאפ פשוט לא מציג מוצר שאינו זמין, וזו התנהגות תקינה
+    # מצדם. לערבב את זה עם "תלוי בזאפ" שולח לפנות אליהם על מוצר שאין מה
+    # למכור ממנו (אסי, 27/07/2026). המלאי הוא מלאי הקופה.
+    if not (row.get("stock") or 0):
+        return ("out_of_stock", "אזל מהמלאי — זאפ אינו מציג מוצר שאינו זמין")
+    return ("missing", "הכותרת תואמת, יש מלאי והמוצר משודר — השיוך תלוי בזאפ")
 
 
 # ─────────────────────────── זאפ ───────────────────────────
@@ -849,6 +854,7 @@ def _summarise(rows: list, partial: bool = False) -> dict:
         "needs_shadow": sum(1 for r in rows if r.get("needs_shadow")),
         "need_title": sum(1 for r in rows if r.get("reason_code") == "need_title"),
         "zap_side": sum(1 for r in rows if r.get("reason_code") == "missing"),
+        "out_of_stock": sum(1 for r in rows if r.get("reason_code") == "out_of_stock"),
         "off_feed": sum(1 for r in rows if r.get("reason_code") == "off_feed"),
         "suspect": sum(1 for r in rows if r.get("status") == "suspect"),
         "in_top5": sum(1 for r in ranked if r["rank"] <= 5),
