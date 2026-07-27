@@ -705,9 +705,14 @@ def plan(pid) -> dict:
             if not cur or pr < cur["price"]:      # הזול מייצג — הוא שמתחרה
                 by_cap[cap] = {"price": pr, "sku": v.get("sku") or ""}
     if not by_cap:
+        # ⚠️ יש מוצרים שהנפח שלהם אינו אטריביוט **ולא** מופיע בכותרת (OPPO
+        # Find N6 — הווריאציות נבדלות רק בצבע). המרשם נבנה סביב רשימת נפחים,
+        # ולכן יצא ריק והמסך הציג "0 נפחים" בלי שום פעולה (אסי, 27/07/2026).
+        # שורה אחת בלי נפח: מחפשים לפי שם המוצר בלבד.
         pr = float(p.get("price") or 0)
         cap = _capacity(p.get("name") or "")
-        by_cap = {f"{int(cap):05d}gb": {"price": pr, "sku": ""}} if (cap and pr) else {}
+        by_cap = ({f"{int(cap):05d}gb": {"price": pr, "sku": ""}} if (cap and pr)
+                  else {"": {"price": pr, "sku": ""}} if pr else {})
 
     shadows = {}
     try:
@@ -736,8 +741,9 @@ def plan(pid) -> dict:
     for cap in sorted(by_cap, key=lambda c: int(re.sub(r"\D", "", c) or 0)):
         info = by_cap[cap]
         gb = int(re.sub(r"\D", "", cap) or 0)
-        label = f"{gb // 1024}TB" if gb >= 1024 and gb % 1024 == 0 else f"{gb}GB"
-        q = f"{core} {label}".strip()
+        label = (f"{gb // 1024}TB" if gb >= 1024 and gb % 1024 == 0
+                 else f"{gb}GB") if gb else "ללא נפח"
+        q = (f"{core} {label}" if gb else core).strip()
         mid, title = None, ""
         # אוספים מועמדים מכל השאילתות ובוחרים את הטוב ביותר בסך הכל: מילה
         # שזאפ לא מכיר ("Aston Martin") מדרדרת את השאילתה המלאה, והמקוצרת
