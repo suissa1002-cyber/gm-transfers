@@ -613,9 +613,12 @@ def _title_gap(ours: str, zap_title: str) -> list:
     # אסימוני נפח/זיכרון ("12gb") מדווחים בנפרד ובעברית — לא כפולים
     missing = [t for t in sorted(theirs - mine)
                if t not in skip and not re.fullmatch(r"\d+(gb|tb)", t)]
-    # RAM/נפח נבדקים בנפרד כי הם קריטיים לשיוך
-    if _ram(zt) and _ram(zt) != _ram(ours):
-        missing.append(f"{_ram(zt)}GB RAM")
+    # ⚠️ ה-RAM חסר רק אם **המספר** אינו מופיע אצלנו כלל. "16GB 512GB" מכיל
+    # את הזיכרון בלי המילה "RAM", ודיווח "חסר 16GB RAM" היה מטעה — יש
+    # מוצרים ששויכו בזאפ על בסיס אחסון בלבד (אסי, 27/07/2026).
+    rz = _ram(zt)
+    if rz and rz != _ram(ours) and not re.search(rf"\b{rz}\s*GB\b", ours or "", re.I):
+        missing.append(f"{rz}GB RAM")
     if _capacity(zt) and _capacity(zt) != _capacity(ours):
         missing.append("נפח " + _capacity(zt) + "GB")
     return missing

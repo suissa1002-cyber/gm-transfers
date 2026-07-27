@@ -291,6 +291,36 @@ def set_price(sku: str, price: float, sync_shadow: bool = True, pid=None) -> dic
     if not r.ok:
         return {"ok": False, "error": f"עדכון נכשל ({r.status_code})", "detail": r.text[:200]}
 
+    # ⚠️ שורה בכלי הזאפ = **נפח**, לא צבע: דף ההשוואה מאחד את כל הצבעים.
+    # העדכון פגע בווריאציה אחת בלבד, ו-512GB בשני צבעים נשאר במחירים שונים
+    # (אסי, 27/07/2026). מיישרים את כל אחיות אותו נפח — אבל **רק** את אלה
+    # שהיו באותו מחיר, כדי לא לדרוס הפרש מכוון (eSIM מול nano-SIM+eSIM).
+    siblings = []
+    if tgt["kind"] == "variation" and tgt.get("cap"):
+        try:
+            v = requests.get(f"{base}/wp-json/wc/v3/products/{tgt['parent']}/variations",
+                             auth=auth, timeout=45,
+                             params={"per_page": 100,
+                                     "_fields": "id,sku,price,attributes"})
+            for x in (v.json() if v.ok else []):
+                if x["id"] == tgt["id"] or _cap_from_attrs(x.get("attributes")) != tgt["cap"]:
+                    continue
+                if abs(float(x.get("price") or 0) - float(old or 0)) > 0.5:
+                    skip_reason = f"מחיר שונה (₪{x.get('price')})"
+                    siblings.append({"id": x["id"], "sku": x.get("sku"),
+                                     "updated": False, "reason": skip_reason})
+                    continue
+                rr = requests.put(f"{base}/wp-json/wc/v3/products/{tgt['parent']}"
+                                  f"/variations/{x['id']}", auth=auth, timeout=45,
+                                  json={"regular_price": f"{price:.2f}"})
+                siblings.append({"id": x["id"], "sku": x.get("sku"),
+                                 "color": next((a.get("option") for a in (x.get("attributes") or [])
+                                                if "צבע" in str(a.get("name") or "")), ""),
+                                 "updated": bool(rr.ok),
+                                 **({} if rr.ok else {"reason": f"HTTP {rr.status_code}"})})
+        except Exception as e:  # noqa: BLE001
+            logger.warning("zap: sibling price sync failed: %s", e)
+
     synced, skipped = [], []
     if sync_shadow:
         for sh in shadows_for(tgt["parent"]):
@@ -312,8 +342,11 @@ def set_price(sku: str, price: float, sync_shadow: bool = True, pid=None) -> dic
          "at": datetime.now().isoformat(timespec="seconds"),
          "shadows": len(synced)}, ensure_ascii=False))
     logger.info("zap price %s: %s → %s (shadows synced: %d)", sku, old, price, len(synced))
+    sib_ok = [x for x in siblings if x.get("updated")]
     return {"ok": True, "sku": sku, "old": old, "new": round(price, 2),
-            "target": tgt, "shadows_synced": synced, "shadows_skipped": skipped}
+            "target": tgt, "shadows_synced": synced, "shadows_skipped": skipped,
+            "variants_updated": 1 + len(sib_ok),
+            "siblings": siblings}
 
 
 def sync_shadow_only(sku: str, pid=None) -> dict:
@@ -403,7 +436,11 @@ def feed(cat: int = 1934) -> list:
         g = lambda t: (p.findtext(t) or "").strip()   # noqa: E731
         out.append({"num": p.get("NUM"), "url": g("PRODUCT_URL"), "name": g("PRODUCT_NAME"),
                     "sku": g("CATALOG_NUMBER"), "price": g("PRICE"),
-                    "code": g("PRODUCTCODE")})
+                    "code": g("PRODUCTCODE"),
+                    # שדות שזאפ משתמש בהם לשיוך לדגם — ריקים ברובם אצלנו
+                    "model": g("MODEL"), "manufacturer": g("MANUFACTURER"),
+                    "details": g("DETAILS"), "warranty": g("WARRANTY"),
+                    "size": g("SIZE"), "image": g("IMAGE")})
     return out
 
 

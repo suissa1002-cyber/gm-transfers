@@ -1835,7 +1835,9 @@ function zapToggleRow(i){
 }
 async function zapEditPrice(rid){
   const r=zapRow(rid); if(!r) return;
-  const v=prompt('מחיר חדש באתר עבור '+(r.name||'').slice(0,60)+'\n(הקופה לא תשתנה — יסומן כממתין)', r.our_price||'');
+  const v=prompt('מחיר חדש באתר עבור '+(r.name||'').slice(0,60)
+    +'\n\nיעודכנו כל הצבעים באותו נפח שנמצאים כרגע באותו מחיר.'
+    +'\n(הקופה לא תשתנה — יסומן כממתין)', r.our_price||'');
   if(v===null) return;
   const p=parseFloat(String(v).replace(/[^\d.]/g,''));
   if(!(p>0)){ toast('מחיר לא תקין',false); return; }
@@ -1846,7 +1848,9 @@ async function zapEditPrice(rid){
     hideLoading();
     if(!j.ok){ toast(j.error||'העדכון נכשל',false); return; }
     const n=(j.shadows_synced||[]).length, sk=(j.shadows_skipped||[]).length;
-    zapDone(r, (j.target||{}).name, `עודכן ל-₪${p}${n?` · ${n} צל סונכרן`:''}${sk?` · ${sk} דולג`:''}`);
+    const vu=j.variants_updated||1, sskip=(j.siblings||[]).filter(x=>!x.updated).length;
+    zapDone(r, (j.target||{}).name,
+      `עודכן ל-₪${p} · ${vu} וריאציות${sskip?` (${sskip} דולגו — מחיר שונה)`:''}${n?` · ${n} צל סונכרן`:''}${sk?` · ${sk} דולג`:''}`);
     loadZap(false);
   }catch(e){ hideLoading(); toast('שגיאת רשת',false); }
 }
