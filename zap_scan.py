@@ -564,6 +564,27 @@ def analyse(t: dict) -> dict:
 
 
 # ────────────────────── מרשם: מה צריך כדי להופיע ──────────────────────
+def _title_gap(ours: str, zap_title: str) -> list:
+    """אילו אסימונים מכותרת הדגם בזאפ **חסרים** בכותרת שלנו.
+    ⚠️ "לשנות כותרת" בלי להגיד מה חסר הוא עצה חסרת ערך, וגרוע מזה — הוא נאמר
+    גם כשהכותרת כן תואמת (אסי, 27/07/2026). כאן משווים אסימון-אסימון, ואם
+    לא חסר כלום — אומרים זאת במפורש במקום להמציא סיבה."""
+    norm = lambda t: set(re.findall(r"[a-z0-9]{2,}", (t or "").lower()))
+    zt = re.sub(r"\s*-\s*זאפ השוואת מחירים\s*$", "", zap_title or "")
+    mine, theirs = norm(ours), norm(zt)
+    # מילים גנריות שזאפ מוסיף לכותרת ואינן חלק מזיהוי הדגם
+    skip = {"gb", "tb", "5g", "4g", "ram", "dual", "sim"}
+    # אסימוני נפח/זיכרון ("12gb") מדווחים בנפרד ובעברית — לא כפולים
+    missing = [t for t in sorted(theirs - mine)
+               if t not in skip and not re.fullmatch(r"\d+(gb|tb)", t)]
+    # RAM/נפח נבדקים בנפרד כי הם קריטיים לשיוך
+    if _ram(zt) and _ram(zt) != _ram(ours):
+        missing.append(f"{_ram(zt)}GB RAM")
+    if _capacity(zt) and _capacity(zt) != _capacity(ours):
+        missing.append("נפח " + _capacity(zt) + "GB")
+    return missing
+
+
 def plan(pid) -> dict:
     """מה בדיוק צריך לעשות כדי שהמוצר **בוודאות** יופיע בדף ההשוואה.
 
@@ -615,10 +636,14 @@ def plan(pid) -> dict:
     except Exception:  # noqa: BLE001
         pass
 
-    # האם המוצר בכלל משודר כרגע
-    in_feed = False
+    # ⚠️ ההשוואה חייבת להיות מול השם **שבפיד**, לא מול שם ה-WC: זה מה שזאפ
+    # באמת מקבל, והשניים לא תמיד זהים.
+    in_feed, feed_name = False, ""
     try:
-        in_feed = any(str(f.get("num")) == pid for f in (zap_price.feed(1934) or []))
+        for f in (zap_price.feed(1934) or []):
+            if str(f.get("num")) == pid:
+                in_feed, feed_name = True, f.get("name") or ""
+                break
     except Exception:  # noqa: BLE001
         pass
 
@@ -670,7 +695,17 @@ def plan(pid) -> dict:
         elif not in_feed:
             state, action = "need_feed", "המוצר לא נכלל בפיד — לבדוק מלאי/מחיר/קטגוריה"
         else:
-            state, action = "need_title", "לשנות את כותרת המוצר לכותרת דגם ההשוואה"
+            gap = _title_gap(feed_name or p.get("name") or "", clean_title)
+            if gap:
+                state = "need_title"
+                action = "חסר בכותרת שלנו: " + ", ".join(gap[:5])
+            else:
+                # ⛔ לא ממציאים סיבה. הכותרת תואמת, המוצר משודר — מכאן זה
+                # תלוי בשיוך שזאפ עושה בצד שלו, ולא בשום דבר שנשנה כאן.
+                state = "zap_side"
+                action = ("הכותרת תואמת והמוצר משודר — השיוך לדגם נעשה בצד זאפ"
+                          + (" · שים לב שלא נשלח מק״ט (CATALOG_NUMBER ריק)"
+                             if not info["sku"] else ""))
 
         steps.append({
             "cap": cap, "label": label, "price": info["price"], "sku": info["sku"],
@@ -683,9 +718,10 @@ def plan(pid) -> dict:
 
     ok = [x for x in steps if x["state"] in ("ok", "shadow_ready")]
     nomodel = [x for x in steps if x["state"] == "no_model"]
-    todo = [x for x in steps if x["state"] not in ("ok", "shadow_ready", "no_model")]
+    todo = [x for x in steps if x["state"] not in ("ok", "shadow_ready", "no_model", "zap_side")]
     return {"ok": True, "product_id": int(pid), "name": p.get("name"),
-            "hidden": hidden, "in_feed": in_feed, "type": p.get("type"),
+            "hidden": hidden, "in_feed": in_feed, "feed_name": feed_name,
+            "type": p.get("type"),
             "multi": len(steps) > 1, "steps": steps,
             "summary": {"caps": len(steps), "ready": len(ok), "todo": len(todo),
                         "no_model": len(nomodel),

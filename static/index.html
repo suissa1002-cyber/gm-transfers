@@ -1746,12 +1746,14 @@ async function zapPlan(rid){
     ok:['p-ok','רשומים ✓'], shadow_ready:['p-ok','צל מוכן'],
     need_shadow:['p-warn','חסר מוצר צל'], shadow_drift:['p-bad','מחיר הצל ישן'],
     need_title:['p-warn','כותרת לא תואמת'], need_unhide:['p-warn','מוסתר מזאפ'],
+    zap_side:['p-bad','ממתין לשיוך בזאפ'],
     need_feed:['p-warn','לא בפיד'], no_model:['p-off','אין דגם בזאפ']})[st]||['p-off','—'];
   const act=(s,i)=>{
     if(s.state==='need_shadow') return `<button class="btn sm" onclick="zapPlanCreate(${i})">צור מוצר צל</button>`;
     if(s.state==='shadow_drift') return `<button class="btn sm" onclick="zapSyncSh('${escW(rid)}')">סנכרן מחיר</button>`;
     if(s.state==='need_unhide') return `<button class="btn sm" onclick="zapVis('${escW(rid)}',0)">הצג בזאפ</button>`;
     if(s.state==='need_title') return `<button class="btn sm" onclick="zapCopy(${i})">העתק כותרת</button>`;
+    if(s.state==='zap_side') return `<span class="muted" style="font-size:11px">פנייה לזאפ</span>`;
     return '';
   };
   const rows=(j.steps||[]).map((s,i)=>{
@@ -1779,7 +1781,9 @@ async function zapPlan(rid){
       <div class="muted" style="font-size:12.5px">
         ${su.shadows_needed
           ? '<b>ההורה חייב להישאר מוסתר.</b> כותרת אחת לא יכולה לייצג כמה נפחים — זאפ משייך לפי שם + נפח, ולכן כל נפח מגיע דרך מוצר הצל שלו.'
-          : 'נפח יחיד — <b>אין צורך במוצר צל.</b> המוצר עצמו אמור להשתדר, ולכן התיקון הוא בכותרת שלו ובכך שהוא לא מוסתר.'}
+          : ((j.steps||[]).some(x=>x.state==='zap_side')
+             ? '<b>מצדנו הכל תקין.</b> הכותרת תואמת לדגם והמוצר משודר בפיד — השיוך עצמו נעשה בצד זאפ, ואין שינוי אצלנו שיזרז אותו. זה המקרה שבו פונים אליהם.'
+             : 'נפח יחיד — <b>אין צורך במוצר צל.</b> המוצר עצמו אמור להשתדר, ולכן התיקון הוא בכותרת שלו ובכך שהוא לא מוסתר.')}
       </div>
     </div>
     <table class="zsub"><thead><tr><th>נפח</th><th>מצב</th><th>דגם ההשוואה בזאפ</th><th></th></tr></thead>
