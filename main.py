@@ -9450,7 +9450,7 @@ def zap_selftest(x_admin_key: Optional[str] = Header(None)):
                        ("zap_visibility", {"product_id", "hidden", "sku"}),
                        ("rename", {"pid", "name"}),
                        ("act_log", {"pid", "kind", "detail", "at"})):
-        _sig = set(_insp.signature(getattr(zap_price, _fn)).parameters)
+        _sig = set(_insp.signature(getattr(_zp, _fn)).parameters)
         _ok_sig = _need <= _sig
         if not _ok_sig:
             bad += 1
@@ -9458,9 +9458,8 @@ def zap_selftest(x_admin_key: Optional[str] = Header(None)):
                     "got": sorted(_sig), "ok": _ok_sig})
     # ⚠️ מק"ט ריק אסור שיחזיר מוצר: WooCommerce מתעלם מ-?sku= ריק ומחזיר את כל
     # הקטלוג, ו"הסתר מזאפ" הסתיר את המוצר הראשון ברשימה (27/07/2026).
-    import zap_price
     for bad_sku in ("", "   "):
-        got = zap_price.find_by_sku(bad_sku)
+        got = _zp.find_by_sku(bad_sku)
         if got is not None:
             bad += 1
         out.append({"query": f"find_by_sku({bad_sku!r}) → None", "want": None,
