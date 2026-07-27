@@ -40,7 +40,24 @@ scheduler = BackgroundScheduler(timezone=cfg.TZ)
 # ──────────────────────────────────────────────────────────────
 # רקע: poller + התראות
 # ──────────────────────────────────────────────────────────────
+_last_api_poll = {"t": 0.0}
+
+
 def _poll_job():
+    # ⏱️ קצב מותאם-שעות: ה-job עצמו מתוזמן בקצב המהיר, ובשעות הלילה הוא **מדלג**
+    # על הקריאה בפועל עד שעובר `poll_interval_now()`. כך הסניפים מקבלים ~75ש בשעות
+    # עבודה בלי לשרוף את אותו קצב על שעות שבהן לא זזה העברה (מכסת NewOrder, 26/07).
+    # החותמת poll_last_run מתעדכנת גם בדילוג — ה-job חי, הוא רק בחר לא לקרוא.
+    import time as _tp
+    _iv_now = cfg.poll_interval_now()
+    if _tp.time() - _last_api_poll["t"] < _iv_now - 5:      # -5ש: סבילות ל-jitter
+        try:
+            from datetime import datetime as _dts, timezone as _tzs
+            db.sales_state_set("poll_last_run", _dts.now(_tzs.utc).isoformat())
+        except Exception:  # noqa: BLE001
+            pass
+        return
+    _last_api_poll["t"] = _tp.time()
     result = poller.poll_once()
     # ── 🩺 ניטור בריאות ה-poller: NewOrder נופל (500) → ה-poller עיוור והעברות
     # נתקעות בשקט. מתריעים בטלגרם אחרי 3 כשלים רצופים (~1.5 דק'), תזכורת כל ~30 דק',
@@ -3875,7 +3892,8 @@ def _poller_health() -> dict:
         except Exception:  # noqa: BLE001
             return None
     ra, oa = _age("poll_last_run"), _age("poll_last_ok")
-    iv = cfg.POLL_INTERVAL_SEC
+    # הקצב האפקטיבי לרגע זה (בלילה איטי בכוונה) — אחרת "NewOrder נפול" מתריע שווא
+    iv = cfg.poll_interval_now()
     dead = (ra is None) or (ra > max(300, iv * 6))
     return {"job_dead": dead, "run_age_sec": ra, "ok_age_sec": oa,
             "fail_streak": int(db.sales_state_get("poll_fail_streak", 0) or 0),

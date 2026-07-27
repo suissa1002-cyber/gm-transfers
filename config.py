@@ -36,13 +36,34 @@ SQLITE_PATH = os.getenv("TRANSFERS_DB_PATH",
                         os.path.join(os.path.dirname(__file__), "transfers.db"))
 
 # ── Poller ──
-# ⚠️ רצפה קשיחה של 180ש — לא רק ברירת מחדל. השיעור מ-21/07: שינינו את ברירת המחדל
-# 30→60 וזה לא עשה כלום, כי ב-Render מוגדר `POLL_INTERVAL_SEC=30` מפורשות והוא גובר.
-# NewOrder עדיין התלוננו (רפי, 23/07). מדידה חיה 26/07: הפולר רץ כל ~30ש בפועל.
-# ⇒ הערך האפקטיבי לא יורד מ-180ש גם אם ה-env אומר אחרת; להאיץ = להעלות את הרצפה כאן,
-# בקוד, במודע. חלון הבטיחות (3 ימים) ממילא קולט כל העברה שהוחמצה בסבב.
-_POLL_FLOOR_SEC = 180
-POLL_INTERVAL_SEC = max(_POLL_FLOOR_SEC, int(os.getenv("POLL_INTERVAL_SEC", "180")))
+# ⚠️ רצפה קשיחה — לא רק ברירת מחדל. השיעור מ-21/07: שינינו את ברירת המחדל 30→60 וזה
+# לא עשה כלום, כי ב-Render מוגדר `POLL_INTERVAL_SEC=30` מפורשות והוא גובר. NewOrder
+# עדיין התלוננו (רפי, 23/07). ⇒ הערך האפקטיבי לא יורד מהרצפה גם אם ה-env אומר אחרת;
+# להאיץ = להוריד את הרצפה כאן, בקוד, במודע.
+_POLL_FLOOR_SEC = 75
+POLL_INTERVAL_SEC = max(_POLL_FLOOR_SEC, int(os.getenv("POLL_INTERVAL_SEC", "75")))
+
+# 🕗 קצב מותאם-שעות (26/07): העברות נעשות רק כשהסניפים פתוחים — בסטאר לעיתים תוך כדי
+# מכירה, ואז 3 דק' המתנה זה יותר מדי (אסי). לכן מהיר בשעות עבודה ואיטי בלילה: זה נותן
+# ~75ש בשעות שבהן זה משנה, ועדיין ~80% פחות קריאות מהמצב שהציף את NewOrder — במקום
+# לשרוף את אותו קצב 24/7 על שעות שבהן לא זזה שום העברה.
+POLL_IDLE_INTERVAL_SEC = max(POLL_INTERVAL_SEC,
+                             int(os.getenv("POLL_IDLE_INTERVAL_SEC", "900")))
+POLL_ACTIVE_FROM_HOUR = int(os.getenv("POLL_ACTIVE_FROM_HOUR", "7"))    # כולל
+POLL_ACTIVE_TO_HOUR = int(os.getenv("POLL_ACTIVE_TO_HOUR", "23"))       # לא כולל
+
+
+def poll_interval_now() -> int:
+    """הקצב האפקטיבי לרגע זה (שעון ישראל): מהיר בשעות פעילות, איטי בלילה.
+    ⚠️ בספק — מחזיר את הקצב המהיר (עדיף קריאה מיותרת מהעברה שנתקעת)."""
+    try:
+        from datetime import datetime as _dt
+        from zoneinfo import ZoneInfo as _ZI
+        h = _dt.now(_ZI(TZ)).hour
+    except Exception:  # noqa: BLE001
+        return POLL_INTERVAL_SEC
+    return (POLL_INTERVAL_SEC if POLL_ACTIVE_FROM_HOUR <= h < POLL_ACTIVE_TO_HOUR
+            else POLL_IDLE_INTERVAL_SEC)
 # כמה ימים אחורה למשוך בכל סבב (חלון בטיחות; העברות פתוחות נשארות ב-DB ממילא)
 POLL_LOOKBACK_DAYS = int(os.getenv("POLL_LOOKBACK_DAYS", "3"))
 
