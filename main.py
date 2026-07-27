@@ -489,11 +489,15 @@ def register_recurring_jobs():
     # אינדקס סריאל→מוצר: סבב baseline כל 3 שעות. ריצה ראשונית רק אם האינדקס ישן —
     # הוא נשמר ב-DB, ואין סיבה לשרוף ~555 קריאות אחרי כל deploy/restart
     # (זה גם מה שגרם ל"שגיאת קופה" בטאב מלאי חי: הסנכרון הרווה את מגבלת הקצב).
-    # ⚠️ שבועי, לא כל 3 שעות (26/07): מיפוי סריאל→מוצר **לא משתנה לעולם**, ובכל זאת
-    # בנינו אותו מחדש 8 פעמים ביום = ~3,400 קריאות/יום ל-NewOrder — הצרכן #2 בדוח של
-    # רפי. סריאל חדש נקלט ממילא חי: מה-poller (פריטי העברה) ומ-misroute בסריקה.
-    scheduler.add_job(_serial_sync_job, "interval", days=7, id="serial_sync", max_instances=1)
-    if _is_stale(db.serial_index_last_sync(), hours=168):
+    # ⚠️ יומי ב-04:00, לא כל 3 שעות (26/07): מיפוי סריאל→מוצר **לא משתנה לעולם**,
+    # ובכל זאת בנינו אותו מחדש 8 פעמים ביום = ~3,900 קריאות/יום ל-NewOrder — הצרכן #2
+    # בדוח של רפי. שקלנו שבועי, אבל האינדקס מזין את זיהוי "מכשיר לא במקום" בסריקה
+    # (misroute), ומכשיר שהגיע **מספק** (לא בהעברה) נכנס אליו רק בסבב הזה — שבוע היה
+    # אומר "מכשיר לא מזוהה" לעובד בסניף. יומי בלילה = לכל היותר יממה, בלי להפריע.
+    # (הקליטה עצמה לא תלויה באינדקס — receive_scan מתאים מול פריטי ההעברה.)
+    scheduler.add_job(_serial_sync_job, "cron", hour=4, minute=0,
+                      id="serial_sync", max_instances=1)
+    if _is_stale(db.serial_index_last_sync(), hours=24):
         scheduler.add_job(_serial_sync_job, "date", id="serial_sync_initial",
                           run_date=datetime.now() + timedelta(seconds=60))
     else:
