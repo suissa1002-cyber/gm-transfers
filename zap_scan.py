@@ -147,7 +147,8 @@ def _catalog(cat: int = 1934) -> list:
             r = requests.get(f"{base}/wp-json/wc/v3/products", auth=auth, timeout=60,
                              params={"category": cat, "per_page": 100, "page": page,
                                      "status": "publish", "_fields":
-                                     "id,name,type,price,permalink,meta_data"})
+                                     "id,name,type,price,permalink,meta_data,"
+                                     "stock_status,catalog_visibility"})
             rows = r.json() if r.ok else []
         except Exception as e:  # noqa: BLE001
             logger.warning("zap: catalog page %s failed: %s", page, e)
@@ -219,6 +220,10 @@ def build_targets() -> list:
             "our_price": price or None, "product_id": pid,
             "site_url": (f or {}).get("url") or c.get("permalink"),
             "in_feed": 1 if f else 0, "zap_hidden": hidden,
+            # מצב המלאי **באתר** — לא בקופה. מוצר שאינו במלאי באתר לא נכנס
+            # לפיד, ובעיקר: לא ניתן למכור אותו בכלל.
+            "site_instock": 0 if c.get("stock_status") == "outofstock" else 1,
+            "cat_hidden": 1 if c.get("catalog_visibility") in ("hidden", "search") else 0,
             "is_shadow": 1 if int(pid) in shadow_ids else 0,
             "shadows": len(shadows.get(pid) or []), "caps": caps,
         })
@@ -242,7 +247,20 @@ def _reason(row: dict) -> tuple:
         return (("hidden_shadows", f"מוסתר בכוונה · {n} מוצרי צל משודרים במקומו")
                 if n else ("hidden", "מוסתר מזאפ — לא משודר כלל"))
     if not row.get("in_feed"):
-        return ("off_feed", "לא נכלל בפיד (בדוק מלאי/מחיר/קטגוריה)")
+        # ⚠️ "בדוק מלאי/מחיר/קטגוריה" היא עצה חסרת ערך. הסיבה השכיחה היא
+        # שהמוצר מסומן **לא במלאי באתר** — וזו בעיה חמורה בהרבה מזאפ: הוא
+        # פשוט לא ניתן למכירה (אסי, 27/07/2026).
+        if not row.get("site_instock", 1):
+            pos = row.get("stock") or 0
+            if pos:
+                # ⚠️ דלי נפרד, ובכוונה: זו אינה בעיית זאפ אלא בעיית **מכירה**.
+                # יש מלאי בקופה והאתר מסומן "אזל" — המוצר לא ניתן לרכישה כלל.
+                return ("not_sellable",
+                        f"⚠️ לא במלאי באתר אך {pos} יח׳ בקופה — לא ניתן למכירה")
+            return ("off_feed", "לא במלאי באתר — ולכן אינו נכלל בפיד")
+        if row.get("cat_hidden"):
+            return ("off_feed", "מוסתר מהקטלוג באתר — ולכן אינו נכלל בפיד")
+        return ("off_feed", "לא נכלל בפיד — בדוק מחיר, קטגוריה ותנאי התוסף")
     if _needs_shadow(row):
         # קודם לכל השאר: גם אם נמצא דגם, הוא מכסה נפח אחד מתוך כמה
         extra = " — הדגם שנמצא מכסה נפח אחד בלבד" if row.get("modelid") else ""
@@ -855,6 +873,7 @@ def _summarise(rows: list, partial: bool = False) -> dict:
         "need_title": sum(1 for r in rows if r.get("reason_code") == "need_title"),
         "zap_side": sum(1 for r in rows if r.get("reason_code") == "missing"),
         "out_of_stock": sum(1 for r in rows if r.get("reason_code") == "out_of_stock"),
+        "not_sellable": sum(1 for r in rows if r.get("reason_code") == "not_sellable"),
         "off_feed": sum(1 for r in rows if r.get("reason_code") == "off_feed"),
         "suspect": sum(1 for r in rows if r.get("status") == "suspect"),
         "in_top5": sum(1 for r in ranked if r["rank"] <= 5),
