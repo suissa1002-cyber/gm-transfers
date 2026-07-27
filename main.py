@@ -9329,6 +9329,16 @@ def zap_selftest(x_admin_key: Optional[str] = Header(None)):
         if got != want:
             bad += 1
         out.append({"query": q, "want": want, "got": got, "ok": got == want})
+    # ⚠️ דפי שירות נושאים את שם הדגם המלא ולכן מקבלים ציון חפיפה גבוה —
+    # "החלפת סוללה Apple iPhone 16 Plus" נבחר כדגם ההשוואה של האייפון.
+    for t, want_ok in [("החלפת סוללה Apple iPhone 16 Plus אפל", False),
+                       ("מכונת כביסה Samsung WW7ST4043CE", False),
+                       ("טלפון סלולרי Apple iPhone 17 Pro Max 256GB אפל", True)]:
+        got = zap_scan._is_phone_page(t)
+        if got != want_ok:
+            bad += 1
+        out.append({"query": "phone-page: " + t[:34], "want": want_ok,
+                    "got": got, "ok": got == want_ok})
     # ⚠️ בין מועמדים שכולם עוברים — בוחרים את הטוב ביותר. "Dream Edition"
     # ו-"GT 8 Pro" הרגיל שניהם עוברים, והמוצר שלנו הושווה לדף הלא נכון.
     ed = [("Realme GT 8 Pro 5G Aston Martin Dream Edition 512GB 16GB RAM",

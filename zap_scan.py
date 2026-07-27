@@ -261,7 +261,8 @@ CAP_RE = re.compile(r"(\d+)\s*(TB|GB)\b", re.I)
 # אביזרים, טאבלטים ושעונים. בלי הסינון הם נכנסים לדוח ומתמפים לדגם אקראי.
 # ⚠️ "מסך פנימי ... Galaxy Z Fold 7" (חלק חילוף) הגיע לדוח והותאם למכונת
 # כביסה בזאפ. חלקי חילוף יושבים בקטגוריית הסמארטפונים אך אינם מוצר להשוואה.
-ACCESSORY = ("מסך פנימי", "מסך חיצוני", "מסך חלופי", "חלק חילוף", "חלף",
+ACCESSORY = ("ערכת צילום", "ערכת", "מסך פנימי", "מסך חיצוני", "מסך חלופי",
+             "חלק חילוף", "חלף",
              "display assembly", "lcd",
              "case", "cover", "כיסוי", "מגן", "נרתיק", "sandstone", "silicone",
              "כבל", "מטען", "אוזני", "סוללה", "מעמד", "זכוכית", "headset", "headphone",
@@ -326,11 +327,29 @@ def _model_tokens(s: str) -> set:
     return {t for t in toks if not re.fullmatch(r"\d{4,}", t)}   # לא מק"טים
 
 
+# כותרות זאפ נפתחות תמיד בקטגוריה. דפי מכשיר נפתחים באחת מאלה:
+PHONE_PAGE = ("טלפון סלולרי", "סמארטפון", "מכשיר סלולרי", "טלפון ")
+# ⚠️ ואלה דפי **שירות/אביזר** שנושאים את שם הדגם המלא, ולכן מקבלים ציון
+# חפיפה גבוה ונבחרו על פני דף המכשיר: "החלפת סוללה Apple iPhone 16 Plus"
+# הוצג כדגם ההשוואה של האייפון עצמו (אסי, 27/07/2026).
+NOT_PHONE = ("החלפת", "תיקון", "מכונת", "טאבלט", "מחשב", "אוזניות", "שעון",
+             "מטען", "כיסוי", "מגן", "סוללה חלופית", "כבל", "מסך ל")
+
+
+def _is_phone_page(title: str) -> bool:
+    t = re.sub(r"\s+", " ", (title or "")).strip()
+    if any(t.startswith(x) for x in NOT_PHONE):
+        return False
+    return any(t.startswith(x) for x in PHONE_PAGE)
+
+
 def _match_ok(our_name: str, zap_title: str) -> bool:
     """האם דף המודל בזאפ באמת מתאר את המוצר שלנו.
     ⚠️ בלי זה החיפוש מחזיר את התוצאה הראשונה בעמוד גם כשהיא דגם אחר לגמרי —
     כך 'Redmi A7 Pro' ו-'S26 Ultra' מופו בטעות ל-iPhone 17 (26/07/2026)."""
     if not zap_title:
+        return False
+    if not _is_phone_page(zap_title):     # דף שירות/אביזר, לא דף מכשיר
         return False
     if brand_of(our_name) != brand_of(zap_title):
         return False
