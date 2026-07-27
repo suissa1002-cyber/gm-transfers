@@ -193,7 +193,7 @@ def shadows_for(parent_id: int) -> list:
     return out
 
 
-def find_by_pid(pid) -> dict | None:
+def find_by_pid(pid, cap: str = "") -> dict | None:
     """אותה תשובה כמו find_by_sku, אבל לפי מזהה מוצר ב-WC.
     ⚠️ נחוץ כי ל-45 מתוך 65 מוצרי הפיד אין מק"ט על ההורה (הוא יושב על
     הוריאציה), ובלי זה כפתורי הפעולה בשורות האלה פשוט לא עושים כלום."""
@@ -208,7 +208,12 @@ def find_by_pid(pid) -> dict | None:
                          timeout=45, params={"per_page": 100,
                                              "_fields": "id,sku,price,regular_price,attributes"})
         vs = [x for x in (v.json() if v.ok else []) if float(x.get("price") or 0) > 1]
-        if vs:   # הזולה היא זו שמתחרה בזאפ
+        # ⚠️ כשמבקשים נפח מסוים — מחזירים אותו ולא את הזולה. בלי זה לחיצה על
+        # "צור מוצר צל" ל-256GB פנתה לוריאציית 128GB (הזולה), מצאה שכבר יש לה
+        # צל, והחזירה "כבר קיים מוצר צל לתצורה הזו" (אסי, 28/07/2026).
+        if cap:
+            vs = [x for x in vs if _cap_from_attrs(x.get("attributes")) == cap] or vs
+        if vs:   # בהיעדר נפח מבוקש — הזולה היא זו שמתחרה בזאפ
             x = min(vs, key=lambda z: float(z.get("price") or 0))
             return {"kind": "variation", "id": x["id"], "parent": int(pid),
                     "sku": x.get("sku"), "name": p.get("name"), "price": x.get("price"),
@@ -220,13 +225,13 @@ def find_by_pid(pid) -> dict | None:
             "cap": _cap_from_attrs(p.get("attributes")) or _cap_from_text(p.get("name"))}
 
 
-def find_target(sku: str = "", pid=None) -> dict | None:
-    """זהות השורה בכלי זאפ: מק"ט אם יש, אחרת מזהה המוצר."""
+def find_target(sku: str = "", pid=None, cap: str = "") -> dict | None:
+    """זהות השורה בכלי זאפ: מק"ט אם יש, אחרת מזהה המוצר (+נפח מבוקש)."""
     if (sku or "").strip():
         t = find_by_sku(sku)
-        if t:
+        if t and (not cap or t.get("cap") == cap):
             return t
-    return find_by_pid(pid) if pid else None
+    return find_by_pid(pid, cap) if pid else None
 
 
 def find_by_sku(sku: str) -> dict | None:
@@ -581,16 +586,19 @@ def shadow_state(sku: str, pid=None) -> dict:
             "state": "synced" if abs(sp - site) < 0.5 else "drift"}
 
 
-def create_shadow(sku: str = "", pid=None, name: str = "") -> dict:
+def create_shadow(sku: str = "", pid=None, name: str = "", cap: str = "") -> dict:
     """יוצר מוצר צל לזאפ לווריאציה. חמשת השלבים כפי שתועדו אצלנו:
     external+hidden, URL עם האטריביוט, קטגוריות+מותג מההורה, תמונה, והסתרת
     ההורה מזאפ. ⚠️ הערך של _woocommerce_zap_disable חייב להיות 'yes'.
     ⚠️ הכותרת חייבת להתאים לכותרת דגם ההשוואה בזאפ (שם + נפח + RAM), אחרת
     זאפ לא ישייך את המוצר לשום דף — זו הסיבה שמוצר צל קיים בכלל."""
     base, auth = _wc()
-    tgt = find_target(sku, pid)
+    tgt = find_target(sku, pid, cap)
     if not tgt:
         return {"ok": False, "error": f"לא נמצא מוצר עם מק\"ט {sku}"}
+    if cap and tgt.get("cap") != cap:
+        return {"ok": False,
+                "error": f"לא נמצאה וריאציה לנפח המבוקש ({cap}) במוצר הזה"}
     if tgt["kind"] != "variation":
         return {"ok": False, "error": "מוצר צל נדרש רק לווריאציה של מוצר משתנה"}
     exist = [sh for sh in shadows_for(tgt["parent"]) if _shadow_matches(tgt, sh)]

@@ -9443,7 +9443,7 @@ def zap_selftest(x_admin_key: Optional[str] = Header(None)):
     # "צור מוצר צל", והממשק הציג "שגיאת רשת" (אסי, 28/07/2026). בדיקת חתימה
     # תופסת בדיוק את הפער הזה בין מי שקורא למי שמקבל.
     import inspect as _insp
-    for _fn, _need in (("create_shadow", {"sku", "pid", "name"}),
+    for _fn, _need in (("create_shadow", {"sku", "pid", "name", "cap"}),
                        ("sync_shadow_only", {"sku", "pid"}),
                        ("shadow_state", {"sku", "pid"}),
                        ("set_price", {"sku", "price", "pid"}),
@@ -9508,12 +9508,12 @@ def zap_shadows(x_admin_key: Optional[str] = Header(None)):
 
 @app.post("/api/admin/zap/create-shadow")
 def zap_create_shadow(sku: str = "", pid: Optional[int] = None, name: str = "",
-                      x_admin_key: Optional[str] = Header(None)):
+                      cap: str = "", x_admin_key: Optional[str] = Header(None)):
     """יצירת מוצר צל לזאפ לווריאציה (חמשת השלבים המתועדים).
     `name` — כותרת דגם ההשוואה מהמרשם; זו הדרך היחידה להבטיח שיוך."""
     _require_admin(x_admin_key)
     import zap_price
-    return zap_price.create_shadow(sku.strip(), pid, name.strip())
+    return zap_price.create_shadow(sku.strip(), pid, name.strip(), cap.strip())
 
 
 @app.post("/api/admin/zap/visibility")

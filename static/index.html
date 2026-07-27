@@ -1904,13 +1904,20 @@ async function zapPlanCreate(i){
   if(!confirm('ליצור מוצר צל בכותרת:\n'+st.suggested_name+'\n\nמחיר: ₪'+st.price)) return;
   showLoading('יוצר מוצר צל…');
   try{
-    const q=[`pid=${encodeURIComponent(j.product_id)}`,`name=${encodeURIComponent(st.suggested_name)}`];
+    // ⚠️ הנפח חובה: בלעדיו השרת מוצא את הוריאציה הזולה ולא את זו שנלחצה,
+    // ומחזיר "כבר קיים מוצר צל" (אסי, 28/07/2026).
+    const q=[`pid=${encodeURIComponent(j.product_id)}`,
+             `name=${encodeURIComponent(st.suggested_name)}`,
+             `cap=${encodeURIComponent(st.cap||'')}`];
     if(st.sku) q.unshift(`sku=${encodeURIComponent(st.sku)}`);
     const res=await api('/api/admin/zap/create-shadow?'+q.join('&'),{method:'POST'},120000);
     hideLoading();
     if(!res.ok){ toast(res.error||'נכשל',false); return; }
     toast('נוצר: '+(res.name||st.suggested_name).slice(0,44),true);
-    closeModal(); loadZap(false);
+    // נשארים בחלון ומרעננים אותו — אחרת צריך לסרוק "מה צריך" מחדש כדי
+    // ליצור את הנפח הבא (אסי, 28/07/2026).
+    loadZap(false);
+    zapPlan(String(j.product_id));
   }catch(e){ hideLoading(); toast('שגיאת רשת',false); }
 }
 async function zapMakeShadow(rid){
