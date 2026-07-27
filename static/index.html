@@ -1449,7 +1449,7 @@ async function loadZap(spinner){
     else Z.shErr='טעינת מוצרי הצל נכשלה';
   }catch(e){ Z.shErr='טעינת מוצרי הצל נכשלה'; }
   if(spinner) hideLoading();
-  if(S.view==='admin'&&S.adminTab==='zap') renderZap();
+  if(S.view==='admin'&&S.adminTab==='zap'){ renderZap(); if(Z.progress) zapScanPoll(); }
 }
 function zapSet(k,v){ const Z=zapInit(); Z[k]=v; renderZap(); }
 function zapState(r){
@@ -1504,6 +1504,7 @@ function renderZap(){
         <option value="rank" ${Z.sort==='rank'?'selected':''}>מיקום</option>
         <option value="gap"  ${Z.sort==='gap'?'selected':''}>פער מהזול</option></select>
       <button class="zchip" onclick="loadZap(true)">${ico('refresh',13)} רענן</button>
+      <button class="zchip" onclick="zapScanAsk()" ${Z.progress?'disabled':''}>${ico('zap',13)} ${Z.progress?'סורק…':'סרוק עכשיו'}</button>
       <span class="muted" style="margin-inline-start:auto;font-size:12.5px">${rows.length} שורות</span>
     </div>
     <div class="zchips">
@@ -1685,6 +1686,53 @@ async function zapLoadShadow(rid){
 // ── מרשם: מה בדיוק צריך כדי שהמוצר יופיע בוודאות בדף ההשוואה ──
 // שינוי אצלנו מתגלגל לזאפ תוך 6-24 שעות, ולכן ניחוש עולה יום. בודקים מראש
 // מול דפי הדגם ומחזירים את הכותרת המדויקת (אסי, 27/07/2026).
+// ── הפעלת סריקה מהממשק ──
+// עד כה הסריקה הופעלה רק מה-API ולאסי לא הייתה דרך להריץ אותה בעצמו.
+function zapScanAsk(){
+  document.getElementById('modalRoot').innerHTML=`<div class="overlay" onclick="closeModal()">
+    <div class="modal" style="max-width:480px;text-align:right" onclick="event.stopPropagation()">
+      <h3 style="margin:0 0 10px">סריקת זאפ</h3>
+      <p class="muted" style="font-size:13px;margin:0 0 var(--s4)">
+        הסריקה עוברת על כל הקטלוג, מאתרת לכל מוצר את דגם ההשוואה בזאפ וקוראת
+        את מחירי המתחרים. אפשר לעבור לטאב אחר — היא ממשיכה ברקע.</p>
+      <div style="display:grid;gap:10px">
+        <button class="btn" onclick="zapScanRun(0)" style="text-align:right">
+          <b>סריקה רגילה</b>
+          <small style="display:block;color:var(--txt-3);font-weight:400">
+            משתמשת בשיוך הדגמים השמור · כ-4 דקות</small></button>
+        <button class="btn" onclick="zapScanRun(1)" style="text-align:right">
+          <b>סריקה מאופסת</b>
+          <small style="display:block;color:var(--txt-3);font-weight:400">
+            מחשבת מחדש לאיזה דגם כל מוצר משויך · כ-12 דקות.
+            להשתמש אחרי שינוי כותרות או כשהשיוך נראה שגוי</small></button>
+      </div>
+      <div style="text-align:left;margin-top:var(--s4)"><button class="btn" onclick="closeModal()">ביטול</button></div>
+    </div></div>`;
+}
+async function zapScanRun(reset){
+  closeModal(); showLoading('מפעיל סריקה…');
+  try{
+    const j=await api('/api/admin/zap/scan-now'+(reset?'?reset=1':''),{method:'POST'},60000);
+    hideLoading();
+    if(!j.ok&&!j.started){ toast(j.error||'ההפעלה נכשלה',false); return; }
+    toast(reset?'סריקה מאופסת רצה ברקע':'הסריקה רצה ברקע',true);
+    const Z=zapInit(); Z.progress={done:0,total:0,at:''}; renderZap(); zapScanPoll();
+  }catch(e){ hideLoading(); toast('שגיאת רשת',false); }
+}
+// מעקב אחרי הסריקה — הטאב פטור מרענון הרקע הכללי, ולכן צריך מעקב ייעודי
+function zapScanPoll(){
+  clearInterval(S.zapPoll);
+  S.zapPoll=setInterval(async()=>{
+    if(S.view!=='admin'||S.adminTab!=='zap'){ clearInterval(S.zapPoll); return; }
+    let r; try{ r=await api('/api/zap/report',null,45000); }catch(e){ return; }
+    const Z=zapInit();
+    Z.progress=r.progress||null;
+    if(r.ok&&r.rows){ Z.rows=r.rows; Z.summary=r.summary||{}; Z.date=r.date||Z.date; }
+    if(!Z.progress){ clearInterval(S.zapPoll); toast('הסריקה הסתיימה',true); }
+    // לא דורסים תצוגה פתוחה: אם אסי קורא רשימת מתחרים, מחכים
+    if(!document.querySelector('.zdet:not([hidden])')) renderZap();
+  },15000);
+}
 async function zapPlan(rid){
   const r=zapRow(rid); if(!r) return;
   showLoading('בודק מול דפי הדגם בזאפ…');
