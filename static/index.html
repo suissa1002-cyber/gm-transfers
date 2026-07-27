@@ -1467,11 +1467,10 @@ function renderZap(){
     if(q && (r.name+' '+(r.zap_title||'')+' '+r.brand+' '+(r.sku||'')).toLowerCase().indexOf(q)<0) return false;
     if(Z.brand && r.brand!==Z.brand) return false;
     if(Z.state==='pending') return !!Z.pend[r.sku];
-    // דלי לפי הסיבה — כך אפשר לעבוד על "מוסתרים" ועל "דורש מוצר צל" כרשימות
-    if(Z.state==='hidden')  return !!r.zap_hidden;
-    if(Z.state==='shadow')  return !!r.needs_shadow;
-    if(Z.state==='offfeed') return r.reason_code==='off_feed';
-    if(Z.state && Z.state!==zapState(r).k) return false;
+    // ⚠️ דלי אחד בדיוק לכל שורה, לפי `reason_code`. סינון לפי סטטוס זאפ גרם
+    // לכך ש"לא בדף" ו"דורש מוצר צל" הכילו את אותם מוצרים, ואי אפשר היה
+    // לעבוד על אף אחד מהם כרשימה סגורה (אסי, 27/07/2026).
+    if(Z.state) return r.reason_code===Z.state;
     return true;
   });
   const key={cut5:r=>r.cut_top5==null?1e9:r.cut_top5, rank:r=>r.rank||999,
@@ -1480,6 +1479,9 @@ function renderZap(){
   const cnt=k=>Z.rows.filter(r=>zapState(r).k===k).length;
   const brands=[...new Set(Z.rows.map(r=>r.brand))].sort();
   const chip=(v,lab,n)=>`<button class="zchip${Z.state===v?' on':''}" onclick="zapSet('state','${v}')">${lab} <b>${n}</b></button>`;
+  // צ׳יפ לפי סיבה — הדליים זרים זה לזה והסכום שלהם הוא הקטלוג המלא
+  const rcnt=k=>Z.rows.filter(r=>r.reason_code===k).length;
+  const rchip=(k,lab)=>{ const n=rcnt(k); return n?chip(k,lab,n):''; };
   app.innerHTML=`
     <h1 class="title" style="display:flex;align-items:center;gap:8px">${ico('zap',19)} זאפ — כלי עבודה</h1>
     ${adminTabsHTML()}
@@ -1509,14 +1511,15 @@ function renderZap(){
     </div>
     <div class="zchips">
       <button class="zchip${!Z.state?' on':''}" onclick="zapSet('state','')">הכל <b>${Z.rows.length}</b></button>
-      ${chip('listed','רשומים',cnt('listed'))}
-      ${chip('missing','לא בדף',cnt('missing'))}
-      ${chip('nomodel','אין דגם',cnt('nomodel'))}
-      ${chip('suspect','חשוד',cnt('suspect'))}
+      ${rchip('listed','רשומים')}
+      ${rchip('need_title','כותרת לא תואמת')}
+      ${rchip('needs_shadow','דורש מוצר צל')}
+      ${rchip('missing','תלוי בזאפ')}
+      ${rchip('no_model','אין דגם')}
       <span class="zsep"></span>
-      <button class="zchip${Z.state==='hidden'?' on':''}" onclick="zapSet('state','hidden')">${ico('eyeOff',13)} מוסתרים <b>${Z.rows.filter(r=>r.zap_hidden).length}</b></button>
-      <button class="zchip${Z.state==='shadow'?' on':''}" onclick="zapSet('state','shadow')">${ico('copy',13)} דורש מוצר צל <b>${Z.rows.filter(r=>r.needs_shadow).length}</b></button>
-      <button class="zchip${Z.state==='offfeed'?' on':''}" onclick="zapSet('state','offfeed')">לא בפיד <b>${Z.rows.filter(r=>r.reason_code==='off_feed').length}</b></button>
+      ${rchip('hidden','מוסתר')}
+      ${rchip('hidden_shadows','מוסתר · יש צללים')}
+      ${rchip('off_feed','לא בפיד')}
       <button class="zchip${Z.state==='pending'?' on':''}" onclick="zapSet('state','pending')">● ממתין לקופה <b>${Z.pendN}</b></button>
     </div>
     ${zapTable(rows)}`;

@@ -55,14 +55,17 @@ def _cap_from_text(text: str) -> str | None:
 
 
 def _cap_from_attrs(attrs: list) -> str | None:
-    """הנפח של הווריאציה, מנורמל לסלאג של זאפ: 512GB → 00512gb, 1TB → 01024gb."""
+    """הנפח של הווריאציה, מנורמל לסלאג של זאפ: 512GB → 00512gb, 1TB → 01024gb.
+    ⚠️ לקיחת ההתאמה **הראשונה** קראה מ-"12GB+256GB+Gaming Kit" את ה-12GB,
+    ולכן 256GB ו-512GB של Infinix GT 30 Pro נראו כאותה תצורה והמוצר סווג
+    בטעות כנפח-יחיד (אסי, 27/07/2026). האחסון תמיד ≥ הזיכרון, ואין היום
+    סמארטפון מתחת ל-64GB — לוקחים את הגדול מבין הערכים הריאליים."""
+    vals = []
     for a in attrs or []:
-        opt = str(a.get("option") or "")
-        m = re.search(r"(\d+)\s*(TB|GB)", opt, re.I)
-        if m:
-            gb = int(m.group(1)) * (1024 if m.group(2).upper() == "TB" else 1)
-            return f"{gb:05d}gb"
-    return None
+        for n, u in re.findall(r"(\d+)\s*(TB|GB)", str(a.get("option") or ""), re.I):
+            vals.append(int(n) * (1024 if u.upper() == "TB" else 1))
+    real = [v for v in vals if v >= 64] or vals
+    return f"{max(real):05d}gb" if real else None
 
 
 _TERM_CACHE = {}

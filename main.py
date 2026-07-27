@@ -9329,6 +9329,17 @@ def zap_selftest(x_admin_key: Optional[str] = Header(None)):
         if got != want:
             bad += 1
         out.append({"query": q, "want": want, "got": got, "ok": got == want})
+    # ⚠️ "12GB+256GB+Gaming Kit" — לקיחת ההתאמה הראשונה קראה 12GB, ולכן שני
+    # נפחים שונים נראו זהים והמוצר סווג בטעות כנפח-יחיד.
+    import zap_price as _zp
+    for opt, want_cap in (("12GB+256GB+Gaming Kit", "00256gb"),
+                          ("12GB+512GB+Gaming Kit", "00512gb"),
+                          ("1TB", "01024gb")):
+        got_cap = _zp._cap_from_attrs([{"name": "נפח", "option": opt}])
+        if got_cap != want_cap:
+            bad += 1
+        out.append({"query": f"cap({opt})", "want": want_cap, "got": got_cap,
+                    "ok": got_cap == want_cap})
     # ⚠️ דפי שירות נושאים את שם הדגם המלא ולכן מקבלים ציון חפיפה גבוה —
     # "החלפת סוללה Apple iPhone 16 Plus" נבחר כדגם ההשוואה של האייפון.
     for t, want_ok in [("החלפת סוללה Apple iPhone 16 Plus אפל", False),

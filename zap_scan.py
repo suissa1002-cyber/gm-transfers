@@ -252,7 +252,13 @@ def _reason(row: dict) -> tuple:
         return ("listed", "רשומים בדף ההשוואה")
     if not row.get("modelid"):
         return ("no_model", "זאפ לא מכיר דגם תואם לכותרת הזו")
-    return ("missing", "יש דף השוואה — איננו רשומים עליו")
+    # ⚠️ פער הכותרת מחושב **בסריקה** ולא רק בלחיצה על "מה צריך": הדליים
+    # חייבים להיות רשימות עבודה נפרדות — מה שדורש תיקון כותרת אינו אותו
+    # דבר כמו מה שדורש מוצר צל או מה שתלוי בזאפ (אסי, 27/07/2026).
+    gap = _title_gap(row.get("name") or "", row.get("zap_title") or "")
+    if gap:
+        return ("need_title", "חסר בכותרת: " + ", ".join(gap[:4]))
+    return ("missing", "הכותרת תואמת והמוצר משודר — השיוך תלוי בזאפ")
 
 
 # ─────────────────────────── זאפ ───────────────────────────
@@ -835,6 +841,8 @@ def _summarise(rows: list, partial: bool = False) -> dict:
         "in_feed": sum(1 for r in rows if r.get("in_feed")),
         "hidden": sum(1 for r in rows if r.get("zap_hidden")),
         "needs_shadow": sum(1 for r in rows if r.get("needs_shadow")),
+        "need_title": sum(1 for r in rows if r.get("reason_code") == "need_title"),
+        "zap_side": sum(1 for r in rows if r.get("reason_code") == "missing"),
         "off_feed": sum(1 for r in rows if r.get("reason_code") == "off_feed"),
         "suspect": sum(1 for r in rows if r.get("status") == "suspect"),
         "in_top5": sum(1 for r in ranked if r["rank"] <= 5),
