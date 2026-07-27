@@ -537,7 +537,7 @@ def shadow_state(sku: str, pid=None) -> dict:
             "state": "synced" if abs(sp - site) < 0.5 else "drift"}
 
 
-def create_shadow(sku: str, pid=None) -> dict:
+def create_shadow(sku: str = "", pid=None, name: str = "") -> dict:
     """יוצר מוצר צל לזאפ לווריאציה. חמשת השלבים כפי שתועדו אצלנו:
     external+hidden, URL עם האטריביוט, קטגוריות+מותג מההורה, תמונה, והסתרת
     ההורה מזאפ. ⚠️ הערך של _woocommerce_zap_disable חייב להיות 'yes'.
