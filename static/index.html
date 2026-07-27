@@ -465,6 +465,8 @@
   .zcut{font-size:15px;font-weight:800;font-variant-numeric:tabular-nums}
   .zwhy{display:block;font-size:11px;color:var(--txt-3);margin-top:4px;max-width:210px;
         overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .zalt{display:block;font-size:11.5px;color:var(--txt-3);max-width:330px;
+        overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .zsep{width:1px;align-self:stretch;background:var(--line);margin:0 var(--s2)}
   .zact{display:inline-flex;gap:1px;align-items:center}
   .zib{appearance:none;background:none;border:0;padding:0;text-decoration:none;
@@ -1546,11 +1548,17 @@ function zapTable(rows){
       const gap = r.gap_pct==null ? '' :
         `<small style="display:block;font-size:11px;color:${r.gap_pct>0?'var(--red-ink)':'var(--brand-ink)'}">${r.gap_pct>0?'+':''}${r.gap_pct}% מהזול</small>`;
       const colors=(r.colors||1)>1?` · ${r.colors} צבעים`:'';
-      const title=r.zap_title
-        ? r.zap_title.replace(' - זאפ השוואת מחירים','').replace(/^טלפון סלולרי /,'')
-        : r.name;
+      // הכותרת המודגשת היא של **דגם ההשוואה בזאפ**. כשההתאמה חשודה או שאין
+      // דגם, זו כותרת זרה שמבלבלת (מוצר שלנו הוצג כ"מכונת כביסה") — אז
+      // מציגים את שם המוצר שלנו, וכותרת זאפ יורדת לשורת המשנה.
+      const zt=(r.zap_title||'').replace(' - זאפ השוואת מחירים','').replace(/^טלפון סלולרי /,'');
+      const trust=zt&&(r.status==='listed'||r.status==='missing');
+      const title=trust?zt:r.name;
+      const alt=trust?(r.name!==zt?r.name:''):(zt?'בזאפ הותאם ל: '+zt:'');
       return `<tr class="zrow" id="ztr${i}" onclick="zapToggleRow(${i})">
-        <td class="zname"><b>${escW(title)}</b><small>${escW(r.brand)}${colors}${r.caps&&r.caps.length>1?` · ${r.caps.length} נפחים`:''}${r.sku?' · '+escW(r.sku):''}${r.zap_hidden?' · <span style="color:var(--red-ink)">מוסתר מזאפ</span>':''}</small></td>
+        <td class="zname"><b>${escW(title)}</b>
+          ${alt?`<small class="zalt" title="${escW(alt)}">${escW(alt)}</small>`:''}
+          <small>${escW(r.brand)}${colors}${r.caps&&r.caps.length>1?` · ${r.caps.length} נפחים`:''}${r.sku?' · '+escW(r.sku):''}${r.zap_hidden?' · <span style="color:var(--red-ink)">מוסתר מזאפ</span>':''}</small></td>
         <td class="znum"><span class="zstock">${r.stock||0}</span><i>יח׳</i></td>
         <td class="znum"><span class="zprice">${r.our_price?ils(r.our_price):'—'}</span>${pend?' <span class="zdot" title="שונה כאן — טרם עודכן בקופה">●</span>':''}
           <span class="zsh" id="zsh${escW(zapRid(r))}">${zapShadowCell(r)}</span></td>
@@ -1566,7 +1574,9 @@ function zapTable(rows){
           <button class="zib" title="מה צריך כדי להופיע בזאפ — בדיקה מול הדגמים" onclick="zapPlan('${escW(zapRid(r))}')">${ico('checkSquare',16)}</button>
           <button class="zib" title="צור מוצר צל לתצורה הזו" onclick="zapMakeShadow('${escW(zapRid(r))}')">${ico('copy',16)}</button>
           <button class="zib${r.zap_hidden?'':' dg'}" title="${r.zap_hidden?'הצג את המוצר בזאפ':'הסתר את המוצר מזאפ'}" onclick="zapVis('${escW(zapRid(r))}',${r.zap_hidden?0:1})">${ico(r.zap_hidden?'eyeOff':'eye',16)}</button>
-          ${r.url?`<a class="zib" title="פתח בזאפ" href="${escW(r.url)}" target="_blank" rel="noopener">${ico('globe',16)}</a>`:''}
+          ${r.site_url?`<a class="zib" title="פתח באתר שלנו" href="${escW(r.site_url)}" target="_blank" rel="noopener">${ico('extern',16)}</a>`:''}
+          ${(r.id||r.product_id)?`<a class="zib" title="ערוך בווקומרס" href="${escW(WCADMIN)}/wp-admin/post.php?post=${escW(r.id||r.product_id)}&action=edit" target="_blank" rel="noopener">${ico('wp',16)}</a>`:''}
+          ${r.url?`<a class="zib" title="פתח את דגם ההשוואה בזאפ" href="${escW(r.url)}" target="_blank" rel="noopener">${ico('zap',16)}</a>`:''}
         </span></td></tr>
       <tr class="zdet" id="zrow${i}" hidden><td colspan="7" style="padding:0">${zapComp(r)}</td></tr>`;
     }).join('')}</tbody></table></div></div>`;
@@ -1600,6 +1610,7 @@ function zapComp(r){
 }
 // זהות שורה בכלי זאפ: מזהה המוצר ב-WC. ⚠️ למרבית מוצרי הפיד אין מק"ט על
 // ההורה (הוא יושב על הוריאציה), ולכן מק"ט אינו זהות תקפה כאן.
+const WCADMIN='https://greenmobile.co.il';
 function zapRid(r){ return String((r&&(r.id||r.product_id))||(r&&r.sku)||''); }
 function zapQS(r){ const q=[]; if(r.sku) q.push('sku='+encodeURIComponent(r.sku));
   const p=r.id||r.product_id; if(p) q.push('pid='+encodeURIComponent(p)); return q.join('&'); }
@@ -5153,6 +5164,8 @@ const _IPATHS={
   pkgx:'<path d="M21 10V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0"/><path d="m7.5 4.27 9 5.15"/><polyline points="3.29 7 12 12 20.71 7"/><line x1="12" y1="22" x2="12" y2="12"/><path d="m17 13 5 5"/><path d="m22 13-5 5"/>',
   card:'<rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/>',
   eye:'<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
+  wp:'<path d="M2.5 6.5 6 17.5l3.6-8.2"/><path d="m9.6 9.3 3.4 8.2 3.5-8.2"/><path d="m16.5 9.3 3.4 8.2L21.5 6.5"/>',
+  extern:'<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>',
   eyeOff:'<path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M6.61 6.61A18.15 18.15 0 0 0 1 12s4 8 11 8a9.12 9.12 0 0 0 5.39-1.61"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>',
   copy:'<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
   printer:'<polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>',

@@ -259,7 +259,11 @@ def _reason(row: dict) -> tuple:
 CAP_RE = re.compile(r"(\d+)\s*(TB|GB)\b", re.I)
 # פריטים שיושבים בקטגוריית "טלפונים/סלולרי" בקופה אך אינם סמארטפון —
 # אביזרים, טאבלטים ושעונים. בלי הסינון הם נכנסים לדוח ומתמפים לדגם אקראי.
-ACCESSORY = ("case", "cover", "כיסוי", "מגן", "נרתיק", "sandstone", "silicone",
+# ⚠️ "מסך פנימי ... Galaxy Z Fold 7" (חלק חילוף) הגיע לדוח והותאם למכונת
+# כביסה בזאפ. חלקי חילוף יושבים בקטגוריית הסמארטפונים אך אינם מוצר להשוואה.
+ACCESSORY = ("מסך פנימי", "מסך חיצוני", "מסך חלופי", "חלק חילוף", "חלף",
+             "display assembly", "lcd",
+             "case", "cover", "כיסוי", "מגן", "נרתיק", "sandstone", "silicone",
              "כבל", "מטען", "אוזני", "סוללה", "מעמד", "זכוכית", "headset", "headphone",
              "earbud", "buds", "airpod", "charger", "cable", "adapter", "מתאם",
              "ipad", "tab ", "tablet", "טאבלט", "watch", "שעון", "band", "כרטיס")
@@ -391,13 +395,19 @@ def _short_query(q: str) -> str:
     return out if out.strip().lower() != q.strip().lower() else ""
 
 
+def _unesc(t: str) -> str:
+    """כותרות זאפ מכילות ישויות HTML (&rlm; &quot;) שדלפו לתצוגה כטקסט גולמי."""
+    import html as _h
+    return BIDI_RE.sub("", _h.unescape(t or "")).strip()
+
+
 def _model_title(mid: int) -> str:
     try:
         html = _get(f"{BASE}/model.aspx?modelid={mid}")
     except Exception:  # noqa: BLE001
         return ""
     m = re.search(r"<title>(.*?)</title>", html, re.S)
-    return re.sub(r"\s+", " ", m.group(1)).strip() if m else ""
+    return _unesc(re.sub(r"\s+", " ", m.group(1))) if m else ""
 
 
 PHONE_LEAD = ("סמארטפון", "טלפון סלולרי", "טלפון חכם", "smartphone", "phone",
