@@ -9443,13 +9443,19 @@ def zap_selftest(x_admin_key: Optional[str] = Header(None)):
     # "צור מוצר צל", והממשק הציג "שגיאת רשת" (אסי, 28/07/2026). בדיקת חתימה
     # תופסת בדיוק את הפער הזה בין מי שקורא למי שמקבל.
     import inspect as _insp
-    _sig = set(_insp.signature(zap_price.create_shadow).parameters)
-    _need = {"sku", "pid", "name"}
-    _ok_sig = _need <= _sig
-    if not _ok_sig:
-        bad += 1
-    out.append({"query": "create_shadow(sku,pid,name)", "want": sorted(_need),
-                "got": sorted(_sig), "ok": _ok_sig})
+    for _fn, _need in (("create_shadow", {"sku", "pid", "name"}),
+                       ("sync_shadow_only", {"sku", "pid"}),
+                       ("shadow_state", {"sku", "pid"}),
+                       ("set_price", {"sku", "price", "pid"}),
+                       ("zap_visibility", {"product_id", "hidden", "sku"}),
+                       ("rename", {"pid", "name"}),
+                       ("act_log", {"pid", "kind", "detail", "at"})):
+        _sig = set(_insp.signature(getattr(zap_price, _fn)).parameters)
+        _ok_sig = _need <= _sig
+        if not _ok_sig:
+            bad += 1
+        out.append({"query": f"sig {_fn}", "want": sorted(_need),
+                    "got": sorted(_sig), "ok": _ok_sig})
     # ⚠️ מק"ט ריק אסור שיחזיר מוצר: WooCommerce מתעלם מ-?sku= ריק ומחזיר את כל
     # הקטלוג, ו"הסתר מזאפ" הסתיר את המוצר הראשון ברשימה (27/07/2026).
     import zap_price

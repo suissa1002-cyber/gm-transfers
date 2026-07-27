@@ -360,12 +360,56 @@ def set_price(sku: str, price: float, sync_shadow: bool = True, pid=None) -> dic
             "siblings": siblings}
 
 
-def sync_shadow_only(sku: str, pid=None) -> dict:
+def _wp_auth():
+    """אימות WP (Application Password) — נדרש למסלולי ה-REST של התוספים שלנו."""
+    return (os.getenv("WP_USERNAME", ""), os.getenv("WP_APP_PASSWORD", ""))
+
+
+def sync_via_plugin(parent_id) -> dict | None:
+    """מסנכרן את כל צללי ההורה דרך `gm_zap_sync_shadow` שבתוסף Zap Manager.
+    ⚠️ למה דרך התוסף ולא כאן: הפונקציה שלו מסנכרנת regular_price **וגם**
+    sale_price **וגם** stock_status, ושומרת דרך אובייקט WC כדי לנקות את
+    המטמונים (בלעדיו "וי ירוק אבל המחיר הישן נשאר בפיד" — מתועד אצלו בקוד).
+    השכפול בפייתון סנכרן מחיר בלבד, ולכן וריאציה שאזלה נשארה "במלאי" בצל
+    (אסי, 28/07/2026). None = המסלול לא קיים ⇒ נופלים חזרה למימוש המקומי."""
+    base, _ = _wc()
+    try:
+        r = requests.post(f"{base}/wp-json/gm-zap/v1/sync-parent/{int(parent_id)}",
+                          auth=_wp_auth(), timeout=90)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("zap: plugin sync failed: %s", e)
+        return None
+    if r.status_code in (404, 401, 403):
+        logger.info("zap: plugin route unavailable (%s) — נופלים למימוש המקומי",
+                    r.status_code)
+        return None
+    if not r.ok:
+        return {"ok": False, "error": f"התוסף החזיר {r.status_code}",
+                "detail": r.text[:200]}
+    try:
+        return r.json()
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def sync_shadow_only(sku: str = "", pid=None) -> dict:
     """מיישר את מוצרי הצל למחיר הנוכחי של הווריאציה, בלי לשנות מחיר."""
     base, auth = _wc()
     tgt = find_target(sku, pid)
     if not tgt:
         return {"ok": False, "error": f"לא נמצא מוצר עם מק\"ט {sku}"}
+    # קודם כל — התוסף. הוא מסנכרן גם מלאי, ומנקה את מטמוני WooCommerce.
+    via = sync_via_plugin(tgt["parent"])
+    if via is not None:
+        if not via.get("ok"):
+            return via
+        rows = via.get("shadows") or []
+        done = [x for x in rows if x.get("result") == "synced"]
+        return {"ok": True, "sku": sku, "via": "plugin",
+                "name": tgt.get("name") or "",
+                "synced": [{"id": x["shadow_id"], "price": x.get("price"),
+                            "stock": x.get("stock")} for x in done],
+                "skipped": [x for x in rows if x.get("result") != "synced"]}
     price = float(tgt.get("price") or 0)
     if price <= 0:
         return {"ok": False, "error": "אין מחיר תקף לווריאציה"}
