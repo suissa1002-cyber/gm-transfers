@@ -83,7 +83,7 @@ def _feed_skus(pids: list) -> dict:
     base = os.getenv("WC_STORE_URL", "https://greenmobile.co.il").rstrip("/")
     auth = (os.getenv("WC_CONSUMER_KEY", ""), os.getenv("WC_CONSUMER_SECRET", ""))
     import zap_price
-    info, out = {}, {}
+    info, out, caps_by = {}, {}, {}
     for i in range(0, len(pids), 50):
         try:
             r = requests.get(f"{base}/wp-json/wc/v3/products", auth=auth, timeout=60,
@@ -94,21 +94,33 @@ def _feed_skus(pids: list) -> dict:
         except Exception as e:  # noqa: BLE001
             logger.warning("zap: sku batch failed: %s", e)
 
+    _vcache = {}
+
     def variations(par, cap=None):
-        try:
-            v = requests.get(f"{base}/wp-json/wc/v3/products/{par}/variations", auth=auth,
-                             timeout=45, params={"per_page": 100, "_fields": "sku,attributes"})
-            rows = v.json() if v.ok else []
-        except Exception:  # noqa: BLE001
-            return []
+        if par not in _vcache:
+            try:
+                v = requests.get(f"{base}/wp-json/wc/v3/products/{par}/variations", auth=auth,
+                                 timeout=45, params={"per_page": 100,
+                                                     "_fields": "sku,attributes"})
+                _vcache[par] = v.json() if v.ok else []
+            except Exception:  # noqa: BLE001
+                _vcache[par] = []
+        rows = _vcache[par]
         if cap:
             rows = [x for x in rows if zap_price._cap_from_attrs(x.get("attributes")) == cap]
         return [str(x["sku"]) for x in rows if x.get("sku")]
+
+    def caps(par):
+        variations(par)
+        cs = {zap_price._cap_from_attrs(x.get("attributes")) for x in _vcache.get(par) or []}
+        return sorted(c for c in cs if c)
 
     for pid in pids:
         p = info.get(pid)
         if not p:
             continue
+        if p.get("type") == "variable":
+            caps_by[pid] = caps(pid)
         if p.get("type") == "external":
             meta = {m["key"]: str(m["value"]) for m in (p.get("meta_data") or [])}
             par = meta.get("gm_parent_product_id")
@@ -118,44 +130,118 @@ def _feed_skus(pids: list) -> dict:
             out[pid] = variations(pid)
         elif p.get("sku"):
             out[pid] = [str(p["sku"])]
+    return {"skus": out, "caps": caps_by}
+
+
+def _catalog(cat: int = 1934) -> list:
+    """כל הסמארטפונים המפורסמים באתר — **גם** אלה שמוסתרים מזאפ.
+    ⚠️ בלי זה הכלי היה מעגל סגור: ברגע שמסתירים מוצר הוא נופל מהפיד, נעלם
+    מהמסך, ואין דרך להחזיר אותו (אסי, 27/07/2026). 109 מוצרים בקטלוג מול 64
+    בפיד — 41 מוסתרים, וביניהם iPhone 17 Pro Max ו-Pixel 10 Pro Fold."""
+    import requests
+    base = os.getenv("WC_STORE_URL", "https://greenmobile.co.il").rstrip("/")
+    auth = (os.getenv("WC_CONSUMER_KEY", ""), os.getenv("WC_CONSUMER_SECRET", ""))
+    out, page = [], 1
+    while page <= 6:
+        try:
+            r = requests.get(f"{base}/wp-json/wc/v3/products", auth=auth, timeout=60,
+                             params={"category": cat, "per_page": 100, "page": page,
+                                     "status": "publish", "_fields":
+                                     "id,name,type,price,permalink,meta_data"})
+            rows = r.json() if r.ok else []
+        except Exception as e:  # noqa: BLE001
+            logger.warning("zap: catalog page %s failed: %s", page, e)
+            break
+        if not isinstance(rows, list) or not rows:
+            break
+        out += rows
+        page += 1
     return out
 
 
 def build_targets() -> list:
-    """⚠️ מקור-האמת הוא **הפיד שאנחנו משדרים לזאפ**, לא קטלוג הקופה.
-    הסריקה הישנה רצה על מק"טים עם מלאי בקופה וחיפשה לפי שם ה-WC, ולכן
-    ספרה 2 מוצרים רשומים במקום 57 (אסי, 26/07/2026): מוצר נמצא בזאפ אם
-    ורק אם הוא בפיד — מלאי בקופה לא קובע, ושם ה-WC אינו השם ששודר.
-    המחיר בפיד הוא בדיוק המחיר שזאפ מציג, ולכן גם מחיר-האמת להשוואה."""
+    """היקף הכלי: **כל הסמארטפונים בקטלוג**, לא רק מה שמשודר כרגע.
+    הפיד קובע מה זאפ באמת מקבל, אבל מוצר שמוסתר חייב להישאר על המסך כדי
+    שאפשר יהיה להחזיר אותו או להחליט עליו. לכל שורה נקבעת `reason` —
+    למה היא לא מחוברת לדגם בזאפ — כי בלי זה אי אפשר לפעול."""
     import zap_price
     try:
-        rows = zap_price.feed(1934)
+        feed = zap_price.feed(1934)
     except Exception as e:  # noqa: BLE001
         logger.warning("zap: feed failed: %s", e)
+        feed = []
+    catalog = _catalog(1934)
+    if not feed and not catalog:
         return []
-    if not rows:
-        logger.warning("zap: feed returned nothing — לא סורקים על סמך הקופה")
-        return []
+
+    shadows = {}
+    try:
+        shadows = zap_price.shadow_map()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("zap: shadow_map failed: %s", e)
+
+    feed_by_pid, shadow_ids = {}, {sh["id"] for v in shadows.values() for sh in v}
+    for f in feed:
+        pid = str(f.get("num") or "").strip()
+        if pid:
+            feed_by_pid[pid] = f
+    # הורה שהצללים שלו בפיד מיוצג על ידם — לא כופלים אותו כשורה נפרדת
+    parents_via_shadow = {par for par, shs in shadows.items()
+                          if any(str(sh["id"]) in feed_by_pid for sh in shs)}
+
     stock = _pos_stock()
-    skumap = _feed_skus([str(f.get("num") or "").strip() for f in rows if f.get("num")])
+    pids = list(dict.fromkeys(list(feed_by_pid) + [str(p["id"]) for p in catalog]))
+    _m = _feed_skus(pids)
+    skumap, capmap = _m["skus"], _m["caps"]
+    meta_by_pid = {str(p["id"]): p for p in catalog}
+
     out = []
-    for f in rows:
-        sku = str(f.get("sku") or "")
-        name = f.get("name") or ""
+    for pid in pids:
+        if pid in parents_via_shadow:
+            continue
+        f = feed_by_pid.get(pid)
+        c = meta_by_pid.get(pid) or {}
+        name = (f or {}).get("name") or c.get("name") or ""
+        if not name:
+            continue
+        meta = {m["key"]: str(m["value"]) for m in (c.get("meta_data") or [])}
+        hidden = 1 if meta.get("_woocommerce_zap_disable") == "yes" else 0
         try:
-            price = float(f.get("price") or 0)
+            price = float((f or {}).get("price") or c.get("price") or 0)
         except (TypeError, ValueError):
             price = 0
-        pid = str(f.get("num") or "").strip()
-        if not pid:
-            continue                      # בלי מזהה אין זהות — ולא ממטמנים
-        skus = skumap.get(pid) or ([sku] if sku else [])
-        out.append({"id": pid, "sku": sku or (skus[0] if skus else ""),
-                    "name": name, "brand": brand_of(name),
-                    "stock": sum(stock.get(k, 0) for k in skus),
-                    "our_price": price or None,
-                    "product_id": pid, "site_url": f.get("url")})
+        skus = skumap.get(pid) or ([str((f or {}).get("sku") or "")] if (f or {}).get("sku") else [])
+        caps = capmap.get(pid) or []
+        out.append({
+            "id": pid, "sku": (f or {}).get("sku") or (skus[0] if skus else ""),
+            "name": name, "brand": brand_of(name),
+            "stock": sum(stock.get(k, 0) for k in skus),
+            "our_price": price or None, "product_id": pid,
+            "site_url": (f or {}).get("url") or c.get("permalink"),
+            "in_feed": 1 if f else 0, "zap_hidden": hidden,
+            "is_shadow": 1 if int(pid) in shadow_ids else 0,
+            "shadows": len(shadows.get(pid) or []), "caps": caps,
+        })
     return out
+
+
+def _reason(row: dict) -> tuple:
+    """(קוד, טקסט) — למה השורה אינה מחוברת לדגם בזאפ. זה הפלט שמאפשר לפעול."""
+    if row.get("status") == "listed":
+        return ("listed", "רשומים בדף ההשוואה")
+    if row.get("zap_hidden"):
+        n = row.get("shadows") or 0
+        return (("hidden_shadows", f"מוסתר בכוונה · {n} מוצרי צל משודרים במקומו")
+                if n else ("hidden", "מוסתר מזאפ — לא משודר כלל"))
+    if not row.get("in_feed"):
+        return ("off_feed", "לא נכלל בפיד (בדוק מלאי/מחיר/קטגוריה)")
+    caps = row.get("caps") or []
+    if not row.get("modelid") and len(caps) > 1:
+        return ("needs_shadow",
+                f"{len(caps)} נפחים בכותרת אחת — זאפ דורש נפח (ורצוי RAM) בכותרת")
+    if not row.get("modelid"):
+        return ("no_model", "זאפ לא מכיר דגם תואם לכותרת הזו")
+    return ("missing", "יש דף השוואה — איננו רשומים עליו")
 
 
 # ─────────────────────────── זאפ ───────────────────────────
@@ -399,7 +485,9 @@ def analyse(t: dict) -> dict:
     row = {"id": ident, "sku": t["sku"], "name": t["name"], "brand": t["brand"],
            "stock": t["stock"], "our_price": t.get("our_price"), "modelid": mid,
            "product_id": t.get("product_id"), "site_url": t.get("site_url"),
-           "zap_hidden": 0}   # מגיע מהפיד ⇒ מוצג בזאפ בהגדרה
+           "in_feed": t.get("in_feed", 1), "zap_hidden": t.get("zap_hidden", 0),
+           "is_shadow": t.get("is_shadow", 0), "shadows": t.get("shadows", 0),
+           "caps": t.get("caps") or []}
     if not mid:
         row["status"] = "no_model"        # אין דגם תואם בזאפ
         return row
@@ -463,6 +551,11 @@ def _summarise(rows: list, partial: bool = False) -> dict:
         "listed": len(listed),
         "missing": len(missing),                       # יש דגם — ואנחנו לא בו
         "no_model": sum(1 for r in rows if r.get("status") == "no_model"),
+        "catalog": len(rows),
+        "in_feed": sum(1 for r in rows if r.get("in_feed")),
+        "hidden": sum(1 for r in rows if r.get("zap_hidden")),
+        "needs_shadow": sum(1 for r in rows if r.get("reason_code") == "needs_shadow"),
+        "off_feed": sum(1 for r in rows if r.get("reason_code") == "off_feed"),
         "suspect": sum(1 for r in rows if r.get("status") == "suspect"),
         "in_top5": sum(1 for r in ranked if r["rank"] <= 5),
         "in_top3": sum(1 for r in ranked if r["rank"] <= 3),
@@ -518,7 +611,8 @@ def run(limit: int | None = None, sleep: float = 1.1) -> dict:
                 by_model[mid] = g
             g["variants"].append({"sku": r["sku"], "name": r["name"],
                                   "stock": r.get("stock") or 0,
-                                  "price": r.get("our_price")})
+                                  "price": r.get("our_price"),
+                                  "caps": r.get("caps") or []})
             g["stock"] += r.get("stock") or 0
             # המחיר שמתחרה בזאפ הוא הזול מבין הצבעים
             if r.get("our_price") and (not g.get("our_price") or r["our_price"] < g["our_price"]):
@@ -539,9 +633,12 @@ def run(limit: int | None = None, sleep: float = 1.1) -> dict:
     # מחיר/מיקום מחושבים מחדש על המחיר הזול של הקבוצה
     for g in by_model.values():
         g["colors"] = len(g["variants"])
+        g["caps"] = sorted({c for v in g["variants"] for c in (v.get("caps") or [])}) or g.get("caps") or []
         if g.get("our_price") and g.get("low"):
             g["gap_pct"] = round((g["our_price"] / g["low"] - 1) * 100, 1)
     rows = sorted(by_model.values(), key=lambda r: -(r.get("stock") or 0)) + orphans
+    for r in rows:
+        r["reason_code"], r["reason"] = _reason(r)
     # רשת ביטחון שנייה: קריסה חדה במספר השורות היא כמעט תמיד תקלה ולא שינוי
     # אמיתי בקטלוג. עדיף להציג נתון של אתמול מאשר מסך ריק.
     prev = latest() or {}
