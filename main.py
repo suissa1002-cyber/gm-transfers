@@ -249,6 +249,7 @@ def _zap_watchdog_job():
     לצמיתות לכל מוצר שכבר נפתר, ולכן **המשך** הסריקה מדלג עליהם — לא מתחילים
     מאפס. תקרה של 3 ניסיונות ליום כדי שכשל אמיתי לא ייכנס ללולאה."""
     import json as _j
+    from datetime import date as _d
     prog = db.sales_state_get("zap_progress") or ""
     if not prog:
         return {"ok": True, "idle": True}
@@ -259,7 +260,7 @@ def _zap_watchdog_job():
             return {"ok": True, "running": True, "done": d0.get("done")}
     except Exception:  # noqa: BLE001
         return {"ok": False}
-    key = f"zap_resume:{_date.today().isoformat()}"
+    key = f"zap_resume:{_d.today().isoformat()}"
     tries = int(db.sales_state_get(key) or 0)
     if tries >= 3:
         db.sales_state_set("zap_progress", "")
