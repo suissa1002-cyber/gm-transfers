@@ -413,6 +413,24 @@ def _unesc(t: str) -> str:
     return BIDI_RE.sub("", _h.unescape(t or "")).strip()
 
 
+def _base_query(q: str) -> str:
+    """הליבה עד סיומת הדגם הידועה האחרונה (Pro / Ultra / Plus…), בלי הזנב.
+    ⚠️ "Realme GT 8 Pro 5G Aston Martin Dream Edition" מכיל מילים שזאפ לא
+    מכיר, והשאילתה המלאה מחזירה זבל; המקוצרת ("Realme 5g 8") מאבדת את
+    "GT Pro" ולכן דף ה-Dream Edition לא מגיע לרשימת המועמדים בכלל. הקיצוץ
+    בסיומת הדגם מחזיר בדיוק את שני הדפים, והדירוג בוחר בנכון (27/07/2026)."""
+    words = (q or "").split()
+    quals = {w for p, _ in QUALIFIERS for w in p.split()}
+    last = -1
+    for i, w in enumerate(words):
+        if re.sub(r"[^a-z+]", "", w.lower()) in quals:
+            last = i
+    if last < 0 or last >= len(words) - 1:
+        return ""
+    out = " ".join(words[:last + 1])
+    return out if out.lower() != (q or "").lower() else ""
+
+
 def _model_title(mid: int) -> str:
     try:
         html = _get(f"{BASE}/model.aspx?modelid={mid}")
@@ -460,25 +478,27 @@ def resolve_modelid(name: str, sku: str) -> int | None:
     # שתי שאילתות: המלאה, ואם נכשלה — מקוצרת (מותג + אסימוני דגם + נפח). זאפ
     # מדרדר לתוצאות אקראיות כשיש בשאילתה מילה שהוא לא מכיר, ואז המועמדים
     # חסרי קשר לגמרי (Oppo Find X9 → אייפון, מקבוק, מקרר).
-    for attempt in [a for a in (q, _short_query(q)) if a]:
+    # ⚠️ אוספים מועמדים מ**כל** השאילתות ובוחרים את הטוב ביותר בסך הכל. עצירה
+    # אחרי השאילתה הראשונה שהצליחה בחרה את "Realme GT 8 Pro" הרגיל, בזמן
+    # שדף ה-Dream Edition שלנו מופיע רק בשאילתת הבסיס (אסי, 27/07/2026).
+    best, seen = None, {}
+    for attempt in [a for a in (q, _base_query(q), _short_query(q)) if a]:
         try:
             html = _get(f"{BASE}/search.aspx?keyword={urllib.parse.quote(attempt)}")
         except Exception as e:  # noqa: BLE001
             logger.warning("zap search failed for %s: %s", attempt, e)
             return None                   # שגיאת רשת — לא נועלים מטמון
-        # בוחנים את כל המועמדים ולוקחים את **הטוב ביותר**, לא את הראשון
-        best = None
         for cand in list(dict.fromkeys(re.findall(r"modelid=(\d+)", html)))[:6]:
-            title = _model_title(int(cand))
-            if _match_ok(q, title):
-                sc = _score(q, title)
+            if cand not in seen:
+                seen[cand] = _model_title(int(cand))
+                time.sleep(0.35)
+            if _match_ok(q, seen[cand]):
+                sc = _score(q, seen[cand])
                 if not best or sc > best[0]:
-                    best = (sc, int(cand), title)
-            time.sleep(0.35)
-        if best:
-            mid = best[1]
-            db.sales_state_set(f"zap_title:{sku}", best[2][:160])
-            break
+                    best = (sc, int(cand), seen[cand])
+    if best:
+        mid = best[1]
+        db.sales_state_set(f"zap_title:{sku}", best[2][:160])
     if not mid:
         logger.info("zap: no valid match for %s", q)
     db.sales_state_set(key, str(mid))
@@ -663,8 +683,11 @@ def plan(pid) -> dict:
     except Exception:  # noqa: BLE001
         pass
 
+    # ⚠️ הסרת הנפחים מותירה "RAM" יתום ומקף תלוי, והשאילתה שנשלחה הייתה
+    # "…Dream Edition RAM – 512GB" — זבל שזאפ לא מזהה (אסי, 27/07/2026).
     core = re.sub(r"\s*\d+\s*(TB|GB)\b", "", _clean_query(p.get("name") or ""), flags=re.I)
-    core = re.sub(r"\s+", " ", core).strip(" -,")
+    core = re.sub(r"\bRAM\b", " ", core, flags=re.I)
+    core = re.sub(r"\s+", " ", core).strip(" -–—,")
     multi = len(by_cap) > 1
     steps = []
     for cap in sorted(by_cap, key=lambda c: int(re.sub(r"\D", "", c) or 0)):
@@ -673,20 +696,29 @@ def plan(pid) -> dict:
         label = f"{gb // 1024}TB" if gb >= 1024 and gb % 1024 == 0 else f"{gb}GB"
         q = f"{core} {label}".strip()
         mid, title = None, ""
-        try:
-            html = _get(f"{BASE}/search.aspx?keyword={urllib.parse.quote(q)}")
-            best = None
+        # אוספים מועמדים מכל השאילתות ובוחרים את הטוב ביותר בסך הכל: מילה
+        # שזאפ לא מכיר ("Aston Martin") מדרדרת את השאילתה המלאה, והמקוצרת
+        # מוצאת את הדגם — אבל רק דירוג-על יבחר בו את המהדורה הנכונה.
+        best, seen = None, {}
+        for attempt in [a for a in (q, _base_query(q), _short_query(q)) if a]:
+            try:
+                html = _get(f"{BASE}/search.aspx?keyword={urllib.parse.quote(attempt)}")
+            except Exception as e:  # noqa: BLE001
+                logger.warning("zap plan search failed for %s: %s", attempt, e)
+                continue
             for c in list(dict.fromkeys(re.findall(r"modelid=(\d+)", html)))[:6]:
-                t = _model_title(int(c))
+                if c not in seen:
+                    seen[c] = _model_title(int(c))
+                    time.sleep(0.3)
+                t = seen[c]
                 if _match_ok(q, t):
                     sc = _score(q, t)
                     if not best or sc > best[0]:
                         best = (sc, int(c), t)
-                time.sleep(0.3)
-            if best:
-                mid, title = best[1], best[2]
-        except Exception as e:  # noqa: BLE001
-            logger.warning("zap plan search failed for %s: %s", q, e)
+            time.sleep(0.5)   # עוברים על כל השאילתות: הדף הנכון עשוי להופיע
+                              # רק באחת מהן, והדירוג הוא זה שבוחר בסוף
+        if best:
+            mid, title = best[1], best[2]
         clean_title = re.sub(r"\s*-\s*זאפ השוואת מחירים\s*$", "", title).strip()
         sh = shadows.get(cap)
 
