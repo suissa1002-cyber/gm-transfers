@@ -7222,14 +7222,23 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
             risk += 4; hard_fraud = True
             reasons.append(f"אותו כרטיס (****{c4}) שימש ליותר מזהות אחת "
                            f"({len(names)} שמות / {len(emails_s)} מיילים)")
+    ip_orders = None
+    ip_identities = None
     if ip:
         ents = (graph.get("ips") or {}).get(ip, [])
         names, emails_s, others = _distinct_identities(ents, num)
         names.add(_norm_name(billing_name)); emails_s.add(_canon_email(email))
+        # ⚠️ הנתון עצמו מוצג תמיד, לא רק כשהוא חשוד: "כמה הזמנות מה-IP הזה" היה
+        # הסימן החזק ביותר בטריאז 49342, ולא היה מוצג כלל (אסי, 28/07/2026).
+        # IP יחיד עם הזמנה אחת הוא ראיה **מרגיעה**, ובלעדיו הבודק עובד בעיוורון.
+        ip_orders = len(ents) + 1          # כולל ההזמנה הנוכחית
+        ip_identities = len(emails_s)
         # IP משותף רגיש ל-CGNAT סלולרי → דורש גם שמות וגם מיילים שונים, ולא סלולרי
         if others and len(names) >= 2 and len(emails_s) >= 2 and not geo.get("mobile"):
             risk += 2
             reasons.append(f"אותו IP שימש {len(emails_s)} מיילים / {len(names)} שמות שונים")
+        elif ip_orders == 1:
+            reasons.append("✅ הזמנה יחידה מה-IP הזה — אין דפוס של ריבוי חשבונות (קארדינג)")
 
     # ── 3) מייל: חד-פעמי (רשימה סטטית + IPQS) + ציון סיכון + abuse + גיל ──
     ipqs_email = _ipqs_get("email", email)
@@ -7511,6 +7520,11 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
             "method": method or None,
             "secure3D": s3d,
             "card_foreign": foreign,
+            # קוד האישור מגיע **מהמנפיק** ולכן הוא הראיה היחידה שאינה הד של מה
+            # שהמזמין הקליד אצלנו (שם/ת"ז מוקלדים — ראה 49342).
+            "approval_num": (str(meta.get("payplus_approval_num") or "").strip() or None),
+            "ip_orders": ip_orders,
+            "ip_identities": ip_identities,
             "card_last4": c4 or None,
             "card_issuer": card_issuer or None,
             "card_bin": card_bin or None,

@@ -6746,6 +6746,18 @@ function fraudBanner(f,orderNum){
   const R=(lbl,val)=>{ if(val) rows.push(`<span style="color:${MUT};white-space:nowrap">${lbl}</span><span>${val}</span>`); };
   if(s.method) R('אמצעי תשלום',`<b>${escW(s.method)}</b>${s.secure3D!==null&&s.secure3D!==undefined?(s.secure3D?` · <span style="color:${GRN}">3DS ✓</span>`:' · <span>ללא 3DS</span>'):''}`);
   if(s.card_last4) R('כרטיס שחויב',`<b style="direction:ltr;unicode-bidi:embed">****${escW(s.card_last4)}</b>${s.card_issuer?` · ${escW(s.card_issuer)}`:''}${s.wallet_pay?` · <span style="color:${MUT}">Apple/Google Pay — token וירטואלי</span>`:''}${(s.card_foreign&&!s.bin_country)?` · <b style="color:${RED}">זר ⚠</b>`:''}`);
+  // ⚠️ קוד האישור מגיע **מהמנפיק** — הראיה היחידה שאינה הד של מה שהמזמין
+  // הקליד אצלנו (שם/ת"ז נשלחים מהצ'קאאוט וחוזרים כמו שהם). 49342, 28/07/2026.
+  if(s.approval_num) R('קוד אישור מהמנפיק',
+    `<b style="direction:ltr;unicode-bidi:embed">${escW(s.approval_num)}</b> · <span style="color:${MUT}">אושר מול חברת האשראי</span>`);
+  // ריבוי הזמנות מאותו IP = דפוס קארדינג. הזמנה יחידה = ראיה מרגיעה.
+  if(s.ip_orders){
+    const many=s.ip_orders>1, susp=(s.ip_identities||1)>1;
+    R('הזמנות מאותו IP',
+      `<b style="color:${susp?RED:(many?'':GRN)}">${s.ip_orders}</b>`
+      +(susp?` · <b style="color:${RED}">${s.ip_identities} מיילים שונים ⚠</b>`
+            :(many?` · אותה זהות`:` · <span style="color:${GRN}">אין דפוס ריבוי חשבונות</span>`)));
+  }
   if(s.card_bin){
     const typeHe={credit:'אשראי',debit:'חיוב',prepaid:'נטען'}[String(s.card_type||'').toLowerCase()]||s.card_type||'';
     const prepaid=String(s.card_type||'').toLowerCase()==='prepaid';
