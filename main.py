@@ -9329,6 +9329,17 @@ def zap_selftest(x_admin_key: Optional[str] = Header(None)):
         if got != want:
             bad += 1
         out.append({"query": q, "want": want, "got": got, "ok": got == want})
+    # ⚠️ בין מועמדים שכולם עוברים — בוחרים את הטוב ביותר. "Dream Edition"
+    # ו-"GT 8 Pro" הרגיל שניהם עוברים, והמוצר שלנו הושווה לדף הלא נכון.
+    ed = [("Realme GT 8 Pro 5G Aston Martin Dream Edition 512GB 16GB RAM",
+           "טלפון סלולרי Realme GT 8 Pro Dream Edition 512GB 16GB RAM",
+           "טלפון סלולרי Realme GT 8 Pro 512GB 16GB RAM")]
+    for ours, better, worse in ed:
+        got = zap_scan._score(ours, better) > zap_scan._score(ours, worse)
+        if not got:
+            bad += 1
+        out.append({"query": "best-match: Dream Edition", "want": True,
+                    "got": got, "ok": got})
     # ⚠️ מק"ט ריק אסור שיחזיר מוצר: WooCommerce מתעלם מ-?sku= ריק ומחזיר את כל
     # הקטלוג, ו"הסתר מזאפ" הסתיר את המוצר הראשון ברשימה (27/07/2026).
     import zap_price

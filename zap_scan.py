@@ -356,6 +356,18 @@ HEB_RE = re.compile(r"[֐-׿]+")
 BIDI_RE = re.compile(r"[\u200e\u200f\u202a-\u202e\u2066-\u2069]")
 
 
+def _score(ours: str, zap_title: str) -> tuple:
+    """כמה טוב הכותרת של זאפ מתארת דווקא את המוצר שלנו.
+    ⚠️ לקחת את **המועמד הראשון** שעובר את בדיקת ההתאמה זה לא מספיק: לזאפ יש
+    "Realme GT 8 Pro 512GB 16GB RAM" וגם "Realme GT 8 Pro Dream Edition 512GB
+    16GB RAM", שניהם עוברים, והמוצר שלנו (Aston Martin Dream Edition) הושווה
+    לדף של הדגם הרגיל — ומשם "איננו רשומים" (אסי, 27/07/2026). מדרגים לפי
+    חפיפת אסימונים, ובתיקו מעדיפים כותרת קצרה יותר (פחות תוספות זרות)."""
+    norm = lambda t: set(re.findall(r"[a-z0-9]{2,}", (t or "").lower()))
+    a, b = norm(ours), norm(zap_title)
+    return (len(a & b), -len(b - a))
+
+
 def _clean_query(name: str) -> str:
     """שם המוצר בלי הצבע. ⚠️ רשימת צבעים קשיחה לא מספיקה — "Umber", "Moonstone"
     ו-"Graygreen" אינם בה, נשארו בשאילתה, וזאפ החזיר תוצאות אקראיות לגמרי.
@@ -454,14 +466,18 @@ def resolve_modelid(name: str, sku: str) -> int | None:
         except Exception as e:  # noqa: BLE001
             logger.warning("zap search failed for %s: %s", attempt, e)
             return None                   # שגיאת רשת — לא נועלים מטמון
+        # בוחנים את כל המועמדים ולוקחים את **הטוב ביותר**, לא את הראשון
+        best = None
         for cand in list(dict.fromkeys(re.findall(r"modelid=(\d+)", html)))[:6]:
             title = _model_title(int(cand))
             if _match_ok(q, title):
-                mid = int(cand)
-                db.sales_state_set(f"zap_title:{sku}", title[:160])
-                break
+                sc = _score(q, title)
+                if not best or sc > best[0]:
+                    best = (sc, int(cand), title)
             time.sleep(0.35)
-        if mid:
+        if best:
+            mid = best[1]
+            db.sales_state_set(f"zap_title:{sku}", best[2][:160])
             break
     if not mid:
         logger.info("zap: no valid match for %s", q)
@@ -659,12 +675,16 @@ def plan(pid) -> dict:
         mid, title = None, ""
         try:
             html = _get(f"{BASE}/search.aspx?keyword={urllib.parse.quote(q)}")
+            best = None
             for c in list(dict.fromkeys(re.findall(r"modelid=(\d+)", html)))[:6]:
                 t = _model_title(int(c))
                 if _match_ok(q, t):
-                    mid, title = int(c), t
-                    break
+                    sc = _score(q, t)
+                    if not best or sc > best[0]:
+                        best = (sc, int(c), t)
                 time.sleep(0.3)
+            if best:
+                mid, title = best[1], best[2]
         except Exception as e:  # noqa: BLE001
             logger.warning("zap plan search failed for %s: %s", q, e)
         clean_title = re.sub(r"\s*-\s*זאפ השוואת מחירים\s*$", "", title).strip()
