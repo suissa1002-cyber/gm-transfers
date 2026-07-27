@@ -676,6 +676,14 @@ def register_recurring_jobs():
 def _startup():
     db.init_db()
     logger.info("DB ready (%s)", "Postgres" if cfg.DATABASE_URL else "SQLite")
+    # ⚠️ תהליך חדש ⇒ אין סריקת זאפ רצה, בהגדרה. הדגל שנשאר מסריקה שנהרגה
+    # באמצע (deploy) הציג "סריקה רצה" שעה שלמה והשאיר את הכפתור מושבת.
+    try:
+        if db.sales_state_get("zap_progress"):
+            db.sales_state_set("zap_progress", "")
+            logger.info("zap: cleared stale scan progress on startup")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("zap progress cleanup failed: %s", e)
     # פיתוח מקומי: DISABLE_BACKGROUND_JOBS=1 מכבה את כל עבודות הרקע.
     if os.getenv("DISABLE_BACKGROUND_JOBS", "").strip() in ("1", "true", "yes"):
         logger.warning("background jobs DISABLED (DISABLE_BACKGROUND_JOBS)")
@@ -9216,6 +9224,18 @@ def zap_report():
     import zap_scan
     snap = zap_scan.latest()
     prog = db.sales_state_get("zap_progress") or ""
+    # ⚠️ סריקה שמתה (restart/deploy באמצע) משאירה את הדגל דלוק לנצח. פעימת לב
+    # ישנה מ-6 דקות = הת'רד כבר לא חי; מנקים ומדווחים, במקום להציג "רצה"
+    # ולהשאיר את כפתור הסריקה מושבת (אסי, 27/07/2026).
+    stalled = False
+    if prog:
+        try:
+            beat = _j.loads(prog).get("beat")
+            if beat and (datetime.now() - datetime.fromisoformat(beat)).total_seconds() > 360:
+                db.sales_state_set("zap_progress", "")
+                prog, stalled = "", True
+        except Exception:  # noqa: BLE001
+            pass
     # סריקה בעיצומה: מציגים את התוצאה החלקית במקום נתון ישן ומטעה
     if prog:
         part = db.sales_state_get("zap_snap:partial")
@@ -9229,7 +9249,8 @@ def zap_report():
     if not snap:
         return {"ok": False, "reason": "אין עדיין סריקה — הסריקה הראשונה רצה ב-05:20"}
     out = {"ok": True, "date": snap.get("date"), "summary": snap.get("summary"),
-           "rows": snap.get("rows", []), "history": zap_scan.history(30)}
+           "rows": snap.get("rows", []), "history": zap_scan.history(30),
+           "stalled": stalled}
     if prog:
         try:
             out["progress"] = _j.loads(prog)

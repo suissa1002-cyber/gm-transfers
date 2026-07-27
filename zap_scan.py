@@ -28,7 +28,7 @@ import re
 import time
 import urllib.parse
 import urllib.request
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 import db
 
@@ -918,10 +918,20 @@ def run(limit: int | None = None, sleep: float = 1.1) -> dict:
             if r.get("our_price") and (not g.get("our_price") or r["our_price"] < g["our_price"]):
                 g["our_price"] = r["our_price"]
                 g["sku"] = r["sku"]
+        # ההתקדמות נכתבת **בכל מוצר** — כתיבה זולה, והיא מה שמניע את פס
+        # ההתקדמות במסך. ⚠️ חותמת זמן חובה: כשהת'רד מת (deploy באמצע סריקה)
+        # הדגל נשאר ב-DB לנצח, המסך הראה "סריקה רצה 15/104" שעה שלמה
+        # והכפתור נותר מושבת (אסי, 27/07/2026).
+        try:
+            db.sales_state_set("zap_progress", json.dumps(
+                {"done": i, "total": total, "at": t.get("name", "")[:60],
+                 "beat": datetime.now().isoformat(timespec="seconds")},
+                ensure_ascii=False))
+        except Exception:  # noqa: BLE001
+            pass
+        # תמונת הביניים כבדה — כל 15 מוצרים מספיק
         if i % 15 == 0 or i == total:
             try:
-                db.sales_state_set("zap_progress", json.dumps(
-                    {"done": i, "total": total, "at": t.get("name", "")[:60]}, ensure_ascii=False))
                 db.sales_state_set("zap_snap:partial", json.dumps(
                     {"date": date.today().isoformat(), "partial": True,
                      "rows": list(by_model.values()) + orphans,

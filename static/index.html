@@ -467,6 +467,12 @@
         overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .zalt{display:block;font-size:11.5px;color:var(--txt-3);max-width:330px;
         overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .zscan{border-color:var(--brand);background:var(--brand-bg)}
+  .zscan .h{color:var(--brand-ink);margin-bottom:var(--s3)}
+  .zscan .pc{margin-inline-start:auto;font-weight:800;font-variant-numeric:tabular-nums}
+  .zbarw{height:6px;border-radius:999px;background:var(--card-2);overflow:hidden}
+  .zbarw i{display:block;height:100%;background:var(--brand);border-radius:999px;
+           transition:width .6s ease}
   .zact-b{display:inline-flex;align-items:center;gap:4px;margin-top:4px;font-size:11px;
           color:var(--brand-ink);background:var(--brand-bg);border-radius:var(--r-pill);
           padding:2px 8px;white-space:nowrap}
@@ -1499,9 +1505,12 @@ function renderZap(){
       <div><span class="l">בטופ 5</span><span class="v">${s.in_top5||0}</span><span class="s">במחיר הנוכחי</span></div>
       <div><span class="l">ממתין לקופה</span><span class="v" style="color:${Z.pendN?'#d97706':'inherit'}">${Z.pendN}</span><span class="s">שונה כאן, לא בקופה</span></div>
     </div>
-    ${Z.progress?`<div class="zpend" style="border-color:var(--brand);background:rgba(34,197,94,.08)">
-      <div class="h" style="color:var(--brand)"><b>סריקה רצה — ${Z.progress.done}/${Z.progress.total}</b>
-      <span class="muted">${escW(Z.progress.at||'')}</span></div></div>`:''}
+    ${Z.progress?(()=>{const p=Z.progress,pc=p.total?Math.round(p.done/p.total*100):0;
+      return `<div class="zpend zscan">
+      <div class="h"><b>סריקה רצה — ${p.done}/${p.total}</b>
+      <span class="muted">${escW(p.at||'')}</span>
+      <span class="pc">${pc}%</span></div>
+      <div class="zbarw"><i style="width:${pc}%"></i></div></div>`;})():''}
     ${Z.pendN?zapPendBox():''}
     <div class="zbar">
       <input id="zq" type="search" placeholder="חיפוש דגם / מק״ט" value="${escW(Z.q)}"
@@ -1764,17 +1773,29 @@ async function zapScanRun(reset){
 }
 // מעקב אחרי הסריקה — הטאב פטור מרענון הרקע הכללי, ולכן צריך מעקב ייעודי
 function zapScanPoll(){
-  clearInterval(S.zapPoll);
+  clearInterval(S.zapPoll); let n=0;
   S.zapPoll=setInterval(async()=>{
     if(S.view!=='admin'||S.adminTab!=='zap'){ clearInterval(S.zapPoll); return; }
     let r; try{ r=await api('/api/zap/report',null,45000); }catch(e){ return; }
-    const Z=zapInit();
+    const Z=zapInit(), was=!!Z.progress;
     Z.progress=r.progress||null;
     if(r.ok&&r.rows){ Z.rows=r.rows; Z.summary=r.summary||{}; Z.date=r.date||Z.date; }
-    if(!Z.progress){ clearInterval(S.zapPoll); toast('הסריקה הסתיימה',true); }
-    // לא דורסים תצוגה פתוחה: אם אסי קורא רשימת מתחרים, מחכים
-    if(!document.querySelector('.zdet:not([hidden])')) renderZap();
-  },15000);
+    if(!Z.progress){
+      clearInterval(S.zapPoll);
+      if(was) toast(r.stalled?'הסריקה נעצרה — אפשר להריץ שוב':'הסריקה הסתיימה', !r.stalled);
+    }
+    // ⚡ הפס מתעדכן בכל מחזור בלי לרנדר את כל הטבלה — רינדור מלא סוגר שורות
+    // פתוחות, ולכן רק כל מחזור שלישי (או בסיום) מרעננים הכל.
+    const bar=document.querySelector('.zscan .zbarw i'), hd=document.querySelector('.zscan .h b'),
+          pc=document.querySelector('.zscan .pc'), at=document.querySelector('.zscan .h .muted');
+    if(Z.progress&&bar){
+      const p=Z.progress, v=p.total?Math.round(p.done/p.total*100):0;
+      bar.style.width=v+'%'; if(pc) pc.textContent=v+'%';
+      if(hd) hd.textContent=`סריקה רצה — ${p.done}/${p.total}`;
+      if(at) at.textContent=p.at||'';
+    }
+    if((!Z.progress||++n%3===0) && !document.querySelector('.zdet:not([hidden])')) renderZap();
+  },6000);
 }
 async function zapPlan(rid){
   const r=zapRow(rid); if(!r) return;
