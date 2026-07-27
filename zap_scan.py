@@ -488,6 +488,13 @@ def run(limit: int | None = None, sleep: float = 1.1) -> dict:
     הצבעים של אותה תצורה, ולכן המלאי מצטבר (אסי: "Oppo X9 Ultra 512 —
     2 שחור + 2 כתום ⇒ 4 במלאי"), וכך אפשר להחליט מהר אם שווה לחתוך מחיר."""
     targets = build_targets()
+    # ⚠️ סריקה בלי יעדים לא כותבת תמונת מצב. כשל רגעי בפיד (Cloudflare/timeout)
+    # החזיר 0 יעדים, ו-run() דרס את התמונה הטובה של היום באפס שורות — כל
+    # הנתונים נעלמו מהמסך (אסי, 27/07/2026). אין נתונים ⇒ משאירים מה שהיה.
+    if not targets:
+        logger.warning("zap: 0 targets — משאירים את התמונה הקודמת על כנה")
+        return {"ok": False, "error": "הפיד לא החזיר מוצרים — התמונה הקודמת נשמרה",
+                "rows": [], "summary": _summarise([])}
     if limit:
         targets = targets[:limit]
     total = len(targets)
@@ -535,6 +542,15 @@ def run(limit: int | None = None, sleep: float = 1.1) -> dict:
         if g.get("our_price") and g.get("low"):
             g["gap_pct"] = round((g["our_price"] / g["low"] - 1) * 100, 1)
     rows = sorted(by_model.values(), key=lambda r: -(r.get("stock") or 0)) + orphans
+    # רשת ביטחון שנייה: קריסה חדה במספר השורות היא כמעט תמיד תקלה ולא שינוי
+    # אמיתי בקטלוג. עדיף להציג נתון של אתמול מאשר מסך ריק.
+    prev = latest() or {}
+    pn, cn = len(prev.get("rows") or []), len(rows)
+    if not limit and pn >= 10 and cn < pn * 0.5:
+        logger.warning("zap: %d שורות מול %d קודמות — לא שומרים", cn, pn)
+        return {"ok": False, "error": f"נסרקו {cn} שורות מול {pn} — נראה כתקלה, "
+                                      "התמונה הקודמת נשמרה",
+                "rows": rows, "summary": _summarise(rows)}
     snap = {"date": date.today().isoformat(), "rows": rows, "summary": _summarise(rows)}
     try:
         db.sales_state_set("zap_progress", "")
