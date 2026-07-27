@@ -1581,8 +1581,13 @@ function zapTable(rows){
     </tr></thead><tbody>
     ${rows.map((r,i)=>{
       const st=zapState(r), pend=Z.pend[r.sku];
-      const cv=r.cut_top5;
-      const cut = cv==null ? '<span style="color:var(--txt-3)">—</span>'
+      // ⚠️ "כמה לחתוך כדי להיכנס לטופ 5" מחושב מול מי שתופס את המקום החמישי.
+      // כשיש פחות מ-5 מוכרים אין מקום חמישי — ו-"—" הסתיר את המידע החשוב:
+      // בדף כזה **עצם ההופעה** מכניסה לטופ 5 (אסי, 27/07/2026).
+      const cv=r.cut_top5, few=r.sellers&&r.sellers<5;
+      const cut = cv==null
+        ? (few ? `<span class="zpill p-ok" title="רק ${r.sellers} מוכרים בדף — כל מחיר נכנס לטופ 5">רק ${r.sellers} מוכרים</span>`
+               : '<span style="color:var(--txt-3)">—</span>')
         : (cv<=0 ? '<span class="zpill p-ok">כבר בטופ 5</span>'
         : `<span class="zcut" style="color:${cv<=300?'var(--amber-ink)':'var(--red-ink)'}">−${ils(cv)}</span>`);
       const gap = r.gap_pct==null ? '' :
