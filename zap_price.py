@@ -452,7 +452,9 @@ def create_shadow(sku: str, pid=None) -> dict:
     if not qs:
         return {"ok": False, "error": "לא זוהו אטריביוטים לווריאציה — לא ניתן לבנות URL"}
     payload = {
-        "name": f"{par.get('name','')} {tgt.get('cap','')}".strip(),
+        # כותרת מפורשת מנצחת: המרשם מחזיר את כותרת דגם ההשוואה עצמה, וזו
+        # הדרך היחידה להבטיח שיוב בסריקה הראשונה של זאפ (אסי, 27/07/2026).
+        "name": (name or f"{par.get('name','')} {tgt.get('cap','')}").strip(),
         "type": "external", "status": "publish", "catalog_visibility": "hidden",
         "external_url": f"{par.get('permalink','').rstrip('/')}/?{qs}",
         "regular_price": str(tgt.get("price") or ""),

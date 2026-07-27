@@ -9345,6 +9345,16 @@ def zap_selftest(x_admin_key: Optional[str] = Header(None)):
             "has_feed_skus": hasattr(zap_scan, "_feed_skus"), "cases": out}
 
 
+@app.get("/api/admin/zap/plan")
+def zap_plan(pid: int, x_admin_key: Optional[str] = Header(None)):
+    """מה בדיוק צריך כדי שהמוצר יופיע בוודאות בדף ההשוואה — לכל נפח בנפרד.
+    ⚠️ שינוי אצלנו מתגלגל לזאפ תוך 6-24 שעות, ולכן ניחוש עולה יום. כאן
+    בודקים מראש מול דפי הדגם עצמם ומחזירים את הכותרת המדויקת הדרושה."""
+    _require_admin(x_admin_key)
+    import zap_scan
+    return zap_scan.plan(pid)
+
+
 @app.get("/api/admin/zap/shadows")
 def zap_shadows(x_admin_key: Optional[str] = Header(None)):
     """כל מוצרי הצל בשליפה אחת, ממופים לפי מזהה מוצר-האב — כדי שעמודת
@@ -9357,12 +9367,13 @@ def zap_shadows(x_admin_key: Optional[str] = Header(None)):
 
 
 @app.post("/api/admin/zap/create-shadow")
-def zap_create_shadow(sku: str = "", pid: Optional[int] = None,
+def zap_create_shadow(sku: str = "", pid: Optional[int] = None, name: str = "",
                       x_admin_key: Optional[str] = Header(None)):
-    """יצירת מוצר צל לזאפ לווריאציה (חמשת השלבים המתועדים)."""
+    """יצירת מוצר צל לזאפ לווריאציה (חמשת השלבים המתועדים).
+    `name` — כותרת דגם ההשוואה מהמרשם; זו הדרך היחידה להבטיח שיוך."""
     _require_admin(x_admin_key)
     import zap_price
-    return zap_price.create_shadow(sku.strip(), pid)
+    return zap_price.create_shadow(sku.strip(), pid, name.strip())
 
 
 @app.post("/api/admin/zap/visibility")

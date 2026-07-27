@@ -348,6 +348,8 @@ def _match_ok(our_name: str, zap_title: str) -> bool:
 
 
 HEB_RE = re.compile(r"[֐-׿]+")
+# סימני כיוון בלתי-נראים (LRM/RLM/LRE…) שדולפים משמות מוצרים ומזהמים שאילתות
+BIDI_RE = re.compile(r"[\u200e\u200f\u202a-\u202e\u2066-\u2069]")
 
 
 def _clean_query(name: str) -> str:
@@ -357,7 +359,7 @@ def _clean_query(name: str) -> str:
     שמות הפיד עברית-מובילה ("טלפון סלולרי OPPO Find X9 Ultra 1TB 16GB RAM"),
     והמילים העבריות — סוג המוצר, הצבע, "מציאון" — הן רעש שמדרדר את החיפוש;
     הליבה הלטינית+מספרית היא מה שזאפ מזהה."""
-    q = re.sub(r"\s+", " ", (name or "")).strip()
+    q = re.sub(r"\s+", " ", BIDI_RE.sub("", name or "")).strip()
     if " - " in q:
         # ⚠️ מי משני הצדדים נושא את הדגם? המבחן הוא **המותג**, לא "יש כאן
         # לטינית": בשם "סמארטפון עם מסך Super AMOLED... - Samsung Galaxy A07"
@@ -549,6 +551,100 @@ def analyse(t: dict) -> dict:
             p = row.get(f"p_top{k}")
             row[f"cut_top{k}"] = round(max(0.0, row["our_price"] - p), 0) if p else None
     return row
+
+
+# ────────────────────── מרשם: מה צריך כדי להופיע ──────────────────────
+def plan(pid) -> dict:
+    """מה בדיוק צריך לעשות כדי שהמוצר **בוודאות** יופיע בדף ההשוואה.
+
+    למה זה קיים (אסי, 27/07/2026): שינוי אצלנו מתגלגל לזאפ תוך 6-24 שעות,
+    ולכן ניחוש עולה יום שלם. במקום לנחש — בודקים מראש מול דפי הדגם עצמם:
+    לכל נפח מחפשים את הדגם התואם בזאפ, ומחזירים את **הכותרת המדויקת** שבה
+    צריך לפתוח את מוצר הצל. זאפ משייך לפי שם + נפח (+RAM), ולכן כותרת שזהה
+    לכותרת הדגם היא ההימור הבטוח היחיד."""
+    import requests
+    import zap_price
+    base = os.getenv("WC_STORE_URL", "https://greenmobile.co.il").rstrip("/")
+    auth = (os.getenv("WC_CONSUMER_KEY", ""), os.getenv("WC_CONSUMER_SECRET", ""))
+    pid = str(pid)
+    try:
+        p = requests.get(f"{base}/wp-json/wc/v3/products/{pid}", auth=auth, timeout=45,
+                         params={"_fields": "id,name,type,price,permalink,meta_data"}).json()
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": str(e)}
+    if not p.get("id"):
+        return {"ok": False, "error": "לא נמצא מוצר"}
+    meta = {m["key"]: str(m["value"]) for m in (p.get("meta_data") or [])}
+    hidden = meta.get("_woocommerce_zap_disable") == "yes"
+
+    # נפח → (מחיר מייצג, RAM) מתוך הוריאציות
+    by_cap = {}
+    if p.get("type") == "variable":
+        try:
+            vs = requests.get(f"{base}/wp-json/wc/v3/products/{pid}/variations", auth=auth,
+                              timeout=45, params={"per_page": 100,
+                                                  "_fields": "sku,price,attributes"}).json()
+        except Exception:  # noqa: BLE001
+            vs = []
+        for v in vs if isinstance(vs, list) else []:
+            cap = zap_price._cap_from_attrs(v.get("attributes"))
+            pr = float(v.get("price") or 0)
+            if not cap or pr <= 0:
+                continue
+            cur = by_cap.get(cap)
+            if not cur or pr < cur["price"]:      # הזול מייצג — הוא שמתחרה
+                by_cap[cap] = {"price": pr, "sku": v.get("sku") or ""}
+    if not by_cap:
+        pr = float(p.get("price") or 0)
+        cap = _capacity(p.get("name") or "")
+        by_cap = {f"{int(cap):05d}gb": {"price": pr, "sku": ""}} if (cap and pr) else {}
+
+    shadows = {}
+    try:
+        shadows = {sh.get("cap"): sh for sh in (zap_price.shadow_map().get(pid) or [])}
+    except Exception:  # noqa: BLE001
+        pass
+
+    core = re.sub(r"\s*\d+\s*(TB|GB)\b", "", _clean_query(p.get("name") or ""), flags=re.I)
+    core = re.sub(r"\s+", " ", core).strip(" -,")
+    steps = []
+    for cap in sorted(by_cap, key=lambda c: int(re.sub(r"\D", "", c) or 0)):
+        info = by_cap[cap]
+        gb = int(re.sub(r"\D", "", cap) or 0)
+        label = f"{gb // 1024}TB" if gb >= 1024 and gb % 1024 == 0 else f"{gb}GB"
+        q = f"{core} {label}".strip()
+        mid, title = None, ""
+        try:
+            html = _get(f"{BASE}/search.aspx?keyword={urllib.parse.quote(q)}")
+            for c in list(dict.fromkeys(re.findall(r"modelid=(\d+)", html)))[:6]:
+                t = _model_title(int(c))
+                if _match_ok(q, t):
+                    mid, title = int(c), t
+                    break
+                time.sleep(0.3)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("zap plan search failed for %s: %s", q, e)
+        clean_title = re.sub(r"\s*-\s*זאפ השוואת מחירים\s*$", "", title).strip()
+        sh = shadows.get(cap)
+        steps.append({
+            "cap": cap, "label": label, "price": info["price"], "sku": info["sku"],
+            "modelid": mid, "zap_title": clean_title, "query": q,
+            "shadow_id": (sh or {}).get("id"),
+            "shadow_price": (sh or {}).get("price"),
+            "suggested_name": clean_title or f"{core} {label}".strip(),
+            "state": ("no_model" if not mid else
+                      "ok" if sh and abs(float(sh.get("price") or 0) - info["price"]) < 0.5 else
+                      "shadow_drift" if sh else "need_shadow"),
+        })
+        time.sleep(0.8)
+
+    need = [s for s in steps if s["state"] in ("need_shadow", "shadow_drift")]
+    nomodel = [s for s in steps if s["state"] == "no_model"]
+    return {"ok": True, "product_id": int(pid), "name": p.get("name"),
+            "hidden": hidden, "type": p.get("type"), "steps": steps,
+            "summary": {"caps": len(steps), "ready": len(steps) - len(need) - len(nomodel),
+                        "need_shadow": len(need), "no_model": len(nomodel),
+                        "parent_should_stay_hidden": bool(steps) and len(steps) > 1}}
 
 
 def _summarise(rows: list, partial: bool = False) -> dict:

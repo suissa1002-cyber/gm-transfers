@@ -1563,6 +1563,7 @@ function zapTable(rows){
         <td onclick="event.stopPropagation()"><span class="zact">
           <button class="zib" title="ערוך מחיר באתר" onclick="zapEditPrice('${escW(zapRid(r))}')">${ico('pencil',16)}</button>
           <button class="zib" title="סנכרן מוצר צל למחיר האתר" onclick="zapSyncSh('${escW(zapRid(r))}')">${ico('refresh',16)}</button>
+          <button class="zib" title="מה צריך כדי להופיע בזאפ — בדיקה מול הדגמים" onclick="zapPlan('${escW(zapRid(r))}')">${ico('checkSquare',16)}</button>
           <button class="zib" title="צור מוצר צל לתצורה הזו" onclick="zapMakeShadow('${escW(zapRid(r))}')">${ico('copy',16)}</button>
           <button class="zib${r.zap_hidden?'':' dg'}" title="${r.zap_hidden?'הצג את המוצר בזאפ':'הסתר את המוצר מזאפ'}" onclick="zapVis('${escW(zapRid(r))}',${r.zap_hidden?0:1})">${ico(r.zap_hidden?'eyeOff':'eye',16)}</button>
           ${r.url?`<a class="zib" title="פתח בזאפ" href="${escW(r.url)}" target="_blank" rel="noopener">${ico('globe',16)}</a>`:''}
@@ -1637,6 +1638,11 @@ function zapShadowCell(r){
   if(Z.shErr) return `<a href="#" style="color:var(--txt-3);border-bottom:1px dotted var(--txt-3);text-decoration:none"
      onclick="event.preventDefault();event.stopPropagation();zapLoadShadow('${escW(id)}')">בדוק צל</a>`;
   if(!Z.shMap) return wrap('txt-3','טוען…','…');
+  // ⚠️ מוצר מוסתר אינו משודר — הצגת "משודר ישירות ✓" לצד "מוסתר מזאפ" באותה
+  // שורה היא סתירה שנראתה על iPhone 17 Pro Max (אסי, 27/07/2026).
+  if(r.zap_hidden) return (r.shadows||0)
+      ? wrap('brand-ink','ההורה מוסתר בכוונה והצללים משודרים במקומו',`${r.shadows} צללים משודרים`)
+      : wrap('red-ink','המוצר מוסתר מזאפ — לא מגיע לדף ההשוואה','לא משודר');
   if(Z.shIds&&Z.shIds.has(String(id)))
     return zapShState('is_shadow',null,wrap,ils);          // השורה עצמה היא הצל
   const list=Z.shMap[String(id)]||[];
@@ -1664,6 +1670,71 @@ async function zapLoadShadow(rid){
   try{ Z.sh[id]=await api('/api/admin/zap/shadow-state?'+zapQS(r),null,90000); }
   catch(e){ Z.sh[id]={state:'err',error:'שגיאת רשת'}; }
   if(el) el.innerHTML=zapShadowCell(r);
+}
+// ── מרשם: מה בדיוק צריך כדי שהמוצר יופיע בוודאות בדף ההשוואה ──
+// שינוי אצלנו מתגלגל לזאפ תוך 6-24 שעות, ולכן ניחוש עולה יום. בודקים מראש
+// מול דפי הדגם ומחזירים את הכותרת המדויקת (אסי, 27/07/2026).
+async function zapPlan(rid){
+  const r=zapRow(rid); if(!r) return;
+  showLoading('בודק מול דפי הדגם בזאפ…');
+  let j; try{ j=await api('/api/admin/zap/plan?pid='+encodeURIComponent(r.id||r.product_id),null,180000); }
+  catch(e){ hideLoading(); toast('שגיאת רשת',false); return; }
+  hideLoading();
+  if(!j.ok){ toast(j.error||'הבדיקה נכשלה',false); return; }
+  S.zapPlan=j;
+  const ils=n=>'₪'+Number(n||0).toLocaleString('en-US');
+  const badge=st=>({ok:['p-ok','מוכן'],need_shadow:['p-warn','חסר מוצר צל'],
+    shadow_drift:['p-bad','מחיר הצל לא מעודכן'],no_model:['p-off','אין דגם בזאפ']})[st]||['p-off','—'];
+  const rows=(j.steps||[]).map((s,i)=>{
+    const [cls,lab]=badge(s.state);
+    return `<tr>
+      <td><b>${escW(s.label)}</b><small style="display:block;color:var(--txt-3)">${ils(s.price)}</small></td>
+      <td><span class="zpill ${cls}">${lab}</span></td>
+      <td style="max-width:340px">
+        ${s.modelid?`<a href="https://www.zap.co.il/model.aspx?modelid=${s.modelid}" target="_blank" rel="noopener"
+            style="color:var(--brand-ink)">${escW(s.zap_title)}</a>`
+          :`<span style="color:var(--txt-3)">זאפ לא מכיר דגם לנפח הזה — חיפשנו "${escW(s.query)}"</span>`}
+      </td>
+      <td>${s.state==='need_shadow'&&s.modelid
+        ?`<button class="btn sm" onclick="zapPlanCreate(${i})">צור בכותרת הזו</button>`
+        :s.state==='shadow_drift'?`<button class="btn sm" onclick="zapSyncSh('${escW(rid)}')">סנכרן מחיר</button>`:''}</td>
+    </tr>`;}).join('');
+  const su=j.summary||{};
+  document.getElementById('modalRoot').innerHTML=`<div class="overlay" onclick="closeModal()">
+    <div class="modal" style="max-width:720px;text-align:right" onclick="event.stopPropagation()">`+`
+    <h3 style="margin:0 0 4px">מה צריך כדי להופיע בזאפ</h3>
+    <div class="muted" style="font-size:12.5px;margin-bottom:var(--s4)">${escW(j.name||'')}</div>
+    <div class="zpend" style="border-color:var(--line);background:var(--card-2)">
+      <div class="h" style="color:var(--txt)">
+        <b>${su.caps} נפחים</b> · מוכנים ${su.ready} · חסר צל ${su.need_shadow} · אין דגם ${su.no_model}
+      </div>
+      <div class="muted" style="font-size:12.5px">
+        ${j.hidden?'ההורה מוסתר מזאפ — ':''}${su.parent_should_stay_hidden
+          ?'<b>ההורה חייב להישאר מוסתר.</b> כותרת אחת לא יכולה לייצג כמה נפחים; כל נפח מופיע דרך מוצר הצל שלו.'
+          :'נפח יחיד — אפשר לשדר את המוצר עצמו בלי מוצרי צל.'}
+      </div>
+    </div>
+    <table class="zsub"><thead><tr><th>נפח</th><th>מצב</th><th>דגם ההשוואה בזאפ</th><th></th></tr></thead>
+      <tbody>${rows}</tbody></table>
+    <p class="muted" style="font-size:12px;margin-top:var(--s3)">
+      הכותרת שנוצרת זהה לכותרת דגם ההשוואה — זאפ משייך לפי שם + נפח (+RAM),
+      וזו הדרך היחידה להבטיח שיוך בסריקה הראשונה. עדכון מתגלגל תוך 6-24 שעות.</p>
+    <div style="text-align:left;margin-top:var(--s4)"><button class="btn" onclick="closeModal()">סגור</button></div>
+    </div></div>`;
+}
+async function zapPlanCreate(i){
+  const j=S.zapPlan, st=(j.steps||[])[i]; if(!st) return;
+  if(!confirm('ליצור מוצר צל בכותרת:\n'+st.suggested_name+'\n\nמחיר: ₪'+st.price)) return;
+  showLoading('יוצר מוצר צל…');
+  try{
+    const q=[`pid=${encodeURIComponent(j.product_id)}`,`name=${encodeURIComponent(st.suggested_name)}`];
+    if(st.sku) q.unshift(`sku=${encodeURIComponent(st.sku)}`);
+    const res=await api('/api/admin/zap/create-shadow?'+q.join('&'),{method:'POST'},120000);
+    hideLoading();
+    if(!res.ok){ toast(res.error||'נכשל',false); return; }
+    toast('נוצר: '+(res.name||st.suggested_name).slice(0,44),true);
+    closeModal(); loadZap(false);
+  }catch(e){ hideLoading(); toast('שגיאת רשת',false); }
 }
 async function zapMakeShadow(rid){
   const r=zapRow(rid); if(!r) return;
