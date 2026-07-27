@@ -628,7 +628,9 @@ def _title_gap(ours: str, zap_title: str) -> list:
     zt = re.sub(r"\s*-\s*זאפ השוואת מחירים\s*$", "", zap_title or "")
     mine, theirs = norm(ours), norm(zt)
     # מילים גנריות שזאפ מוסיף לכותרת ואינן חלק מזיהוי הדגם
-    skip = {"gb", "tb", "5g", "4g", "ram", "dual", "sim"}
+    # ⚠️ 4G/5G אינם רעש — בזאפ אלה **דגמים נפרדים** ("Redmi Note 15 4G" מול
+    # ה-5G), והסינון שלהם הסתיר פער כותרת אמיתי שאפשר לסגור (27/07/2026).
+    skip = {"gb", "tb", "ram", "dual", "sim"}
     # אסימוני נפח/זיכרון ("12gb") מדווחים בנפרד ובעברית — לא כפולים
     missing = [t for t in sorted(theirs - mine)
                if t not in skip and not re.fullmatch(r"\d+(gb|tb)", t)]
