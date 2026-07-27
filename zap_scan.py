@@ -479,7 +479,20 @@ def _base_query(q: str) -> str:
     return out if out.lower() != (q or "").lower() else ""
 
 
+_TITLE_CACHE: dict = {}
+
+
 def _model_title(mid: int) -> str:
+    """⚠️ מטמון לכל הריצה: אותם מועמדים חוזרים עשרות פעמים (iPhone 17 מוחזר
+    כמעט לכל שאילתה כושלת), וכל אחד עלה בקריאת רשת + השהיה. זה החלק הארי
+    של זמן הסריקה (אסי, 27/07/2026: "כל הזמן משהו תוקע את הסריקה")."""
+    if mid in _TITLE_CACHE:
+        return _TITLE_CACHE[mid]
+    _TITLE_CACHE[mid] = _model_title_fetch(mid)
+    return _TITLE_CACHE[mid]
+
+
+def _model_title_fetch(mid: int) -> str:
     try:
         html = _get(f"{BASE}/model.aspx?modelid={mid}")
     except Exception:  # noqa: BLE001
@@ -538,12 +551,17 @@ def resolve_modelid(name: str, sku: str) -> int | None:
             return None                   # שגיאת רשת — לא נועלים מטמון
         for cand in list(dict.fromkeys(re.findall(r"modelid=(\d+)", html)))[:6]:
             if cand not in seen:
+                fresh = int(cand) not in _TITLE_CACHE
                 seen[cand] = _model_title(int(cand))
-                time.sleep(0.35)
+                if fresh:
+                    time.sleep(0.35)
             if _match_ok(q, seen[cand]):
                 sc = _score(q, seen[cand])
                 if not best or sc > best[0]:
                     best = (sc, int(cand), seen[cand])
+        # התאמה חזקה (חפיפה רחבה ובלי מילים זרות) — אין טעם בשאילתות נוספות
+        if best and best[0][0] >= 5 and best[0][1] >= -2:
+            break
     if best:
         mid = best[1]
         db.sales_state_set(f"zap_title:{sku}", best[2][:160])

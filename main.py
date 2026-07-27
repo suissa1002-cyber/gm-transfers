@@ -242,6 +242,38 @@ def _special_refresh_job():
         return {"ok": False, "error": str(e)}
 
 
+def _zap_watchdog_job():
+    """ממשיך סריקת זאפ שנעצרה באמצע.
+    ⚠️ הסריקה רצה בת'רד; deploy או מיחזור מופע הורגים אותה, ואז ההתקדמות
+    קופאת (ראינו 15/104 יותר משעה, ו-42/104 אחר כך). מיפוי דגם→modelid נשמר
+    לצמיתות לכל מוצר שכבר נפתר, ולכן **המשך** הסריקה מדלג עליהם — לא מתחילים
+    מאפס. תקרה של 3 ניסיונות ליום כדי שכשל אמיתי לא ייכנס ללולאה."""
+    import json as _j
+    prog = db.sales_state_get("zap_progress") or ""
+    if not prog:
+        return {"ok": True, "idle": True}
+    try:
+        d0 = _j.loads(prog)
+        beat = d0.get("beat")
+        if beat and (datetime.now() - datetime.fromisoformat(beat)).total_seconds() < 420:
+            return {"ok": True, "running": True, "done": d0.get("done")}
+    except Exception:  # noqa: BLE001
+        return {"ok": False}
+    key = f"zap_resume:{_date.today().isoformat()}"
+    tries = int(db.sales_state_get(key) or 0)
+    if tries >= 3:
+        db.sales_state_set("zap_progress", "")
+        logger.warning("zap watchdog: 3 ניסיונות היום — מפסיק")
+        return {"ok": False, "gave_up": True}
+    db.sales_state_set(key, str(tries + 1))
+    db.sales_state_set("zap_progress", "")
+    logger.warning("zap watchdog: סריקה נעצרה ב-%s/%s — ממשיך (ניסיון %d)",
+                   d0.get("done"), d0.get("total"), tries + 1)
+    import threading
+    threading.Thread(target=_zap_scan_job, name="zap-resume", daemon=True).start()
+    return {"ok": True, "resumed": True, "from": d0.get("done")}
+
+
 def _zap_scan_job():
     """סריקת זאפ יומית — המיקום שלנו מול המתחרים על כל סמארטפון עם מלאי.
     ~250 דגמים, ~1.1ש בין קריאות ⇒ כ-5 דקות. רץ בשעה שקטה כדי לא להתחרות
@@ -586,6 +618,11 @@ def register_recurring_jobs():
     # כדי שהנתון על השולחן בבוקר). ראה zap_scan.py לרקע ולממצא שהוליד את זה.
     scheduler.add_job(_zap_scan_job, "cron", hour=5, minute=20, id="zap_scan",
                       max_instances=1, coalesce=True, misfire_grace_time=3600)
+    # ⚠️ שומר סף לסריקה: ת'רד שנהרג (deploy/מיחזור מופע ב-Render) השאיר סריקה
+    # חצי-גמורה, והתמונה במסך נשארה ישנה עד שמישהו הריץ ידנית. כל 10 דקות
+    # בודקים אם הסריקה נעצרה באמצע וממשיכים אותה (אסי, 27/07/2026).
+    scheduler.add_job(_zap_watchdog_job, "interval", minutes=10, id="zap_watchdog",
+                      max_instances=1, coalesce=True, misfire_grace_time=600)
     # גיבוי מדיה נכנסת ממטא (תמונות/מסמכים) — כל 5 דק', כדי שלא יאבד כשמטא ימחק (~30 יום)
     scheduler.add_job(_media_backup_job, "interval", minutes=5, id="media_backup", max_instances=1)
     scheduler.add_job(_media_backup_job, "date", id="media_backup_initial",
