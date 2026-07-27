@@ -9454,12 +9454,17 @@ def zap_pending_list():
 
 
 @app.post("/api/admin/zap/pending-done")
-def zap_pending_done(sku: str, x_admin_key: Optional[str] = Header(None)):
-    """סימון ששינוי המחיר עודכן גם בקופה — מסיר את החיווי."""
+def zap_pending_done(sku: str = "", key: str = "",
+                     x_admin_key: Optional[str] = Header(None)):
+    """סימון ששינוי המחיר עודכן גם בקופה — מסיר את החיווי.
+    `key` = מזהה הרשומה (מזהה הווריאציה); `sku` נתמך לאחור."""
     _require_admin(x_admin_key)
     import zap_price
-    zap_price.clear_pending(sku.strip())
-    return {"ok": True, "sku": sku}
+    k = (key or sku).strip()
+    if not k:
+        raise HTTPException(400, "חסר מזהה רשומה")
+    zap_price.clear_pending(k)
+    return {"ok": True, "key": k}
 
 
 @app.post("/api/admin/zap/scan-now")

@@ -467,6 +467,8 @@
         overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .zalt{display:block;font-size:11.5px;color:var(--txt-3);max-width:330px;
         overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .zsku{display:inline-block;font-variant-numeric:tabular-nums;background:var(--card-2);
+        border:1px solid var(--line);border-radius:var(--r-xs);padding:1px 6px;margin:1px 2px}
   .zsep{width:1px;align-self:stretch;background:var(--line);margin:0 var(--s2)}
   .zact{display:inline-flex;gap:1px;align-items:center}
   .zib{appearance:none;background:none;border:0;padding:0;text-decoration:none;
@@ -1526,16 +1528,31 @@ function renderZap(){
 }
 function zapPendBox(){
   const Z=zapInit(), rows=Object.values(Z.pend), ils=n=>'₪'+Number(n||0).toLocaleString('en-US');
+  // ⚠️ מציגים את **כל** מק"טי הקופה שהושפעו: שינוי מחיר נוגע בכל הצבעים של
+  // אותו נפח, והצגת מק"ט אחד שלחה לעדכן בקופה רק אחד מהם (אסי, 27/07/2026).
   return `<div class="zpend"><div class="h">${ico('clock',15)}
     <b>${rows.length} שינויי מחיר ממתינים לעדכון בקופה</b>
     <span class="muted" style="font-size:12px">עודכנו באתר — הקופה לא מתעדכנת אוטומטית</span></div>
-    <table class="zsub"><tbody>${rows.map(x=>`<tr>
-      <td>${escW(x.name||'')}</td><td class="n">${escW(x.sku)}</td>
+    <table class="zsub"><tbody>${rows.map(x=>{
+      const sk=((x.skus&&x.skus.length)?x.skus:[x.sku]).filter(Boolean);
+      return `<tr>
+      <td>${escW(x.name||'')}</td>
+      <td class="n">${sk.map(v=>`<span class="zsku">${escW(v)}</span>`).join('')}
+        ${sk.length>1?`<small style="display:block;font-size:11px;color:var(--txt-3);margin-top:3px">${sk.length} מק״טים — לעדכן את כולם</small>`:''}</td>
       <td class="n muted">${x.old?ils(x.old):'—'}</td><td class="n"><b>${ils(x.new)}</b></td>
       <td class="n muted">${escW((x.at||'').replace('T',' ').slice(0,16))}</td>
-      <td style="text-align:start"><button class="zchip" onclick="zapPendDone('${escW(x.sku)}')">✓ עודכן בקופה</button></td>
-      </tr>`).join('')}</tbody></table></div>`;
+      <td style="text-align:start">
+        ${sk.length>1?`<button class="zib" title="העתק את כל המק״טים" onclick="zapCopySkus('${escW(sk.join(','))}')">${ico('copy',15)}</button>`:''}
+        <button class="zchip" onclick="zapPendDone('${escW(x.key||x.sku)}')">✓ עודכן בקופה</button></td>
+      </tr>`;}).join('')}</tbody></table></div>`;
 }
+function zapCopySkus(csv){
+  const list=csv.split(',');
+  navigator.clipboard.writeText(list.join('\n')).then(
+    ()=>toast('הועתקו '+list.length+' מק״טים',true),
+    ()=>prompt('העתק:',list.join('\n')));
+}
+
 function zapTable(rows){
   const Z=zapInit();
   if(!rows.length) return `<div class="empty">${Z.reason?escW(Z.reason):'אין שורות תואמות'}</div>`;
@@ -1906,8 +1923,8 @@ async function zapSyncSh(rid){
     if(j.ok){ const Z=zapInit(); if(Z.sh) delete Z.sh[zapRid(r)]; zapLoadShadow(rid); }
   }catch(e){ hideLoading(); toast('שגיאת רשת',false); }
 }
-async function zapPendDone(sku){
-  try{ await api('/api/admin/zap/pending-done?sku='+encodeURIComponent(sku),{method:'POST'},30000); }catch(e){}
+async function zapPendDone(key){
+  try{ await api('/api/admin/zap/pending-done?key='+encodeURIComponent(key),{method:'POST'},30000); }catch(e){}
   loadZap(false);
 }
 

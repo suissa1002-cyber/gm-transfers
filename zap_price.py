@@ -339,9 +339,17 @@ def set_price(sku: str, price: float, sync_shadow: bool = True, pid=None) -> dic
                 {"id": sh["id"], "name": sh["name"],
                  **({} if rr.ok else {"reason": f"HTTP {rr.status_code}"})})
 
-    # ⚠️ הקופה לא מתעדכנת מכאן — רושמים "ממתין לקופה" כדי שלא ייווצר פער שקט
-    db.sales_state_set(f"zap_pending:{sku}", json.dumps(
-        {"sku": sku, "name": tgt.get("name"), "old": old, "new": round(price, 2),
+    # ⚠️ הקופה לא מתעדכנת מכאן — רושמים "ממתין לקופה" כדי שלא ייווצר פער שקט.
+    # ⚠️ ורושמים את **כל** מק"טי הקופה שהושפעו: העדכון נוגע בכל הצבעים של
+    # אותו נפח, ורישום מק"ט אחד שלח את אסי לעדכן בקופה רק אחד מהם
+    # (27/07/2026). המפתח לפי מזהה המוצר — מק"ט עלול להיות ריק.
+    all_skus = [x for x in ([tgt.get("sku") or sku]
+                            + [y.get("sku") for y in siblings if y.get("updated")]) if x]
+    key = str(tgt.get("id") or sku or tgt.get("parent"))
+    db.sales_state_set(f"zap_pending:{key}", json.dumps(
+        {"key": key, "sku": sku or (all_skus[0] if all_skus else ""),
+         "skus": all_skus, "name": tgt.get("name"), "old": old,
+         "new": round(price, 2),
          "at": datetime.now().isoformat(timespec="seconds"),
          "shadows": len(synced)}, ensure_ascii=False))
     logger.info("zap price %s: %s → %s (shadows synced: %d)", sku, old, price, len(synced))
@@ -388,8 +396,9 @@ def pending() -> list:
     return sorted(out, key=lambda x: x.get("at", ""), reverse=True)
 
 
-def clear_pending(sku: str) -> None:
-    db.sales_state_set(f"zap_pending:{sku}", "")
+def clear_pending(key: str) -> None:
+    """הרשומה נשמרת לפי מזהה הווריאציה; תמיכה לאחור במפתח מק"ט ישן."""
+    db.sales_state_set(f"zap_pending:{key}", "")
 
 
 # ─────────────────────── הצגה/הסתרה בזאפ ───────────────────────
