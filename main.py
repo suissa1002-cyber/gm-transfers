@@ -7231,7 +7231,12 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
         # ⚠️ הנתון עצמו מוצג תמיד, לא רק כשהוא חשוד: "כמה הזמנות מה-IP הזה" היה
         # הסימן החזק ביותר בטריאז 49342, ולא היה מוצג כלל (אסי, 28/07/2026).
         # IP יחיד עם הזמנה אחת הוא ראיה **מרגיעה**, ובלעדיו הבודק עובד בעיוורון.
-        ip_orders = len(ents) + 1          # כולל ההזמנה הנוכחית
+        # ⚠️ רשומות הגרף **כוללות כבר** את ההזמנה הנוכחית (ראה _distinct_identities),
+        # ולכן +1 ספר אותה פעמיים והציג "2 הזמנות" על IP עם הזמנה אחת — סימן
+        # מדאיג-שווא בדיוק במקום שאמור להרגיע (28/07/2026).
+        _nums = {e[0] for e in ents if e and e[0]}
+        _nums.add(num)
+        ip_orders = len(_nums)
         ip_identities = len(emails_s)
         # IP משותף רגיש ל-CGNAT סלולרי → דורש גם שמות וגם מיילים שונים, ולא סלולרי
         if others and len(names) >= 2 and len(emails_s) >= 2 and not geo.get("mobile"):
