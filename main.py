@@ -722,6 +722,21 @@ def _startup():
             logger.info("zap: cleared stale scan progress on startup")
     except Exception as e:  # noqa: BLE001
         logger.warning("zap progress cleanup failed: %s", e)
+
+    # ⚠️ חימום מטמוני זאפ ברקע. בניית מפת האטריביוטים לוקחת ~88 שניות, ובלי
+    # החימום היא נופלת על **הלחיצה הראשונה של אסי** אחרי כל deploy — הוא ראה
+    # ספינר של יותר משלוש דקות (28/07/2026). ת'רד נפרד כדי לא לעכב את העלייה.
+    def _zap_warm():
+        try:
+            import zap_price
+            zap_price._term_slugs(*zap_price._wc())
+            zap_price._shadow_map_cached()
+            logger.info("zap: caches warmed")
+        except Exception as e:  # noqa: BLE001
+            logger.warning("zap warm failed: %s", e)
+
+    import threading as _th
+    _th.Thread(target=_zap_warm, name="zap-warm", daemon=True).start()
     # פיתוח מקומי: DISABLE_BACKGROUND_JOBS=1 מכבה את כל עבודות הרקע.
     if os.getenv("DISABLE_BACKGROUND_JOBS", "").strip() in ("1", "true", "yes"):
         logger.warning("background jobs DISABLED (DISABLE_BACKGROUND_JOBS)")
