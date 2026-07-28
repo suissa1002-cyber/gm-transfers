@@ -9606,6 +9606,35 @@ def zap_selftest(x_admin_key: Optional[str] = Header(None)):
     if not _ok_e:
         bad += 1
     out.append({"query": "bulk([]) לא משנה כלום", "want": True, "got": _ok_e, "ok": _ok_e})
+    # ⚠️ סמסונג כותבת "Galaxy Buds 3 Pro" באתר ו-"Galaxy Buds3 Pro" בזאפ.
+    # שלושת הדגמים הנמכרים ביותר באוזניות סומנו "אין דגם בזאפ" בגלל רווח
+    # אחד, ומולם — Buds4 Pro הותאם ל-Buds4 הרגיל, כי אסימוני הספרות זהים
+    # והמהדורה לא נבדקה (אסי, 28/07/2026).
+    for ours, zt, want_ok in (
+            ("אוזניות Samsung Galaxy Buds 3 Pro",
+             "אוזניות Samsung Galaxy Buds3 Pro SM-R630 True Wireless סמסונג", True),
+            ("אוזניות Samsung Galaxy Buds 3 Pro",
+             "אוזניות Samsung Galaxy Buds3 SM-R530 Bluetooth סמסונג", False),
+            ("אוזניות Samsung Galaxy Buds 3",
+             "אוזניות Samsung Galaxy Buds3 SM-R530 Bluetooth סמסונג", True),
+            ("אוזניות Samsung Galaxy Buds 3",
+             "אוזניות Samsung Galaxy Buds3 FE SM-R420 True Wireless סמסונג", False),
+            ("אוזניות Samsung Galaxy Buds 4 Pro TWS",
+             "אוזניות Samsung Galaxy Buds4 Pro SM-R640 True Wireless", True),
+            ("אוזניות Samsung Galaxy Buds 4 Pro TWS",
+             "אוזניות אלחוטיות Samsung Galaxy Buds4 SM-R540 סמסונג", False)):
+        got = zap_scan._match_ok(zap_scan._audio_query(ours), zt, 1963)
+        if got != want_ok:
+            bad += 1
+        out.append({"query": f"buds: {ours[:24]} | {zt[:30]}", "want": want_ok,
+                    "got": got, "ok": got == want_ok})
+    # החיפוש עצמו זקוק לצורה המודבקת: "Buds 3" מחזיר בזאפ טלפונים בלבד.
+    _g = zap_scan._audio_glue("Samsung Galaxy Buds 3 Pro")
+    _ok_g = _g == "Samsung Galaxy Buds3 Pro"
+    if not _ok_g:
+        bad += 1
+    out.append({"query": "audio_glue", "want": "Samsung Galaxy Buds3 Pro",
+                "got": _g, "ok": _ok_g})
     # ⚠️ הגרסה שרצה בשרת בפועל. בלי זה ניחשתי ארבע פעמים כמה זמן לוקח deploy
     # ל-Render, הרצתי סריקות ואימותים על קוד ישן, והסקתי מסקנות שגויות.
     sha = (os.getenv("RENDER_GIT_COMMIT") or "")[:7]

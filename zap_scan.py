@@ -482,11 +482,42 @@ _AUDIO_STOP = {"אוזניות", "אוזניה", "אוזנייה", "אוזניי
                "over", "ear", "on", "in", "the", "new", "pro", "plus"}
 
 
+# ⚠️ מהדורה בתוך הדגם. "Galaxy Buds3 Pro" ו-"Galaxy Buds3" הם שני דפי
+# השוואה נפרדים בזאפ, ואסימוני הספרות שלהם זהים — בלי הבדיקה הזאת
+# ה-Buds4 Pro שלנו הותאם ל-Buds4 הרגיל (אסי, 28/07/2026).
+_EDITION = {"pro", "plus", "ultra", "max", "fe", "lite", "mini", "se"}
+
+
 def _audio_model(s: str) -> set:
-    """אסימוני דגם של אודיו: כל טוקן שמכיל ספרה (770nc, 1000xm5, qc45, q30)."""
+    """אסימוני דגם של אודיו: כל טוקן שמכיל ספרה (770nc, 1000xm5, qc45, q30).
+
+    ⚠️ סמסונג כותבת "Galaxy Buds 3 Pro" באתר ו-"Galaxy Buds3 Pro" בזאפ.
+    אצלנו יצא {"3"} ומולו {"buds3"} — אין חיתוך, ושלושת הדגמים הנמכרים
+    ביותר סומנו "אין דגם בזאפ" (אסי, 28/07/2026). לכן פולטים גם את הצורה
+    המודבקת: מילה שאחריה מספר בודד.
+    """
     low = re.sub(r"[^\w]+", " ", (s or "").lower())
-    return {t for t in low.split() if any(c.isdigit() for c in t)
-            and not re.fullmatch(r"\d{5,}", t)}
+    toks = low.split()
+    out = set()
+    for i, t in enumerate(toks):
+        if not any(c.isdigit() for c in t) or re.fullmatch(r"\d{5,}", t):
+            continue
+        out.add(t)
+        if t.isdigit() and i and toks[i - 1].isalpha() and len(toks[i - 1]) > 2:
+            out.add(toks[i - 1] + t)
+    return out
+
+
+
+def _audio_glue(q: str) -> str:
+    """"Galaxy Buds 3 Pro" → "Galaxy Buds3 Pro" — כך זאפ מקטלג את הדגם."""
+    g = re.sub(r"\b([A-Za-z]{3,}) (\d{1,2})\b", r"\1\2", q or "")
+    return g if g != q else ""
+
+
+def _audio_edition(s: str) -> set:
+    low = re.sub(r"[^\w]+", " ", (s or "").lower())
+    return {t for t in low.split() if t in _EDITION}
 
 
 def _audio_words(s: str) -> set:
@@ -500,6 +531,8 @@ def _audio_words(s: str) -> set:
 
 def _audio_match(ours: str, theirs: str) -> bool:
     ours, theirs = _audio_query(ours), _audio_query(theirs)
+    if _audio_edition(ours) != _audio_edition(theirs):
+        return False                  # Buds3 Pro ≠ Buds3, AirPods Pro ≠ AirPods
     ma, mb = _audio_model(ours), _audio_model(theirs)
     if ma and mb:
         return bool(ma & mb)          # שני הצדדים ממוספרים ⇒ המספר מכריע
@@ -719,7 +752,11 @@ def resolve_modelid(name: str, sku: str, cat=None) -> int | None:
     # אחרי השאילתה הראשונה שהצליחה בחרה את "Realme GT 8 Pro" הרגיל, בזמן
     # שדף ה-Dream Edition שלנו מופיע רק בשאילתת הבסיס (אסי, 27/07/2026).
     best, seen = None, {}
-    tries = ([q, _short_query(q)] if audio else [q, _base_query(q), _short_query(q)])
+    # ⚠️ בתחום האודיו גם **החיפוש** צריך את הצורה המודבקת: "Samsung Galaxy
+    # Buds 3" מחזיר בזאפ רק טלפונים, ו-"Buds3" מחזיר את דף האוזניות
+    # (אסי, 28/07/2026).
+    tries = ([q, _audio_glue(q), _short_query(q)] if audio
+             else [q, _base_query(q), _short_query(q)])
     for attempt in [a for a in dict.fromkeys(tries) if a]:
         try:
             html = _get(f"{BASE}/search.aspx?keyword={urllib.parse.quote(attempt)}")
