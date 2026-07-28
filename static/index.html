@@ -1654,7 +1654,18 @@ function zapComp(r){
   const ils=n=>'₪'+Number(n||0).toLocaleString('en-US');
   const vars=(r.variants||[]);
   let out='<div class="zdetbox">';
-  if(vars.length>1){
+  // ⚠️ הפירוט הוצג רק כשדגם בזאפ מקבץ כמה **מוצרים**, ולא כשמוצר אחד מקבץ
+  // צבעים — ואז השורה הראתה מק"ט אחד לצד מלאי מסוכם ונראתה כאילו כולו על
+  // אותו מק"ט (אסי, 28/07/2026: "ה-17 מדבר על כל הצבעים?"). מפרקים למק"ט.
+  const skl=[]; vars.forEach(v=>(v.sku_stock||[]).forEach(x=>skl.push({...x,pname:v.name})));
+  if(skl.length>1){
+    out+=`<div class="zdh">המלאי שמרכיב את ${r.stock||0} היחידות · ${skl.length} מק״טים</div>
+      <table class="zsub"><tbody>${skl.map(x=>`<tr>
+        <td>${escW(x.label||x.pname||'')}</td>
+        <td style="color:var(--txt-3)">${escW(x.sku)}</td>
+        <td><b>${x.stock||0}</b> יח׳</td></tr>`).join('')}
+      </tbody></table><div style="height:14px"></div>`;
+  } else if(vars.length>1){
     out+=`<div class="zdh">המלאי שמרכיב את ${r.stock||0} היחידות</div>
       <table class="zsub"><tbody>${vars.map(v=>`<tr>
         <td>${escW(v.name)}</td><td style="color:var(--txt-3)">${escW(v.sku)}</td>

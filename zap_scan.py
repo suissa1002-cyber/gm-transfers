@@ -182,7 +182,7 @@ def _feed_skus(pids: list, beat=None) -> dict:
         except Exception as e:  # noqa: BLE001
             logger.warning("zap: sku batch failed: %s", e)
 
-    _vcache = {}
+    _vcache, _labels = {}, {}
 
     def variations(par, cap=None):
         if par not in _vcache:
@@ -194,6 +194,13 @@ def _feed_skus(pids: list, beat=None) -> dict:
             except Exception:  # noqa: BLE001
                 _vcache[par] = []
         rows = _vcache[par]
+        # ⚠️ תווית לכל מק"ט (הצבע/התצורה). בלי זה הפירוט מציג מק"טים ערומים,
+        # והמוכר לא יודע איזה מהם הצבע שהלקוח ביקש (אסי, 28/07/2026).
+        for x in rows:
+            if x.get("sku"):
+                _labels.setdefault(str(x["sku"]), ", ".join(
+                    str(a.get("option") or "") for a in (x.get("attributes") or [])
+                    if a.get("option")))
         if cap:
             rows = [x for x in rows if zap_price._cap_from_attrs(x.get("attributes")) == cap]
         return [str(x["sku"]) for x in rows if x.get("sku")]
@@ -223,7 +230,7 @@ def _feed_skus(pids: list, beat=None) -> dict:
             out[pid] = variations(pid)
         elif p.get("sku"):
             out[pid] = [str(p["sku"])]
-    return {"skus": out, "caps": caps_by}
+    return {"skus": out, "caps": caps_by, "labels": _labels}
 
 
 def _catalog(cat: int = 1934) -> list:
@@ -298,7 +305,7 @@ def build_targets(cat=None, beat=None) -> list:
     stock = _pos_stock()
     pids = list(dict.fromkeys(list(feed_by_pid) + [str(p["id"]) for p in catalog]))
     _m = _feed_skus(pids, beat)
-    skumap, capmap = _m["skus"], _m["caps"]
+    skumap, capmap, labmap = _m["skus"], _m["caps"], _m.get("labels") or {}
     meta_by_pid = {str(p["id"]): p for p in catalog}
 
     out = []
@@ -322,6 +329,12 @@ def build_targets(cat=None, beat=None) -> list:
             "id": pid, "sku": (f or {}).get("sku") or (skus[0] if skus else ""),
             "name": name, "brand": brand_of(name),
             "stock": sum(stock.get(k, 0) for k in skus),
+            # ⚠️ פירוט לפי מק"ט. השורה מציגה מק"ט אחד לצד מלאי מסוכם, ואסי
+            # שאל בצדק אם ה-17 הוא כל הצבעים או רק הפריט הזה: 4 שחור +
+            # 8 לבן + 5 ירוק. הסכום נכון (דף השוואה = כל הצבעים), אבל בלי
+            # הפירוט הוא נראה כאילו כולו על המק"ט שמוצג (28/07/2026).
+            "sku_stock": [{"sku": k, "stock": stock.get(k, 0), "label": labmap.get(k, "")}
+                          for k in skus],
             "our_price": price or None, "product_id": pid,
             "site_url": (f or {}).get("url") or c.get("permalink"),
             "in_feed": 1 if f else 0, "zap_hidden": hidden,
@@ -1195,6 +1208,7 @@ def run(cat=None, limit: int | None = None, sleep: float = 1.1) -> dict:
                 by_model[mid] = g
             g["variants"].append({"sku": r["sku"], "name": r["name"],
                                   "stock": r.get("stock") or 0,
+                                  "sku_stock": r.get("sku_stock") or [],
                                   "price": r.get("our_price"),
                                   "caps": r.get("caps") or []})
             g["stock"] += r.get("stock") or 0

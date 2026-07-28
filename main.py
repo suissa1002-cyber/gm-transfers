@@ -9655,6 +9655,16 @@ def zap_selftest(x_admin_key: Optional[str] = Header(None)):
             bad += 1
         out.append({"query": f"suffix: {ours[:22]} | {zt[:30]}", "want": want_ok,
                     "got": got, "ok": got == want_ok})
+    # ⚠️ המלאי בשורה מסכם את **כל הצבעים** של אותה תצורה (דף השוואה אחד
+    # מכסה את כולם), אבל השורה מציגה מק"ט אחד — ואסי שאל בצדק אם ה-17 של
+    # JBL Wave Beam 2 הוא כל הצבעים או רק אותו פריט: 4 שחור + 8 לבן +
+    # 5 ירוק (28/07/2026). הפירוט חייב להגיע מהשרת, אחרת אין מה לפרק.
+    _sk = _insp.getsource(zap_scan.build_targets)
+    _ok_sk = "sku_stock" in _sk and "labmap" in _sk
+    if not _ok_sk:
+        bad += 1
+    out.append({"query": "פירוט מלאי לפי מק\"ט בשורה", "want": True,
+                "got": _ok_sk, "ok": _ok_sk})
     # ⚠️ הגרסה שרצה בשרת בפועל. בלי זה ניחשתי ארבע פעמים כמה זמן לוקח deploy
     # ל-Render, הרצתי סריקות ואימותים על קוד ישן, והסקתי מסקנות שגויות.
     sha = (os.getenv("RENDER_GIT_COMMIT") or "")[:7]
