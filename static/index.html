@@ -1715,7 +1715,12 @@ const ZACT={title:'שונתה כותרת',shadow:'נוצר מוצר צל',hidden
 function zapActBadge(r){
   const a=((zapInit().acts)||{})[String(r.id||r.product_id)];
   if(!a) return '';
-  if(r.reason_code==='listed') return '';       // כבר שויך — אין על מה לחכות
+  // ⚠️ התג נעלם כשמצב היעד של הפעולה הושג — וליעד יש שני כיוונים הפוכים.
+  // 'הסתרה' נועדה להוריד מזאפ, והמוצר נשאר רשום עד שזאפ סורק מחדש; הכלל
+  // הישן ('רשום ⇒ אין על מה לחכות') חסם את התג בדיוק שם. באיפוס האוזניות
+  // 159 הסתרות הניבו 2 תגים בלבד (אסי, 28/07/2026).
+  const listed=r.reason_code==='listed';
+  if(a.kind==='hidden' ? !listed : listed) return '';
   const t=String(a.at||'').replace('T',' ');
   const when=t.slice(11,16)+' '+t.slice(8,10)+'/'+t.slice(5,7);
   const hrs=(Date.now()-new Date(a.at).getTime())/36e5;
