@@ -9690,12 +9690,21 @@ def zap_visibility_bulk(body: ZapBulkVisIn, x_admin_key: Optional[str] = Header(
     import zap_scan
     pids = [int(p) for p in (body.pids or [])]
     if not pids and body.cat:
-        snap = zap_scan.latest(body.cat) or {}
+        # ⚠️ המקור הוא **הקטלוג**, לא שורות הסריקה: שורה = דגם בזאפ, וכמה
+        # מוצרים שחולקים דגם מתמזגים לשורה אחת שנושאת מזהה אחד בלבד.
+        # בנייה משורות הסריקה השאירה 7 מוצרים גלויים באיפוס האוזניות
+        # (אסי, 28/07/2026) — הפיד הראה 16 במקום 10.
         keep = {int(k) for k in (body.keep or [])}
-        pids = [int(r["id"]) for r in (snap.get("rows") or [])
-                if str(r.get("id", "")).isdigit() and int(r["id"]) not in keep]
+        cat_pids = {int(p["id"]) for p in (zap_scan._catalog(body.cat) or [])
+                    if str(p.get("id", "")).isdigit()}
+        try:                       # גם מה שבפיד ואינו בקטלוג (מוצרי צל)
+            cat_pids |= {int(f["num"]) for f in (zap_price.feed(body.cat) or [])
+                         if str(f.get("num", "")).isdigit()}
+        except Exception as e:  # noqa: BLE001
+            logger.warning("zap bulk: feed failed: %s", e)
+        pids = sorted(cat_pids - keep)
         if not pids:
-            return {"ok": False, "error": "אין תמונת סריקה לתחום — הרץ סריקה קודם"}
+            return {"ok": False, "error": "לא נמצאו מוצרים בקטגוריה"}
     return zap_price.zap_visibility_bulk(pids, body.hidden)
 
 @app.get("/api/admin/zap/feed")
