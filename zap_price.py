@@ -584,6 +584,37 @@ def zap_visibility(product_id: int = 0, hidden: bool = True, sku: str = "") -> d
 
 
 
+
+def zap_title(pid: int, name: str = "") -> dict:
+    """כותרת ייעודית לזאפ, בלי לגעת בשם שהלקוחות רואים.
+
+    ⚠️ בסלולר שינינו את **שם המוצר עצמו** כדי שזאפ ישייך — מחיר כבד: זו
+    הכותרת שהלקוח רואה בחנות ובגוגל. לתוסף יש שדה נפרד,
+    `_woocommerce_zap_product_name`, שנשלח בפיד במקום השם. אומת על
+    AirPods 4 שהערך שלו אכן מגיע לפיד (אסי, 28/07/2026).
+
+    name ריק = מחיקת ההתאמה וחזרה לשם המוצר."""
+    base, auth = _wc()
+    r = requests.put(f"{base}/wp-json/wc/v3/products/{int(pid)}", auth=auth, timeout=45,
+                     json={"meta_data": [{"key": "_woocommerce_zap_product_name",
+                                          "value": (name or "").strip()}]})
+    if not r.ok:
+        return {"ok": False, "error": f"HTTP {r.status_code}", "detail": r.text[:200]}
+    try:
+        seen = {m["key"]: str(m["value"]) for m in ((r.json() or {}).get("meta_data") or [])}
+        got = seen.get("_woocommerce_zap_product_name", "")
+        prod = (r.json() or {}).get("name") or ""
+    except Exception:  # noqa: BLE001
+        got, prod = "", ""
+    # ⚠️ מחזירים את הערך **שהשרת קרא** — הערך הקיים ב-AirPods 4 היה קטוע
+    # ("MXP63Z" במקום "MXP63ZM/A"), וכותרת קטועה גרועה מכותרת חסרה.
+    if (name or "").strip() and got != (name or "").strip():
+        return {"ok": False, "error": "השרת שמר ערך שונה", "sent": name, "stored": got}
+    act_log(pid, "title", f"כותרת זאפ: {got or '(נמחקה)'} · {prod}")
+    _shadow_cache_clear()
+    return {"ok": True, "product_id": int(pid), "zap_name": got, "product_name": prod}
+
+
 def zap_visibility_bulk(pids: list, hidden: bool = True) -> dict:
     """הסתרה/חשיפה המונית בזאפ. ⚠️ 150 קריאות PUT נפרדות לוקחות דקות ארוכות
     ונופלות על תקרת הזמן של הפרוקסי; WooCommerce מקבל עד 100 עדכונים

@@ -9673,6 +9673,33 @@ def zap_selftest(x_admin_key: Optional[str] = Header(None)):
         bad += 1
     out.append({"query": "sku_stock שורד את analyse", "want": 2,
                 "got": len(_got_sk), "ok": _ok_sk})
+    # ⚠️ כותרת ייעודית לזאפ — הדרך לתקן שיוך בלי לגעת בשם שהלקוח רואה.
+    _sigt = set(_insp.signature(_zp.zap_title).parameters)
+    _ok_t = {"pid", "name"} <= _sigt
+    if not _ok_t:
+        bad += 1
+    out.append({"query": "sig zap_title", "want": ["name", "pid"],
+                "got": sorted(_sigt), "ok": _ok_t})
+    # ⚠️ מק"ט יצרן הוא רעש בכותרות טלפונים, אבל **המזהה** באוזניות סמסונג
+    # ואפל: הפיד שולח "Galaxy Buds 3 Pro" וזאפ מכיר "Buds3 Pro SM-R630",
+    # ופער הכותרת דיווח "אין פער" כי סיננו את המק"ט (אסי, 28/07/2026).
+    for ours, zt, c, want_has in (
+            ("אוזניות Samsung Galaxy Buds 3 Pro עם סינון רעשים",
+             "אוזניות Samsung Galaxy Buds3 Pro SM-R630 True Wireless סמסונג", 1963, True),
+            ("אוזניות Samsung Galaxy Buds3 Pro SM-R630",
+             "אוזניות Samsung Galaxy Buds3 Pro SM-R630 True Wireless סמסונג", 1963, False),
+            # ⛔ ובטלפונים — הפוך: המק"ט רעש, ואין לדחוף אותו לכותרת שהלקוח רואה
+            ("Samsung Galaxy A57 5G 256GB 8GB RAM",
+             "טלפון סלולרי Samsung Galaxy A57 SM-A576B/DS 256GB 8GB RAM סמסונג", 1934, False),
+            # "Buds3" אינו מק"ט; אם ייחשב כזה הוא "יימצא" אצלנו ויכסה על SM-R630
+            ("אוזניות אלחוטיות Samsung Galaxy Buds 3",
+             "אוזניות Samsung Galaxy Buds3 SM-R530 Bluetooth סמסונג", 1963, True)):
+        _gap = zap_scan._title_gap(ours, zt, c)
+        _has = bool(_gap)
+        if _has != want_has:
+            bad += 1
+        out.append({"query": f"partno-gap: {ours[:30]}", "want": want_has,
+                    "got": _gap, "ok": _has == want_has})
     # ⚠️ הגרסה שרצה בשרת בפועל. בלי זה ניחשתי ארבע פעמים כמה זמן לוקח deploy
     # ל-Render, הרצתי סריקות ואימותים על קוד ישן, והסקתי מסקנות שגויות.
     sha = (os.getenv("RENDER_GIT_COMMIT") or "")[:7]
@@ -9773,6 +9800,19 @@ def zap_visibility_bulk(body: ZapBulkVisIn, x_admin_key: Optional[str] = Header(
         if not pids:
             return {"ok": False, "error": "לא נמצאו מוצרים בקטגוריה"}
     return zap_price.zap_visibility_bulk(pids, body.hidden)
+
+
+class ZapTitleIn(BaseModel):
+    pid: int
+    name: str = ""
+
+
+@app.post("/api/admin/zap/zap-title")
+def zap_set_zap_title(body: ZapTitleIn, x_admin_key: Optional[str] = Header(None)):
+    """כותרת ייעודית לזאפ בלי לשנות את שם המוצר בחנות."""
+    _require_admin(x_admin_key)
+    import zap_price
+    return zap_price.zap_title(body.pid, body.name)
 
 @app.get("/api/admin/zap/feed")
 def zap_feed(cat: int = 1934, x_admin_key: Optional[str] = Header(None)):

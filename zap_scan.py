@@ -93,6 +93,9 @@ ZAP_CATS = {
                       "ipad", "tab ", "tablet", "טאבלט", "watch", "שעון", "band", "כרטיס"),
         "lead": ("סמארטפון", "טלפון סלולרי", "טלפון חכם", "smartphone", "phone",
                  "טלפון", "מכשיר סלולרי"),
+        # ⛔ בטלפונים המק"ט הוא רעש: זאפ משייך לפי שם+נפח+RAM, ואין שום
+        # סיבה לדחוף "SM-A576B/DS" לכותרת שהלקוח רואה.
+        "partno": False,
     },
     1963: {
         "label": "אוזניות",
@@ -108,6 +111,9 @@ ZAP_CATS = {
         # ⚠️ באודיו אין נפח, ולכן כל מילת מפרט שזאפ מוסיף נספרה כ"פער כותרת":
         # "חסר true, wireless, usb" — רעש שהטביע את הפערים האמיתיים
         # (כמו "Anker" החסר ב-Soundcore V40i). אלה לא מזהים דגם.
+        # ✅ באוזניות המק"ט **הוא** המזהה: זאפ מכיר "Galaxy Buds3 Pro SM-R630",
+        # והפיד שלנו שולח "Galaxy Buds 3 Pro" — ולכן אינו משתייך לדף.
+        "partno": True,
         "title_skip": {"true", "wireless", "wired", "tws", "anc", "enc", "bt",
                        "4g", "5g", "ghz", "ps", "ps5", "xbox", "switch", "pc",
                        "bluetooth", "usb", "type", "magsafe", "for", "with",
@@ -914,6 +920,21 @@ def _title_gap(ours: str, zap_title: str, cat=None) -> list:
     # ⚠️ מק"ט יצרן מפורק לרסיסים בטוקניזציה: "CA-9011377-EU" הפך ל-ca/eu
     # ו-"SM-R420" ל-sm, והפער דיווח "חסר ca, eu, sm". מסלקים את המקטע כולו
     # לפני הפירוק, לא רק את החלק המספרי (אסי, 28/07/2026).
+    # ⚠️ מק"ט היצרן הוא **רעש בטלפונים ומזהה באודיו**: זאפ מכיר את הדגם
+    # כ-"Galaxy Buds3 Pro SM-R630", והפיד שלנו שולח "Galaxy Buds 3 Pro".
+    # סינון גורף החזיר "אין פער" בדיוק על המוצרים שלא משתייכים לדף
+    # (אסי, 28/07/2026). לכן: מוציאים את המק"ט כיחידה **שלמה** לפני
+    # הטוקניזציה — כדי שלא יתפרק ל-ca/eu/sm — ובודקים אותו בנפרד.
+    def _is_partno(w):
+        # מק"ט אמיתי: מקף/לוכסן, או רצף ארוך עם 3 ספרות ומעלה. בלי זה
+        # "Buds3" נספר כמק"ט, נמצא אצלנו, וכיסה על SM-R630 שבאמת חסר.
+        if re.fullmatch(r"\d+(gb|tb)", w, re.I) or not any(c.isalpha() for c in w):
+            return False
+        digits = sum(c.isdigit() for c in w)
+        return bool(digits and (("-" in w or "/" in w) and digits >= 2
+                                or (len(w) >= 6 and digits >= 3)))
+    parts = ([w for w in re.split(r"\s+", zt) if _is_partno(w)]
+             if cat_cfg(cat).get("partno") else [])
     zt = re.sub(r"\S*[-/]\S*\d{2,}\S*|\S*\d{2,}\S*[-/]\S*", " ", zt)
     mine, theirs = norm(ours), norm(zt)
     # מילים גנריות שזאפ מוסיף לכותרת ואינן חלק מזיהוי הדגם
@@ -939,6 +960,12 @@ def _title_gap(ours: str, zap_title: str, cat=None) -> list:
         missing.append(f"{rz}GB RAM")
     if _capacity(zt) and _capacity(zt) != _capacity(ours):
         missing.append("נפח " + _capacity(zt) + "GB")
+    # מק"ט הדגם: מספיק שאחד מהם מופיע אצלנו (לאפל יש כמה חלופיים לאותו דגם)
+    if parts:
+        norm = lambda w: re.sub(r"[^a-z0-9]", "", w.lower())
+        mine_n = norm(ours)
+        if not any(norm(w) and norm(w) in mine_n for w in parts):
+            missing.append("מק״ט " + parts[0])
     return missing
 
 
