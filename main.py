@@ -9565,10 +9565,15 @@ def zap_selftest(x_admin_key: Optional[str] = Header(None)):
     # דיווח "חסר ca, eu, sm" — עצה חסרת טעם שהטביעה את הפערים האמיתיים
     # (אסי, 28/07/2026). מה שנשאר הוא מה שבאמת מזהה דגם, כמו מותג חסר.
     for ours, zt, c, want_gap in (
+            # ⚠️ עודכן 28/07/2026: קודם ציפינו כאן ל-[] כי מק"טי יצרן סוננו
+            # כרעש. באוזניות המק"ט הוא **המזהה** שזאפ משייך לפיו, ולכן הוא
+            # מדווח — אבל כיחידה שלמה ("CA-9011377-EU") ולא כרסיסים ca/eu.
             ("אוזניות גיימינג - Corsair HS35 V2 Multiplatform",
-             "אוזניות חוטיות Corsair HS35 v2 Multiplatform CA-9011377-EU קורסייר", 1963, []),
+             "אוזניות חוטיות Corsair HS35 v2 Multiplatform CA-9011377-EU קורסייר", 1963,
+             ["מק״ט CA-9011377-EU"]),
             ("אוזניות - Samsung Galaxy Buds3 FE",
-             "אוזניות Samsung Galaxy Buds3 FE SM-R420 True Wireless סמסונג", 1963, []),
+             "אוזניות Samsung Galaxy Buds3 FE SM-R420 True Wireless סמסונג", 1963,
+             ["מק״ט SM-R420"]),
             ("אוזניות Open Ear Soundcore V40i IP55",
              "אוזניות אלחוטיות Anker Soundcore V40i Open Ear", 1963, ["anker"]),
             ("Xiaomi Redmi Note 15 256GB",
