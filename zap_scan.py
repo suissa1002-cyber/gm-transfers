@@ -135,16 +135,31 @@ def _prog_key(cat) -> str:
 
 
 # ─────────────────────────── מה סורקים ───────────────────────────
+_POS_CACHE: dict = {}
+
+
 def _pos_stock() -> dict:
-    """מק"ט → מלאי בקופה. נכשל בשקט: מלאי הוא חיווי, לא תנאי לסריקה."""
+    """מק"ט → מלאי בקופה. נכשל בשקט: מלאי הוא חיווי, לא תנאי לסריקה.
+
+    ⚠️ עד 28/07/2026 נשלפה **קטגוריה 3 בלבד** (טלפונים/סלולרי) — קידוד קשיח
+    מהימים שבהם הכלי כיסה רק סמארטפונים. ברגע שנוסף תחום האוזניות כל 161
+    השורות הראו 0 יחידות, ונראה כאילו אנחנו משדרים לזאפ מוצרים שאין במלאי
+    (אסי: "אולי אנחנו האשמים"). בקופה יש חמש קטגוריות אודיו (שמע, אוזניות
+    גיימינג, אזניות למחשב, אוזניות מקוריות, רמקולים), ובכל תחום חדש הבאג
+    היה חוזר. לכן שולפים את **כל** המוצרים: 15ש מול 2.5ש, זניח מול סריקה
+    של 20 דקות, ומבטל את מחלקת התקלות הזאת לתמיד."""
+    import time as _t
+    if _POS_CACHE.get("map") and _t.time() - _POS_CACHE.get("at", 0) < 600:
+        return _POS_CACHE["map"]
     try:
         import poller
-        return {str(p["id"]): (p.get("currentStock") or 0)
-                for p in poller.client().get_all_products(category=3)
-                if p.get("isActive")}
+        rows = poller.client().get_all_products()
+        m = {str(p["id"]): (p.get("currentStock") or 0) for p in rows if p.get("isActive")}
+        _POS_CACHE.update({"map": m, "at": _t.time()})
+        return m
     except Exception as e:  # noqa: BLE001
         logger.warning("zap: POS stock failed: %s", e)
-        return {}
+        return _POS_CACHE.get("map") or {}
 
 
 def _feed_skus(pids: list, beat=None) -> dict:

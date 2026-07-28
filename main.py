@@ -9582,6 +9582,15 @@ def zap_selftest(x_admin_key: Optional[str] = Header(None)):
             bad += 1
         out.append({"query": f"gap[{c}]: {ours[:26]}", "want": want_gap,
                     "got": got_gap, "ok": _ok_gap})
+    # ⚠️ מפת מלאי הקופה נשלפה בעבר מקטגוריה 3 בלבד (טלפונים), ובתחום
+    # האוזניות כל 161 השורות הראו 0 יחידות — נראה כאילו אנחנו משדרים לזאפ
+    # מוצרים שאזלו (אסי, 28/07/2026). בקופה חמש קטגוריות אודיו.
+    _src = _insp.getsource(zap_scan._pos_stock)
+    _ok_pos = "category=" not in _src
+    if not _ok_pos:
+        bad += 1
+    out.append({"query": "pos_stock ללא סינון קטגוריה", "want": True,
+                "got": _ok_pos, "ok": _ok_pos})
     # ⚠️ הגרסה שרצה בשרת בפועל. בלי זה ניחשתי ארבע פעמים כמה זמן לוקח deploy
     # ל-Render, הרצתי סריקות ואימותים על קוד ישן, והסקתי מסקנות שגויות.
     sha = (os.getenv("RENDER_GIT_COMMIT") or "")[:7]
