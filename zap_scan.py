@@ -105,6 +105,14 @@ ZAP_CATS = {
                       "כרית", "earpad", "ear pad", "ספוג", "חלף", "חלק חילוף"),
         "lead": ("אוזניות", "אוזניה", "אוזנייה", "אוזניית", "headphone", "earbud",
                  "earphone", "headset"),
+        # ⚠️ באודיו אין נפח, ולכן כל מילת מפרט שזאפ מוסיף נספרה כ"פער כותרת":
+        # "חסר true, wireless, usb" — רעש שהטביע את הפערים האמיתיים
+        # (כמו "Anker" החסר ב-Soundcore V40i). אלה לא מזהים דגם.
+        "title_skip": {"true", "wireless", "wired", "tws", "anc", "enc", "bt",
+                       "4g", "5g", "ghz", "ps", "ps5", "xbox", "switch", "pc",
+                       "bluetooth", "usb", "type", "magsafe", "for", "with",
+                       "ear", "open", "over", "on", "in", "headphones", "headset",
+                       "earbuds", "gaming", "stereo", "mic", "microphone"},
     },
 }
 DEFAULT_CAT = 1934
@@ -321,7 +329,7 @@ def _needs_shadow(row: dict) -> bool:
         and not (row.get("shadows") or 0)
 
 
-def _reason(row: dict) -> tuple:
+def _reason(row: dict, cat=None) -> tuple:
     """(קוד, טקסט) — למה השורה אינה מחוברת (או מחוברת חלקית) לדגם בזאפ."""
     caps = row.get("caps") or []
     if row.get("zap_hidden"):
@@ -355,7 +363,7 @@ def _reason(row: dict) -> tuple:
     # ⚠️ פער הכותרת מחושב **בסריקה** ולא רק בלחיצה על "מה צריך": הדליים
     # חייבים להיות רשימות עבודה נפרדות — מה שדורש תיקון כותרת אינו אותו
     # דבר כמו מה שדורש מוצר צל או מה שתלוי בזאפ (אסי, 27/07/2026).
-    gap = _title_gap(row.get("name") or "", row.get("zap_title") or "")
+    gap = _title_gap(row.get("name") or "", row.get("zap_title") or "", cat)
     if gap:
         return ("need_title", "חסר בכותרת: " + ", ".join(gap[:4]))
     # ⚠️ אין מלאי ⇒ זאפ פשוט לא מציג מוצר שאינו זמין, וזו התנהגות תקינה
@@ -820,21 +828,33 @@ def analyse(t: dict, cat=None) -> dict:
 
 
 # ────────────────────── מרשם: מה צריך כדי להופיע ──────────────────────
-def _title_gap(ours: str, zap_title: str) -> list:
+def _title_gap(ours: str, zap_title: str, cat=None) -> list:
     """אילו אסימונים מכותרת הדגם בזאפ **חסרים** בכותרת שלנו.
     ⚠️ "לשנות כותרת" בלי להגיד מה חסר הוא עצה חסרת ערך, וגרוע מזה — הוא נאמר
     גם כשהכותרת כן תואמת (אסי, 27/07/2026). כאן משווים אסימון-אסימון, ואם
     לא חסר כלום — אומרים זאת במפורש במקום להמציא סיבה."""
     norm = lambda t: set(re.findall(r"[a-z0-9]{2,}", (t or "").lower()))
     zt = re.sub(r"\s*-\s*זאפ השוואת מחירים\s*$", "", zap_title or "")
+    # ⚠️ מק"ט יצרן מפורק לרסיסים בטוקניזציה: "CA-9011377-EU" הפך ל-ca/eu
+    # ו-"SM-R420" ל-sm, והפער דיווח "חסר ca, eu, sm". מסלקים את המקטע כולו
+    # לפני הפירוק, לא רק את החלק המספרי (אסי, 28/07/2026).
+    zt = re.sub(r"\S*[-/]\S*\d{2,}\S*|\S*\d{2,}\S*[-/]\S*", " ", zt)
     mine, theirs = norm(ours), norm(zt)
     # מילים גנריות שזאפ מוסיף לכותרת ואינן חלק מזיהוי הדגם
     # ⚠️ 4G/5G אינם רעש — בזאפ אלה **דגמים נפרדים** ("Redmi Note 15 4G" מול
     # ה-5G), והסינון שלהם הסתיר פער כותרת אמיתי שאפשר לסגור (27/07/2026).
-    skip = {"gb", "tb", "ram", "dual", "sim"}
+    skip = {"gb", "tb", "ram", "dual", "sim"} | set(cat_cfg(cat).get("title_skip") or ())
+    # ⚠️ זאפ שותל בכותרת את **מק"ט היצרן** ("MXP63ZM/A", "CA-9011377-EU",
+    # "SM-R420"), והפער דיווח "חסר mxp63zm" — עצה חסרת טעם: אין שום סיבה
+    # להכניס מק"ט של זאפ לכותרת שלנו, וזה הטביע את הפערים האמיתיים
+    # (אסי, 28/07/2026). מק"ט = ערבוב אותיות וספרות באורך 4+, או רצף ספרות ארוך.
+    def _partno(t):
+        return bool(re.fullmatch(r"\d{4,}", t)) or (
+            len(t) >= 4 and any(c.isdigit() for c in t) and any(c.isalpha() for c in t)
+            and not re.fullmatch(r"\d+(gb|tb|g|mah|hz|db|w)", t))
     # אסימוני נפח/זיכרון ("12gb") מדווחים בנפרד ובעברית — לא כפולים
     missing = [t for t in sorted(theirs - mine)
-               if t not in skip and not re.fullmatch(r"\d+(gb|tb)", t)]
+               if t not in skip and not re.fullmatch(r"\d+(gb|tb)", t) and not _partno(t)]
     # ⚠️ ה-RAM חסר רק אם **המספר** אינו מופיע אצלנו כלל. "16GB 512GB" מכיל
     # את הזיכרון בלי המילה "RAM", ודיווח "חסר 16GB RAM" היה מטעה — יש
     # מוצרים ששויכו בזאפ על בסיס אחסון בלבד (אסי, 27/07/2026).
@@ -991,7 +1011,7 @@ def plan(pid, cat=None) -> dict:
         elif not in_feed:
             state, action = "need_feed", "המוצר לא נכלל בפיד — לבדוק מלאי/מחיר/קטגוריה"
         else:
-            gap = _title_gap(feed_name or p.get("name") or "", clean_title)
+            gap = _title_gap(feed_name or p.get("name") or "", clean_title, cat)
             if gap:
                 state = "need_title"
                 action = "חסר בכותרת שלנו: " + ", ".join(gap[:5])
@@ -1149,7 +1169,7 @@ def run(cat=None, limit: int | None = None, sleep: float = 1.1) -> dict:
     rows = sorted(by_model.values(), key=lambda r: -(r.get("stock") or 0)) + orphans
     for r in rows:
         r["needs_shadow"] = 1 if _needs_shadow(r) else 0
-        r["reason_code"], r["reason"] = _reason(r)
+        r["reason_code"], r["reason"] = _reason(r, cat)
     # החיווי "ממתין לשיוך זאפ" נמחק מעצמו ברגע שהשיוך קרה — אין טעם לבקש
     # מאסי לנקות ידנית משהו שהסריקה כבר יודעת
     try:

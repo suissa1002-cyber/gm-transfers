@@ -9561,6 +9561,27 @@ def zap_selftest(x_admin_key: Optional[str] = Header(None)):
             bad += 1
         out.append({"query": f"snapkey({c})", "want": want_key, "got": got,
                     "ok": got == want_key})
+    # ⚠️ זאפ שותל מק"ט יצרן בכותרת ("CA-9011377-EU", "SM-R420"), והפער
+    # דיווח "חסר ca, eu, sm" — עצה חסרת טעם שהטביעה את הפערים האמיתיים
+    # (אסי, 28/07/2026). מה שנשאר הוא מה שבאמת מזהה דגם, כמו מותג חסר.
+    for ours, zt, c, want_gap in (
+            ("אוזניות גיימינג - Corsair HS35 V2 Multiplatform",
+             "אוזניות חוטיות Corsair HS35 v2 Multiplatform CA-9011377-EU קורסייר", 1963, []),
+            ("אוזניות - Samsung Galaxy Buds3 FE",
+             "אוזניות Samsung Galaxy Buds3 FE SM-R420 True Wireless סמסונג", 1963, []),
+            ("אוזניות Open Ear Soundcore V40i IP55",
+             "אוזניות אלחוטיות Anker Soundcore V40i Open Ear", 1963, ["anker"]),
+            ("Xiaomi Redmi Note 15 256GB",
+             "טלפון סלולרי Xiaomi Redmi Note 15 4G 256GB 8GB RAM", 1934, ["4g", "8GB RAM"]),
+            ("Samsung Galaxy S26 Ultra 512GB",
+             "טלפון סלולרי Samsung Galaxy S26 Ultra 5G 512GB 12GB RAM", 1934,
+             ["5g", "12GB RAM"])):
+        got_gap = zap_scan._title_gap(ours, zt, c)
+        _ok_gap = got_gap == want_gap
+        if not _ok_gap:
+            bad += 1
+        out.append({"query": f"gap[{c}]: {ours[:26]}", "want": want_gap,
+                    "got": got_gap, "ok": _ok_gap})
     # ⚠️ הגרסה שרצה בשרת בפועל. בלי זה ניחשתי ארבע פעמים כמה זמן לוקח deploy
     # ל-Render, הרצתי סריקות ואימותים על קוד ישן, והסקתי מסקנות שגויות.
     sha = (os.getenv("RENDER_GIT_COMMIT") or "")[:7]
