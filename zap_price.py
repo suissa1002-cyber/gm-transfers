@@ -99,7 +99,12 @@ def _term_slugs(base, auth) -> dict:
     except Exception:  # noqa: BLE001
         return {}
     for a in (attrs if isinstance(attrs, list) else []):
-        tax = "pa_" + str(a.get("slug") or "")
+        # ⚠️ WooCommerce מחזיר את ה-slug כבר עם הקידומת pa_ ("pa_color"), והוספה
+        # נוספת יצרה "pa_pa_color". ווקומרס לא מזהה פרמטר כזה, אף וריאציה לא
+        # נבחרת בהפניה מהצל, ולכן מוצג **טווח מחירים** במקום המחיר המדויק —
+        # וזאפ פוסלים הצגה כזו (אסי, 28/07/2026).
+        _sl = str(a.get("slug") or "")
+        tax = _sl if _sl.startswith("pa_") else "pa_" + _sl
         m = {}
         page = 1
         while page <= 5:
@@ -152,7 +157,8 @@ def _variation_slugs(base, auth, var: dict) -> dict:
         if tax:
             out[tax] = terms[tax][opt]
         elif nm:
-            out["pa_" + nm.strip().replace(" ", "-")] = opt
+            _n = nm.strip().replace(" ", "-")
+            out[_n if _n.startswith("pa_") else "pa_" + _n] = opt
     return out
 
 
@@ -673,7 +679,17 @@ def create_shadow(sku: str = "", pid=None, name: str = "", cap: str = "") -> dic
     # ההורה חייב להיות מוסתר מזאפ, אחרת גם הוא וגם הצללים יופיעו
     zap_visibility(tgt["parent"], True)
     _shadow_cache_clear()          # הצל החדש חייב להיראות בקריאה הבאה
+    # ⚠️ רושמים על **הצל עצמו** ולא רק על ההורה: הצל הוא השורה שמוצגת בטבלה
+    # (הוא זה שבפיד), ולכן חיווי שנרשם על ההורה בלבד לא נראה בשום מקום
+    # (אסי, 28/07/2026 — ביקש לראות "נוצר מוצר צל" עם תאריך, כמו בכותרות).
+    act_log(new.get("id"), "shadow", new.get("name") or "")
     act_log(tgt["parent"], "shadow", new.get("name") or "")
+    # מנקים את מטמון LiteSpeed לצל החדש — אחרת ההפניה הראשונה נשמרת ונתקעת
+    try:
+        requests.post(f"{base}/wp-json/gm-zap/v1/purge/{new.get('id')}",
+                      auth=_wp_auth(), timeout=30)
+    except Exception:  # noqa: BLE001
+        pass
     return {"ok": True, "shadow_id": new.get("id"), "name": new.get("name"),
             "url": payload["external_url"], "parent_hidden": True,
             "note": "⚠️ ודא שהכותרת תואמת לכותרת דגם ההשוואה בזאפ (שם + נפח + RAM)"}
