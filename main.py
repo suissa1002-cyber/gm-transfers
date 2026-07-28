@@ -9659,12 +9659,20 @@ def zap_selftest(x_admin_key: Optional[str] = Header(None)):
     # מכסה את כולם), אבל השורה מציגה מק"ט אחד — ואסי שאל בצדק אם ה-17 של
     # JBL Wave Beam 2 הוא כל הצבעים או רק אותו פריט: 4 שחור + 8 לבן +
     # 5 ירוק (28/07/2026). הפירוט חייב להגיע מהשרת, אחרת אין מה לפרק.
-    _sk = _insp.getsource(zap_scan.build_targets)
-    _ok_sk = "sku_stock" in _sk and "labmap" in _sk
+    # ⛔ בדיקה על **הפלט**, לא על קוד המקור. הגרסה הראשונה בדקה שהמחרוזת
+    # "sku_stock" מופיעה ב-build_targets — והיא עברה, בזמן ש-analyse (שבונה
+    # מילון עם רשימת שדות מפורשת) מחק את השדה שלב אחר כך והפאנל נשאר ריק.
+    # כל שדה חדש חייב להיבדק דרך הצינור המלא (אסי, 28/07/2026).
+    _demo = {"sku": "A", "name": "x", "brand": "b", "stock": 3, "product_id": 1,
+             "sku_stock": [{"sku": "A", "stock": 2, "label": "שחור"},
+                           {"sku": "B", "stock": 1, "label": "לבן"}]}
+    _out_row = zap_scan.analyse(_demo, 1963)
+    _got_sk = _out_row.get("sku_stock") or []
+    _ok_sk = len(_got_sk) == 2 and _got_sk[0].get("label") == "שחור"
     if not _ok_sk:
         bad += 1
-    out.append({"query": "פירוט מלאי לפי מק\"ט בשורה", "want": True,
-                "got": _ok_sk, "ok": _ok_sk})
+    out.append({"query": "sku_stock שורד את analyse", "want": 2,
+                "got": len(_got_sk), "ok": _ok_sk})
     # ⚠️ הגרסה שרצה בשרת בפועל. בלי זה ניחשתי ארבע פעמים כמה זמן לוקח deploy
     # ל-Render, הרצתי סריקות ואימותים על קוד ישן, והסקתי מסקנות שגויות.
     sha = (os.getenv("RENDER_GIT_COMMIT") or "")[:7]

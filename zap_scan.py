@@ -846,6 +846,10 @@ def analyse(t: dict, cat=None) -> dict:
            "product_id": t.get("product_id"), "site_url": t.get("site_url"),
            "in_feed": t.get("in_feed", 1), "zap_hidden": t.get("zap_hidden", 0),
            "is_shadow": t.get("is_shadow", 0), "shadows": t.get("shadows", 0),
+           # ⚠️ analyse בונה מילון עם רשימת שדות מפורשת, ולכן כל שדה חדש
+           # שנוסף ב-build_targets מת כאן בשקט. הפירוט לפי מק"ט נוצר ונמחק
+           # בדרך, והפאנל נשאר ריק (אסי, 28/07/2026).
+           "sku_stock": t.get("sku_stock") or [],
            "caps": t.get("caps") or []}
     if not mid:
         row["status"] = "no_model"        # אין דגם תואם בזאפ
