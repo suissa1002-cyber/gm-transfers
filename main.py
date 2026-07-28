@@ -9635,6 +9635,26 @@ def zap_selftest(x_admin_key: Optional[str] = Header(None)):
         bad += 1
     out.append({"query": "audio_glue", "want": "Samsung Galaxy Buds3 Pro",
                 "got": _g, "ok": _ok_g})
+    # ⚠️ סיומת-גרסה באות בודדת: "FreeClip 2 S" מול "FreeClip 2". האות
+    # נופלת מהטוקניזציה, ולכן הדגם ה**שגוי** קיבל ציון גבוה מהנכון —
+    # היינו היחידים על 1268460 והכלי הצביע על 1268459 (אסי, 28/07/2026).
+    # אלה שני מוצרים אמיתיים; ה-2S מגיע לחנות, וצריך לתפוס את הדף שלו.
+    for ours, zt, want_ok in (
+            ("HUAWEI FreeClip 2 - אוזניות Open Ear",
+             "אוזניות Huawei FreeClip 2 Bluetooth וואווי", True),
+            ("HUAWEI FreeClip 2 - אוזניות Open Ear",
+             "אוזניות אלחוטיות Huawei FreeClip 2 S וואווי", False),
+            ("HUAWEI FreeClip 2S - אוזניות Open Ear",
+             "אוזניות אלחוטיות Huawei FreeClip 2 S וואווי", True),
+            ("HUAWEI FreeClip 2S - אוזניות Open Ear",
+             "אוזניות Huawei FreeClip 2 Bluetooth וואווי", False),
+            ("אוזניות אלחוטיות Samsung Galaxy Buds Core SM-R410",
+             "אוזניות אלחוטיות Samsung Galaxy Buds Core SM-R410 סמסונג", True)):
+        got = zap_scan._match_ok(zap_scan._audio_query(ours), zt, 1963)
+        if got != want_ok:
+            bad += 1
+        out.append({"query": f"suffix: {ours[:22]} | {zt[:30]}", "want": want_ok,
+                    "got": got, "ok": got == want_ok})
     # ⚠️ הגרסה שרצה בשרת בפועל. בלי זה ניחשתי ארבע פעמים כמה זמן לוקח deploy
     # ל-Render, הרצתי סריקות ואימותים על קוד ישן, והסקתי מסקנות שגויות.
     sha = (os.getenv("RENDER_GIT_COMMIT") or "")[:7]
