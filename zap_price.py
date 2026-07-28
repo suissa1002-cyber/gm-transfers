@@ -167,11 +167,33 @@ def shadow_map() -> dict:
     return out
 
 
+_SHADOW_CACHE = {"at": 0.0, "map": {}}
+
+
+def _shadow_map_cached(ttl: float = 60.0) -> dict:
+    """מפת הצללים עם מטמון קצר. ⚠️ shadows_for עשה 4 עמודות × 100 מוצרים
+    **בכל קריאה**, ו-create_shadow קורא לו כדי לבדוק "כבר קיים" — לכן יצירת
+    מוצר צל ארכה מעל שתי דקות והממשק נתקע על ספינר (אסי, 28/07/2026)."""
+    import time as _t
+    now = _t.time()
+    if now - _SHADOW_CACHE["at"] > ttl or not _SHADOW_CACHE["map"]:
+        _SHADOW_CACHE["map"] = shadow_map()
+        _SHADOW_CACHE["at"] = now
+    return _SHADOW_CACHE["map"]
+
+
+def _shadow_cache_clear() -> None:
+    _SHADOW_CACHE["at"] = 0.0
+
+
 def shadows_for(parent_id: int) -> list:
     """מוצרי הצל של אותו הורה. ⚠️ הם type=external ו-hidden, ולכן לא מופיעים
     בשליפות קטלוג רגילות — מחפשים לפי המטא gm_parent_product_id.
     ⚠️ נמחקה בטעות בקומיט c369ba2 — כל קריאה ל-shadow_state החזירה 500 בשקט
     ועמודת "מחיר צל" לא עבדה מאז. שוחזרה 27/07/2026, כולל attrs להשוואה."""
+    cached = _shadow_map_cached().get(str(parent_id))
+    if cached is not None:
+        return cached
     base, auth = _wc()
     out = []
     page = 1
@@ -628,6 +650,7 @@ def create_shadow(sku: str = "", pid=None, name: str = "", cap: str = "") -> dic
     new = r.json()
     # ההורה חייב להיות מוסתר מזאפ, אחרת גם הוא וגם הצללים יופיעו
     zap_visibility(tgt["parent"], True)
+    _shadow_cache_clear()          # הצל החדש חייב להיראות בקריאה הבאה
     act_log(tgt["parent"], "shadow", new.get("name") or "")
     return {"ok": True, "shadow_id": new.get("id"), "name": new.get("name"),
             "url": payload["external_url"], "parent_hidden": True,

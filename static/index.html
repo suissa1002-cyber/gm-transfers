@@ -1815,6 +1815,12 @@ async function zapPlan(rid){
   hideLoading();
   if(!j.ok){ toast(j.error||'הבדיקה נכשלה',false); return; }
   S.zapPlan=j;
+  zapPlanRender();
+}
+// רינדור החלון מתוך S.zapPlan — בלי לשאול את זאפ מחדש
+function zapPlanRender(){
+  const j=S.zapPlan; if(!j) return;
+  const rid=String(j.product_id);
   const ils=n=>'₪'+Number(n||0).toLocaleString('en-US');
   const badge=st=>({
     ok:['p-ok','רשומים ✓'], shadow_ready:['p-ok','צל מוכן'],
@@ -1914,10 +1920,14 @@ async function zapPlanCreate(i){
     hideLoading();
     if(!res.ok){ toast(res.error||'נכשל',false); return; }
     toast('נוצר: '+(res.name||st.suggested_name).slice(0,44),true);
-    // נשארים בחלון ומרעננים אותו — אחרת צריך לסרוק "מה צריך" מחדש כדי
-    // ליצור את הנפח הבא (אסי, 28/07/2026).
+    // ⚠️ מעדכנים את החלון **מקומית** ולא מריצים zapPlan מחדש: הוא שואל את
+    // זאפ על כל נפח (30-60ש׳) ואין לו מה לחדש — אנחנו יודעים בדיוק מה
+    // השתנה. אחרת כל יצירה עולה דקה נוספת של המתנה (אסי, 28/07/2026).
+    st.state='shadow_ready';
+    st.action='מוצר הצל נוצר — ממתין לסריקת זאפ';
+    st.shadow_id=res.shadow_id;
+    zapPlanRender();
     loadZap(false);
-    zapPlan(String(j.product_id));
   }catch(e){ hideLoading(); toast('שגיאת רשת',false); }
 }
 async function zapMakeShadow(rid){
