@@ -1492,6 +1492,10 @@ function zapState(r){
 }
 function renderZap(){
   const Z=zapInit(), app=document.getElementById('app'); if(!app) return;
+  // ⚠️ המעקב אחרי הסריקה נעצר כשעוזבים את הטאב, וכשחוזרים אליו עם שורות
+  // קיימות רק מרנדרנו — הפס קפא על המספר האחרון שנראה והסריקה נראתה
+  // תקועה בזמן שהיא רצה בפועל (אסי, 28/07/2026: "נראה שתקוע 24/169").
+  if(Z.progress&&!S.zapPoll) zapScanPoll();
   if(!Z.rows){ app.innerHTML=`<h1 class="title">${ico('zap',19)} זאפ</h1>${adminTabsHTML()}<div class="empty">טוען…</div>`; return; }
   const s=Z.summary||{}, q=(Z.q||'').toLowerCase();
   let rows=Z.rows.filter(r=>{
@@ -1805,13 +1809,13 @@ async function zapScanRun(reset){
 function zapScanPoll(){
   clearInterval(S.zapPoll); let n=0;
   S.zapPoll=setInterval(async()=>{
-    if(S.view!=='admin'||S.adminTab!=='zap'){ clearInterval(S.zapPoll); return; }
+    if(S.view!=='admin'||S.adminTab!=='zap'){ clearInterval(S.zapPoll); S.zapPoll=0; return; }
     let r; try{ r=await api('/api/zap/report?cat='+zapInit().cat,null,45000); }catch(e){ return; }
     const Z=zapInit(), was=!!Z.progress;
     Z.progress=r.progress||null;
     if(r.ok&&r.rows){ Z.rows=r.rows; Z.summary=r.summary||{}; Z.date=r.date||Z.date; }
     if(!Z.progress){
-      clearInterval(S.zapPoll);
+      clearInterval(S.zapPoll); S.zapPoll=0;
       if(was) toast(r.stalled?'הסריקה נעצרה — אפשר להריץ שוב':'הסריקה הסתיימה', !r.stalled);
     }
     // ⚡ הפס מתעדכן בכל מחזור בלי לרנדר את כל הטבלה — רינדור מלא סוגר שורות
