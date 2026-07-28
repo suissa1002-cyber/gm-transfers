@@ -9591,6 +9591,21 @@ def zap_selftest(x_admin_key: Optional[str] = Header(None)):
         bad += 1
     out.append({"query": "pos_stock ללא סינון קטגוריה", "want": True,
                 "got": _ok_pos, "ok": _ok_pos})
+    # ⚠️ הסתרה המונית נוגעת ב-150 מוצרים בבת אחת; חתימה שגויה כאן היא
+    # 150 טעויות, לא אחת (אסי, 28/07/2026 — איפוס תחום האוזניות).
+    _sigb = set(_insp.signature(_zp.zap_visibility_bulk).parameters)
+    _ok_b = {"pids", "hidden"} <= _sigb
+    if not _ok_b:
+        bad += 1
+    out.append({"query": "sig zap_visibility_bulk", "want": ["hidden", "pids"],
+                "got": sorted(_sigb), "ok": _ok_b})
+    # ⛔ רשימה ריקה אסור שתסתיר כלום — batch ריק מול WooCommerce הוא בדיוק
+    # סוג התקלה ששותקת ומגלים אותה בפיד יומיים אחרי.
+    _e = _zp.zap_visibility_bulk([], True)
+    _ok_e = not _e.get("ok") and not _e.get("changed")
+    if not _ok_e:
+        bad += 1
+    out.append({"query": "bulk([]) לא משנה כלום", "want": True, "got": _ok_e, "ok": _ok_e})
     # ⚠️ הגרסה שרצה בשרת בפועל. בלי זה ניחשתי ארבע פעמים כמה זמן לוקח deploy
     # ל-Render, הרצתי סריקות ואימותים על קוד ישן, והסקתי מסקנות שגויות.
     sha = (os.getenv("RENDER_GIT_COMMIT") or "")[:7]
@@ -9656,6 +9671,32 @@ def zap_visibility_set(product_id: int = 0, pid: int = 0, hidden: int = 1, sku: 
         raise HTTPException(400, "צריך מק״ט או מזהה מוצר")
     return zap_price.zap_visibility(target, bool(hidden), sku)
 
+
+
+class ZapBulkVisIn(BaseModel):
+    pids: list[int] = []
+    hidden: bool = True
+    cat: int = 0
+    keep: list[int] = []     # "הסתר את כל התחום חוץ מאלה"
+
+
+@app.post("/api/admin/zap/visibility-bulk")
+def zap_visibility_bulk(body: ZapBulkVisIn, x_admin_key: Optional[str] = Header(None)):
+    """הסתרה/חשיפה המונית. או רשימת pids מפורשת, או cat+keep = "כל התחום
+    חוץ מאלה" — האיפוס שאסי ביקש לאוזניות (28/07/2026). ⚠️ המקור הוא
+    **תמונת הסריקה** של אותו תחום, כדי שלא נסתיר מוצר שהכלי לא מכיר."""
+    _require_admin(x_admin_key)
+    import zap_price
+    import zap_scan
+    pids = [int(p) for p in (body.pids or [])]
+    if not pids and body.cat:
+        snap = zap_scan.latest(body.cat) or {}
+        keep = {int(k) for k in (body.keep or [])}
+        pids = [int(r["id"]) for r in (snap.get("rows") or [])
+                if str(r.get("id", "")).isdigit() and int(r["id"]) not in keep]
+        if not pids:
+            return {"ok": False, "error": "אין תמונת סריקה לתחום — הרץ סריקה קודם"}
+    return zap_price.zap_visibility_bulk(pids, body.hidden)
 
 @app.get("/api/admin/zap/feed")
 def zap_feed(cat: int = 1934, x_admin_key: Optional[str] = Header(None)):

@@ -583,6 +583,50 @@ def zap_visibility(product_id: int = 0, hidden: bool = True, sku: str = "") -> d
     return {"ok": True, "product_id": product_id, "hidden": hidden, "name": affected}
 
 
+
+def zap_visibility_bulk(pids: list, hidden: bool = True) -> dict:
+    """הסתרה/חשיפה המונית בזאפ. ⚠️ 150 קריאות PUT נפרדות לוקחות דקות ארוכות
+    ונופלות על תקרת הזמן של הפרוקסי; WooCommerce מקבל עד 100 עדכונים
+    בבקשה אחת דרך products/batch. מחזירים את השם **שהשרת ראה** לכל מוצר,
+    כדי שטעות זהות תתגלה מיד ולא בפיד יומיים אחרי (אסי, 27/07/2026).
+
+    נועד לאיפוס תחום שלם: "כל האוזניות מוסתרות מלבד 10 הנמכרים" — במקום
+    151 לחיצות ידניות (אסי, 28/07/2026)."""
+    base, auth = _wc()
+    ids = [int(p) for p in pids if str(p).strip().isdigit()]
+    if not ids:
+        return {"ok": False, "error": "לא התקבלו מזהי מוצר"}
+    val = "yes" if hidden else ""
+    done, failed = [], []
+    for i in range(0, len(ids), 100):
+        chunk = ids[i:i + 100]
+        body = {"update": [{"id": pid,
+                            "meta_data": [{"key": "_woocommerce_zap_disable", "value": val}]}
+                           for pid in chunk]}
+        try:
+            r = requests.post(f"{base}/wp-json/wc/v3/products/batch", auth=auth,
+                              timeout=180, json=body)
+        except Exception as e:  # noqa: BLE001
+            failed += [{"id": pid, "error": str(e)[:80]} for pid in chunk]
+            continue
+        if not r.ok:
+            failed += [{"id": pid, "error": f"HTTP {r.status_code}"} for pid in chunk]
+            continue
+        seen = {}
+        for u in ((r.json() or {}).get("update") or []):
+            if u.get("id"):
+                seen[int(u["id"])] = u.get("name") or ""
+        for pid in chunk:
+            if pid in seen:
+                done.append({"id": pid, "name": seen[pid]})
+                act_log(pid, "hidden" if hidden else "shown", seen[pid])
+            else:
+                failed.append({"id": pid, "error": "לא הוחזר בתשובה"})
+    _shadow_cache_clear()
+    return {"ok": not failed, "hidden": hidden, "changed": len(done),
+            "failed": failed, "rows": done}
+
+
 def feed(cat: int = 1934) -> list:
     """הפיד החי שנשלח לזאפ. ⚠️ Cloudflare חוסם את /zap/ לכל בקשה שאינה דפדפן;
     הכלל שנוסף (26/07/2026) מדלג רק כשמגיעה הכותרת x-gm-feed עם הסוד."""
