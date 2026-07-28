@@ -71,12 +71,28 @@ def _cap_from_attrs(attrs: list) -> str | None:
 _TERM_CACHE = {}
 
 
+_TERM_KEY = "zap_term_slugs"
+
+
 def _term_slugs(base, auth) -> dict:
     """{taxonomy: {שם-אופציה-lower: slug}} — כדי לתרגם "512GB" ל-"00512gb".
     ⚠️ ה-REST מחזיר בווריאציה את **שם** האופציה, ומוצר הצל נושא ב-URL את
     ה-**slug**. בלי המפה הזו ההשוואה נכשלת וסונכרן הצל הלא נכון."""
     if _TERM_CACHE:
         return _TERM_CACHE
+    # ⚠️ בניית המפה מאפס שולפת כל אטריביוט וכל המונחים שלו (עד 5 עמודות לכל
+    # אחד) — כ-100 שניות. היא נשמרה בזיכרון התהליך בלבד, ולכן כל deploy או
+    # מיחזור מופע ב-Render החזיר את המחיר המלא ללחיצה הראשונה (אסי,
+    # 28/07/2026: "פשוט היה מאוד איטי"). המפה כמעט קבועה — נשמרת ל-24 שעות.
+    try:
+        raw = db.sales_state_get(_TERM_KEY) or ""
+        if raw:
+            d = json.loads(raw)
+            if (datetime.now() - datetime.fromisoformat(d["at"])).total_seconds() < 86400:
+                _TERM_CACHE.update(d["map"])
+                return _TERM_CACHE
+    except Exception:  # noqa: BLE001
+        pass
     try:
         attrs = requests.get(f"{base}/wp-json/wc/v3/products/attributes", auth=auth,
                              timeout=45).json()
@@ -101,6 +117,12 @@ def _term_slugs(base, auth) -> dict:
             page += 1
         if m:
             _TERM_CACHE[tax] = m
+    try:
+        db.sales_state_set(_TERM_KEY, json.dumps(
+            {"at": datetime.now().isoformat(timespec="seconds"), "map": _TERM_CACHE},
+            ensure_ascii=False))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("zap: term map persist failed: %s", e)
     return _TERM_CACHE
 
 
