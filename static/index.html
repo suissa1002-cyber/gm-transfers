@@ -1450,7 +1450,9 @@ async function loadZap(spinner){
     const r=await api('/api/zap/report?cat='+Z.cat,null,60000);
     if(r.cats&&r.cats.length) Z.cats=r.cats;
     if(r.ok){ Z.rows=r.rows||[]; Z.date=r.date||''; Z.summary=r.summary||{}; Z.progress=r.progress||null; }
-    else { Z.rows=[]; Z.summary={}; Z.progress=null; Z.reason=r.reason||''; }
+    // ⚠️ תחום בלי תמונה עדיין — אבל הסריקה עשויה לרוץ. בלי לקחת את
+    // ההתקדמות כאן פס הסריקה לא מופיע כלל בריצה הראשונה של תחום חדש.
+    else { Z.rows=[]; Z.summary={}; Z.progress=r.progress||null; Z.reason=r.reason||''; }
   }catch(e){ Z.rows=[]; Z.reason='טעינה נכשלה'; }
   try{
     const p=await api('/api/zap/pending',null,30000);

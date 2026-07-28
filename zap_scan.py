@@ -139,7 +139,7 @@ def _pos_stock() -> dict:
         return {}
 
 
-def _feed_skus(pids: list) -> dict:
+def _feed_skus(pids: list, beat=None) -> dict:
     """מזהה מוצר → כל המק"טים שמתחתיו, כדי לצרף מלאי קופה.
     ⚠️ ל-45 מתוך 65 רשומות הפיד אין CATALOG_NUMBER (המק"ט על הוריאציה),
     ולכן עמודת המלאי הראתה 0 לכל שורה (אסי, 27/07/2026). למוצר צל אין מלאי
@@ -180,7 +180,12 @@ def _feed_skus(pids: list) -> dict:
         cs = {zap_price._cap_from_attrs(x.get("attributes")) for x in _vcache.get(par) or []}
         return sorted(c for c in cs if c)
 
-    for pid in pids:
+    # ⚠️ שלב הבנייה יורה בקשה לכל מוצר משתנה (וריאציות), וב-169 אוזניות הוא
+    # לוקח דקות ארוכות בלי שום סימן חיים — המסך הראה "אין עדיין סריקה"
+    # והכפתור נראה כאילו לא עשה כלום (אסי, 28/07/2026).
+    for _i, pid in enumerate(pids, 1):
+        if beat and _i % 10 == 0:
+            beat(0, 0, f"קורא וריאציות… {_i}/{len(pids)}")
         p = info.get(pid)
         if not p:
             continue
@@ -225,17 +230,21 @@ def _catalog(cat: int = 1934) -> list:
     return out
 
 
-def build_targets(cat=None) -> list:
+def build_targets(cat=None, beat=None) -> list:
     """היקף הכלי: **כל הסמארטפונים בקטלוג**, לא רק מה שמשודר כרגע.
     הפיד קובע מה זאפ באמת מקבל, אבל מוצר שמוסתר חייב להישאר על המסך כדי
     שאפשר יהיה להחזיר אותו או להחליט עליו. לכל שורה נקבעת `reason` —
     למה היא לא מחוברת לדגם בזאפ — כי בלי זה אי אפשר לפעול."""
     import zap_price
+    if beat:
+        beat(0, 0, "קורא את הפיד…")
     try:
         feed = zap_price.feed(int(cat or DEFAULT_CAT))
     except Exception as e:  # noqa: BLE001
         logger.warning("zap: feed failed: %s", e)
         feed = []
+    if beat:
+        beat(0, 0, "קורא את הקטלוג…")
     catalog = _catalog(int(cat or DEFAULT_CAT))
     if not feed and not catalog:
         return []
@@ -265,7 +274,7 @@ def build_targets(cat=None) -> list:
 
     stock = _pos_stock()
     pids = list(dict.fromkeys(list(feed_by_pid) + [str(p["id"]) for p in catalog]))
-    _m = _feed_skus(pids)
+    _m = _feed_skus(pids, beat)
     skumap, capmap = _m["skus"], _m["caps"]
     meta_by_pid = {str(p["id"]): p for p in catalog}
 
@@ -1075,7 +1084,7 @@ def run(cat=None, limit: int | None = None, sleep: float = 1.1) -> dict:
             pass
 
     _beat(0, 0, "בונה את רשימת המוצרים…")
-    targets = build_targets(cat)
+    targets = build_targets(cat, _beat)
     # ⚠️ סריקה בלי יעדים לא כותבת תמונת מצב. כשל רגעי בפיד (Cloudflare/timeout)
     # החזיר 0 יעדים, ו-run() דרס את התמונה הטובה של היום באפס שורות — כל
     # הנתונים נעלמו מהמסך (אסי, 27/07/2026). אין נתונים ⇒ משאירים מה שהיה.

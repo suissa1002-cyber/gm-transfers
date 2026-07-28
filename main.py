@@ -9337,9 +9337,19 @@ def zap_report(cat: int = 0):
                 pass
     cats = [{"id": c, "label": v["label"]} for c, v in zap_scan.ZAP_CATS.items()]
     if not snap:
-        return {"ok": False, "cat": cat, "cats": cats,
-                "reason": f"אין עדיין סריקה לתחום «{zap_scan.cat_cfg(cat)['label']}» — "
-                          "לחץ «סרוק עכשיו»"}
+        # ⚠️ בתחום חדש אין עדיין תמונה, אבל הסריקה **כן** רצה — ובלי לצרף את
+        # ההתקדמות המסך הציג "אין עדיין סריקה" והכפתור נראה כאילו לא עשה
+        # כלום. שלב בניית הרשימה לבדו לוקח דקות (אסי, 28/07/2026).
+        empty = {"ok": False, "cat": cat, "cats": cats,
+                 "reason": f"אין עדיין סריקה לתחום «{zap_scan.cat_cfg(cat)['label']}» — "
+                           "לחץ «סרוק עכשיו»"}
+        if prog:
+            try:
+                empty["progress"] = _j.loads(prog)
+                empty["reason"] = "הסריקה הראשונה לתחום רצה — התוצאות יופיעו תוך כדי"
+            except Exception:  # noqa: BLE001
+                pass
+        return empty
     out = {"ok": True, "cat": cat, "cats": cats,
            "date": snap.get("date"), "summary": snap.get("summary"),
            "rows": snap.get("rows", []), "history": zap_scan.history(30, cat),
