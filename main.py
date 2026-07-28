@@ -728,11 +728,26 @@ def _startup():
     # ⚠️ תהליך חדש ⇒ אין סריקת זאפ רצה, בהגדרה. הדגל שנשאר מסריקה שנהרגה
     # באמצע (deploy) הציג "סריקה רצה" שעה שלמה והשאיר את הכפתור מושבת.
     try:
+        # ⚠️ מנקים רק דגל **מת**, לא כל דגל. Render מרים מופע חדש בזמן
+        # שהישן עדיין רץ (zero-downtime), והניקוי הגורף מחק את הדגל של
+        # סריקה חיה — המסך הציג "אין סריקה", ואז מפעילים עוד אחת מעליה
+        # ומכפילים את קצב הבקשות מול זאפ (28/07/2026).
+        import json as _pj
         import zap_scan as _zs
         for _c in _zs.ZAP_CATS:
-            if db.sales_state_get(_zs._prog_key(_c)):
-                db.sales_state_set(_zs._prog_key(_c), "")
-                logger.info("zap: cleared stale scan progress on startup (cat %s)", _c)
+            _raw = db.sales_state_get(_zs._prog_key(_c))
+            if not _raw:
+                continue
+            try:
+                _b = _pj.loads(_raw).get("beat")
+                _live = _b and (datetime.now() - datetime.fromisoformat(_b)).total_seconds() < 360
+            except Exception:  # noqa: BLE001
+                _live = False
+            if _live:
+                logger.info("zap: scan still alive on cat %s — leaving progress", _c)
+                continue
+            db.sales_state_set(_zs._prog_key(_c), "")
+            logger.info("zap: cleared stale scan progress on startup (cat %s)", _c)
     except Exception as e:  # noqa: BLE001
         logger.warning("zap progress cleanup failed: %s", e)
 
