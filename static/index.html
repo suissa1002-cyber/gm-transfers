@@ -1439,16 +1439,18 @@ function closeCamera(){
 // משטח עבודה מתמשך כמו איזון מלאי: המצב (סינון/חיפוש/בחירה) נשמר ב-S.zap,
 // כך שאפשר לעבור טאב ולחזור להמשיך בדיוק מאותה נקודה.
 function zapInit(){
-  if(!S.zap) S.zap={rows:null,pend:{},q:'',brand:'',state:'',sort:'cut5',sel:{},pendN:0,date:''};
+  if(!S.zap) S.zap={rows:null,pend:{},q:'',brand:'',state:'',sort:'cut5',sel:{},pendN:0,date:'',
+                    cat:Number(localStorage.getItem('zapCat')||0)||1934,cats:[]};
   return S.zap;
 }
 async function loadZap(spinner){
   const Z=zapInit();
   if(spinner) showLoading('טוען נתוני זאפ…');
   try{
-    const r=await api('/api/zap/report',null,60000);
+    const r=await api('/api/zap/report?cat='+Z.cat,null,60000);
+    if(r.cats&&r.cats.length) Z.cats=r.cats;
     if(r.ok){ Z.rows=r.rows||[]; Z.date=r.date||''; Z.summary=r.summary||{}; Z.progress=r.progress||null; }
-    else { Z.rows=[]; Z.reason=r.reason||''; }
+    else { Z.rows=[]; Z.summary={}; Z.progress=null; Z.reason=r.reason||''; }
   }catch(e){ Z.rows=[]; Z.reason='טעינה נכשלה'; }
   try{
     const p=await api('/api/zap/pending',null,30000);
@@ -1468,6 +1470,17 @@ async function loadZap(spinner){
   if(S.view==='admin'&&S.adminTab==='zap'){ renderZap(); if(Z.progress) zapScanPoll(); }
 }
 function zapSet(k,v){ const Z=zapInit(); Z[k]=v; renderZap(); }
+// בורר התחום. ⚠️ כל מה שתלוי-קטגוריה נמחק לפני הטעינה — אחרת הציפים
+// ממשיכים לספור את התחום הקודם עד שהתשובה חוזרת (אסי, 28/07/2026).
+function zapSetCat(v){
+  const Z=zapInit(), c=Number(v)||1934;
+  if(c===Z.cat) return;
+  clearInterval(S.zapPoll);
+  Z.cat=c; try{ localStorage.setItem('zapCat',String(c)); }catch(e){}
+  Z.rows=null; Z.summary={}; Z.progress=null; Z.reason=''; Z.state=''; Z.brand=''; Z.q='';
+  Z.sel={}; Z.acts=null; Z.shMap=null; Z.shIds=null; Z.sh={};
+  renderZap(); loadZap(true);
+}
 function zapState(r){
   if(r.status==='listed')
     return {k:'listed', t:'#'+(r.rank||'?')+' בזאפ', p:(r.rank||99)<=5?'p-ok':'p-warn'};
@@ -1515,6 +1528,10 @@ function renderZap(){
       <div class="zbarw${p.total?'':' idle'}"><i style="width:${p.total?pc:100}%"></i></div></div>`;})():''}
     ${Z.pendN?zapPendBox():''}
     <div class="zbar">
+      <select onchange="zapSetCat(this.value)" style="font-weight:700">
+        ${(Z.cats&&Z.cats.length?Z.cats:[{id:1934,label:'מכשירים'}])
+          .map(c=>`<option value="${c.id}" ${Z.cat===c.id?'selected':''}>${escW(c.label)}</option>`).join('')}
+      </select>
       <input id="zq" type="search" placeholder="חיפוש דגם / מק״ט" value="${escW(Z.q)}"
              oninput="S.zap.q=this.value;renderZap();const e=document.getElementById('zq');e.focus();e.setSelectionRange(e.value.length,e.value.length)">
       <select onchange="zapSet('brand',this.value)"><option value="">כל המותגים</option>
@@ -1772,7 +1789,8 @@ function zapScanAsk(){
 async function zapScanRun(reset){
   closeModal(); showLoading('מפעיל סריקה…');
   try{
-    const j=await api('/api/admin/zap/scan-now'+(reset?'?reset=1':''),{method:'POST'},60000);
+    const j=await api('/api/admin/zap/scan-now?cat='+zapInit().cat+(reset?'&reset=1':''),
+                      {method:'POST'},60000);
     hideLoading();
     if(!j.ok&&!j.started){ toast(j.error||'ההפעלה נכשלה',false);
       if(j.running&&j.progress){ const Z=zapInit(); Z.progress=j.progress; renderZap(); zapScanPoll(); }
@@ -1786,7 +1804,7 @@ function zapScanPoll(){
   clearInterval(S.zapPoll); let n=0;
   S.zapPoll=setInterval(async()=>{
     if(S.view!=='admin'||S.adminTab!=='zap'){ clearInterval(S.zapPoll); return; }
-    let r; try{ r=await api('/api/zap/report',null,45000); }catch(e){ return; }
+    let r; try{ r=await api('/api/zap/report?cat='+zapInit().cat,null,45000); }catch(e){ return; }
     const Z=zapInit(), was=!!Z.progress;
     Z.progress=r.progress||null;
     if(r.ok&&r.rows){ Z.rows=r.rows; Z.summary=r.summary||{}; Z.date=r.date||Z.date; }
@@ -1810,7 +1828,8 @@ function zapScanPoll(){
 async function zapPlan(rid){
   const r=zapRow(rid); if(!r) return;
   showLoading('בודק מול דפי הדגם בזאפ…');
-  let j; try{ j=await api('/api/admin/zap/plan?pid='+encodeURIComponent(r.id||r.product_id),null,180000); }
+  let j; try{ j=await api('/api/admin/zap/plan?cat='+zapInit().cat
+                          +'&pid='+encodeURIComponent(r.id||r.product_id),null,180000); }
   catch(e){ hideLoading(); toast('שגיאת רשת',false); return; }
   hideLoading();
   if(!j.ok){ toast(j.error||'הבדיקה נכשלה',false); return; }

@@ -242,7 +242,7 @@ def _special_refresh_job():
         return {"ok": False, "error": str(e)}
 
 
-def _zap_watchdog_job():
+def _zap_watchdog_job(cat=None):
     """ממשיך סריקת זאפ שנעצרה באמצע.
     ⚠️ הסריקה רצה בת'רד; deploy או מיחזור מופע הורגים אותה, ואז ההתקדמות
     קופאת (ראינו 15/104 יותר משעה, ו-42/104 אחר כך). מיפוי דגם→modelid נשמר
@@ -250,9 +250,13 @@ def _zap_watchdog_job():
     מאפס. תקרה של 3 ניסיונות ליום כדי שכשל אמיתי לא ייכנס ללולאה."""
     import json as _j
     from datetime import date as _d
-    prog = db.sales_state_get("zap_progress") or ""
+    import zap_scan
+    if cat is None:      # סבב על כל התחומים — לכל אחד דגל התקדמות משלו
+        return [_zap_watchdog_job(c) for c in zap_scan.ZAP_CATS]
+    pkey = zap_scan._prog_key(cat)
+    prog = db.sales_state_get(pkey) or ""
     if not prog:
-        return {"ok": True, "idle": True}
+        return {"ok": True, "idle": True, "cat": cat}
     try:
         d0 = _j.loads(prog)
         beat = d0.get("beat")
@@ -260,28 +264,28 @@ def _zap_watchdog_job():
             return {"ok": True, "running": True, "done": d0.get("done")}
     except Exception:  # noqa: BLE001
         return {"ok": False}
-    key = f"zap_resume:{_d.today().isoformat()}"
+    key = f"zap_resume:{cat}:{_d.today().isoformat()}"
     tries = int(db.sales_state_get(key) or 0)
     if tries >= 3:
-        db.sales_state_set("zap_progress", "")
+        db.sales_state_set(pkey, "")
         logger.warning("zap watchdog: 3 ניסיונות היום — מפסיק")
         return {"ok": False, "gave_up": True}
     db.sales_state_set(key, str(tries + 1))
-    db.sales_state_set("zap_progress", "")
+    db.sales_state_set(pkey, "")
     logger.warning("zap watchdog: סריקה נעצרה ב-%s/%s — ממשיך (ניסיון %d)",
                    d0.get("done"), d0.get("total"), tries + 1)
     import threading
-    threading.Thread(target=_zap_scan_job, name="zap-resume", daemon=True).start()
+    threading.Thread(target=_zap_scan_job, args=(cat,), name="zap-resume", daemon=True).start()
     return {"ok": True, "resumed": True, "from": d0.get("done")}
 
 
-def _zap_scan_job():
+def _zap_scan_job(cat=None):
     """סריקת זאפ יומית — המיקום שלנו מול המתחרים על כל סמארטפון עם מלאי.
     ~250 דגמים, ~1.1ש בין קריאות ⇒ כ-5 דקות. רץ בשעה שקטה כדי לא להתחרות
     בעומס היום. ⚠️ בניגוד ל-KSP, זאפ נענה ישירות ל-urllib (בלי דפדפן)."""
     try:
         import zap_scan
-        snap = zap_scan.run()
+        snap = zap_scan.run(cat)
         logger.info("zap_scan ok: %s", snap.get("summary"))
         return snap.get("summary")
     except Exception as e:  # noqa: BLE001
@@ -617,8 +621,15 @@ def register_recurring_jobs():
                       run_date=datetime.now() + timedelta(seconds=210))
     # 🏷️ זאפ — סריקה יומית של המיקום שלנו מול המתחרים (05:20, לפני פתיחת החנויות,
     # כדי שהנתון על השולחן בבוקר). ראה zap_scan.py לרקע ולממצא שהוליד את זה.
-    scheduler.add_job(_zap_scan_job, "cron", hour=5, minute=20, id="zap_scan",
-                      max_instances=1, coalesce=True, misfire_grace_time=3600)
+    # ⚠️ משרה נפרדת לכל תחום, במרווח של 40 דקות: הן חולקות את אותו יעד
+    # (זאפ) ואת אותה חיבוריות, ושתי סריקות במקביל מכפילות את קצב הבקשות
+    # ומסכנות חסימה — בדיוק מה שהגארד ב-scan-now מונע ידנית (28/07/2026).
+    import zap_scan as _zs0
+    for _i, _c in enumerate(_zs0.ZAP_CATS):
+        _m = 20 + _i * 40
+        scheduler.add_job(_zap_scan_job, "cron", hour=5 + _m // 60, minute=_m % 60,
+                          id=f"zap_scan_{_c}", args=(_c,),
+                          max_instances=1, coalesce=True, misfire_grace_time=3600)
     # ⚠️ שומר סף לסריקה: ת'רד שנהרג (deploy/מיחזור מופע ב-Render) השאיר סריקה
     # חצי-גמורה, והתמונה במסך נשארה ישנה עד שמישהו הריץ ידנית. כל 10 דקות
     # בודקים אם הסריקה נעצרה באמצע וממשיכים אותה (אסי, 27/07/2026).
@@ -717,9 +728,11 @@ def _startup():
     # ⚠️ תהליך חדש ⇒ אין סריקת זאפ רצה, בהגדרה. הדגל שנשאר מסריקה שנהרגה
     # באמצע (deploy) הציג "סריקה רצה" שעה שלמה והשאיר את הכפתור מושבת.
     try:
-        if db.sales_state_get("zap_progress"):
-            db.sales_state_set("zap_progress", "")
-            logger.info("zap: cleared stale scan progress on startup")
+        import zap_scan as _zs
+        for _c in _zs.ZAP_CATS:
+            if db.sales_state_get(_zs._prog_key(_c)):
+                db.sales_state_set(_zs._prog_key(_c), "")
+                logger.info("zap: cleared stale scan progress on startup (cat %s)", _c)
     except Exception as e:  # noqa: BLE001
         logger.warning("zap progress cleanup failed: %s", e)
 
@@ -9289,13 +9302,17 @@ def admin_order_status(oid: int, body: OrderStatusIn, x_admin_key: Optional[str]
 
 
 @app.get("/api/zap/report")
-def zap_report():
+def zap_report(cat: int = 0):
     """נתוני זאפ לעמוד הדוח. ציבורי-לקריאה בכוונה — הדוח מתארח כקובץ סטטי
     ואין לו מפתח; מוחזרים רק מחירים שממילא גלויים לכל אחד בזאפ."""
     import json as _j
     import zap_scan
-    snap = zap_scan.latest()
-    prog = db.sales_state_get("zap_progress") or ""
+    cat = int(cat or zap_scan.DEFAULT_CAT)
+    if cat not in zap_scan.ZAP_CATS:
+        cat = zap_scan.DEFAULT_CAT
+    pkey = zap_scan._prog_key(cat)
+    snap = zap_scan.latest(cat)
+    prog = db.sales_state_get(pkey) or ""
     # ⚠️ סריקה שמתה (restart/deploy באמצע) משאירה את הדגל דלוק לנצח. פעימת לב
     # ישנה מ-6 דקות = הת'רד כבר לא חי; מנקים ומדווחים, במקום להציג "רצה"
     # ולהשאיר את כפתור הסריקה מושבת (אסי, 27/07/2026).
@@ -9304,13 +9321,13 @@ def zap_report():
         try:
             beat = _j.loads(prog).get("beat")
             if beat and (datetime.now() - datetime.fromisoformat(beat)).total_seconds() > 360:
-                db.sales_state_set("zap_progress", "")
+                db.sales_state_set(pkey, "")
                 prog, stalled = "", True
         except Exception:  # noqa: BLE001
             pass
     # סריקה בעיצומה: מציגים את התוצאה החלקית במקום נתון ישן ומטעה
     if prog:
-        part = db.sales_state_get("zap_snap:partial")
+        part = db.sales_state_get(zap_scan._snap_key(cat, "partial"))
         if part:
             try:
                 p = _j.loads(part)
@@ -9318,10 +9335,14 @@ def zap_report():
                     snap = p
             except Exception:  # noqa: BLE001
                 pass
+    cats = [{"id": c, "label": v["label"]} for c, v in zap_scan.ZAP_CATS.items()]
     if not snap:
-        return {"ok": False, "reason": "אין עדיין סריקה — הסריקה הראשונה רצה ב-05:20"}
-    out = {"ok": True, "date": snap.get("date"), "summary": snap.get("summary"),
-           "rows": snap.get("rows", []), "history": zap_scan.history(30),
+        return {"ok": False, "cat": cat, "cats": cats,
+                "reason": f"אין עדיין סריקה לתחום «{zap_scan.cat_cfg(cat)['label']}» — "
+                          "לחץ «סרוק עכשיו»"}
+    out = {"ok": True, "cat": cat, "cats": cats,
+           "date": snap.get("date"), "summary": snap.get("summary"),
+           "rows": snap.get("rows", []), "history": zap_scan.history(30, cat),
            "stalled": stalled}
     if prog:
         try:
@@ -9479,6 +9500,42 @@ def zap_selftest(x_admin_key: Optional[str] = Header(None)):
             bad += 1
         out.append({"query": f"find_by_sku({bad_sku!r}) → None", "want": None,
                     "got": got, "ok": got is None})
+    # ── תחום האוזניות (1963) ─────────────────────────────────────────
+    # ⚠️ מנוע ההתאמה נבנה לטלפונים: "אוזניות" הייתה מילה **פוסלת**, ו-
+    # _model_tokens לא תופס 770NC/1000XM5 ולכן אישר Tune 770NC מול 670NC
+    # (אסי, 28/07/2026). המקרים האלה שומרים על שני התחומים בבת אחת.
+    aud = [("אוזניות JBL Tune 770NC", "אוזניות JBL Tune 770NC Bluetooth", True),
+           ("אוזניות JBL Tune 770NC", "אוזניות JBL Tune 670NC", False),
+           ("אוזניות Sony WH-1000XM5", "אוזניות Sony WH-1000XM6", False),
+           ("אוזניות Bose QuietComfort Ultra", "אוזניות Bose QuietComfort 45", False),
+           ("אוזניות Apple AirPods Pro 3", "אוזניות Apple AirPods Pro 2", False),
+           ("אוזניות JBL Tune 770NC", "כיסוי לאוזניות JBL Tune 770NC", False),
+           ("אוזניות JBL Tune 770NC", "טלפון סלולרי Xiaomi 17 512GB", False)]
+    for ours, zt, want_ok in aud:
+        got = zap_scan._match_ok(zap_scan._clean_query(ours), zt, 1963)
+        if got != want_ok:
+            bad += 1
+        out.append({"query": f"audio: {ours[:22]} | {zt[:26]}", "want": want_ok,
+                    "got": got, "ok": got == want_ok})
+    # "אוזניות" פוסלת בתחום המכשירים ומחייבת בתחום האוזניות — אותה מילה,
+    # שתי משמעויות. הרגרסיה הזאת היא כל ההבדל בין תשתית לטלאי.
+    for nm, c, want_ok in (("אוזניות JBL Tune 770NC", 1934, True),
+                           ("אוזניות JBL Tune 770NC", 1963, False),
+                           ("כיסוי לאוזניות Sony", 1963, True)):
+        got = zap_scan._is_accessory(nm, c)
+        if got != want_ok:
+            bad += 1
+        out.append({"query": f"acc[{c}]: {nm[:26]}", "want": want_ok,
+                    "got": got, "ok": got == want_ok})
+    # מפתחות התמונה — תחום המכשירים **חייב** להישאר על המפתח ההיסטורי,
+    # אחרת הסריקה של היום נעלמת מהמסך במעבר לרב-תחומיות.
+    for c, sfx, want_key in ((1934, "latest", "zap_snap:latest"),
+                             (1963, "latest", "zap_snap:1963:latest")):
+        got = zap_scan._snap_key(c, sfx)
+        if got != want_key:
+            bad += 1
+        out.append({"query": f"snapkey({c})", "want": want_key, "got": got,
+                    "ok": got == want_key})
     # ⚠️ הגרסה שרצה בשרת בפועל. בלי זה ניחשתי ארבע פעמים כמה זמן לוקח deploy
     # ל-Render, הרצתי סריקות ואימותים על קוד ישן, והסקתי מסקנות שגויות.
     sha = (os.getenv("RENDER_GIT_COMMIT") or "")[:7]
@@ -9501,13 +9558,13 @@ def zap_rename(body: ZapRenameIn, x_admin_key: Optional[str] = Header(None)):
 
 
 @app.get("/api/admin/zap/plan")
-def zap_plan(pid: int, x_admin_key: Optional[str] = Header(None)):
+def zap_plan(pid: int, cat: int = 0, x_admin_key: Optional[str] = Header(None)):
     """מה בדיוק צריך כדי שהמוצר יופיע בוודאות בדף ההשוואה — לכל נפח בנפרד.
     ⚠️ שינוי אצלנו מתגלגל לזאפ תוך 6-24 שעות, ולכן ניחוש עולה יום. כאן
     בודקים מראש מול דפי הדגם עצמם ומחזירים את הכותרת המדויקת הדרושה."""
     _require_admin(x_admin_key)
     import zap_scan
-    return zap_scan.plan(pid)
+    return zap_scan.plan(pid, cat or None)
 
 
 @app.get("/api/admin/zap/shadows")
@@ -9605,19 +9662,22 @@ def zap_pending_done(sku: str = "", key: str = "",
 
 
 @app.post("/api/admin/zap/scan-now")
-def zap_scan_now(limit: int = 0, reset: int = 0, force: int = 0,
+def zap_scan_now(limit: int = 0, reset: int = 0, force: int = 0, cat: int = 0,
                  x_admin_key: Optional[str] = Header(None)):
     """מפעיל סריקה. ⚠️ סריקה מלאה (~250 דגמים) נמשכת 6-8 דקות — הרבה מעבר
     לתקרת הזמן של הפרוקסי של Render (502). לכן היא נזרקת ל-scheduler ומחזירים
     מיד; המעקב דרך GET /api/zap/report. limit>0 קטן רץ סינכרוני לבדיקה."""
     _require_admin(x_admin_key)
     import zap_scan
+    cat = int(cat or zap_scan.DEFAULT_CAT)
+    if cat not in zap_scan.ZAP_CATS:
+        return {"ok": False, "error": f"תחום לא מוכר: {cat}"}
     # ⚠️ שתי סריקות במקביל כותבות לאותו מפתח התקדמות, והמונה קופץ אחורה
     # (17 → 11). הן גם מכפילות את העומס על זאפ ומסכנות חסימה (אסי,
     # 27/07/2026). פעימת לב טרייה = סריקה חיה; force=1 עוקף במודע.
     if not force:
         try:
-            cur = db.sales_state_get("zap_progress") or ""
+            cur = db.sales_state_get(zap_scan._prog_key(cat)) or ""
             if cur:
                 import json as _jj
                 d0 = _jj.loads(cur)
@@ -9635,13 +9695,13 @@ def zap_scan_now(limit: int = 0, reset: int = 0, force: int = 0,
         n = zap_scan.reset_mapping()
         logger.info("zap: mapping cache reset (%d keys)", n)
     if limit and limit <= 25:
-        return zap_scan.run(limit=limit).get("summary")
+        return zap_scan.run(cat, limit=limit).get("summary")
     # ⚠️ לא דרך ה-scheduler: הוא מוגדר לשעון ישראל ו-datetime.now() על Render הוא
     # UTC — כלומר run_date נופל 3 שעות אחורה, נחשב misfire ומושמט בשקט. ת'רד
     # פשוט הוא גם הנכון כאן, כי זו משימה חד-פעמית ארוכה ולא מחזור מתוזמן.
     import threading
-    threading.Thread(target=_zap_scan_job, name="zap-scan", daemon=True).start()
-    return {"ok": True, "started": True,
+    threading.Thread(target=_zap_scan_job, args=(cat,), name="zap-scan", daemon=True).start()
+    return {"ok": True, "started": True, "cat": cat,
             "note": "הסריקה רצה ברקע. ההתקדמות מתעדכנת ב-/api/zap/report"}
 
 

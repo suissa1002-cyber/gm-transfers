@@ -45,7 +45,18 @@ BRANDS = (("iphone", "Apple"), ("galaxy", "Samsung"), ("samsung", "Samsung"),
           ("redmi", "Xiaomi"), ("poco", "Xiaomi"), ("xiaomi", "Xiaomi"),
           ("pixel", "Google"), ("oneplus", "OnePlus"), ("razr", "Motorola"),
           ("motorola", "Motorola"), ("nothing", "Nothing"), ("realme", "Realme"),
-          ("redmagic", "RedMagic"), ("nubia", "ZTE"), ("zte", "ZTE"), ("nokia", "Nokia"))
+          ("redmagic", "RedMagic"), ("nubia", "ZTE"), ("zte", "ZTE"), ("nokia", "Nokia"),
+          # ⚠️ מותגי אודיו — נדרשים לתחום האוזניות. בלעדיהם brand_of מחזיר
+          # "אחר" לשני הצדדים, ו-_match_ok מאשר כל דבר (אסי, 28/07/2026).
+          ("airpods", "Apple"), ("beats", "Beats"), ("jbl", "JBL"), ("bose", "Bose"),
+          ("sennheiser", "Sennheiser"), ("jabra", "Jabra"), ("anker", "Anker"),
+          ("soundcore", "Anker"), ("skullcandy", "Skullcandy"), ("marshall", "Marshall"),
+          ("sony", "Sony"), ("philips", "Philips"), ("logitech", "Logitech"),
+          ("razer", "Razer"), ("steelseries", "SteelSeries"), ("hyperx", "HyperX"),
+          ("corsair", "Corsair"), ("astro", "Astro"), ("edifier", "Edifier"),
+          ("baseus", "Baseus"), ("ugreen", "Ugreen"), ("belkin", "Belkin"),
+          ("nothing", "Nothing"), ("shure", "Shure"), ("audio-technica", "Audio-Technica"),
+          ("beyerdynamic", "Beyerdynamic"), ("akg", "AKG"), ("tozo", "TOZO"))
 
 
 def brand_of(name: str) -> str:
@@ -59,6 +70,60 @@ def brand_of(name: str) -> str:
 def _get(url: str, timeout: int = 30) -> str:
     with urllib.request.urlopen(urllib.request.Request(url, headers=HDRS), timeout=timeout) as r:
         return r.read().decode("utf-8", "replace")
+
+
+# ─────────────────── תחומים (בורר הקטגוריה) ───────────────────
+# ⚠️ מנוע ההתאמה נבנה לטלפונים, ולכן כל תחום מביא **פרופיל** משלו ולא רק
+# מזהה קטגוריה: אילו כותרות בזאפ נחשבות דף-דגם, האם נפח/RAM רלוונטיים,
+# ואילו מילים פוסלות. "אוזניות" למשל היא מילה פוסלת בתחום הטלפונים —
+# ובתחום האוזניות היא בדיוק מה שמחפשים (אסי, 28/07/2026).
+ZAP_CATS = {
+    1934: {
+        "label": "מכשירים",
+        "pages": ("טלפון סלולרי", "סמארטפון", "מכשיר סלולרי", "טלפון "),
+        "caps": True,          # נפח אחסון + RAM מבדילים בין דגמים
+        "not_pages": ("החלפת", "תיקון", "מכונת", "טאבלט", "מחשב", "אוזניות",
+                      "שעון", "מטען", "כיסוי", "מגן"),
+        "accessory": ("ערכת צילום", "ערכת", "מסך פנימי", "מסך חיצוני", "מסך חלופי",
+                      "חלק חילוף", "חלף", "display assembly", "lcd",
+                      "case", "cover", "כיסוי", "מגן", "נרתיק", "sandstone", "silicone",
+                      "כבל", "מטען", "אוזני", "סוללה", "מעמד", "זכוכית",
+                      "headset", "headphone", "earbud", "buds", "airpod",
+                      "charger", "cable", "adapter", "מתאם",
+                      "ipad", "tab ", "tablet", "טאבלט", "watch", "שעון", "band", "כרטיס"),
+        "lead": ("סמארטפון", "טלפון סלולרי", "טלפון חכם", "smartphone", "phone",
+                 "טלפון", "מכשיר סלולרי"),
+    },
+    1963: {
+        "label": "אוזניות",
+        "pages": ("אוזניות", "אוזניה", "אוזנייה", "אוזניית"),
+        "caps": False,         # אין נפח/RAM — הבידול הוא דגם וצבע בלבד
+        "not_pages": ("החלפת", "תיקון", "כיסוי", "מגן", "מטען", "כבל",
+                      "מעמד", "סוללה", "טלפון סלולרי", "סמארטפון"),
+        "accessory": ("כיסוי", "מגן", "נרתיק", "case", "cover", "כבל", "cable",
+                      "מטען", "charger", "מעמד", "stand", "מתאם", "adapter",
+                      "כרית", "earpad", "ear pad", "ספוג", "חלף", "חלק חילוף"),
+        "lead": ("אוזניות", "אוזניה", "אוזנייה", "אוזניית", "headphone", "earbud",
+                 "earphone", "headset"),
+    },
+}
+DEFAULT_CAT = 1934
+
+
+def cat_cfg(cat: int | None = None) -> dict:
+    return ZAP_CATS.get(int(cat or DEFAULT_CAT), ZAP_CATS[DEFAULT_CAT])
+
+
+def _snap_key(cat, suffix: str) -> str:
+    """⚠️ תחום המכשירים נשאר על המפתחות ההיסטוריים (`zap_snap:latest`) כדי
+    שהתמונה הקיימת לא תאבד במעבר לרב-תחומיות."""
+    c = int(cat or DEFAULT_CAT)
+    return f"zap_snap:{suffix}" if c == DEFAULT_CAT else f"zap_snap:{c}:{suffix}"
+
+
+def _prog_key(cat) -> str:
+    c = int(cat or DEFAULT_CAT)
+    return "zap_progress" if c == DEFAULT_CAT else f"zap_progress:{c}"
 
 
 # ─────────────────────────── מה סורקים ───────────────────────────
@@ -160,18 +225,18 @@ def _catalog(cat: int = 1934) -> list:
     return out
 
 
-def build_targets() -> list:
+def build_targets(cat=None) -> list:
     """היקף הכלי: **כל הסמארטפונים בקטלוג**, לא רק מה שמשודר כרגע.
     הפיד קובע מה זאפ באמת מקבל, אבל מוצר שמוסתר חייב להישאר על המסך כדי
     שאפשר יהיה להחזיר אותו או להחליט עליו. לכל שורה נקבעת `reason` —
     למה היא לא מחוברת לדגם בזאפ — כי בלי זה אי אפשר לפעול."""
     import zap_price
     try:
-        feed = zap_price.feed(1934)
+        feed = zap_price.feed(int(cat or DEFAULT_CAT))
     except Exception as e:  # noqa: BLE001
         logger.warning("zap: feed failed: %s", e)
         feed = []
-    catalog = _catalog(1934)
+    catalog = _catalog(int(cat or DEFAULT_CAT))
     if not feed and not catalog:
         return []
     # ⚠️ הפיד נכשל אך הקטלוג הצליח — קורה כשוורדפרס במצב תחזוקה (עדכון תוסף)
@@ -298,13 +363,9 @@ CAP_RE = re.compile(r"(\d+)\s*(TB|GB)\b", re.I)
 # אביזרים, טאבלטים ושעונים. בלי הסינון הם נכנסים לדוח ומתמפים לדגם אקראי.
 # ⚠️ "מסך פנימי ... Galaxy Z Fold 7" (חלק חילוף) הגיע לדוח והותאם למכונת
 # כביסה בזאפ. חלקי חילוף יושבים בקטגוריית הסמארטפונים אך אינם מוצר להשוואה.
-ACCESSORY = ("ערכת צילום", "ערכת", "מסך פנימי", "מסך חיצוני", "מסך חלופי",
-             "חלק חילוף", "חלף",
-             "display assembly", "lcd",
-             "case", "cover", "כיסוי", "מגן", "נרתיק", "sandstone", "silicone",
-             "כבל", "מטען", "אוזני", "סוללה", "מעמד", "זכוכית", "headset", "headphone",
-             "earbud", "buds", "airpod", "charger", "cable", "adapter", "מתאם",
-             "ipad", "tab ", "tablet", "טאבלט", "watch", "שעון", "band", "כרטיס")
+# ⚠️ מקור האמת עבר ל-ZAP_CATS (פרופיל לכל תחום). נשאר כמצביע בלבד
+# כדי שלא ייווצרו שתי רשימות שמתפצלות בשקט.
+ACCESSORY = ZAP_CATS[DEFAULT_CAT]["accessory"]
 
 
 # תוספות דגם שמבדילות בין גרסאות — חייבות להיות זהות בשני הצדדים.
@@ -365,31 +426,82 @@ def _model_tokens(s: str) -> set:
 
 
 # כותרות זאפ נפתחות תמיד בקטגוריה. דפי מכשיר נפתחים באחת מאלה:
-PHONE_PAGE = ("טלפון סלולרי", "סמארטפון", "מכשיר סלולרי", "טלפון ")
+# ⚠️ מקור האמת עבר ל-ZAP_CATS (פרופיל לכל תחום). נשאר כמצביע בלבד
+# כדי שלא ייווצרו שתי רשימות שמתפצלות בשקט.
+PHONE_PAGE = ZAP_CATS[DEFAULT_CAT]["pages"]
 # ⚠️ ואלה דפי **שירות/אביזר** שנושאים את שם הדגם המלא, ולכן מקבלים ציון
 # חפיפה גבוה ונבחרו על פני דף המכשיר: "החלפת סוללה Apple iPhone 16 Plus"
 # הוצג כדגם ההשוואה של האייפון עצמו (אסי, 27/07/2026).
-NOT_PHONE = ("החלפת", "תיקון", "מכונת", "טאבלט", "מחשב", "אוזניות", "שעון",
-             "מטען", "כיסוי", "מגן", "סוללה חלופית", "כבל", "מסך ל")
+# ⚠️ מקור האמת עבר ל-ZAP_CATS (פרופיל לכל תחום). נשאר כמצביע בלבד
+# כדי שלא ייווצרו שתי רשימות שמתפצלות בשקט.
+NOT_PHONE = ZAP_CATS[DEFAULT_CAT]["not_pages"]
 
 
-def _is_phone_page(title: str) -> bool:
-    t = re.sub(r"\s+", " ", (title or "")).strip()
-    if any(t.startswith(x) for x in NOT_PHONE):
+# ── זיהוי דגם בתחום ללא נפחים (אוזניות) ────────────────────────────
+# ⚠️ _model_tokens נבנה לטלפונים ("A57", "X9") ולא תופס את צורת הדגם של
+# אודיו — 770NC, WH-1000XM5, QC45, Q30 — ולכן החזיר קבוצה ריקה ואישר
+# התאמה בין Tune 770NC ל-Tune 670NC (אסי, 28/07/2026).
+_AUDIO_STOP = {"אוזניות", "אוזניה", "אוזנייה", "אוזניית", "bluetooth", "wireless",
+               "אלחוטיות", "אלחוטית", "true", "tws", "headphones", "headphone",
+               "earbuds", "earbud", "earphones", "headset", "gaming", "גיימינג",
+               "עם", "ללא", "מיקרופון", "ביטול", "רעשים", "anc", "צבע", "שחור",
+               "לבן", "כחול", "אדום", "אפור", "ורוד", "ירוק", "בז", "זהב", "כסף",
+               "black", "white", "blue", "red", "grey", "gray", "pink", "green",
+               "over", "ear", "on", "in", "the", "new", "pro", "plus"}
+
+
+def _audio_model(s: str) -> set:
+    """אסימוני דגם של אודיו: כל טוקן שמכיל ספרה (770nc, 1000xm5, qc45, q30)."""
+    low = re.sub(r"[^\w]+", " ", (s or "").lower())
+    return {t for t in low.split() if any(c.isdigit() for c in t)
+            and not re.fullmatch(r"\d{5,}", t)}
+
+
+def _audio_words(s: str) -> set:
+    """מילות דגם לועזיות, בלי מותג/צבע/מילות שיווק — לדגמים בלי מספר."""
+    low = re.sub(r"[^\w]+", " ", (s or "").lower())
+    brand = (brand_of(s) or "").lower()
+    return {t for t in low.split()
+            if len(t) > 2 and t not in _AUDIO_STOP and t != brand
+            and not any(c.isdigit() for c in t)}
+
+
+def _audio_match(ours: str, theirs: str) -> bool:
+    ours, theirs = _audio_query(ours), _audio_query(theirs)
+    ma, mb = _audio_model(ours), _audio_model(theirs)
+    if ma and mb:
+        return bool(ma & mb)          # שני הצדדים ממוספרים ⇒ המספר מכריע
+    if ma or mb:
+        return False                  # מספר דגם שקיים רק בצד אחד = דגם אחר
+    wa, wb = _audio_words(ours), _audio_words(theirs)
+    if not wa or not wb:
         return False
-    return any(t.startswith(x) for x in PHONE_PAGE)
+    return wa <= wb or wb <= wa or len(wa & wb) >= 2
 
 
-def _match_ok(our_name: str, zap_title: str) -> bool:
+def _is_phone_page(title: str, cat=None) -> bool:
+    """האם הכותרת בזאפ היא דף-דגם של **התחום הנוכחי**. כותרות זאפ נפתחות
+    תמיד בקטגוריה, ולכן זו בדיקה אמינה — ובתחום אחר גם המילים משתנות."""
+    c = cat_cfg(cat)
+    t = re.sub(r"\s+", " ", (title or "")).strip()
+    if any(t.startswith(x) for x in c["not_pages"]):
+        return False
+    return any(t.startswith(x) for x in c["pages"])
+
+
+def _match_ok(our_name: str, zap_title: str, cat=None) -> bool:
     """האם דף המודל בזאפ באמת מתאר את המוצר שלנו.
     ⚠️ בלי זה החיפוש מחזיר את התוצאה הראשונה בעמוד גם כשהיא דגם אחר לגמרי —
     כך 'Redmi A7 Pro' ו-'S26 Ultra' מופו בטעות ל-iPhone 17 (26/07/2026)."""
     if not zap_title:
         return False
-    if not _is_phone_page(zap_title):     # דף שירות/אביזר, לא דף מכשיר
+    if not _is_phone_page(zap_title, cat):   # דף שירות/אביזר, לא דף מוצר
         return False
     if brand_of(our_name) != brand_of(zap_title):
         return False
+    if not cat_cfg(cat)["caps"]:
+        # תחום בלי נפח/RAM (אוזניות): המבדיל הוא מותג + אסימוני דגם בלבד
+        return _audio_match(our_name, zap_title)
     ca, cb = _capacity(our_name), _capacity(zap_title)
     if ca and cb and ca != cb:
         return False
@@ -509,23 +621,46 @@ def _model_title_fetch(mid: int) -> str:
     return _unesc(re.sub(r"\s+", " ", m.group(1))) if m else ""
 
 
-PHONE_LEAD = ("סמארטפון", "טלפון סלולרי", "טלפון חכם", "smartphone", "phone",
-              "טלפון", "מכשיר סלולרי")
+# ⚠️ מקור האמת עבר ל-ZAP_CATS (פרופיל לכל תחום). נשאר כמצביע בלבד
+# כדי שלא ייווצרו שתי רשימות שמתפצלות בשקט.
+PHONE_LEAD = ZAP_CATS[DEFAULT_CAT]["lead"]
 
 
-def _is_accessory(name: str) -> bool:
+def _is_accessory(name: str, cat=None) -> bool:
     """⚠️ המסנן נועד לקטלוג הקופה, שבו אביזרים יושבים בקטגוריית טלפונים.
     מול הפיד הוא הזיק: שמות שיווקיים מתארים תכונות ("וסוללה 6000mAh",
     "סוללה עוצמתית"), והמילה "סוללה" פסלה את שתי עמדות המלאי הגדולות שלנו —
     Redmi A7 Pro (92 יח׳) ו-Galaxy A07 (41 יח׳) — ששתיהן קיימות בזאפ
     (אסי, 27/07/2026). שם שנפתח ב"סמארטפון"/"טלפון סלולרי" הוא טלפון, נקודה."""
+    c = cat_cfg(cat)
     low = (name or "").strip().lower()
-    if any(low.startswith(p) for p in PHONE_LEAD):
+    if any(low.startswith(p) for p in c["lead"]):
         return False
-    return any(a in low for a in ACCESSORY)
+    return any(a in low for a in c["accessory"])
 
 
-def resolve_modelid(name: str, sku: str) -> int | None:
+# ⚠️ _clean_query בנוי סביב נפחי אחסון ולכן משאיר באודיו זנב שיווקי שהופך
+# למספר דגם מזויף: "JBL Vibe Beam TWS 32" — ה-32 הוא **שעות סוללה**
+# (אסי, 28/07/2026). מבנה השם אצלנו קבוע: מילות קטגוריה בעברית, אחר כך
+# מותג+דגם בלועזית, ואז זנב שיווקי בעברית. לוקחים את הרצף הלועזי.
+_AUDIO_SPEC = re.compile(
+    r"\b(tws|anc|enc|bt|bluetooth|wireless|wired|gaming|rgb|hi-?res|thx|"
+    r"over[- ]?ear|on[- ]?ear|in[- ]?ear|true|stereo|surround|spatial|audio|"
+    r"ip[x]?\d{2}|\d+\s*db|\d+\s*(h|hrs|hours)|mic|microphone)\b", re.I)
+
+
+def _audio_query(name: str) -> str:
+    """שאילתת חיפוש לאודיו: מותג + דגם בלבד, בלי קטגוריה ובלי מפרט."""
+    t = re.sub(r"[\u200e\u200f]", "", name or "")
+    m = re.search(r"[A-Za-z][A-Za-z0-9''\-\.\(\) ]{2,}", t)
+    q = (m.group(0) if m else t)
+    q = _AUDIO_SPEC.sub(" ", q)
+    q = re.sub(r"\s*[\(\)]\s*", " ", q)
+    q = re.sub(r"\s+", " ", q).strip(" -–—,.")
+    return q
+
+
+def resolve_modelid(name: str, sku: str, cat=None) -> int | None:
     """modelid של הדגם בזאפ, **מאומת מול שם המוצר**. נשמר לצמיתות.
     '0' = חיפשנו ולא נמצאה התאמה תקפה, כדי לא לחפש שוב כל יום.
     ⚠️ `sku` כאן הוא מזהה-הזהות של השורה, ולא בהכרח מק"ט: ל-45 מתוך 65
@@ -539,10 +674,11 @@ def resolve_modelid(name: str, sku: str) -> int | None:
     cached = db.sales_state_get(key)
     if cached:                            # '' = אופס ידנית → מחשבים מחדש
         return int(cached) or None
-    if _is_accessory(name):
+    if _is_accessory(name, cat):
         db.sales_state_set(key, "0")      # אביזר שסווג בטעות כטלפון בקופה
         return None
-    q = _clean_query(name)
+    audio = not cat_cfg(cat)["caps"]
+    q = _audio_query(name) if audio else _clean_query(name)
     mid = 0
     # שתי שאילתות: המלאה, ואם נכשלה — מקוצרת (מותג + אסימוני דגם + נפח). זאפ
     # מדרדר לתוצאות אקראיות כשיש בשאילתה מילה שהוא לא מכיר, ואז המועמדים
@@ -551,7 +687,8 @@ def resolve_modelid(name: str, sku: str) -> int | None:
     # אחרי השאילתה הראשונה שהצליחה בחרה את "Realme GT 8 Pro" הרגיל, בזמן
     # שדף ה-Dream Edition שלנו מופיע רק בשאילתת הבסיס (אסי, 27/07/2026).
     best, seen = None, {}
-    for attempt in [a for a in (q, _base_query(q), _short_query(q)) if a]:
+    tries = ([q, _short_query(q)] if audio else [q, _base_query(q), _short_query(q)])
+    for attempt in [a for a in dict.fromkeys(tries) if a]:
         try:
             html = _get(f"{BASE}/search.aspx?keyword={urllib.parse.quote(attempt)}")
         except Exception as e:  # noqa: BLE001
@@ -563,7 +700,7 @@ def resolve_modelid(name: str, sku: str) -> int | None:
                 seen[cand] = _model_title(int(cand))
                 if fresh:
                     time.sleep(0.35)
-            if _match_ok(q, seen[cand]):
+            if _match_ok(q, seen[cand], cat):
                 sc = _score(q, seen[cand])
                 if not best or sc > best[0]:
                     best = (sc, int(cand), seen[cand])
@@ -612,9 +749,9 @@ def _price_for_rank(offers: list, rank: int) -> float | None:
     return round(offers[rank - 1]["price"] - 1, 0)
 
 
-def analyse(t: dict) -> dict:
+def analyse(t: dict, cat=None) -> dict:
     ident = t.get("id") or t.get("sku")
-    mid = resolve_modelid(t["name"], ident)
+    mid = resolve_modelid(t["name"], ident, cat)
     row = {"id": ident, "sku": t["sku"], "name": t["name"], "brand": t["brand"],
            "stock": t["stock"], "our_price": t.get("our_price"), "modelid": mid,
            "product_id": t.get("product_id"), "site_url": t.get("site_url"),
@@ -713,7 +850,7 @@ def _our_style(zap_title: str) -> str:
     return ("סמארטפון " + " ".join(words)).strip() if words else ""
 
 
-def plan(pid) -> dict:
+def plan(pid, cat=None) -> dict:
     """מה בדיוק צריך לעשות כדי שהמוצר **בוודאות** יופיע בדף ההשוואה.
 
     למה זה קיים (אסי, 27/07/2026): שינוי אצלנו מתגלגל לזאפ תוך 6-24 שעות,
@@ -773,7 +910,7 @@ def plan(pid) -> dict:
     # באמת מקבל, והשניים לא תמיד זהים.
     in_feed, feed_name = False, ""
     try:
-        for f in (zap_price.feed(1934) or []):
+        for f in (zap_price.feed(int(cat or DEFAULT_CAT)) or []):
             if str(f.get("num")) == pid:
                 in_feed, feed_name = True, f.get("name") or ""
                 break
@@ -809,7 +946,7 @@ def plan(pid) -> dict:
                     seen[c] = _model_title(int(c))
                     time.sleep(0.3)
                 t = seen[c]
-                if _match_ok(q, t):
+                if _match_ok(q, t, cat):
                     sc = _score(q, t)
                     if not best or sc > best[0]:
                         best = (sc, int(c), t)
@@ -921,7 +1058,7 @@ def reset_mapping() -> int:
     return n
 
 
-def run(limit: int | None = None, sleep: float = 1.1) -> dict:
+def run(cat=None, limit: int | None = None, sleep: float = 1.1) -> dict:
     """סבב מלא. ⚠️ שורה = **דגם בזאפ**, לא מק"ט: דף השוואה אחד מייצג את כל
     הצבעים של אותה תצורה, ולכן המלאי מצטבר (אסי: "Oppo X9 Ultra 512 —
     2 שחור + 2 כתום ⇒ 4 במלאי"), וכך אפשר להחליט מהר אם שווה לחתוך מחיר."""
@@ -930,21 +1067,21 @@ def run(limit: int | None = None, sleep: float = 1.1) -> dict:
     # לא קורה אחרי הלחיצה (אסי, 27/07/2026).
     def _beat(done, total, at):
         try:
-            db.sales_state_set("zap_progress", json.dumps(
-                {"done": done, "total": total, "at": at,
+            db.sales_state_set(_prog_key(cat), json.dumps(
+                {"done": done, "total": total, "at": at, "cat": int(cat or DEFAULT_CAT),
                  "beat": datetime.now().isoformat(timespec="seconds")},
                 ensure_ascii=False))
         except Exception:  # noqa: BLE001
             pass
 
     _beat(0, 0, "בונה את רשימת המוצרים…")
-    targets = build_targets()
+    targets = build_targets(cat)
     # ⚠️ סריקה בלי יעדים לא כותבת תמונת מצב. כשל רגעי בפיד (Cloudflare/timeout)
     # החזיר 0 יעדים, ו-run() דרס את התמונה הטובה של היום באפס שורות — כל
     # הנתונים נעלמו מהמסך (אסי, 27/07/2026). אין נתונים ⇒ משאירים מה שהיה.
     if not targets:
         logger.warning("zap: 0 targets — משאירים את התמונה הקודמת על כנה")
-        db.sales_state_set("zap_progress", "")
+        db.sales_state_set(_prog_key(cat), "")
         return {"ok": False, "error": "הפיד לא החזיר מוצרים — התמונה הקודמת נשמרה",
                 "rows": [], "summary": _summarise([])}
     if limit:
@@ -954,7 +1091,7 @@ def run(limit: int | None = None, sleep: float = 1.1) -> dict:
     orphans = []
     for i, t in enumerate(targets, 1):
         try:
-            r = analyse(t)
+            r = analyse(t, cat)
         except Exception as e:  # noqa: BLE001
             logger.warning("zap analyse failed for %s: %s", t.get("sku"), e)
             continue
@@ -985,8 +1122,9 @@ def run(limit: int | None = None, sleep: float = 1.1) -> dict:
         # תמונת הביניים כבדה — כל 15 מוצרים מספיק
         if i % 15 == 0 or i == total:
             try:
-                db.sales_state_set("zap_snap:partial", json.dumps(
+                db.sales_state_set(_snap_key(cat, "partial"), json.dumps(
                     {"date": date.today().isoformat(), "partial": True,
+                     "cat": int(cat or DEFAULT_CAT),
                      "rows": list(by_model.values()) + orphans,
                      "summary": _summarise(list(by_model.values()) + orphans, partial=True)},
                     ensure_ascii=False))
@@ -1015,34 +1153,35 @@ def run(limit: int | None = None, sleep: float = 1.1) -> dict:
         logger.warning("zap: act cleanup failed: %s", e)
     # רשת ביטחון שנייה: קריסה חדה במספר השורות היא כמעט תמיד תקלה ולא שינוי
     # אמיתי בקטלוג. עדיף להציג נתון של אתמול מאשר מסך ריק.
-    prev = latest() or {}
+    prev = latest(cat) or {}
     pn, cn = len(prev.get("rows") or []), len(rows)
     if not limit and pn >= 10 and cn < pn * 0.5:
         logger.warning("zap: %d שורות מול %d קודמות — לא שומרים", cn, pn)
         return {"ok": False, "error": f"נסרקו {cn} שורות מול {pn} — נראה כתקלה, "
                                       "התמונה הקודמת נשמרה",
                 "rows": rows, "summary": _summarise(rows)}
-    snap = {"date": date.today().isoformat(), "rows": rows, "summary": _summarise(rows)}
+    snap = {"date": date.today().isoformat(), "cat": int(cat or DEFAULT_CAT),
+            "rows": rows, "summary": _summarise(rows)}
     try:
-        db.sales_state_set("zap_progress", "")
-        db.sales_state_set(f"zap_snap:{snap['date']}", json.dumps(snap, ensure_ascii=False))
-        db.sales_state_set("zap_snap:latest", json.dumps(snap, ensure_ascii=False))
+        db.sales_state_set(_prog_key(cat), "")
+        db.sales_state_set(_snap_key(cat, snap["date"]), json.dumps(snap, ensure_ascii=False))
+        db.sales_state_set(_snap_key(cat, "latest"), json.dumps(snap, ensure_ascii=False))
     except Exception as e:  # noqa: BLE001
         logger.warning("zap snapshot save failed: %s", e)
     logger.info("zap scan: %s", snap["summary"])
     return snap
 
 
-def latest() -> dict | None:
-    raw = db.sales_state_get("zap_snap:latest")
+def latest(cat=None) -> dict | None:
+    raw = db.sales_state_get(_snap_key(cat, "latest"))
     return json.loads(raw) if raw else None
 
 
-def history(days: int = 30) -> list:
+def history(days: int = 30, cat=None) -> list:
     out = []
     for i in range(days):
         d = (date.today() - timedelta(days=i)).isoformat()
-        raw = db.sales_state_get(f"zap_snap:{d}")
+        raw = db.sales_state_get(_snap_key(cat, d))
         if raw:
             try:
                 out.append({"date": d, **json.loads(raw).get("summary", {})})
