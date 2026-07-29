@@ -5869,7 +5869,11 @@ async function openWaConv(phone){
   S.waPhone=phone; S.waThread=null; S.waContact=null; S.waReplyTo=null;
   // פרטי-שיחה פתוחים כברירת מחדל (העדפה נשמרת ב-tr_wa_info); לא דורסים פאנל אלה/מלאי פתוח
   if(S.waInfoPref===undefined){ try{ S.waInfoPref=localStorage.getItem('tr_wa_info')!=='0'; }catch(e){ S.waInfoPref=true; } }
-  if(!(S.waPanel && (S.waPanelMode==='uri'||S.waPanelMode==='stock'))){ S.waPanel=S.waInfoPref; S.waPanelMode='info'; }
+  // ⚠️ מלאי חי **אינו** נשאר פתוח במעבר בין שיחות. ההחרגה נכתבה כשהחיפוש
+  // היה ידני; מרגע שהוא נזרע פר-שיחה, הפאנל הציג את המוצר של הלקוח הקודם
+  // עד שעברת לפרטי-שיחה וחזרת (אסי, 29/07/2026). מאפסים וחוזרים לפרטים.
+  if(S.waPanelMode==='stock'){ S.waStockQ=''; S._wsSeeded=null; }
+  if(!(S.waPanel && S.waPanelMode==='uri')){ S.waPanel=S.waInfoPref; S.waPanelMode='info'; }
   const lay=document.getElementById('waLayout'); if(lay) lay.classList.add('thread-open');
   const bar=document.getElementById('waBar'); if(bar&&window.innerWidth<=760) bar.classList.add('wa-bar-hidden');
   // עדכון סימון active ברשימה בלי לרנדר הכל (שומר פוקוס/גלילה)
@@ -6103,6 +6107,7 @@ async function wpopOpen(phone){
   const w=wpopInit();
   w.open=true; w.phone=phone; w.min=false;
   S.waPhone=phone; S.waThread=null; S.waReplyTo=null; S.waPanel=false;
+  S.waStockQ=''; S._wsSeeded=null;                         // מלאי חי מתאפס עם השיחה
   const el=wpopEnsure(); el.classList.remove('wpop-min');
   wpopRenderBar();
   const pane=document.getElementById('waThreadPane');
