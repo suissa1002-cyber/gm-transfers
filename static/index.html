@@ -4505,13 +4505,71 @@ async function waOrderSubmit(payment){
     toast('יצירת הזמנה נכשלה — '+(e.status===400?'PayPlus לא מוגדר עדיין':'בדוק נתונים'),false);
   }
 }
+// ── 🔎 זרע לחיפוש המלאי: מה הלקוח בכלל שאל עליו ─────────────────────
+// אסי (29/07/2026): "לקוחות פותחים שאלה בדרך כלל מעמוד מוצר... הייתי רוצה
+// שברגע שלוחצים על הזכוכית המגדלת הברירה הראשונה תהיה המוצר שהלקוח שאל
+// עליו — מהכרטיסייה של עמוד המוצר, ואם אין, מהבקשה בשיחה."
+// ⚠️ שמות הקופה הם "Samsung Galaxy S26 Ultra 512GB - Black", והמסנן דורש
+// שכל האסימונים יופיעו. לכן שולחים **מותג+דגם בלועזית בלבד**: מילות
+// הקטגוריה בעברית ("טלפון סלולרי") לא קיימות שם ויאפסו כל תוצאה.
+function waStockQuery(name){
+  // ⚠️ בלי רצף לועזי אין שאילתה — לא להחזיר את הטקסט הגולמי. "256 בבקשה"
+  // הוחזר כשאילתה ואיפס כל תוצאה (בדיקה, 29/07/2026).
+  // ⚠️ הרצף ה**ארוך ביותר**, לא הראשון: הודעות הבוט נפתחות בקישור
+  // (https://tinyurl.com/...), והוא היה נבחר על פני שם המוצר.
+  const t=String(name||'').replace(/[\u200e\u200f\u202a-\u202e]/g,'')
+                          .replace(/https?:\/\/\S+/gi,' ');
+  const runs=t.match(/[A-Za-z][A-Za-z0-9'\-\.() ]{2,}/g)||[];
+  if(!runs.length) return '';
+  let q=runs.sort((a,b)=>b.trim().length-a.trim().length)[0];
+  q=q.replace(/\b(5g|4g|nfc|dual|sim|tws|anc|bluetooth|wireless|original)\b/gi,' ')
+     .replace(/[()]/g,' ').replace(/\s+/g,' ').trim();
+  const toks=q.split(' ').filter(Boolean);
+  return toks.length>=2?toks.slice(0,5).join(' '):'';
+}
+// מהכרטיסייה: תמיד לזרוע מחדש — לחצת עליה בכוונה כדי לבדוק את המוצר הזה
+function waStockFor(){
+  S._wsSeeded=null;
+  if(S.waPanel && S.waPanelMode==='stock'){ S.waPanel=false; }
+  waToggleStock();
+}
+function waStockSeed(){
+  const th=S.waThread||{};
+  let base=waStockQuery((th.entry_product||{}).name||'');
+  if(!base){
+    // אין כרטיסיית עמוד מוצר — מחפשים את שם המוצר האחרון שנאמר בשיחה
+    // (כרטיסי הבוט מכילים אותו במלואו), מהחדש לישן.
+    const ms=(th.messages||[]).slice(-40).reverse();
+    for(const m of ms){
+      const c=waStockQuery(m.text||'');
+      if(c && c.split(' ').length>=2){ base=c; break; }
+    }
+  }
+  if(!base) return '';
+  // נפח שהלקוח ביקש בשיחה — בקופה הוא חלק מהשם ("512GB"), ולכן מצמצם
+  // בדיוק לתצורה הנכונה במקום להציג את כל הצבעים של כל הנפחים.
+  if(!/\d{2,4}\s*(gb|tb)|\b(64|128|256|512|1024)\b/i.test(base)){
+    const inc=(th.messages||[]).filter(m=>m.direction==='in').slice(-8).reverse();
+    for(const m of inc){
+      const g=String(m.text||'').match(/\b(64|128|256|512|1024)\b/) ||
+              String(m.text||'').match(/\b1\s*tb\b/i);
+      if(g){ base+=' '+(/tb/i.test(g[0])?'1TB':g[1]||g[0]); break; }
+    }
+  }
+  return base.trim();
+}
+
 // ── 🔎 מלאי חי בתוך הוואטסאפ: חיפוש + שבבי סניפים + חלונית אתר, בלי לעזוב את השיחה ──
 function waToggleStock(){
   if(S.waPanel && S.waPanelMode==='stock'){ S.waPanel=false; renderWaThread(); return; }
   S.waPanel=true; S.waPanelMode='stock';
+  // מילוי מקדים פר-שיחה: נזרע פעם אחת לכל לקוח, כדי שחיפוש שהמשתמש
+  // שינה ידנית לא יידרס בכל פתיחה מחדש.
+  if(S._wsSeeded!==S.waPhone){ S._wsSeeded=S.waPhone; const sd=waStockSeed(); if(sd) S.waStockQ=sd; }
   renderWaThread();
-  if(!S.lsCat) loadLiveCatalog(false).then(()=>waStockPaint());
-  setTimeout(()=>{ const i=document.getElementById('waStockQ'); if(i) i.focus(); },150);
+  if(!S.lsCat) loadLiveCatalog(false).then(()=>waStockPaint()); else setTimeout(waStockPaint,0);
+  setTimeout(()=>{ const i=document.getElementById('waStockQ');
+    if(i){ i.focus(); i.setSelectionRange(i.value.length,i.value.length); } },150);
 }
 function waStockHTML(){
   return `
@@ -5016,7 +5074,16 @@ function waPanelHTML(){
     ${ct.email?`<div class="muted" style="display:flex;align-items:center;gap:5px;justify-content:flex-end">${escW(ct.email)} ${ico('mail',13)}</div>`:''}
     ${ct.subscribed_date?`<div class="muted" style="font-size:12px">לקוח מאז ${escW(String(ct.subscribed_date).slice(0,10))}</div>`:''}
     ${(S.waThread&&S.waThread.entry_product)?(function(ep){
-      const inner=`<div style="display:flex;align-items:center;gap:6px;color:#15803d;font-weight:800;font-size:12px">${ico('pkg',14)} פנייה אחרונה מעמוד מוצר</div>
+      // ⚠️ הכרטיסייה הייתה קישור מלא אך בלי שום סימן לכך. אייקון כדור-הארץ
+      // אומר "זה נפתח באתר" (אסי, 29/07/2026), והזכוכית פותחת מלאי חי על
+      // אותו מוצר — שתי הפעולות שבאמת עושים מהכרטיסייה הזאת.
+      const inner=`<div style="display:flex;align-items:center;gap:6px;color:#15803d;font-weight:800;font-size:12px">
+        ${ico('pkg',14)} פנייה אחרונה מעמוד מוצר
+        <span style="margin-inline-start:auto;display:inline-flex;align-items:center;gap:7px;opacity:.75">
+          <span title="בדוק מלאי חי למוצר הזה" onclick="event.preventDefault();event.stopPropagation();waStockFor()"
+                style="cursor:pointer;display:inline-flex">${ico('search',13)}</span>
+          ${ep.url?`<span title="פתח את עמוד המוצר באתר" style="display:inline-flex">${ico('globe',13)}</span>`:''}
+        </span></div>
       <div style="font-size:13px;margin-top:3px;color:var(--txt)">${escW(ep.name||'מוצר')}</div>`;
       const st='display:block;border:1px solid #16a34a55;background:#16a34a12;border-radius:11px;padding:9px 11px;margin:9px 0;text-decoration:none';
       return ep.url?`<a class="wa-order" target="_blank" href="${escW(ep.url)}" style="${st}">${inner}</a>`:`<div style="${st}">${inner}</div>`;
