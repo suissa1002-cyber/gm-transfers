@@ -4527,12 +4527,6 @@ function waStockQuery(name){
   const toks=q.split(' ').filter(Boolean);
   return toks.length>=2?toks.slice(0,5).join(' '):'';
 }
-// מהכרטיסייה: תמיד לזרוע מחדש — לחצת עליה בכוונה כדי לבדוק את המוצר הזה
-function waStockFor(){
-  S._wsSeeded=null;
-  if(S.waPanel && S.waPanelMode==='stock'){ S.waPanel=false; }
-  waToggleStock();
-}
 function waStockSeed(){
   const th=S.waThread||{};
   let base=waStockQuery((th.entry_product||{}).name||'');
@@ -5074,16 +5068,14 @@ function waPanelHTML(){
     ${ct.email?`<div class="muted" style="display:flex;align-items:center;gap:5px;justify-content:flex-end">${escW(ct.email)} ${ico('mail',13)}</div>`:''}
     ${ct.subscribed_date?`<div class="muted" style="font-size:12px">לקוח מאז ${escW(String(ct.subscribed_date).slice(0,10))}</div>`:''}
     ${(S.waThread&&S.waThread.entry_product)?(function(ep){
-      // ⚠️ הכרטיסייה הייתה קישור מלא אך בלי שום סימן לכך. אייקון כדור-הארץ
-      // אומר "זה נפתח באתר" (אסי, 29/07/2026), והזכוכית פותחת מלאי חי על
-      // אותו מוצר — שתי הפעולות שבאמת עושים מהכרטיסייה הזאת.
+      // ⚠️ הכרטיסייה הייתה קישור מלא אך בלי שום סימן לכך — אייקון כדור-הארץ
+      // אומר "זה נפתח באתר" (אסי, 29/07/2026). ⛔ בלי זכוכית מגדלת כאן:
+      // זו שבסרגל השיחה כבר נזרעת מהכרטיסייה הזאת, ושתי זכוכיות באותו מסך
+      // הן כפילות ("למה צריך עוד אחת?").
       const inner=`<div style="display:flex;align-items:center;gap:6px;color:#15803d;font-weight:800;font-size:12px">
         ${ico('pkg',14)} פנייה אחרונה מעמוד מוצר
-        <span style="margin-inline-start:auto;display:inline-flex;align-items:center;gap:7px;opacity:.75">
-          <span title="בדוק מלאי חי למוצר הזה" onclick="event.preventDefault();event.stopPropagation();waStockFor()"
-                style="cursor:pointer;display:inline-flex">${ico('search',13)}</span>
-          ${ep.url?`<span title="פתח את עמוד המוצר באתר" style="display:inline-flex">${ico('globe',13)}</span>`:''}
-        </span></div>
+        ${ep.url?`<span title="פתח את עמוד המוצר באתר" style="margin-inline-start:auto;display:inline-flex;opacity:.75">${ico('globe',13)}</span>`:''}
+      </div>
       <div style="font-size:13px;margin-top:3px;color:var(--txt)">${escW(ep.name||'מוצר')}</div>`;
       const st='display:block;border:1px solid #16a34a55;background:#16a34a12;border-radius:11px;padding:9px 11px;margin:9px 0;text-decoration:none';
       return ep.url?`<a class="wa-order" target="_blank" href="${escW(ep.url)}" style="${st}">${inner}</a>`:`<div style="${st}">${inner}</div>`;
