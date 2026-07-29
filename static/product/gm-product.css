@@ -440,6 +440,16 @@ body.gm-product-new *{text-indent:0!important;}
 .gm-atc .reset_variations{display:none!important;}
 /* שורת קנייה: כפתור ענק + בורר כמות בגלולה */
 .gm-atc .woocommerce-variation-add-to-cart, .gm-atc form.cart.gm-simple{display:flex!important;gap:10px;align-items:center;margin-top:16px;}
+/* ⚠️ 23/07/2026 (אסי, על בקר ה-Xbox): במוצרים עם בלוק תוספות של YITH הכפתור
+ * ירד מתחת לבורר הכמות. הסיבה: YITH מגישה
+ *   form.cart:has(#yith-wapo-container .yith-wapo-block){display:block!important}
+ * ול-`:has()` יש הספציפיות של הארגומנט הכי-ספציפי — שם יש **מזהה**, ולכן היא
+ * גוברת על השורה מעליי גם כששתיהן !important. זה קרה רק בחלק מהמוצרים כי הכלל
+ * מותנה בקיום הבלוק (גם כשהוא display:none). התשובה: להשתמש באותו נשק — :has
+ * עם אותו מזהה, מה שנותן לנו מזהה + יותר מחלקות. ⛔ לא לרדת מכאן ל-!important
+ * בלבד; הבעיה היא ספציפיות, לא עדיפות. */
+.gm-atc .woocommerce-variation-add-to-cart:has(#yith-wapo-container),
+.gm-atc form.cart.gm-simple:has(#yith-wapo-container){display:flex!important;gap:10px;align-items:center;margin-top:16px;}
 .gm-atc .quantity.buttons_added{display:inline-flex!important;align-items:center;border:1.5px solid var(--line)!important;border-radius:99px!important;padding:4px 6px!important;background:var(--surface)!important;flex:none;}
 .gm-atc .quantity .minus,.gm-atc .quantity .plus{width:30px;height:30px;display:inline-flex!important;align-items:center;justify-content:center;border:none!important;background:none!important;color:var(--ink)!important;font-size:19px;font-weight:700;text-decoration:none!important;box-shadow:none!important;}
 .gm-atc .quantity input{border:none!important;width:34px!important;padding:0!important;text-align:center;font-weight:800;background:none!important;font-size:1rem;}
