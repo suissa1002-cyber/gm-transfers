@@ -3837,6 +3837,8 @@ function renderWa(){
                   onclick="S.waStarred=S.waStarred?0:1;renderWa()">${ico('star',16,S.waStarred)}</button>
           <button class="btn-ghost wa-ico ${S.waArchived?'wa-human-on':''}" title="${S.waArchived?'מציג כולל ארכיון — לחץ להסתיר':'הצג כולל ארכיון'}"
                   onclick="S.waArchived=S.waArchived?0:1;loadWa(true)">${ico('archive',16)}</button>
+          <button class="btn-ghost wa-ico" title="${wpopEnabled()?'החלון הצף פעיל — לחץ להשהות':'החלון הצף מושהה — לחץ להפעיל'}"
+                  onclick="wpopToggle()" style="opacity:${wpopEnabled()?'1':'.45'}">${ico(wpopEnabled()?'chat':'chatOff',16)}</button>
           <button class="btn-ghost wa-ico" title="${(S.ellaPending||[]).length?`🎓 לאלה יש ${S.ellaPending.length} שאלות/לקחים שממתינים לך — לחץ למעבר לשיחות`:'שאלות הלמידה של אלה — אין ממתינות כרגע'}" onclick="waEllaQueueOpen()" style="position:relative;color:${(S.ellaPending||[]).length?'#7c3aed':'var(--muted)'};opacity:${(S.ellaPending||[]).length?'1':'.55'}">${CLAUDE_ICON_S}${(S.ellaPending||[]).length?`<span style="position:absolute;top:-3px;inset-inline-end:-3px;background:#7c3aed;color:#fff;border-radius:99px;font-size:9px;font-weight:700;padding:1px 4px;line-height:1.4">${S.ellaPending.length}</span>`:''}</button>
         </div>
         ${S.waFilterAwaiting?`<div style="display:flex;align-items:center;gap:7px;padding:7px 10px;background:rgba(220,38,38,.08);border-bottom:1px solid var(--line);font-size:12.5px;color:#dc2626;font-weight:700">🔴 מסונן: ממתינים לנציג (${rows.length})<button class="btn-ghost" style="margin-inline-start:auto;padding:2px 9px;font-size:12px" onclick="S.waFilterAwaiting=false;renderWa()">✕ נקה</button></div>`:''}
@@ -5375,6 +5377,7 @@ const _IPATHS={
   bellOff:'<path d="M8.7 3A6 6 0 0 1 18 8c0 4.5 1.2 6.7 2 8"/><path d="M17 17H3s3-2 3-9c0-.6.1-1.2.3-1.7"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/><line x1="2" y1="2" x2="22" y2="22"/>',
   back:'<line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>',
   chat:'<path d="M21 11.5a8.38 8.38 0 0 1-8.38 8.38 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 1 1 16.1-3.8z"/>',
+  chatOff:'<path d="M21 11.5a8.38 8.38 0 0 1-8.38 8.38 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1 1.7-9.2"/><path d="M8.5 3.6A8.38 8.38 0 0 1 21 11.5"/><path d="M3 3l18 18"/>',
   pin:'<line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/>',
   cart:'<circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>',
   tag:'<path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/>',
@@ -5963,6 +5966,18 @@ async function loadWaSilent(){
 //  עונה → נסגר; נפתח שוב כשהלקוח חוזר או כשלקוח אחר ממתין לאנושי.
 // ════════════════════════════════════════════════════════════════════
 function wpopInit(){ if(!S.wpop) S.wpop={open:false,phone:'',queue:[],snooze:{},min:false}; return S.wpop; }
+// ⏸️ החלון הצף מושהה. אסי (29/07/2026): "כרגע מעצבן יותר מאשר מועיל,
+// אחשוב בהמשך מה לעשות איתו ואם נשפר אותו בדרך כלשהיא". לא מוחקים את
+// הקוד — מכבים בדגל, כדי שההחזרה תהיה לחיצה ולא פריסה מחדש. ברירת
+// המחדל כבויה; הבאדג' וה-KPI "ממתינים לנציג" ממשיכים לעבוד כרגיל.
+function wpopEnabled(){ try{ return localStorage.getItem('waPopup')==='1'; }catch(e){ return false; } }
+function wpopToggle(){
+  const on=!wpopEnabled();
+  try{ localStorage.setItem('waPopup', on?'1':'0'); }catch(e){}
+  if(!on && S.wpop && S.wpop.open) wpopClose();
+  toast(on?'החלון הצף הופעל':'החלון הצף מושהה', true);
+  renderWa();
+}
 function wpopEligible(c){
   if(!c || c.archived) return false;
   // (א) ביקש נציג וטרם נענה ע"י אדם — גם אם הבוט שלח הודעת-העברה אחרונה (unread=false);
@@ -5976,6 +5991,7 @@ function wpopQueue(convs){
                     .sort((a,b)=>(b.ts||0)-(a.ts||0)).map(c=>c.phone);
 }
 function wpopConsider(convs){
+  if(!wpopEnabled()) return;                              // ⏸️ מושהה בבקשת אסי
   if(!S.adminKey) return;                                 // רק קונסולת הניהול
   if(S.view==='admin'&&S.adminTab==='wa') return;          // בטאב המלא — אין צורך בצף
   const w=wpopInit();
