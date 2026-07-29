@@ -467,6 +467,9 @@
         overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .zalt{display:block;font-size:11.5px;color:var(--txt-3);max-width:330px;
         overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .zk .zkc{cursor:pointer;transition:border-color .12s,background .12s}
+  .zk .zkc:hover{border-color:var(--brand)}
+  .zk .zkc.on{border-color:var(--brand);background:var(--brand-bg)}
   .zscan{border-color:var(--brand);background:var(--brand-bg)}
   .zscan .h{color:var(--brand-ink);margin-bottom:var(--s3)}
   .zscan .pc{margin-inline-start:auto;font-weight:800;font-variant-numeric:tabular-nums}
@@ -1502,6 +1505,8 @@ function renderZap(){
     if(q && (r.name+' '+(r.zap_title||'')+' '+r.brand+' '+(r.sku||'')).toLowerCase().indexOf(q)<0) return false;
     if(Z.brand && r.brand!==Z.brand) return false;
     if(Z.state==='pending') return !!Z.pend[r.sku];
+    // חוצה-דליים: מה שבפועל מופיע בדף השוואה, גם אם הדלי שלו אחר
+    if(Z.state==='_onzap') return zapState(r).k==='listed';
     // ⚠️ דלי אחד בדיוק לכל שורה, לפי `reason_code`. סינון לפי סטטוס זאפ גרם
     // לכך ש"לא בדף" ו"דורש מוצר צל" הכילו את אותם מוצרים, ואי אפשר היה
     // לעבוד על אף אחד מהם כרשימה סגורה (אסי, 27/07/2026).
@@ -1522,7 +1527,17 @@ function renderZap(){
     ${adminTabsHTML()}
     <div class="zk">
       <div><span class="l">בקטלוג</span><span class="v">${Z.rows.length}</span><span class="s">${s.in_feed||0} משודרים · ${s.hidden||0} מוסתרים</span></div>
-      <div><span class="l">רשומים</span><span class="v" style="color:var(--brand)">${cnt('listed')}</span><span class="s">מופיעים בדף ההשוואה</span></div>
+      ${(()=>{
+        // ⚠️ הכרטיסיה סופרת מה ש**מופיע בפועל** בזאפ, והצ׳יפ סופר את דלי
+        // "אין מה לעשות". הצ׳יפים זרים זה לזה בכוונה, ולכן מוצר מוסתר או
+        // כזה שדורש מוצר צל נספר בדלי שלו גם כשהוא רשום. ההפרש הטעה
+        // (אסי, 29/07/2026: "זה לא אמור להיות זהה?") ובעיקר הסתיר
+        // מוצרים שהוסתרו אצלנו ועדיין גלויים ללקוחות בזאפ.
+        const on=cnt('listed'), bucket=rcnt('listed'), gap=on-bucket;
+        return `<div class="zkc${Z.state==='_onzap'?' on':''}" onclick="zapSet('state',${Z.state==='_onzap'?"''":"'_onzap'"})"
+          title="הצג את כל מי שמופיע בדף השוואה — כולל מוסתרים ודורשי מוצר צל">
+          <span class="l">רשומים</span><span class="v" style="color:var(--brand)">${on}</span>
+          <span class="s">מופיעים בדף ההשוואה${gap>0?` · ${bucket} ללא פעולה + ${gap} בדלי אחר`:''}</span></div>`;})()}
       <div><span class="l">בטופ 5</span><span class="v">${s.in_top5||0}</span><span class="s">במחיר הנוכחי</span></div>
       <div><span class="l">ממתין לקופה</span><span class="v" style="color:${Z.pendN?'#d97706':'inherit'}">${Z.pendN}</span><span class="s">שונה כאן, לא בקופה</span></div>
     </div>
