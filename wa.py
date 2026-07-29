@@ -608,6 +608,7 @@ def _slug_is_hebrew(url: str) -> bool:
 
 
 def _tinyurl(long_url: str) -> str:
+    """שירות חיצוני — **גיבוי בלבד**. ראה gm_short() למה שמשמש בפועל."""
     with _SHORTEN_LOCK:
         if long_url in _SHORTEN_CACHE:
             return _SHORTEN_CACHE[long_url]
@@ -626,6 +627,68 @@ def _tinyurl(long_url: str) -> str:
     return long_url   # fail-safe: עדיף קישור ארוך מקישור שבור
 
 
+def gm_short(long_url: str) -> str:
+    """מקצר דרך המקצר שלנו — greenmobile.co.il/s/XXXXXX.
+
+    אסי (29/07/2026): "אלה תשלח את הקישורים האלו ולא את ה-slug עם העברית
+    ששולח קישורים מכוערים, ולא את המקוצרים של tinyurl". הקישור על הדומיין
+    שלנו: אמין מול לקוח, ולא מת אם שירות חיצוני נסגר.
+
+    ⚠️ הקיצור נעשה **בנתיב השליחה** ולא בפרומפט של אלה: מודל שממציא alias
+    שולח 404 ללקוח, וזה כבר קרה (ראה feedback_product_link). כאן הקלט הוא
+    קישור אמיתי שקיים, והפלט מאומת מול התשובה של השרת.
+
+    ⚠️ התוסף מקצר רק נתיבי /product/, /product-category/, /product-tag/,
+    /search/ ו-/ — צ'קאאוט אינו ברשימה ולכן יחזור כמו שהוא."""
+    with _SHORTEN_LOCK:
+        if long_url in _SHORTEN_CACHE:
+            return _SHORTEN_CACHE[long_url]
+    # ⚠️ מטמון קבוע ולא רק בזיכרון: התוסף מגביל 60 בקשות לשעה **לכל IP**,
+    # ו-Render יוצא מכתובת אחת לכל השירות. בלי זה כל הפעלה מחדש הייתה
+    # מקצרת מאפס וצורכת את המכסה על קישורים שכבר קוצרו (29/07/2026).
+    import db as _db
+    key = "gm_short:" + hashlib.md5(long_url.encode("utf-8")).hexdigest()[:16]
+    try:
+        hit = _db.sales_state_get(key)
+    except Exception:  # noqa: BLE001
+        hit = None
+    if hit:
+        with _SHORTEN_LOCK:
+            _SHORTEN_CACHE[long_url] = hit
+        return hit
+    base = os.getenv("WC_STORE_URL", "https://greenmobile.co.il").rstrip("/")
+    try:
+        import requests as _rq
+        r = _rq.post(f"{base}/wp-json/gm-short/v1/make", timeout=12,
+                     json={"url": long_url},
+                     headers={"User-Agent": "GreenOS/1.0"})
+        d = r.json() if r.ok else {}
+        short = (d or {}).get("short") or ""
+        if short.startswith("http"):
+            with _SHORTEN_LOCK:
+                _SHORTEN_CACHE[long_url] = short
+            try:
+                _db.sales_state_set(key, short)
+            except Exception:  # noqa: BLE001
+                pass
+            return short
+        logger.warning("gm-short refused %s: %s", long_url[:70],
+                       str((d or {}).get("message") or r.status_code)[:60])
+    except Exception as e:  # noqa: BLE001
+        logger.warning("gm-short failed for %s: %s", long_url[:70], e)
+    return _tinyurl(long_url)      # גיבוי — עדיף קישור מקוצר חיצוני מקישור מכוער
+
+
+def _needs_shortening(url: str) -> bool:
+    """מה נחשב "קישור מכוער" שראוי לקיצור.
+
+    ⚠️ לא מקצרים הכול: `greenmobile.co.il/product/iphone-13-mini/` קריא
+    ומשדר אמון, וקיצורו ל-/s/AB12CD רק מסתיר מהלקוח לאן הוא הולך. מקצרים
+    כשיש עברית מקודדת, פרמטרים (וריאציה/סינון) או אורך חריג — בדיוק
+    המקרים שאסי הצביע עליהם (29/07/2026)."""
+    return (_slug_is_hebrew(url) or "?" in url or len(url) > 70)
+
+
 def _shorten_he_product_links(text: str) -> str:
     if not text or "greenmobile.co.il/" not in text:
         return text
@@ -635,7 +698,9 @@ def _shorten_he_product_links(text: str) -> str:
         while url and url[-1] in ".,;)]\"'":
             trail = url[-1] + trail
             url = url[:-1]
-        return (_tinyurl(url) + trail) if _slug_is_hebrew(url) else m.group(0)
+        if url.startswith("https://greenmobile.co.il/s/"):
+            return m.group(0)                    # כבר מקוצר
+        return (gm_short(url) + trail) if _needs_shortening(url) else m.group(0)
 
     return _GM_PRODUCT_RE.sub(_repl, text)
 
@@ -644,7 +709,7 @@ def _meta_send_text(phone: str, text: str) -> str:
     """שליחת טקסט חופשי ישירות דרך WhatsApp Cloud API של מטא. מחזיר wamid."""
     if not meta_direct_ready():
         raise WaError("Meta ישיר לא מוגדר")
-    text = _shorten_he_product_links(text)   # slug עברי → TinyURL אמיתי, לפני השליחה
+    text = _shorten_he_product_links(text)   # קישור מכוער → greenmobile.co.il/s/XXXXXX
     import os as _os
     import requests as _rq
     r = _rq.post(f"{META_GRAPH}/{_os.getenv('META_WA_PHONE_ID').strip()}/messages",

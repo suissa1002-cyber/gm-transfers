@@ -1148,25 +1148,17 @@ def _ask_next_attr(phone):
 
 
 def _short_link(url: str) -> str:
-    """slug עברי / תווים לא-אנגליים בקישור → TinyURL gm-<אנגלית מתוך ה-slug>
-    (קישור עברי ארוך נראה שבור/חשוד בוואטסאפ). slug אנגלי תקין → מוחזר כמו שהוא."""
+    """קישור מכוער (עברית מקודדת / פרמטרים / ארוך) → greenmobile.co.il/s/XXXXXX.
+
+    ⚠️ קודם נבנה כאן alias של TinyURL מתוך ה-slug ("gm-iphone-13-mini").
+    זה ייצר שמות בדויים שלא תמיד קיימים — 404 אצל הלקוח — ותלה אותנו
+    בשירות חיצוני. עכשיו מקצרים דרך המקצר שלנו, על הדומיין שלנו
+    (אסי, 29/07/2026). ההיגיון והמטמון מרוכזים ב-wa.gm_short."""
     try:
-        from urllib.parse import urlsplit, quote, unquote
-        path = unquote(urlsplit(url).path)
-        if path.isascii():                       # slug אנגלי — קישור ישיר
+        import wa as _wa
+        if not _wa._needs_shortening(url):       # slug אנגלי קצר — קריא, לא נוגעים
             return url
-        slug = path.rstrip("/").split("/")[-1]
-        ascii_part = _re.sub(r"[^a-z0-9]+", "-", _re.sub(r"[^\x00-\x7f]", "", slug.lower())).strip("-")
-        alias = "gm-" + (ascii_part[:40].strip("-") or "p")
-        try:
-            import requests as _rq
-            r = _rq.get(f"https://tinyurl.com/api-create.php?url={quote(url, safe='')}&alias={alias}",
-                        timeout=10)
-            if r.ok and r.text.startswith("http"):
-                return r.text.strip()
-        except Exception:  # noqa: BLE001
-            pass
-        return f"https://tinyurl.com/{alias}"     # alias כבר קיים מריצה קודמת — דטרמיניסטי
+        return _wa.gm_short(url)
     except Exception:  # noqa: BLE001
         return url
 
@@ -1197,7 +1189,12 @@ def _cart_url(parent_id, variation, parent_permalink=""):
 
 def _short_cart_link(url, parent_permalink, variation, parent_id):
     """מקצר את קישור הצ'קאאוט ל-TinyURL gm- (ייחודי לוריאציה, דטרמיניסטי). הקישור
-    ארוך ומכיל עברית מקודדת — כלל: קישור עם עברית מקצרים."""
+    ארוך ומכיל עברית מקודדת — כלל: קישור עם עברית מקצרים.
+
+    ⚠️ **נשאר על TinyURL בכוונה.** המקצר שלנו מאשר רק נתיבי /product/,
+    /product-category/, /product-tag/, /search/ ו-/ — נתיב הצ'קאאוט אינו
+    ברשימה ויידחה ב-400. להעביר גם אותו צריך עדכון לתוסף greenmobile-short
+    (אסי, 29/07/2026)."""
     from urllib.parse import urlsplit, quote
     slug = urlsplit(parent_permalink or "").path.rstrip("/").split("/")[-1]
     ascii_slug = _re.sub(r"[^a-z0-9]+", "-", _re.sub(r"[^\x00-\x7f]", "", slug.lower())).strip("-")[:30].strip("-")
