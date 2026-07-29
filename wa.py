@@ -676,7 +676,11 @@ def gm_short(long_url: str) -> str:
                        str((d or {}).get("message") or r.status_code)[:60])
     except Exception as e:  # noqa: BLE001
         logger.warning("gm-short failed for %s: %s", long_url[:70], e)
-    return _tinyurl(long_url)      # גיבוי — עדיף קישור מקוצר חיצוני מקישור מכוער
+    # ⛔ אין נפילה ל-TinyURL. אסי (29/07/2026): "לא מעט לקוחות רשמו לי
+    # שהקישורים של tinyurl שבורים". הסיבה: ה-alias נבנה דטרמיניסטית
+    # ("gm-<slug>"), וכשהוא תפוס אצל מישהו אחר הקוד החזיר אותו בלי לבדוק —
+    # הלקוח קיבל יעד של זר או 404. קישור ארוך מכוער עדיף על קישור שבור.
+    return long_url
 
 
 def _needs_shortening(url: str) -> bool:

@@ -1188,29 +1188,23 @@ def _cart_url(parent_id, variation, parent_permalink=""):
 
 
 def _short_cart_link(url, parent_permalink, variation, parent_id):
-    """מקצר את קישור הצ'קאאוט ל-TinyURL gm- (ייחודי לוריאציה, דטרמיניסטי). הקישור
-    ארוך ומכיל עברית מקודדת — כלל: קישור עם עברית מקצרים.
+    """מקצר את קישור הצ'קאאוט דרך המקצר שלנו. הקישור ארוך ומכיל עברית
+    מקודדת, ולכן חייב קיצור.
 
-    ⚠️ **נשאר על TinyURL בכוונה.** המקצר שלנו מאשר רק נתיבי /product/,
-    /product-category/, /product-tag/, /search/ ו-/ — נתיב הצ'קאאוט אינו
-    ברשימה ויידחה ב-400. להעביר גם אותו צריך עדכון לתוסף greenmobile-short
-    (אסי, 29/07/2026)."""
-    from urllib.parse import urlsplit, quote
-    slug = urlsplit(parent_permalink or "").path.rstrip("/").split("/")[-1]
-    ascii_slug = _re.sub(r"[^a-z0-9]+", "-", _re.sub(r"[^\x00-\x7f]", "", slug.lower())).strip("-")[:30].strip("-")
-    vid = (variation or {}).get("id") or parent_id or ""
-    # 'co' = סכמת צ'קאאוט מתוקנת (page_id). alias של TinyURL לא ניתן לעדכון, ולכן
-    # סיומת חדשה כשמשנים את כתובת היעד (אחרת הקישור הישן תקוע על /checkout/ השבור).
-    alias = "gm-" + "-".join(x for x in [ascii_slug, "co" + str(vid)] if x)
+    ⛔ **לא TinyURL.** ה-alias שנבנה כאן היה דטרמיניסטי ("gm-<slug>-co<id>"),
+    וכשהוא תפוס אצל מישהו אחר הקוד החזיר אותו בלי לבדוק — הלקוח קיבל יעד
+    של זר או 404. אסי דיווח שלקוחות מקבלים קישורים שבורים (29/07/2026).
+
+    ⚠️ דורש שנתיב הצ'קאאוט יהיה ברשימת הנתיבים המותרים בתוסף
+    greenmobile-short; עד שהעדכון מותקן, gm_short מחזיר את הקישור המלא —
+    ארוך, אבל עובד."""
+    # ⚠️ בניית ה-alias (slug + מזהה וריאציה) נמחקה: המקצר שלנו עושה דה-דופ
+    # לפי הכתובת המלאה, ולכן כל תצורה מקבלת קוד משלה בלי שנתחזק שמות.
     try:
-        import requests as _rq
-        r = _rq.get(f"https://tinyurl.com/api-create.php?url={quote(url, safe='')}&alias={alias}",
-                    timeout=10)
-        if r.ok and r.text.startswith("http"):
-            return r.text.strip()
+        import wa as _wa
+        return _wa.gm_short(url)
     except Exception:  # noqa: BLE001
-        pass
-    return f"https://tinyurl.com/{alias}"   # alias דטרמיניסטי — כבר קיים מריצה קודמת
+        return url
 
 
 def _order_checkout(phone, label, price, parent_id, parent_permalink, variation=None):
