@@ -14,7 +14,9 @@ wa.py — WhatsApp (ConnectOp/ChatRace) backend לטאב 💬 ב-GreenOS.
   • body של new_message חייב שורה אחת — מקפלים שורות ל-" — ".
   • שליחה כ"אנושי" בלי toggle_human_mode (ה-toggle שובר את ה-UI של ConnectOp).
 """
+import hashlib
 import logging
+import os
 import re
 import sys
 import time
@@ -219,6 +221,49 @@ def _parse_entry_product(text: str):
     return {"name": name[:140], "url": ""} if name else None
 
 
+
+def _entry_product_url(name: str) -> str:
+    """שם המוצר → קישור לעמוד שלו באתר.
+
+    ⚠️ ה-prefill של Chaty מעביר **רק את השם**, בלי קישור — ולכן אייקון
+    כדור-הארץ בכרטיסייה מעולם לא הופיע (אסי, 29/07/2026). מפענחים מול
+    WooCommerce ושומרים במטמון: השם מגיע מעמוד המוצר עצמו, ולכן הוא
+    זהה לכותרת ומספיק חיפוש אחד. נכשל בשקט — קישור הוא נוחות, לא תנאי."""
+    import db
+    nm = (name or "").strip()
+    if not nm:
+        return ""
+    key = "wa_ep_url:" + hashlib.md5(nm.encode("utf-8")).hexdigest()[:16]
+    try:
+        cached = db.sales_state_get(key)
+    except Exception:  # noqa: BLE001
+        cached = None
+    if cached is not None and cached != "":
+        return "" if cached == "-" else cached
+    base = os.getenv("WC_STORE_URL", "https://greenmobile.co.il").rstrip("/")
+    url = ""
+    try:
+        import requests
+        r = requests.get(f"{base}/wp-json/wc/v3/products", timeout=20,
+                         auth=(os.getenv("WC_CONSUMER_KEY", ""),
+                               os.getenv("WC_CONSUMER_SECRET", "")),
+                         params={"search": nm, "per_page": 3, "status": "publish",
+                                 "_fields": "id,name,permalink"})
+        rows = r.json() if r.ok else []
+        if isinstance(rows, list) and rows:
+            exact = next((x for x in rows
+                          if (x.get("name") or "").strip() == nm), rows[0])
+            url = exact.get("permalink") or ""
+    except Exception as e:  # noqa: BLE001
+        logger.warning("wa: entry product url failed for %s: %s", nm[:40], e)
+        return ""            # שגיאת רשת — לא נועלים מטמון
+    try:
+        db.sales_state_set(key, url or "-")
+    except Exception:  # noqa: BLE001
+        pass
+    return url
+
+
 def get_thread(phone: str, limit: int = 60):
     """שיחה מפוענחת (ישן→חדש) + מצב חלון 24ש."""
     try:
@@ -305,6 +350,8 @@ def get_thread(phone: str, limit: int = 60):
         for m in slim:
             if m.get("direction") == "out" and st_map.get(m.get("id")):
                 m["status"] = st_map[m["id"]]
+    if entry_product and not entry_product.get("url"):
+        entry_product["url"] = _entry_product_url(entry_product.get("name") or "")
     return {"phone": phone, "messages": slim, "window": _window_state(slim),
             "entry_product": entry_product}
 
@@ -358,6 +405,8 @@ def get_thread_native(phone: str, limit: int = 80):
                 entry = ep
     has_pic = phone in db.wa_contact_pic_phones()
     pic = f"/api/admin/wa/contact-pic/{phone}?t={media_token('cpic:' + phone)}" if has_pic else ""
+    if entry and not entry.get("url"):
+        entry["url"] = _entry_product_url(entry.get("name") or "")
     return {"phone": phone, "messages": slim, "window": _window_state(slim),
             "entry_product": entry, "source": "native", "pic": pic}
 

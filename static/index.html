@@ -4542,15 +4542,35 @@ function waStockSeed(){
   if(!base) return '';
   // נפח שהלקוח ביקש בשיחה — בקופה הוא חלק מהשם ("512GB"), ולכן מצמצם
   // בדיוק לתצורה הנכונה במקום להציג את כל הצבעים של כל הנפחים.
+  let cap='';
   if(!/\d{2,4}\s*(gb|tb)|\b(64|128|256|512|1024)\b/i.test(base)){
     const inc=(th.messages||[]).filter(m=>m.direction==='in').slice(-8).reverse();
     for(const m of inc){
       const g=String(m.text||'').match(/\b(64|128|256|512|1024)\b/) ||
               String(m.text||'').match(/\b1\s*tb\b/i);
-      if(g){ base+=' '+(/tb/i.test(g[0])?'1TB':g[1]||g[0]); break; }
+      if(g){ cap=(/tb/i.test(g[0])?'1TB':g[1]||g[0]); break; }
     }
   }
-  return base.trim();
+  return waStockNarrow(base.trim(), cap);
+}
+// ── ניקוי מילות תיאור, בלי רשימת מילים אסורות ────────────────────────
+// אסי (29/07/2026): "יש דרך לנקות מילות תיאור מהכותרת אוטומטית מבלי
+// שיפגע בחיפוש התקין?" — כן, ובלי לתחזק רשימה שתמיד תהיה חסרה:
+// כותרות החנות בנויות מותג+דגם ואז תיאור ("iPhone 13 Mini **Super
+// Retina XDR**"), ולכן מקצרים מהסוף עד שיש תוצאה בקטלוג. מה שנשאר הוא
+// בהגדרה מה שהקופה מכירה — ולא ניחוש שלנו מה נחשב "מילת תיאור".
+function waStockNarrow(base, cap){
+  const j=(b,c)=>[b,c].filter(Boolean).join(' ');
+  if(!S.lsCat) return j(base,cap);            // הקטלוג עוד לא נטען — נזרע כמו שהוא
+  const toks=base.split(' ').filter(Boolean);
+  for(let n=toks.length;n>=2;n--){
+    const cand=toks.slice(0,n).join(' ');
+    if(!waStockMatches(cand).length) continue;
+    // הנפח מצמצם — מוסיפים אותו רק אם הוא לא מאפס את התוצאה
+    if(cap && waStockMatches(j(cand,cap)).length) return j(cand,cap);
+    return cand;
+  }
+  return j(base,cap);                          // שום קיצור לא עזר — משאירים למשתמש
 }
 
 // ── 🔎 מלאי חי בתוך הוואטסאפ: חיפוש + שבבי סניפים + חלונית אתר, בלי לעזוב את השיחה ──
@@ -4559,9 +4579,16 @@ function waToggleStock(){
   S.waPanel=true; S.waPanelMode='stock';
   // מילוי מקדים פר-שיחה: נזרע פעם אחת לכל לקוח, כדי שחיפוש שהמשתמש
   // שינה ידנית לא יידרס בכל פתיחה מחדש.
-  if(S._wsSeeded!==S.waPhone){ S._wsSeeded=S.waPhone; const sd=waStockSeed(); if(sd) S.waStockQ=sd; }
+  const fresh=(S._wsSeeded!==S.waPhone);
+  if(fresh){ S._wsSeeded=S.waPhone; const sd=waStockSeed(); if(sd) S.waStockQ=sd; }
   renderWaThread();
-  if(!S.lsCat) loadLiveCatalog(false).then(()=>waStockPaint()); else setTimeout(waStockPaint,0);
+  // ⚠️ הקיצור זקוק לקטלוג. בפתיחה הראשונה הוא עדיין נטען, ולכן זורעים
+  // שוב מיד אחרי הטעינה — אחרת הכותרת המלאה נשארת ו"לא נמצא בקטלוג".
+  if(!S.lsCat) loadLiveCatalog(false).then(()=>{
+      if(fresh){ const sd=waStockSeed(); if(sd){ S.waStockQ=sd;
+        const i=document.getElementById('waStockQ'); if(i) i.value=sd; } }
+      waStockPaint(); });
+  else setTimeout(waStockPaint,0);
   setTimeout(()=>{ const i=document.getElementById('waStockQ');
     if(i){ i.focus(); i.setSelectionRange(i.value.length,i.value.length); } },150);
 }
