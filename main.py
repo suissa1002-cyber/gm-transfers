@@ -9225,6 +9225,46 @@ def admin_order_pay_link(oid: int, payments: int = 1,
             "total": o.get("total"), "pay_link": pp["link"], "pru": pp["pru"]}
 
 
+
+@app.post("/api/admin/orders/backfill-delivered")
+def admin_backfill_delivered(limit: int = 120, dry: int = 1,
+                             x_admin_key: Optional[str] = Header(None)):
+    """נוטע את דגל ord_delivered בהזמנות שכבר עברו מסירה — עצירת מעגל הסטטוסים
+    בהזמנות שנתקעו בו לפני התיקון (30/07/2026).
+
+    ⚠️ **לא משנה שום סטטוס.** כל שינוי סטטוס שולח מייל ללקוח, וההזמנות האלה
+    כבר קיבלו "ההזמנה הושלמה" יותר מפעם אחת. הדגל לבדו מונע את הקידום הבא,
+    וההזמנה מתייצבת מעצמה. dry=1 (ברירת מחדל) רק מדווח."""
+    _require_admin(x_admin_key)
+    import requests as _rq
+    base, k, s = _wc_creds()
+    r = _rq.get(f"{base}/wp-json/wc/v3/orders", auth=(k, s), timeout=60,
+                params={"per_page": min(int(limit), 100), "orderby": "date", "order": "desc",
+                        "_fields": "id,number,status"})
+    if not r.ok:
+        raise HTTPException(502, "שליפת ההזמנות נכשלה")
+    marked, skipped = [], 0
+    for o in (r.json() or []):
+        oid, onum, st = o.get("id"), o.get("number"), o.get("status") or ""
+        if db.sales_state_get(f"ord_delivered:{oid}"):
+            skipped += 1
+            continue
+        ever = st in ("delivered", "completed")
+        if not ever:
+            try:    # ההיסטוריה היא העדות: האם ההזמנה הגיעה אי-פעם ל'נמסרה'
+                nn = _rq.get(f"{base}/wp-json/wc/v3/orders/{oid}/notes", auth=(k, s), timeout=30)
+                txt = " ".join((x.get("note") or "") for x in (nn.json() or [])) if nn.ok else ""
+                ever = "למצב ההזמנה נמסרה" in txt
+            except Exception:  # noqa: BLE001
+                pass
+        if not ever:
+            continue
+        if not dry:
+            db.sales_state_set(f"ord_delivered:{oid}", "1")
+        marked.append({"number": onum, "status": st})
+    return {"ok": True, "dry": bool(dry), "marked": len(marked),
+            "already": skipped, "orders": marked}
+
 @app.post("/api/admin/orders/{oid}/mark-broadcast")
 def admin_order_mark_broadcast(oid: int, x_admin_key: Optional[str] = Header(None)):
     """סימון 'שודר ידנית' — להזמנה שאסי שידר בעצמו מחוץ ל-GreenOS.
