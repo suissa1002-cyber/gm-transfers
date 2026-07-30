@@ -80,6 +80,9 @@
     padding:9px 12px;font-size:.85rem;font-weight:700;margin-top:10px}
   .badge{display:inline-block;background:#fef2f2;color:var(--danger);border:1px solid var(--danger);
     border-radius:99px;padding:2px 8px;font-size:.72rem;font-weight:800;margin-inline-start:6px}
+  .btn.ico{padding:7px 9px;display:inline-flex;align-items:center;justify-content:center}
+  .btn.ico svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.9;
+    stroke-linecap:round;stroke-linejoin:round}
   .crow{display:flex;gap:8px;align-items:center;margin-bottom:8px}
   .crow input{flex:1}
   .crow button{background:var(--bg);border:1.5px solid var(--line);color:var(--ink);border-radius:9px;
@@ -379,7 +382,9 @@ $('save').addEventListener('click', async () => {
       image_b64: state.img_b64 || '', image_id: state.image_id || 0
     });
     say(state.id ? 'עודכן ✓' : 'נוצר ✓ — מופיע בעמודי המוצר שנבחרו', 'ok');
+    BY_ID = {};                       /* המפה התיישנה */
     reset(); load();
+    if (MPROD) showProd();            /* הזווית "לפי מוצר" מציגה מחיר — לרענן */
   } catch (e) { say(e.message, 'err'); }
   $('save').disabled = false; $('save').textContent = 'שמירה';
 });
@@ -447,6 +452,9 @@ async function showProd() {
           <div class="item">
             <img src="${it.img || ''}" alt="">
             <div style="flex:1;min-width:0"><div class="n">${it.name}</div><div class="p">₪${it.price.toLocaleString('he-IL')}</div></div>
+            <button class="btn btn-ghost btn-sm ico" data-pedit="${it.id}" title="עריכת התוספת">
+              <svg viewBox="0 0 24 24"><path d="M4 20h4l10-10-4-4L4 16v4z"/><path d="M14 6l4 4"/></svg>
+            </button>
             <button class="btn btn-ghost btn-sm" data-detach="${it.id}">הסרה</button>
           </div>`).join('')}</div>
       </div>`).join('');
@@ -455,6 +463,12 @@ async function showProd() {
 /* הסרה = ביטול השיוך למוצר הזה בלבד. ⚠️ אם התוספת משויכת דרך **קטגוריה** היא
  * תמשיך להופיע — מודיעים במקום להשתיק. */
 $('mPrev').addEventListener('click', async e => {
+  const ed = e.target.closest('[data-pedit]');
+  if (ed) {
+    const a = await addonById(+ed.dataset.pedit);
+    if (a) openEdit(a); else say('לא נמצאה רשומת התוספת', 'err');
+    return;
+  }
   const b = e.target.closest('[data-detach]'); if (!b) return;
   b.disabled = true;
   try {
@@ -512,9 +526,11 @@ async function load() {
     }).join('') || '<div class="hint">אין תוצאות.</div>';
   } catch (e) { say(e.message, 'err'); }
 }
-$('list').addEventListener('click', async e => {
-  const b = e.target.closest('[data-edit]'); if (!b) return;
-  const a = JSON.parse(b.dataset.edit);
+/* ⚠️ העריכה חולצה לפונקציה כדי שתהיה נגישה **גם** מזווית "לפי מוצר" — אסי:
+ * "רוצה לשנות מחיר ספציפית לכרטיסיה מסוימת... שכבר מכאן יהיה אייקון או דרך
+ * פתיחת עריכה". מעבר לטאב אחר בשביל שינוי מחיר הוא חיכוך מיותר. */
+let BY_ID = {};
+function openEdit(a) {
   state.id = a.id; state.chips = (a.chips || []).slice(); state.image_id = 0; state.img_b64 = '';
   $('name').value = a.name;
   $('reg').value = a.regular_price || a.price || '';
@@ -530,7 +546,19 @@ $('list').addEventListener('click', async e => {
   openFold('foldForm');
   drawChips(); drawTags(); clearMsg();
   window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+$('list').addEventListener('click', e => {
+  const b = e.target.closest('[data-edit]'); if (!b) return;
+  openEdit(JSON.parse(b.dataset.edit));
 });
+/* preview מחזיר רק {id,name,price,img}; לעריכה צריך את הרשומה המלאה (צ׳יפים,
+ * יעדים, שני המחירים) ⇒ מפה מ-/list, נטענת בעצלתיים ומרועננת אחרי שמירה. */
+async function addonById(id) {
+  if (!BY_ID[id]) {
+    try { (await api('list')).forEach(a => BY_ID[a.id] = a); } catch (e) { say(e.message, 'err'); }
+  }
+  return BY_ID[id];
+}
 
 /* ---------- קיפול ---------- */
 /* ⚠️ הקלפים מקופלים בטעינה; ההדבקה של תמונה (paste) עובדת רק כשהטופס פתוח,
