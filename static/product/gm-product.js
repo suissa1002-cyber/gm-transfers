@@ -118,6 +118,14 @@
     });
   }
 
+  /* עוטף דביק לגלריה — ראה ההערה ב-gm-product.css (.gallery>.gsticky).
+   * נעשה ב-JS ולא בתבנית כדי שלא יידרש עדכון תוסף; ⚠️ אם התבנית תעטוף בעצמה,
+   * התנאי כאן מונע עטיפה כפולה. */
+  $(function () {
+    var $g = $('.gm-pdp-wrap .gallery').first();
+    if ($g.length && !$g.children('.gsticky').length) $g.children().wrapAll('<div class="gsticky"></div>');
+  });
+
   $(function () {
     var $btn = $('.gm-atc .single_add_to_cart_button');
     if ($btn.length && !$btn.find('svg').length) $btn.prepend(CART_SVG + ' ');
