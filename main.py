@@ -4057,6 +4057,113 @@ def _wp_call(method: str, route: str, params=None, json_body=None, timeout: int 
     return body
 
 
+def _addon_clean_image(b64: str, canvas: int = 640, fill: float = 0.88) -> str:
+    """הסרת רקע + מסגור חכם לתמונת תוספת. מקבל data-URI ומחזיר PNG שקוף.
+
+    אסי, 30/07/2026: "מנגנון שאני מעלה או מדביק תמונה... יודע לנקות להם את הרקע,
+    לעשות את הרקע שקוף, להתאים כל תמונה בכל גודל שיראה בכרטיסיה גדול יותר ויפה
+    ונקי... אני לא רוצה לראות מסגרת מרובעת סביב התמונה."
+
+    ⚠️ **מציפים מהשוליים פנימה** ולא "כל פיקסל בהיר" — אחרת חלקים לבנים של המוצר
+    עצמו (כיסוי שקוף, מגן מסך) היו מקבלים חורים. זו אותה לוגיקה שעבדה בבאנרים
+    כשה-AI-cutout אכל מסגרות בהירות.
+    ⛔ אין כאן מודל AI: זה flood-fill דטרמיניסטי, רץ במילישניות, בלי מודל להוריד.
+    אם הרקע אינו אחיד (צילום lifestyle) — מזהים ומשאירים את התמונה כמו שהיא,
+    כי חיתוך שגוי גרוע מרקע לבן.
+    """
+    import base64 as _b64, io as _io
+    from collections import deque
+    try:
+        from PIL import Image
+    except Exception:
+        return b64                      # Pillow חסר — מעבירים כמו שהוא
+
+    m = re.match(r"^data:image/([A-Za-z0-9.+-]+);base64,(.*)$", b64 or "", re.S)
+    raw = _b64.b64decode(m.group(2) if m else (b64 or ""), validate=False)
+    if len(raw) < 512:
+        return b64
+    try:
+        im = Image.open(_io.BytesIO(raw)).convert("RGBA")
+    except Exception:
+        return b64
+    # תמונות ענק — מקטינים לפני העיבוד (מהירות + זיכרון)
+    if max(im.size) > 1400:
+        im.thumbnail((1400, 1400), Image.LANCZOS)
+    w, h = im.size
+    px = im.load()
+
+    # האם הרקע אחיד ובהיר? בודקים את מסגרת השוליים
+    edge = []
+    step = max(1, min(w, h) // 60)
+    for x in range(0, w, step):
+        edge.append(px[x, 0][:3]); edge.append(px[x, h - 1][:3])
+    for y in range(0, h, step):
+        edge.append(px[0, y][:3]); edge.append(px[w - 1, y][:3])
+    n = len(edge) or 1
+    avg = tuple(sum(c[i] for c in edge) // n for i in range(3))
+    spread = max(max(abs(c[i] - avg[i]) for i in range(3)) for c in edge) if edge else 255
+    if avg[0] < 180 or avg[1] < 180 or avg[2] < 180 or spread > 48:
+        return b64                      # רקע כהה/עשיר — לא נוגעים
+
+    TOL = 34
+    def near(c):
+        return abs(c[0] - avg[0]) <= TOL and abs(c[1] - avg[1]) <= TOL and abs(c[2] - avg[2]) <= TOL
+
+    # flood-fill מכל פיקסלי השוליים פנימה
+    seen = bytearray(w * h)
+    q = deque()
+    for x in range(w):
+        for y in (0, h - 1):
+            i = y * w + x
+            if not seen[i] and near(px[x, y]): seen[i] = 1; q.append((x, y))
+    for y in range(h):
+        for x in (0, w - 1):
+            i = y * w + x
+            if not seen[i] and near(px[x, y]): seen[i] = 1; q.append((x, y))
+    while q:
+        x, y = q.popleft()
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < w and 0 <= ny < h:
+                i = ny * w + nx
+                if not seen[i] and near(px[nx, ny]):
+                    seen[i] = 1; q.append((nx, ny))
+
+    cleared = sum(seen)
+    if cleared < (w * h) * 0.04:
+        return b64                      # כמעט לא הוסר רקע — כנראה אין רקע אחיד
+
+    for y in range(h):
+        base = y * w
+        for x in range(w):
+            if seen[base + x]:
+                r, g, b, _ = px[x, y]
+                px[x, y] = (r, g, b, 0)
+
+    # ריכוך שפה של 1px כדי שלא ייראו שיניים
+    from PIL import ImageFilter
+    a = im.getchannel("A").filter(ImageFilter.GaussianBlur(0.6))
+    im.putalpha(a)
+
+    box = im.getbbox()
+    if not box:
+        return b64
+    im = im.crop(box)
+
+    # מסגור אחיד: הצד הארוך = fill מהקנבס, ממורכז, שאר השטח שקוף ⇒ כל תמונה
+    # בכל גודל נראית באותו נפח בכרטיסיה, בלי מסגרת ובלי "צף קטן בפינה".
+    target = int(canvas * fill)
+    iw, ih = im.size
+    sc = min(target / iw, target / ih)
+    im = im.resize((max(1, int(iw * sc)), max(1, int(ih * sc))), Image.LANCZOS)
+    out = Image.new("RGBA", (canvas, canvas), (0, 0, 0, 0))
+    out.paste(im, ((canvas - im.width) // 2, (canvas - im.height) // 2), im)
+
+    buf = _io.BytesIO()
+    out.save(buf, "PNG", optimize=True)
+    return "data:image/png;base64," + _b64.b64encode(buf.getvalue()).decode()
+
+
 @app.get("/addons")
 def addons_page():
     p = os.path.join(_static_dir, "addons.html")
@@ -4079,6 +4186,12 @@ async def addons_post(route: str, request: Request, x_admin_key: Optional[str] =
     if route not in _ADDON_ROUTES:
         raise HTTPException(404)
     body = await request.json()
+    # ניקוי רקע + מסגור חכם לפני ההעלאה ל-WP (ראה _addon_clean_image)
+    if route == "save" and body.get("image_b64"):
+        try:
+            body["image_b64"] = _addon_clean_image(body["image_b64"])
+        except Exception as e:            # עיבוד לא חייב להפיל שמירה
+            print(f"[addons] image clean failed: {e}")
     # תמונות base64 גדולות — טיימאאוט נדיב, ההעלאה עוברת דרכנו ל-WP
     return _wp_call("POST", f"gm-addons/v1/{route}", json_body=body, timeout=180)
 
