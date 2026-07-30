@@ -887,6 +887,36 @@
       else { $form.off('submit').trigger('submit'); }  /* שגיאה — הזרימה הרגילה */
     });
   });
+  /* ───── תוספות להזמנה: צ׳יפים + הוספה מהכרטיסיה (30/07/2026) ─────
+   * הצ׳יפים עצמם מרונדרים ע"י תוסף greenmobile-addons — רק אלה שיש להם
+   * תוספות למוצר הזה. כאן רק ההחלפה והוספה לסל.
+   * ⚠️ אזור הגלילה חוזר לראש בכל החלפת צ׳יפ, אחרת נכנסים לקבוצה חדשה
+   * בגלילה של הקודמת ונראה כאילו אין תוצאות. */
+  $(document).on('click', '.gm-ad-chip', function () {
+    var chip = $(this).data('chip');
+    $('.gm-ad-chip').removeClass('on');
+    $(this).addClass('on');
+    $('.gm-ad-grid').removeClass('on').filter('[data-for="' + chip + '"]').addClass('on');
+    var sc = document.querySelector('.gm-ad-scroll');
+    if (sc) sc.scrollTop = 0;
+  });
+  $(document).on('click', '.gm-ad-add', function (e) {
+    e.preventDefault(); e.stopPropagation();
+    var $b = $(this), id = +$b.data('id');
+    if (!id || $b.hasClass('busy')) return;
+    $b.addClass('busy');
+    cartOp('add-item', { id: id, quantity: 1 }).then(function (c) {
+      $b.removeClass('busy');
+      if (c && c.items) {
+        $b.addClass('added').text('✓');
+        drawerRender(c); openDrawer(true);
+      } else {
+        /* נכשל (אזל/שגיאה) — לא משאירים כפתור שמראה הצלחה מדומה */
+        $b.text('+');
+      }
+    }, function () { $b.removeClass('busy').text('+'); });
+  });
+
   /* פיל הסל בהדר פותח את הדרור */
   $(document).on('click', '.cart-pill, .mcart', function (e) { e.preventDefault(); openDrawer(false); });
 

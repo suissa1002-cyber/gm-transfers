@@ -4029,6 +4029,60 @@ async def embed_proxy_route(key: str, request: Request, path: str = ""):
                  headers={k: v for k, v in headers.items() if k.lower() not in ("content-type",)})
 
 
+# ── מערכת תוספות להזמנה (אביזרים בעמוד המוצר) ───────────────────────
+# אסי, 30/07/2026: "יצירת מוצר בדרך הסטנדרטית בעמוד מוצר רגיל מאוד קשה — זה
+# משהו שצריך לבנות בתוך GreenOS. העלאת תמונה, שם, מחיר מקסימום, מחיר מבצע,
+# ודרך לבחור באיזה מוצרים או קטגוריות שיופיע."
+# הדפדפן מדבר רק מול GreenOS; הפרוקסי מחזיק את פרטי ה-WP (אין סוד בדפדפן).
+_ADDON_ROUTES = {"list", "save", "delete", "chips", "targets", "preview"}
+
+
+def _wp_call(method: str, route: str, params=None, json_body=None, timeout: int = 90):
+    """קריאה מאומתת ל-wp-json. ⚠️ UA דמוי-דפדפן — CF SBFM חוסם UA של ספריות."""
+    base = os.getenv("WC_STORE_URL", "").rstrip("/")
+    u, pw = os.getenv("WP_USERNAME", ""), os.getenv("WP_APP_PASSWORD", "")
+    if not (base and u and pw):
+        raise HTTPException(500, "WP credentials missing")
+    import requests as _rq
+    r = _rq.request(method, f"{base}/wp-json/{route}", params=params, json=json_body,
+                    auth=(u, pw),
+                    headers={"User-Agent": "Mozilla/5.0 (compatible; GreenOS/1.0; greenmobile.co.il)"},
+                    timeout=timeout)
+    try:
+        body = r.json()
+    except Exception:
+        body = {"raw": r.text[:600]}
+    if r.status_code >= 400:
+        raise HTTPException(r.status_code, body)
+    return body
+
+
+@app.get("/addons")
+def addons_page():
+    p = os.path.join(_static_dir, "addons.html")
+    if os.path.exists(p):
+        return FileResponse(p, headers={"Cache-Control": "no-cache"})
+    raise HTTPException(404)
+
+
+@app.get("/api/admin/addons/{route}")
+def addons_get(route: str, request: Request, x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    if route not in _ADDON_ROUTES:
+        raise HTTPException(404)
+    return _wp_call("GET", f"gm-addons/v1/{route}", params=dict(request.query_params))
+
+
+@app.post("/api/admin/addons/{route}")
+async def addons_post(route: str, request: Request, x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    if route not in _ADDON_ROUTES:
+        raise HTTPException(404)
+    body = await request.json()
+    # תמונות base64 גדולות — טיימאאוט נדיב, ההעלאה עוברת דרכנו ל-WP
+    return _wp_call("POST", f"gm-addons/v1/{route}", json_body=body, timeout=180)
+
+
 # ── Ops Hub: דף ניהול צ'קים (מתארח אצלנו, proxy במקום טוקן חשוף) ───
 @app.get("/checks")
 def checks_page():

@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>מערכת תוספות · GreenOS</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#111827; --ink2:#6b7280; --line:#e5e7eb; --surface:#f9fafb;
+    --bg:#fff; --accent:#16a34a; --accent-soft:#ecfdf5; --accent-ink:#fff; --danger:#dc2626;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{--ink:#f3f4f6;--ink2:#9ca3af;--line:#374151;--surface:#1f2937;--bg:#111827;--accent:#22c55e;--accent-soft:#052e16;}
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:Assistant,system-ui,sans-serif;
+       -webkit-text-size-adjust:100%}
+  .wrap{max-width:1100px;margin:0 auto;padding:18px 16px 60px}
+  h1{font-size:1.35rem;font-weight:800;margin:0 0 4px}
+  .sub{color:var(--ink2);font-size:.92rem;margin-bottom:18px;line-height:1.5}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:16px}
+  label{display:block;font-weight:700;font-size:.88rem;margin:12px 0 6px}
+  input,select,textarea{width:100%;padding:11px 13px;border:1.5px solid var(--line);border-radius:11px;
+    background:var(--bg);color:var(--ink);font-family:inherit;font-size:.98rem}
+  input:focus,select:focus{outline:none;border-color:var(--accent)}
+  .row{display:flex;gap:12px;flex-wrap:wrap}
+  .row>div{flex:1;min-width:150px}
+  .btn{border:none;border-radius:99px;padding:12px 24px;font-family:inherit;font-weight:800;
+       font-size:1rem;cursor:pointer;background:var(--accent);color:var(--accent-ink)}
+  .btn:disabled{opacity:.5;cursor:default}
+  .btn-ghost{background:transparent;color:var(--ink);border:1.5px solid var(--line)}
+  .btn-sm{padding:7px 14px;font-size:.85rem}
+  /* אזור התמונה: גרירה, הדבקה (Ctrl+V) או בחירה */
+  .drop{border:2px dashed var(--line);border-radius:14px;padding:20px;text-align:center;
+    color:var(--ink2);cursor:pointer;transition:border-color .15s,background .15s}
+  .drop.over{border-color:var(--accent);background:var(--accent-soft)}
+  .drop img{max-width:120px;max-height:120px;object-fit:contain;border-radius:10px;background:#fff}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+  .chip{background:var(--bg);border:1.5px solid var(--line);border-radius:10px;padding:8px 14px;
+    font-size:.9rem;font-weight:700;cursor:pointer;font-family:inherit;color:var(--ink)}
+  .chip.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+  .tag{display:inline-flex;align-items:center;gap:6px;background:var(--accent-soft);color:var(--accent);
+    border:1px solid var(--accent);border-radius:99px;padding:5px 11px;font-size:.85rem;font-weight:700;margin:4px 4px 0 0}
+  .tag b{font-weight:800}
+  .tag button{background:none;border:none;color:inherit;cursor:pointer;font-size:1rem;line-height:1;padding:0}
+  .res{max-height:210px;overflow:auto;border:1px solid var(--line);border-radius:11px;margin-top:8px;background:var(--bg)}
+  .res div{padding:9px 12px;border-bottom:1px solid var(--line);cursor:pointer;font-size:.9rem}
+  .res div:last-child{border-bottom:none}
+  .res div:hover{background:var(--accent-soft)}
+  .list{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}
+  .item{display:flex;gap:10px;align-items:center;background:var(--bg);border:1px solid var(--line);
+    border-radius:13px;padding:9px}
+  .item img{width:46px;height:46px;object-fit:contain;border-radius:8px;background:#fff;flex:0 0 auto}
+  .item .n{font-size:.85rem;font-weight:700;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;
+    -webkit-box-orient:vertical;overflow:hidden}
+  .item .p{font-size:.9rem;font-weight:800;color:var(--ink2)}
+  .msg{padding:11px 14px;border-radius:11px;font-weight:700;font-size:.92rem;margin-top:12px}
+  .msg.ok{background:var(--accent-soft);color:var(--accent)}
+  .msg.err{background:#fef2f2;color:var(--danger)}
+  .hint{color:var(--ink2);font-size:.82rem;margin-top:5px;line-height:1.45}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>מערכת תוספות להזמנה</h1>
+  <div class="sub">
+    אביזרים שמופיעים בעמוד המוצר תחת "מוצרים שיכולים להתאים לך".
+    התוספת נוצרת <b>בלי מק״ט</b> — מנותקת מהקופה, המחיר נשלט רק כאן — ו<b>מוסתרת מהקטלוג</b>,
+    אבל מופיעה כשורה אמיתית בסל, בהזמנה ובחשבונית.
+  </div>
+
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+      <b id="formTitle">תוספת חדשה</b>
+      <button class="btn btn-ghost btn-sm" id="resetBtn" hidden>ביטול עריכה</button>
+    </div>
+
+    <label>תמונה</label>
+    <div class="drop" id="drop">
+      <div id="dropTxt">גררו תמונה לכאן · או הדביקו (⌘V) · או לחצו לבחירה</div>
+      <img id="prev" hidden alt="">
+    </div>
+    <input type="file" id="file" accept="image/*" hidden>
+    <div class="hint">התמונה נשמרת במדיה של האתר. אפשר להשתמש באותה תמונה לכמה תוספות (למשל "מגן מסך זכוכית").</div>
+
+    <label for="name">שם המוצר</label>
+    <input id="name" placeholder="למשל: מגן מסך זכוכית iPhone 17 Pro Max">
+
+    <div class="row">
+      <div>
+        <label for="reg">מחיר מקסימום (₪)</label>
+        <input id="reg" type="number" inputmode="decimal" min="0" step="1" placeholder="99">
+      </div>
+      <div>
+        <label for="sale">מחיר מבצע (₪) — לא חובה</label>
+        <input id="sale" type="number" inputmode="decimal" min="0" step="1" placeholder="69">
+      </div>
+    </div>
+    <div class="hint">אם מוזן מחיר מבצע — הוא המחיר שנגבה, ומחיר המקסימום מוצג מחוק.</div>
+
+    <label>קטגוריית הצ׳יפ</label>
+    <div class="chips" id="chips"></div>
+    <div class="hint">הצ׳יפ יופיע בעמוד המוצר <b>רק אם יש בו תוספות למוצר הזה</b> — אין צורך להגדיר כלום פר-מוצר.</div>
+
+    <label for="pq">באיזה מוצרים יופיע?</label>
+    <input id="pq" placeholder="הקלידו שם מוצר (2 תווים ומעלה)…" autocomplete="off">
+    <div class="res" id="pres" hidden></div>
+    <div id="ptags"></div>
+
+    <label for="cq">או בקטגוריות שלמות</label>
+    <select id="cq"><option value="">— בחרו קטגוריה להוספה —</option></select>
+    <div id="ctags"></div>
+    <div class="hint">קטגוריה = התוספת תופיע אוטומטית בכל מוצר בקטגוריה, כולל מוצרים שיתווספו בעתיד.</div>
+
+    <label style="display:flex;align-items:center;gap:9px;margin-top:16px;font-weight:700">
+      <input type="checkbox" id="catalog" style="width:auto;margin:0">
+      להציג גם בקטלוג האתר (עמודי קטגוריה וחיפוש)
+    </label>
+    <div class="hint">כברירת מחדל מוסתר. הבורר הזה מיועד לקטגוריות האביזרים העתידיות.</div>
+
+    <div style="margin-top:18px"><button class="btn" id="save">שמירה</button></div>
+    <div id="msg"></div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <b>תוספות קיימות</b><span class="hint" id="count"></span>
+    </div>
+    <div class="list" id="list"></div>
+  </div>
+</div>
+
+<script>
+const KEY = () => localStorage.getItem('tr_admin_key') || '';
+const H = () => ({ 'Content-Type': 'application/json', 'X-Admin-Key': KEY() });
+const $ = id => document.getElementById(id);
+
+let CHIPS = {}, CATS = [], state = { id: 0, chip: '', img_b64: '', image_id: 0, targets: [], tcats: [] };
+
+function say(t, cls) { $('msg').className = 'msg ' + cls; $('msg').textContent = t; }
+function clearMsg() { $('msg').className = ''; $('msg').textContent = ''; }
+
+async function api(route, body) {
+  const r = await fetch('/api/admin/addons/' + route, body
+    ? { method: 'POST', headers: H(), body: JSON.stringify(body) }
+    : { headers: H() });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error((d && (d.detail && d.detail.message || d.detail || d.message)) || ('שגיאה ' + r.status));
+  return d;
+}
+
+/* ---------- תמונה: גרירה / הדבקה / בחירה ---------- */
+function setImg(dataUrl) {
+  state.img_b64 = dataUrl; state.image_id = 0;
+  $('prev').src = dataUrl; $('prev').hidden = false; $('dropTxt').hidden = true;
+}
+function readFile(f) {
+  if (!f || !/^image\//.test(f.type)) return;
+  const fr = new FileReader(); fr.onload = e => setImg(e.target.result); fr.readAsDataURL(f);
+}
+$('drop').addEventListener('click', () => $('file').click());
+$('file').addEventListener('change', e => readFile(e.target.files[0]));
+['dragenter', 'dragover'].forEach(ev => $('drop').addEventListener(ev, e => {
+  e.preventDefault(); $('drop').classList.add('over');
+}));
+['dragleave', 'drop'].forEach(ev => $('drop').addEventListener(ev, e => {
+  e.preventDefault(); $('drop').classList.remove('over');
+}));
+$('drop').addEventListener('drop', e => readFile(e.dataTransfer.files[0]));
+document.addEventListener('paste', e => {
+  const it = [...(e.clipboardData || {}).items || []].find(x => /^image\//.test(x.type));
+  if (it) readFile(it.getAsFile());
+});
+
+/* ---------- צ׳יפים ---------- */
+function drawChips() {
+  $('chips').innerHTML = Object.entries(CHIPS).map(([k, v]) =>
+    `<button type="button" class="chip${state.chip === k ? ' on' : ''}" data-k="${k}">${v}</button>`).join('');
+}
+$('chips').addEventListener('click', e => {
+  const b = e.target.closest('.chip'); if (!b) return;
+  state.chip = b.dataset.k; drawChips();
+});
+
+/* ---------- בורר יעדים ---------- */
+function drawTags() {
+  $('ptags').innerHTML = state.targets.map(t =>
+    `<span class="tag"><b>${t.name}</b><button data-rm-p="${t.id}">✕</button></span>`).join('');
+  $('ctags').innerHTML = state.tcats.map(t =>
+    `<span class="tag">${t.name}<button data-rm-c="${t.id}">✕</button></span>`).join('');
+}
+document.addEventListener('click', e => {
+  const p = e.target.dataset && e.target.dataset.rmP, c = e.target.dataset && e.target.dataset.rmC;
+  if (p) { state.targets = state.targets.filter(x => String(x.id) !== p); drawTags(); }
+  if (c) { state.tcats = state.tcats.filter(x => String(x.id) !== c); drawTags(); }
+});
+let t0 = null;
+$('pq').addEventListener('input', () => {
+  clearTimeout(t0);
+  const q = $('pq').value.trim();
+  if (q.length < 2) { $('pres').hidden = true; return; }
+  t0 = setTimeout(async () => {
+    try {
+      const d = await api('targets?q=' + encodeURIComponent(q));
+      $('pres').innerHTML = (d.products || []).map(p =>
+        `<div data-id="${p.id}" data-name="${p.name.replace(/"/g, '&quot;')}">${p.name}</div>`).join('')
+        || '<div style="color:var(--ink2)">אין תוצאות</div>';
+      $('pres').hidden = false;
+    } catch (err) { say(err.message, 'err'); }
+  }, 300);
+});
+$('pres').addEventListener('click', e => {
+  const d = e.target.closest('[data-id]'); if (!d) return;
+  const id = +d.dataset.id;
+  if (!state.targets.some(x => x.id === id)) state.targets.push({ id, name: d.dataset.name });
+  $('pq').value = ''; $('pres').hidden = true; drawTags();
+});
+$('cq').addEventListener('change', () => {
+  const id = +$('cq').value; if (!id) return;
+  const c = CATS.find(x => x.id === id);
+  if (c && !state.tcats.some(x => x.id === id)) state.tcats.push({ id, name: c.name });
+  $('cq').value = ''; drawTags();
+});
+
+/* ---------- שמירה ---------- */
+$('save').addEventListener('click', async () => {
+  clearMsg();
+  const name = $('name').value.trim();
+  const reg = parseFloat($('reg').value || '0');
+  if (!name) return say('חסר שם מוצר', 'err');
+  if (!(reg > 0)) return say('חסר מחיר מקסימום', 'err');
+  if (!state.chip) return say('בחרו קטגוריית צ׳יפ', 'err');
+  if (!state.targets.length && !state.tcats.length) return say('בחרו לפחות מוצר או קטגוריה אחת שבהם התוספת תופיע', 'err');
+  if (!state.img_b64 && !state.image_id) return say('חסרה תמונה', 'err');
+
+  $('save').disabled = true; $('save').textContent = 'שומר…';
+  try {
+    await api('save', {
+      id: state.id, name, chip: state.chip,
+      regular_price: reg, sale_price: parseFloat($('sale').value || '0'),
+      targets: state.targets.map(t => t.id), tcats: state.tcats.map(t => t.id),
+      catalog: $('catalog').checked ? 1 : 0,
+      image_b64: state.img_b64 || '', image_id: state.image_id || 0
+    });
+    say(state.id ? 'עודכן ✓' : 'נוצר ✓ — מופיע בעמודי המוצר שנבחרו', 'ok');
+    reset(); load();
+  } catch (e) { say(e.message, 'err'); }
+  $('save').disabled = false; $('save').textContent = 'שמירה';
+});
+
+function reset() {
+  state = { id: 0, chip: '', img_b64: '', image_id: 0, targets: [], tcats: [] };
+  ['name', 'reg', 'sale', 'pq'].forEach(k => $(k).value = '');
+  $('catalog').checked = false;
+  $('prev').hidden = true; $('dropTxt').hidden = false;
+  $('formTitle').textContent = 'תוספת חדשה'; $('resetBtn').hidden = true;
+  drawChips(); drawTags();
+}
+$('resetBtn').addEventListener('click', () => { reset(); clearMsg(); });
+
+/* ---------- רשימה + עריכה ---------- */
+async function load() {
+  try {
+    const d = await api('list');
+    $('count').textContent = d.length + ' תוספות';
+    $('list').innerHTML = d.map(a => `
+      <div class="item">
+        <img src="${a.img || ''}" alt="">
+        <div style="flex:1;min-width:0">
+          <div class="n">${a.name}</div>
+          <div class="p">₪${(a.sale_price || a.regular_price || a.price).toLocaleString('he-IL')} · ${CHIPS[a.chip] || a.chip}</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" data-edit='${JSON.stringify(a).replace(/'/g, "&#39;")}'>עריכה</button>
+      </div>`).join('') || '<div class="hint">עוד אין תוספות.</div>';
+  } catch (e) { say(e.message, 'err'); }
+}
+$('list').addEventListener('click', async e => {
+  const b = e.target.closest('[data-edit]'); if (!b) return;
+  const a = JSON.parse(b.dataset.edit);
+  state.id = a.id; state.chip = a.chip; state.image_id = 0; state.img_b64 = '';
+  $('name').value = a.name;
+  $('reg').value = a.regular_price || a.price || '';
+  $('sale').value = a.sale_price || '';
+  $('catalog').checked = !!a.catalog;
+  if (a.img) { $('prev').src = a.img; $('prev').hidden = false; $('dropTxt').hidden = true; }
+  // היעדרים חוזרים כ-CSV; משלימים שמות מהקטגוריות, ומוצרים כמזהה עד שיטענו
+  state.tcats = String(a.tcats || '').split(',').filter(Boolean).map(id => {
+    const c = CATS.find(x => x.id === +id); return { id: +id, name: c ? c.name : ('קטגוריה ' + id) };
+  });
+  state.targets = String(a.targets || '').split(',').filter(Boolean).map(id => ({ id: +id, name: 'מוצר ' + id }));
+  $('formTitle').textContent = 'עריכת תוספת #' + a.id;
+  $('resetBtn').hidden = false;
+  drawChips(); drawTags(); clearMsg();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+});
+
+/* ---------- init ---------- */
+(async () => {
+  if (!KEY()) { say('אין מפתח מנהל בדפדפן הזה — פתחו קודם את GreenOS ואז חזרו לכאן.', 'err'); return; }
+  try {
+    CHIPS = await api('chips');
+    drawChips();
+    const t = await api('targets?q=');
+    CATS = (t.cats || []).filter(c => c.count > 0).sort((a, b) => a.name.localeCompare(b.name, 'he'));
+    $('cq').innerHTML = '<option value="">— בחרו קטגוריה להוספה —</option>' +
+      CATS.map(c => `<option value="${c.id}">${c.name} (${c.count})</option>`).join('');
+    load();
+  } catch (e) { say(e.message, 'err'); }
+})();
+</script>
+</body>
+</html>
