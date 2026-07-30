@@ -486,8 +486,11 @@ body.gm-product-new *{text-indent:0!important;}
 .gm-ad-scroll::-webkit-scrollbar-track{background:transparent;}
 .gm-ad-grid{display:none;grid-template-columns:repeat(auto-fill,minmax(178px,1fr));gap:10px;}
 .gm-ad-grid.on{display:grid;}
-/* הכרטיסיה כולה היא הכפתור: לחיצה מסמנת, לחיצה נוספת מסירה */
-.gm-ad-card{position:relative;display:flex;align-items:center;gap:10px;background:var(--surface);
+/* הכרטיסיה כולה היא הכפתור: לחיצה מסמנת, לחיצה נוספת מסירה.
+ * ⚠️ רקע **לבן** ולא var(--surface): הצינור בשרת מסיר רק רקע כמעט-מדויק (כדי לא
+ * לאכול מוצרים לבנים), ולכן צל רך או הילה בהירה עשויים להישאר. על כרטיסיה לבנה
+ * הם בלתי-נראים לגמרי — וזו גם המראה של הכרטיסיות בגו מובייל. */
+.gm-ad-card{position:relative;display:flex;align-items:center;gap:10px;background:#fff;
   border:1px solid var(--line);border-radius:14px;padding:11px 13px 11px 11px;min-height:88px;
   cursor:pointer;user-select:none;transition:border-color .14s,box-shadow .14s,background .14s;}
 .gm-ad-card:hover{border-color:var(--accent);}

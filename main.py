@@ -4092,22 +4092,33 @@ def _addon_clean_image(b64: str, canvas: int = 640, fill: float = 0.88) -> str:
     w, h = im.size
     px = im.load()
 
-    # האם הרקע אחיד ובהיר? בודקים את מסגרת השוליים
+    # האם הרקע בהיר ואחיד? ⚠️ **חציון ולא ממוצע, ואחוז ולא spread**: מוצר או יד
+    # שנוגעים בשולי התמונה מקפיצים את ה-spread ל-150 ופסלו תמונות רקע-לבן
+    # תקינות לגמרי (נמדד על תמונת מוצר אמיתית: 95% מהשוליים לבנים, ובכל זאת נדחתה).
+    import statistics as _st
     edge = []
     step = max(1, min(w, h) // 60)
     for x in range(0, w, step):
         edge.append(px[x, 0][:3]); edge.append(px[x, h - 1][:3])
     for y in range(0, h, step):
         edge.append(px[0, y][:3]); edge.append(px[w - 1, y][:3])
-    n = len(edge) or 1
-    avg = tuple(sum(c[i] for c in edge) // n for i in range(3))
-    spread = max(max(abs(c[i] - avg[i]) for i in range(3)) for c in edge) if edge else 255
-    if avg[0] < 180 or avg[1] < 180 or avg[2] < 180 or spread > 48:
-        return b64                      # רקע כהה/עשיר — לא נוגעים
+    if not edge:
+        return b64
+    ref = tuple(int(_st.median([c[i] for c in edge])) for i in range(3))
+    near_ref = sum(1 for c in edge if all(abs(c[i] - ref[i]) <= 30 for i in range(3))) / len(edge)
+    if min(ref) < 200 or near_ref < 0.85:
+        return b64                      # רקע כהה/עשיר (צילום lifestyle) — לא נוגעים
 
-    TOL = 34
+    # ⚠️ **סובלנות צרה בכוונה.** ניסיון עם רצפה רחבה (bg-62) כדי להעלים גם צל
+    # אכל את גוף המטען הלבן בתמונת מוצר אמיתית — מוצר לבן על רקע לבן הוא המקרה
+    # שהורג flood-fill. לכן מסירים רק מה שהוא **כמעט בדיוק** צבע הרקע:
+    #   · צל רך והילה בהירה נשארים — אבל הם בלתי-נראים על כרטיסיה לבנה.
+    #   · ⛔ שום פיקסל של מוצר לא נאכל. זו העדפה מודעת: עדיף צל שנשאר מאשר
+    #     מוצר שנחתך. חיתוך אמיתי (מט AI) הוא שינוי כבד — לא נכנס לכאן.
+    FLOOR = min(ref) - 14
     def near(c):
-        return abs(c[0] - avg[0]) <= TOL and abs(c[1] - avg[1]) <= TOL and abs(c[2] - avg[2]) <= TOL
+        r, g, b = c[0], c[1], c[2]
+        return (max(r, g, b) - min(r, g, b)) <= 12 and min(r, g, b) >= FLOOR
 
     # flood-fill מכל פיקסלי השוליים פנימה
     seen = bytearray(w * h)
@@ -4129,10 +4140,8 @@ def _addon_clean_image(b64: str, canvas: int = 640, fill: float = 0.88) -> str:
                 if not seen[i] and near(px[nx, ny]):
                     seen[i] = 1; q.append((nx, ny))
 
-    cleared = sum(seen)
-    if cleared < (w * h) * 0.04:
-        return b64                      # כמעט לא הוסר רקע — כנראה אין רקע אחיד
-
+    # ⚠️ גם אם כמעט לא הוסר רקע — **ממשיכים** לחיתוך ולמסגור. זה מה שמעלים את
+    # תחושת "המסגרת המרובעת": התמונה נחתכת לתוכן וממורכזת באותו נפח בכל כרטיסיה.
     for y in range(h):
         base = y * w
         for x in range(w):
@@ -4146,6 +4155,12 @@ def _addon_clean_image(b64: str, canvas: int = 640, fill: float = 0.88) -> str:
     im.putalpha(a)
 
     box = im.getbbox()
+    if not box or (box[2] - box[0]) < 8 or (box[3] - box[1]) < 8:
+        # אין אלפא שימושית — חותכים לפי הבדל מצבע הרקע (שוליים לבנים נעלמים)
+        from PIL import ImageChops
+        flat = Image.new("RGB", (w, h), ref)
+        diff = ImageChops.difference(im.convert("RGB"), flat).convert("L").point(lambda v: 255 if v > 18 else 0)
+        box = diff.getbbox()
     if not box:
         return b64
     im = im.crop(box)
