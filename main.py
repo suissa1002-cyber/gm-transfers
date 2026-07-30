@@ -4092,22 +4092,25 @@ def _addon_clean_image(b64: str, canvas: int = 640, fill: float = 0.88) -> str:
     w, h = im.size
     px = im.load()
 
-    # האם הרקע בהיר ואחיד? ⚠️ **חציון ולא ממוצע, ואחוז ולא spread**: מוצר או יד
-    # שנוגעים בשולי התמונה מקפיצים את ה-spread ל-150 ופסלו תמונות רקע-לבן
-    # תקינות לגמרי (נמדד על תמונת מוצר אמיתית: 95% מהשוליים לבנים, ובכל זאת נדחתה).
+    # ⚠️ **דגימת פינות ולא כל היקף התמונה** (תוקן 30/07 על תמונה אמיתית של אסי).
+    # שתי גרסאות קודמות נפלו כאן: ממוצע+spread (מוצר שנוגע בשוליים הקפיץ spread
+    # ל-150), ואז חציון+85% מכל ההיקף — אבל בצילום חתוך-צמוד המוצר תופס את
+    # השוליים, ובתמונה של אסי רק 74.7% מההיקף היו רקע ⇒ נדחתה **בשקט**. התוצאה
+    # נראתה תקינה רק כי JPEG על רקע לבן נראה נקי על כרטיסיה לבנה.
+    # הפינות הן כמעט תמיד רקע: באותה תמונה 89.8% מהן היו (255,255,255).
     import statistics as _st
-    edge = []
-    step = max(1, min(w, h) // 60)
-    for x in range(0, w, step):
-        edge.append(px[x, 0][:3]); edge.append(px[x, h - 1][:3])
-    for y in range(0, h, step):
-        edge.append(px[0, y][:3]); edge.append(px[w - 1, y][:3])
-    if not edge:
+    k = max(4, min(w, h) // 14)
+    corners = []
+    for ox, oy in ((0, 0), (w - k, 0), (0, h - k), (w - k, h - k)):
+        for x in range(ox, ox + k, max(1, k // 8)):
+            for y in range(oy, oy + k, max(1, k // 8)):
+                corners.append(px[x, y][:3])
+    if not corners:
         return b64
-    ref = tuple(int(_st.median([c[i] for c in edge])) for i in range(3))
-    near_ref = sum(1 for c in edge if all(abs(c[i] - ref[i]) <= 30 for i in range(3))) / len(edge)
-    if min(ref) < 200 or near_ref < 0.85:
-        return b64                      # רקע כהה/עשיר (צילום lifestyle) — לא נוגעים
+    ref = tuple(int(_st.median([c[i] for c in corners])) for i in range(3))
+    near_ref = sum(1 for c in corners if all(abs(c[i] - ref[i]) <= 26 for i in range(3))) / len(corners)
+    if min(ref) < 195 or near_ref < 0.75:
+        return b64                      # פינות כהות/עשירות ⇒ צילום lifestyle, לא נוגעים
 
     # ⚠️ **סובלנות צרה בכוונה.** ניסיון עם רצפה רחבה (bg-62) כדי להעלים גם צל
     # אכל את גוף המטען הלבן בתמונת מוצר אמיתית — מוצר לבן על רקע לבן הוא המקרה
