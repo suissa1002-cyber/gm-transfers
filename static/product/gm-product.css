@@ -470,7 +470,10 @@ body.gm-product-new *{text-indent:0!important;}
   border-radius:11px;padding:9px 15px;font-family:inherit;font-size:.92rem;font-weight:700;
   cursor:pointer;line-height:1.15;transition:border-color .14s,background .14s,color .14s;}
 .gm-ad-chip:hover{border-color:var(--accent);}
-.gm-ad-chip.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);}
+/* בחירה = מסגרת ירוקה עבה בלבד, **בלי מילוי** — זהה לסימון בכרטיסיית התוספת
+ * (אסי, 30/07). box-shadow מעבה את הקו בלי להזיז את הפריסה. */
+.gm-ad-chip.on{background:transparent;border-color:var(--accent);color:var(--accent);
+  box-shadow:0 0 0 1.5px var(--accent);}
 /* אזור הגלילה: max-height בלבד — קבוצה עם שורה אחת לא מותחת חלל ריק */
 .gm-ad-scroll{max-height:246px;overflow-y:auto;overscroll-behavior:contain;
   padding:2px 2px 2px 0;scrollbar-width:thin;scrollbar-color:var(--line) transparent;}
@@ -485,7 +488,7 @@ body.gm-product-new *{text-indent:0!important;}
   cursor:pointer;user-select:none;transition:border-color .14s,box-shadow .14s,background .14s;}
 .gm-ad-card:hover{border-color:var(--accent);}
 .gm-ad-card:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
-.gm-ad-card.added{border-color:var(--accent);background:var(--accent-soft);box-shadow:0 0 0 1px var(--accent);}
+.gm-ad-card.added{border-color:var(--accent);box-shadow:0 0 0 1.5px var(--accent);}
 .gm-ad-card.busy{opacity:.55;pointer-events:none;}
 .gm-ad-card img{width:52px;height:52px;object-fit:contain;flex:0 0 auto;border-radius:8px;background:#fff;}
 .gm-ad-txt{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1;}
