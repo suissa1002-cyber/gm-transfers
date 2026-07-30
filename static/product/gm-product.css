@@ -530,10 +530,10 @@ body.gm-product-new *{text-indent:0!important;}
 .gm-ad-card.added .gm-ad-add{background:var(--accent);color:var(--accent-ink);}
 @media (max-width:820px){
   .gm-ad-grid{grid-template-columns:1fr 1fr;gap:8px;}
-  .gm-ad-card{min-height:80px;padding:9px 11px 9px 9px;}
-  .gm-addons .gm-ad-card img{width:56px!important;height:56px!important;
-    min-width:56px;max-width:56px;min-height:56px;max-height:56px;}
-  .gm-ad-scroll{max-height:252px;}
+  .gm-ad-card{min-height:92px;padding:11px 12px 11px 10px;}   /* אסי: "להגביה מעט" */
+  .gm-addons .gm-ad-card img{width:62px!important;height:62px!important;
+    min-width:62px;max-width:62px;min-height:62px;max-height:62px;}
+  .gm-ad-scroll{max-height:224px;}
   .gm-ad-chip{padding:8px 13px;font-size:.88rem;}
 }
 /* קוביות אמון — כרטיסים 2x2 כמו במוקאפ */
