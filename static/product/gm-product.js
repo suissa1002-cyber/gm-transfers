@@ -875,26 +875,64 @@
   $(document).on('click', '.citem-rm', function () {
     cartOp('remove-item', { key: $(this).closest('.citem').data('key') }).then(drawerRender);
   });
-  /* הוספה לסל בלי לעזוב את העמוד → נפתח הדרור (כמו במוקאפ) */
+  /* הוספה לסל בלי לעזוב את העמוד → נפתח הדרור (כמו במוקאפ)
+   * ⚠️ 30/07 ביצועים: המכשיר **וכל התוספות** בבקשה אחת. גרסה קודמת שלחה את
+   * המכשיר בבקשה נפרדת ואחריה batch לתוספות; כל כתיבה לסל נועלת את ה-session
+   * של WooCommerce ולכן הן הסתדרו בתור — ~9 שניות עד שכל השורות הופיעו.
+   * ב-batch יחיד השרת מריץ אותן בזו אחר זו בתוך בקשה אחת ⇒ סבב אחד.
+   * הסדר ב-batch שומר על הכלל: **המכשיר ראשון**; אם הוא נכשל — מסירים את
+   * התוספות שכן נכנסו, כדי שלא תיווצר הזמנה עם אביזר בלבד. */
   $(document).on('submit', '.gm-atc form.cart', function (e) {
     var $form = $(this);
     var pid = +($form.find('input[name=variation_id]').val() || $form.find('button[name=add-to-cart]').val() || $form.data('product_id') || 0);
-    if (!pid) return; /* בלי מזהה — נופלים לזרימה הרגילה */
+    if (!pid) return;                       /* בלי מזהה — הזרימה הרגילה */
     e.preventDefault();
     var qty = +($form.find('input.qty').val() || 1);
     var $btn = $form.find('.single_add_to_cart_button').addClass('gm-busy');
-    cartOp('add-item', { id: pid, quantity: qty }).then(function (c) {
-      if (!c || !c.items) { $btn.removeClass('gm-busy'); $form.off('submit').trigger('submit'); return; }
-      /* פותחים **מיד** כשהמכשיר בסל — התוספות נוחתות רגע אחרי ומתעדכנות בדרור.
-         עדיף על המתנה עד שהכל מוכן (אסי: "זו חוויה לא נעימה"). */
-      drawerRender(c); openDrawer(true);
-      /* ⚠️ התוספות נוספות **אחרי** המכשיר ⇒ אין הזמנה עם אביזר בלבד */
-      gmAdAddAll().then(function (c2) {
-        $btn.removeClass('gm-busy');
-        if (c2 && c2.items) drawerRender(c2);
-      }, function () { $btn.removeClass('gm-busy'); });
-    }, function () { $btn.removeClass('gm-busy'); });
+    var addIds = Object.keys(GM_AD_SEL);
+    var done = function () { $btn.removeClass('gm-busy'); };
+
+    storeNonce().then(function (n) {
+      var reqs = [{ method: 'POST', path: '/wc/store/v1/cart/add-item', body: { id: pid, quantity: qty } }];
+      addIds.forEach(function (id) {
+        reqs.push({ method: 'POST', path: '/wc/store/v1/cart/add-item', body: { id: +id, quantity: 1 } });
+      });
+      return fetch('/wp-json/wc/store/v1/batch', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'Nonce': n },
+        body: JSON.stringify({ requests: reqs })
+      }).then(function (r) {
+        cartNonce = r.headers.get('Nonce') || cartNonce;
+        if (r.status !== 200 && r.status !== 207) throw new Error('batch ' + r.status);
+        return r.json();
+      }).then(function (d) {
+        var rs = (d && d.responses) || [];
+        var devOk = !!(rs.length && rs[0] && rs[0].status && rs[0].status < 300);
+        return fetch('/wp-json/wc/store/v1/cart', { credentials: 'same-origin' })
+          .then(function (g) { return g.json(); })
+          .then(function (cart) {
+            if (!devOk) {
+              var keys = (cart.items || [])
+                .filter(function (it) { return addIds.indexOf(String(it.id)) > -1; })
+                .map(function (it) { return it.key; });
+              return keys.reduce(function (ch, k) {
+                return ch.then(function () { return cartOp('remove-item', { key: k }); });
+              }, Promise.resolve()).then(function () { throw new Error('device add failed'); });
+            }
+            var have = {};
+            (cart.items || []).forEach(function (it) { have[it.id] = true; });
+            var missing = addIds.filter(function (id) { return !have[+id]; });
+            if (!missing.length) return cart;
+            return gmAdSeq(missing).then(function (c2) { return (c2 && c2.items) ? c2 : cart; });
+          });
+      });
+    }).then(function (cart) {
+      gmAdClear(); drawerRender(cart); openDrawer(true); done();
+    }, function () {
+      done(); $form.off('submit').trigger('submit');   /* מפלט: הזרימה הרגילה */
+    });
   });
+
   /* ───── תוספות להזמנה (30/07/2026) ─────
    * הצ׳יפים מרונדרים ע"י תוסף greenmobile-addons — רק אלה שיש להם תוספות למוצר.
    *
