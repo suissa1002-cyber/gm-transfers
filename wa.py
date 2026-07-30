@@ -493,7 +493,7 @@ def send_reply(phone: str, text: str):
     if not via:
         try:
             _pub().send_text_as_human(phone, text)
-            via = "text-connectop"
+            via = "text-connectop"   # ⚠️ ערוץ זה אינו מחזיר wamid — message_id יישאר ריק
         except Exception as e:  # noqa: BLE001
             errs.append(f"ConnectOp: {e}")
             logger.warning("connectop text send failed: %s", e)
@@ -501,7 +501,13 @@ def send_reply(phone: str, text: str):
         raise WaError("שליחה נכשלה בכל הערוצים — " + " | ".join(errs)[:300])
     _store_outbound(phone, text, wamid=wamid, mtype="text")
     logger.info("wa send text -> %s via %s (%d chars)", phone, via, len(text))
-    return {"sent": True, "via": via}
+    # ⚠️ מחזירים את ה-wamid. הוא חושב כאן מאז ומתמיד אך לא הוחזר, ולכן
+    # `{"sent": true}` היה חסר את מזהה ההודעה — וכל בדיקת הצלחה שנשענת עליו
+    # (כולל הכלל שלנו "sent:true + message_id") סימנה את הנתיב הזה ככשל, בזמן
+    # שההודעה נמסרה בפועל (אסי, 30/07/2026). שני השמות מוחזרים כי נתיבי
+    # התבניות מחזירים message_id וקוד קיים מסתמך על שניהם.
+    return {"sent": True, "via": via, "wamid": wamid or "",
+            "message_id": wamid or ""}
 
 
 def fetch_meta_media(media_id: str):

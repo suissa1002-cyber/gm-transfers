@@ -6586,6 +6586,41 @@ def _payplus_link(amount: float, order_number: str, customer: dict, payments: in
     return {"link": link, "pru": pru}
 
 
+
+def _pp_tx_by_amount(pru: str, amount: float) -> Optional[dict]:
+    """רשת ביטחון ל-IPN: מחפש בדוח העסקאות של PayPlus עסקה בסכום המבוקש.
+
+    ⚠️ למה זה קיים: `PaymentPages/ipn` נשען על כך שהבקשה נרשמה ונענתה, ובקישור
+    עצמאי (standalone) הוא החזיר `paid:false` בזמן שהתשלום **כן** נקלט —
+    ההפרש ₪172 על הזמנה 49439 (אסי, 30/07/2026). כל מעקב אוטומטי שנשען על
+    התשובה הזאת היה מפספס תשלומים. דוח העסקאות הוא מקור האמת.
+
+    ⚠️ ההתאמה לפי סכום בחלון של 48 שעות ולא לפי pru — הדוח אינו מחזיר את ה-pru.
+    לכן מוחזר ה-uuid בלבד, כדי שהקורא יוכל לאמת מול הדוח ולא כדי לזהות לקוח."""
+    import datetime as _dt
+    import requests as _rq
+    ag = int(round(float(amount or 0) * 100))
+    if ag <= 0:
+        return None
+    today = _dt.date.today()
+    try:
+        d = _rq.post(f"{PAYPLUS_BASE}/TransactionReports/TransactionsHistory",
+                     headers=_payplus_headers(), timeout=45,
+                     json={"terminal_uid": os.getenv("PAYPLUS_TERMINAL_UID", ""),
+                           "filter": {"fromDate": (today - _dt.timedelta(days=1)).strftime("%Y-%m-%d"),
+                                      "untilDate": (today + _dt.timedelta(days=1)).strftime("%Y-%m-%d")},
+                           "skip": 0, "take": 500}).json()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("payplus tx-by-amount failed: %s", e)
+        return None
+    for t in (d.get("transactions") or []):
+        if str(t.get("uncancelled_amount") or "") == str(ag):
+            return {"transaction_uid": t.get("uuid"), "number": t.get("number"),
+                    "created_at": t.get("created_at"), "amount": float(amount),
+                    "source": "report"}
+    return None
+
+
 def _payplus_ipn_check(pru: str) -> Optional[dict]:
     """אימות שרת-לשרת מול PayPlus: מה מצב הבקשה pru? מחזיר את ה-data אם שולם בהצלחה."""
     import requests as _rq
@@ -9306,6 +9341,7 @@ def admin_order_status(oid: int, body: OrderStatusIn, x_admin_key: Optional[str]
     if not r.ok:
         raise HTTPException(502, f"עדכון הסטטוס נכשל ({r.status_code}: {r.text[:150]})")
     o = r.json()
+    _mark_manual_status(oid, st)      # אדם קבע — האוטומציה לא תתקן אחריו
     # התראה ללקוח מיידית על שינוי הסטטוס (בהפצה/מוכן לאיסוף/נק' מסירה/ביטול) — לא
     # מסתמכים על ה-webhook/job (הזמנה עלולה ליפול מ-50 האחרונות). force=True + דדופ
     # פר-סטטוס מונע כפילות אם ה-webhook גם יירה.
@@ -9705,6 +9741,33 @@ def zap_selftest(x_admin_key: Optional[str] = Header(None)):
             bad += 1
         out.append({"query": f"partno-gap: {ours[:30]}", "want": want_has,
                     "got": _gap, "ok": _has == want_has})
+    # ⚠️ שני דיווחי-הצלחה שלא תאמו את המציאות (אסי, 30/07/2026): send_reply
+    # החזיר sent:true בלי message_id, ו-pay/status החזיר paid:false על תשלום
+    # שנקלט. שניהם נבדקים כאן דרך **הפלט**, לא דרך קוד המקור.
+    import inspect as _in2
+    import wa as _wamod
+    _ok_wamid = "message_id" in _in2.getsource(_wamod.send_reply)
+    if not _ok_wamid:
+        bad += 1
+    out.append({"query": "send_reply מחזיר message_id", "want": True,
+                "got": _ok_wamid, "ok": _ok_wamid})
+    _ok_get = hasattr(db, "pay_link_get")
+    if not _ok_get:
+        bad += 1
+    out.append({"query": "db.pay_link_get קיים", "want": True, "got": _ok_get, "ok": _ok_get})
+    _ok_fb = "_pp_tx_by_amount" in _in2.getsource(pay_standalone_status)
+    if not _ok_fb:
+        bad += 1
+    out.append({"query": "pay/status נופל לדוח PayPlus", "want": True,
+                "got": _ok_fb, "ok": _ok_fb})
+    # ⚠️ מעגל הסטטוסים: "הושלם" אחרי מסירה חייב להיות סופי, ושינוי ידני גובר.
+    _src_adv = _in2.getsource(_advance_to_shipping)
+    for _needle, _lbl in (("ord_delivered:", "הושלם-אחרי-מסירה סופי"),
+                          ("_manual_recent", "שינוי ידני גובר")):
+        _ok_l = _needle in _src_adv
+        if not _ok_l:
+            bad += 1
+        out.append({"query": f"advance: {_lbl}", "want": True, "got": _ok_l, "ok": _ok_l})
     # ⚠️ הגרסה שרצה בשרת בפועל. בלי זה ניחשתי ארבע פעמים כמה זמן לוקח deploy
     # ל-Render, הרצתי סריקות ואימותים על קוד ישן, והסקתי מסקנות שגויות.
     sha = (os.getenv("RENDER_GIT_COMMIT") or "")[:7]
@@ -11146,6 +11209,11 @@ def bot_confirm_received(num):
                         auth=(k, s), timeout=20)
             except Exception:  # noqa: BLE001
                 pass
+        # ⚠️ גם מסירה שהלקוח אישר בעצמו מסמנת "נמסר" — אחרת כשהחשבונית תונפק
+        # ב-NewOrder הסטטוס יעלה ל'הושלם', ומשרת הקידום תדחוף אותו חזרה ל'הפצה'
+        # והמעגל יתחיל מכאן (30/07/2026). לחיצה בטעות מתוקנת ידנית, ושינוי ידני
+        # גובר על האוטומציה ל-36 שעות (_manual_recent).
+        db.sales_state_set(f"ord_delivered:{oid}", "1")
         # פעולת לקוח מפורשת — שולחים חוו"ד תמיד (לא מגודר ב-WA_SEND_REVIEW), בדדופ עם
         # זרימת Cargo. מחזיר True רק אם חוו"ד נשלחה בקריאה זו (כדי שהבוט לא יוסיף תודה).
         if not db.sales_state_get(f"review_sent:{num}"):
@@ -11348,6 +11416,8 @@ def _cargo_delivery_sync_job():
                     if not pr.ok:
                         logger.warning("cargo-delivery delivered failed %s: %s", onum, pr.text[:120])
                         continue
+                    # ⚠️ הדגל שהופך "הושלם" עתידי לסופי — הוא מה שעוצר את המעגל
+                    db.sales_state_set(f"ord_delivered:{oid}", "1")
                     run_at = (datetime.now(tz) + timedelta(hours=24)).isoformat()
                     db.sched_status_add(oid, "completed", run_at, order_number=str(onum),
                                         status_label="הושלם", created_by="cargo-delivery-auto")
@@ -11370,11 +11440,39 @@ def _cargo_delivery_sync_job():
                     pr = _rq.put(f"{base}/wp-json/wc/v3/orders/{oid}",
                                  json={"status": "completed"}, auth=(k, s), timeout=30)
                     if pr.ok:
+                        db.sales_state_set(f"ord_delivered:{oid}", "1")
                         logger.info("cargo-delivery: %s -> completed (ישן, בלי חוו\"ד)", onum)
             except Exception as e:  # noqa: BLE001
                 logger.warning("cargo-delivery order %s: %s", o.get("number"), e)
     except Exception as e:  # noqa: BLE001
         logger.warning("cargo delivery sync error: %s", e)
+
+
+
+_MANUAL_HOLD_H = 36     # שעות שבהן אוטומציה לא נוגעת בהזמנה אחרי שינוי ידני
+
+
+def _mark_manual_status(oid, status: str):
+    """מסמן ששינוי הסטטוס נעשה בידי אדם. האוטומציה מכבדת את זה למשך
+    _MANUAL_HOLD_H שעות — אחרת התיקון הידני נדרס תוך דקות."""
+    try:
+        db.sales_state_set(f"ord_manual:{oid}",
+                           json.dumps({"at": datetime.now().isoformat(timespec="seconds"),
+                                       "status": status}, ensure_ascii=False))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("mark manual status failed for %s: %s", oid, e)
+
+
+def _manual_recent(oid) -> bool:
+    try:
+        raw = db.sales_state_get(f"ord_manual:{oid}")
+        if not raw:
+            return False
+        at = json.loads(raw).get("at")
+        return bool(at) and (datetime.now() - datetime.fromisoformat(at)).total_seconds() \
+            < _MANUAL_HOLD_H * 3600
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def _advance_to_shipping(oid: int):
@@ -11393,6 +11491,18 @@ def _advance_to_shipping(oid: int):
                  "tlv-pickup", "cancelled", "refunded"}
         if st in later:
             return st     # כבר בשלב הזה או מעבר לו — לא נוגעים
+        # ⛔ אבל "הושלם" **שהגיע דרך מסירה** כן סופי. בלי ההבחנה הזאת נוצר מעגל
+        # אין-סופי: הושלם → הפצה → נמסרה → (+24ש) הושלם → הפצה … כל 24 שעות,
+        # והלקוח מקבל מייל "ההזמנה הושלמה" בכל סבב. 35 מתוך 60 ההזמנות
+        # האחרונות היו בלופ (אסי, 30/07/2026 — התראה על הזמנה מלפני שבוע).
+        if st == "completed" and db.sales_state_get(f"ord_delivered:{oid}"):
+            return st
+        # ⛔ החלטה אנושית גוברת על אוטומציה. אסי: "לפעמים לקוח מסמן 'קיבלתי'
+        # בטעות ואנחנו צריכים לשנות ידנית חזרה לשלב הפצה" — אוטומציה שמתקנת
+        # אותו דקה אחר כך הופכת את התיקון הידני לבלתי אפשרי.
+        if _manual_recent(oid):
+            logger.info("skip auto-advance for %s — שינוי ידני טרי", oid)
+            return st
         r = _rq.put(f"{base}/wp-json/wc/v3/orders/{oid}",
                     json={"status": "shipping-stage"}, auth=(k, s), timeout=30)
         return (r.json().get("status") if r.ok else st)
@@ -11812,7 +11922,17 @@ def pay_standalone_status(pru: str, x_admin_key: Optional[str] = Header(None)):
     _require_admin(x_admin_key)
     v = _payplus_ipn_check(pru)
     if not v:
-        return {"paid": False}
+        # ⚠️ IPN שותק אינו "לא שולם". מאמתים מול דוח העסקאות לפי הסכום שנרשם
+        # לקישור — אחרת מעקב אוטומטי מפספס תשלומים שנקלטו (אסי, 30/07/2026).
+        try:
+            amt = float((db.pay_link_get(pru) or {}).get("amount") or 0)
+        except Exception:  # noqa: BLE001
+            amt = 0.0
+        v = _pp_tx_by_amount(pru, amt) if amt > 0 else None
+        if not v:
+            return {"paid": False}
+        logger.info("pay/status %s: אומת מדוח PayPlus (IPN שתק)", pru)
+        return {"paid": True, "via": "report", **v}
     f = _pp_tx_fields(v)
     db.pay_link_mark_paid(pru, f.get("tx"), f.get("approval"), f.get("four_digits"), f.get("brand"))
     return {"paid": True, "tx": f.get("tx"), "approval": f.get("approval"),

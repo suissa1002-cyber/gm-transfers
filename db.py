@@ -2570,6 +2570,19 @@ def pay_link_mark_paid(pru, tx="", approval="", four_digits="", brand=""):
         return bool(cur.rowcount)
 
 
+
+def pay_link_get(pru) -> dict:
+    """רשומת קישור תשלום לפי pru. נדרש כדי שאימות תשלום יוכל ליפול לדוח
+    העסקאות של PayPlus לפי הסכום, כשה-IPN שותק (30/07/2026)."""
+    if not (pru or "").strip():
+        return {}
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM pay_links WHERE pru = ? LIMIT 1"), (pru.strip(),))
+        r = cur.fetchone()
+        return dict(r) if r else {}
+
+
 def pay_links_list(q="", limit=60) -> list:
     with _conn() as c:
         cur = c.cursor()
