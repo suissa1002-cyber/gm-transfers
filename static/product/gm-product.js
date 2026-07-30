@@ -882,11 +882,30 @@
    * ב-batch יחיד השרת מריץ אותן בזו אחר זו בתוך בקשה אחת ⇒ סבב אחד.
    * הסדר ב-batch שומר על הכלל: **המכשיר ראשון**; אם הוא נכשל — מסירים את
    * התוספות שכן נכנסו, כדי שלא תיווצר הזמנה עם אביזר בלבד. */
+  /* ⚠️ 30/07 — הקליק על הכפתור **לא הגיע** אלינו: תוסף צד-שלישי (מאוגד ב-Jetpack
+   * Boost) קושר click על .single_add_to_cart_button, עושה preventDefault ונכשל
+   * ("Wasn't able to retrieve a productId") ⇒ הטופס לא נשלח ומאזין ה-submit שלנו
+   * לא רץ בכלל. בדיקות עם dispatchEvent('submit') דילגו על שכבת הקליק והסתירו
+   * את זה. לכן מאזין **בשלב ה-capture** על הכפתור: רץ לפני כל מאזין bubble,
+   * עוצר הפצה, ומריץ את הזרימה שלנו. ⛔ לא להסיר לטובת submit בלבד. */
+  document.addEventListener('click', function (ev) {
+    var btn = ev.target && ev.target.closest ? ev.target.closest('.gm-atc .single_add_to_cart_button') : null;
+    if (!btn || btn.classList.contains('disabled')) return;
+    var form = btn.closest('form.cart');
+    if (!form) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    gmSubmitCart($(form));
+  }, true);
+
   $(document).on('submit', '.gm-atc form.cart', function (e) {
-    var $form = $(this);
-    var pid = +($form.find('input[name=variation_id]').val() || $form.find('button[name=add-to-cart]').val() || $form.data('product_id') || 0);
-    if (!pid) return;                       /* בלי מזהה — הזרימה הרגילה */
     e.preventDefault();
+    gmSubmitCart($(this));
+  });
+
+  function gmSubmitCart($form) {
+    var pid = +($form.find('input[name=variation_id]').val() || $form.find('button[name=add-to-cart]').val() || $form.data('product_id') || 0);
+    if (!pid) { $form.off('submit')[0].submit(); return; }   /* בלי מזהה — הזרימה הרגילה */
     var qty = +($form.find('input.qty').val() || 1);
     var $btn = $form.find('.single_add_to_cart_button').addClass('gm-busy');
     var addIds = Object.keys(GM_AD_SEL);
@@ -929,9 +948,11 @@
     }).then(function (cart) {
       gmAdClear(); drawerRender(cart); openDrawer(true); done();
     }, function () {
-      done(); $form.off('submit').trigger('submit');   /* מפלט: הזרימה הרגילה */
+      done();
+      /* מפלט: שליחה נייטיבית (לא trigger — הוא היה נתפס שוב ע"י אותו תוסף) */
+      $form.off('submit')[0].submit();
     });
-  });
+  }
 
   /* ───── תוספות להזמנה (30/07/2026) ─────
    * הצ׳יפים מרונדרים ע"י תוסף greenmobile-addons — רק אלה שיש להם תוספות למוצר.
