@@ -9249,9 +9249,14 @@ def admin_backfill_delivered(limit: int = 120, dry: int = 1,
         if db.sales_state_get(f"ord_delivered:{oid}"):
             skipped += 1
             continue
-        ever = st in ("delivered", "completed")
+        # ⛔ לא לסמן לפי 'completed'. אצל Green Mobile NewOrder קובע אותו בהנפקת
+        # חשבונית — **לפני** שנשלח משהו. הרצה יבשה סימנה 70 הזמנות, ובהן
+        # קודי-דיגיטל שמעולם לא נמסרו פיזית; הדגל היה מונע מהן להתקדם להפצה
+        # לעולם, כלומר הופך את התיקון לבאג חדש (30/07/2026).
+        # העדות היחידה הקבילה: ההזמנה **הגיעה אי-פעם ל'נמסרה'**.
+        ever = (st == "delivered")
         if not ever:
-            try:    # ההיסטוריה היא העדות: האם ההזמנה הגיעה אי-פעם ל'נמסרה'
+            try:
                 nn = _rq.get(f"{base}/wp-json/wc/v3/orders/{oid}/notes", auth=(k, s), timeout=30)
                 txt = " ".join((x.get("note") or "") for x in (nn.json() or [])) if nn.ok else ""
                 ever = "למצב ההזמנה נמסרה" in txt
