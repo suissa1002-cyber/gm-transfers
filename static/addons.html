@@ -60,6 +60,13 @@
   .msg.ok{background:var(--accent-soft);color:var(--accent)}
   .msg.err{background:#fef2f2;color:var(--danger)}
   .hint{color:var(--ink2);font-size:.82rem;margin-top:5px;line-height:1.45}
+  .crow{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+  .crow input{flex:1}
+  .crow button{background:var(--bg);border:1.5px solid var(--line);color:var(--ink);border-radius:9px;
+    width:34px;height:38px;cursor:pointer;font-size:1rem;font-family:inherit;flex:0 0 auto;padding:0}
+  .crow button:hover{border-color:var(--accent)}
+  .crow button.del:hover{border-color:var(--danger);color:var(--danger)}
+  .crow .used{color:var(--ink2);font-size:.78rem;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -69,6 +76,20 @@
     אביזרים שמופיעים בעמוד המוצר תחת "מוצרים שיכולים להתאים לך".
     התוספת נוצרת <b>בלי מק״ט</b> — מנותקת מהקופה, המחיר נשלט רק כאן — ו<b>מוסתרת מהקטלוג</b>,
     אבל מופיעה כשורה אמיתית בסל, בהזמנה ובחשבונית.
+  </div>
+
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+      <b>קטגוריות הצ׳יפים</b>
+      <button class="btn btn-ghost btn-sm" id="chipAdd">+ צ׳יפ חדש</button>
+    </div>
+    <div class="hint" style="margin-bottom:10px">
+      הסדר כאן הוא הסדר שיוצג בעמוד המוצר. גרירה בחצים, שינוי שם בהקלדה.
+      צ׳יפ מופיע במוצר <b>רק אם יש בו תוספות למוצר הזה</b>.
+    </div>
+    <div id="chipRows"></div>
+    <div style="margin-top:12px"><button class="btn btn-sm" id="chipSave">שמירת הצ׳יפים</button></div>
+    <div id="chipMsg"></div>
   </div>
 
   <div class="card">
@@ -100,9 +121,9 @@
     </div>
     <div class="hint">אם מוזן מחיר מבצע — הוא המחיר שנגבה, ומחיר המקסימום מוצג מחוק.</div>
 
-    <label>קטגוריית הצ׳יפ</label>
+    <label>באיזה צ׳יפים תופיע התוספת?</label>
     <div class="chips" id="chips"></div>
-    <div class="hint">הצ׳יפ יופיע בעמוד המוצר <b>רק אם יש בו תוספות למוצר הזה</b> — אין צורך להגדיר כלום פר-מוצר.</div>
+    <div class="hint">ניתן לבחור <b>כמה צ׳יפים</b> — למשל חבילה שתופיע גם ב"חבילות ומבצעים" וגם ב"כיסויים".</div>
 
     <label for="pq">באיזה מוצרים יופיע?</label>
     <input id="pq" placeholder="הקלידו שם מוצר (2 תווים ומעלה)…" autocomplete="off">
@@ -137,7 +158,8 @@ const KEY = () => localStorage.getItem('tr_admin_key') || '';
 const H = () => ({ 'Content-Type': 'application/json', 'X-Admin-Key': KEY() });
 const $ = id => document.getElementById(id);
 
-let CHIPS = {}, CATS = [], state = { id: 0, chip: '', img_b64: '', image_id: 0, targets: [], tcats: [] };
+let CHIPS = {}, CATS = [], CHIP_ROWS = [];
+let state = { id: 0, chips: [], img_b64: '', image_id: 0, targets: [], tcats: [] };
 
 function say(t, cls) { $('msg').className = 'msg ' + cls; $('msg').textContent = t; }
 function clearMsg() { $('msg').className = ''; $('msg').textContent = ''; }
@@ -174,15 +196,66 @@ document.addEventListener('paste', e => {
   if (it) readFile(it.getAsFile());
 });
 
-/* ---------- צ׳יפים ---------- */
+/* ---------- צ׳יפים: בחירה בטופס (רב-בחירה) ---------- */
 function drawChips() {
   $('chips').innerHTML = Object.entries(CHIPS).map(([k, v]) =>
-    `<button type="button" class="chip${state.chip === k ? ' on' : ''}" data-k="${k}">${v}</button>`).join('');
+    `<button type="button" class="chip${state.chips.includes(k) ? ' on' : ''}" data-k="${k}">${v}</button>`).join('')
+    || '<span class="hint">אין צ׳יפים — צרו אחד למעלה.</span>';
 }
 $('chips').addEventListener('click', e => {
   const b = e.target.closest('.chip'); if (!b) return;
-  state.chip = b.dataset.k; drawChips();
+  const k = b.dataset.k;
+  state.chips = state.chips.includes(k) ? state.chips.filter(x => x !== k) : state.chips.concat(k);
+  drawChips();
 });
+
+/* ---------- ניהול הצ׳יפים עצמם ---------- */
+function drawChipRows() {
+  $('chipRows').innerHTML = CHIP_ROWS.map((r, i) => `
+    <div class="crow" data-i="${i}">
+      <input value="${(r.label || '').replace(/"/g, '&quot;')}" placeholder="שם הצ׳יפ" data-lab="${i}">
+      <span class="used">${r.used ? r.used + ' תוספות' : 'ריק'}</span>
+      <button type="button" data-up="${i}" title="למעלה"${i === 0 ? ' disabled' : ''}>↑</button>
+      <button type="button" data-dn="${i}" title="למטה"${i === CHIP_ROWS.length - 1 ? ' disabled' : ''}>↓</button>
+      <button type="button" class="del" data-del="${i}" title="מחיקה">✕</button>
+    </div>`).join('') || '<div class="hint">אין צ׳יפים.</div>';
+}
+$('chipRows').addEventListener('input', e => {
+  const i = e.target.dataset.lab; if (i == null) return;
+  CHIP_ROWS[+i].label = e.target.value;
+});
+$('chipRows').addEventListener('click', e => {
+  const d = e.target.dataset || {};
+  const mv = (i, j) => { const t = CHIP_ROWS[i]; CHIP_ROWS[i] = CHIP_ROWS[j]; CHIP_ROWS[j] = t; drawChipRows(); };
+  if (d.up != null) return mv(+d.up, +d.up - 1);
+  if (d.dn != null) return mv(+d.dn, +d.dn + 1);
+  if (d.del != null) {
+    const r = CHIP_ROWS[+d.del];
+    if (r.used && !confirm(`ב"${r.label}" יש ${r.used} תוספות. למחוק בכל זאת? הן ייעלמו מהעמוד.`)) return;
+    CHIP_ROWS.splice(+d.del, 1); drawChipRows();
+  }
+});
+$('chipAdd').addEventListener('click', () => { CHIP_ROWS.push({ slug: '', label: '', used: 0 }); drawChipRows(); });
+$('chipSave').addEventListener('click', async () => {
+  const rows = CHIP_ROWS.filter(r => (r.label || '').trim());
+  if (!rows.length) { $('chipMsg').className = 'msg err'; $('chipMsg').textContent = 'צריך לפחות צ׳יפ אחד'; return; }
+  $('chipSave').disabled = true;
+  try {
+    const d = await api('chips-save', { chips: rows.map(r => ({ slug: r.slug, label: r.label.trim() })), force: 1 });
+    CHIPS = d.chips || {};
+    $('chipMsg').className = 'msg ok'; $('chipMsg').textContent = 'נשמר ✓';
+    state.chips = state.chips.filter(k => CHIPS[k]);
+    await refreshChipUsage(); drawChips();
+  } catch (e) { $('chipMsg').className = 'msg err'; $('chipMsg').textContent = e.message; }
+  $('chipSave').disabled = false;
+});
+/* מונה שימוש לכל צ׳יפ — כדי שמחיקה לא תהיה עיוורת */
+async function refreshChipUsage() {
+  let used = {};
+  try { (await api('list')).forEach(a => (a.chips || []).forEach(c => used[c] = (used[c] || 0) + 1)); } catch (e) {}
+  CHIP_ROWS = Object.entries(CHIPS).map(([slug, label]) => ({ slug, label, used: used[slug] || 0 }));
+  drawChipRows();
+}
 
 /* ---------- בורר יעדים ---------- */
 function drawTags() {
@@ -231,14 +304,14 @@ $('save').addEventListener('click', async () => {
   const reg = parseFloat($('reg').value || '0');
   if (!name) return say('חסר שם מוצר', 'err');
   if (!(reg > 0)) return say('חסר מחיר מקסימום', 'err');
-  if (!state.chip) return say('בחרו קטגוריית צ׳יפ', 'err');
+  if (!state.chips.length) return say('בחרו לפחות צ׳יפ אחד', 'err');
   if (!state.targets.length && !state.tcats.length) return say('בחרו לפחות מוצר או קטגוריה אחת שבהם התוספת תופיע', 'err');
   if (!state.img_b64 && !state.image_id) return say('חסרה תמונה', 'err');
 
   $('save').disabled = true; $('save').textContent = 'שומר…';
   try {
     await api('save', {
-      id: state.id, name, chip: state.chip,
+      id: state.id, name, chips: state.chips,
       regular_price: reg, sale_price: parseFloat($('sale').value || '0'),
       targets: state.targets.map(t => t.id), tcats: state.tcats.map(t => t.id),
       catalog: $('catalog').checked ? 1 : 0,
@@ -251,7 +324,7 @@ $('save').addEventListener('click', async () => {
 });
 
 function reset() {
-  state = { id: 0, chip: '', img_b64: '', image_id: 0, targets: [], tcats: [] };
+  state = { id: 0, chips: [], img_b64: '', image_id: 0, targets: [], tcats: [] };
   ['name', 'reg', 'sale', 'pq'].forEach(k => $(k).value = '');
   $('catalog').checked = false;
   $('prev').hidden = true; $('dropTxt').hidden = false;
@@ -270,7 +343,7 @@ async function load() {
         <img src="${a.img || ''}" alt="">
         <div style="flex:1;min-width:0">
           <div class="n">${a.name}</div>
-          <div class="p">₪${(a.sale_price || a.regular_price || a.price).toLocaleString('he-IL')} · ${CHIPS[a.chip] || a.chip}</div>
+          <div class="p">₪${(a.sale_price || a.regular_price || a.price).toLocaleString('he-IL')} · ${(a.chips || []).map(c => CHIPS[c] || c).join(' · ')}</div>
         </div>
         <button class="btn btn-ghost btn-sm" data-edit='${JSON.stringify(a).replace(/'/g, "&#39;")}'>עריכה</button>
       </div>`).join('') || '<div class="hint">עוד אין תוספות.</div>';
@@ -279,7 +352,7 @@ async function load() {
 $('list').addEventListener('click', async e => {
   const b = e.target.closest('[data-edit]'); if (!b) return;
   const a = JSON.parse(b.dataset.edit);
-  state.id = a.id; state.chip = a.chip; state.image_id = 0; state.img_b64 = '';
+  state.id = a.id; state.chips = (a.chips || []).slice(); state.image_id = 0; state.img_b64 = '';
   $('name').value = a.name;
   $('reg').value = a.regular_price || a.price || '';
   $('sale').value = a.sale_price || '';
@@ -302,6 +375,7 @@ $('list').addEventListener('click', async e => {
   try {
     CHIPS = await api('chips');
     drawChips();
+    await refreshChipUsage();
     const t = await api('targets?q=');
     CATS = (t.cats || []).filter(c => c.count > 0).sort((a, b) => a.name.localeCompare(b.name, 'he'));
     $('cq').innerHTML = '<option value="">— בחרו קטגוריה להוספה —</option>' +
