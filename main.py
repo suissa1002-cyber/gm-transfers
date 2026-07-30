@@ -4179,6 +4179,20 @@ def _addon_clean_image(b64: str, canvas: int = 640, fill: float = 0.88) -> str:
     return "data:image/png;base64," + _b64.b64encode(buf.getvalue()).decode()
 
 
+@app.get("/api/addons/imgcheck")
+def addons_imgcheck():
+    """אבחון ציבורי (בלי נתונים): האם צינור עיבוד התמונות זמין בפועל על Render.
+    ⚠️ נדרש כי `_addon_clean_image` **נכשל בשקט** אם Pillow חסר — הוא מחזיר את
+    התמונה כמו שהיא, וקשה להבחין בכך: תמונה על רקע לבן נראית נקייה על כרטיסיה
+    לבנה גם בלי עיבוד. בלי הבדיקה הזו לא ניתן לדעת אם הצינור רץ בכלל."""
+    try:
+        from PIL import Image, __version__ as pv   # noqa: F401
+        ok, ver, err = True, pv, None
+    except Exception as e:
+        ok, ver, err = False, None, str(e)[:120]
+    return {"pillow": ok, "version": ver, "error": err}
+
+
 @app.get("/addons")
 def addons_page():
     p = os.path.join(_static_dir, "addons.html")
