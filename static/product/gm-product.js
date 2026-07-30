@@ -121,6 +121,14 @@
   $(function () {
     var $btn = $('.gm-atc .single_add_to_cart_button');
     if ($btn.length && !$btn.find('svg').length) $btn.prepend(CART_SVG + ' ');
+    /* עוטפים את הטקסט ב-span כדי שנוכל לעדכן "הוספה לסל · סה״כ N מוצרים"
+       בלי לדרוס את אייקון העגלה */
+    if ($btn.length && !$btn.find('.gm-atc-lab').length) {
+      var lab = $.trim($btn.contents().filter(function () { return this.nodeType === 3; }).text()) || 'הוספה לסל';
+      $btn.contents().filter(function () { return this.nodeType === 3; }).remove();
+      $btn.append('<span class="gm-atc-lab">' + lab + '</span>');
+      GM_ATC_BASE = lab;
+    }
     $('.gm-atc form.cart').not('.variations_form').addClass('gm-simple');
     origPrice = $('.pricebox').html();
     labelAll();
@@ -790,7 +798,6 @@
   function money(cents, minor) { return '‏₪' + (cents / Math.pow(10, minor)).toLocaleString('en-US'); }
   function drawerRender(c) {
     if (!c || !c.totals) return;
-    gmAdSync(c);                       /* מצב הכרטיסיות = מצב הסל, תמיד */
     drawerEnsure();                      /* הרינדור הראשון עשוי להקדים את יצירת הדרור */
     var $items = $('#cartItems'); if (!$items.length) return;
     var minor = c.totals.currency_minor_unit || 0;
@@ -884,28 +891,37 @@
     e.preventDefault();
     var qty = +($form.find('input.qty').val() || 1);
     cartOp('add-item', { id: pid, quantity: qty }).then(function (c) {
-      if (c && c.items) { drawerRender(c); openDrawer(true); }
-      else { $form.off('submit').trigger('submit'); }  /* שגיאה — הזרימה הרגילה */
+      if (!c || !c.items) { $form.off('submit').trigger('submit'); return; }  /* שגיאה — הזרימה הרגילה */
+      /* ⚠️ התוספות נוספות **אחרי** המכשיר ⇒ אין הזמנה עם אביזר בלבד */
+      gmAdAddAll().then(function (c2) {
+        var fin = (c2 && c2.items) ? c2 : c;
+        drawerRender(fin); openDrawer(true);
+      });
     });
   });
   /* ───── תוספות להזמנה (30/07/2026) ─────
    * הצ׳יפים מרונדרים ע"י תוסף greenmobile-addons — רק אלה שיש להם תוספות למוצר.
-   * דרישות אסי: (א) אין צ׳יפ נבחר בטעינה, התוספות נחשפות רק אחרי בחירה;
-   * (ב) לחיצה בכל מקום בכרטיסיה מסמנת, לחיצה נוספת מסירה מהסל;
-   * (ג) ריבוי תוספות מריבוי צ׳יפים — לכן מצב ה"מסומן" נגזר מ**הסל האמיתי**
-   *     ולא ממשתנה מקומי, אחרת החלפת צ׳יפ הייתה מאבדת את הסימון. */
-  var GM_AD_KEYS = {};              /* product_id -> cart item key (למחיקה) */
-  function gmAdSync(cart) {
-    if (!cart || !cart.items) return;
-    GM_AD_KEYS = {};
-    cart.items.forEach(function (it) { GM_AD_KEYS[it.id] = it.key; });
-    $('.gm-ad-card').each(function () {
-      var $c = $(this), on = !!GM_AD_KEYS[+$c.data('id')];
-      $c.toggleClass('added', on).attr('aria-pressed', on ? 'true' : 'false');
-      $c.find('.gm-ad-add').text(on ? '✓' : '+');
-    });
+   *
+   * ⚖️ **מודל "בחירה מוקדמת" ולא הוספה מיידית** (החלטה 30/07, אחרי שאלת אסי
+   *    "כדי לא למכור בנפרד מגן מסך… הוספה של תוספת תוסיף את הוריאציה של המכשיר"):
+   *    סימון תוספת **לא** נוגע בסל. הכל נכנס יחד בלחיצה על "הוספה לסל" — קודם
+   *    המכשיר, אחריו התוספות. זה משיג את מה שאסי רצה (⛔ אין הזמנה שמכילה רק
+   *    מגן מסך במחיר-חבילה) **בלי** תופעת הלוואי של הוספת מכשיר ב-₪5,000 לסל
+   *    כתגובה ללחיצה על אביזר ב-₪69. זו גם הסיבה שהסל המהיר לא נפתח בבחירה —
+   *    אין מה להראות, עוד לא נוסף כלום (אסי: "אין סיבה שבחירה ראשונה תפתח את
+   *    הסל המהיר").
+   *    ⚠️ המצב מקומי לעמוד ולא נגזר מהסל — בכוונה. אין "מסומן" שנשאר מביקור קודם.
+   */
+  var GM_AD_SEL = {};               /* product_id -> true (תוספות שנבחרו, טרם בסל) */
+  var GM_ATC_BASE = 'הוספה לסל';
+  function gmAdCount() { return Object.keys(GM_AD_SEL).length; }
+  function gmAdLabel() {
+    var $l = $('.gm-atc .single_add_to_cart_button .gm-atc-lab');
+    if (!$l.length) return;
+    var n = gmAdCount();
+    $l.text(n ? GM_ATC_BASE + ' · סה״כ ' + (n + 1) + ' מוצרים' : GM_ATC_BASE);
   }
-  /* צ׳יפ: בחירה חושפת, לחיצה חוזרת מסתירה (אין ברירת-מחדל פתוחה) */
+  /* צ׳יפ: מחליף קבוצה. לחיצה חוזרת על הפעיל סוגרת. */
   $(document).on('click', '.gm-ad-chip', function () {
     var $b = $(this), chip = $b.data('chip'), was = $b.hasClass('on');
     $('.gm-ad-chip').removeClass('on');
@@ -917,24 +933,33 @@
       if (sc) sc.scrollTop = 0;     /* אחרת נכנסים לקבוצה חדשה בגלילה של הקודמת */
     }
   });
-  /* כרטיסיה: toggle מול הסל */
+  /* כרטיסיה: לחיצה בכל מקום מסמנת, לחיצה נוספת מסירה. ריבוי צ׳יפים נשמר כי
+     הסימון יושב על ה-DOM ועל GM_AD_SEL, ולא נמחק במעבר בין קבוצות. */
   function gmAdToggle($c) {
-    var id = +$c.data('id');
-    if (!id || $c.hasClass('busy')) return;
-    var key = GM_AD_KEYS[id];
-    $c.addClass('busy');
-    var op = key ? cartOp('remove-item', { key: key }) : cartOp('add-item', { id: id, quantity: 1 });
-    op.then(function (c) {
-      $c.removeClass('busy');
-      if (c && c.items) { gmAdSync(c); drawerRender(c); if (!key) openDrawer(true); }
-    }, function () { $c.removeClass('busy'); });
+    var id = +$c.data('id'); if (!id) return;
+    if (GM_AD_SEL[id]) { delete GM_AD_SEL[id]; } else { GM_AD_SEL[id] = true; }
+    var on = !!GM_AD_SEL[id];
+    $c.toggleClass('added', on).attr('aria-pressed', on ? 'true' : 'false');
+    $c.find('.gm-ad-add').text(on ? '✓' : '+');
+    gmAdLabel();
   }
   $(document).on('click', '.gm-ad-card', function () { gmAdToggle($(this)); });
   $(document).on('keydown', '.gm-ad-card', function (e) {
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); gmAdToggle($(this)); }
   });
-  /* ⚠️ הצ׳יפ הראשון ("חבילות ומבצעים") **פתוח** בטעינה — הוראת אסי 30/07. אין כאן
-   * נרמול שסוגר אותו; מצב הפתיחה מגיע מהשרת (התוסף מסמן את הראשון). */
+  /* הוספת התוספות שנבחרו — בזו אחר זו, אחרי שהמכשיר נכנס לסל */
+  function gmAdAddAll() {
+    var ids = Object.keys(GM_AD_SEL);
+    return ids.reduce(function (chain, id) {
+      return chain.then(function () { return cartOp('add-item', { id: +id, quantity: 1 }); });
+    }, Promise.resolve()).then(function (last) {
+      GM_AD_SEL = {};
+      $('.gm-ad-card').removeClass('added').attr('aria-pressed', 'false')
+        .find('.gm-ad-add').text('+');
+      gmAdLabel();
+      return last;
+    });
+  }
 
   /* פיל הסל בהדר פותח את הדרור */
   $(document).on('click', '.cart-pill, .mcart', function (e) { e.preventDefault(); openDrawer(false); });
