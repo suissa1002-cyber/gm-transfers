@@ -996,16 +996,23 @@
         })
       }).then(function (r) {
         cartNonce = r.headers.get('Nonce') || cartNonce;
-        if (!r.ok) throw new Error('batch ' + r.status);
-        return r.json();
-      }).then(function (d) {
-        var rs = (d && d.responses) || [];
-        var last = rs.length ? rs[rs.length - 1].body : null;
-        if (!last || !last.items) throw new Error('batch shape');
-        return last;
+        /* 207 = multi-status; זו הצלחה תקינה של batch */
+        if (r.status !== 200 && r.status !== 207) throw new Error('batch ' + r.status);
+        /* ⚠️ תשובת add-item בתוך batch **אינה** מכילה את הסל. גרסה קודמת דרשה
+         * body.items ולכן נפלה ל-fallback הסדרתי — 10 שניות במקום 1.5.
+         * לכן: מושכים את הסל פעם אחת אחרי ה-batch, ומרפאים מה שלא נכנס. */
+        return fetch('/wp-json/wc/store/v1/cart', { credentials: 'same-origin' })
+          .then(function (g) { return g.json(); })
+          .then(function (cart) {
+            var have = {};
+            (cart.items || []).forEach(function (it) { have[it.id] = true; });
+            var missing = ids.filter(function (id) { return !have[+id]; });
+            if (!missing.length) return cart;
+            return gmAdSeq(missing).then(function (c2) { return (c2 && c2.items) ? c2 : cart; });
+          });
       });
     }).catch(function () {
-      return gmAdSeq(ids).then(function (c) { return c; });   /* מפלט */
+      return gmAdSeq(ids);   /* מפלט: batch לא נתמך בכלל */
     }).then(function (c) { gmAdClear(); return c; });
   }
 
