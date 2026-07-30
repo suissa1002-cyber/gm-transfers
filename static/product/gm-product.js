@@ -903,55 +903,69 @@
     gmSubmitCart($(this));
   });
 
+  /* ⚠️ 30/07 — למה לא nonce מהמטמון ולמה לא נופלים לשליחה נייטיבית:
+   * הזרימה נכשלה בשקט והמפלט הריץ form.submit() ⇒ **הדף נטען מחדש והתוספות
+   * נאבדו** (רק המכשיר נכנס). ה-nonce שנשמר בטעינת העמוד מתיישן (העמוד עצמו
+   * מוגש ממטמון LiteSpeed/CF), ולכן ה-batch חוזר 403.
+   * לכן: nonce **טרי** בכל שליחה, ומדרג נפילות שלא מרענן את הדף —
+   * batch → סדרתי (cartOp) → ורק כמפלט אחרון שליחה נייטיבית. */
   function gmSubmitCart($form) {
     var pid = +($form.find('input[name=variation_id]').val() || $form.find('button[name=add-to-cart]').val() || $form.data('product_id') || 0);
-    if (!pid) { $form.off('submit')[0].submit(); return; }   /* בלי מזהה — הזרימה הרגילה */
+    if (!pid) { $form.off('submit')[0].submit(); return; }
     var qty = +($form.find('input.qty').val() || 1);
     var $btn = $form.find('.single_add_to_cart_button').addClass('gm-busy');
     var addIds = Object.keys(GM_AD_SEL);
     var done = function () { $btn.removeClass('gm-busy'); };
 
-    storeNonce().then(function (n) {
-      var reqs = [{ method: 'POST', path: '/wc/store/v1/cart/add-item', body: { id: pid, quantity: qty } }];
-      addIds.forEach(function (id) {
-        reqs.push({ method: 'POST', path: '/wc/store/v1/cart/add-item', body: { id: +id, quantity: 1 } });
-      });
-      return fetch('/wp-json/wc/store/v1/batch', {
-        method: 'POST', credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json', 'Nonce': n },
-        body: JSON.stringify({ requests: reqs })
-      }).then(function (r) {
-        cartNonce = r.headers.get('Nonce') || cartNonce;
-        if (r.status !== 200 && r.status !== 207) throw new Error('batch ' + r.status);
-        return r.json();
-      }).then(function (d) {
-        var rs = (d && d.responses) || [];
-        var devOk = !!(rs.length && rs[0] && rs[0].status && rs[0].status < 300);
-        return fetch('/wp-json/wc/store/v1/cart', { credentials: 'same-origin' })
-          .then(function (g) { return g.json(); })
-          .then(function (cart) {
-            if (!devOk) {
-              var keys = (cart.items || [])
-                .filter(function (it) { return addIds.indexOf(String(it.id)) > -1; })
-                .map(function (it) { return it.key; });
-              return keys.reduce(function (ch, k) {
-                return ch.then(function () { return cartOp('remove-item', { key: k }); });
-              }, Promise.resolve()).then(function () { throw new Error('device add failed'); });
-            }
-            var have = {};
-            (cart.items || []).forEach(function (it) { have[it.id] = true; });
-            var missing = addIds.filter(function (id) { return !have[+id]; });
-            if (!missing.length) return cart;
-            return gmAdSeq(missing).then(function (c2) { return (c2 && c2.items) ? c2 : cart; });
-          });
-      });
-    }).then(function (cart) {
-      gmAdClear(); drawerRender(cart); openDrawer(true); done();
-    }, function () {
+    var finish = function (cart) {
+      gmAdClear();
+      if (cart && cart.items) { drawerRender(cart); openDrawer(true); }
       done();
-      /* מפלט: שליחה נייטיבית (לא trigger — הוא היה נתפס שוב ע"י אותו תוסף) */
-      $form.off('submit')[0].submit();
-    });
+    };
+    /* מסלול ב׳: בקשות נפרדות — אמין, איטי יותר. המכשיר ראשון תמיד. */
+    var seqPath = function () {
+      return cartOp('add-item', { id: pid, quantity: qty }).then(function (c) {
+        if (!c || !c.items) throw new Error('device');
+        if (!addIds.length) return c;
+        return gmAdSeq(addIds).then(function (c2) { return (c2 && c2.items) ? c2 : c; });
+      });
+    };
+
+    /* nonce טרי — לא מהמטמון */
+    fetch('/wp-json/wc/store/v1/cart', { credentials: 'same-origin' })
+      .then(function (r) { cartNonce = r.headers.get('Nonce') || cartNonce; return cartNonce; })
+      .then(function (n) {
+        var reqs = [{ method: 'POST', path: '/wc/store/v1/cart/add-item', body: { id: pid, quantity: qty } }];
+        addIds.forEach(function (id) {
+          reqs.push({ method: 'POST', path: '/wc/store/v1/cart/add-item', body: { id: +id, quantity: 1 } });
+        });
+        return fetch('/wp-json/wc/store/v1/batch', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'Nonce': n },
+          body: JSON.stringify({ requests: reqs })
+        }).then(function (r) {
+          cartNonce = r.headers.get('Nonce') || cartNonce;
+          if (r.status !== 200 && r.status !== 207) throw new Error('batch ' + r.status);
+          return r.json();
+        }).then(function (d) {
+          var rs = (d && d.responses) || [];
+          if (!rs.length || !rs[0] || !rs[0].status || rs[0].status >= 300) throw new Error('device in batch');
+          return fetch('/wp-json/wc/store/v1/cart', { credentials: 'same-origin' })
+            .then(function (g) { return g.json(); })
+            .then(function (cart) {
+              var have = {};
+              (cart.items || []).forEach(function (it) { have[it.id] = true; });
+              var missing = addIds.filter(function (id) { return !have[+id]; });
+              if (!missing.length) return cart;
+              return gmAdSeq(missing).then(function (c2) { return (c2 && c2.items) ? c2 : cart; });
+            });
+        });
+      })
+      .then(finish)
+      .catch(function () {
+        /* ⛔ לא מרעננים — מנסים במסלול הסדרתי */
+        seqPath().then(finish, function () { done(); $form.off('submit')[0].submit(); });
+      });
   }
 
   /* ───── תוספות להזמנה (30/07/2026) ─────
