@@ -440,16 +440,12 @@ body.gm-product-new *{text-indent:0!important;}
 .gm-atc .reset_variations{display:none!important;}
 /* שורת קנייה: כפתור ענק + בורר כמות בגלולה */
 .gm-atc .woocommerce-variation-add-to-cart, .gm-atc form.cart.gm-simple{display:flex!important;gap:10px;align-items:center;margin-top:16px;}
-/* ⚠️ 23/07/2026 (אסי, על בקר ה-Xbox): במוצרים עם בלוק תוספות של YITH הכפתור
- * ירד מתחת לבורר הכמות. הסיבה: YITH מגישה
- *   form.cart:has(#yith-wapo-container .yith-wapo-block){display:block!important}
- * ול-`:has()` יש הספציפיות של הארגומנט הכי-ספציפי — שם יש **מזהה**, ולכן היא
- * גוברת על השורה מעליי גם כששתיהן !important. זה קרה רק בחלק מהמוצרים כי הכלל
- * מותנה בקיום הבלוק (גם כשהוא display:none). התשובה: להשתמש באותו נשק — :has
- * עם אותו מזהה, מה שנותן לנו מזהה + יותר מחלקות. ⛔ לא לרדת מכאן ל-!important
- * בלבד; הבעיה היא ספציפיות, לא עדיפות. */
-.gm-atc .woocommerce-variation-add-to-cart:has(#yith-wapo-container),
-.gm-atc form.cart.gm-simple:has(#yith-wapo-container){display:flex!important;gap:10px;align-items:stretch;margin-top:16px;}
+/* היסטוריה: YITH WAPO הגישה `form.cart:has(#yith-wapo-container .yith-wapo-block)
+ * {display:block!important}` — ול-:has יש הספציפיות של הארגומנט הכי-ספציפי, ושם
+ * יש **מזהה**, ולכן היא גברה על הכלל שלנו גם כששניהם !important; נדרש כלל-נגד
+ * עם :has משלנו. ⛔ התוסף כובה ע"י אסי 30/07/2026 (שירת רק את עמודי המוצר
+ * הישנים, שכבר מוסתרים מלקוחות) ⇒ כלל-הנגד הוסר. אם יופעל מחדש — להחזיר אותו,
+ * ולא לנסות עוד !important: הבעיה ספציפיות, לא עדיפות. */
 /* גובה זהה לכפתור ולגלולה — center השאיר פער 3px שנראה רשלני (המוקאפ: stretch) */
 .gm-atc .woocommerce-variation-add-to-cart,.gm-atc form.cart.gm-simple{align-items:stretch;}
 .gm-atc .single_add_to_cart_button{min-height:51px;}
