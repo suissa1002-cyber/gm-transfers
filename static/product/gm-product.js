@@ -121,14 +121,6 @@
   $(function () {
     var $btn = $('.gm-atc .single_add_to_cart_button');
     if ($btn.length && !$btn.find('svg').length) $btn.prepend(CART_SVG + ' ');
-    /* עוטפים את הטקסט ב-span כדי שנוכל לעדכן "הוספה לסל · סה״כ N מוצרים"
-       בלי לדרוס את אייקון העגלה */
-    if ($btn.length && !$btn.find('.gm-atc-lab').length) {
-      var lab = $.trim($btn.contents().filter(function () { return this.nodeType === 3; }).text()) || 'הוספה לסל';
-      $btn.contents().filter(function () { return this.nodeType === 3; }).remove();
-      $btn.append('<span class="gm-atc-lab">' + lab + '</span>');
-      GM_ATC_BASE = lab;
-    }
     $('.gm-atc form.cart').not('.variations_form').addClass('gm-simple');
     origPrice = $('.pricebox').html();
     labelAll();
@@ -951,6 +943,24 @@
   $(document).on('keydown', '.gm-ad-card', function (e) {
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); gmAdToggle($(this)); }
   });
+  /* אתחול תווית הכפתור + מצב פתיחה. ⚠️ חייב להיות ב-IIFE הזה: GM_AD_SEL,
+   * GM_ATC_BASE ו-gmAdLabel מקומיים לו. גרסה קודמת עשתה את זה ב-IIFE אחר,
+   * שם gmAdLabel אינו מוגדר — ReferenceError שהפיל את שאר האתחול בשקט. */
+  $(function () {
+    var $btn = $('.gm-atc .single_add_to_cart_button');
+    if ($btn.length && !$btn.find('.gm-atc-lab').length) {
+      var lab = $.trim($btn.contents().filter(function () { return this.nodeType === 3; }).text()) || 'הוספה לסל';
+      $btn.contents().filter(function () { return this.nodeType === 3; }).remove();
+      lab = lab.split(' · ')[0];        /* אם נשארה סיומת מונה — לא לצבור עליה */
+      $btn.append('<span class="gm-atc-lab">' + lab + '</span>');
+      GM_ATC_BASE = lab;
+    }
+    GM_AD_SEL = {};                    /* מצב פתיחה דטרמיניסטי */
+    $('.gm-ad-card').removeClass('added').attr('aria-pressed', 'false')
+      .find('.gm-ad-add').text('+');
+    gmAdLabel();
+  });
+
   /* הוספת התוספות שנבחרו — בזו אחר זו, אחרי שהמכשיר נכנס לסל */
   function gmAdAddAll() {
     var ids = Object.keys(GM_AD_SEL);
