@@ -933,9 +933,11 @@
   $(document).on('keydown', '.gm-ad-card', function (e) {
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); gmAdToggle($(this)); }
   });
-  /* נרמול מצב פתיחה: גם אם ה-HTML מהשרת סימן צ׳יפ (גרסת תוסף ישנה) — סוגרים.
-   * ⇒ ההתנהגות נכונה גם לפני עדכון התוסף, בלי הבהוב. */
-  $(function () { $('.gm-ad-chip,.gm-ad-grid').removeClass('on'); });
+  /* נרמול מצב פתיחה: גם אם ה-HTML מהשרת סימן צ׳יפ (גרסת תוסף לפני 0.3.0) — סוגרים.
+   * ⚠️ מיד ולא ב-ready: הסקריפט בפוטר, האלמנטים כבר קיימים, ו-ready עלול להיות
+   * מושהה ע"י LiteSpeed/Jetpack ⇒ הצ׳יפ נראה פתוח לרגע ולפעמים בכלל לא נסגר. */
+  document.querySelectorAll('.gm-ad-chip.on,.gm-ad-grid.on')
+    .forEach(function (el) { el.classList.remove('on'); });
 
   /* פיל הסל בהדר פותח את הדרור */
   $(document).on('click', '.cart-pill, .mcart', function (e) { e.preventDefault(); openDrawer(false); });
