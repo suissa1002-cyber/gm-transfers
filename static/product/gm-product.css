@@ -435,7 +435,10 @@ body.gm-product-new *{text-indent:0!important;}
 .gm-atc .image-variable-item{width:66px!important;height:66px!important;padding:5px!important;display:flex!important;align-items:center;justify-content:center;}
 .gm-atc .image-variable-item img{width:100%!important;height:100%!important;object-fit:contain;border-radius:8px;}
 .gm-atc .button-variable-item{padding:11px 22px!important;font-weight:700!important;font-size:.95rem!important;height:auto!important;width:auto!important;color:var(--ink)!important;}
-.gm-atc .variable-item.selected,.gm-atc .variable-item[aria-checked="true"]{border-color:var(--accent)!important;box-shadow:0 0 0 1px var(--accent)!important;background:var(--accent-soft)!important;}
+/* ⚠️ 30/07 (אסי): סימון הוריאציה זהה לצ׳יפ התוספות — **קו ירוק דק בלבד**, בלי
+ * טבעת box-shadow ובלי מילוי accent-soft. שני הבוררים בעמוד צריכים להיראות
+ * מאותה מערכת עיצוב. */
+.gm-atc .variable-item.selected,.gm-atc .variable-item[aria-checked="true"]{border-color:var(--accent)!important;box-shadow:none!important;background:#fff!important;}
 .gm-atc .variable-item:hover{border-color:var(--accent)!important;}
 .gm-atc .reset_variations{display:none!important;}
 /* שורת קנייה: כפתור ענק + בורר כמות בגלולה */
@@ -477,7 +480,9 @@ body.gm-product-new *{text-indent:0!important;}
 /* בחירה = מסגרת ירוקה עבה בלבד, **בלי מילוי** — זהה לסימון בכרטיסיית התוספת
  * (אסי, 30/07). box-shadow מעבה את הקו בלי להזיז את הפריסה. */
 .gm-ad-chip.on{background:transparent;border-color:var(--accent);color:var(--accent);
-  box-shadow:0 0 0 .5px var(--accent);}   /* היה 1.5px — אסי: "תדקק אותו בחצי" */
+  box-shadow:none;}   /* ⚠️ בלי טבעת נוספת: הסימון = קו המסגרת 1.5px בלבד.
+  אסי ביקש פעמיים לדקק (1.5px → .5px → אין) — box-shadow מתווסף לרוחב המסגרת
+  ולכן נראה כפול. ⛔ לא להחזיר; דיקוק נוסף = border-width, אבל הוא מזיז פריסה. */
 /* אזור הגלילה: max-height בלבד — קבוצה עם שורה אחת לא מותחת חלל ריק */
 .gm-ad-scroll{max-height:278px;overflow-y:auto;overscroll-behavior:contain;
   padding:2px 2px 2px 0;scrollbar-width:thin;scrollbar-color:var(--line) transparent;}
@@ -632,7 +637,7 @@ body.gm-product-new *{text-indent:0!important;}
 .gm-atc ul.variable-items-wrapper li.variable-item.button-variable-item{padding:14px 30px!important;width:auto!important;height:auto!important;min-width:96px;}
 .gm-atc ul.variable-items-wrapper li.button-variable-item .variable-item-span{font-size:1.02rem!important;font-weight:800!important;}
 .gm-atc ul.variable-items-wrapper li.button-variable-item.selected .variable-item-span{color:var(--accent)!important;}
-.gm-atc ul.variable-items-wrapper li.variable-item.selected{background:var(--accent-soft)!important;border-color:var(--accent)!important;box-shadow:0 0 0 1px var(--accent)!important;}
+.gm-atc ul.variable-items-wrapper li.variable-item.selected{background:#fff!important;border-color:var(--accent)!important;box-shadow:none!important;}
 /* r4: מצב "לא זמין בצבע הזה" לתצורות (הקפיצה החכמה) + specwrap */
 .gm-atc ul.variable-items-wrapper li.variable-item.gm-off{opacity:.38;border-style:dashed!important;}
 .specwrap{max-width:860px;}
