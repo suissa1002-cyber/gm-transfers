@@ -882,14 +882,18 @@
     if (!pid) return; /* בלי מזהה — נופלים לזרימה הרגילה */
     e.preventDefault();
     var qty = +($form.find('input.qty').val() || 1);
+    var $btn = $form.find('.single_add_to_cart_button').addClass('gm-busy');
     cartOp('add-item', { id: pid, quantity: qty }).then(function (c) {
-      if (!c || !c.items) { $form.off('submit').trigger('submit'); return; }  /* שגיאה — הזרימה הרגילה */
+      if (!c || !c.items) { $btn.removeClass('gm-busy'); $form.off('submit').trigger('submit'); return; }
+      /* פותחים **מיד** כשהמכשיר בסל — התוספות נוחתות רגע אחרי ומתעדכנות בדרור.
+         עדיף על המתנה עד שהכל מוכן (אסי: "זו חוויה לא נעימה"). */
+      drawerRender(c); openDrawer(true);
       /* ⚠️ התוספות נוספות **אחרי** המכשיר ⇒ אין הזמנה עם אביזר בלבד */
       gmAdAddAll().then(function (c2) {
-        var fin = (c2 && c2.items) ? c2 : c;
-        drawerRender(fin); openDrawer(true);
-      });
-    });
+        $btn.removeClass('gm-busy');
+        if (c2 && c2.items) drawerRender(c2);
+      }, function () { $btn.removeClass('gm-busy'); });
+    }, function () { $btn.removeClass('gm-busy'); });
   });
   /* ───── תוספות להזמנה (30/07/2026) ─────
    * הצ׳יפים מרונדרים ע"י תוסף greenmobile-addons — רק אלה שיש להם תוספות למוצר.
@@ -961,18 +965,48 @@
     gmAdLabel();
   });
 
-  /* הוספת התוספות שנבחרו — בזו אחר זו, אחרי שהמכשיר נכנס לסל */
-  function gmAdAddAll() {
-    var ids = Object.keys(GM_AD_SEL);
+  /* הוספת התוספות שנבחרו — **בבקשה אחת**.
+   * ⚠️ 30/07: הגרסה הראשונה שרשרה בקשה נפרדת לכל תוספת, וכל אחת היא סבב מלא
+   * מול WP מאחורי Cloudflare ⇒ אסי חיכה ~20 שניות עד שהמיני-עגלה נפתחה.
+   * Store API תומך ב-/batch: כל התוספות בסבב אחד. אם ה-batch נכשל (גרסת
+   * WooCommerce ללא תמיכה) — נפילה חזרה לשרשרת, כדי שלא נשבור פונקציונליות. */
+  function gmAdClear() {
+    GM_AD_SEL = {};
+    $('.gm-ad-card').removeClass('added').attr('aria-pressed', 'false')
+      .find('.gm-ad-add').text('+');
+    gmAdLabel();
+  }
+  function gmAdSeq(ids) {
     return ids.reduce(function (chain, id) {
       return chain.then(function () { return cartOp('add-item', { id: +id, quantity: 1 }); });
-    }, Promise.resolve()).then(function (last) {
-      GM_AD_SEL = {};
-      $('.gm-ad-card').removeClass('added').attr('aria-pressed', 'false')
-        .find('.gm-ad-add').text('+');
-      gmAdLabel();
-      return last;
-    });
+    }, Promise.resolve());
+  }
+  function gmAdAddAll() {
+    var ids = Object.keys(GM_AD_SEL);
+    if (!ids.length) return Promise.resolve(null);
+    return storeNonce().then(function (n) {
+      return fetch('/wp-json/wc/store/v1/batch', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'Nonce': n },
+        body: JSON.stringify({
+          requests: ids.map(function (id) {
+            return { method: 'POST', path: '/wc/store/v1/cart/add-item',
+                     body: { id: +id, quantity: 1 } };
+          })
+        })
+      }).then(function (r) {
+        cartNonce = r.headers.get('Nonce') || cartNonce;
+        if (!r.ok) throw new Error('batch ' + r.status);
+        return r.json();
+      }).then(function (d) {
+        var rs = (d && d.responses) || [];
+        var last = rs.length ? rs[rs.length - 1].body : null;
+        if (!last || !last.items) throw new Error('batch shape');
+        return last;
+      });
+    }).catch(function () {
+      return gmAdSeq(ids).then(function (c) { return c; });   /* מפלט */
+    }).then(function (c) { gmAdClear(); return c; });
   }
 
   /* פיל הסל בהדר פותח את הדרור */

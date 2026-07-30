@@ -464,6 +464,8 @@ body.gm-product-new *{text-indent:0!important;}
   .gm-atc .single_add_to_cart_button .gm-atc-lab{white-space:normal;line-height:1.2;}
 }
 .gm-atc .single_add_to_cart_button.disabled{opacity:.5;}
+/* חיווי עבודה על הכפתור עד שהתוספות נוחתות (הדרור כבר פתוח) */
+.gm-atc .single_add_to_cart_button.gm-busy{opacity:.75;pointer-events:none;}
 /* ═══════════ מוצרים שיכולים להתאים לך — תוספות להזמנה (30/07/2026) ═══════════
  * צ׳יפים חכמים (נגזרים מהתוספות שקיימות למוצר — התוסף לא מרנדר צ׳יפ ריק)
  * + רשת כרטיסיות עם **גלילה פנימית**: אסי — "כדי שהדף לא יהיה בלתי נגמר".

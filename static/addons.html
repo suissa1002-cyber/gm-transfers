@@ -70,6 +70,16 @@
   .cbody{display:none;padding:0 16px 16px}
   .card.fold.open .cbody{display:block}
   .cbody>label:first-child{margin-top:0}
+  .tabs{display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
+  .tb{background:transparent;border:1.5px solid var(--line);color:var(--ink);border-radius:10px;
+    padding:8px 16px;font-family:inherit;font-weight:700;font-size:.9rem;cursor:pointer}
+  .tb.on{border-color:var(--accent);color:var(--accent);box-shadow:0 0 0 1.5px var(--accent)}
+  .grp{margin-top:14px}
+  .grp>b{font-size:.9rem}
+  .warn{background:#fffbeb;color:#92400e;border:1px solid #fcd34d;border-radius:10px;
+    padding:9px 12px;font-size:.85rem;font-weight:700;margin-top:10px}
+  .badge{display:inline-block;background:#fef2f2;color:var(--danger);border:1px solid var(--danger);
+    border-radius:99px;padding:2px 8px;font-size:.72rem;font-weight:800;margin-inline-start:6px}
   .crow{display:flex;gap:8px;align-items:center;margin-bottom:8px}
   .crow input{flex:1}
   .crow button{background:var(--bg);border:1.5px solid var(--line);color:var(--ink);border-radius:9px;
@@ -167,10 +177,38 @@
   </div>
 
   <div class="card">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-      <b>תוספות קיימות</b><span class="hint" id="count"></span>
+    <div class="tabs">
+      <button class="tb on" data-mode="prod">לפי מוצר</button>
+      <button class="tb" data-mode="addon">לפי תוספת</button>
+      <span class="hint" id="count" style="margin:0 0 0 auto"></span>
     </div>
-    <div class="list" id="list"></div>
+
+    <!-- זווית א׳: מה מופיע בעמוד מוצר מסוים -->
+    <div id="modeProd">
+      <label for="mq">איזה מוצר?</label>
+      <input id="mq" placeholder="הקלידו שם מוצר…" autocomplete="off">
+      <div class="res" id="mres" hidden></div>
+      <div id="mSel" class="hint" style="margin-top:8px">בחרו מוצר כדי לראות בדיוק מה מוצג בעמוד שלו.</div>
+      <div id="mPrev"></div>
+      <div id="mAttach" hidden>
+        <label for="aq">הוספת תוספת קיימת למוצר הזה</label>
+        <input id="aq" placeholder="חיפוש תוספת לפי שם…" autocomplete="off">
+        <div class="res" id="ares" hidden></div>
+      </div>
+    </div>
+
+    <!-- זווית ב׳: קטלוג התוספות -->
+    <div id="modeAddon" hidden>
+      <div class="row" style="align-items:flex-end">
+        <div><label for="lq">חיפוש תוספת</label><input id="lq" placeholder="שם התוספת…" autocomplete="off"></div>
+        <div><label for="lchip">צ׳יפ</label><select id="lchip"><option value="">הכל</option></select></div>
+      </div>
+      <label style="display:flex;align-items:center;gap:9px;margin-top:12px;font-weight:700">
+        <input type="checkbox" id="lorph" style="width:auto;margin:0">
+        רק תוספות <b>ללא שיוך</b> — לא מוצגות לאף לקוח
+      </label>
+      <div class="list" id="list" style="margin-top:12px"></div>
+    </div>
   </div>
 </div>
 
@@ -356,20 +394,122 @@ function reset() {
 }
 $('resetBtn').addEventListener('click', () => { reset(); clearMsg(); });
 
-/* ---------- רשימה + עריכה ---------- */
-async function load() {
+/* ---------- דפדפן התוספות: שתי זוויות ---------- */
+/* ⚠️ בהיקף של מאות תוספות רשת שטוחה אינה שמישה (אסי, 30/07). הזווית הראשית היא
+ * **לפי מוצר** — כך עובדים בפועל ("מה מופיע בעמוד הזה?"); הזווית השנייה היא
+ * קטלוג התוספות עם חיפוש, סינון צ׳יפ, וסינון "ללא שיוך" (הכשל השקט: תוספת
+ * בלי שיוך אינה מוצגת לאף לקוח ואין לכך שום סימן). */
+let MODE = 'prod', MPROD = null;
+
+document.querySelector('.tabs').addEventListener('click', e => {
+  const b = e.target.closest('.tb'); if (!b) return;
+  MODE = b.dataset.mode;
+  document.querySelectorAll('.tb').forEach(x => x.classList.toggle('on', x === b));
+  $('modeProd').hidden = MODE !== 'prod';
+  $('modeAddon').hidden = MODE !== 'addon';
+  if (MODE === 'addon') load();
+});
+
+function dbounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
+
+/* ---- זווית א׳: לפי מוצר ---- */
+$('mq').addEventListener('input', dbounce(async () => {
+  const q = $('mq').value.trim();
+  if (q.length < 2) { $('mres').hidden = true; return; }
   try {
-    const d = await api('list');
+    const d = await api('targets?q=' + encodeURIComponent(q));
+    $('mres').innerHTML = (d.products || []).map(p =>
+      `<div data-mp="${p.id}" data-n="${p.name.replace(/"/g, '&quot;')}">${p.name}</div>`).join('')
+      || '<div style="color:var(--ink2)">אין תוצאות</div>';
+    $('mres').hidden = false;
+  } catch (e) { say(e.message, 'err'); }
+}, 300));
+$('mres').addEventListener('click', e => {
+  const d = e.target.closest('[data-mp]'); if (!d) return;
+  MPROD = { id: +d.dataset.mp, name: d.dataset.n };
+  $('mq').value = ''; $('mres').hidden = true;
+  showProd();
+});
+async function showProd() {
+  if (!MPROD) return;
+  $('mSel').innerHTML = `<b style="color:var(--ink)">${MPROD.name}</b> · מזהה ${MPROD.id}`;
+  $('mAttach').hidden = false;
+  $('mPrev').innerHTML = '<div class="hint">טוען…</div>';
+  try {
+    const g = await api('preview?product=' + MPROD.id);
+    if (!g.length) {
+      $('mPrev').innerHTML = '<div class="warn">אין תוספות למוצר הזה — הסקשן לא יוצג בעמוד בכלל.</div>';
+      return;
+    }
+    $('mPrev').innerHTML = g.map(grp => `
+      <div class="grp"><b>${grp.label}</b>
+        <div class="list" style="margin-top:8px">${grp.items.map(it => `
+          <div class="item">
+            <img src="${it.img || ''}" alt="">
+            <div style="flex:1;min-width:0"><div class="n">${it.name}</div><div class="p">₪${it.price.toLocaleString('he-IL')}</div></div>
+            <button class="btn btn-ghost btn-sm" data-detach="${it.id}">הסרה</button>
+          </div>`).join('')}</div>
+      </div>`).join('');
+  } catch (e) { $('mPrev').innerHTML = `<div class="msg err">${e.message}</div>`; }
+}
+/* הסרה = ביטול השיוך למוצר הזה בלבד. ⚠️ אם התוספת משויכת דרך **קטגוריה** היא
+ * תמשיך להופיע — מודיעים במקום להשתיק. */
+$('mPrev').addEventListener('click', async e => {
+  const b = e.target.closest('[data-detach]'); if (!b) return;
+  b.disabled = true;
+  try {
+    await api('attach', { id: +b.dataset.detach, product: MPROD.id, op: 'remove' });
+    await showProd();
+    const still = await api('preview?product=' + MPROD.id);
+    if (JSON.stringify(still).includes('"id":' + b.dataset.detach))
+      say('הוסר השיוך הישיר, אבל התוספת עדיין מופיעה דרך שיוך לקטגוריה.', 'err');
+  } catch (err) { say(err.message, 'err'); }
+});
+/* הוספת תוספת קיימת למוצר — הפעולה היומיומית */
+$('aq').addEventListener('input', dbounce(async () => {
+  const q = $('aq').value.trim();
+  if (q.length < 2) { $('ares').hidden = true; return; }
+  try {
+    const d = await api('list?q=' + encodeURIComponent(q));
+    $('ares').innerHTML = d.map(a =>
+      `<div data-aid="${a.id}">${a.name} <span style="color:var(--ink2)">· ₪${(a.sale_price || a.regular_price || a.price)}</span></div>`).join('')
+      || '<div style="color:var(--ink2)">אין תוצאות</div>';
+    $('ares').hidden = false;
+  } catch (e) { say(e.message, 'err'); }
+}, 300));
+$('ares').addEventListener('click', async e => {
+  const d = e.target.closest('[data-aid]'); if (!d) return;
+  try {
+    await api('attach', { id: +d.dataset.aid, product: MPROD.id, op: 'add' });
+    $('aq').value = ''; $('ares').hidden = true;
+    say('שויך ✓', 'ok'); showProd();
+  } catch (err) { say(err.message, 'err'); }
+});
+
+/* ---- זווית ב׳: קטלוג התוספות ---- */
+['lq', 'lchip', 'lorph'].forEach(id =>
+  $(id).addEventListener(id === 'lq' ? 'input' : 'change', dbounce(load, 250)));
+async function load() {
+  const p = new URLSearchParams();
+  if ($('lq').value.trim()) p.set('q', $('lq').value.trim());
+  if ($('lchip').value) p.set('chip', $('lchip').value);
+  if ($('lorph').checked) p.set('orphan', '1');
+  try {
+    const d = await api('list' + (p.toString() ? '?' + p : ''));
     $('count').textContent = d.length + ' תוספות';
-    $('list').innerHTML = d.map(a => `
-      <div class="item">
+    $('list').innerHTML = d.map(a => {
+      const orphan = !a.n_targets && !a.n_cats;
+      const where = orphan ? '<span class="badge">ללא שיוך</span>'
+        : `<span style="color:var(--ink2)">· ${a.n_targets} מוצרים${a.n_cats ? ' · ' + a.n_cats + ' קטגוריות' : ''}</span>`;
+      return `<div class="item">
         <img src="${a.img || ''}" alt="">
         <div style="flex:1;min-width:0">
           <div class="n">${a.name}</div>
-          <div class="p">₪${(a.sale_price || a.regular_price || a.price).toLocaleString('he-IL')} · ${(a.chips || []).map(c => CHIPS[c] || c).join(' · ')}</div>
+          <div class="p">₪${(a.sale_price || a.regular_price || a.price).toLocaleString('he-IL')} · ${(a.chips || []).map(c => CHIPS[c] || c).join(' · ')} ${where}</div>
         </div>
         <button class="btn btn-ghost btn-sm" data-edit='${JSON.stringify(a).replace(/'/g, "&#39;")}'>עריכה</button>
-      </div>`).join('') || '<div class="hint">עוד אין תוספות.</div>';
+      </div>`;
+    }).join('') || '<div class="hint">אין תוצאות.</div>';
   } catch (e) { say(e.message, 'err'); }
 }
 $('list').addEventListener('click', async e => {
@@ -381,14 +521,13 @@ $('list').addEventListener('click', async e => {
   $('sale').value = a.sale_price || '';
   $('catalog').checked = !!a.catalog;
   if (a.img) { $('prev').src = a.img; $('prev').hidden = false; $('dropTxt').hidden = true; }
-  // היעדרים חוזרים כ-CSV; משלימים שמות מהקטגוריות, ומוצרים כמזהה עד שיטענו
   state.tcats = String(a.tcats || '').split(',').filter(Boolean).map(id => {
     const c = CATS.find(x => x.id === +id); return { id: +id, name: c ? c.name : ('קטגוריה ' + id) };
   });
   state.targets = String(a.targets || '').split(',').filter(Boolean).map(id => ({ id: +id, name: 'מוצר ' + id }));
   $('formTitle').textContent = 'עריכת תוספת #' + a.id;
   $('resetBtn').hidden = false;
-  openFold('foldForm');            // לוחצים "עריכה" → הטופס נפתח מעצמו
+  openFold('foldForm');
   drawChips(); drawTags(); clearMsg();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 });
@@ -415,7 +554,8 @@ function openFold(id) { const c = $(id); if (c) c.classList.add('open'); }
     CATS = (t.cats || []).filter(c => c.count > 0).sort((a, b) => a.name.localeCompare(b.name, 'he'));
     $('cq').innerHTML = '<option value="">— בחרו קטגוריה להוספה —</option>' +
       CATS.map(c => `<option value="${c.id}">${c.name} (${c.count})</option>`).join('');
-    load();
+    $('lchip').innerHTML = '<option value="">הכל</option>' +
+      Object.entries(CHIPS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('');
   } catch (e) { say(e.message, 'err'); }
 })();
 </script>

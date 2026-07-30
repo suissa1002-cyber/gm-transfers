@@ -4034,7 +4034,7 @@ async def embed_proxy_route(key: str, request: Request, path: str = ""):
 # משהו שצריך לבנות בתוך GreenOS. העלאת תמונה, שם, מחיר מקסימום, מחיר מבצע,
 # ודרך לבחור באיזה מוצרים או קטגוריות שיופיע."
 # הדפדפן מדבר רק מול GreenOS; הפרוקסי מחזיק את פרטי ה-WP (אין סוד בדפדפן).
-_ADDON_ROUTES = {"list", "save", "delete", "chips", "chips-save", "targets", "preview"}
+_ADDON_ROUTES = {"list", "save", "delete", "chips", "chips-save", "targets", "preview", "attach"}
 
 
 def _wp_call(method: str, route: str, params=None, json_body=None, timeout: int = 90):
