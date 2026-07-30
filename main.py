@@ -4057,7 +4057,7 @@ def _wp_call(method: str, route: str, params=None, json_body=None, timeout: int 
     return body
 
 
-def _addon_clean_image(b64: str, canvas: int = 640, fill: float = 0.88) -> str:
+def _addon_clean_image(b64: str, canvas: int = 640, fill: float = 0.96) -> str:
     """הסרת רקע + מסגור חכם לתמונת תוספת. מקבל data-URI ומחזיר PNG שקוף.
 
     אסי, 30/07/2026: "מנגנון שאני מעלה או מדביק תמונה... יודע לנקות להם את הרקע,
@@ -4170,6 +4170,9 @@ def _addon_clean_image(b64: str, canvas: int = 640, fill: float = 0.88) -> str:
 
     # מסגור אחיד: הצד הארוך = fill מהקנבס, ממורכז, שאר השטח שקוף ⇒ כל תמונה
     # בכל גודל נראית באותו נפח בכרטיסיה, בלי מסגרת ובלי "צף קטן בפינה".
+    # ⚠️ fill=0.96 ולא 0.88 (אסי: "קטן קצת לעומת מה שהיה"): התמונה הלא-מעובדת
+    # מילאה את התיבה עד הקצה, ו-12% שוליים שקופים הקטינו אותה בהשוואה. הריווח
+    # מהקצה בא ממילא מה-padding של הכרטיסיה, לא צריך אותו גם בקנבס.
     target = int(canvas * fill)
     iw, ih = im.size
     sc = min(target / iw, target / ih)

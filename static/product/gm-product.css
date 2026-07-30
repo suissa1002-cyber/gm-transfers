@@ -508,8 +508,8 @@ body.gm-product-new *{text-indent:0!important;}
  * שהתמונה כולה נראית (letterbox) ולא נחתכת, ו-background שקוף כדי שרנדר עם
  * אלפא לא יקבל ריבוע לבן. */
 .gm-addons .gm-ad-card img{
-  width:66px!important;height:66px!important;
-  min-width:66px;max-width:66px;min-height:66px;max-height:66px;
+  width:74px!important;height:74px!important;
+  min-width:74px;max-width:74px;min-height:74px;max-height:74px;
   object-fit:contain!important;object-position:center;
   flex:0 0 auto;background:transparent;border:0;border-radius:0;
   padding:0;margin:0;box-sizing:border-box;display:block;}
@@ -537,9 +537,9 @@ body.gm-product-new *{text-indent:0!important;}
    * רוחב הכרטיסיה, וה-+ בפינה הריקה. כך גם צר וגם השם שלם. */
   .gm-ad-grid{grid-template-columns:1fr 1fr;gap:8px;}
   .gm-ad-card{flex-direction:column;align-items:stretch;justify-content:flex-start;
-    gap:7px;min-height:158px;padding:12px 10px 10px;text-align:center;}
-  .gm-addons .gm-ad-card img{width:100%!important;height:74px!important;
-    min-width:0;max-width:100%;min-height:74px;max-height:74px;}
+    gap:7px;min-height:172px;padding:12px 10px 10px;text-align:center;}
+  .gm-addons .gm-ad-card img{width:100%!important;height:88px!important;
+    min-width:0;max-width:100%;min-height:88px;max-height:88px;}
   .gm-ad-txt{flex:1;justify-content:flex-end;gap:2px;text-align:center;}
   .gm-ad-n{-webkit-line-clamp:3;font-size:.8rem;line-height:1.28;}
   .gm-ad-p{font-size:.95rem;padding-inline-end:0;}
@@ -547,7 +547,7 @@ body.gm-product-new *{text-indent:0!important;}
   .gm-ad-add{inset-block-end:auto;inset-block-start:8px;inset-inline-end:8px;
     width:24px;height:24px;min-width:24px;font-size:16px;}
   /* שתי שורות + הצצה לשלישית, כדי שהאזור יישאר חסום (2×158 + 8 = 324) */
-  .gm-ad-scroll{max-height:352px;}
+  .gm-ad-scroll{max-height:380px;}
   .gm-ad-chip{padding:8px 13px;font-size:.88rem;}
 }
 /* קוביות אמון — כרטיסים 2x2 כמו במוקאפ */
