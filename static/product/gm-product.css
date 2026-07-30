@@ -112,6 +112,12 @@ main{padding-bottom:70px;}
  * כדי לא לדרוש העלאת תוסף). */
 .pdp{display:grid;grid-template-columns:1.05fr .95fr;gap:44px;align-items:stretch;padding:14px 0 40px;}
 .gallery{position:static;}
+/* ⚠️ **השורש שהשתיק את הדביקות:** ל-html ול-body יש `overflow-x:hidden`
+ * (מהתבנית) — וזה הופך אותם למכולת-גלילה ומבטל `position:sticky` בכל הצאצאים.
+ * זו הסיבה שגם הגרסה הקודמת "נסעה" ~100px בלבד. ⛔ לא להסיר את ההגנה מגלילה
+ * אופקית — `clip` מקצץ בדיוק כמו `hidden` אבל **אינו** יוצר מכולת-גלילה, ולכן
+ * sticky ממשיך לעבוד. מוגבל לעמוד המוצר החדש בלבד. */
+html:has(body.gm-product-new), body.gm-product-new{overflow-x:clip;}
 .gallery>.gsticky{position:sticky;top:96px;}
 .gmain{position:relative;background:transparent;border:none;aspect-ratio:1/1;max-width:420px;margin:0 auto;display:flex;align-items:center;justify-content:center;overflow:hidden;}
 .gmain img{width:92%;height:92%;object-fit:contain;cursor:zoom-in;}
