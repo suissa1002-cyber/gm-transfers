@@ -939,8 +939,12 @@
     var id = +$c.data('id'); if (!id) return;
     if (GM_AD_SEL[id]) { delete GM_AD_SEL[id]; } else { GM_AD_SEL[id] = true; }
     var on = !!GM_AD_SEL[id];
-    $c.toggleClass('added', on).attr('aria-pressed', on ? 'true' : 'false');
-    $c.find('.gm-ad-add').text(on ? '✓' : '+');
+    /* ⚠️ תוספת שמשויכת לכמה צ׳יפים מרונדרת כ**כמה כרטיסיות** עם אותו data-id.
+     * עדכון הכרטיסיה שנלחצה בלבד יצר באג: סימון ב"חבילות" ואז לחיצה על אותה
+     * תוספת ב"כיסויים" ביטלה את הבחירה, והמונה חזר לאחור. לכן כל המופעים. */
+    $('.gm-ad-card[data-id="' + id + '"]')
+      .toggleClass('added', on).attr('aria-pressed', on ? 'true' : 'false')
+      .find('.gm-ad-add').text(on ? '✓' : '+');
     gmAdLabel();
   }
   $(document).on('click', '.gm-ad-card', function () { gmAdToggle($(this)); });

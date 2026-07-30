@@ -60,6 +60,16 @@
   .msg.ok{background:var(--accent-soft);color:var(--accent)}
   .msg.err{background:#fef2f2;color:var(--danger)}
   .hint{color:var(--ink2);font-size:.82rem;margin-top:5px;line-height:1.45}
+  /* קיפול: כל קלף עריכה מקופל, לחיצה על הכותרת פותחת (אסי, 30/07) */
+  .card.fold{padding:0}
+  .chead{display:flex;align-items:center;gap:10px;padding:15px 16px;cursor:pointer;user-select:none}
+  .chead b{flex:1}
+  .chead .cv{color:var(--ink2);font-size:.82rem;font-weight:700}
+  .chead .arw{transition:transform .18s;color:var(--ink2);font-size:.9rem}
+  .card.fold.open .chead .arw{transform:rotate(180deg)}
+  .cbody{display:none;padding:0 16px 16px}
+  .card.fold.open .cbody{display:block}
+  .cbody>label:first-child{margin-top:0}
   .crow{display:flex;gap:8px;align-items:center;margin-bottom:8px}
   .crow input{flex:1}
   .crow button{background:var(--bg);border:1.5px solid var(--line);color:var(--ink);border-radius:9px;
@@ -78,9 +88,14 @@
     אבל מופיעה כשורה אמיתית בסל, בהזמנה ובחשבונית.
   </div>
 
-  <div class="card">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+  <div class="card fold" id="foldChips">
+    <div class="chead" data-fold>
       <b>קטגוריות הצ׳יפים</b>
+      <span class="cv" id="chipCount"></span>
+      <span class="arw">▾</span>
+    </div>
+    <div class="cbody">
+    <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
       <button class="btn btn-ghost btn-sm" id="chipAdd">+ צ׳יפ חדש</button>
     </div>
     <div class="hint" style="margin-bottom:10px">
@@ -90,11 +105,16 @@
     <div id="chipRows"></div>
     <div style="margin-top:12px"><button class="btn btn-sm" id="chipSave">שמירת הצ׳יפים</button></div>
     <div id="chipMsg"></div>
+    </div>
   </div>
 
-  <div class="card">
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+  <div class="card fold" id="foldForm">
+    <div class="chead" data-fold>
       <b id="formTitle">תוספת חדשה</b>
+      <span class="arw">▾</span>
+    </div>
+    <div class="cbody">
+    <div style="display:flex;justify-content:flex-end;margin-bottom:6px">
       <button class="btn btn-ghost btn-sm" id="resetBtn" hidden>ביטול עריכה</button>
     </div>
 
@@ -143,6 +163,7 @@
 
     <div style="margin-top:18px"><button class="btn" id="save">שמירה</button></div>
     <div id="msg"></div>
+    </div>
   </div>
 
   <div class="card">
@@ -254,6 +275,8 @@ async function refreshChipUsage() {
   let used = {};
   try { (await api('list')).forEach(a => (a.chips || []).forEach(c => used[c] = (used[c] || 0) + 1)); } catch (e) {}
   CHIP_ROWS = Object.entries(CHIPS).map(([slug, label]) => ({ slug, label, used: used[slug] || 0 }));
+  const nUsed = CHIP_ROWS.filter(r => r.used).length;
+  $('chipCount').textContent = CHIP_ROWS.length + ' צ׳יפים · ' + nUsed + ' מאוכלסים';
   drawChipRows();
 }
 
@@ -365,9 +388,21 @@ $('list').addEventListener('click', async e => {
   state.targets = String(a.targets || '').split(',').filter(Boolean).map(id => ({ id: +id, name: 'מוצר ' + id }));
   $('formTitle').textContent = 'עריכת תוספת #' + a.id;
   $('resetBtn').hidden = false;
+  openFold('foldForm');            // לוחצים "עריכה" → הטופס נפתח מעצמו
   drawChips(); drawTags(); clearMsg();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 });
+
+/* ---------- קיפול ---------- */
+/* ⚠️ הקלפים מקופלים בטעינה; ההדבקה של תמונה (paste) עובדת רק כשהטופס פתוח,
+ * ולכן פתיחת הקלף היא גם מה שמפעיל אותה בפועל. */
+document.querySelectorAll('.chead[data-fold]').forEach(h => {
+  h.addEventListener('click', e => {
+    if (e.target.closest('button')) return;      // "+ צ׳יפ חדש" לא מקפל
+    h.closest('.card.fold').classList.toggle('open');
+  });
+});
+function openFold(id) { const c = $(id); if (c) c.classList.add('open'); }
 
 /* ---------- init ---------- */
 (async () => {
