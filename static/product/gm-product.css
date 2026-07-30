@@ -529,7 +529,9 @@ body.gm-product-new *{text-indent:0!important;}
 .gm-ad-card:hover .gm-ad-add{background:var(--accent);color:var(--accent-ink);}
 .gm-ad-card.added .gm-ad-add{background:var(--accent);color:var(--accent-ink);}
 @media (max-width:820px){
-  .gm-ad-grid{grid-template-columns:1fr 1fr;gap:8px;}
+  /* ⚠️ עמודה אחת במובייל: בשתי עמודות הכרטיסיה יוצאת 166px, ואחרי תמונה של
+   * 62px נשארים ~70px לשם — הוא נחתך אחרי שתי מילים. נמדד ב-375px. */
+  .gm-ad-grid{grid-template-columns:1fr;gap:8px;}
   .gm-ad-card{min-height:92px;padding:11px 12px 11px 10px;}   /* אסי: "להגביה מעט" */
   .gm-addons .gm-ad-card img{width:62px!important;height:62px!important;
     min-width:62px;max-width:62px;min-height:62px;max-height:62px;}
