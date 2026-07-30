@@ -917,9 +917,16 @@
     var addIds = Object.keys(GM_AD_SEL);
     var done = function () { $btn.removeClass('gm-busy'); };
 
+    /* ⚡ פידבק מיידי: הדרור נפתח עם שורת "מוסיף לסל…" ברגע הלחיצה, ומתמלא
+     * כשהתשובה חוזרת. הוספה של מוצר-וריאציה + תוספות לוקחת ל-WooCommerce
+     * ~5 שניות מאחורי Cloudflare — זה עלות הפלטפורמה, לא הקוד; אבל אין סיבה
+     * שהמשתמש יסתכל על כפתור דומם. ⛔ לא מציגים שורות מדומות, רק חיווי. */
+    drawerEnsure();
+    $('#cartItems').html('<div class="cart-empty">מוסיף לסל…</div>');
+    openDrawer(false);
     var finish = function (cart) {
       gmAdClear();
-      if (cart && cart.items) { drawerRender(cart); openDrawer(true); }
+      if (cart && cart.items) { drawerRender(cart); }
       done();
     };
     /* מסלול ב׳: בקשות נפרדות — אמין, איטי יותר. המכשיר ראשון תמיד. */
