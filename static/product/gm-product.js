@@ -790,6 +790,7 @@
   function money(cents, minor) { return '‏₪' + (cents / Math.pow(10, minor)).toLocaleString('en-US'); }
   function drawerRender(c) {
     if (!c || !c.totals) return;
+    gmAdSync(c);                       /* מצב הכרטיסיות = מצב הסל, תמיד */
     drawerEnsure();                      /* הרינדור הראשון עשוי להקדים את יצירת הדרור */
     var $items = $('#cartItems'); if (!$items.length) return;
     var minor = c.totals.currency_minor_unit || 0;
@@ -887,34 +888,50 @@
       else { $form.off('submit').trigger('submit'); }  /* שגיאה — הזרימה הרגילה */
     });
   });
-  /* ───── תוספות להזמנה: צ׳יפים + הוספה מהכרטיסיה (30/07/2026) ─────
-   * הצ׳יפים עצמם מרונדרים ע"י תוסף greenmobile-addons — רק אלה שיש להם
-   * תוספות למוצר הזה. כאן רק ההחלפה והוספה לסל.
-   * ⚠️ אזור הגלילה חוזר לראש בכל החלפת צ׳יפ, אחרת נכנסים לקבוצה חדשה
-   * בגלילה של הקודמת ונראה כאילו אין תוצאות. */
+  /* ───── תוספות להזמנה (30/07/2026) ─────
+   * הצ׳יפים מרונדרים ע"י תוסף greenmobile-addons — רק אלה שיש להם תוספות למוצר.
+   * דרישות אסי: (א) אין צ׳יפ נבחר בטעינה, התוספות נחשפות רק אחרי בחירה;
+   * (ב) לחיצה בכל מקום בכרטיסיה מסמנת, לחיצה נוספת מסירה מהסל;
+   * (ג) ריבוי תוספות מריבוי צ׳יפים — לכן מצב ה"מסומן" נגזר מ**הסל האמיתי**
+   *     ולא ממשתנה מקומי, אחרת החלפת צ׳יפ הייתה מאבדת את הסימון. */
+  var GM_AD_KEYS = {};              /* product_id -> cart item key (למחיקה) */
+  function gmAdSync(cart) {
+    if (!cart || !cart.items) return;
+    GM_AD_KEYS = {};
+    cart.items.forEach(function (it) { GM_AD_KEYS[it.id] = it.key; });
+    $('.gm-ad-card').each(function () {
+      var $c = $(this), on = !!GM_AD_KEYS[+$c.data('id')];
+      $c.toggleClass('added', on).attr('aria-pressed', on ? 'true' : 'false');
+      $c.find('.gm-ad-add').text(on ? '✓' : '+');
+    });
+  }
+  /* צ׳יפ: בחירה חושפת, לחיצה חוזרת מסתירה (אין ברירת-מחדל פתוחה) */
   $(document).on('click', '.gm-ad-chip', function () {
-    var chip = $(this).data('chip');
+    var $b = $(this), chip = $b.data('chip'), was = $b.hasClass('on');
     $('.gm-ad-chip').removeClass('on');
-    $(this).addClass('on');
-    $('.gm-ad-grid').removeClass('on').filter('[data-for="' + chip + '"]').addClass('on');
-    var sc = document.querySelector('.gm-ad-scroll');
-    if (sc) sc.scrollTop = 0;
+    $('.gm-ad-grid').removeClass('on');
+    if (!was) {
+      $b.addClass('on');
+      $('.gm-ad-grid[data-for="' + chip + '"]').addClass('on');
+      var sc = document.querySelector('.gm-ad-scroll');
+      if (sc) sc.scrollTop = 0;     /* אחרת נכנסים לקבוצה חדשה בגלילה של הקודמת */
+    }
   });
-  $(document).on('click', '.gm-ad-add', function (e) {
-    e.preventDefault(); e.stopPropagation();
-    var $b = $(this), id = +$b.data('id');
-    if (!id || $b.hasClass('busy')) return;
-    $b.addClass('busy');
-    cartOp('add-item', { id: id, quantity: 1 }).then(function (c) {
-      $b.removeClass('busy');
-      if (c && c.items) {
-        $b.addClass('added').text('✓');
-        drawerRender(c); openDrawer(true);
-      } else {
-        /* נכשל (אזל/שגיאה) — לא משאירים כפתור שמראה הצלחה מדומה */
-        $b.text('+');
-      }
-    }, function () { $b.removeClass('busy').text('+'); });
+  /* כרטיסיה: toggle מול הסל */
+  function gmAdToggle($c) {
+    var id = +$c.data('id');
+    if (!id || $c.hasClass('busy')) return;
+    var key = GM_AD_KEYS[id];
+    $c.addClass('busy');
+    var op = key ? cartOp('remove-item', { key: key }) : cartOp('add-item', { id: id, quantity: 1 });
+    op.then(function (c) {
+      $c.removeClass('busy');
+      if (c && c.items) { gmAdSync(c); drawerRender(c); if (!key) openDrawer(true); }
+    }, function () { $c.removeClass('busy'); });
+  }
+  $(document).on('click', '.gm-ad-card', function () { gmAdToggle($(this)); });
+  $(document).on('keydown', '.gm-ad-card', function (e) {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); gmAdToggle($(this)); }
   });
 
   /* פיל הסל בהדר פותח את הדרור */
