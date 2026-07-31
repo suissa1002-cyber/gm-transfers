@@ -1131,14 +1131,12 @@
     $('.gm-ad-card').removeClass('added').attr('aria-pressed', 'false')
       .find('.gm-ad-add').text('+');
     /* צ׳יפ אישור על כרטיסיה מסומנת (אסי 31/07, רפרנס גו מובייל): הכפתור עם
-     * המונה רחוק מהכרטיסיות — "זה יסיר שאלות אם התווסף או לא". הנוסח
-     * "ייתווסף לסל" ולא "נוסף לסל": אצלנו הבחירה מדורגת והפריטים נכנסים רק
-     * בלחיצה על הוספה לסל (המכשיר ראשון). מוזרק כאן ולא בתוסף — בלי גלגול ZIP. */
+     * המונה רחוק מהכרטיסיות — "זה יסיר שאלות אם התווסף או לא". הנוסח: "התווסף לסל" (אסי, 31/07). מוזרק כאן ולא בתוסף — בלי גלגול ZIP. */
     $('.gm-ad-card').each(function () {
       if (!$(this).find('.gm-ad-flag').length) {
         $(this).append('<span class="gm-ad-flag" aria-hidden="true">' +
           '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 12.5 10 18.5 20 6.5"/></svg>' +
-          'ייתווסף לסל</span>');
+          'התווסף לסל</span>');
       }
     });
     gmAdLabel();
