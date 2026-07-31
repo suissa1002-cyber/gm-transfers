@@ -370,7 +370,10 @@ $('save').addEventListener('click', async () => {
   if (!(reg > 0)) return say('חסר מחיר מקסימום', 'err');
   if (!state.chips.length) return say('בחרו לפחות צ׳יפ אחד', 'err');
   if (!state.targets.length && !state.tcats.length) return say('בחרו לפחות מוצר או קטגוריה אחת שבהם התוספת תופיע', 'err');
-  if (!state.img_b64 && !state.image_id) return say('חסרה תמונה', 'err');
+  /* ⚠️ בעריכה (id קיים + יש תמונה בשרת) התמונה אינה חובה — השרת שומר את הקיימת
+   * כששולחים בלי חדשה (set_post_thumbnail רק אם img_id). בלי הסייג הזה כל שינוי
+   * מחיר/מלל בתוספת קיימת נחסם עם "חסרה תמונה" (אסי, 31/07). */
+  if (!state.img_b64 && !state.image_id && !(state.id && state.has_img)) return say('חסרה תמונה', 'err');
 
   $('save').disabled = true; $('save').textContent = 'שומר…';
   try {
@@ -390,7 +393,7 @@ $('save').addEventListener('click', async () => {
 });
 
 function reset() {
-  state = { id: 0, chips: [], img_b64: '', image_id: 0, targets: [], tcats: [] };
+  state = { id: 0, chips: [], img_b64: '', image_id: 0, has_img: false, targets: [], tcats: [] };
   ['name', 'reg', 'sale', 'pq'].forEach(k => $(k).value = '');
   $('catalog').checked = false;
   $('prev').hidden = true; $('dropTxt').hidden = false;
@@ -532,6 +535,7 @@ async function load() {
 let BY_ID = {};
 function openEdit(a) {
   state.id = a.id; state.chips = (a.chips || []).slice(); state.image_id = 0; state.img_b64 = '';
+  state.has_img = !!a.img;              /* תמונה קיימת בשרת — שמירה בלי חדשה תקינה */
   $('name').value = a.name;
   $('reg').value = a.regular_price || a.price || '';
   $('sale').value = a.sale_price || '';
