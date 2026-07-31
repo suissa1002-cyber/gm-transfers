@@ -759,6 +759,20 @@
         });
       var dm = (notes.join(' ') + ' ' + market).match(/אספקה[^\d]{0,14}(\d{1,2}[.\/]\d{1,2}[.\/]\d{2,4})/);
       if (dm) GM_PRE.date = dm[1];
+      /* ── קידום מהקופסה (אסי 31/07): "היכן שיש קופסה בתיאור הקצר מחלצים רק
+         את המידע על המכשיר, חושפים שורה-שורה וחצי עם קרא עוד". תיאורים שבהם
+         פסקת המוצר היא טקסט חופשי (לא <p>/<strong>, למשל iPhone Air) נפלו
+         כולם ל-.pinfo. כשאין פסקת שיווק — השורה הארוכה הראשונה שאינה גילוי
+         (מכירה מוקדמת/אספקה/קוד) מקודמת ל-#gmPshort; הגילויים נשארים בקופסה. */
+      if (!market) {
+        for (var ni = 0; ni < notes.length; ni++) {
+          var nt = notes[ni];
+          if (nt.length >= 60 && !/^(מכירה מוקדמת|אספקה|קוד|שימו לב|הערה|חדש ?!)/.test(nt) && nt.indexOf('תשלומים') < 0) {
+            market = notes.splice(ni, 1)[0];
+            break;
+          }
+        }
+      }
     }
     if (market) $('#gmPshort').text(market); else $('#gmPshort').remove();
     var $anchor = $('#gmPshort').length ? $('#gmPshort') : $('.pricebox');
