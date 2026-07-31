@@ -118,6 +118,48 @@
     });
   }
 
+  /* ═══ פיילוט v2 — iPhone 17 Pro Max בלבד (postid-37256) ═══
+   * באנר Green Kit מתחת לכותרת + קיפול "קרא עוד" על התיאור הקצר.
+   * ⚠️ ה-CSS התואם ב-gm-product.css תחת body.postid-37256. כשהפיילוט יאושר
+   * לכלל המוצרים — הבאנר יגיע מהתוסף (לפי תוספת bundles משויכת), לא מכאן. */
+  $(function () {
+    if (!document.body.classList.contains('postid-37256')) return;
+    /* הבאנר: דסקטופ/מובייל לפי רוחב; קליק גולל לסקשן התוספות */
+    var d = 'https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2026/07/gm-greenkit-iphone.jpg';
+    var m = 'https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2026/07/gm-greenkit-iphone-m.jpg';
+    var $t = $('.gm-pdp-wrap .ptitle').first();
+    if ($t.length && !$('.gm-bundle-banner').length) {
+      $t.after(
+        '<a class="gm-bundle-banner" aria-label="Green Kit iPhone — חבילת אביזרים ב-199 ש\u05f4ח">' +
+        '<picture><source media="(max-width:820px)" srcset="' + m + '">' +
+        '<img src="' + d + '" alt="Green Kit iPhone — מגן מסך, כיסוי ומטען מקורי ב-199 ש\u05f4ח" width="1046" height="320"></picture></a>');
+      $(document).on('click', '.gm-bundle-banner', function (e) {
+        e.preventDefault();
+        var ad = document.querySelector('.gm-addons');
+        if (ad) { ad.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          var chip = ad.querySelector('.gm-ad-chip'); if (chip && !chip.classList.contains('on')) chip.click(); }
+      });
+    }
+    /* קיפול התיאור הקצר — הטקסט נשאר ב-DOM במלואו (SEO) */
+    var $ps = $('#gmPshort');
+    var clampIfLong = function () {
+      if (!$ps.length || $ps.find('.gm-readmore').length) return;
+      if ($ps[0].scrollHeight < 96) return;          /* קצר ממילא — אין מה לקפל */
+      $ps.addClass('gm-clamp');
+      var $btn = $('<button type="button" class="gm-readmore">קרא עוד ▾</button>');
+      $ps.after($btn);
+      $btn.on('click', function () {
+        var open = $ps.hasClass('gm-clamp');
+        $ps.toggleClass('gm-clamp', !open);
+        $btn.text(open ? 'הצג פחות ▴' : 'קרא עוד ▾');
+      });
+    };
+    /* התיאור מוזרק ע"י buildShort אחרי טעינה — מנסים כמה פעמים */
+    var tries = 0, iv = setInterval(function () {
+      if ($ps.text().trim() || ++tries > 20) { clampIfLong(); clearInterval(iv); }
+    }, 250);
+  });
+
   /* עוטף דביק לגלריה — ראה ההערה ב-gm-product.css (.gallery>.gsticky).
    * נעשה ב-JS ולא בתבנית כדי שלא יידרש עדכון תוסף; ⚠️ אם התבנית תעטוף בעצמה,
    * התנאי כאן מונע עטיפה כפולה. */

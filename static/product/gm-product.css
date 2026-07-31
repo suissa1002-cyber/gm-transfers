@@ -119,6 +119,21 @@ main{padding-bottom:70px;}
  * sticky ממשיך לעבוד. מוגבל לעמוד המוצר החדש בלבד. */
 html:has(body.gm-product-new), body.gm-product-new{overflow-x:clip;}
 .gallery>.gsticky{position:sticky;top:96px;}
+/* ═══ פיילוט עמוד-מוצר v2 — iPhone 17 Pro Max (postid-37256) בלבד ═══
+ * אסי, 31/07: "בדיקה על העמוד הזה בלבד". שלושה שינויים, בהשראת גו מובייל
+ * (נמדד אצלם ב-1440px: תמונה 38%, מידע ~59%):
+ * 1. חלוקת העמודות מתהפכת — מידע ~58%, גלריה ~42% (אצלנו היה 47.5/52.5).
+ * 2. באנר Green Kit מתחת לכותרת (מוזרק ב-gm-product.js).
+ * 3. התיאור הקצר מקופל ל-3 שורות + "קרא עוד" — הטקסט המלא נשאר ב-HTML
+ *    (SSR) ולכן אפס השפעת SEO; גו מובייל עושים בדיוק את זה. */
+body.postid-37256 .pdp{grid-template-columns:.84fr 1.16fr;gap:38px;}
+body.postid-37256 .gm-bundle-banner{display:block;margin:14px 0 4px;cursor:pointer;}
+body.postid-37256 .gm-bundle-banner img{width:100%;height:auto;display:block;border-radius:14px;}
+body.postid-37256 .pshort.gm-clamp{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;
+  overflow:hidden;position:relative;}
+body.postid-37256 .gm-readmore{background:none;border:none;color:var(--accent);font-family:inherit;
+  font-weight:700;font-size:.9rem;cursor:pointer;padding:2px 0 0;display:inline-flex;align-items:center;gap:4px;}
+
 .gmain{position:relative;background:transparent;border:none;aspect-ratio:1/1;max-width:420px;margin:0 auto;display:flex;align-items:center;justify-content:center;overflow:hidden;}
 .gmain img{width:92%;height:92%;object-fit:contain;cursor:zoom-in;}
 /* לייטבוקס תמונת מוצר (gm-product.js) */
