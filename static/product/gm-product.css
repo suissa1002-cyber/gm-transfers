@@ -545,7 +545,8 @@ body.gm-product-new *{text-indent:0!important;}
 .gm-ad-scroll::-webkit-scrollbar-track{background:transparent;}
 /* אסי, 31/07: 3 כרטיסיות בשורה בדסקטופ (יותר מ-3 = שורות של 3), מוגדלות מעט.
  * repeat(3,1fr) ולא auto-fill — כרטיסיה בודדת לא מתנפחת לרוחב מלא. */
-.gm-ad-grid{display:none;grid-template-columns:repeat(3,1fr);gap:10px;}
+.gm-ad-grid{display:none;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;}
+/* minmax(0,1fr) ולא 1fr — בלי זה מסלול עם תוכן רחב (תמונה+שם) גדל על חשבון אחיו */
 .gm-ad-grid.on{display:grid;}
 /* הכרטיסיה כולה היא הכפתור: לחיצה מסמנת, לחיצה נוספת מסירה.
  * ⚠️ רקע **לבן** ולא var(--surface): הצינור בשרת מסיר רק רקע כמעט-מדויק (כדי לא
