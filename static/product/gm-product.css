@@ -117,8 +117,14 @@ main{padding-bottom:70px;}
  * זו הסיבה שגם הגרסה הקודמת "נסעה" ~100px בלבד. ⛔ לא להסיר את ההגנה מגלילה
  * אופקית — `clip` מקצץ בדיוק כמו `hidden` אבל **אינו** יוצר מכולת-גלילה, ולכן
  * sticky ממשיך לעבוד. מוגבל לעמוד המוצר החדש בלבד. */
-html:has(body.gm-product-new), body.gm-product-new{overflow-x:clip;}
-.gallery>.gsticky{position:sticky;top:96px;}
+/* ⚠️⚠️ 31/07, "דחוף": `clip` על html מסתיר גם צאצאי `position:fixed` (Chrome
+ * מצייר אותם קטומים) — מגירת התפריט של המובייל (#mnav) נפתחה אבל לא צוירה!
+ * לכן: (1) דסקטופ בלבד — הבורגר חי רק במובייל והגלריה הדביקה רק בדסקטופ;
+ * (2) פיילוט postid-37256 בלבד (אסי: "כל השינויים בעמוד האייפון בלבד"). */
+@media (min-width:821px){
+  html:has(body.postid-37256.gm-product-new), body.postid-37256.gm-product-new{overflow-x:clip;}
+  body.postid-37256 .gallery>.gsticky{position:sticky;top:96px;}
+}
 /* ═══ פיילוט עמוד-מוצר v2 — iPhone 17 Pro Max (postid-37256) בלבד ═══
  * אסי, 31/07: "בדיקה על העמוד הזה בלבד". שלושה שינויים, בהשראת גו מובייל
  * (נמדד אצלם ב-1440px: תמונה 38%, מידע ~59%):
@@ -529,20 +535,24 @@ body.gm-product-new *{text-indent:0!important;}
   box-shadow:none;}   /* ⚠️ בלי טבעת נוספת: הסימון = קו המסגרת 1.5px בלבד.
   אסי ביקש פעמיים לדקק (1.5px → .5px → אין) — box-shadow מתווסף לרוחב המסגרת
   ולכן נראה כפול. ⛔ לא להחזיר; דיקוק נוסף = border-width, אבל הוא מזיז פריסה. */
-/* אזור הגלילה: max-height בלבד — קבוצה עם שורה אחת לא מותחת חלל ריק */
-.gm-ad-scroll{max-height:278px;overflow-y:auto;overscroll-behavior:contain;
+/* אזור הגלילה: max-height בלבד — קבוצה עם שורה אחת לא מותחת חלל ריק.
+ * אסי, 31/07: "2 וקצת שורות חשופות, גלילה פנימית במידת הצורך בלבד" —
+ * 2×100 + רווח 10 + הצצה ~55 לשורה השלישית (הגלילה נגלית מעצמה). */
+.gm-ad-scroll{max-height:266px;overflow-y:auto;overscroll-behavior:contain;
   padding:2px 2px 2px 0;scrollbar-width:thin;scrollbar-color:var(--line) transparent;}
 .gm-ad-scroll::-webkit-scrollbar{width:8px;}
 .gm-ad-scroll::-webkit-scrollbar-thumb{background:var(--line);border-radius:99px;}
 .gm-ad-scroll::-webkit-scrollbar-track{background:transparent;}
-.gm-ad-grid{display:none;grid-template-columns:repeat(auto-fill,minmax(178px,1fr));gap:10px;}
+/* אסי, 31/07: 3 כרטיסיות בשורה בדסקטופ (יותר מ-3 = שורות של 3), מוגדלות מעט.
+ * repeat(3,1fr) ולא auto-fill — כרטיסיה בודדת לא מתנפחת לרוחב מלא. */
+.gm-ad-grid{display:none;grid-template-columns:repeat(3,1fr);gap:10px;}
 .gm-ad-grid.on{display:grid;}
 /* הכרטיסיה כולה היא הכפתור: לחיצה מסמנת, לחיצה נוספת מסירה.
  * ⚠️ רקע **לבן** ולא var(--surface): הצינור בשרת מסיר רק רקע כמעט-מדויק (כדי לא
  * לאכול מוצרים לבנים), ולכן צל רך או הילה בהירה עשויים להישאר. על כרטיסיה לבנה
  * הם בלתי-נראים לגמרי — וזו גם המראה של הכרטיסיות בגו מובייל. */
 .gm-ad-card{position:relative;display:flex;align-items:center;gap:10px;background:#fff;
-  border:1px solid var(--line);border-radius:14px;padding:11px 13px 11px 11px;min-height:88px;
+  border:1px solid var(--line);border-radius:14px;padding:12px 13px 12px 12px;min-height:98px;
   cursor:pointer;user-select:none;transition:border-color .14s,box-shadow .14s,background .14s;}
 .gm-ad-card:hover{border-color:var(--accent);}
 .gm-ad-card:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
@@ -554,8 +564,8 @@ body.gm-product-new *{text-indent:0!important;}
  * שהתמונה כולה נראית (letterbox) ולא נחתכת, ו-background שקוף כדי שרנדר עם
  * אלפא לא יקבל ריבוע לבן. */
 .gm-addons .gm-ad-card img{
-  width:74px!important;height:74px!important;
-  min-width:74px;max-width:74px;min-height:74px;max-height:74px;
+  width:82px!important;height:82px!important;
+  min-width:82px;max-width:82px;min-height:82px;max-height:82px;
   object-fit:contain!important;object-position:center;
   flex:0 0 auto;background:transparent;border:0;border-radius:0;
   padding:0;margin:0;box-sizing:border-box;display:block;}
