@@ -50,8 +50,16 @@ def _slim(p):
             "img": imgs[0]["src"] if imgs else ""}
 
 
+def _in_catalog(p):
+    """⚠️ תוספות-להזמנה (gm-addons) הן מוצרי WC מוסתרים מהקטלוג — בלי הסינון
+    הזה הן צצו ב"חדש אצלנו" בדף הבית (אסי, 31/07: "כל התוספות הם אביזרים...
+    אין טעם שיופיע"). אותו סינון קיים כבר ב-special_refresh (העמודים המלאים)."""
+    return (p.get("catalog_visibility") or "visible") not in ("hidden", "search")
+
+
 def fetch_best(n=8, days=60):
-    """רבי-מכר של 60 הימים האחרונים (items_sold בחלון) דרך wc-analytics."""
+    """רבי-מכר של 60 הימים האחרונים (items_sold בחלון) דרך wc-analytics.
+    ⚠️ הדוח לא מחזיר catalog_visibility — מאמתים מול wc/v3 (כמו special_refresh)."""
     after = (datetime.date.today() - datetime.timedelta(days=days)).isoformat() + "T00:00:00"
     out = []
     try:
@@ -59,9 +67,21 @@ def fetch_best(n=8, days=60):
                     orderby="items_sold", order="desc", per_page=30, extended_info="true")
     except Exception:
         rows = []
+    ids = [r.get("product_id") for r in rows
+           if r.get("product_id") and r.get("product_id") not in CODE_IDS]
+    vis = {}
+    if ids:
+        try:
+            prods = _get("wc/v3/products", include=",".join(map(str, ids)),
+                         per_page=len(ids), status="publish")
+            vis = {p["id"]: _in_catalog(p) for p in prods}
+        except Exception:
+            vis = {}
     for r in rows:
         pid = r.get("product_id"); info = r.get("extended_info") or {}
         if pid in CODE_IDS or info.get("stock_status") != "instock":
+            continue
+        if not vis.get(pid, True):
             continue
         m = re.search(r'src="([^"]+)"', info.get("image") or "")
         img = m.group(1).replace("&amp;", "&") if m else ""
@@ -86,7 +106,7 @@ def _fetch_ordered(orderby, n=8):
         if not rows:
             break
         for p in rows:
-            if p["id"] in CODE_IDS or not p.get("images"):
+            if p["id"] in CODE_IDS or not p.get("images") or not _in_catalog(p):
                 continue
             out.append(_slim(p))
             if len(out) >= n:
@@ -103,7 +123,7 @@ def fetch_sale(n=8):
         if not rows:
             break
         for p in rows:
-            if p["id"] in CODE_IDS or not p.get("images") or p["id"] in seen:
+            if p["id"] in CODE_IDS or not p.get("images") or p["id"] in seen or not _in_catalog(p):
                 continue
             seen.add(p["id"]); s = _slim(p)
             reg, pr = p.get("regular_price"), p.get("price")
