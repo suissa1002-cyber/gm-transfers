@@ -63,7 +63,9 @@ document.addEventListener('click',e=>{ if(!e.target.closest('.gsrch')) document.
     + '.mnav-head .logo-img{height:26px!important;}'
     + 'header.site.gm-hfix{position:fixed;top:0;left:0;right:0;z-index:55;'
     + 'box-shadow:0 6px 24px rgba(10,12,15,.08);}';
-  document.head.appendChild(st);
+  /* ⚠️ לסוף ה-body ולא ל-head: בעמודים האפויים (בית/קטלוג) ה-CSS יושב בתוך
+     ה-body — style שמוזרק ל-head מפסיד לו בסדר המסמך. אחרון במסמך = מנצח. */
+  (document.body || document.head).appendChild(st);
   function init() {
     var hdr = document.querySelector('header.site');
     if (!hdr || hdr.__gmHfix) return;
