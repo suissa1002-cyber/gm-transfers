@@ -130,16 +130,13 @@ body.postid-37256 .pdp{grid-template-columns:.84fr 1.16fr;gap:38px;}
 body.postid-37256 .gm-bundle-banner{display:block;margin:14px 0 4px;cursor:pointer;
   max-width:88%;}   /* אסי: "אפשר להקטין קצת את הבאנר" */
 body.postid-37256 .gm-bundle-banner img{width:100%;height:auto;display:block;border-radius:14px;}
-body.postid-37256 .pshort.gm-clamp{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;
-  overflow:hidden;position:relative;}
-/* התיאור הקצר: **מחוץ לקופסה** (אסי: "תוציא אותה מהקופסה") — טקסט רץ רגיל,
- * בלי רקע/מסגרת/אייקוני ⓘ, מקופל לשתי שורות + "קרא עוד". הטקסט המלא ב-DOM (SEO). */
-body.postid-37256 .pinfo{background:none;border:none;border-radius:0;padding:0;gap:5px;max-width:62ch;}
-body.postid-37256 .pinfo-r svg{display:none;}
-body.postid-37256 .pinfo-r{color:var(--ink2);font-size:.95rem;line-height:1.6;}
-body.postid-37256 .pinfo.gm-clamp{max-height:52px;overflow:hidden;position:relative;}
-body.postid-37256 .pinfo.gm-clamp::after{content:"";position:absolute;inset-inline:0;bottom:0;height:22px;
-  background:linear-gradient(to bottom, transparent, #fff);pointer-events:none;}
+
+/* התיאור הקצר (אסי): פסקת המוצר בלבד, טקסט רץ בשתי שורות + "קרא עוד".
+ * קופסת ה-.pinfo מוסתרת לגמרי — אחרי ניקוי התוכן נשארו בה רק שורות השירות
+ * (אחריות/משלוח), שכבר מוצגות בקוביות האמון. הטקסט המלא ב-DOM (SEO). */
+body.postid-37256 .info .pinfo{display:none;}
+body.postid-37256 .pshort{color:var(--ink2);font-size:.95rem;line-height:1.6;max-width:62ch;}
+body.postid-37256 .pshort.gm-clamp{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
 body.postid-37256 .gm-readmore{background:none;border:none;color:var(--accent);font-family:inherit;
   font-weight:700;font-size:.9rem;cursor:pointer;padding:2px 0 0;display:inline-flex;align-items:center;gap:4px;}
 

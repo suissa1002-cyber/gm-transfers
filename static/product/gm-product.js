@@ -144,7 +144,7 @@
     var $ps = $('#gmPshort');
     var clampIfLong = function () {
       if (!$ps.length || $ps.find('.gm-readmore').length) return;
-      if ($ps[0].scrollHeight < 96) return;          /* קצר ממילא — אין מה לקפל */
+      if ($ps[0].scrollHeight < 60) return;          /* קצר ממילא — אין מה לקפל */
       $ps.addClass('gm-clamp');
       var $btn = $('<button type="button" class="gm-readmore">קרא עוד ▾</button>');
       $ps.after($btn);
@@ -154,26 +154,11 @@
         $btn.text(open ? 'הצג פחות ▴' : 'קרא עוד ▾');
       });
     };
-    /* בעמוד הזה התיאור מרונדר כקופסת ההיילייטס .pinfo — מקפלים אותה */
-    var clampInfo = function () {
-      var $pi = $('.info .pinfo').first();
-      if (!$pi.length || $pi.next('.gm-readmore').length) return false;
-      if ($pi[0].scrollHeight < 80) return false;
-      $pi.addClass('gm-clamp');
-      var $btn = $('<button type="button" class="gm-readmore">קרא עוד ▾</button>');
-      $pi.after($btn);
-      $btn.on('click', function () {
-        var open = $pi.hasClass('gm-clamp');
-        $pi.toggleClass('gm-clamp', !open);
-        $btn.text(open ? 'הצג פחות ▴' : 'קרא עוד ▾');
-      });
-      return true;
-    };
-    /* התוכן מוזרק ע"י ה-JS אחרי טעינה — מנסים כמה פעמים */
+    /* התוכן מוזרק ע"י ה-JS אחרי טעינה — מנסים כמה פעמים.
+     * (.pinfo מוסתרת ב-CSS — שורות השירות שבה כבר מוצגות בקוביות האמון.) */
     var tries = 0, iv = setInterval(function () {
-      var done = clampInfo();
-      if ($ps.text().trim()) clampIfLong();
-      if (done || ++tries > 20) clearInterval(iv);
+      if ($ps.text().trim()) { clampIfLong(); clearInterval(iv); }
+      else if (++tries > 20) clearInterval(iv);
     }, 250);
   });
 
