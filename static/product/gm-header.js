@@ -46,6 +46,51 @@ document.addEventListener('click',e=>{ if(!e.target.closest('.gsrch')) document.
   window.gmRunSearch = gmRunSearch;
 })();
 
+/* ── Header boost (אסי 31/07): הדר דביק בכל האתר + פונט ניווט מודגש + לוגו.
+   למה ב-JS: (1) header.site{position:sticky} קיים ב-CSS של כל עמוד, אבל
+   html/body{overflow-x:hidden} (מהתבניות) מבטל sticky בשקט בכל הצאצאים —
+   ו-overflow:clip אסור על html כי הוא חותך את מגירת התפריט (position:fixed,
+   הלקח מ-31/07). position:fixed עובד גם תחת hidden ⇒ הצמדה ב-JS עם ממלא-מקום.
+   (2) ה-CSS של ההדר אפוי בכל עמוד בנפרד — הזרקת <style> מאוחרת מיישרת את
+   כולם ממקור אחד בלי לבנות מחדש עשרות עמודים. z-index 55 < 60 (overlay). */
+(function () {
+  if (window.__gmHdrBoost) return; window.__gmHdrBoost = 1;
+  var st = document.createElement('style'); st.id = 'gm-hdr-boost';
+  st.textContent = 'nav.cats{font-size:1.02rem;font-weight:700;}'
+    + '.gmnav{font-size:1rem;font-weight:700;}'
+    + '.logo-img{height:40px!important;}'
+    + '@media (max-width:820px){.logo-img{height:32px!important;}}'
+    + '.mnav-head .logo-img{height:26px!important;}'
+    + 'header.site.gm-hfix{position:fixed;top:0;left:0;right:0;z-index:55;'
+    + 'box-shadow:0 6px 24px rgba(10,12,15,.08);}';
+  document.head.appendChild(st);
+  function init() {
+    var hdr = document.querySelector('header.site');
+    if (!hdr || hdr.__gmHfix) return;
+    hdr.__gmHfix = 1;
+    var ph = document.createElement('div'); ph.style.display = 'none';
+    hdr.parentNode.insertBefore(ph, hdr.nextSibling);
+    var fixed = false;
+    function upd() {
+      var y = window.pageYOffset || document.documentElement.scrollTop || 0;
+      if (y > 2 && !fixed) {
+        ph.style.height = hdr.offsetHeight + 'px'; ph.style.display = 'block';
+        hdr.classList.add('gm-hfix'); fixed = true;
+      } else if (y <= 2 && fixed) {
+        hdr.classList.remove('gm-hfix'); ph.style.display = 'none'; fixed = false;
+      }
+    }
+    window.addEventListener('scroll', upd, { passive: true });
+    window.addEventListener('resize', function () {
+      if (fixed) { hdr.classList.remove('gm-hfix'); ph.style.display = 'none'; fixed = false; }
+      upd();
+    }, { passive: true });
+    upd();
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
+
 if (!window.toggleNav) { window.toggleNav = function () {
   var n = document.getElementById('mnav'), o = document.getElementById('mnavOverlay');
   var open = n.classList.toggle('open'); o.classList.toggle('open', open);

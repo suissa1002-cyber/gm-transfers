@@ -5,7 +5,7 @@
 header.site { position:sticky; top:0; z-index:50; background:var(--bg); border-bottom:1px solid var(--line); }
 .hbar { display:flex; align-items:center; gap:26px; padding:15px 0 11px; }
 .logo-wrap { display:flex; align-items:center; text-decoration:none!important; outline:none!important; }
-.logo-img { height:36px!important; width:auto!important; max-width:none!important; display:block; }
+.logo-img { height:40px!important; width:auto!important; max-width:none!important; display:block; }
 @media (prefers-color-scheme: dark) { .logo-wrap { background:#fff; border-radius:10px; padding:5px 10px; } }
 :root[data-theme="dark"] .logo-wrap { background:#fff; border-radius:10px; padding:5px 10px; }
 :root[data-theme="light"] .logo-wrap { background:none; padding:0; }
@@ -13,7 +13,7 @@ header.site { position:sticky; top:0; z-index:50; background:var(--bg); border-b
 .hlinks a { color:inherit; text-decoration:none; }
 .cart-pill { display:flex; align-items:center; gap:8px; background:var(--accent-soft)!important; color:var(--accent)!important; border-radius:99px; padding:9px 16px; font-weight:800; font-size:.92rem; border:none!important; text-decoration:none!important; }
 .cart-pill .ic { width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
-nav.cats { display:flex; gap:26px; padding:2px 0 13px; font-size:.95rem; font-weight:600; color:var(--ink2); overflow-x:auto; }
+nav.cats { display:flex; gap:26px; padding:2px 0 13px; font-size:1.02rem; font-weight:700; color:var(--ink2); overflow-x:auto; }
 nav.cats a { color:inherit; text-decoration:none; white-space:nowrap; }
 nav.cats a:hover, nav.cats a:focus-visible { color:var(--accent); }
 nav.cats a.hot { color:var(--deal); font-weight:800; }
@@ -45,7 +45,7 @@ nav.cats a.active { color:var(--accent); font-weight:800; }
   .msearch { display:block; }
   nav.cats { display:none; }
   .hbar { flex-wrap:nowrap; gap:12px; justify-content:space-between; align-items:center; padding:12px 0 2px; }
-  .logo-img { height:29px!important; }
+  .logo-img { height:32px!important; }
   :root[data-theme="dark"] .logo-wrap, .logo-wrap { padding:0; background:none; }
   :root[data-theme="dark"] .logo-wrap { background:#fff; border-radius:8px; padding:4px 8px; }
   .msearch .gsrch { font-size:.95rem; padding:11px 18px; max-width:none; }
