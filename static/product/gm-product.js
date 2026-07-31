@@ -635,6 +635,9 @@
     return rows.filter(function (r) { return r[1].length; });
   }
   function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  /* ⚠️ Store API מחזיר שמות **מקודדי-ישויות** (&#8211; במקום מקף) — esc() לבדו
+   * מקפיא את הישות כטקסט ("ג'יבריש" בסל, אסי 31/07). קודם מפענחים, ואז esc. */
+  function dec(s) { var t = document.createElement('textarea'); t.innerHTML = String(s == null ? '' : s); return t.value; }
   function buildSpec() {
     var $tbl = $('#tab-spec .spectbl');
     if (!$tbl.length || $tbl.data('gmParsed')) return;
@@ -852,8 +855,8 @@
       var img = (it.images && it.images[0]) ? it.images[0].thumbnail : '';
       var varTxt = (it.variation || []).map(function (v) { return v.value; }).join(' · ');
       return '<div class="citem" data-key="' + it.key + '"><img class="citem-img" src="' + img + '" alt="">' +
-        '<div class="citem-main"><div class="citem-nm">' + esc(it.name) + '</div>' +
-        (varTxt ? '<div class="citem-var">' + esc(varTxt) + '</div>' : '') +
+        '<div class="citem-main"><div class="citem-nm">' + esc(dec(it.name)) + '</div>' +
+        (varTxt ? '<div class="citem-var">' + esc(dec(varTxt)) + '</div>' : '') +
         '<div class="citem-bottom"><div class="cqty"><button data-d="-1">−</button><span>' + it.quantity + '</span><button data-d="1">+</button></div>' +
         '<span class="citem-pr">' + money(it.totals.line_total, minor) + '</span></div></div>' +
         '<button class="citem-rm" aria-label="הסר"><svg viewBox="0 0 24 24" style="width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button></div>';

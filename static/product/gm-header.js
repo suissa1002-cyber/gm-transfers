@@ -62,6 +62,8 @@ if (!window.toggleNav) { window.toggleNav = function () {
   window.__gmHdrCart = true;
   var API = '/wp-json/wc/store/v1/cart', nonce = null;
   function esc(s){var d=document.createElement('div');d.textContent=(s==null?'':s);return d.innerHTML;}
+  /* Store API מחזיר שמות מקודדי-ישויות (&#8211;) — מפענחים לפני esc, אחרת הישות מוצגת כטקסט */
+  function dec(s){var t=document.createElement('textarea');t.innerHTML=(s==null?'':String(s));return t.value;}
   function money(c,m){return '‏₪'+(c/Math.pow(10,m||0)).toLocaleString('en-US');}
   function get(){return fetch(API,{credentials:'same-origin'}).then(function(r){nonce=r.headers.get('Nonce');return r.json();});}
   function op(path,payload){
@@ -133,8 +135,8 @@ if (!window.toggleNav) { window.toggleNav = function () {
       var img=(it.images&&it.images[0])?it.images[0].thumbnail:'';
       var vv=(it.variation||[]).map(function(v){return v.value;}).join(' · ');
       return '<div class="citem" data-key="'+it.key+'"><img class="citem-img" src="'+img+'" alt="">'+
-        '<div class="citem-main"><div class="citem-nm">'+esc(it.name)+'</div>'+
-        (vv?'<div class="citem-var">'+esc(vv)+'</div>':'')+
+        '<div class="citem-main"><div class="citem-nm">'+esc(dec(it.name))+'</div>'+
+        (vv?'<div class="citem-var">'+esc(dec(vv))+'</div>':'')+
         '<div class="citem-bottom"><div class="cqty"><button data-d="-1">−</button><span>'+it.quantity+'</span><button data-d="1">+</button></div>'+
         '<span class="citem-pr">'+money(it.totals.line_total,minor)+'</span></div></div>'+
         '<button class="citem-rm" data-key="'+it.key+'" aria-label="הסר"><svg viewBox="0 0 24 24" style="width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button></div>';
