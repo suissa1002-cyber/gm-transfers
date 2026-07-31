@@ -118,21 +118,32 @@
     });
   }
 
-  /* ═══ פיילוט v2 — iPhone 17 Pro Max בלבד (postid-37256) ═══
-   * באנר Green Kit מתחת לכותרת + קיפול "קרא עוד" על התיאור הקצר.
-   * ⚠️ ה-CSS התואם ב-gm-product.css תחת body.postid-37256. כשהפיילוט יאושר
-   * לכלל המוצרים — הבאנר יגיע מהתוסף (לפי תוספת bundles משויכת), לא מכאן. */
+  /* ═══ עמוד-מוצר v2 — הוחל מהפיילוט (37256) לכל המוצרים, אסי 31/07 ═══
+   * באנר חבילה מתחת לכותרת + קיפול "קרא עוד" על התיאור הקצר.
+   * הבאנר **מונחה-נתונים**: תוסף gm-addons (v0.5.0+) מוציא data-banner/-m/-alt
+   * על .gm-addons מתוך מטא התוספת (_gm_addon_banner) — הבאנר מופיע אוטומטית
+   * בכל מוצר שמשויכת אליו חבילה עם באנר, לפי הסוג (iPhone/Samsung/...). */
   $(function () {
-    if (!document.body.classList.contains('postid-37256')) return;
-    /* הבאנר: דסקטופ/מובייל לפי רוחב; קליק גולל לסקשן התוספות */
-    var d = 'https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2026/07/gm-greenkit-iphone.jpg';
-    var m = 'https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2026/07/gm-greenkit-iphone-m.jpg';
+    /* ⚠️ esc() של הסל חי ב-IIFE אחר (הלקח מס' 6) — עותק מקומי, כולל מרכאות
+     * כי הטקסט נכנס לתוך value של מאפיין. */
+    function escA(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+    var $ad = $('.gm-addons').first();
+    var d = $ad.attr('data-banner') || '';
+    var m = $ad.attr('data-banner-m') || d;
+    var altTxt = $ad.attr('data-banner-alt') || 'חבילת אביזרים במחיר מיוחד';
+    /* ⚠️ גשר זמני עד שהתוסף v0.5.0 באוויר (מוציא את ה-data): באייפון הפיילוט
+     * הבאנר ידוע. להסיר אחרי אימות התוסף. */
+    if (!d && document.body.classList.contains('postid-37256')) {
+      d = 'https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2026/07/gm-greenkit-iphone.jpg';
+      m = 'https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2026/07/gm-greenkit-iphone-m.jpg';
+      altTxt = 'Green Kit iPhone — מגן מסך, כיסוי ומטען מקורי ב-199 ש״ח';
+    }
     var $t = $('.gm-pdp-wrap .ptitle').first();
-    if ($t.length && !$('.gm-bundle-banner').length) {
+    if (d && $t.length && !$('.gm-bundle-banner').length) {
       $t.after(
-        '<a class="gm-bundle-banner" aria-label="Green Kit iPhone — חבילת אביזרים ב-199 ש\u05f4ח">' +
+        '<a class="gm-bundle-banner" aria-label="' + escA(altTxt) + '">' +
         '<picture><source media="(max-width:820px)" srcset="' + m + '">' +
-        '<img src="' + d + '" alt="Green Kit iPhone — מגן מסך, כיסוי ומטען מקורי ב-199 ש\u05f4ח" width="1046" height="320"></picture></a>');
+        '<img src="' + d + '" alt="' + escA(altTxt) + '" width="1046" height="320"></picture></a>');
       $(document).on('click', '.gm-bundle-banner', function (e) {
         e.preventDefault();
         var ad = document.querySelector('.gm-addons');
@@ -736,10 +747,15 @@
       /* ⚠️ noscript חובה: LiteSpeed מזריק בו עותק של ה-<img> כ*טקסט*, ובלעדיו
          תגית ה-HTML הגולמית של באנר המשלוחים נקראת כשורת מידע. */
       $raw.find('img,noscript,style,script').remove();
-      $raw.find('p,div').each(function () {
+      $raw.find('p,div,li').each(function () {
         var t = $(this).text().trim();
-        /* שורת שירות = מתחילה בתווית ואינה עוטפת בלוקים אחרים (עד ~250 תווים) */
-        if (t.length < 250 && /^(אחריות|תשלומים|משלוח|שירות ושילוח)/.test(t)) $(this).remove();
+        /* שורת שירות = מתחילה בתווית ואינה עוטפת בלוקים אחרים (עד ~250 תווים).
+         * li נוסף 31/07 (החלה לכולם): באייפון שורות השירות הן <li> והגיעו
+         * ל-.pinfo כשכפול של קוביות האמון. האחריות נשלפת לקובייה לפני ההסרה. */
+        if (t.length < 250 && /^(אחריות|תשלומים|משלוח|שירות ושילוח)/.test(t)) {
+          if (!warranty && /^אחריות/.test(t)) warranty = (t.split(':')[1] || t).trim();
+          $(this).remove();
+        }
       });
       ($('<div>').html(($raw.html() || '').replace(/<br\s*\/?>/gi, '\n')).text() || '')
         .split('\n').forEach(function (line) {

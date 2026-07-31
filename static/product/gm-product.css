@@ -110,7 +110,10 @@ main{padding-bottom:70px;}
  * לתוכן, נוסעת ~100px ונעצרת, והצד נשאר ריק (אסי: "פשוט לא יפה").
  * ⇒ העמודה נמתחת, והדביקות עוברת לעוטף `.gsticky` (נוצר ב-gm-product.js
  * כדי לא לדרוש העלאת תוסף). */
-.pdp{display:grid;grid-template-columns:1.05fr .95fr;gap:44px;align-items:stretch;padding:14px 0 40px;}
+/* חלוקת העמודות — הוחל מהפיילוט לכולם (אסי 31/07: "צר יותר באזור התמונה
+ * וגלריה רחב יותר באזור השמאלי... להחיל על כל עמודי המוצרים").
+ * בהשראת גו מובייל (1440px: תמונה 38%, מידע ~59%). */
+.pdp{display:grid;grid-template-columns:.84fr 1.16fr;gap:38px;align-items:stretch;padding:14px 0 40px;}
 .gallery{position:static;}
 /* ⚠️ **השורש שהשתיק את הדביקות:** ל-html ול-body יש `overflow-x:hidden`
  * (מהתבנית) — וזה הופך אותם למכולת-גלילה ומבטל `position:sticky` בכל הצאצאים.
@@ -119,39 +122,30 @@ main{padding-bottom:70px;}
  * sticky ממשיך לעבוד. מוגבל לעמוד המוצר החדש בלבד. */
 /* ⚠️⚠️ 31/07, "דחוף": `clip` על html מסתיר גם צאצאי `position:fixed` (Chrome
  * מצייר אותם קטומים) — מגירת התפריט של המובייל (#mnav) נפתחה אבל לא צוירה!
- * לכן: (1) דסקטופ בלבד — הבורגר חי רק במובייל והגלריה הדביקה רק בדסקטופ;
- * (2) פיילוט postid-37256 בלבד (אסי: "כל השינויים בעמוד האייפון בלבד"). */
+ * לכן דסקטופ בלבד — הבורגר חי רק במובייל והגלריה הדביקה רק בדסקטופ.
+ * 31/07 (אחרי אישור הפיילוט): הוחל מ-postid-37256 לכל עמודי המוצר. */
 @media (min-width:821px){
-  html:has(body.postid-37256.gm-product-new), body.postid-37256.gm-product-new{overflow-x:clip;}
-  body.postid-37256 .gallery>.gsticky{position:sticky;top:96px;}
+  html:has(body.gm-product-new), body.gm-product-new{overflow-x:clip;}
+  body.gm-product-new .gallery>.gsticky{position:sticky;top:96px;}
 }
-/* ═══ פיילוט עמוד-מוצר v2 — iPhone 17 Pro Max (postid-37256) בלבד ═══
- * אסי, 31/07: "בדיקה על העמוד הזה בלבד". שלושה שינויים, בהשראת גו מובייל
- * (נמדד אצלם ב-1440px: תמונה 38%, מידע ~59%):
- * 1. חלוקת העמודות מתהפכת — מידע ~58%, גלריה ~42% (אצלנו היה 47.5/52.5).
- * 2. באנר Green Kit מתחת לכותרת (מוזרק ב-gm-product.js).
- * 3. התיאור הקצר מקופל ל-3 שורות + "קרא עוד" — הטקסט המלא נשאר ב-HTML
- *    (SSR) ולכן אפס השפעת SEO; גו מובייל עושים בדיוק את זה. */
-/* ⚠️ חלוקת העמודות = דסקטופ בלבד! בלי ה-media, הספציפיות (0-2-1) דורסת את
- * ה-1fr של המובייל (@media max-width:820px) והגלריה מתכווצת לממוזערת ליד
- * הכותרת (אסי, 31/07: "משהו השתבש במובייל"). */
+/* ═══ עמוד-מוצר v2 — הוחל מהפיילוט (37256) לכל המוצרים, אסי 31/07 ═══
+ * 1. באנר חבילה מתחת לכותרת — מוזרק ב-gm-product.js לפי תוספת bundles
+ *    משויכת עם באנר (data-banner מהתוסף); לא לפי postid.
+ * 2. התיאור הקצר מקופל לשתי שורות + "קרא עוד" — הטקסט המלא נשאר ב-HTML
+ *    (SSR) ולכן אפס השפעת SEO; גו מובייל עושים בדיוק את זה.
+ * ⚠️ הקטנת הבאנר (88%) = דסקטופ; במובייל הרצועה מלאה (הלקח מ"משהו השתבש
+ * במובייל" — כלל ספציפי בלי media דורס את פריסת המובייל). */
+.gm-bundle-banner{display:block;margin:14px 0 4px;cursor:pointer;}
 @media (min-width:821px){
-  body.postid-37256 .pdp{grid-template-columns:.84fr 1.16fr;gap:38px;}
+  .gm-bundle-banner{max-width:88%;}
 }
-body.postid-37256 .gm-bundle-banner{display:block;margin:14px 0 4px;cursor:pointer;}
-/* ההקטנה (אסי: "אפשר להקטין קצת את הבאנר") = דסקטופ; במובייל הרצועה מלאה */
-@media (min-width:821px){
-  body.postid-37256 .gm-bundle-banner{max-width:88%;}
-}
-body.postid-37256 .gm-bundle-banner img{width:100%;height:auto;display:block;border-radius:14px;}
+.gm-bundle-banner img{width:100%;height:auto;display:block;border-radius:14px;}
 
-/* התיאור הקצר (אסי): פסקת המוצר בלבד, טקסט רץ בשתי שורות + "קרא עוד".
- * קופסת ה-.pinfo מוסתרת לגמרי — אחרי ניקוי התוכן נשארו בה רק שורות השירות
- * (אחריות/משלוח), שכבר מוצגות בקוביות האמון. הטקסט המלא ב-DOM (SEO). */
-body.postid-37256 .info .pinfo{display:none;}
-body.postid-37256 .pshort{color:var(--ink2);font-size:.95rem;line-height:1.6;max-width:62ch;}
-body.postid-37256 .pshort.gm-clamp{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
-body.postid-37256 .gm-readmore{background:none;border:none;color:var(--accent);font-family:inherit;
+/* התיאור הקצר: פסקת המוצר בלבד, שתי שורות + "קרא עוד". שורות השירות
+ * (אחריות/משלוח, כולל <li>) מסוננות ב-parseShortDesc — הן חיות בקוביות האמון.
+ * (עיצוב הבסיס של .pshort — בכלל הקיים למטה, "תבנית v0.2".) */
+.pshort.gm-clamp{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+.gm-readmore{background:none;border:none;color:var(--accent);font-family:inherit;
   font-weight:700;font-size:.9rem;cursor:pointer;padding:2px 0 0;display:inline-flex;align-items:center;gap:4px;}
 
 .gmain{position:relative;background:transparent;border:none;aspect-ratio:1/1;max-width:420px;margin:0 auto;display:flex;align-items:center;justify-content:center;overflow:hidden;}
