@@ -158,7 +158,7 @@
     var clampInfo = function () {
       var $pi = $('.info .pinfo').first();
       if (!$pi.length || $pi.next('.gm-readmore').length) return false;
-      if ($pi[0].scrollHeight < 170) return false;
+      if ($pi[0].scrollHeight < 80) return false;
       $pi.addClass('gm-clamp');
       var $btn = $('<button type="button" class="gm-readmore">קרא עוד ▾</button>');
       $pi.after($btn);
