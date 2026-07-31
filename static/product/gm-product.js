@@ -131,13 +131,6 @@
     var d = $ad.attr('data-banner') || '';
     var m = $ad.attr('data-banner-m') || d;
     var altTxt = $ad.attr('data-banner-alt') || 'חבילת אביזרים במחיר מיוחד';
-    /* ⚠️ גשר זמני עד שהתוסף v0.5.0 באוויר (מוציא את ה-data): באייפון הפיילוט
-     * הבאנר ידוע. להסיר אחרי אימות התוסף. */
-    if (!d && document.body.classList.contains('postid-37256')) {
-      d = 'https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2026/07/gm-greenkit-iphone.jpg';
-      m = 'https://i0.wp.com/greenmobile.co.il/wp-content/uploads/2026/07/gm-greenkit-iphone-m.jpg';
-      altTxt = 'Green Kit iPhone — מגן מסך, כיסוי ומטען מקורי ב-199 ש״ח';
-    }
     var $t = $('.gm-pdp-wrap .ptitle').first();
     if (d && $t.length && !$('.gm-bundle-banner').length) {
       $t.after(
