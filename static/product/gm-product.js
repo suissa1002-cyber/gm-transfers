@@ -154,9 +154,26 @@
         $btn.text(open ? 'הצג פחות ▴' : 'קרא עוד ▾');
       });
     };
-    /* התיאור מוזרק ע"י buildShort אחרי טעינה — מנסים כמה פעמים */
+    /* בעמוד הזה התיאור מרונדר כקופסת ההיילייטס .pinfo — מקפלים אותה */
+    var clampInfo = function () {
+      var $pi = $('.info .pinfo').first();
+      if (!$pi.length || $pi.next('.gm-readmore').length) return false;
+      if ($pi[0].scrollHeight < 170) return false;
+      $pi.addClass('gm-clamp');
+      var $btn = $('<button type="button" class="gm-readmore">קרא עוד ▾</button>');
+      $pi.after($btn);
+      $btn.on('click', function () {
+        var open = $pi.hasClass('gm-clamp');
+        $pi.toggleClass('gm-clamp', !open);
+        $btn.text(open ? 'הצג פחות ▴' : 'קרא עוד ▾');
+      });
+      return true;
+    };
+    /* התוכן מוזרק ע"י ה-JS אחרי טעינה — מנסים כמה פעמים */
     var tries = 0, iv = setInterval(function () {
-      if ($ps.text().trim() || ++tries > 20) { clampIfLong(); clearInterval(iv); }
+      var done = clampInfo();
+      if ($ps.text().trim()) clampIfLong();
+      if (done || ++tries > 20) clearInterval(iv);
     }, 250);
   });
 

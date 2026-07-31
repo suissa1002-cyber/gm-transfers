@@ -131,6 +131,11 @@ body.postid-37256 .gm-bundle-banner{display:block;margin:14px 0 4px;cursor:point
 body.postid-37256 .gm-bundle-banner img{width:100%;height:auto;display:block;border-radius:14px;}
 body.postid-37256 .pshort.gm-clamp{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;
   overflow:hidden;position:relative;}
+/* בעמוד הזה התיאור הקצר מרונדר כקופסת היילייטס (.pinfo) — מקפלים אותה בגובה,
+ * עם דהייה בתחתית כדי שיהיה ברור שיש עוד. הטקסט המלא ב-DOM (SEO). */
+body.postid-37256 .pinfo.gm-clamp{max-height:132px;overflow:hidden;position:relative;}
+body.postid-37256 .pinfo.gm-clamp::after{content:"";position:absolute;inset-inline:0;bottom:0;height:44px;
+  background:linear-gradient(to bottom, transparent, var(--surface, #f7faf8));pointer-events:none;}
 body.postid-37256 .gm-readmore{background:none;border:none;color:var(--accent);font-family:inherit;
   font-weight:700;font-size:.9rem;cursor:pointer;padding:2px 0 0;display:inline-flex;align-items:center;gap:4px;}
 
