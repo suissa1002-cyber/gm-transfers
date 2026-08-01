@@ -762,34 +762,23 @@
         });
       var dm = (notes.join(' ') + ' ' + market).match(/אספקה[^\d]{0,14}(\d{1,2}[.\/]\d{1,2}[.\/]\d{2,4})/);
       if (dm) GM_PRE.date = dm[1];
-      /* ── קידום מהקופסה (אסי 31/07): "היכן שיש קופסה בתיאור הקצר מחלצים רק
-         את המידע על המכשיר, חושפים שורה-שורה וחצי עם קרא עוד". תיאורים שבהם
-         פסקת המוצר היא טקסט חופשי (לא <p>/<strong>, למשל iPhone Air) נפלו
-         כולם ל-.pinfo. כשאין פסקת שיווק — השורה הארוכה הראשונה שאינה גילוי
-         (מכירה מוקדמת/אספקה/קוד) מקודמת ל-#gmPshort; הגילויים נשארים בקופסה. */
-      if (!market) {
-        for (var ni = 0; ni < notes.length; ni++) {
-          var nt = notes[ni];
-          if (nt.length >= 60 && !/^(מכירה מוקדמת|אספקה|קוד|שימו לב|הערה|חדש ?!)/.test(nt) && nt.indexOf('תשלומים') < 0) {
-            market = notes.splice(ni, 1)[0];
-            break;
-          }
-        }
+      /* ── ⛔ אין יותר קופסת מידע (.pinfo) — אסי, 01/08: "רק פסקת מידע על
+         המוצר, שורה גג 2, עם קרא עוד — לא בתוך קופסה. בכל המוצרים באתר".
+         (הקופסה חזרה במוצרים עם כמה פסקאות מידע — הראשונה קודמה והשאר נפלו
+         אליה.) לכן: **כל** שורות המידע מתאחדות לפסקה רצה אחת ב-#gmPshort,
+         והקיפול לשתי שורות + "קרא עוד" חל על הכול. שורות השירות כבר סוננו
+         לקוביות האמון; תאריך אספקה כבר חולץ ל-GM_PRE (applyPreorder). */
+      if (notes.length) {
+        var joined = notes.map(function (t) {
+          /* אמוג'י מגיעים מהתוכן שהעלו — בממשק שלנו הסימון הוא SVG (מדריך המותג) */
+          return t.replace(/^(?:[\uD800-\uDBFF][\uDC00-\uDFFF]|[←-⯿️‍])+\s*/, '').trim();
+        }).filter(Boolean).join(' ');
+        market = market ? market + ' ' + joined : joined;
+        notes = [];
       }
     }
     if (market) $('#gmPshort').text(market); else $('#gmPshort').remove();
     var $anchor = $('#gmPshort').length ? $('#gmPshort') : $('.pricebox');
-    if (notes.length) {
-      var $n = $('<div class="pinfo"></div>');
-      notes.forEach(function (t) {
-        /* אמוג'י מגיעים מהתוכן שהעלו — בממשק שלנו הסימון הוא SVG (מדריך המותג) */
-        var clean = t.replace(/^(?:[\uD800-\uDBFF][\uDC00-\uDFFF]|[←-⯿️‍])+\s*/, '').trim();
-        if (!clean) return;
-        $('<div class="pinfo-r"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15" aria-hidden="true"><circle cx="12" cy="12" r="9"/><line x1="12" y1="11" x2="12" y2="16.5"/><line x1="12" y1="7.6" x2="12" y2="7.7"/></svg><span></span></div>')
-          .find('span').text(clean).end().appendTo($n);
-      });
-      if ($n.children().length) { $n.insertAfter($anchor); $anchor = $n; }
-    }
     applyPreorder();
     if (giftImgs.length || giftText) {
       var $g = $('<div class="pgift"></div>');
