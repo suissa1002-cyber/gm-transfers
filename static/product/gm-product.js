@@ -768,16 +768,19 @@
          אליה.) לכן: **כל** שורות המידע מתאחדות לפסקה רצה אחת ב-#gmPshort,
          והקיפול לשתי שורות + "קרא עוד" חל על הכול. שורות השירות כבר סוננו
          לקוביות האמון; תאריך אספקה כבר חולץ ל-GM_PRE (applyPreorder). */
-      if (notes.length) {
-        var joined = notes.map(function (t) {
-          /* אמוג'י מגיעים מהתוכן שהעלו — בממשק שלנו הסימון הוא SVG (מדריך המותג) */
-          return t.replace(/^(?:[\uD800-\uDBFF][\uDC00-\uDFFF]|[←-⯿️‍])+\s*/, '').trim();
-        }).filter(Boolean).join(' ');
-        market = market ? market + ' ' + joined : joined;
-        notes = [];
-      }
+      /* אסי: "לא חייב פסקה אחת — שיראה אסתטי": שומרים על מבנה פסקאות בתוך
+         #gmPshort; הקיפול (‎-webkit-line-clamp‎ על המכל) חוצה פסקאות. */
+      notes = notes.map(function (t) {
+        /* אמוג'י מגיעים מהתוכן שהעלו — בממשק שלנו הסימון הוא SVG (מדריך המותג) */
+        return t.replace(/^(?:[\uD800-\uDBFF][\uDC00-\uDFFF]|[←-⯿️‍])+\s*/, '').trim();
+      }).filter(Boolean);
     }
-    if (market) $('#gmPshort').text(market); else $('#gmPshort').remove();
+    if (market || notes.length) {
+      var $ps0 = $('#gmPshort').empty();
+      if (market) $('<p></p>').text(market).appendTo($ps0);
+      notes.forEach(function (t) { $('<p></p>').text(t).appendTo($ps0); });
+      notes = [];
+    } else { $('#gmPshort').remove(); }
     var $anchor = $('#gmPshort').length ? $('#gmPshort') : $('.pricebox');
     applyPreorder();
     if (giftImgs.length || giftText) {
