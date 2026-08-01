@@ -137,7 +137,7 @@ main{padding-bottom:70px;}
  * במובייל" — כלל ספציפי בלי media דורס את פריסת המובייל). */
 .gm-bundle-banner{display:block;margin:14px 0 4px;cursor:pointer;}
 @media (min-width:821px){
-  .gm-bundle-banner{max-width:88%;}
+  .gm-bundle-banner{max-width:80%;}   /* אסי 01/08: "להקטין מעט" — 88%→80% */
 }
 .gm-bundle-banner img{width:100%;height:auto;display:block;border-radius:14px;}
 
