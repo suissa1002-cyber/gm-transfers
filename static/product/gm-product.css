@@ -128,6 +128,12 @@ main{padding-bottom:70px;}
   html:has(body.gm-product-new), body.gm-product-new{overflow-x:clip;}
   body.gm-product-new .gallery>.gsticky{position:sticky;top:96px;}
 }
+/* ⚠️ 02/08 (אסי, S26 Ultra): לחיצה על בורר יבואן "מעיפה את פוזיציית הדף
+ * לכיוונים שונים". לא שוחזר בלחיצות מדודות (Δ‏גלילה=0) ⇒ החשוד: scroll
+ * anchoring — כרום "מתקן" את הגלילה כשתוכן מעל נקודת הצפייה משנה גובה
+ * (תמונת וריאציה/מתנה שנטענת בלי מידות, תיאור וריאציה שנפתח). ניטרול
+ * בעמודי המוצר בלבד — בלי העוגן, שינוי גובה מעל פשוט לא מזיז את הצופה. */
+body.gm-product-new{overflow-anchor:none;}
 /* ═══ עמוד-מוצר v2 — הוחל מהפיילוט (37256) לכל המוצרים, אסי 31/07 ═══
  * 1. באנר חבילה מתחת לכותרת — מוזרק ב-gm-product.js לפי תוספת bundles
  *    משויכת עם באנר (data-banner מהתוסף); לא לפי postid.
