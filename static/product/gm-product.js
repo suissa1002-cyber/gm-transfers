@@ -64,14 +64,45 @@
     $('#tab-' + t).addClass('sel');
   });
 
-  /* וריאציה נבחרה → תמונת הווריאציה לגלריה הראשית */
+  /* ── גלריה לכל וריאציה ─────────────────────────────────────────────
+     אחרי הסרת YITH אין תוסף שמציג גלריית-וריאציה. התבנית מזרימה את התמונות
+     (מה-meta שכבר קיים) ל-#gmVarGallery, וכאן מחליפים את הממוזערות בבחירת
+     צבע. אין גלריה לוריאציה → נשארים עם הגלריה הראשית. */
+  var GM_VAR_GAL = (function () {
+    try { return JSON.parse($('#gmVarGallery').text() || '{}'); } catch (e) { return {}; }
+  })();
+  var $thumbsBox = $('.gthumbs');
+  var BASE_THUMBS = $thumbsBox.length ? $thumbsBox.html() : '';
+
+  function paintThumbs(imgs, mainSrc) {
+    if (!$thumbsBox.length) return;
+    var h = '<button type="button" class="gth sel" data-full="' + mainSrc + '">' +
+            '<img src="' + mainSrc + '" alt=""></button>';
+    imgs.forEach(function (im) {
+      h += '<button type="button" class="gth" data-full="' + im.full + '">' +
+           '<img src="' + im.thumb + '" alt=""></button>';
+    });
+    $thumbsBox.html(h).show();
+  }
+
+  /* וריאציה נבחרה → תמונת הווריאציה לגלריה הראשית + גלריית הווריאציה */
   $(document).on('found_variation', 'form.variations_form', function (e, variation) {
-    if (variation && variation.image && variation.image.full_src) {
-      $('.gmain img').attr('src', variation.image.full_src).removeAttr('srcset sizes');
+    if (!variation) return;
+    var main = variation.image && variation.image.full_src;
+    if (main) {
+      $('.gmain img').attr('src', main).removeAttr('srcset sizes');
       $('.gth').removeClass('sel');
+    }
+    var imgs = GM_VAR_GAL[String(variation.variation_id)];
+    if (imgs && imgs.length && main) {
+      paintThumbs(imgs, main);
+    } else if (BASE_THUMBS) {
+      $thumbsBox.html(BASE_THUMBS);
+      $('.gth').removeClass('sel').first().addClass('sel');
     }
   });
   $(document).on('reset_data', 'form.variations_form', function () {
+    if (BASE_THUMBS) $thumbsBox.html(BASE_THUMBS);
     var $first = $('.gth').first();
     if ($first.length) $first.trigger('click');
   });
