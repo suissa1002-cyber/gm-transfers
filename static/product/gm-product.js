@@ -71,7 +71,13 @@
   var GM_VAR_GAL = (function () {
     try { return JSON.parse($('#gmVarGallery').text() || '{}'); } catch (e) { return {}; }
   })();
+  /* ⚠️ למוצר בלי גלריה ראשית התבנית לא מרנדרת .gthumbs בכלל (התנאי על
+     get_gallery_image_ids), ואז לא היה לאן לצייר את גלריית הווריאציה —
+     בדיוק המצב של רוב מוצרי הווריאציות אצלנו. יוצרים קונטיינר במידת הצורך. */
   var $thumbsBox = $('.gthumbs');
+  if (!$thumbsBox.length && $('.gm-pdp-wrap .gallery').length) {
+    $thumbsBox = $('<div class="gthumbs"></div>').insertAfter($('.gm-pdp-wrap .gallery .gmain').first());
+  }
   var BASE_THUMBS = $thumbsBox.length ? $thumbsBox.html() : '';
 
   function paintThumbs(imgs, mainSrc) {
