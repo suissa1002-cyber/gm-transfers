@@ -1263,3 +1263,34 @@
   $(function () { linkedNote(); gcIcon(); });
   setInterval(function () { linkedNote(); gcIcon(); }, 900);
 })(jQuery);
+
+/* ═══ swatches חדים ═══
+   תוסף הסוואצ'ים מגיש את תמונת הצבע ב-50×50 (Photon `resize=50,50`) אבל היא
+   מוצגת ב-~75px, ובמסך Retina (DPR 2) זה 150 פיקסלים פיזיים — הגדלה פי 3
+   ולכן טשטוש. הממוזערות בגלריה חדות כי הן מקבלות 700×700.
+   משדרגים את ה-URL ל-200×200 לפני הטעינה (הן lazy-loaded, אז אין fetch כפול). */
+(function ($) {
+  'use strict';
+  var TARGET = 200;
+
+  function sharpen(img) {
+    ['src', 'data-src', 'data-lazy-src'].forEach(function (attr) {
+      var v = img.getAttribute(attr);
+      if (!v || v.indexOf('resize=') < 0) return;
+      var up = v.replace(/([?&]resize=)\d+(%2C|,)\d+/i, '$1' + TARGET + '$2' + TARGET);
+      if (up !== v) img.setAttribute(attr, up);
+    });
+  }
+
+  function run() {
+    document.querySelectorAll(
+      '.variable-item-image, ul.variable-items-wrapper li.variable-item img'
+    ).forEach(sharpen);
+  }
+
+  $(function () { run(); });
+  /* התוסף מרנדר מחדש אחרי טעינת נתוני הוריאציות */
+  $(document).on('wc_variation_form found_variation reset_data', run);
+  setTimeout(run, 400);
+  setTimeout(run, 1200);
+})(jQuery);
