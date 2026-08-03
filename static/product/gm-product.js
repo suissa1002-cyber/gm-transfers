@@ -926,6 +926,15 @@
     else $ship.html('עוד <b>‏₪' + (TH - sub).toLocaleString('en-US') + '</b> ותיהנו ממשלוח חינם<div class="bar"><div class="fill" style="width:' + Math.min(100, Math.round(sub / TH * 100)) + '%"></div></div>');
     gmBpCartLine(sub);
   }
+  /* וו רענון ציבורי — בעמוד מוצר gm-product.js הוא הבעלים של הסל (מודול
+     ההדר יוצא כשיש .gm-atc), ולכן הוו חייב להיות גם כאן. בלעדיו הוספה
+     מהירה מכפתורי הנפח (סניפט 41507) עדכנה את הסל בשרת אבל המונה נשאר
+     קפוא — אסי ראה (0) והסיק שההוספה נשברה (03/08/2026). */
+  window.gmCartRefresh = function () {
+    fetch('/wp-json/wc/store/v1/cart', { credentials: 'same-origin' })
+      .then(function (r) { cartNonce = r.headers.get('Nonce') || cartNonce; return r.json(); })
+      .then(drawerRender);
+  };
   function drawerEnsure() {
     if ($('#cartDrawer').length) return;
     $('body').append(
