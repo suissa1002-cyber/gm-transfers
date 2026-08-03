@@ -843,3 +843,11 @@ body.gm-product-new .yith-wapo-container,
 body.gm-product-new #wapo-total-price-table,
 body.gm-product-new [id^="yith-wapo"],
 body.gm-product-new [class*="yith-wapo"]{display:none!important;}
+
+/* ═══ r8: המקושרים בתוך form.cart של מוצר פשוט ═══
+   הפוק של הווידג'ט מזריק את הפס לתוך הטופס, שהוא flex עם align-items:stretch —
+   הכפתור ובורר הכמות נמתחו לגובה הפס והפכו לבלונים (אסי, 03/08/2026, עמוד
+   כרטיס SanDisk). בסמארטפונים (מוצר משתנה) ה-flex על עטיפה פנימית שהפס
+   אינו בן שלה — לכן שם תקין. הפס מקבל שורה מלאה משלו והכפתורים נשארים בשלהם. */
+.gm-atc form.cart.gm-simple{flex-wrap:wrap!important;}
+.gm-atc form.cart.gm-simple .gm-lp-wrap{flex:1 1 100%!important;min-width:100%;}
