@@ -228,5 +228,9 @@ if (!window.toggleNav) { window.toggleNav = function () {
     if(rm){ op('remove-item',{key:rm.getAttribute('data-key')}).then(render); return; }
   });
   function init(){ ensure(); get().then(render); }
+  /* וו רענון ציבורי: המונה נטען פעם אחת בעליית העמוד, וכל הוספה מהירה
+     (כפתורי הנפח, גלריית המקושרים) השאירה אותו קפוא — אסי לחץ +, ראה (0)
+     והסיק שההוספה נשברה בזמן שהפריט כן נכנס לסל (03/08/2026). */
+  window.gmCartRefresh = function(){ get().then(render); };
   if(document.readyState!=='loading') init(); else document.addEventListener('DOMContentLoaded',init);
 })();
