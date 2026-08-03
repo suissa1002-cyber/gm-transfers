@@ -850,4 +850,5 @@ body.gm-product-new [class*="yith-wapo"]{display:none!important;}
    כרטיס SanDisk). בסמארטפונים (מוצר משתנה) ה-flex על עטיפה פנימית שהפס
    אינו בן שלה — לכן שם תקין. הפס מקבל שורה מלאה משלו והכפתורים נשארים בשלהם. */
 .gm-atc form.cart.gm-simple{flex-wrap:wrap!important;}
-.gm-atc form.cart.gm-simple .gm-lp-wrap{flex:1 1 100%!important;min-width:100%;}
+.gm-atc form.cart.gm-simple .gm-lp-wrap,
+.gm-atc form.cart.gm-simple .linked-variants-wrapper{flex:1 1 100%!important;min-width:100%;}
