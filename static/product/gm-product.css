@@ -850,5 +850,9 @@ body.gm-product-new [class*="yith-wapo"]{display:none!important;}
    כרטיס SanDisk). בסמארטפונים (מוצר משתנה) ה-flex על עטיפה פנימית שהפס
    אינו בן שלה — לכן שם תקין. הפס מקבל שורה מלאה משלו והכפתורים נשארים בשלהם. */
 .gm-atc form.cart.gm-simple{flex-wrap:wrap!important;}
-.gm-atc form.cart.gm-simple .gm-lp-wrap,
-.gm-atc form.cart.gm-simple .linked-variants-wrapper{flex:1 1 100%!important;min-width:100%;}
+/* ⚠️ הכללה (r8c): לא רודפים אחרי כל ווידג'ט בנפרד. כל מה שמוזרק לתוך
+   form.cart של מוצר פשוט (גלריית מקושרים, כפתורי נפח, ווידג'ט המתנות של
+   greenmobile-promo — ה-PS5 שאסי מצא, וכל אחד עתידי) הופך לעמית-flex עם
+   align-items:stretch ומותח את הכפתור ובורר הכמות לבלונים. שורה מלאה לכל
+   ילד שאינו הכמות או הכפתור — פעם אחת, לתמיד (03/08/2026). */
+.gm-atc form.cart.gm-simple>*:not(.quantity):not(.single_add_to_cart_button){flex:1 1 100%!important;min-width:100%;}
