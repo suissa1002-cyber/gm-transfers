@@ -2045,6 +2045,23 @@ def sales_state_get(k: str, default=None):
         return r["v"] if r else default
 
 
+
+def sales_state_get_many(keys) -> dict:
+    """כמה מפתחות בשאילתה **אחת** — {k: v} (רק מה שקיים).
+
+    ⚠️ למה: sales_state_get פותח שאילתה למפתח, וקריאה בתוך לולאה = N נסיעות
+    ל-Neon. במסך ההזמנות זה היה 25 שאילתות בכל טעינה (~1 שנייה) על נתון
+    בוליאני יחיד לכל שורה (אסי, 05/08/2026 — איטיות ב-GreenOS)."""
+    ks = [str(k) for k in (keys or []) if str(k or "").strip()]
+    if not ks:
+        return {}
+    with _conn() as c:
+        cur = c.cursor()
+        ph = ",".join("?" * len(ks))
+        cur.execute(_q(f"SELECT k, v FROM sales_ingest_state WHERE k IN ({ph})"), tuple(ks))
+        return {r["k"]: r["v"] for r in cur.fetchall()}
+
+
 def sales_state_prefix(prefix: str) -> list:
     """כל המפתחות שמתחילים ב-prefix — [(k, v), ...] (למשל learn_pending:*)."""
     with _conn() as c:

@@ -9026,8 +9026,12 @@ def admin_orders_list(page: int = 1, status: str = "", search: str = "",
     # (גם מנקה סימונים ישנים שנוצרו לפני התיקון). מפת is_stock מהקטלוג המקומי.
     _cat = db.catalog_load() if oos_set else {}
     _fmap = _fraud_cache_map()
+    # ⚠️ N+1: `handled` נשלף בעבר לכל הזמנה בנפרד — 25 נסיעות ל-Neon בכל
+    # טעינת מסך (אסי, 05/08/2026). שאילתה אחת מראש, אותה תוצאה בדיוק.
+    _orders = r.json()
+    _seen = db.sales_state_get_many([f"auto_tr_seen:{o.get('id')}" for o in _orders])
     out = []
-    for o in r.json():
+    for o in _orders:
         meta = {m.get("key"): m.get("value") for m in (o.get("meta_data") or [])}
         items = o.get("line_items") or []
         _digital = _order_has_digital(items)
@@ -9047,7 +9051,7 @@ def admin_orders_list(page: int = 1, status: str = "", search: str = "",
             "nosku": str(o.get("number")) in unmatched_set,   # פריט פיזי ללא מק"ט — טיפול ידני
             "partial": str(o.get("number")) in partial_set,   # חלק שודר וחלק חסר — שודר חלקי
             "return_open": str(o.get("number")) in return_set,   # נפתחה החזרה (איסוף מהלקוח)
-            "handled": bool(db.sales_state_get(f"auto_tr_seen:{o.get('id')}")),  # כבר עבר auto_transfer
+            "handled": bool(_seen.get(f"auto_tr_seen:{o.get('id')}")),  # כבר עבר auto_transfer
             "id": o.get("id"), "number": o.get("number"), "status": o.get("status"),
             "date": o.get("date_created"), "total": o.get("total"),
             "currency": o.get("currency_symbol") or "₪",
@@ -10015,6 +10019,23 @@ def zap_selftest(x_admin_key: Optional[str] = Header(None)):
         if not _ok_l:
             bad += 1
         out.append({"query": f"advance: {_lbl}", "want": True, "got": _ok_l, "ok": _ok_l})
+    # ⚠️ N+1 במסך ההזמנות: `handled` נשלף לכל הזמנה בנפרד = 25 שאילתות
+    # בכל טעינה. הבדיקה על **הפלט** — שאילתת אצווה מחזירה בדיוק את מה
+    # שהשליפות הבודדות החזירו (אסי, 05/08/2026).
+    _k1, _k2 = "zap_selftest_probe_a", "zap_selftest_probe_b"
+    db.sales_state_set(_k1, "1")
+    _many = db.sales_state_get_many([_k1, _k2, ""])
+    _ok_many = (_many.get(_k1) == "1" and _k2 not in _many and len(_many) == 1
+                and db.sales_state_get_many([]) == {})
+    if not _ok_many:
+        bad += 1
+    out.append({"query": "sales_state_get_many זהה לשליפה בודדת", "want": True,
+                "got": _ok_many, "ok": _ok_many})
+    _src_ol = _in2.getsource(admin_orders_list)
+    _ok_n1 = "sales_state_get_many" in _src_ol and "db.sales_state_get(f\"auto_tr_seen" not in _src_ol
+    if not _ok_n1:
+        bad += 1
+    out.append({"query": "מסך ההזמנות בלי N+1", "want": True, "got": _ok_n1, "ok": _ok_n1})
     # ⚠️ הגרסה שרצה בשרת בפועל. בלי זה ניחשתי ארבע פעמים כמה זמן לוקח deploy
     # ל-Render, הרצתי סריקות ואימותים על קוד ישן, והסקתי מסקנות שגויות.
     sha = (os.getenv("RENDER_GIT_COMMIT") or "")[:7]
