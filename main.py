@@ -242,6 +242,86 @@ def _special_refresh_job():
         return {"ok": False, "error": str(e)}
 
 
+def _zap_hours_ok() -> bool:
+    """שעות הפעילות של החנות (שעון ישראל): א'-ה' 9-21, ו' 9-14, שבת סגור.
+    מחוץ להן אין טעם לסרוק — המחירים בזאפ לא זזים ואף אחד לא פועל על התוצאה."""
+    try:
+        from zoneinfo import ZoneInfo as _ZI
+        now = datetime.now(_ZI(cfg.TZ))
+    except Exception:  # noqa: BLE001
+        now = datetime.now()
+    dow, h = now.weekday(), now.hour     # Mon=0 … Sat=5, Sun=6
+    if dow == 5:                          # שבת
+        return False
+    if dow == 4:                          # שישי
+        return 9 <= h < 14
+    return 9 <= h < 21                    # ראשון-חמישי
+
+
+# כמה שעות מותר לתמונת המצב להיות ישנה בשעות הפעילות לפני שהשומר מרים סריקה.
+# 4 שעות = בערך פער בין סריקות מתוזמנות + מרווח, כך שהשומר מתערב רק כשמשהו
+# באמת לא רץ ולא רודף אחרי סריקה שכבר בדרך.
+_ZAP_STALE_H = 4
+
+
+def _zap_stale_guard_job():
+    """🛡️ השורש המבני: עד 08/2026 הסריקה הייתה תלויה **רק** בקרון. כשהיא חדלה
+    לרוץ (29/07 → 05/08, שני התחומים) איש לא ידע, והמסך הציג נתון בן שבוע כאילו
+    הוא טרי — מוצר חדש (FreeClip 2S) פשוט לא הופיע. כאן בודקים את **התוצאה** ולא
+    את התזמון: אם בשעות הפעילות תמונת המצב ישנה מ-_ZAP_STALE_H ואין סריקה רצה —
+    מרימים סריקה. כך גם קרון שהושמט/מופע שנפל לא משביתים את הכלי בשקט."""
+    if not _zap_hours_ok():
+        return {"ok": True, "skipped": "מחוץ לשעות הפעילות"}
+    try:
+        import json as _j
+        import zap_scan
+        out = []
+        for c in zap_scan.ZAP_CATS:
+            prog = db.sales_state_get(zap_scan._prog_key(c)) or ""
+            if prog:                       # סריקה כבר רצה — לא נוגעים
+                try:
+                    beat = _j.loads(prog).get("beat")
+                    if beat and (datetime.now() - datetime.fromisoformat(beat)).total_seconds() < 420:
+                        continue
+                except Exception:  # noqa: BLE001
+                    pass
+            last = db.sales_state_get(f"zap_scan_done:{c}")
+            if last:
+                try:
+                    age = (datetime.now() - datetime.fromisoformat(last)).total_seconds() / 3600
+                    if age < _ZAP_STALE_H:
+                        continue
+                except Exception:  # noqa: BLE001
+                    pass
+            logger.warning("zap stale-guard: תחום %s ללא סריקה טרייה — מרים סריקה", c)
+            _zap_start_scan(c, "stale-guard")
+            out.append(c)
+            break        # תחום אחד בכל סבב — שתי סריקות במקביל מסכנות חסימה
+        return {"ok": True, "started": out}
+    except Exception as e:  # noqa: BLE001
+        logger.warning("zap stale guard failed: %s", e)
+        return {"ok": False, "error": str(e)}
+
+
+def _zap_start_scan(cat, why: str = "cron"):
+    """מרים סריקה בת'רד — הנתיב היחיד להתחלת סריקה מתוזמנת/אוטומטית.
+    ⚠️ לא דרך run_date של ה-scheduler: הוא בשעון ישראל בעוד datetime.now() על
+    Render הוא UTC, ולכן משימה כזו נופלת 3 שעות אחורה ומושמטת כ-misfire."""
+    import threading
+    logger.info("zap scan start (cat=%s, why=%s)", cat, why)
+    threading.Thread(target=_zap_scan_job, args=(cat,),
+                     name=f"zap-scan-{cat}", daemon=True).start()
+
+
+def _zap_scan_job_hours(cat=None):
+    """סריקה מתוזמנת שרצה **רק בשעות הפעילות**. הקרון עצמו כבר מוגבל לשעות
+    האלה; הבדיקה כאן מגנה מפני misfire שנדחה אל מחוץ להן."""
+    if not _zap_hours_ok():
+        logger.info("zap cron: מחוץ לשעות הפעילות — מדלג (cat=%s)", cat)
+        return {"ok": True, "skipped": True}
+    return _zap_scan_job(cat)
+
+
 def _zap_watchdog_job(cat=None):
     """ממשיך סריקת זאפ שנעצרה באמצע.
     ⚠️ הסריקה רצה בת'רד; deploy או מיחזור מופע הורגים אותה, ואז ההתקדמות
@@ -286,6 +366,12 @@ def _zap_scan_job(cat=None):
     try:
         import zap_scan
         snap = zap_scan.run(cat)
+        # חותמת הצלחה פר-תחום — עליה נשען _zap_stale_guard_job. נכתבת רק כשבאמת
+        # יצאה תמונה (run מחזיר ok=False בלי לדרוס כשהפיד ריק), אחרת השומר היה
+        # "נרגע" מכשל ומפסיק לנסות.
+        if snap.get("rows"):
+            db.sales_state_set(f"zap_scan_done:{int(cat or zap_scan.DEFAULT_CAT)}",
+                               datetime.now().isoformat(timespec="seconds"))
         logger.info("zap_scan ok: %s", snap.get("summary"))
         return snap.get("summary")
     except Exception as e:  # noqa: BLE001
@@ -630,6 +716,36 @@ def register_recurring_jobs():
         scheduler.add_job(_zap_scan_job, "cron", hour=5 + _m // 60, minute=_m % 60,
                           id=f"zap_scan_{_c}", args=(_c,),
                           max_instances=1, coalesce=True, misfire_grace_time=3600)
+    # 🕘 סריקות נוספות **בשעות הפעילות בלבד** (אסי, 05/08/2026): מחירי המתחרים
+    # זזים במהלך היום, ומוצר שנוסף בבוקר לא אמור לחכות ליום המחרת כדי להופיע
+    # בכלי. מחוץ לשעות אין ערך — המחירים סטטיים ואיש לא פועל על התוצאה.
+    # ראשון-חמישי 4 סבבים (10/13/16/19), שישי 2 (10/13) לפני הסגירה ב-14.
+    # ⚠️ אותו כלל הפרדה כמו בסריקה היומית: תחום שני ב-40 דקות אחרי הראשון,
+    # כדי ששתי סריקות לא יפגיזו את זאפ במקביל ויסכנו חסימה.
+    try:
+        from zoneinfo import ZoneInfo as _ZIz
+        _tz_zap = _ZIz(cfg.TZ)
+        for _i, _c in enumerate(_zs0.ZAP_CATS):
+            _off = _i * 40
+            scheduler.add_job(_zap_scan_job_hours, "cron", id=f"zap_scan_day_{_c}",
+                              day_of_week="sun,mon,tue,wed,thu", hour="10,13,16,19",
+                              minute=_off, timezone=_tz_zap, args=(_c,),
+                              max_instances=1, coalesce=True, misfire_grace_time=1800,
+                              replace_existing=True)
+            scheduler.add_job(_zap_scan_job_hours, "cron", id=f"zap_scan_fri_{_c}",
+                              day_of_week="fri", hour="10,12", minute=_off,
+                              timezone=_tz_zap, args=(_c,),
+                              max_instances=1, coalesce=True, misfire_grace_time=1800,
+                              replace_existing=True)
+        logger.info("zap: registered business-hours scans for %d categories", len(_zs0.ZAP_CATS))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("zap business-hours schedule failed: %s", e)
+    # 🛡️ שומר-סף על **התוצאה**: אם בשעות הפעילות התמונה ישנה מ-4 שעות — מרים
+    # סריקה בעצמו. זה מה שהיה חסר כשהסריקה שתקה שבוע שלם (29/07→05/08) בלי
+    # שאיש ידע, והמסך הציג נתון בן שבוע כאילו הוא טרי.
+    scheduler.add_job(_zap_stale_guard_job, "interval", minutes=30,
+                      id="zap_stale_guard", max_instances=1, coalesce=True,
+                      misfire_grace_time=900)
     # ⚠️ שומר סף לסריקה: ת'רד שנהרג (deploy/מיחזור מופע ב-Render) השאיר סריקה
     # חצי-גמורה, והתמונה במסך נשארה ישנה עד שמישהו הריץ ידנית. כל 10 דקות
     # בודקים אם הסריקה נעצרה באמצע וממשיכים אותה (אסי, 27/07/2026).
