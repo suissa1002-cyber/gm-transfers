@@ -10462,6 +10462,57 @@ def admin_order_status_schedule(oid: int, body: StatusScheduleIn,
             "status_label": label, "run_at": run_at}
 
 
+
+@app.get("/api/admin/diag")
+def admin_diag(x_admin_key: Optional[str] = Header(None)):
+    """מדידת ביצועים **מתוך השרת** — בלי השהיית הרשת של הלקוח.
+
+    ⚠️ למה זה נחוץ: כשמודדים מהמחשב של אסי, כל מספר כולל את זמן ההלוך-חזור
+    של הקו שלו. ב-05/08/2026 הקו הביתי הראה 400ms והסתיר את השאלה האמיתית —
+    האם השרת עצמו איטי. כאן כל הזמנים נמדדים בתוך המופע: DB, WooCommerce,
+    ומצב התהליך. קריאה בלבד."""
+    _require_admin(x_admin_key)
+    import time as _t
+    import requests as _rq
+    out = {"at": datetime.now().isoformat(timespec="seconds")}
+
+    def _ms(fn):
+        t0 = _t.perf_counter()
+        try:
+            fn()
+            return round((_t.perf_counter() - t0) * 1000)
+        except Exception as e:  # noqa: BLE001
+            return f"שגיאה: {str(e)[:60]}"
+
+    out["db_ms"] = [_ms(lambda: db.sales_state_get("poll_last_run")) for _ in range(3)]
+    base, k, s_ = _wc_creds()
+    out["wc_ms"] = [_ms(lambda: _rq.get(f"{base}/wp-json/wc/v3/orders", auth=(k, s_),
+                                        params={"per_page": 1, "_fields": "id"}, timeout=60))
+                    for _ in range(3)]
+    try:
+        import os as _os
+        import resource as _res
+        import threading as _th
+        ru = _res.getrusage(_res.RUSAGE_SELF)
+        out["process"] = {
+            "threads": _th.active_count(),
+            "rss_mb": round(ru.ru_maxrss / (1024 * 1024 if _os.uname().sysname == "Darwin" else 1024)),
+            "cpu_user_s": round(ru.ru_utime), "cpu_sys_s": round(ru.ru_stime),
+        }
+        with open("/proc/uptime") as f:      # גיל המופע — מזהה restart/cold start
+            out["process"]["host_uptime_s"] = int(float(f.read().split()[0]))
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        jobs = scheduler.get_jobs()
+        out["jobs"] = {"n": len(jobs),
+                       "next": sorted(str(j.next_run_time)[:19] for j in jobs if j.next_run_time)[:3]}
+    except Exception:  # noqa: BLE001
+        pass
+    out["commit"] = (os.getenv("RENDER_GIT_COMMIT") or "")[:7]
+    out["region"] = os.getenv("RENDER_REGION") or os.getenv("RENDER_SERVICE_REGION") or ""
+    return out
+
 @app.get("/api/admin/scheduled-status")
 def admin_scheduled_status_list(x_admin_key: Optional[str] = Header(None)):
     _require_admin(x_admin_key)
