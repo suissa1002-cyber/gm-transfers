@@ -1507,9 +1507,28 @@ function renderZap(){
   // תקועה בזמן שהיא רצה בפועל (אסי, 28/07/2026: "נראה שתקוע 24/169").
   if(Z.progress&&!S.zapPoll) zapScanPoll();
   if(!Z.rows){ app.innerHTML=`<h1 class="title">${ico('zap',19)} זאפ</h1>${adminTabsHTML()}<div class="empty">טוען…</div>`; return; }
-  const s=Z.summary||{}, q=(Z.q||'').toLowerCase();
+  const s=Z.summary||{};
+  // ⚠️ חיפוש חסין-פורמט. התאמת-מחרוזת מילולית נכשלה על כל דבר שאינו הקלדה
+  // מדויקת: היצרנים מדביקים את מספר הדגם ("Galaxy Z Fold8", "FreeClip 2S",
+  // "Buds3") והמחפש מקליד בטבעיות ("fold 8"), ויש גם מקפים, גרשיים (7.6״)
+  // וסימני-כיוון בשמות מהפיד. התוצאה: 0 שורות ומוצר שנראה כאילו איננו בכלי,
+  // בזמן שהוא שם ומשויך לדגם (אסי, 05/08/2026 — "לא להתעסק עם כל מוצר על
+  // רווח יותר או פחות"). הכלל: מנרמלים את שני הצדדים, מפרקים לאסימונים, וכל
+  // אסימון חייב להופיע — בלי תלות בסדר, ברווחים או בפיסוק.
+  const zapNorm=t=>(t==null?'':String(t)).toLowerCase()
+        .replace(/[‎‏‪-‮⁦-⁩]/g,'')
+        .replace(/[^a-z0-9֐-׿]+/g,' ').trim();
+  const qTok=zapNorm(Z.q).split(' ').filter(Boolean);
+  const qFlat=qTok.join('');
+  // אסימון בן תו אחד ("8", "z") מופיע כמעט בכל שם — הוא משמעותי רק כחלק
+  // מהרצף ("fold 8"), ולכן חיפוש-אסימונים חופשי נפסל כשיש כזה.
+  const tokOK=qTok.length>0 && qTok.every(t=>t.length>1);
   let rows=Z.rows.filter(r=>{
-    if(q && (r.name+' '+(r.zap_title||'')+' '+r.brand+' '+(r.sku||'')).toLowerCase().indexOf(q)<0) return false;
+    if(qTok.length){
+      const flat=zapNorm(r.name+' '+(r.zap_title||'')+' '+r.brand+' '+(r.sku||'')).replace(/ /g,'');
+      // רצף (חסין רווחים/פיסוק) — או כל האסימונים, בכל סדר, כשכולם משמעותיים
+      if(!(flat.includes(qFlat) || (tokOK && qTok.every(t=>flat.includes(t))))) return false;
+    }
     if(Z.brand && r.brand!==Z.brand) return false;
     if(Z.state==='pending') return !!Z.pend[r.sku];
     // חוצה-צ׳יפים: מה שבפועל מופיע בדף השוואה, גם אם סווג אחרת
