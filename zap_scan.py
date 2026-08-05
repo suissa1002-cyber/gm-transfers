@@ -1278,7 +1278,13 @@ def run(cat=None, limit: int | None = None, sleep: float = 1.1) -> dict:
             logger.warning("zap analyse failed for %s: %s", t.get("sku"), e)
             continue
         mid = r.get("modelid")
-        if not mid:
+        # ⚠️ מוצר אב לא נכנס לקיבוץ-לפי-דגם. הוא והצל שנוצר ממנו נפתרים לאותו
+        # modelid, ולכן המיזוג בלע אותו והוא נעלם מהמסך גם אחרי שהוחזר לרשימת
+        # היעדים — 115 יעדים נכנסו אבל רק 104 שורות יצאו (אסי, 05/08/2026).
+        # שורה = דגם בזאפ, אבל ההורה הוא ישות שצריך לנהל בנפרד (הסתרה/צללים).
+        if r.get("is_parent"):
+            orphans.append(r)
+        elif not mid:
             orphans.append(r)
         else:
             g = by_model.get(mid)
