@@ -1538,6 +1538,10 @@ function renderZap(){
     if(Z.state==='pending') return !!Z.pend[r.sku];
     // חוצה-צ׳יפים: מה שבפועל מופיע בדף השוואה, גם אם סווג אחרת
     if(Z.state==='_onzap') return zapState(r).k==='listed';
+    // אב/צל חותכים את כל הסיבות (הורה מוסתר, צל משודר, צל שאין לו עדיין דגם),
+    // ולכן הם צ׳יפים משלהם ולא reason_code.
+    if(Z.state==='_parents') return !!(r.is_parent||(r.shadows||0));
+    if(Z.state==='_shadows') return !!r.is_shadow;
     // ⚠️ צ׳יפ אחד בדיוק לכל שורה, לפי `reason_code`. סינון לפי סטטוס זאפ גרם
     // לכך ש"לא בדף" ו"דורש מוצר צל" הכילו את אותם מוצרים, ואי אפשר היה
     // לעבוד על אף אחד מהם כרשימה סגורה (אסי, 27/07/2026).
@@ -1607,6 +1611,11 @@ function renderZap(){
       ${rchip('no_model','אין דגם')}
       ${rchip('not_sellable','⚠️ לא ניתן למכירה')}
       <span class="zsep"></span>
+      ${(()=>{ // צ׳יפים חוצי-סיבה לזוג אב/צל — לראות את שני הצדדים כרשימה סגורה
+        const np=Z.rows.filter(r=>r.is_parent||(r.shadows||0)).length;
+        const ns=Z.rows.filter(r=>r.is_shadow).length;
+        return (np?chip('_parents','מוצרי אב',np):'')+(ns?chip('_shadows','מוצרי צל',ns):'');
+      })()}
       ${rchip('hidden','מוסתר')}
       ${rchip('hidden_shadows','מוסתר · יש צללים')}
       ${rchip('off_feed','לא בפיד')}
