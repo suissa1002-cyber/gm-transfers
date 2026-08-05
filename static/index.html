@@ -452,6 +452,11 @@
   .zname{white-space:normal;line-height:1.35;min-width:230px;max-width:380px}
   .zname b{font-weight:700;font-size:14px;display:block}
   .zname small{display:block;color:var(--txt-3);font-size:11.5px;margin-top:3px}
+  /* תג זהות: מבדיל בין מוצר האב לצללים שנוצרו ממנו, ששמותיהם כמעט זהים */
+  .zkind{display:inline-block;margin-top:4px;padding:1px 7px;border-radius:999px;
+         font-size:11px;font-weight:700;line-height:1.6;white-space:nowrap;border:1px solid}
+  .zkind-sh{color:#0b5ed7;background:#e6f2ff;border-color:#b6d4fe}
+  .zkind-par{color:#6b4700;background:#fff4e0;border-color:#f0d5a8}
   .zstock{font-size:19px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1}
   .zstock i{font-style:normal;font-size:11px;color:var(--txt-3);font-weight:400;margin-inline-start:3px}
   .zprice{font-size:14.5px;font-weight:700;font-variant-numeric:tabular-nums}
@@ -1664,8 +1669,13 @@ function zapTable(rows){
       const trust=zt&&(r.status==='listed'||r.status==='missing');
       const title=trust?zt:r.name;
       const alt=trust?(r.name!==zt?r.name:''):(zt?'בזאפ הותאם ל: '+zt:'');
+      // תג זהות מפורש: אחרי יצירת צללים המסך מציג את ההורה ואת הצללים זה לצד
+      // זה עם שמות כמעט זהים, ובלי סימון אי אפשר לדעת על מה לוחצים (אסי, 05/08).
+      const kind = r.is_shadow ? `<span class="zkind zkind-sh" title="מוצר צל — נוצר כדי שזאפ ישייך נפח בודד לדף שלו">מוצר צל</span>`
+                 : (r.is_parent||(r.shadows||0)) ? `<span class="zkind zkind-par" title="מוצר אב — מוסתר מזאפ, ${r.shadows||0} מוצרי צל משודרים במקומו">מוצר אב · ${r.shadows||0} צללים</span>`
+                 : '';
       return `<tr class="zrow" id="ztr${i}" onclick="zapToggleRow(${i})">
-        <td class="zname"><b>${escW(title)}</b>
+        <td class="zname"><b>${escW(title)}</b>${kind}
           ${alt?`<small class="zalt" title="${escW(alt)}">${escW(alt)}</small>`:''}
           <small>${escW(r.brand)}${colors}${r.caps&&r.caps.length>1?` · ${r.caps.length} נפחים`:''}${r.sku?' · '+escW(r.sku):''}${r.zap_hidden?' · <span style="color:var(--red-ink)">מוסתר מזאפ</span>':''}</small></td>
         <td class="znum"><span class="zstock">${r.stock||0}</span><i>יח׳</i></td>

@@ -304,7 +304,10 @@ def build_targets(cat=None, beat=None) -> list:
         pid = str(f.get("num") or "").strip()
         if pid:
             feed_by_pid[pid] = f
-    # הורה שהצללים שלו בפיד מיוצג על ידם — לא כופלים אותו כשורה נפרדת
+    # הורה שהצללים שלו כבר בפיד. ⚠️ עד 05/08/2026 הוא הושמט מהרשימה לגמרי ("לא
+    # כופלים אותו"), אבל אז הוא פשוט **נעלם מהמסך** אחרי יצירת הצללים ואי אפשר
+    # היה לראות את מצבו, לבטל הסתרה או להבין למי הצללים שייכים (אסי, 05/08).
+    # עכשיו הוא נשאר כשורה מסומנת `is_parent` — התצוגה מבדילה בין השניים.
     parents_via_shadow = {par for par, shs in shadows.items()
                           if any(str(sh["id"]) in feed_by_pid for sh in shs)}
 
@@ -316,8 +319,6 @@ def build_targets(cat=None, beat=None) -> list:
 
     out = []
     for pid in pids:
-        if pid in parents_via_shadow:
-            continue
         f = feed_by_pid.get(pid)
         c = meta_by_pid.get(pid) or {}
         name = (f or {}).get("name") or c.get("name") or ""
@@ -350,6 +351,9 @@ def build_targets(cat=None, beat=None) -> list:
             "cat_hidden": 1 if c.get("catalog_visibility") in ("hidden", "search") else 0,
             "is_shadow": 1 if int(pid) in shadow_ids else 0,
             "shadows": len(shadows.get(pid) or []), "caps": caps,
+            # הורה שכבר מיוצג בזאפ ע"י הצללים שלו — מסומן כדי שהתצוגה תראה
+            # "מוצר אב" ולא תתייחס אליו כמוצר רגיל שנעלם מהפיד.
+            "is_parent": 1 if pid in parents_via_shadow else 0,
         })
     return out
 
@@ -874,6 +878,7 @@ def analyse(t: dict, cat=None) -> dict:
            "product_id": t.get("product_id"), "site_url": t.get("site_url"),
            "in_feed": t.get("in_feed", 1), "zap_hidden": t.get("zap_hidden", 0),
            "is_shadow": t.get("is_shadow", 0), "shadows": t.get("shadows", 0),
+           "is_parent": t.get("is_parent", 0),
            # ⚠️ analyse בונה מילון עם רשימת שדות מפורשת, ולכן כל שדה חדש
            # שנוסף ב-build_targets מת כאן בשקט. הפירוט לפי מק"ט נוצר ונמחק
            # בדרך, והפאנל נשאר ריק (אסי, 28/07/2026).
