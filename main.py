@@ -10327,6 +10327,7 @@ def zap_pending_done(sku: str = "", key: str = "",
 
 @app.post("/api/admin/zap/scan-now")
 def zap_scan_now(limit: int = 0, reset: int = 0, force: int = 0, cat: int = 0,
+                 reset_failed: int = 0,
                  x_admin_key: Optional[str] = Header(None)):
     """מפעיל סריקה. ⚠️ סריקה מלאה (~250 דגמים) נמשכת 6-8 דקות — הרבה מעבר
     לתקרת הזמן של הפרוקסי של Render (502). לכן היא נזרקת ל-scheduler ומחזירים
@@ -10358,6 +10359,10 @@ def zap_scan_now(limit: int = 0, reset: int = 0, force: int = 0, cat: int = 0,
     if reset:
         n = zap_scan.reset_mapping()
         logger.info("zap: mapping cache reset (%d keys)", n)
+    elif reset_failed:
+        # אחרי שיפור בשאילתת החיפוש: רק מי שנכשל ('0') מקבל הזדמנות שנייה.
+        n = zap_scan.reset_mapping(only_failed=True)
+        logger.info("zap: failed-mapping cache reset (%d keys)", n)
     if limit and limit <= 25:
         return zap_scan.run(cat, limit=limit).get("summary")
     # ⚠️ לא דרך ה-scheduler: הוא מוגדר לשעון ישראל ו-datetime.now() על Render הוא

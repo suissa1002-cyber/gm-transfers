@@ -534,6 +534,17 @@ def _audio_glue(q: str) -> str:
     return g if g != q else ""
 
 
+def _audio_unglue(q: str) -> str:
+    """"FreeClip 2S" → "FreeClip 2 S" — ההפך מ-_audio_glue.
+    ⚠️ סיומת-גרסה באות בודדת מקוטלגת בזאפ **עם רווח**: החיפוש על "FreeClip 2S"
+    לא מחזיר את דף הדגם 1268459 בכלל (0 מתוך 6 מועמדים), ורק "FreeClip 2 S"
+    מחזיר אותו ראשון. ה-2S הופיע ככה כ"זאפ לא מכיר דגם תואם" למרות שדף המוצר
+    קיים (אסי, 05/08/2026). הצורה המודבקת נשארת ראשונה — זו עדיין הצורה
+    הנפוצה — וזו רק ניסיון נוסף כשהיא נכשלה."""
+    u = re.sub(r"\b(\d{1,2})([A-Za-z])\b", r"\1 \2", q or "")
+    return u if u != q else ""
+
+
 def _audio_edition(s: str) -> set:
     low = re.sub(r"[^\w]+", " ", (s or "").lower())
     return {t for t in low.split() if t in _EDITION}
@@ -729,8 +740,11 @@ def _is_accessory(name: str, cat=None) -> bool:
 # מותג+דגם בלועזית, ואז זנב שיווקי בעברית. לוקחים את הרצף הלועזי.
 _AUDIO_SPEC = re.compile(
     r"\b(tws|anc|enc|bt|bluetooth|wireless|wired|gaming|rgb|hi-?res|thx|"
-    r"over[- ]?ear|on[- ]?ear|in[- ]?ear|true|stereo|surround|spatial|audio|"
+    r"over[- ]?ear|on[- ]?ear|in[- ]?ear|open[- ]?ear|true|stereo|surround|spatial|audio|"
     r"ip[x]?\d{2}|\d+\s*db|\d+\s*(h|hrs|hours)|mic|microphone)\b", re.I)
+# גרסת פרוטוקול שנשארת יתומה אחרי שהמילה נמחקה ("Bluetooth 6.0" → " 6.0").
+# בלי זה היא נכנסת לשאילתה, זאפ מדרדר לתוצאות אקראיות, והדגם לא נמצא כלל.
+_AUDIO_VER = re.compile(r"\b\d+\.\d+\b")
 
 
 def _audio_query(name: str) -> str:
@@ -739,6 +753,7 @@ def _audio_query(name: str) -> str:
     m = re.search(r"[A-Za-z][A-Za-z0-9''\-\.\(\) ]{2,}", t)
     q = (m.group(0) if m else t)
     q = _AUDIO_SPEC.sub(" ", q)
+    q = _AUDIO_VER.sub(" ", q)
     # ⚠️ סיומת-גרסה באות בודדת בסוף מודבקת למספר הדגם: "FreeClip 2 S" →
     # "FreeClip 2S". אות בודדת נופלת מהטוקניזציה, ולכן "FreeClip 2 S" נראה
     # כהתאמה מדויקת ל-"FreeClip 2" שלנו וקיבל ציון גבוה מהדף הנכון
@@ -781,7 +796,7 @@ def resolve_modelid(name: str, sku: str, cat=None) -> int | None:
     # ⚠️ בתחום האודיו גם **החיפוש** צריך את הצורה המודבקת: "Samsung Galaxy
     # Buds 3" מחזיר בזאפ רק טלפונים, ו-"Buds3" מחזיר את דף האוזניות
     # (אסי, 28/07/2026).
-    tries = ([q, _audio_glue(q), _short_query(q)] if audio
+    tries = ([q, _audio_glue(q), _audio_unglue(q), _short_query(q)] if audio
              else [q, _base_query(q), _short_query(q)])
     for attempt in [a for a in dict.fromkeys(tries) if a]:
         try:
@@ -1179,14 +1194,27 @@ def _summarise(rows: list, partial: bool = False) -> dict:
     }
 
 
-def reset_mapping() -> int:
+def reset_mapping(only_failed: bool = False) -> int:
     """מנקה את מטמון דגם→modelid. נדרש אחרי שינוי בלוגיקת ההתאמה — אחרת
-    מיפויים שנוצרו בגרסה קודמת נשארים תקועים לנצח (המטמון לצמיתות בכוונה)."""
+    מיפויים שנוצרו בגרסה קודמת נשארים תקועים לנצח (המטמון לצמיתות בכוונה).
+
+    only_failed=True מנקה **רק** את מי שסומן '0' (חיפשנו ולא נמצא). זה הכלי
+    הנכון אחרי שיפור בשאילתת החיפוש: דגם שכבר נפתר נכון לא צריך להיפתר שוב
+    (כל פתרון = כמה חיפושים + משיכת כותרות מזאפ), ומה שנכשל מקבל הזדמנות
+    שנייה. איפוס מלא שמור לשינוי בלוגיקת ההתאמה עצמה."""
     n = 0
-    for pref in ("zap_mid:", "zap_title:"):
-        for k, _ in db.sales_state_prefix(pref):
-            db.sales_state_set(k, "")     # ריק ≠ '0' → ייחשב כלא-נבדק ויחושב מחדש
-            n += 1
+    failed = set()
+    for k, v in db.sales_state_prefix("zap_mid:"):
+        if only_failed and str(v).strip() != "0":
+            continue
+        failed.add(k.split("zap_mid:", 1)[-1])
+        db.sales_state_set(k, "")         # ריק ≠ '0' → ייחשב כלא-נבדק ויחושב מחדש
+        n += 1
+    for k, _ in db.sales_state_prefix("zap_title:"):
+        if only_failed and k.split("zap_title:", 1)[-1] not in failed:
+            continue
+        db.sales_state_set(k, "")
+        n += 1
     return n
 
 
