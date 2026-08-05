@@ -470,6 +470,13 @@
   .zk .zkc{cursor:pointer;transition:border-color .12s,background .12s}
   .zk .zkc:hover{border-color:var(--brand)}
   .zk .zkc.on{border-color:var(--brand);background:var(--brand-bg)}
+  /* מסלול העברה: תוויות מפורשות במקום חץ דו-משמעי ב-RTL */
+  .rt{display:inline-flex;align-items:center;gap:9px;white-space:nowrap}
+  .rt-side{display:inline-flex;flex-direction:column;line-height:1.15}
+  .rt-lab{font-size:10px;font-weight:700;letter-spacing:.02em;color:var(--txt-3)}
+  .rt-from{color:#b45309}
+  .rt-to{color:var(--brand-ink,#0d5c1e)}
+  .rt-ar{display:inline-flex;color:var(--txt-3);flex:none}
   .zscan{border-color:var(--brand);background:var(--brand-bg)}
   .zscan .h{color:var(--brand-ink);margin-bottom:var(--s3)}
   .zscan .pc{margin-inline-start:auto;font-weight:800;font-variant-numeric:tabular-nums}
@@ -2727,7 +2734,7 @@ function renderScan(app){
       <div class="scan-side">
         <div class="panel">
           <h2>פעולה ${t.op_id}</h2>
-          <div class="muted">מ<b style="color:var(--txt)">${t.from_branch_name}</b> → ${t.to_branch_name}<br>${fmtTime(t.created_at)} · ${t.employee||''}</div>
+          <div class="muted">מ<b style="color:#b45309">${t.from_branch_name}</b> אל <b style="color:var(--brand-ink,#0d5c1e)">${t.to_branch_name}</b><br>${fmtTime(t.created_at)} · ${t.employee||''}</div>
           ${needEmp
             ? `<input id="empInput" class="scan-input" autocomplete="off" placeholder="מי קולט? שם הנציג">
                <div class="count" style="color:var(--amber)">הזן את שמך ולחץ Enter כדי להתחיל לסרוק</div>`
@@ -5451,6 +5458,7 @@ const _IPATHS={
   restore:'<rect x="2" y="3" width="20" height="5" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M9 15l3-3 3 3"/><line x1="12" y1="12" x2="12" y2="18"/>',
   user:'<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
   bot:'<path d="M12 8V4"/><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M2 14h2M20 14h2M9 13v2M15 13v2"/>',
+  arrowLeft:'<line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>',
   globe:'<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>',
   info:'<circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>',
   star:'<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>',
@@ -9260,11 +9268,21 @@ function renderAdmin(){
   if(S._refocusFilter){ const fq=document.getElementById('fq'); if(fq){ fq.focus(); const v=fq.value; fq.value=''; fq.value=v; } S._refocusFilter=false; }
 }
 function fmtAge(h){ h=h||0; if(h<1)return Math.round(h*60)+' דק׳'; if(h<48)return Math.round(h)+'ש׳'; return Math.round(h/24)+' ימים'; }
+/* ⚠️ חץ בתוך טקסט RTL הוא מלכודת: הגליף מצביע ימינה, הקריאה מימין לשמאל,
+   והעין לא יודעת מי מוסר ומי מקבל (אסי, 05/08/2026 — "הכיוון נראה מהופך").
+   הפתרון: לא להסתמך על החץ בכלל — תווית מפורשת לכל צד + צבע. */
+function routeHTML(from,to){
+  return `<span class="rt"><span class="rt-side"><span class="rt-lab">מוסר</span>`+
+         `<b class="rt-from">${escW(from||'?')}</b></span>`+
+         `<span class="rt-ar">${ico('arrowLeft',13)}</span>`+
+         `<span class="rt-side"><span class="rt-lab">מקבל</span>`+
+         `<b class="rt-to">${escW(to||'?')}</b></span></span>`;
+}
 function adminRow(t){
   return `<tr class="${t.overdue?'overdue':''}" onclick="adminOpen('${t.op_id}')">
     <td><span class="pill ${t.status}">${STATUS[t.status]||t.status}</span></td>
     <td><b>${t.op_id}</b> ${t.overdue?'<span class="badge-late">באיחור 24ש׳+</span>':''}${t.missing_count?` <span class="badge-late">✗ ${t.missing_count} חוסר</span>`:''}${t.redirected_count?` <span class="badge-manual">↪ ${t.redirected_count} הופנה</span>`:''}</td>
-    <td>${t.from_branch_name} → ${t.to_branch_name}</td>
+    <td class="route">${routeHTML(t.from_branch_name,t.to_branch_name)}</td>
     <td>${fmtTime(t.created_at)}</td>
     <td>${t.employee||'—'}</td>
     <td class="prog-cell">${t.received_units}/${t.total_units}</td>
@@ -10212,7 +10230,7 @@ function renderHome(){
   const _agT=h=>{ const d=Math.floor((h||0)/24); return d>=1?d+' י׳':Math.round(h||0)+'ש׳'; };
   if(homeShow('transfers')) z3.push(crmCard(homeHead(ico('truck',16),'העברות',open+' פתוחות · '+overdue+' באיחור',overdue?"goOverdueTransfers()":"goOpenTransfers()")+
     (trfOpen.length?`<div style="max-height:280px;overflow-y:auto;margin:0 -4px;padding:0 4px">`+trfOpen.map(t=>homeRow(
-       `<span class="lead" style="color:${t.overdue?'var(--red)':'var(--txt-3)'}">${ico(t.overdue?'clock':'truck',16)}</span><div class="main"><div class="t1">${escW(t.from_branch_name||t.from_name||'?')} → ${escW(t.to_branch_name||t.to_name||'?')}</div></div>
+       `<span class="lead" style="color:${t.overdue?'var(--red)':'var(--txt-3)'}">${ico(t.overdue?'clock':'truck',16)}</span><div class="main"><div class="t1">מ<b style="color:#b45309">${escW(t.from_branch_name||t.from_name||'?')}</b> אל <b style="color:var(--brand-ink,#0d5c1e)">${escW(t.to_branch_name||t.to_name||'?')}</b></div></div>
         ${t.missing?`<span class="t2" style="flex:none">${t.missing} חסר</span>`:''}
         <span class="tnum" dir="ltr" style="flex:none;font-size:11px;${t.overdue?'color:var(--red-ink);font-weight:700':'color:var(--txt-3)'}">${_agT(t.age_hours)}</span>`,
        "toggleAdmin()")).join('')+`</div>`
