@@ -1066,9 +1066,17 @@ def plan(pid, cat=None) -> dict:
 
     # ⚠️ הסרת הנפחים מותירה "RAM" יתום ומקף תלוי, והשאילתה שנשלחה הייתה
     # "…Dream Edition RAM – 512GB" — זבל שזאפ לא מזהה (אסי, 27/07/2026).
-    core = re.sub(r"\s*\d+\s*(TB|GB)\b", "", _clean_query(p.get("name") or ""), flags=re.I)
-    core = re.sub(r"\bRAM\b", " ", core, flags=re.I)
-    core = re.sub(r"\s+", " ", core).strip(" -–—,")
+    # ⚠️ הפאנל חייב לחפש **בדיוק כמו הסריקה**. עד 05/08/2026 הוא הריץ תמיד את
+    # מנקה-הטלפונים, ולכן באוזניות נשלחה הכותרת הגולמית ("…Open-Ear Bluetooth
+    # 6.0") בזמן שהסריקה כבר מצאה את הדגם מהשאילתה הנקייה. התוצאה: השורה
+    # הראתה דגם משויך והפאנל לידה הכריז "אין דגם בזאף" (אסי, 05/08/2026).
+    audio = not cat_cfg(cat)["caps"]
+    if audio:
+        core = _audio_query(p.get("name") or "")
+    else:
+        core = re.sub(r"\s*\d+\s*(TB|GB)\b", "", _clean_query(p.get("name") or ""), flags=re.I)
+        core = re.sub(r"\bRAM\b", " ", core, flags=re.I)
+        core = re.sub(r"\s+", " ", core).strip(" -–—,")
     multi = len(by_cap) > 1
     steps = []
     for cap in sorted(by_cap, key=lambda c: int(re.sub(r"\D", "", c) or 0)):
@@ -1082,7 +1090,9 @@ def plan(pid, cat=None) -> dict:
         # שזאפ לא מכיר ("Aston Martin") מדרדרת את השאילתה המלאה, והמקוצרת
         # מוצאת את הדגם — אבל רק דירוג-על יבחר בו את המהדורה הנכונה.
         best, seen = None, {}
-        for attempt in [a for a in (q, _base_query(q), _short_query(q)) if a]:
+        _attempts = ((q, _audio_glue(q), _audio_unglue(q), _short_query(q)) if audio
+                     else (q, _base_query(q), _short_query(q)))
+        for attempt in [a for a in dict.fromkeys(_attempts) if a]:
             try:
                 html = _get(f"{BASE}/search.aspx?keyword={urllib.parse.quote(attempt)}")
             except Exception as e:  # noqa: BLE001
