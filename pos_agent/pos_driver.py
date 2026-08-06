@@ -10,7 +10,7 @@ import time
 
 from pywinauto import Application, Desktop, mouse
 
-DRIVER_VERSION = "2026-08-07.9"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
+DRIVER_VERSION = "2026-08-07.10"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
 POS_TITLE_RE = ".*אורדר.*"
 FORM_TITLE = "הורדה מהמלאי"
 ITEM_TITLE = "הורדה מהמלאי - פעולה חדשה"
@@ -56,7 +56,11 @@ F_BRANCH_COMBO  = 14    # ComboBox הסניפים
 F_DESC          = 8     # TextBox תיאור פעולה (הסכום)
 F_EMP_NO        = 3     # TextBox מס' עובד
 F_EMP_NAME      = 2     # TextBox שם עובד
-I_QTY           = 21    # TextBox כמות (מסך פריטים)
+# מסך הפריטים ("הורדה מהמלאי - פעולה חדשה"):
+I_CODE          = 15    # TextBox "קוד פריט/סריאלי" (הוורוד, למעלה)
+I_STOCK_NOW     = 21    # TextBox "מלאי נוכחי" — לקריאה בלבד! ⛔ לא הכמות
+I_QTY           = 22    # TextBox "כמות" ← זה השדה שממלאים
+I_NOTE          = 14    # TextBox "הערה" (הרחב)
 
 
 def connect():
@@ -167,6 +171,25 @@ def _click_emp_button(popup, emp_name, T):
     except Exception:                    # noqa: BLE001
         pass
     _click_rect(popup, [rect[0] + dx, rect[1] + dy, rect[2] + dx, rect[3] + dy])
+
+
+def _item_action_buttons(win):
+    """כפתורי הפעולה במסך הפריטים, מימין לשמאל:
+    [0]=סיים פעולה · [1]=הורד מהמלאי · [2]=עדכן · [3]=מחק · [4]=מחק הכל.
+    מאותרים כשורה עם הכי הרבה כפתורים מצוירים — יציב גם אם החלון זז."""
+    try:
+        rects = [(c, c.rectangle()) for c in win.descendants()
+                 if c.class_name() == "ThunderRT6UserControlDC"]
+        rows = {}
+        for c, r in rects:
+            rows.setdefault(round(r.top / 12) * 12, []).append((c, r))
+        if not rows:
+            return []
+        row = max(rows.values(), key=len)
+        row.sort(key=lambda cr: -cr[1].left)
+        return [c for c, _ in row]
+    except Exception:                    # noqa: BLE001
+        return []
 
 
 def _is_selected(c):
@@ -613,20 +636,37 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
                            % (" — הקופה אמרה: %s" % msg if msg else
                               " (לא הוצגה הודעה — ייתכן שהלחיצה פספסה)"))
 
-    # 4) הזנת פריטים
+    # 4) הזנת פריטים — לכל פריט: קוד → Enter → **כמות (תמיד)** → "הורד מהמלאי".
+    #    ⚠️ הכמות היא id=22; id=21 הוא "מלאי נוכחי" (תצוגה). בלי מילוי כמות
+    #    הפריט לא נכנס לרשימה שבתחתית (אסי, 07/08).
     for it in (removal.get("items") or []):
         sku = str(it.get("sku") or "").strip()
         qty = float(it.get("qty") or 1)
         if not sku:
             continue
         items_win.set_focus()
-        items_win.type_keys("{DELETE 20}%s{ENTER}" % sku, with_spaces=True)
-        time.sleep(0.8)
-        if qty and qty != 1:
-            try: _child(items_win, I_QTY).set_edit_text(str(int(qty) if float(qty).is_integer() else qty))
-            except Exception: pass       # noqa: BLE001
-        _click_rect(items_win, T["add_rect"])
-        time.sleep(0.6)
+        try:
+            _set_text(_child(items_win, I_CODE), sku)
+        except Exception:                # noqa: BLE001
+            items_win.type_keys("{DELETE 20}%s" % sku, with_spaces=True)
+        from pywinauto.keyboard import send_keys as _sk2
+        _sk2("{ENTER}")
+        time.sleep(1.0)
+
+        qty_s = str(int(qty) if float(qty).is_integer() else qty)
+        try:
+            _set_text(_child(items_win, I_QTY), qty_s)
+        except Exception as e:           # noqa: BLE001
+            _shot("qty")
+            raise RuntimeError("מילוי כמות נכשל עבור %s: %s" % (sku, _err(e)))
+        time.sleep(0.4)
+
+        btns = _item_action_buttons(items_win)   # [0]=סיים פעולה, [1]=הורד מהמלאי
+        if len(btns) >= 2:
+            _click_ctrl(btns[1])
+        else:
+            _click_rect(items_win, T["add_rect"])
+        time.sleep(0.9)
 
     if screenshot_path:
         try: items_win.capture_as_image().save(screenshot_path.replace(".png", "_items.png"))
@@ -638,8 +678,13 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
         except Exception: pass           # noqa: BLE001
         return ""
 
-    if not T.get("finish_rect"):
-        raise RuntimeError("קואורדינטת 'סיים פעולה' טרם כוילה")
-    _click_rect(items_win, T["finish_rect"])
-    time.sleep(1.5)
+    btns = _item_action_buttons(items_win)       # [0] = "סיים פעולה"
+    if btns:
+        _click_ctrl(btns[0])
+    elif T.get("finish_rect"):
+        _click_rect(items_win, T["finish_rect"])
+    else:
+        raise RuntimeError("לא אותר כפתור 'סיים פעולה'")
+    time.sleep(2.0)
+    _dismiss_message_box()
     return ""
