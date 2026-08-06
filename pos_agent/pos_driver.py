@@ -10,7 +10,7 @@ import time
 
 from pywinauto import Application, Desktop, mouse
 
-DRIVER_VERSION = "2026-08-07.11"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
+DRIVER_VERSION = "2026-08-07.12"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
 POS_TITLE_RE = ".*אורדר.*"
 FORM_TITLE = "הורדה מהמלאי"
 ITEM_TITLE = "הורדה מהמלאי - פעולה חדשה"
@@ -171,6 +171,24 @@ def _click_emp_button(popup, emp_name, T):
     except Exception:                    # noqa: BLE001
         pass
     _click_rect(popup, [rect[0] + dx, rect[1] + dy, rect[2] + dx, rect[3] + dy])
+
+
+def _type_text(c, text):
+    """מקליד ערך לשדה **בהקלדה אמיתית**.
+
+    ⚠️ למה לא set_edit_text: VB6 מעדכן את הערך הפנימי של הפקד רק מאירועי
+    מקלדת. set_edit_text משנה רק את מה שמוצג — הכמות נראתה '1' על המסך
+    והקופה בכל זאת ענתה 'ערך לא חוקי בשדה כמות' (אסי, 07/08).
+    TAB בסוף מאלץ את הקופה לאמת ולקבע את הערך."""
+    from pywinauto.keyboard import send_keys
+    c.click_input()
+    time.sleep(0.2)
+    send_keys("^a{DELETE}")
+    time.sleep(0.1)
+    send_keys(str(text))
+    time.sleep(0.2)
+    send_keys("{TAB}")
+    time.sleep(0.3)
 
 
 def _item_action_buttons(win):
@@ -417,6 +435,20 @@ def _cleanup(app, T):
     """סוגר שאריות דיאלוגים מהרצה קודמת שנכשלה (טופס/מסך פריטים/פופאפ עובד),
     כדי שהתפריט יהיה פנוי. ריצה שנכשלה משאירה חלון פתוח שחוסם את הבא."""
     _dismiss_message_box()          # תיבת הודעה תקועה חוסמת הכל
+    # מסך הפריטים אינו נסגר ב-ESC — לוחצים "יציאה" (הכפתור התחתון בעמודה הימנית).
+    # בלעדיו הוא נשאר פתוח וחוסם את תפריט הקופה בריצה הבאה (ElementNotEnabled).
+    try:
+        iw = _spec(app, ITEM_TITLE, timeout=1)
+        if iw is not None:
+            cands = [(c, c.rectangle()) for c in iw.descendants()
+                     if c.class_name() == "ThunderRT6UserControlDC"]
+            if cands:
+                exit_btn = max(cands, key=lambda cr: (cr[1].top, cr[1].left))[0]
+                _click_ctrl(exit_btn)
+                time.sleep(1.0)
+                _dismiss_message_box()
+    except Exception:                    # noqa: BLE001
+        pass
     for _ in range(3):
         closed = False
         for title in (ITEM_TITLE, FORM_TITLE, "בחר שם עובד"):
@@ -646,10 +678,15 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
             continue
         items_win.set_focus()
         try:
-            _set_text(_child(items_win, I_CODE), sku)
+            c_code = _child(items_win, I_CODE)
+            c_code.click_input()
+            time.sleep(0.2)
+            from pywinauto.keyboard import send_keys as _sk2
+            _sk2("^a{DELETE}")
+            _sk2(sku)
         except Exception:                # noqa: BLE001
             items_win.type_keys("{DELETE 20}%s" % sku, with_spaces=True)
-        from pywinauto.keyboard import send_keys as _sk2
+            from pywinauto.keyboard import send_keys as _sk2
         _sk2("{ENTER}")
         time.sleep(1.0)
 
@@ -664,11 +701,12 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
 
         qty_s = str(int(qty) if float(qty).is_integer() else qty)
         try:
-            _set_text(_child(items_win, I_QTY), qty_s)
+            _type_text(_child(items_win, I_QTY), qty_s)   # הקלדה אמיתית — ראה _type_text
         except Exception as e:           # noqa: BLE001
             _shot("qty")
             raise RuntimeError("מילוי כמות נכשל עבור %s: %s" % (sku, _err(e)))
-        time.sleep(0.4)
+        time.sleep(0.3)
+        _dismiss_message_box()           # אם בכל זאת התלוננה — סוגרים ולא נתקעים
 
         btns = _item_action_buttons(items_win)   # [0]=סיים פעולה, [1]=הורד מהמלאי
         if len(btns) >= 2:
