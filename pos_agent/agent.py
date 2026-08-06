@@ -126,10 +126,12 @@ def verify_after(items, before):
     return (not problems), "; ".join(problems)
 
 
-def process(r):
+def process(r, cfg=None):
     rid = r["id"]
     items = r.get("items") or []
-    dry = get_config().get("dry_run", True)
+    cfg = cfg or get_config()
+    dry = cfg.get("dry_run", True)
+    tuning = cfg.get("tuning") or {}
     log("פעולה #%s (%d פריטים, %s) — %s" %
         (rid, len(items), "אסי" if False else r.get("employee_name", ""),
          "DRY-RUN" if dry else "חי"))
@@ -144,7 +146,7 @@ def process(r):
     before = snapshot_before(items)
     shot = os.path.join(SHOT_DIR, "removal_%s.png" % rid)
     try:
-        doc_no = pos_driver.apply_removal(r, dry_run=dry, screenshot_path=shot)
+        doc_no = pos_driver.apply_removal(r, dry_run=dry, screenshot_path=shot, tuning=tuning)
     except Exception as e:                    # noqa: BLE001
         log("  ❌ כשל בהזנה: %s" % e)
         report(rid, "error", error=str(e))
@@ -175,7 +177,7 @@ def main():
                 time.sleep(max(10, int(cfg.get("poll_sec", 25))))
                 continue
             for r in get_pending():
-                process(r)
+                process(r, cfg)
         except Exception as e:                # noqa: BLE001
             log("סבב נכשל: %s" % e)
         time.sleep(max(10, int(get_config().get("poll_sec", 25))))

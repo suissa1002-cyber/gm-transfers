@@ -1983,15 +1983,24 @@ def pos_agent_config(x_admin_key: Optional[str] = Header(None)):
     """דגלי שליטה לסוכן: enabled (kill-switch) + dry_run (בלי שמירה בקופה).
     ברירת מחדל: מושבת + dry-run — כלום לא רץ/נשמר עד שאסי מפעיל במפורש."""
     _require_admin(x_admin_key)
+    tuning = {}
+    raw = db.setting_get("pos_agent_tuning")
+    if raw:
+        try:
+            tuning = json_mod.loads(raw)
+        except Exception:  # noqa: BLE001
+            tuning = {}
     return {"enabled": db.setting_get("pos_agent_enabled") == "1",
             "dry_run": db.setting_get("pos_agent_dry_run") != "0",   # ברירת מחדל dry
-            "poll_sec": int(db.setting_get("pos_agent_poll_sec") or 25)}
+            "poll_sec": int(db.setting_get("pos_agent_poll_sec") or 25),
+            "tuning": tuning}
 
 
 class PosAgentCfgIn(BaseModel):
     enabled: Optional[bool] = None
     dry_run: Optional[bool] = None
     poll_sec: Optional[int] = None
+    tuning: Optional[dict] = None       # כיול חי: menu_path, *_rect, branch_city...
 
 
 @app.post("/api/admin/pos/agent-config")
@@ -2003,6 +2012,15 @@ def pos_agent_config_set(body: PosAgentCfgIn, x_admin_key: Optional[str] = Heade
         db.setting_set("pos_agent_dry_run", "1" if body.dry_run else "0", "admin")
     if body.poll_sec is not None:
         db.setting_set("pos_agent_poll_sec", str(max(10, int(body.poll_sec))), "admin")
+    if body.tuning is not None:
+        # מיזוג מעל הקיים — אפשר לעדכן שדה בודד (למשל רק add_rect)
+        cur = {}
+        raw = db.setting_get("pos_agent_tuning")
+        if raw:
+            try: cur = json_mod.loads(raw)
+            except Exception: cur = {}   # noqa: BLE001
+        cur.update(body.tuning)
+        db.setting_set("pos_agent_tuning", json_mod.dumps(cur, ensure_ascii=False), "admin")
     return pos_agent_config(x_admin_key)
 
 
