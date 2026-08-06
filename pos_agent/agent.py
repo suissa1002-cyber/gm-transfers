@@ -49,7 +49,8 @@ def _load_key() -> str:
     return k
 
 
-_dry_done = set()          # פעולות שכבר הודגמו ב-dry-run בסשן הזה
+_dry_done = {}             # {id: זמן} — הודגם ב-dry; פג אחרי 5 דק' כדי לאפשר ניסיון חוזר
+_DRY_TTL = 300
 
 KEY = _load_key()
 H = {"X-Admin-Key": KEY, "Content-Type": "application/json"}
@@ -158,7 +159,7 @@ def process(r, cfg=None):
         # ב-dry-run לא נשמר כלום — מחזירים לתור כדי שריצה חיה תוכל לבצע אותו.
         # ⚠️ אבל מסמנים מקומית שכבר הודגם, אחרת הסוכן היה מריץ את אותה פעולה
         # בלולאה אינסופית בכל סבב (וגם נתקע על דיאלוג שנשאר פתוח מהסבב הקודם).
-        _dry_done.add(rid)
+        _dry_done[rid] = time.time()
         log("  ✓ dry-run הושלם (צילום: %s). נשאר ב-pending, לא יורץ שוב ב-dry." % shot)
         report(rid, "pending")
         return
@@ -183,8 +184,9 @@ def main():
                 time.sleep(max(10, int(cfg.get("poll_sec", 25))))
                 continue
             for r in get_pending():
-                if cfg.get("dry_run", True) and r["id"] in _dry_done:
-                    continue            # כבר הודגם ב-dry — לא חוזרים עליו
+                _t = _dry_done.get(r["id"])
+                if cfg.get("dry_run", True) and _t and (time.time() - _t) < _DRY_TTL:
+                    continue            # הודגם ב-dry לאחרונה; אחרי 5 דק' ננסה שוב
                 process(r, cfg)
         except Exception as e:                # noqa: BLE001
             log("סבב נכשל: %s" % e)

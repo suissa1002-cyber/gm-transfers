@@ -10,7 +10,7 @@ import time
 
 from pywinauto import Application, Desktop, mouse
 
-DRIVER_VERSION = "2026-08-07.14"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
+DRIVER_VERSION = "2026-08-07.15"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
 POS_TITLE_RE = ".*אורדר.*"
 FORM_TITLE = "הורדה מהמלאי"
 ITEM_TITLE = "הורדה מהמלאי - פעולה חדשה"
@@ -382,16 +382,9 @@ def _dismiss_popup(app, popup):
         time.sleep(0.6)
         if _find_popup(app) is None:
             return
-        if attempt == 0:                 # רק אחרי ש-ESC/X נכשלו
-            row = _bottom_row(popup)
-            if len(row) >= 2:            # [0]=חדש (אסור!), [1]=ביטול
-                try:
-                    _click_ctrl(row[1])
-                except Exception:        # noqa: BLE001
-                    pass
-                time.sleep(0.8)
-                if _find_popup(app) is None:
-                    return
+        # ⛔ **אין ללחוץ על שורת הכפתורים התחתונה.** "חדש" יושב שם צמוד ל"ביטול",
+        # ולחיצה שמפספסת פותחת יצירת עובד חדש ומקלידה לתוכה (קרה פעמיים, 07/08).
+        # אם ESC/סגירה לא הצליחו — הקורא בוחר עובד מהרשת, וזו התוצאה הרצויה ממילא.
 
 
 def _bottom_right_button(win):
