@@ -10,7 +10,7 @@ import time
 
 from pywinauto import Application, Desktop, mouse
 
-DRIVER_VERSION = "2026-08-07.6"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
+DRIVER_VERSION = "2026-08-07.7"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
 POS_TITLE_RE = ".*אורדר.*"
 FORM_TITLE = "הורדה מהמלאי"
 ITEM_TITLE = "הורדה מהמלאי - פעולה חדשה"
@@ -170,30 +170,27 @@ def _click_emp_button(popup, emp_name, T):
 
 
 def _select_option(c):
-    """מסמן OptionButton של VB6. אין דרך אחת אמינה, ולכן מנסים ארבע — וכולן
-    בטוחות לחזרה (סימון כפתור-רדיו הוא idempotent, אי אפשר 'לבטל' בטעות):
-    הודעת click → קליק על העיגול (ב-RTL בצד ימין של הפקד) → קליק במרכז →
-    פוקוס + רווח (מקלדת, בלי תלות במיקום בכלל)."""
+    """מסמן OptionButton של VB6 — **בלי לחיצות עכבר לפי מיקום**.
+
+    ⛔ למה: גרסה קודמת ניסתה גם קליקים על קואורדינטות אחרי הלחיצה ההודעתית,
+    והם נחתו על כפתור-הרדיו השכן — כלומר *ביטלו* את הבחירה שכבר הצליחה
+    ('נבחר עדכון מלאי ואז חזר להחזרה לספק', אסי 07/08). שתי השיטות כאן
+    חסינות-מיקום: הודעת click, ואז פוקוס + רווח."""
+    ok = False
     try:
         c.click()
-    except Exception:                    # noqa: BLE001
-        pass
-    time.sleep(0.15)
-    try:
-        r = c.rectangle()
-        mouse.click(coords=(r.right - 8, (r.top + r.bottom) // 2))
-        time.sleep(0.15)
-        mouse.click(coords=((r.left + r.right) // 2, (r.top + r.bottom) // 2))
-    except Exception:                    # noqa: BLE001
-        pass
-    time.sleep(0.15)
-    try:
-        from pywinauto.keyboard import send_keys
-        c.set_focus()
-        send_keys(" ")
+        ok = True
     except Exception:                    # noqa: BLE001
         pass
     time.sleep(0.2)
+    if not ok:                           # רק אם ההודעה נכשלה — מקלדת
+        try:
+            from pywinauto.keyboard import send_keys
+            c.set_focus()
+            send_keys(" ")
+        except Exception:                # noqa: BLE001
+            pass
+        time.sleep(0.2)
 
 
 def _dismiss_message_box():
@@ -333,8 +330,13 @@ def _err(e):
 
 
 def _click_ctrl(c):
-    """לחיצת עכבר **אמיתית** במרכז הפקד. פקדי VB6 (ThunderRT6*) אינם פקדי Windows
-    סטנדרטיים, ולכן click() מבוסס-הודעות נכשל עליהם בשקט — click_input עובד."""
+    """לחיצה על פקד. **הודעה קודם** (c.click) ורק אז קליק פיזי — קליק פיזי על
+    פקדי VB6 נוטה לפגוע בשכן (ראה _select_option), אז הוא מוצא אחרון."""
+    try:
+        c.click()
+        return
+    except Exception:                    # noqa: BLE001
+        pass
     try:
         c.click_input()
         return
