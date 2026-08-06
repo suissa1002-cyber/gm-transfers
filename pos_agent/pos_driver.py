@@ -10,7 +10,7 @@ import time
 
 from pywinauto import Application, Desktop, mouse
 
-DRIVER_VERSION = "2026-08-07.3"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
+DRIVER_VERSION = "2026-08-07.4"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
 POS_TITLE_RE = ".*אורדר.*"
 FORM_TITLE = "הורדה מהמלאי"
 ITEM_TITLE = "הורדה מהמלאי - פעולה חדשה"
@@ -167,6 +167,28 @@ def _click_emp_button(popup, emp_name, T):
     except Exception:                    # noqa: BLE001
         pass
     _click_rect(popup, [rect[0] + dx, rect[1] + dy, rect[2] + dx, rect[3] + dy])
+
+
+def _read_message_box():
+    """קורא טקסט מתיבת הודעה של Windows (#32770) אם מוצגת — כך שהשגיאה שלנו
+    תכיל את מה שהקופה בעצם אמרה, במקום ניחוש."""
+    try:
+        for w in Desktop(backend="win32").windows():
+            try:
+                if w.class_name() != "#32770" or not w.is_visible():
+                    continue
+                parts = []
+                for c in w.descendants():
+                    t = (c.window_text() or "").strip()
+                    if t and t not in parts:
+                        parts.append(t)
+                if parts:
+                    return " | ".join(parts[:6])
+            except Exception:            # noqa: BLE001
+                continue
+    except Exception:                    # noqa: BLE001
+        pass
+    return ""
 
 
 def _emp_grid(popup):
@@ -474,7 +496,13 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
     time.sleep(1.5)
     items_win = _spec(app, ITEM_TITLE, timeout=10)
     if items_win is None:
-        raise RuntimeError("מסך הזנת הפריטים לא נפתח (הטופס אולי דחה שדה חסר)")
+        # 🔍 אבחון: הקופה כנראה הציגה הודעה (שדה חסר וכו'). קוראים את הטקסט שלה
+        # ומחזירים אותו בשגיאה — במקום לנחש מה הפריע לה.
+        msg = _read_message_box()
+        _shot("start_failed")
+        raise RuntimeError("מסך הזנת הפריטים לא נפתח%s"
+                           % (" — הקופה אמרה: %s" % msg if msg else
+                              " (לא הוצגה הודעה — ייתכן שהלחיצה פספסה)"))
 
     # 4) הזנת פריטים
     for it in (removal.get("items") or []):
