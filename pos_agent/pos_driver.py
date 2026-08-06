@@ -10,7 +10,7 @@ import time
 
 from pywinauto import Application, Desktop, mouse
 
-DRIVER_VERSION = "2026-08-07.15"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
+DRIVER_VERSION = "2026-08-07.16"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
 POS_TITLE_RE = ".*אורדר.*"
 FORM_TITLE = "הורדה מהמלאי"
 ITEM_TITLE = "הורדה מהמלאי - פעולה חדשה"
@@ -465,6 +465,10 @@ def _cleanup(app, T):
                 exit_btn = max(cands, key=lambda cr: (cr[1].top, cr[1].left))[0]
                 _click_ctrl(exit_btn)
                 time.sleep(1.0)
+                # ⚠️ "כן" מפורש: בשאלת היציאה ברירת המחדל היא **ביטול**, ולכן
+                # ENTER היה משאיר את המסך פתוח וחוסם את ההרצה הבאה.
+                _confirm_dialog(yes=True)
+                time.sleep(0.8)
                 _dismiss_message_box()
     except Exception:                    # noqa: BLE001
         pass
