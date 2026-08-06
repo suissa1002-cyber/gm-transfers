@@ -49,6 +49,7 @@ F_BRANCH_RADIO  = 15    # OptionButton "בחר סניף:"
 F_BRANCH_COMBO  = 14    # ComboBox הסניפים
 F_DESC          = 8     # TextBox תיאור פעולה (הסכום)
 F_EMP_NO        = 3     # TextBox מס' עובד
+F_EMP_NAME      = 2     # TextBox שם עובד
 I_QTY           = 21    # TextBox כמות (מסך פריטים)
 
 
@@ -162,6 +163,23 @@ def _click_emp_button(popup, emp_name, T):
     _click_rect(popup, [rect[0] + dx, rect[1] + dy, rect[2] + dx, rect[3] + dy])
 
 
+def _bottom_right_button(win):
+    """הכפתור הימני-ביותר בשורה התחתונה של חלון — ב-RTL זה כפתור האישור
+    ('התחל פעולה' מול 'ביטול'). owner-drawn: בלי טקסט ובלי id, ולכן מאתרים לפי
+    מיקום יחסי בתוך החלון — יציב גם אם החלון זז."""
+    try:
+        cands = [c for c in win.descendants()
+                 if c.class_name() == "ThunderRT6UserControlDC"]
+        if not cands:
+            return None
+        rects = [(c, c.rectangle()) for c in cands]
+        bottom = max(r.top for _, r in rects)
+        row = [(c, r) for c, r in rects if abs(r.top - bottom) <= 12]
+        return max(row, key=lambda cr: cr[1].left)[0] if row else None
+    except Exception:                    # noqa: BLE001
+        return None
+
+
 def _err(e):
     """טקסט שגיאה קריא — pywinauto זורק לעיתים חריגות עם הודעה ריקה."""
     s = str(e).strip()
@@ -250,6 +268,10 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
     # 2) פופאפ "בחר שם עובד" — ⚠️ חלון **ללא כותרת**, ולכן לא ניתן לאתר לפי שם.
     #    לוחצים על כפתור העובד לפי הטקסט שלו, בדיוק כמו משתמש. הפופאפ מודאלי:
     #    כל עוד הוא פתוח, הטופס שמאחוריו קיים אבל **חוסם כל לחיצה** (כשל שקט).
+    # ⛔ לא לוחצים על כפתורי הפופאפ! הם owner-drawn בלי טקסט, וקליק-לפי-מיקום
+    #    פספס ונחת על "חדש" (נפתחה יצירת עובד חדש, 07/08). במקום זה: סוגרים את
+    #    הפופאפ ב-ESC — עכשיו מוצאים אותו כחלון-ללא-כותרת ולכן ה-ESC באמת מגיע —
+    #    וממלאים שם+מספר עובד ישירות בשדות הטופס (פקדים אמיתיים עם id).
     emp_name = (removal.get("employee_name") or "").strip()
     popup = None
     for _ in range(12):                  # עד ~6 שניות עד שהפופאפ מצויר
@@ -258,14 +280,17 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
             break
         time.sleep(0.5)
     if popup is not None:
-        try:
-            _click_emp_button(popup, emp_name, T)
-            time.sleep(1.0)
-        except Exception as e:           # noqa: BLE001
-            raise RuntimeError("בחירת העובד '%s' בפופאפ נכשלה: %s" % (emp_name, _err(e)))
+        for _ in range(3):
+            try:
+                popup.set_focus()
+                popup.type_keys("{ESC}")
+            except Exception:            # noqa: BLE001
+                pass
+            time.sleep(0.6)
+            if _find_popup(app) is None:
+                break
         if _find_popup(app) is not None:
-            raise RuntimeError("פופאפ בחירת העובד עדיין פתוח אחרי הלחיצה על '%s' "
-                               "— ככל הנראה מיקום הכפתור לא מדויק" % emp_name)
+            raise RuntimeError("פופאפ בחירת העובד לא נסגר (ESC לא נקלט)")
 
     form = _spec(app, FORM_TITLE, timeout=8)
     if form is None:
@@ -319,16 +344,19 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
         _shot("desc")
         raise RuntimeError("מילוי תיאור פעולה נכשל: %s" % _err(e))
 
-    # עובד: מס' + "הצב"
+    # עובד: ממלאים **ישירות** את שני השדות של הטופס (id=3 מספר, id=2 שם) —
+    # בלי כפתור "הצב" ובלי קואורדינטות. אלה פקדי TextBox אמיתיים עם id.
     emp_no = str(removal.get("employee_no") or "").strip()
-    if emp_no:
-        try:
+    try:
+        if emp_no:
             _set_text(_child(form, F_EMP_NO), emp_no)
-            _click_rect(form, T["emp_set_rect"])
-            time.sleep(0.5)
-        except Exception as e:           # noqa: BLE001
-            _shot("emp")
-            raise RuntimeError("הזנת עובד נכשלה: %s" % _err(e))
+            time.sleep(0.2)
+        if emp_name:
+            _set_text(_child(form, F_EMP_NAME), emp_name)
+            time.sleep(0.2)
+    except Exception as e:               # noqa: BLE001
+        _shot("emp")
+        raise RuntimeError("הזנת עובד נכשלה: %s" % _err(e))
 
     if screenshot_path:
         try: form.capture_as_image().save(screenshot_path)
@@ -336,7 +364,13 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
 
     # 3) התחל פעולה → מסך פריטים
     _shot("filled")                      # צילום הטופס המלא לפני ההמשך
-    _click_rect(form, T["start_rect"])
+    # הכפתור owner-drawn (בלי טקסט/id) — מאתרים אותו **דינמית**: השורה התחתונה
+    # של הטופס, והכפתור הימני ביותר בה (RTL: ימין = "התחל פעולה", שמאל = "ביטול").
+    start_btn = _bottom_right_button(form)
+    if start_btn is not None:
+        _click_ctrl(start_btn)
+    else:
+        _click_rect(form, T["start_rect"])
     time.sleep(1.5)
     items_win = _spec(app, ITEM_TITLE, timeout=10)
     if items_win is None:
