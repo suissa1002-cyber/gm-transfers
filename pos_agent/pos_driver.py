@@ -10,7 +10,7 @@ import time
 
 from pywinauto import Application, Desktop, mouse
 
-DRIVER_VERSION = "2026-08-07.4"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
+DRIVER_VERSION = "2026-08-07.5"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
 POS_TITLE_RE = ".*אורדר.*"
 FORM_TITLE = "הורדה מהמלאי"
 ITEM_TITLE = "הורדה מהמלאי - פעולה חדשה"
@@ -169,6 +169,54 @@ def _click_emp_button(popup, emp_name, T):
     _click_rect(popup, [rect[0] + dx, rect[1] + dy, rect[2] + dx, rect[3] + dy])
 
 
+def _select_option(c):
+    """מסמן OptionButton של VB6. אין דרך אחת אמינה, ולכן מנסים ארבע — וכולן
+    בטוחות לחזרה (סימון כפתור-רדיו הוא idempotent, אי אפשר 'לבטל' בטעות):
+    הודעת click → קליק על העיגול (ב-RTL בצד ימין של הפקד) → קליק במרכז →
+    פוקוס + רווח (מקלדת, בלי תלות במיקום בכלל)."""
+    try:
+        c.click()
+    except Exception:                    # noqa: BLE001
+        pass
+    time.sleep(0.15)
+    try:
+        r = c.rectangle()
+        mouse.click(coords=(r.right - 8, (r.top + r.bottom) // 2))
+        time.sleep(0.15)
+        mouse.click(coords=((r.left + r.right) // 2, (r.top + r.bottom) // 2))
+    except Exception:                    # noqa: BLE001
+        pass
+    time.sleep(0.15)
+    try:
+        from pywinauto.keyboard import send_keys
+        c.set_focus()
+        send_keys(" ")
+    except Exception:                    # noqa: BLE001
+        pass
+    time.sleep(0.2)
+
+
+def _dismiss_message_box():
+    """סוגר תיבת הודעה של Windows (#32770) בלחיצה על OK — כדי שהטופס לא יישאר
+    תקוע מאחוריה ויחסום את הריצה הבאה. מחזיר את הטקסט שהוצג."""
+    msg = _read_message_box()
+    try:
+        for w in Desktop(backend="win32").windows():
+            try:
+                if w.class_name() == "#32770" and w.is_visible():
+                    try:
+                        w.set_focus()
+                        w.type_keys("{ENTER}")
+                    except Exception:    # noqa: BLE001
+                        pass
+                    time.sleep(0.4)
+            except Exception:            # noqa: BLE001
+                continue
+    except Exception:                    # noqa: BLE001
+        pass
+    return msg
+
+
 def _read_message_box():
     """קורא טקסט מתיבת הודעה של Windows (#32770) אם מוצגת — כך שהשגיאה שלנו
     תכיל את מה שהקופה בעצם אמרה, במקום ניחוש."""
@@ -321,6 +369,7 @@ def _set_text(c, text):
 def _cleanup(app, T):
     """סוגר שאריות דיאלוגים מהרצה קודמת שנכשלה (טופס/מסך פריטים/פופאפ עובד),
     כדי שהתפריט יהיה פנוי. ריצה שנכשלה משאירה חלון פתוח שחוסם את הבא."""
+    _dismiss_message_box()          # תיבת הודעה תקועה חוסמת הכל
     for _ in range(3):
         closed = False
         for title in (ITEM_TITLE, FORM_TITLE, "בחר שם עובד"):
@@ -413,16 +462,17 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
         except Exception:                # noqa: BLE001
             pass
 
-    # סוג פעולה = עדכון מלאי (חובה)
+    # סוג פעולה = "עדכון מלאי" — ⚠️ **חובה**. אם נשאר "החזרה לספק" (ברירת המחדל
+    # בטופס), הקופה עוצרת עם "חסר שדה חובה! ... (שם ספק)" ולא ממשיכה (07/08).
     try:
-        _click_ctrl(_child(form, F_OPTYPE_UPDATE))
+        _select_option(_child(form, F_OPTYPE_UPDATE))
     except Exception as e:               # noqa: BLE001
         _shot("optype")
         raise RuntimeError("סימון 'עדכון מלאי' נכשל: %s" % _err(e))
 
     # בחר סניף → מחסן\מרלוג
     try:
-        _click_ctrl(_child(form, F_BRANCH_RADIO))
+        _select_option(_child(form, F_BRANCH_RADIO))
         time.sleep(0.2)
         combo = _child(form, F_BRANCH_COMBO)
         try:
@@ -498,7 +548,7 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
     if items_win is None:
         # 🔍 אבחון: הקופה כנראה הציגה הודעה (שדה חסר וכו'). קוראים את הטקסט שלה
         # ומחזירים אותו בשגיאה — במקום לנחש מה הפריע לה.
-        msg = _read_message_box()
+        msg = _dismiss_message_box()
         _shot("start_failed")
         raise RuntimeError("מסך הזנת הפריטים לא נפתח%s"
                            % (" — הקופה אמרה: %s" % msg if msg else
