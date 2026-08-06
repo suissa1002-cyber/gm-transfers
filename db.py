@@ -4412,6 +4412,16 @@ def pos_removal_get(rid) -> dict:
         return _pos_removal_row(row) if row else None
 
 
+def pos_removal_claim(rid) -> bool:
+    """תפיסה אטומית: pending → applying. מחזיר True אם נתפס עכשיו (מונע הרצה כפולה
+    של הסוכן על אותה פעולה). False = כבר לא pending (מישהו/משהו אחר תפס)."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("UPDATE pos_removals SET status='applying' "
+                       "WHERE id = ? AND status = 'pending'"), (int(rid),))
+        return (cur.rowcount or 0) > 0
+
+
 def pos_removal_set_status(rid, status, pos_doc_no=None, error=None) -> None:
     with _conn() as c:
         cur = c.cursor()

@@ -1977,6 +1977,72 @@ def removals_page():
     raise HTTPException(404)
 
 
+# ── ממשק לסוכן ה-RPA (מכונת Windows) ──────────────────────────────────
+@app.get("/api/admin/pos/agent-config")
+def pos_agent_config(x_admin_key: Optional[str] = Header(None)):
+    """דגלי שליטה לסוכן: enabled (kill-switch) + dry_run (בלי שמירה בקופה).
+    ברירת מחדל: מושבת + dry-run — כלום לא רץ/נשמר עד שאסי מפעיל במפורש."""
+    _require_admin(x_admin_key)
+    return {"enabled": db.setting_get("pos_agent_enabled") == "1",
+            "dry_run": db.setting_get("pos_agent_dry_run") != "0",   # ברירת מחדל dry
+            "poll_sec": int(db.setting_get("pos_agent_poll_sec") or 25)}
+
+
+class PosAgentCfgIn(BaseModel):
+    enabled: Optional[bool] = None
+    dry_run: Optional[bool] = None
+    poll_sec: Optional[int] = None
+
+
+@app.post("/api/admin/pos/agent-config")
+def pos_agent_config_set(body: PosAgentCfgIn, x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    if body.enabled is not None:
+        db.setting_set("pos_agent_enabled", "1" if body.enabled else "0", "admin")
+    if body.dry_run is not None:
+        db.setting_set("pos_agent_dry_run", "1" if body.dry_run else "0", "admin")
+    if body.poll_sec is not None:
+        db.setting_set("pos_agent_poll_sec", str(max(10, int(body.poll_sec))), "admin")
+    return pos_agent_config(x_admin_key)
+
+
+@app.post("/api/admin/pos/removal/{rid}/claim")
+def pos_removal_claim(rid: int, x_admin_key: Optional[str] = Header(None),
+                      x_device_token: Optional[str] = Header(None)):
+    """הסוכן תופס פעולה (pending→applying) לפני שהוא מזין אותה לקופה. אטומי —
+    מונע הרצה כפולה. מחזיר את הפעולה המלאה, או 409 אם כבר לא pending."""
+    _require_admin_or_device(x_admin_key, x_device_token)
+    if not db.pos_removal_claim(rid):
+        raise HTTPException(409, "כבר לא ממתין (נתפס/בוטל)")
+    r = db.pos_removal_get(rid)
+    r["branch_name"] = cfg.branch_name(r.get("branch_id"))
+    return r
+
+
+class PosResultIn(BaseModel):
+    status: str                    # done / error
+    pos_doc_no: str = ""
+    error: str = ""
+
+
+@app.post("/api/admin/pos/removal/{rid}/result")
+def pos_removal_result(rid: int, body: PosResultIn,
+                       x_admin_key: Optional[str] = Header(None),
+                       x_device_token: Optional[str] = Header(None)):
+    """הסוכן מדווח תוצאה: done (עם מס' תעודה) או error. מחזיר סטטוס ל-pending
+    אם הוא רוצה שינסה שוב — לא כאן; error נשאר error עד טיפול ידני."""
+    _require_admin_or_device(x_admin_key, x_device_token)
+    r = db.pos_removal_get(rid)
+    if not r:
+        raise HTTPException(404, "לא נמצא")
+    st = (body.status or "").strip()
+    if st not in ("done", "error", "pending"):
+        raise HTTPException(400, "status חייב להיות done/error/pending")
+    db.pos_removal_set_status(rid, st, pos_doc_no=body.pos_doc_no or None,
+                              error=body.error or None)
+    return {"ok": True, "id": rid, "status": st}
+
+
 # micro-cache קצרצר כדי לרכך לחיצות כפולות/כמה מסכי ניהול במקביל — עדיין "חי" לכל דבר
 _live_stock_cache: dict = {}
 # cache משותף לכל הסניפים — עם כמה סניפים פעילים, ערך גבוה יותר חוסך הצפת
