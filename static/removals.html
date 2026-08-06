@@ -157,7 +157,7 @@ header.top{position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1
       <h2>📦 פעולת הורדה</h2>
       <div id="items"><div class="emptycart">אין פריטים עדיין — סרוק כדי להוסיף</div></div>
       <div class="field">
-        <label>סכום כללי לפעולה (₪)</label>
+        <label>סכום כללי לפעולה (₪) <span style="color:var(--deal)">— חובה</span></label>
         <input id="amount" type="number" inputmode="decimal" placeholder="0" min="0" step="1">
       </div>
       <div class="field">
@@ -223,6 +223,9 @@ async function boot(){
 async function loadEmployees(){
   try{ const d=await api('/api/admin/pos/employees'); EMPS=d.employees||[]; }
   catch(e){ EMPS=[]; }
+  // ברירת מחדל: העובד האחרון שנבחר (אם עדיין ברשימה המורשית)
+  try{ const s=JSON.parse(localStorage.getItem('gm_pos_emp')||'null');
+    if(s && s.id && (!EMPS.length || EMPS.some(e=>e.id===s.id))) setEmp(s.id, s.name); }catch(e){}
 }
 function openEmp(){
   const g=document.getElementById('empGrid');
@@ -231,8 +234,10 @@ function openEmp(){
   ).join('') : '<div class="emptycart">לא נטענו עובדים</div>';
   document.getElementById('empOverlay').classList.add('on');
 }
-function pickEmp(id,name){ EMP={id,name};
-  const v=document.getElementById('empVal'); v.textContent=name; v.className='val';
+function setEmp(id,name){ EMP={id,name};
+  const v=document.getElementById('empVal'); v.textContent=name; v.className='val'; }
+function pickEmp(id,name){ setEmp(id,name);
+  try{ localStorage.setItem('gm_pos_emp', JSON.stringify(EMP)); }catch(e){}  // ברירת מחדל לפעם הבאה
   document.getElementById('empOverlay').classList.remove('on'); focusScan(); }
 document.getElementById('empOverlay').addEventListener('click',e=>{
   if(e.target.id==='empOverlay') e.currentTarget.classList.remove('on'); });
@@ -343,8 +348,11 @@ function renderCart(){
 async function saveRemoval(){
   if(!EMP){ toast('בחר עובד קודם',true); openEmp(); return; }
   if(!CART.length){ toast('אין פריטים בפעולה',true); return; }
+  const amt=Number(document.getElementById('amount').value||0);
+  if(!amt || amt<=0){ toast('חובה להזין סכום לפעולה',true);
+    document.getElementById('amount').focus(); return; }
   const body={ branch_id:BR, employee_name:EMP.name, employee_no:EMP.id,
-    amount:Number(document.getElementById('amount').value||0),
+    amount:amt,
     note:document.getElementById('note').value.trim(),
     items:CART.map(x=>({sku:x.sku,name:x.name,qty:Number(x.qty)||1,serial:x.serial||''})) };
   try{ const r=await api('/api/admin/pos/removal',{method:'POST',body:JSON.stringify(body)});

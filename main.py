@@ -1932,6 +1932,8 @@ def pos_removal_create(body: PosRemovalIn, x_admin_key: Optional[str] = Header(N
     _require_admin_or_device(x_admin_key, x_device_token)
     if not (body.employee_name or "").strip():
         raise HTTPException(400, "חובה לבחור עובד")
+    if not body.amount or float(body.amount) <= 0:
+        raise HTTPException(400, "חובה להזין סכום לפעולה")
     items = [i.model_dump() for i in (body.items or []) if (i.sku or "").strip()]
     if not items:
         raise HTTPException(400, "אין פריטים בפעולה")
