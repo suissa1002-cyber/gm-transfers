@@ -10,7 +10,7 @@ import time
 
 from pywinauto import Application, Desktop, mouse
 
-DRIVER_VERSION = "2026-08-07.10"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
+DRIVER_VERSION = "2026-08-07.11"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
 POS_TITLE_RE = ".*אורדר.*"
 FORM_TITLE = "הורדה מהמלאי"
 ITEM_TITLE = "הורדה מהמלאי - פעולה חדשה"
@@ -652,6 +652,15 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
         from pywinauto.keyboard import send_keys as _sk2
         _sk2("{ENTER}")
         time.sleep(1.0)
+
+        # ⚠️ שני מסלולים שונים (אסי, 07/08):
+        #  • פריט **סידורי** (הוקלד סריאל) → הקופה מוסיפה לרשימה **אוטומטית**
+        #    אחרי Enter. אין כמות ואין ללחוץ "הורד מהמלאי".
+        #  • פריט **לא-סידורי** → חייבים למלא כמות ואז "הורד מהמלאי", אחרת
+        #    הפריט לא נכנס לרשימה שבתחתית.
+        if (it.get("serial") or "").strip():
+            time.sleep(0.6)
+            continue
 
         qty_s = str(int(qty) if float(qty).is_integer() else qty)
         try:
