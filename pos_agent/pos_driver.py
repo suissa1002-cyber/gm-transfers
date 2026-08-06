@@ -163,6 +163,55 @@ def _click_emp_button(popup, emp_name, T):
     _click_rect(popup, [rect[0] + dx, rect[1] + dy, rect[2] + dx, rect[3] + dy])
 
 
+def _bottom_row(win):
+    """הפקדים בשורה התחתונה של החלון, ממוינים **מימין לשמאל** (סדר RTL)."""
+    try:
+        rects = [(c, c.rectangle()) for c in win.descendants()
+                 if c.class_name() == "ThunderRT6UserControlDC"]
+        if not rects:
+            return []
+        bottom = max(r.top for _, r in rects)
+        row = [(c, r) for c, r in rects if abs(r.top - bottom) <= 12]
+        row.sort(key=lambda cr: -cr[1].left)
+        return [c for c, _ in row]
+    except Exception:                    # noqa: BLE001
+        return []
+
+
+def _dismiss_popup(app, popup):
+    """סוגר את פופאפ בחירת העובד בלי לבחור עובד. שלוש שכבות, מהבטוח לפחות:
+    ESC → סגירת חלון (WM_CLOSE, כמו ה-X) → 'ביטול'.
+    ⚠️ 'ביטול' מאותר לפי מיקום **יחסי**: בשורה התחתונה הסדר מימין הוא
+    [חדש, ביטול, ...] — ולכן השני מימין. ⛔ לעולם לא הראשון מימין: זה 'חדש',
+    ולחיצה עליו פותחת יצירת עובד חדש (קרה 07/08)."""
+    for attempt in range(3):
+        try:
+            popup.set_focus()
+            popup.type_keys("{ESC}")
+        except Exception:                # noqa: BLE001
+            pass
+        time.sleep(0.6)
+        if _find_popup(app) is None:
+            return
+        try:
+            popup.close()                # WM_CLOSE — שקול ללחיצה על ה-X
+        except Exception:                # noqa: BLE001
+            pass
+        time.sleep(0.6)
+        if _find_popup(app) is None:
+            return
+        if attempt == 0:                 # רק אחרי ש-ESC/X נכשלו
+            row = _bottom_row(popup)
+            if len(row) >= 2:            # [0]=חדש (אסור!), [1]=ביטול
+                try:
+                    _click_ctrl(row[1])
+                except Exception:        # noqa: BLE001
+                    pass
+                time.sleep(0.8)
+                if _find_popup(app) is None:
+                    return
+
+
 def _bottom_right_button(win):
     """הכפתור הימני-ביותר בשורה התחתונה של חלון — ב-RTL זה כפתור האישור
     ('התחל פעולה' מול 'ביטול'). owner-drawn: בלי טקסט ובלי id, ולכן מאתרים לפי
@@ -280,17 +329,9 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
             break
         time.sleep(0.5)
     if popup is not None:
-        for _ in range(3):
-            try:
-                popup.set_focus()
-                popup.type_keys("{ESC}")
-            except Exception:            # noqa: BLE001
-                pass
-            time.sleep(0.6)
-            if _find_popup(app) is None:
-                break
+        _dismiss_popup(app, popup)
         if _find_popup(app) is not None:
-            raise RuntimeError("פופאפ בחירת העובד לא נסגר (ESC לא נקלט)")
+            raise RuntimeError("פופאפ בחירת העובד לא נסגר (ESC / סגירת חלון / ביטול)")
 
     form = _spec(app, FORM_TITLE, timeout=8)
     if form is None:
