@@ -26,6 +26,21 @@ DEFAULT_TUNING = {
     "cancel_rect":   [363, 417, 468, 458],  # "ביטול" בטופס
     "add_rect":      [623, 328, 904, 353],  # "הורד מהמלאי" במסך פריטים
     "finish_rect":   None,                  # "סיים פעולה" — יימדד בכיול
+    # ── פופאפ "בחר שם עובד" ──
+    # חלון **ללא כותרת** שכל כפתוריו owner-drawn **בלי טקסט** → חייבים מיקום.
+    # נמדד 07/08/2026; העוגן הוא ה-Frame הפנימי, וכל המיקומים מוסטים אוטומטית
+    # אם הפופאפ ייפתח במקום אחר (ראה _click_emp_button).
+    "popup_frame_origin": [533, 320],
+    "emp_buttons": {
+        "אודי":   [1241, 324, 1378, 462],
+        "אורי":   [1099, 324, 1236, 462],
+        "אירה":   [958, 324, 1095, 462],
+        "אסי":    [816, 324, 953, 462],
+        "אתי":    [675, 324, 812, 462],
+        "יעקב.ע": [533, 324, 670, 462],
+        "קטיה":   [1241, 466, 1378, 604],
+        "שמואל":  [1099, 466, 1236, 604],
+    },
 }
 
 # control-ids קבועים (מהמיפוי, לא משתנים):
@@ -106,6 +121,45 @@ def _find_by_text(app, text):
             except Exception:            # noqa: BLE001
                 continue
     return None
+
+
+def _find_popup(app):
+    """פופאפ 'בחר שם עובד' — חלון ThunderRT6FormDC **ללא כותרת**. מודאלי: כל עוד
+    הוא פתוח הוא חוסם כל לחיצה על הטופס שמאחוריו (וזה נראה ככשל שקט)."""
+    for w in app.windows(visible_only=True, enabled_only=False):
+        try:
+            if w.class_name() == "ThunderRT6FormDC" and not (w.window_text() or "").strip():
+                return w
+        except Exception:                # noqa: BLE001
+            continue
+    return None
+
+
+def _click_emp_button(popup, emp_name, T):
+    """לוחץ על כפתור העובד בפופאפ. הכפתורים owner-drawn ללא טקסט → לפי מיקום,
+    עם היסט אוטומטי לפי מיקום ה-Frame בפועל (כך שהזזת הפופאפ לא שוברת)."""
+    rect = (T.get("emp_buttons") or {}).get(emp_name)
+    if not rect:
+        # התאמה גמישה: 'יוסי' מול 'יוסי ספגה' וכד'
+        first = emp_name.split()[0] if emp_name else ""
+        for k, v in (T.get("emp_buttons") or {}).items():
+            if k == first or k.startswith(first) or first.startswith(k):
+                rect = v
+                break
+    if not rect:
+        raise RuntimeError("אין מיקום מוגדר לכפתור העובד '%s' בפופאפ "
+                           "(הוסף ל-tuning.emp_buttons)" % emp_name)
+    dx = dy = 0
+    try:                                 # היסט לפי ה-Frame הפנימי (עוגן המדידה)
+        for c in popup.descendants():
+            if c.class_name() == "ThunderRT6Frame":
+                r = c.rectangle()
+                o = T.get("popup_frame_origin") or [r.left, r.top]
+                dx, dy = r.left - o[0], r.top - o[1]
+                break
+    except Exception:                    # noqa: BLE001
+        pass
+    _click_rect(popup, [rect[0] + dx, rect[1] + dy, rect[2] + dx, rect[3] + dy])
 
 
 def _err(e):
@@ -197,19 +251,21 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
     #    לוחצים על כפתור העובד לפי הטקסט שלו, בדיוק כמו משתמש. הפופאפ מודאלי:
     #    כל עוד הוא פתוח, הטופס שמאחוריו קיים אבל **חוסם כל לחיצה** (כשל שקט).
     emp_name = (removal.get("employee_name") or "").strip()
-    if emp_name:
-        btn = None
-        for _ in range(12):              # עד ~6 שניות עד שהפופאפ מצויר
-            btn = _find_by_text(app, emp_name)
-            if btn is not None:
-                break
-            time.sleep(0.5)
-        if btn is not None:
-            try:
-                _click_ctrl(btn)
-                time.sleep(0.9)
-            except Exception as e:       # noqa: BLE001
-                raise RuntimeError("לחיצה על העובד '%s' נכשלה: %s" % (emp_name, _err(e)))
+    popup = None
+    for _ in range(12):                  # עד ~6 שניות עד שהפופאפ מצויר
+        popup = _find_popup(app)
+        if popup is not None:
+            break
+        time.sleep(0.5)
+    if popup is not None:
+        try:
+            _click_emp_button(popup, emp_name, T)
+            time.sleep(1.0)
+        except Exception as e:           # noqa: BLE001
+            raise RuntimeError("בחירת העובד '%s' בפופאפ נכשלה: %s" % (emp_name, _err(e)))
+        if _find_popup(app) is not None:
+            raise RuntimeError("פופאפ בחירת העובד עדיין פתוח אחרי הלחיצה על '%s' "
+                               "— ככל הנראה מיקום הכפתור לא מדויק" % emp_name)
 
     form = _spec(app, FORM_TITLE, timeout=8)
     if form is None:
@@ -223,13 +279,6 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
             form.capture_as_image().save(screenshot_path.replace(".png", "_%s.png" % tag))
         except Exception:                # noqa: BLE001
             pass
-
-    # 🛡️ גארד: אם פופאפ העובד עדיין פתוח הוא מודאלי וחוסם את הטופס — כל לחיצה
-    # תיכשל בשקט. מזהים אותו לפי הכפתורים הייחודיים שלו ועוצרים עם הודעה ברורה.
-    if _find_by_text(app, "חדש") is not None and _find_by_text(app, "ביטול") is not None \
-            and emp_name and _find_by_text(app, emp_name) is not None:
-        raise RuntimeError("פופאפ בחירת העובד עדיין פתוח — לא נמצא/נלחץ הכפתור של '%s'"
-                           % emp_name)
 
     # סוג פעולה = עדכון מלאי (חובה)
     try:
