@@ -74,6 +74,46 @@ def _child(win, cid):
     raise RuntimeError("לא נמצא control_id=%s בטופס" % cid)
 
 
+def _err(e):
+    """טקסט שגיאה קריא — pywinauto זורק לעיתים חריגות עם הודעה ריקה."""
+    s = str(e).strip()
+    return "%s: %s" % (type(e).__name__, s) if s else type(e).__name__
+
+
+def _click_ctrl(c):
+    """לחיצת עכבר **אמיתית** במרכז הפקד. פקדי VB6 (ThunderRT6*) אינם פקדי Windows
+    סטנדרטיים, ולכן click() מבוסס-הודעות נכשל עליהם בשקט — click_input עובד."""
+    try:
+        c.click_input()
+        return
+    except Exception as e1:              # noqa: BLE001
+        try:
+            r = c.rectangle()
+            mouse.click(coords=((r.left + r.right) // 2, (r.top + r.bottom) // 2))
+            return
+        except Exception:                # noqa: BLE001
+            raise RuntimeError(_err(e1))
+
+
+def _set_text(c, text):
+    """מילוי שדה טקסט: set_edit_text (מהיר) ואם נכשל — קליק + הקלדה אמיתית."""
+    try:
+        c.set_edit_text(text)
+        return
+    except Exception:                    # noqa: BLE001
+        pass
+    _click_ctrl(c)
+    time.sleep(0.15)
+    try:
+        c.type_keys("^a{DELETE}", set_foreground=False)
+    except Exception:                    # noqa: BLE001
+        pass
+    from pywinauto.keyboard import send_keys
+    send_keys(str(text).replace("(", "{(}").replace(")", "{)}").replace("+", "{+}")
+              .replace("^", "{^}").replace("%", "{%}").replace("~", "{~}"),
+              with_spaces=True, pause=0.02)
+
+
 def _cleanup(app, T):
     """סוגר שאריות דיאלוגים מהרצה קודמת שנכשלה (טופס/מסך פריטים/פופאפ עובד),
     כדי שהתפריט יהיה פנוי. ריצה שנכשלה משאירה חלון פתוח שחוסם את הבא."""
@@ -130,20 +170,38 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
     if form is None:
         raise RuntimeError("טופס 'הורדה מהמלאי' לא נפתח")
 
+    # 📸 צילום מצב הטופס בכל כשל — כדי לראות בדיוק איפה נעצר
+    def _shot(tag):
+        if not screenshot_path:
+            return
+        try:
+            form.capture_as_image().save(screenshot_path.replace(".png", "_%s.png" % tag))
+        except Exception:                # noqa: BLE001
+            pass
+
     # סוג פעולה = עדכון מלאי (חובה)
     try:
-        _child(form, F_OPTYPE_UPDATE).click()
+        _click_ctrl(_child(form, F_OPTYPE_UPDATE))
     except Exception as e:               # noqa: BLE001
-        raise RuntimeError("סימון 'עדכון מלאי' נכשל: %s" % e)
+        _shot("optype")
+        raise RuntimeError("סימון 'עדכון מלאי' נכשל: %s" % _err(e))
 
     # בחר סניף → מחסן\מרלוג
     try:
-        _child(form, F_BRANCH_RADIO).click()
+        _click_ctrl(_child(form, F_BRANCH_RADIO))
+        time.sleep(0.2)
         combo = _child(form, F_BRANCH_COMBO)
-        try: combo.select(T["branch_city"])
-        except Exception: combo.type_keys(T["branch_city"], with_spaces=True)  # noqa: BLE001
+        try:
+            combo.select(T["branch_city"])
+        except Exception:                # noqa: BLE001
+            _click_ctrl(combo)           # פתיחת הרשימה + בחירה בהקלדה
+            time.sleep(0.3)
+            from pywinauto.keyboard import send_keys
+            send_keys(T["branch_city"], with_spaces=True, pause=0.03)
+            send_keys("{ENTER}")
     except Exception as e:               # noqa: BLE001
-        raise RuntimeError("בחירת סניף נכשלה: %s" % e)
+        _shot("branch")
+        raise RuntimeError("בחירת סניף נכשלה: %s" % _err(e))
 
     # תיאור פעולה = ברירת מחדל + סכום (+ הערה)
     amount = removal.get("amount") or 0
@@ -155,30 +213,33 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
     if note:
         desc += " · " + note
     try:
-        _child(form, F_DESC).set_edit_text(desc)
+        _set_text(_child(form, F_DESC), desc)
     except Exception as e:               # noqa: BLE001
-        raise RuntimeError("מילוי תיאור פעולה נכשל: %s" % e)
+        _shot("desc")
+        raise RuntimeError("מילוי תיאור פעולה נכשל: %s" % _err(e))
 
     # עובד: מס' + "הצב"
     emp_no = str(removal.get("employee_no") or "").strip()
     if emp_no:
         try:
-            _child(form, F_EMP_NO).set_edit_text(emp_no)
+            _set_text(_child(form, F_EMP_NO), emp_no)
             _click_rect(form, T["emp_set_rect"])
-            time.sleep(0.4)
+            time.sleep(0.5)
         except Exception as e:           # noqa: BLE001
-            raise RuntimeError("הזנת עובד נכשלה: %s" % e)
+            _shot("emp")
+            raise RuntimeError("הזנת עובד נכשלה: %s" % _err(e))
 
     if screenshot_path:
         try: form.capture_as_image().save(screenshot_path)
         except Exception: pass           # noqa: BLE001
 
     # 3) התחל פעולה → מסך פריטים
+    _shot("filled")                      # צילום הטופס המלא לפני ההמשך
     _click_rect(form, T["start_rect"])
-    time.sleep(1.2)
-    items_win = _spec(app, ITEM_TITLE, timeout=8)
+    time.sleep(1.5)
+    items_win = _spec(app, ITEM_TITLE, timeout=10)
     if items_win is None:
-        raise RuntimeError("מסך הזנת הפריטים לא נפתח")
+        raise RuntimeError("מסך הזנת הפריטים לא נפתח (הטופס אולי דחה שדה חסר)")
 
     # 4) הזנת פריטים
     for it in (removal.get("items") or []):
