@@ -42,9 +42,9 @@ targets = []
 for w in wins:
     try:
         t = w.window_text(); cn = w.class_name()
-        if not (t and t.strip()):
-            continue
-        vis = "ThunderRT6" in cn or "אורדר" in t or "מלאי" in t or "עובד" in t or "פעולה" in t
+        # ⚠️ אין לדלג על חלונות ללא כותרת! פופאפ "בחר שם עובד" הוא בדיוק כזה,
+        # והדילוג עליו הסתיר אותו מהמיפוי (27/07).
+        vis = "ThunderRT6" in cn or any(k in (t or "") for k in ("אורדר", "מלאי", "עובד", "פעולה"))
         print(("  * " if vis else "    ") + "[%s] %r" % (cn, t))
         if vis:
             targets.append(w)

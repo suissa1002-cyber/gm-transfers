@@ -74,6 +74,40 @@ def _child(win, cid):
     raise RuntimeError("לא נמצא control_id=%s בטופס" % cid)
 
 
+def _all_ctrls(app):
+    """כל הפקדים בכל חלונות הקופה — **כולל חלונות ללא כותרת**. פופאפ 'בחר שם עובד'
+    הוא חלון כזה (כותרת ריקה), ולכן חיפוש לפי כותרת פספס אותו לגמרי."""
+    out = []
+    for w in app.windows(visible_only=True, enabled_only=False):
+        try:
+            out.append(w)
+            out.extend(w.descendants())
+        except Exception:                # noqa: BLE001
+            continue
+    return out
+
+
+def _find_by_text(app, text):
+    """מאתר פקד לפי טקסט: התאמה מדויקת, ואז 'מתחיל ב-', ואז מילה ראשונה
+    (שם בקופה עשוי להיות 'יוסי ספגה' מול 'יוסי' אצלנו)."""
+    text = (text or "").strip()
+    if not text:
+        return None
+    ctrls = _all_ctrls(app)
+    first = text.split()[0]
+    for match in (lambda t: t == text,
+                  lambda t: t.startswith(text) or text.startswith(t),
+                  lambda t: t == first or t.startswith(first)):
+        for c in ctrls:
+            try:
+                t = (c.window_text() or "").strip()
+                if t and match(t):
+                    return c
+            except Exception:            # noqa: BLE001
+                continue
+    return None
+
+
 def _err(e):
     """טקסט שגיאה קריא — pywinauto זורק לעיתים חריגות עם הודעה ריקה."""
     s = str(e).strip()
@@ -159,12 +193,23 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
         raise RuntimeError("פתיחת תפריט מלאי נכשלה: %s (%s)" % (e, type(e).__name__))
     time.sleep(1.0)
 
-    # 2) פופאפ "בחר שם עובד" — סוגרים (נזין בטופס)
-    emp_popup = _spec(app, "בחר שם עובד", timeout=3)
-    if emp_popup is not None:
-        try: emp_popup.type_keys("{ESC}")
-        except Exception: pass           # noqa: BLE001
-        time.sleep(0.5)
+    # 2) פופאפ "בחר שם עובד" — ⚠️ חלון **ללא כותרת**, ולכן לא ניתן לאתר לפי שם.
+    #    לוחצים על כפתור העובד לפי הטקסט שלו, בדיוק כמו משתמש. הפופאפ מודאלי:
+    #    כל עוד הוא פתוח, הטופס שמאחוריו קיים אבל **חוסם כל לחיצה** (כשל שקט).
+    emp_name = (removal.get("employee_name") or "").strip()
+    if emp_name:
+        btn = None
+        for _ in range(12):              # עד ~6 שניות עד שהפופאפ מצויר
+            btn = _find_by_text(app, emp_name)
+            if btn is not None:
+                break
+            time.sleep(0.5)
+        if btn is not None:
+            try:
+                _click_ctrl(btn)
+                time.sleep(0.9)
+            except Exception as e:       # noqa: BLE001
+                raise RuntimeError("לחיצה על העובד '%s' נכשלה: %s" % (emp_name, _err(e)))
 
     form = _spec(app, FORM_TITLE, timeout=8)
     if form is None:
@@ -178,6 +223,13 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
             form.capture_as_image().save(screenshot_path.replace(".png", "_%s.png" % tag))
         except Exception:                # noqa: BLE001
             pass
+
+    # 🛡️ גארד: אם פופאפ העובד עדיין פתוח הוא מודאלי וחוסם את הטופס — כל לחיצה
+    # תיכשל בשקט. מזהים אותו לפי הכפתורים הייחודיים שלו ועוצרים עם הודעה ברורה.
+    if _find_by_text(app, "חדש") is not None and _find_by_text(app, "ביטול") is not None \
+            and emp_name and _find_by_text(app, emp_name) is not None:
+        raise RuntimeError("פופאפ בחירת העובד עדיין פתוח — לא נמצא/נלחץ הכפתור של '%s'"
+                           % emp_name)
 
     # סוג פעולה = עדכון מלאי (חובה)
     try:
