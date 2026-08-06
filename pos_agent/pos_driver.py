@@ -63,7 +63,15 @@ def _click_rect(win, rect):
 
 
 def _child(win, cid):
-    return win.child_window(control_id=cid)
+    """מאתר פקד לפי control_id ע"י מעבר על descendants (עובד גם עם 32-bit app
+    ו-64-bit Python, בניגוד ל-child_window(control_id=) שנכשל שם)."""
+    for c in win.descendants():
+        try:
+            if c.control_id() == cid:
+                return c
+        except Exception:                # noqa: BLE001
+            continue
+    raise RuntimeError("לא נמצא control_id=%s בטופס" % cid)
 
 
 def _cleanup(app, T):
