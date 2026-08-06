@@ -35,6 +35,22 @@ header.top{position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1
 .empbar .val.empty{color:var(--deal)}
 .empbar button{margin-inline-start:auto;background:var(--accent-soft);color:var(--accent);border:0;
   border-radius:99px;padding:9px 18px;font-weight:800}
+.chip{font-size:.8rem;font-weight:800;padding:5px 12px;border-radius:99px;background:var(--line);color:var(--ink2)}
+.chip.on{background:var(--accent-soft);color:var(--accent)}
+.chip.dry{background:#fff5e6;color:var(--warn)}
+@media(prefers-color-scheme:dark){.chip.dry{background:#2a2413}}
+.chip.off{background:#fdecec;color:var(--deal)}
+@media(prefers-color-scheme:dark){.chip.off{background:#2a1717}}
+/* live tracking of a saved removal */
+.track{background:var(--surface);border:1px solid var(--accent);border-radius:var(--r);
+  padding:14px 18px;margin-bottom:16px;box-shadow:var(--shadow);display:flex;align-items:center;gap:12px}
+.track .spin{width:18px;height:18px;border:3px solid var(--line);border-top-color:var(--accent);
+  border-radius:50%;animation:sp .8s linear infinite;flex:0 0 auto}
+@keyframes sp{to{transform:rotate(360deg)}}
+.track.ok{border-color:var(--accent)}
+.track.bad{border-color:var(--deal)}
+.track .txt{flex:1;font-weight:700}
+.track .sub2{font-size:.82rem;color:var(--ink2);font-weight:400}
 /* layout */
 .grid{display:grid;grid-template-columns:1.3fr 1fr;gap:18px}
 @media(max-width:820px){.grid{grid-template-columns:1fr}}
@@ -138,8 +154,11 @@ header.top{position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1
   <div class="empbar">
     <span class="lbl">עובד מבצע:</span>
     <span class="val empty" id="empVal">— לא נבחר —</span>
+    <span id="agentChip" class="chip">בודק סוכן…</span>
     <button onclick="openEmp()">בחר עובד</button>
   </div>
+
+  <div id="liveTrack" class="track" style="display:none"></div>
 
   <div class="grid">
     <!-- scan + result -->
@@ -222,7 +241,8 @@ async function boot(){
   try{ await api('/api/admin/pos/employees'); }        // validates key
   catch(e){ toast('מפתח שגוי',true); return; }
   document.getElementById('gate').style.display='none';
-  loadEmployees(); loadQueue(); focusScan();
+  loadEmployees(); loadQueue(); loadAgent(); focusScan();
+  setInterval(loadAgent, 30000);
 }
 
 /* ---- employees ---- */
@@ -365,7 +385,51 @@ async function saveRemoval(){
     toast('✓ נשמר לתור ('+r.items+' פריטים)');
     CART=[]; renderCart(); document.getElementById('amount').value=''; document.getElementById('note').value='';
     loadQueue(); focusScan();
+    trackRemoval(r.id);                 // מעקב חי עד שהסוכן מזין לקופה
   }catch(e){ toast(e,true); }
+}
+
+/* ---- agent status + live tracking ---- */
+let AGENT={};
+async function loadAgent(){
+  const el=document.getElementById('agentChip');
+  try{ AGENT=await api('/api/admin/pos/agent-config'); }
+  catch(e){ el.className='chip off'; el.textContent='סוכן: לא נגיש'; return; }
+  if(!AGENT.enabled){ el.className='chip off'; el.textContent='⛔ הסוכן מושבת — לא יוזן לקופה'; }
+  else if(AGENT.dry_run){ el.className='chip dry'; el.textContent='🧪 הרצה יבשה — לא יורד מלאי בפועל'; }
+  else { el.className='chip on'; el.textContent='🟢 סוכן פעיל — מוזן לקופה'; }
+}
+
+function _track(html, cls){
+  const t=document.getElementById('liveTrack');
+  t.style.display='flex'; t.className='track'+(cls?(' '+cls):''); t.innerHTML=html;
+}
+
+async function trackRemoval(id){
+  const dry=AGENT.dry_run!==false;
+  _track('<div class="spin"></div><div class="txt">ממתין שהסוכן יזין לקופה…'
+        +'<div class="sub2">פעולה #'+id+(dry?' · הרצה יבשה (לא יישמר בקופה)':'')+'</div></div>');
+  const t0=Date.now();
+  while(Date.now()-t0 < 180000){                 // עד 3 דקות
+    await new Promise(r=>setTimeout(r,3000));
+    let d; try{ d=await api('/api/admin/pos/removals?limit=30'); }catch(e){ continue; }
+    const r=(d.removals||[]).find(x=>x.id===id);
+    if(!r) continue;
+    if(r.status==='applying'){
+      _track('<div class="spin"></div><div class="txt">הסוכן מזין עכשיו לקופה…'
+            +'<div class="sub2">פעולה #'+id+'</div></div>');
+    } else if(r.status==='done'){
+      _track('<div class="txt">✅ הוזן לקופה ואומת — המלאי ירד'
+            +'<div class="sub2">פעולה #'+id+(r.pos_doc_no?(' · תעודה '+esc(r.pos_doc_no)):'')+'</div></div>','ok');
+      loadQueue(); return;
+    } else if(r.status==='error'){
+      _track('<div class="txt">⚠️ הסוכן נעצר'
+            +'<div class="sub2">'+esc(r.error||'')+'</div></div>','bad');
+      loadQueue(); return;
+    }
+  }
+  _track('<div class="txt">⏳ עדיין ממתין'
+        +'<div class="sub2">הסוכן אולי לא רץ על המחשב. הפעולה נשמרה ותתבצע כשיעלה.</div></div>','bad');
 }
 
 /* ---- daily removals log (collapsible, hidden by default) ---- */
