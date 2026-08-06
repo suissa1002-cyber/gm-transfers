@@ -1979,10 +1979,15 @@ def removals_page():
 
 # ── ממשק לסוכן ה-RPA (מכונת Windows) ──────────────────────────────────
 @app.get("/api/admin/pos/agent-config")
-def pos_agent_config(x_admin_key: Optional[str] = Header(None)):
+def pos_agent_config(ping: int = 0, x_admin_key: Optional[str] = Header(None)):
     """דגלי שליטה לסוכן: enabled (kill-switch) + dry_run (בלי שמירה בקופה).
-    ברירת מחדל: מושבת + dry-run — כלום לא רץ/נשמר עד שאסי מפעיל במפורש."""
+    ברירת מחדל: מושבת + dry-run — כלום לא רץ/נשמר עד שאסי מפעיל במפורש.
+    `ping=1` = הקריאה מגיעה **מהסוכן עצמו** → נרשמת חותמת חיים, כדי שהמסך יבדיל
+    בין "מוגדר פעיל" לבין "התוכנית באמת רצה" (פעולה המתינה בתור והסוכן היה כבוי)."""
     _require_admin(x_admin_key)
+    if ping:
+        from datetime import timezone as _tz9
+        db.setting_set("pos_agent_seen", datetime.now(_tz9.utc).isoformat(), "agent")
     tuning = {}
     raw = db.setting_get("pos_agent_tuning")
     if raw:
@@ -1993,7 +1998,19 @@ def pos_agent_config(x_admin_key: Optional[str] = Header(None)):
     return {"enabled": db.setting_get("pos_agent_enabled") == "1",
             "dry_run": db.setting_get("pos_agent_dry_run") != "0",   # ברירת מחדל dry
             "poll_sec": int(db.setting_get("pos_agent_poll_sec") or 25),
-            "tuning": tuning}
+            "tuning": tuning, "seen_sec_ago": _agent_seen_sec()}
+
+
+def _agent_seen_sec():
+    """כמה שניות מאז שהסוכן דיווח חיים. None = מעולם."""
+    v = db.setting_get("pos_agent_seen")
+    if not v:
+        return None
+    try:
+        from datetime import timezone as _tz8
+        return int((datetime.now(_tz8.utc) - datetime.fromisoformat(str(v))).total_seconds())
+    except Exception:  # noqa: BLE001
+        return None
 
 
 class PosAgentCfgIn(BaseModel):

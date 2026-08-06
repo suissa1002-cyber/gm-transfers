@@ -77,7 +77,7 @@ def api(method, path, **kw):
 
 
 def get_config():
-    r = api("GET", "/api/admin/pos/agent-config")
+    r = api("GET", "/api/admin/pos/agent-config?ping=1")   # ping=1 → חותמת חיים למסך
     return r.json() if r.ok else {"enabled": False, "dry_run": True, "poll_sec": 25}
 
 

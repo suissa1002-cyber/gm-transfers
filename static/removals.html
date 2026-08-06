@@ -395,7 +395,13 @@ async function loadAgent(){
   const el=document.getElementById('agentChip');
   try{ AGENT=await api('/api/admin/pos/agent-config'); }
   catch(e){ el.className='chip off'; el.textContent='סוכן: לא נגיש'; return; }
-  if(!AGENT.enabled){ el.className='chip off'; el.textContent='⛔ הסוכן מושבת — לא יוזן לקופה'; }
+  const seen=AGENT.seen_sec_ago;
+  if(seen===null||seen===undefined||seen>90){
+    el.className='chip off';
+    el.textContent='🔌 הסוכן לא מחובר'+(seen==null?'':(' (נראה לפני '+Math.round(seen/60)+' דק׳)'))
+      +' — הפעולות ימתינו';
+  }
+  else if(!AGENT.enabled){ el.className='chip off'; el.textContent='⛔ הסוכן מושבת — לא יוזן לקופה'; }
   else if(AGENT.dry_run){ el.className='chip dry'; el.textContent='🧪 הרצה יבשה — לא יורד מלאי בפועל'; }
   else { el.className='chip on'; el.textContent='🟢 סוכן פעיל — מוזן לקופה'; }
 }
