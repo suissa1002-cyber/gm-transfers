@@ -10,7 +10,7 @@ import time
 
 from pywinauto import Application, Desktop, mouse
 
-DRIVER_VERSION = "2026-08-07.16"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
+DRIVER_VERSION = "2026-08-07.17"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
 POS_TITLE_RE = ".*אורדר.*"
 FORM_TITLE = "הורדה מהמלאי"
 ITEM_TITLE = "הורדה מהמלאי - פעולה חדשה"
@@ -199,6 +199,43 @@ def _confirm_dialog(yes=True, timeout=6):
     return False
 
 
+NEW_ITEM_TITLE = "פריט חדש"
+
+
+def _guard_new_item(app, sku):
+    """⛔ הגנה: אם הקופה פתחה 'פריט חדש' — המק"ט לא נמצא אצלה. סוגרים ב'ביטול'
+    ועוצרים. **אסור בשום מצב ליצור מוצר בקופה** (קרה 07/08: הקוד נכנס חלקי,
+    הקופה הציעה מוצר חדש, והסוכן הקליד לתוכו את הכמות כשם המוצר)."""
+    w = _spec(app, NEW_ITEM_TITLE, timeout=2)
+    if w is None:
+        return
+    try:
+        for c in w.descendants():
+            if (c.window_text() or "").strip() in ("ביטול", "Cancel"):
+                c.click_input()
+                time.sleep(0.8)
+                break
+    except Exception:                    # noqa: BLE001
+        pass
+    _confirm_dialog(yes=True, timeout=3)
+    raise RuntimeError("הקופה לא מזהה את המק\"ט '%s' ופתחה 'פריט חדש' — בוטל. "
+                       "בדוק שהמק\"ט קיים בקופה." % sku)
+
+
+def _clear_field(c):
+    """מרוקן שדה טקסט של VB6. ⚠️ לא Ctrl+A — הוא לא תמיד בוחר-הכל שם, ואז
+    הערך החדש נדבק לישן והקוד נכנס חלקי (ברקוד '6520' במקום '516520')."""
+    from pywinauto.keyboard import send_keys
+    try:
+        c.set_edit_text("")
+    except Exception:                    # noqa: BLE001
+        pass
+    c.click_input()
+    time.sleep(0.15)
+    send_keys("{END}" + "{BACKSPACE}" * 40 + "{DELETE}" * 10)
+    time.sleep(0.15)
+
+
 def _type_text(c, text):
     """מקליד ערך לשדה **בהקלדה אמיתית**.
 
@@ -207,10 +244,7 @@ def _type_text(c, text):
     והקופה בכל זאת ענתה 'ערך לא חוקי בשדה כמות' (אסי, 07/08).
     TAB בסוף מאלץ את הקופה לאמת ולקבע את הערך."""
     from pywinauto.keyboard import send_keys
-    c.click_input()
-    time.sleep(0.2)
-    send_keys("^a{DELETE}")
-    time.sleep(0.1)
+    _clear_field(c)
     send_keys(str(text))
     time.sleep(0.2)
     send_keys("{TAB}")
@@ -720,16 +754,15 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
         items_win.set_focus()
         try:
             c_code = _child(items_win, I_CODE)
-            c_code.click_input()
-            time.sleep(0.2)
+            _clear_field(c_code)
             from pywinauto.keyboard import send_keys as _sk2
-            _sk2("^a{DELETE}")
             _sk2(sku)
         except Exception:                # noqa: BLE001
             items_win.type_keys("{DELETE 20}%s" % sku, with_spaces=True)
             from pywinauto.keyboard import send_keys as _sk2
         _sk2("{ENTER}")
-        time.sleep(1.0)
+        time.sleep(1.2)
+        _guard_new_item(app, sku)        # ⛔ מק"ט לא מוכר → ביטול ועצירה
 
         # ⚠️ שני מסלולים שונים (אסי, 07/08):
         #  • פריט **סידורי** (הוקלד סריאל) → הקופה מוסיפה לרשימה **אוטומטית**
