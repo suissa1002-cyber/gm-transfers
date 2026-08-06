@@ -10,7 +10,7 @@ import time
 
 from pywinauto import Application, Desktop, mouse
 
-DRIVER_VERSION = "2026-08-07.13"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
+DRIVER_VERSION = "2026-08-07.14"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
 POS_TITLE_RE = ".*אורדר.*"
 FORM_TITLE = "הורדה מהמלאי"
 ITEM_TITLE = "הורדה מהמלאי - פעולה חדשה"
@@ -693,6 +693,24 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
         raise RuntimeError("מסך הזנת הפריטים לא נפתח%s"
                            % (" — הקופה אמרה: %s" % msg if msg else
                               " (לא הוצגה הודעה — ייתכן שהלחיצה פספסה)"))
+
+    # 🛡️ ניקוי הרשימה לפני הזנה — **קריטי לבטיחות.** הקופה משחזרת פעולה שלא
+    # הושלמה, ולכן פריטים מריצה קודמת עלולים להישאר ברשימה (נצפה 07/08: SmartTag
+    # מבדיקה קודמת הופיע יחד עם הפריט החדש). בלי זה, הורדה חיה הייתה מורידה גם
+    # אותם. "מחק הכל" = הכפתור החמישי מימין בשורת הפעולות.
+    # לוחצים תמיד — ניקוי רשימה ריקה הוא no-op, ולכן זה זול ובטוח יותר מלנסות
+    # לספור שורות (MSFlexGrid לא חושף ספירה אמינה).
+    try:
+        btns = _item_action_buttons(items_win)
+        if len(btns) >= 5:
+            _click_ctrl(btns[4])             # מחק הכל
+            time.sleep(0.8)
+            _confirm_dialog(yes=True)
+            time.sleep(0.8)
+            _dismiss_message_box()
+    except Exception:                        # noqa: BLE001
+        pass
+    _shot("cleared")                         # תיעוד: הרשימה לפני ההזנה
 
     # 4) הזנת פריטים — לכל פריט: קוד → Enter → **כמות (תמיד)** → "הורד מהמלאי".
     #    ⚠️ הכמות היא id=22; id=21 הוא "מלאי נוכחי" (תצוגה). בלי מילוי כמות
