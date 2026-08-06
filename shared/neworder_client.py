@@ -324,6 +324,52 @@ class NewOrderClient:
         """פרטי מסמך בודד לפי מזהה חשבונית."""
         return self._get(f"/api/Documents/{invoice_id}")
 
+    def get_line_items(self, invoice_id: Union[str, int]) -> list[dict]:
+        """שליפת מוצרים לפי עסקה (/api/Documents/line-items)."""
+        return self._get("/api/Documents/line-items", {"invoiceId": invoice_id})
+
+    # ── Sale items — דוח מכירות (NewOrder 16/07/2026) ────────────────
+    def get_sale_items(self, from_date: Optional[str] = None, to_date: Optional[str] = None,
+                       product_id: Optional[Union[str, int]] = None,
+                       branch_id: Optional[int] = None, category_id: Optional[int] = None,
+                       customer_id: Optional[int] = None, employee_id: Optional[int] = None,
+                       tax_documents: Optional[bool] = None,
+                       page_size: int = 200, page_num: int = 1) -> list[dict]:
+        """
+        פריטי מכירה בודדים לפי חתכים (/api/Documents/sale-items, נוסף 16/07/2026).
+        כל שורה = פריט שנמכר: {id (מק"ט), name, categoryName, price, quantity, cost,
+        serial, taxValue, invoiceId, invoiceDate, documentType, branchId}.
+        תאריכים בפורמט DD/MM/YYYY (_fmt_date ממיר אוטומטית). page_size עד 2000.
+        """
+        return self._get("/api/Documents/sale-items", {
+            "fromDate": _fmt_date(from_date), "toDate": _fmt_date(to_date),
+            "productId": product_id, "branchId": branch_id, "categoryId": category_id,
+            "customerId": customer_id, "employeeId": employee_id,
+            "taxDocuments": tax_documents,
+            "page_size": page_size, "page_num": page_num,
+        })
+
+    def get_sale_items_totals(self, from_date: Optional[str] = None,
+                              to_date: Optional[str] = None,
+                              product_id: Optional[Union[str, int]] = None,
+                              branch_id: Optional[int] = None, category_id: Optional[int] = None,
+                              customer_id: Optional[int] = None, employee_id: Optional[int] = None,
+                              tax_documents: Optional[bool] = None,
+                              page_size: int = 200, page_num: int = 1) -> list[dict]:
+        """
+        סיכומי מכירות מקובצים לפי מוצר (/api/Documents/sale-items/totals, נוסף 16/07/2026).
+        כל שורה: {id (מק"ט), name, categoryName, quantity, totalPrice, totalCost,
+        totalTax, profit}. אותם פילטרים כמו get_sale_items.
+        ⚠️ totalCost/profit מבוססים על עלות בקופה — פריטים ללא עלות מוזנת מנפחים את ה-profit.
+        """
+        return self._get("/api/Documents/sale-items/totals", {
+            "fromDate": _fmt_date(from_date), "toDate": _fmt_date(to_date),
+            "productId": product_id, "branchId": branch_id, "categoryId": category_id,
+            "customerId": customer_id, "employeeId": employee_id,
+            "taxDocuments": tax_documents,
+            "page_size": page_size, "page_num": page_num,
+        })
+
     # ── Fixes (תיקוני מעבדה) ──────────────────────────────────────────
     def get_fixes(self, branch_id: Optional[int] = None, from_date: Optional[str] = None,
                   to_date: Optional[str] = None, status: int = -1) -> list[dict]:
@@ -339,7 +385,30 @@ class NewOrderClient:
         """פריטי תיקון ספציפי (/api/Fixes/items)."""
         return self._get("/api/Fixes/items", {"fixId": fix_id})
 
+    def get_fix(self, fix_id: Union[str, int]) -> dict:
+        """תיקון בודד לפי מזהה (/api/Fixes/{fixId}, נוסף 16/07/2026).
+        מבנה זהה לרשומה של get_fixes."""
+        return self._get(f"/api/Fixes/{fix_id}")
+
+    def get_fix_status_log(self, fix_id: Union[str, int]) -> list[dict]:
+        """היסטוריית שינויי סטטוס של תיקון (/api/Fixes/status-log, נוסף 16/07/2026).
+        כל רשומה: {changeDate, statusCode, statusName, employeeId, employeeName}."""
+        return self._get("/api/Fixes/status-log", {"fixId": fix_id})
+
+    # ── Employees ─────────────────────────────────────────────────────
+    def get_employees(self) -> list[dict]:
+        """רשימת עובדים (/api/Employees) — לבחירת עובד בפעולת הורדה מהמלאי.
+        השדות משתנים בין גרסאות; הצרכן מנרמל id/name בעצמו."""
+        return self._get("/api/Employees") or []
+
     # ── Meta ──────────────────────────────────────────────────────────
     def get_schema(self) -> Any:
         """סכמת מטא-דאטה של ה-API."""
         return self._get("/api/meta/schema")
+
+    def get_changelog(self) -> dict:
+        """יומן השינויים הרשמי של ה-API (/api/meta/changelog, נוסף 16/07/2026).
+        מחזיר {latestVersion, entries:[{version, publishedAt, type, title,
+        description, endpoints[], changes[], breaking}]} — מהחדש לישן.
+        לבדוק כאן לפני חקירת שינויים ב-API במקום לנחש/לשאול את רפי."""
+        return self._get("/api/meta/changelog")
