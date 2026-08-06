@@ -10,7 +10,7 @@ import time
 
 from pywinauto import Application, Desktop, mouse
 
-DRIVER_VERSION = "2026-08-07.7"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
+DRIVER_VERSION = "2026-08-07.8"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
 POS_TITLE_RE = ".*אורדר.*"
 FORM_TITLE = "הורדה מהמלאי"
 ITEM_TITLE = "הורדה מהמלאי - פעולה חדשה"
@@ -176,21 +176,23 @@ def _select_option(c):
     והם נחתו על כפתור-הרדיו השכן — כלומר *ביטלו* את הבחירה שכבר הצליחה
     ('נבחר עדכון מלאי ואז חזר להחזרה לספק', אסי 07/08). שתי השיטות כאן
     חסינות-מיקום: הודעת click, ואז פוקוס + רווח."""
-    ok = False
+    # ✅ מה שעובד בפועל: לחיצה פיזית **על העיגול** — בטופס RTL הוא בקצה הימני
+    #    של הפקד. הודעת click "מצליחה" אך לא מסמנת (הרדיו נשאר על 'החזרה לספק',
+    #    אומת 07/08), ולחיצה במרכז נוחתת על הטקסט/שכן.
     try:
-        c.click()
-        ok = True
+        r = c.rectangle()
+        mouse.click(coords=(r.right - 8, (r.top + r.bottom) // 2))
+        time.sleep(0.25)
+        return
+    except Exception:                    # noqa: BLE001
+        pass
+    try:                                 # נפילה אחרונה: מקלדת
+        from pywinauto.keyboard import send_keys
+        c.set_focus()
+        send_keys(" ")
     except Exception:                    # noqa: BLE001
         pass
     time.sleep(0.2)
-    if not ok:                           # רק אם ההודעה נכשלה — מקלדת
-        try:
-            from pywinauto.keyboard import send_keys
-            c.set_focus()
-            send_keys(" ")
-        except Exception:                # noqa: BLE001
-            pass
-        time.sleep(0.2)
 
 
 def _dismiss_message_box():
@@ -330,13 +332,14 @@ def _err(e):
 
 
 def _click_ctrl(c):
-    """לחיצה על פקד. **הודעה קודם** (c.click) ורק אז קליק פיזי — קליק פיזי על
-    פקדי VB6 נוטה לפגוע בשכן (ראה _select_option), אז הוא מוצא אחרון."""
-    try:
-        c.click()
-        return
-    except Exception:                    # noqa: BLE001
-        pass
+    """לחיצה על **כפתור מצויר** (ThunderRT6UserControlDC וכד') — קליק פיזי.
+
+    ⚠️ שני סוגי פקדים, שתי שיטות הפוכות, ואסור לערבב:
+    • כפתור-רדיו (OptionButton) → הודעת click עובדת; קליק פיזי פוגע בשכן
+      ומבטל את הבחירה. ← ראה _select_option.
+    • כפתור מצויר (UserControl) → הודעת click "מצליחה" אך **לא עושה כלום**
+      (אין לו טיפול בהודעה), ולכן חייבים קליק פיזי. ניסיון להעדיף הודעה כאן
+      שבר את 'התחל פעולה' בגרסה .7."""
     try:
         c.click_input()
         return
@@ -464,14 +467,6 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
         except Exception:                # noqa: BLE001
             pass
 
-    # סוג פעולה = "עדכון מלאי" — ⚠️ **חובה**. אם נשאר "החזרה לספק" (ברירת המחדל
-    # בטופס), הקופה עוצרת עם "חסר שדה חובה! ... (שם ספק)" ולא ממשיכה (07/08).
-    try:
-        _select_option(_child(form, F_OPTYPE_UPDATE))
-    except Exception as e:               # noqa: BLE001
-        _shot("optype")
-        raise RuntimeError("סימון 'עדכון מלאי' נכשל: %s" % _err(e))
-
     # בחר סניף → מחסן\מרלוג
     try:
         _select_option(_child(form, F_BRANCH_RADIO))
@@ -535,6 +530,15 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
     if screenshot_path:
         try: form.capture_as_image().save(screenshot_path)
         except Exception: pass           # noqa: BLE001
+
+    # סוג פעולה = "עדכון מלאי" — ⚠️ **חובה**, ו**אחרון**: אם נשאר "החזרה לספק"
+    # (ברירת המחדל) הקופה עוצרת עם "חסר שדה חובה! ... (שם ספק)". מסמנים בסוף כדי
+    # ששום מילוי אחר אחריו לא יאפס אותו (נצפה 07/08: נבחר ואז חזר).
+    try:
+        _select_option(_child(form, F_OPTYPE_UPDATE))
+    except Exception as e:               # noqa: BLE001
+        _shot("optype")
+        raise RuntimeError("סימון 'עדכון מלאי' נכשל: %s" % _err(e))
 
     # 3) התחל פעולה → מסך פריטים
     _shot("filled")                      # צילום הטופס המלא לפני ההמשך
