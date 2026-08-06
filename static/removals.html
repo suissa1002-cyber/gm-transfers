@@ -171,8 +171,14 @@ header.top{position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1
   </div>
 
   <div class="card" style="margin-top:18px">
-    <h2>🕒 בתור (ממתין להזנה לקופה)</h2>
-    <div id="queue"><div class="emptycart">—</div></div>
+    <h2 onclick="toggleLog()" style="cursor:pointer;display:flex;align-items:center;gap:10px;margin:0">
+      <span id="logChev" style="transition:.15s;display:inline-block">▸</span>
+      הורדות היום
+      <span id="logSummary" style="margin-inline-start:auto;font-weight:400;font-size:.85rem;color:var(--ink2)">—</span>
+    </h2>
+    <div id="logBody" style="display:none;margin-top:12px">
+      <div id="queue"><div class="emptycart">—</div></div>
+    </div>
   </div>
 </div>
 
@@ -362,16 +368,29 @@ async function saveRemoval(){
   }catch(e){ toast(e,true); }
 }
 
-/* ---- queue ---- */
+/* ---- daily removals log (collapsible, hidden by default) ---- */
+function toggleLog(){ const b=document.getElementById('logBody'), c=document.getElementById('logChev');
+  const open=b.style.display!=='none'; b.style.display=open?'none':'block';
+  c.style.transform=open?'':'rotate(90deg)'; if(!open) loadQueue(); }
+
+function _todayISO(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+
 async function loadQueue(){
-  let d; try{ d=await api('/api/admin/pos/removals?limit=25'); }catch(e){ return; }
-  const el=document.getElementById('queue'); const rows=d.removals||[];
-  if(!rows.length){ el.innerHTML='<div class="emptycart">אין פעולות בתור</div>'; return; }
+  let d; try{ d=await api('/api/admin/pos/removals?limit=100'); }catch(e){ return; }
+  const today=_todayISO();
+  const rows=(d.removals||[]).filter(r=>(r.created_at||'').slice(0,10)===today && r.status!=='cancelled');
+  // סיכום תמיד גלוי (גם כשמקופל)
+  const sum=rows.reduce((a,r)=>a+(Number(r.amount)||0),0);
+  const pend=rows.filter(r=>r.status==='pending').length;
+  const summ=document.getElementById('logSummary');
+  summ.textContent = rows.length ? (rows.length+' הורדות · ₪'+sum.toLocaleString('en-US')+(pend?(' · '+pend+' ממתין'):'')) : 'אין הורדות היום';
+  const el=document.getElementById('queue');
+  if(!rows.length){ el.innerHTML='<div class="emptycart">אין הורדות היום</div>'; return; }
   el.innerHTML=rows.map(r=>{
     const items=(r.items||[]).map(i=>esc(i.name||i.sku)+(i.qty>1?(' ×'+i.qty):'')).join(', ');
-    const when=(r.created_at||'').replace('T',' ').slice(5,16);
+    const when=(r.created_at||'').replace('T',' ').slice(11,16);
     return `<div class="rrow"><span class="badge ${r.status}">${
-      ({pending:'ממתין',done:'הוזן',error:'שגיאה',cancelled:'בוטל'}[r.status]||r.status)}</span>
+      ({pending:'ממתין',done:'הוזן',error:'שגיאה'}[r.status]||r.status)}</span>
       <span style="flex:1;min-width:0"><b>${esc(r.employee_name||'')}</b> · ${items} ${r.amount?('· ₪'+r.amount):''}</span>
       <span style="color:var(--ink2)">${when}</span>
       ${r.status==='pending'?`<button class="x" onclick="cancelR(${r.id})" title="בטל">×</button>`:''}
