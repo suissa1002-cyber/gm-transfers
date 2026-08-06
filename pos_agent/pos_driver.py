@@ -10,7 +10,7 @@ import time
 
 from pywinauto import Application, Desktop, mouse
 
-DRIVER_VERSION = "2026-08-07.5"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
+DRIVER_VERSION = "2026-08-07.6"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
 POS_TITLE_RE = ".*אורדר.*"
 FORM_TITLE = "הורדה מהמלאי"
 ITEM_TITLE = "הורדה מהמלאי - פעולה חדשה"
@@ -538,13 +538,37 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
     _shot("filled")                      # צילום הטופס המלא לפני ההמשך
     # הכפתור owner-drawn (בלי טקסט/id) — מאתרים אותו **דינמית**: השורה התחתונה
     # של הטופס, והכפתור הימני ביותר בה (RTL: ימין = "התחל פעולה", שמאל = "ביטול").
-    start_btn = _bottom_right_button(form)
-    if start_btn is not None:
-        _click_ctrl(start_btn)
-    else:
-        _click_rect(form, T["start_rect"])
+    # ⚠️ "התחל פעולה" owner-drawn: מנסים בסדר עולה של סיכון, ובודקים אחרי כל צעד.
+    #    (1) Enter — כפתור ברירת המחדל של הטופס, בלי תלות במיקום בכלל.
+    #    (2) לחיצה על הפקד הימני בשורה התחתונה.
+    #    (3) הפקד הבא בשורה — רק אם הטופס עדיין פתוח (כלומר לא לחצנו "ביטול").
+    #    ⛔ אם הטופס נסגר בלי שנפתח מסך פריטים — לחצנו "ביטול", ומדווחים במפורש.
+    items_win = None
+    try:
+        form.set_focus()
+        from pywinauto.keyboard import send_keys as _sk
+        _sk("{ENTER}")
+    except Exception:                    # noqa: BLE001
+        pass
     time.sleep(1.5)
-    items_win = _spec(app, ITEM_TITLE, timeout=10)
+    items_win = _spec(app, ITEM_TITLE, timeout=3)
+
+    if items_win is None:
+        row = _bottom_row(form)          # ממוין מימין לשמאל
+        for cand in row[:2]:
+            if _spec(app, FORM_TITLE, timeout=1) is None:
+                raise RuntimeError("הטופס נסגר בלי לפתוח מסך פריטים — ככל הנראה "
+                                   "נלחץ 'ביטול' במקום 'התחל פעולה'")
+            try:
+                _click_ctrl(cand)
+            except Exception:            # noqa: BLE001
+                continue
+            time.sleep(1.5)
+            items_win = _spec(app, ITEM_TITLE, timeout=4)
+            if items_win is not None:
+                break
+            if _read_message_box():      # הקופה התלוננה — לא ננסה כפתור נוסף
+                break
     if items_win is None:
         # 🔍 אבחון: הקופה כנראה הציגה הודעה (שדה חסר וכו'). קוראים את הטקסט שלה
         # ומחזירים אותו בשגיאה — במקום לנחש מה הפריע לה.
