@@ -10,7 +10,7 @@ import time
 
 from pywinauto import Application, Desktop, mouse
 
-DRIVER_VERSION = "2026-08-07.12"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
+DRIVER_VERSION = "2026-08-07.13"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
 POS_TITLE_RE = ".*אורדר.*"
 FORM_TITLE = "הורדה מהמלאי"
 ITEM_TITLE = "הורדה מהמלאי - פעולה חדשה"
@@ -171,6 +171,32 @@ def _click_emp_button(popup, emp_name, T):
     except Exception:                    # noqa: BLE001
         pass
     _click_rect(popup, [rect[0] + dx, rect[1] + dy, rect[2] + dx, rect[3] + dy])
+
+
+def _confirm_dialog(yes=True, timeout=6):
+    """עונה לשאלת אישור של הקופה (#32770) בלחיצה על 'כן' / 'ביטול'.
+    ⚠️ לא ENTER: בשאלת היציאה ('הפעולה לא הושלמה, האם ברצונך לצאת?') כפתור
+    ברירת המחדל הוא **ביטול**, ולכן ENTER היה משאיר אותנו תקועים בפנים."""
+    wanted = ("כן", "&כן", "Yes", "&Yes") if yes else ("ביטול", "לא", "Cancel", "No")
+    end = time.time() + timeout
+    while time.time() < end:
+        try:
+            for w in Desktop(backend="win32").windows():
+                try:
+                    if w.class_name() != "#32770" or not w.is_visible():
+                        continue
+                    for c in w.descendants():
+                        t = (c.window_text() or "").strip()
+                        if t in wanted:
+                            c.click_input()
+                            time.sleep(0.6)
+                            return True
+                except Exception:        # noqa: BLE001
+                    continue
+        except Exception:                # noqa: BLE001
+            pass
+        time.sleep(0.4)
+    return False
 
 
 def _type_text(c, text):
@@ -721,8 +747,24 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
 
     # 5) סיום
     if dry_run:
-        try: items_win.type_keys("{ESC}")
-        except Exception: pass           # noqa: BLE001
+        # יציאה בלי לשמור: ESC ואז "כן" בשאלה "הפעולה לא הושלמה, האם ברצונך לצאת?"
+        try:
+            items_win.set_focus()
+            items_win.type_keys("{ESC}")
+        except Exception:                # noqa: BLE001
+            pass
+        time.sleep(0.8)
+        if not _confirm_dialog(yes=True):
+            btns = _item_action_buttons(items_win)     # נפילה: כפתור "יציאה"
+            try:
+                cands = [(c, c.rectangle()) for c in items_win.descendants()
+                         if c.class_name() == "ThunderRT6UserControlDC"]
+                if cands:
+                    _click_ctrl(max(cands, key=lambda cr: (cr[1].top, cr[1].left))[0])
+                    time.sleep(0.8)
+                    _confirm_dialog(yes=True)
+            except Exception:            # noqa: BLE001
+                pass
         return ""
 
     btns = _item_action_buttons(items_win)       # [0] = "סיים פעולה"
@@ -732,6 +774,8 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
         _click_rect(items_win, T["finish_rect"])
     else:
         raise RuntimeError("לא אותר כפתור 'סיים פעולה'")
-    time.sleep(2.0)
+    time.sleep(1.2)
+    _confirm_dialog(yes=True)            # אישור שמירה, אם נשאל
+    time.sleep(1.5)
     _dismiss_message_box()
     return ""
