@@ -1766,6 +1766,11 @@ def admin_live_serial(q: str, x_admin_key: Optional[str] = Header(None), x_devic
 # ══════════════════════════════════════════════════════════════════════
 CITY_BRANCH_ID = 3        # "מחסן\מרלוג" = סיטי (יעד ברירת המחדל להורדות)
 
+# רק העובדים שמבצעים הורדות בסיטי (אסי, 27/07) — לפי מס' עובד, בסדר התצוגה הרצוי.
+# ריק = כל העובדים. לעריכה: הוסף/הסר מזהה. (אורי=8905, יוסי ספגה=111, אודי=8897,
+# יעקב.ע=8903, אירה=8894.)
+POS_REMOVAL_EMPLOYEE_IDS = ["8905", "111", "8897", "8903", "8894"]
+
 _pos_emp_cache = {"at": 0.0, "data": None}
 
 
@@ -1790,7 +1795,12 @@ def pos_employees(x_admin_key: Optional[str] = Header(None),
             continue
         emps.append({"id": str(e.get("id") or ""), "name": nm,
                      "branch": ((e.get("branchInfo") or {}).get("branchName") or "")})
-    emps.sort(key=lambda x: x["name"])
+    if POS_REMOVAL_EMPLOYEE_IDS:
+        # רק המורשים, בסדר שהוגדר
+        order = {eid: i for i, eid in enumerate(POS_REMOVAL_EMPLOYEE_IDS)}
+        emps = sorted((e for e in emps if e["id"] in order), key=lambda x: order[x["id"]])
+    else:
+        emps.sort(key=lambda x: x["name"])
     out = {"employees": emps}
     _pos_emp_cache.update(at=_t.time(), data=out)
     return out
