@@ -10,6 +10,7 @@ import time
 
 from pywinauto import Application, Desktop, mouse
 
+DRIVER_VERSION = "2026-08-07.3"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
 POS_TITLE_RE = ".*אורדר.*"
 FORM_TITLE = "הורדה מהמלאי"
 ITEM_TITLE = "הורדה מהמלאי - פעולה חדשה"
@@ -30,6 +31,11 @@ DEFAULT_TUNING = {
     # חלון **ללא כותרת** שכל כפתוריו owner-drawn **בלי טקסט** → חייבים מיקום.
     # נמדד 07/08/2026; העוגן הוא ה-Frame הפנימי, וכל המיקומים מוסטים אוטומטית
     # אם הפופאפ ייפתח במקום אחר (ראה _click_emp_button).
+    # אינדקס הכפתור ברשת (סדר קריאה RTL: 0 = ימני-עליון). משמש רק אם הפופאפ
+    # מסרב להיסגר. ⚠️ מוסיפים/מסירים עובד בקופה → האינדקסים זזים; מעדכנים כאן
+    # (או מהשרת ב-tuning.emp_index) לפי מה שהאימות העצמי מדווח.
+    "emp_index": {"אודי": 0, "אורי": 1, "אירה": 2, "אסי": 3,
+                  "אתי": 4, "יעקב.ע": 5, "קטיה": 6, "שמואל": 7},
     "popup_frame_origin": [533, 320],
     "emp_buttons": {
         "אודי":   [1241, 324, 1378, 462],
@@ -161,6 +167,27 @@ def _click_emp_button(popup, emp_name, T):
     except Exception:                    # noqa: BLE001
         pass
     _click_rect(popup, [rect[0] + dx, rect[1] + dy, rect[2] + dx, rect[3] + dy])
+
+
+def _emp_grid(popup):
+    """רשת כפתורי העובדים **כפי שהיא כרגע** (נקראת חיה מהפופאפ, לא ממיקומים
+    שנמדדו בעבר — הפופאפ עשוי להיפתח במקום אחר או להשתנות כשמוסיפים עובד).
+    מחזיר את הכפתורים בסדר קריאה RTL: שורה אחר שורה, בכל שורה מימין לשמאל.
+    ⛔ שורת [חדש/ביטול] התחתונה מוחרגת, וכך גם פקדים זעירים/דקורטיביים."""
+    try:
+        rects = [(c, c.rectangle()) for c in popup.descendants()
+                 if c.class_name() == "ThunderRT6UserControlDC"]
+        if not rects:
+            return []
+        bottom = max(r.top for _, r in rects)
+        grid = [(c, r) for c, r in rects if r.top < bottom - 40]
+        if grid:                          # מסננים פקדים נמוכים מהכפתורים האמיתיים
+            h = max(r.bottom - r.top for _, r in grid)
+            grid = [(c, r) for c, r in grid if (r.bottom - r.top) >= h * 0.8]
+        grid.sort(key=lambda cr: (cr[1].top, -cr[1].left))
+        return [c for c, _ in grid]
+    except Exception:                    # noqa: BLE001
+        return []
 
 
 def _bottom_row(win):
@@ -329,9 +356,27 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
             break
         time.sleep(0.5)
     if popup is not None:
+        # קודם מנסים לסגור (ESC/X/ביטול) — אז נמלא עובד בשדות הטופס.
         _dismiss_popup(app, popup)
         if _find_popup(app) is not None:
-            raise RuntimeError("פופאפ בחירת העובד לא נסגר (ESC / סגירת חלון / ביטול)")
+            # לא נסגר → הפופאפ דורש בחירה. לוחצים על הכפתור לפי **רשת חיה**
+            # (נקראת מהפופאפ עכשיו, לא מיקומים שנמדדו פעם) + אימות עצמי בהמשך.
+            grid = _emp_grid(popup)
+            idx = (T.get("emp_index") or {}).get(emp_name)
+            if idx is None:
+                first = emp_name.split()[0] if emp_name else ""
+                for k, v in (T.get("emp_index") or {}).items():
+                    if k == first or k.startswith(first) or first.startswith(k):
+                        idx = v
+                        break
+            if idx is None or idx >= len(grid):
+                raise RuntimeError(
+                    "הפופאפ לא נסגר ואין אינדקס תקין ל'%s' (נמצאו %d כפתורים). "
+                    "הגדר tuning.emp_index" % (emp_name, len(grid)))
+            _click_ctrl(grid[idx])
+            time.sleep(1.0)
+            if _find_popup(app) is not None:
+                raise RuntimeError("פופאפ בחירת העובד עדיין פתוח אחרי לחיצה על אינדקס %d" % idx)
 
     form = _spec(app, FORM_TITLE, timeout=8)
     if form is None:
@@ -389,12 +434,26 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
     # בלי כפתור "הצב" ובלי קואורדינטות. אלה פקדי TextBox אמיתיים עם id.
     emp_no = str(removal.get("employee_no") or "").strip()
     try:
-        if emp_no:
-            _set_text(_child(form, F_EMP_NO), emp_no)
-            time.sleep(0.2)
-        if emp_name:
-            _set_text(_child(form, F_EMP_NAME), emp_name)
-            time.sleep(0.2)
+        # 🔍 אימות עצמי: אם הפופאפ בחר עובד, הטופס כבר מכיל את שמו. אם זה **לא**
+        # העובד שביקשנו — עצור ודווח מי כן נבחר, כדי לתקן את האינדקס בלי לנחש.
+        cur_name = ""
+        try:
+            cur_name = (_child(form, F_EMP_NAME).window_text() or "").strip()
+        except Exception:                # noqa: BLE001
+            pass
+        if cur_name and emp_name and emp_name.split()[0] not in cur_name:
+            raise RuntimeError("הפופאפ בחר '%s' במקום '%s' — אינדקס שגוי ב-emp_index"
+                               % (cur_name, emp_name))
+        if not cur_name:                 # הפופאפ נסגר בלי בחירה → ממלאים ידנית
+            if emp_no:
+                _set_text(_child(form, F_EMP_NO), emp_no)
+                time.sleep(0.2)
+            if emp_name:
+                _set_text(_child(form, F_EMP_NAME), emp_name)
+                time.sleep(0.2)
+    except RuntimeError:
+        _shot("emp")
+        raise
     except Exception as e:               # noqa: BLE001
         _shot("emp")
         raise RuntimeError("הזנת עובד נכשלה: %s" % _err(e))

@@ -168,7 +168,8 @@ def process(r, cfg=None):
 
 
 def main():
-    log("סוכן הורדה מהמלאי — GreenOS=%s" % GREENOS_URL)
+    ver = getattr(pos_driver, "DRIVER_VERSION", "?") if pos_driver else "no-driver"
+    log("סוכן הורדה מהמלאי — GreenOS=%s | גרסת דרייבר: %s" % (GREENOS_URL, ver))
     log("ממתין לפעולות. (enabled/dry_run נשלטים מ-GreenOS; ברירת מחדל: מושבת+dry)")
     while True:
         try:
