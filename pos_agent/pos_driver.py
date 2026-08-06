@@ -10,7 +10,7 @@ import time
 
 from pywinauto import Application, Desktop, mouse
 
-DRIVER_VERSION = "2026-08-07.17"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
+DRIVER_VERSION = "2026-08-07.18"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
 POS_TITLE_RE = ".*אורדר.*"
 FORM_TITLE = "הורדה מהמלאי"
 ITEM_TITLE = "הורדה מהמלאי - פעולה חדשה"
@@ -748,28 +748,33 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
     #    הפריט לא נכנס לרשימה שבתחתית (אסי, 07/08).
     for it in (removal.get("items") or []):
         sku = str(it.get("sku") or "").strip()
+        serial = str(it.get("serial") or "").strip()
         qty = float(it.get("qty") or 1)
-        if not sku:
+        if not sku and not serial:
             continue
+        # ⚠️ בפריט **סידורי** מקלידים את ה**סריאל**, לא את מק"ט המוצר. המסך נקרא
+        # "קוד פריט/סריאלי" ומצפה ליחידה הספציפית; הקלדת המק"ט גרמה לקופה לא לזהות
+        # ולהציע "פריט חדש" (07/08). המק"ט נשמר לאימות המלאי בלבד.
+        code = serial or sku
         items_win.set_focus()
         try:
             c_code = _child(items_win, I_CODE)
             _clear_field(c_code)
             from pywinauto.keyboard import send_keys as _sk2
-            _sk2(sku)
+            _sk2(code)
         except Exception:                # noqa: BLE001
-            items_win.type_keys("{DELETE 20}%s" % sku, with_spaces=True)
+            items_win.type_keys("{DELETE 20}%s" % code, with_spaces=True)
             from pywinauto.keyboard import send_keys as _sk2
         _sk2("{ENTER}")
         time.sleep(1.2)
-        _guard_new_item(app, sku)        # ⛔ מק"ט לא מוכר → ביטול ועצירה
+        _guard_new_item(app, code)        # ⛔ מק"ט לא מוכר → ביטול ועצירה
 
         # ⚠️ שני מסלולים שונים (אסי, 07/08):
         #  • פריט **סידורי** (הוקלד סריאל) → הקופה מוסיפה לרשימה **אוטומטית**
         #    אחרי Enter. אין כמות ואין ללחוץ "הורד מהמלאי".
         #  • פריט **לא-סידורי** → חייבים למלא כמות ואז "הורד מהמלאי", אחרת
         #    הפריט לא נכנס לרשימה שבתחתית.
-        if (it.get("serial") or "").strip():
+        if serial:
             time.sleep(0.6)
             continue
 
