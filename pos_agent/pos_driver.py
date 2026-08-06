@@ -10,7 +10,7 @@ import time
 
 from pywinauto import Application, Desktop, mouse
 
-DRIVER_VERSION = "2026-08-07.18"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
+DRIVER_VERSION = "2026-08-07.19"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
 POS_TITLE_RE = ".*אורדר.*"
 FORM_TITLE = "הורדה מהמלאי"
 ITEM_TITLE = "הורדה מהמלאי - פעולה חדשה"
@@ -234,6 +234,31 @@ def _clear_field(c):
     time.sleep(0.15)
     send_keys("{END}" + "{BACKSPACE}" * 40 + "{DELETE}" * 10)
     time.sleep(0.15)
+
+
+def _type_code_verified(c, code, tries=4):
+    """מקליד קוד/סריאל לשדה **ומוודא שהוא נקלט במלואו** לפני Enter.
+
+    ⚠️ למה: אחרי שפריט נוסף לרשימה הקופה עסוקה רגע, והתווים הראשונים של הקוד
+    הבא נבלעים — סריאל 863631087396667 נקלט כ-087396667 ואז נפתח "פריט חדש"
+    (אסי, 07/08). מקלידים לאט, קוראים בחזרה, ומנסים שוב עד שזהה.
+    """
+    from pywinauto.keyboard import send_keys
+    code = str(code)
+    for _ in range(tries):
+        _clear_field(c)
+        time.sleep(0.25)
+        send_keys(code, pause=0.06)          # לאט — VB6 מפספס הקלדה מהירה
+        time.sleep(0.45)
+        try:
+            got = (c.window_text() or "").strip()
+        except Exception:                    # noqa: BLE001
+            got = ""
+        if got == code:
+            return
+        time.sleep(0.4)
+    raise RuntimeError("הקוד '%s' לא נקלט במלואו בשדה (התקבל '%s') — "
+                       "נעצר לפני Enter כדי לא לפתוח 'פריט חדש'" % (code, got))
 
 
 def _type_text(c, text):
@@ -757,14 +782,8 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
         # ולהציע "פריט חדש" (07/08). המק"ט נשמר לאימות המלאי בלבד.
         code = serial or sku
         items_win.set_focus()
-        try:
-            c_code = _child(items_win, I_CODE)
-            _clear_field(c_code)
-            from pywinauto.keyboard import send_keys as _sk2
-            _sk2(code)
-        except Exception:                # noqa: BLE001
-            items_win.type_keys("{DELETE 20}%s" % code, with_spaces=True)
-            from pywinauto.keyboard import send_keys as _sk2
+        from pywinauto.keyboard import send_keys as _sk2
+        _type_code_verified(_child(items_win, I_CODE), code)
         _sk2("{ENTER}")
         time.sleep(1.2)
         _guard_new_item(app, code)        # ⛔ מק"ט לא מוכר → ביטול ועצירה
