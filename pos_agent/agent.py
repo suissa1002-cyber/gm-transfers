@@ -49,6 +49,8 @@ def _load_key() -> str:
     return k
 
 
+_dry_done = set()          # פעולות שכבר הודגמו ב-dry-run בסשן הזה
+
 KEY = _load_key()
 H = {"X-Admin-Key": KEY, "Content-Type": "application/json"}
 
@@ -153,8 +155,11 @@ def process(r, cfg=None):
         return
 
     if dry:
-        # ב-dry-run לא נשמר כלום — מחזירים לתור לריצה חיה, עם צילום לבדיקה
-        log("  ✓ dry-run הושלם (צילום: %s). מוחזר ל-pending." % shot)
+        # ב-dry-run לא נשמר כלום — מחזירים לתור כדי שריצה חיה תוכל לבצע אותו.
+        # ⚠️ אבל מסמנים מקומית שכבר הודגם, אחרת הסוכן היה מריץ את אותה פעולה
+        # בלולאה אינסופית בכל סבב (וגם נתקע על דיאלוג שנשאר פתוח מהסבב הקודם).
+        _dry_done.add(rid)
+        log("  ✓ dry-run הושלם (צילום: %s). נשאר ב-pending, לא יורץ שוב ב-dry." % shot)
         report(rid, "pending")
         return
 
@@ -178,6 +183,8 @@ def main():
                 time.sleep(max(10, int(cfg.get("poll_sec", 25))))
                 continue
             for r in get_pending():
+                if cfg.get("dry_run", True) and r["id"] in _dry_done:
+                    continue            # כבר הודגם ב-dry — לא חוזרים עליו
                 process(r, cfg)
         except Exception as e:                # noqa: BLE001
             log("סבב נכשל: %s" % e)
