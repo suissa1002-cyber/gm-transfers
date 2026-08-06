@@ -770,6 +770,25 @@ _SCHEMA = [
         updated_by TEXT
     )
     """,
+    # תור "הורדה מהמלאי" — נקלט ב-GreenOS (מסך הקליטה בסיטי), ומוזן לקופה ע"י
+    # סוכן ה-RPA על מכונת ה-Windows. פעולה אחת = תעודה אחת עם סכום כללי + פריטים.
+    """
+    CREATE TABLE IF NOT EXISTS pos_removals (
+        id            {pk},
+        created_at    TEXT,
+        status        TEXT DEFAULT 'pending',   -- pending / applying / done / error / cancelled
+        branch_id     INTEGER,                  -- סניף ההורדה (סיטי=3)
+        employee_name TEXT,                     -- העובד שביצע (חובה)
+        employee_no   TEXT,                     -- מס' עובד בקופה (אם ידוע)
+        amount        REAL,                     -- סכום כללי לפעולה (נכנס ל"תיאור פעולה")
+        note          TEXT,                     -- הערה חופשית (מצטרפת לתיאור)
+        items         TEXT,                     -- JSON: [{{sku,name,qty,serial}}]
+        created_by    TEXT,                     -- מי קלט (אדמין/מכשיר סניף)
+        applied_at    TEXT,                     -- מתי הסוכן הזין לקופה
+        pos_doc_no    TEXT,                     -- מס' תעודה שהקופה החזירה
+        error         TEXT                      -- סיבת כשל אם status=error
+    )
+    """.format(pk=_PK),
 ]
 
 
@@ -4306,6 +4325,104 @@ def removals_insert(rows: list) -> int:
                    r.get("removed_at") or ""))
             n += 1
     return n
+
+
+def pos_open_transfer_match(branch_id, code) -> list:
+    """קריאה-בלבד: פריטי העברה **פתוחים** (received=0) לסניף היעד שתואמים לקוד
+    (סריאל או ברקוד). לא מסמן כלום — משמש את מסך הסריקה החכם כדי להחליט אם
+    הסריקה היא קליטת-העברה או הורדה-מהמלאי. `is_serial` מבדיל מקרה חד-משמעי
+    (סריאל) מדו-משמעי (ברקוד לא-סידורי שיכול להיות גם קליטה וגם הורדה)."""
+    code = (code or "").strip()
+    if not code:
+        return []
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""
+            SELECT ti.id, ti.op_id, ti.product_id, ti.name, ti.serial, ti.barcode,
+                   t.from_branch_id
+              FROM transfer_items ti
+              JOIN transfers t ON t.op_id = ti.op_id
+             WHERE (ti.serial = ? OR ti.barcode = ?)
+               AND t.to_branch_id = ? AND ti.received = 0
+        """), (code, code, int(branch_id)))
+        rows = [dict(r) for r in cur.fetchall()]
+    for r in rows:
+        r["is_serial"] = bool((r.get("serial") or "").strip()
+                              and str(r.get("serial")).strip() == code)
+        r["from_name"] = cfg.branch_name(r.get("from_branch_id"))
+    return rows
+
+
+# ── pos_removals: תור "הורדה מהמלאי" מ-GreenOS אל הקופה (דרך סוכן RPA) ──
+def pos_removal_add(branch_id, employee_name, amount, items, note="",
+                    employee_no="", created_by="") -> int:
+    """קולט פעולת הורדה אחת (תעודה) לתור. items = list[{sku,name,qty,serial}]."""
+    import json as _json
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""
+            INSERT INTO pos_removals
+              (created_at, status, branch_id, employee_name, employee_no,
+               amount, note, items, created_by)
+            VALUES (?, 'pending', ?, ?, ?, ?, ?, ?, ?)
+            RETURNING id
+        """) if _USE_PG else """
+            INSERT INTO pos_removals
+              (created_at, status, branch_id, employee_name, employee_no,
+               amount, note, items, created_by)
+            VALUES (?, 'pending', ?, ?, ?, ?, ?, ?, ?)
+        """.replace("?", "?"),
+            (now_iso(),
+             int(branch_id) if str(branch_id).strip() not in ("", "None") else None,
+             (employee_name or "").strip(), (employee_no or "").strip(),
+             float(amount or 0), (note or "").strip(),
+             _json.dumps(items or [], ensure_ascii=False), (created_by or "").strip()))
+        if _USE_PG:
+            return int(cur.fetchone()["id"])
+        return int(cur.lastrowid)
+
+
+def _pos_removal_row(r) -> dict:
+    import json as _json
+    d = dict(r)
+    try:
+        d["items"] = _json.loads(d.get("items") or "[]")
+    except Exception:  # noqa: BLE001
+        d["items"] = []
+    return d
+
+
+def pos_removals_list(status=None, limit=100) -> list:
+    with _conn() as c:
+        cur = c.cursor()
+        if status:
+            cur.execute(_q("SELECT * FROM pos_removals WHERE status = ? "
+                           "ORDER BY id DESC LIMIT ?"), (status, int(limit)))
+        else:
+            cur.execute(_q("SELECT * FROM pos_removals ORDER BY id DESC LIMIT ?"),
+                        (int(limit),))
+        return [_pos_removal_row(r) for r in cur.fetchall()]
+
+
+def pos_removal_get(rid) -> dict:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM pos_removals WHERE id = ?"), (int(rid),))
+        row = cur.fetchone()
+        return _pos_removal_row(row) if row else None
+
+
+def pos_removal_set_status(rid, status, pos_doc_no=None, error=None) -> None:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""
+            UPDATE pos_removals
+               SET status = ?, applied_at = ?, pos_doc_no = ?, error = ?
+             WHERE id = ?
+        """), (status,
+               now_iso() if status in ("done", "error") else None,
+               (str(pos_doc_no) if pos_doc_no else None),
+               (str(error)[:400] if error else None), int(rid)))
 
 
 def removals_opids_since(since_prefix: str) -> set:

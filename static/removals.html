@@ -1,0 +1,384 @@
+<!doctype html>
+<html dir="rtl" lang="he">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>הורדה מהמלאי · GreenOS</title>
+<style>
+:root{
+  --bg:#f5f7f6; --surface:#fff; --ink:#111417; --ink2:#5c666d; --accent:#149c40;
+  --accent-soft:#e7f6ec; --line:#e6eae8; --deal:#e2551f; --warn:#c9860a;
+  --shadow:0 10px 30px rgba(17,20,23,.10); --r:18px;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#101314; --surface:#1a1f20; --ink:#eef2f0; --ink2:#9aa6a0; --accent:#3ecf68;
+  --accent-soft:#1a2f21; --line:#272e2f; --deal:#ff8352; --warn:#e0a83a;
+  --shadow:0 10px 30px rgba(0,0,0,.4);
+}}
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);line-height:1.5;
+  font-family:'Assistant',-apple-system,BlinkMacSystemFont,"Segoe UI","Arial Hebrew",Arial,sans-serif;
+  -webkit-font-smoothing:antialiased}
+button{font-family:inherit;cursor:pointer}
+.wrap{max-width:1180px;margin:0 auto;padding:0 16px 60px}
+header.top{position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1px solid var(--line);
+  padding:12px 0;margin-bottom:18px}
+.top .wrap{display:flex;align-items:center;gap:14px}
+.logo{font-weight:800;font-size:1.25rem;letter-spacing:-.5px}
+.logo .dot{color:var(--accent)}
+.sub{color:var(--ink2);font-size:.85rem;margin-inline-start:auto}
+/* employee bar */
+.empbar{display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--line);
+  border-radius:var(--r);padding:12px 16px;box-shadow:var(--shadow);margin-bottom:16px}
+.empbar .lbl{color:var(--ink2);font-size:.9rem}
+.empbar .val{font-weight:800;font-size:1.05rem}
+.empbar .val.empty{color:var(--deal)}
+.empbar button{margin-inline-start:auto;background:var(--accent-soft);color:var(--accent);border:0;
+  border-radius:99px;padding:9px 18px;font-weight:800}
+/* layout */
+.grid{display:grid;grid-template-columns:1.3fr 1fr;gap:18px}
+@media(max-width:820px){.grid{grid-template-columns:1fr}}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+  box-shadow:var(--shadow);padding:18px}
+.card h2{margin:0 0 12px;font-size:1.05rem}
+/* scan */
+.scanrow{display:flex;gap:10px}
+#scan{flex:1;font-size:1.35rem;font-weight:700;padding:16px 18px;border:2px solid var(--accent);
+  border-radius:14px;background:var(--bg);color:var(--ink);text-align:center;letter-spacing:1px}
+#scan:focus{outline:none;box-shadow:0 0 0 4px var(--accent-soft)}
+.hint{color:var(--ink2);font-size:.85rem;margin-top:8px;text-align:center}
+/* result card */
+#result{margin-top:16px;min-height:20px}
+.prod{display:flex;gap:16px;align-items:flex-start}
+.prod img{width:104px;height:104px;object-fit:contain;background:#fff;border-radius:12px;border:1px solid var(--line);flex:0 0 auto}
+.prod .info{flex:1;min-width:0}
+.prod .name{font-weight:800;font-size:1.05rem;margin-bottom:6px}
+.prices{display:flex;gap:10px;flex-wrap:wrap;margin:8px 0}
+.price{border:1px solid var(--line);border-radius:12px;padding:8px 14px;min-width:120px}
+.price .k{font-size:.75rem;color:var(--ink2)}
+.price .v{font-size:1.25rem;font-weight:800}
+.price.pos .v{color:var(--accent)}
+.price.site .v{color:var(--ink)}
+.price .strike{text-decoration:line-through;color:var(--ink2);font-size:.9rem;font-weight:600;margin-inline-start:6px}
+.stockline{font-size:.85rem;color:var(--ink2);margin-top:4px}
+.stockline b{color:var(--ink)}
+.actions{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap}
+.btn{border:0;border-radius:12px;padding:12px 20px;font-weight:800;font-size:1rem}
+.btn.primary{background:var(--accent);color:#fff}
+.btn.ghost{background:var(--bg);color:var(--ink);border:1px solid var(--line)}
+.btn.warn{background:var(--warn);color:#fff}
+.banner{border-radius:12px;padding:14px 16px;font-weight:700;margin-bottom:12px}
+.banner.recv{background:var(--accent-soft);color:var(--accent)}
+.banner.amb{background:#fff5e6;color:var(--warn);border:1px solid var(--warn)}
+@media(prefers-color-scheme:dark){.banner.amb{background:#2a2413}}
+.banner.unk{background:#fdecec;color:var(--deal)}
+@media(prefers-color-scheme:dark){.banner.unk{background:#2a1717}}
+/* removal cart */
+.qtywrap{display:inline-flex;align-items:center;gap:6px}
+.qtywrap button{width:30px;height:30px;border-radius:8px;border:1px solid var(--line);
+  background:var(--bg);font-weight:800;font-size:1.05rem}
+.qtywrap input{width:48px;text-align:center;font-weight:800;border:1px solid var(--line);
+  border-radius:8px;padding:5px;background:var(--surface);color:var(--ink)}
+.item{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+.item .nm{flex:1;min-width:0}
+.item .nm .t{font-weight:700;font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item .nm .s{font-size:.78rem;color:var(--ink2)}
+.item .x{background:none;border:0;color:var(--deal);font-size:1.3rem;font-weight:800;line-height:1}
+.emptycart{color:var(--ink2);text-align:center;padding:22px 0}
+.field{margin:12px 0}
+.field label{display:block;font-size:.85rem;color:var(--ink2);margin-bottom:5px}
+.field input,.field textarea{width:100%;border:1px solid var(--line);border-radius:12px;padding:11px 14px;
+  background:var(--bg);color:var(--ink);font-family:inherit;font-size:1rem}
+#amount{font-size:1.3rem;font-weight:800;text-align:center}
+.saverow{margin-top:14px}
+.saverow .btn{width:100%;justify-content:center;padding:15px}
+/* saved list */
+.rrow{display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--line);font-size:.9rem}
+.rrow .badge{font-size:.72rem;font-weight:800;padding:3px 9px;border-radius:99px}
+.badge.pending{background:var(--accent-soft);color:var(--accent)}
+.badge.done{background:#e7f0ff;color:#1f6fd6}
+.badge.error{background:#fdecec;color:var(--deal)}
+.badge.cancelled{background:var(--line);color:var(--ink2)}
+/* employee popup */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:50;padding:20px}
+.overlay.on{display:flex}
+.modal{background:var(--surface);border-radius:22px;box-shadow:var(--shadow);max-width:620px;width:100%;padding:24px}
+.modal h3{margin:0 0 18px;text-align:center;color:var(--accent);font-size:1.3rem}
+.empgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+@media(max-width:560px){.empgrid{grid-template-columns:repeat(2,1fr)}}
+.empbtn{background:var(--bg);border:1.5px solid var(--line);border-radius:14px;padding:20px 10px;
+  font-weight:800;font-size:1.05rem;color:var(--ink);transition:.12s}
+.empbtn:hover{border-color:var(--accent);background:var(--accent-soft)}
+.empbtn .no{display:block;font-size:.72rem;color:var(--ink2);font-weight:600;margin-top:3px}
+/* gate + toast */
+#gate{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:99}
+#gate .box{background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:28px;box-shadow:var(--shadow);width:min(360px,92vw);text-align:center}
+#gate input{width:100%;padding:12px;border:1px solid var(--line);border-radius:12px;margin:14px 0;font-size:1rem;background:var(--bg);color:var(--ink);text-align:center}
+#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--ink);color:var(--bg);
+  padding:13px 24px;border-radius:99px;font-weight:700;box-shadow:var(--shadow);transition:.25s;z-index:80;opacity:0}
+#toast.on{transform:translateX(-50%) translateY(0);opacity:1}
+#toast.err{background:var(--deal);color:#fff}
+</style>
+</head>
+<body>
+<div id="gate"><div class="box">
+  <div class="logo">Green<span class="dot">OS</span></div>
+  <div style="color:var(--ink2);font-size:.9rem;margin-top:6px">הורדה מהמלאי — הזן מפתח ניהול</div>
+  <input id="gateKey" type="password" placeholder="מפתח ניהול" autocomplete="off">
+  <button class="btn primary" style="width:100%" onclick="gateGo()">כניסה</button>
+</div></div>
+
+<header class="top"><div class="wrap">
+  <span class="logo">Green<span class="dot">OS</span></span>
+  <span style="font-weight:700">הורדה מהמלאי · בדיקת מחיר</span>
+  <span class="sub" id="branchLbl">סניף: מחסן\מרלוג (סיטי)</span>
+</div></header>
+
+<div class="wrap">
+  <div class="empbar">
+    <span class="lbl">עובד מבצע:</span>
+    <span class="val empty" id="empVal">— לא נבחר —</span>
+    <button onclick="openEmp()">בחר עובד</button>
+  </div>
+
+  <div class="grid">
+    <!-- scan + result -->
+    <div class="card">
+      <h2>🔎 סריקה</h2>
+      <div class="scanrow">
+        <input id="scan" placeholder="סרוק ברקוד / סידורי / מק״ט" autocomplete="off" inputmode="text">
+      </div>
+      <div class="hint">סרוק כדי לבדוק מחיר או להוסיף להורדה. פריט בהעברה נכנסת יזוהה אוטומטית לקליטה.</div>
+      <div id="result"></div>
+    </div>
+
+    <!-- removal cart -->
+    <div class="card">
+      <h2>📦 פעולת הורדה</h2>
+      <div id="items"><div class="emptycart">אין פריטים עדיין — סרוק כדי להוסיף</div></div>
+      <div class="field">
+        <label>סכום כללי לפעולה (₪)</label>
+        <input id="amount" type="number" inputmode="decimal" placeholder="0" min="0" step="1">
+      </div>
+      <div class="field">
+        <label>הערה (אופציונלי — מצטרפת לתיאור הפעולה בקופה)</label>
+        <input id="note" placeholder="הערה חופשית">
+      </div>
+      <div class="saverow">
+        <button class="btn primary" onclick="saveRemoval()">שמור פעולת הורדה</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:18px">
+    <h2>🕒 בתור (ממתין להזנה לקופה)</h2>
+    <div id="queue"><div class="emptycart">—</div></div>
+  </div>
+</div>
+
+<!-- employee popup -->
+<div class="overlay" id="empOverlay"><div class="modal">
+  <h3>בחר שם עובד</h3>
+  <div class="empgrid" id="empGrid"><div class="emptycart">טוען…</div></div>
+</div></div>
+
+<div id="toast"></div>
+
+<script>
+const BR = 3;                    // מחסן\מרלוג = סיטי
+let KEY = localStorage.getItem('gm_admin_key') || '';
+let EMP = null;                  // {id,name}
+let CART = [];                   // [{sku,name,qty,serial,image}]
+let EMPS = [];
+
+function H(){ return {'X-Admin-Key':KEY,'Content-Type':'application/json'}; }
+async function api(path, opts){
+  opts = opts||{}; opts.headers = Object.assign(H(), opts.headers||{});
+  const r = await fetch(path, opts);
+  if(r.status===401){ localStorage.removeItem('gm_admin_key'); location.reload(); throw 0; }
+  const t = await r.text();
+  let j={}; try{ j=t?JSON.parse(t):{}; }catch(e){ j={_raw:t}; }
+  if(!r.ok) throw (j.detail || j._raw || ('שגיאה '+r.status));
+  return j;
+}
+function toast(msg, err){ const el=document.getElementById('toast'); el.textContent=msg;
+  el.className='on'+(err?' err':''); clearTimeout(el._t); el._t=setTimeout(()=>el.className='',2600); }
+function money(v){ if(v==null||v==='') return '—'; const n=Number(v); return '₪'+n.toLocaleString('en-US'); }
+function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function focusScan(){ const s=document.getElementById('scan'); s.value=''; s.focus(); }
+
+/* ---- gate ---- */
+function gateGo(){ const k=document.getElementById('gateKey').value.trim(); if(!k) return;
+  KEY=k; localStorage.setItem('gm_admin_key',k); boot(); }
+document.getElementById('gateKey').addEventListener('keydown',e=>{ if(e.key==='Enter') gateGo(); });
+
+async function boot(){
+  try{ await api('/api/admin/pos/employees'); }        // validates key
+  catch(e){ toast('מפתח שגוי',true); return; }
+  document.getElementById('gate').style.display='none';
+  loadEmployees(); loadQueue(); focusScan();
+}
+
+/* ---- employees ---- */
+async function loadEmployees(){
+  try{ const d=await api('/api/admin/pos/employees'); EMPS=d.employees||[]; }
+  catch(e){ EMPS=[]; }
+}
+function openEmp(){
+  const g=document.getElementById('empGrid');
+  g.innerHTML = EMPS.length ? EMPS.map(e=>
+    `<button class="empbtn" onclick="pickEmp('${esc(e.id)}','${esc(e.name)}')">${esc(e.name)}<span class="no">מס' ${esc(e.id)||'—'}</span></button>`
+  ).join('') : '<div class="emptycart">לא נטענו עובדים</div>';
+  document.getElementById('empOverlay').classList.add('on');
+}
+function pickEmp(id,name){ EMP={id,name};
+  const v=document.getElementById('empVal'); v.textContent=name; v.className='val';
+  document.getElementById('empOverlay').classList.remove('on'); focusScan(); }
+document.getElementById('empOverlay').addEventListener('click',e=>{
+  if(e.target.id==='empOverlay') e.currentTarget.classList.remove('on'); });
+
+/* ---- scan ---- */
+document.getElementById('scan').addEventListener('keydown',e=>{
+  if(e.key==='Enter'){ e.preventDefault(); doScan(e.target.value.trim()); } });
+
+async function doScan(code){
+  if(!code) return;
+  const R=document.getElementById('result');
+  R.innerHTML='<div class="hint">בודק…</div>';
+  let d; try{ d=await api('/api/admin/pos/lookup?code='+encodeURIComponent(code)+'&branch_id='+BR); }
+  catch(e){ R.innerHTML=''; toast(e,true); focusScan(); return; }
+  render(d); focusScan();
+}
+
+function render(d){
+  const R=document.getElementById('result');
+  if(d.mode==='receive'){
+    const t=d.transfer||{};
+    R.innerHTML = `<div class="banner recv">✓ פריט מהעברה נכנסת מ${esc(t.from_name||'')} — ${esc(t.name||d.code)}</div>
+      <div class="actions"><button class="btn primary" onclick="markReceived('${esc(d.code)}')">סמן שהתקבל</button>
+      <button class="btn ghost" onclick="focusScan()">דלג</button></div>`;
+    return;
+  }
+  if(d.mode==='unknown'){
+    R.innerHTML=`<div class="banner unk">✗ ${esc(d.message||'הקוד לא זוהה')}</div>`; return;
+  }
+  // ambiguous or product — both show a product card; ambiguous adds a chooser banner
+  const p=d.product||{};
+  let head='';
+  if(d.mode==='ambiguous'){
+    const m=(d.matches&&d.matches[0])||{};
+    head=`<div class="banner amb">⚠️ הברקוד הזה נמצא גם בהעברה נכנסת ממתינה (מ${esc(m.from_name||'')}).
+      מה לעשות?</div>
+      <div class="actions" style="margin-bottom:14px">
+        <button class="btn warn" onclick="markReceived('${esc(d.code)}')">זו קליטת העברה</button>
+        <span style="align-self:center;color:var(--ink2)">— או המשך להורדה למטה —</span>
+      </div>`;
+  }
+  R.innerHTML = head + prodCard(p, d.code);
+}
+
+function prodCard(p, code){
+  if(!p) return `<div class="banner unk">אין נתוני מוצר</div>`;
+  const st=p.stock||{};
+  const cityQ = (st[BR]!=null?st[BR]:'—');
+  const names={1:'גן העיר',2:'סטאר',3:'מחסן/מרלוג',4:'עד הלום',5:'אתר'};
+  const stockStr=Object.keys(st).map(b=>`${names[b]||('סניף '+b)}: <b>${st[b]}</b>`).join(' · ')||'—';
+  const img=p.image?`<img src="${esc(p.image)}" onerror="this.style.display='none'">`:'<div style="width:104px"></div>';
+  let siteP = money(p.site_price);
+  if(p.site_regular && p.site_price && Number(p.site_regular)>Number(p.site_price))
+    siteP += `<span class="strike">${money(p.site_regular)}</span>`;
+  const warn = p.pos_known===false ? `<div class="banner unk" style="margin-top:8px">⚠️ הקופה לא מכירה את המק״ט הזה — ייתכן שאינו מחובר</div>`:'';
+  return `<div class="prod">${img}
+    <div class="info">
+      <div class="name">${esc(p.name||code)}</div>
+      <div class="prices">
+        <div class="price pos"><div class="k">מחיר קופה</div><div class="v">${money(p.pos_price)}</div></div>
+        <div class="price site"><div class="k">מחיר אתר</div><div class="v">${siteP}</div></div>
+      </div>
+      <div class="stockline">מלאי: ${stockStr}</div>
+      ${p.permalink?`<div class="stockline"><a href="${esc(p.permalink)}" target="_blank" style="color:var(--accent)">פתח באתר ↗</a></div>`:''}
+    </div></div>
+    ${warn}
+    <div class="actions">
+      <button class="btn primary" onclick='addToCart(${JSON.stringify({sku:p.product_id,name:p.name||code,serial:(p.is_serial?code:''),image:p.image||""}).replace(/'/g,"&#39;")})'>הוסף להורדה</button>
+      <button class="btn ghost" onclick="focusScan()">בדיקת מחיר בלבד</button>
+    </div>`;
+}
+
+/* ---- receive (transfer) ---- */
+async function markReceived(code){
+  try{ const r=await api('/api/scan',{method:'POST',body:JSON.stringify({branch_id:BR,code:code,method:'manual'})});
+    toast(r.matched?('✓ '+(r.message||'נקלט')):(r.message||'לא נקלט'), !r.matched); }
+  catch(e){ toast(e,true); }
+  document.getElementById('result').innerHTML=''; focusScan();
+}
+
+/* ---- cart ---- */
+function addToCart(it){
+  const key=(it.serial||it.sku);
+  const ex=CART.find(x=>(x.serial||x.sku)===key);
+  if(ex && !it.serial){ ex.qty++; } else if(ex && it.serial){ toast('הסידורי כבר בפעולה'); }
+  else { CART.push({sku:it.sku,name:it.name,serial:it.serial||'',image:it.image||'',qty:1}); }
+  renderCart(); document.getElementById('result').innerHTML=''; focusScan();
+  toast('נוסף: '+it.name);
+}
+function chQty(i,d){ CART[i].qty=Math.max(1,(Number(CART[i].qty)||1)+d); renderCart(); }
+function setQty(i,v){ CART[i].qty=Math.max(1,Number(v)||1); }
+function rm(i){ CART.splice(i,1); renderCart(); }
+function renderCart(){
+  const el=document.getElementById('items');
+  if(!CART.length){ el.innerHTML='<div class="emptycart">אין פריטים עדיין — סרוק כדי להוסיף</div>'; return; }
+  el.innerHTML=CART.map((it,i)=>`<div class="item">
+    <div class="nm"><div class="t">${esc(it.name)}</div>
+      <div class="s">מק״ט ${esc(it.sku)}${it.serial?(' · סידורי '+esc(it.serial)):''}</div></div>
+    ${it.serial?'<b style="color:var(--ink2)">1</b>':
+      `<div class="qtywrap"><button onclick="chQty(${i},-1)">−</button>
+       <input type="number" min="1" value="${it.qty}" onchange="setQty(${i},this.value)">
+       <button onclick="chQty(${i},1)">+</button></div>`}
+    <button class="x" onclick="rm(${i})" title="הסר">×</button>
+  </div>`).join('');
+}
+
+/* ---- save ---- */
+async function saveRemoval(){
+  if(!EMP){ toast('בחר עובד קודם',true); openEmp(); return; }
+  if(!CART.length){ toast('אין פריטים בפעולה',true); return; }
+  const body={ branch_id:BR, employee_name:EMP.name, employee_no:EMP.id,
+    amount:Number(document.getElementById('amount').value||0),
+    note:document.getElementById('note').value.trim(),
+    items:CART.map(x=>({sku:x.sku,name:x.name,qty:Number(x.qty)||1,serial:x.serial||''})) };
+  try{ const r=await api('/api/admin/pos/removal',{method:'POST',body:JSON.stringify(body)});
+    toast('✓ נשמר לתור ('+r.items+' פריטים)');
+    CART=[]; renderCart(); document.getElementById('amount').value=''; document.getElementById('note').value='';
+    loadQueue(); focusScan();
+  }catch(e){ toast(e,true); }
+}
+
+/* ---- queue ---- */
+async function loadQueue(){
+  let d; try{ d=await api('/api/admin/pos/removals?limit=25'); }catch(e){ return; }
+  const el=document.getElementById('queue'); const rows=d.removals||[];
+  if(!rows.length){ el.innerHTML='<div class="emptycart">אין פעולות בתור</div>'; return; }
+  el.innerHTML=rows.map(r=>{
+    const items=(r.items||[]).map(i=>esc(i.name||i.sku)+(i.qty>1?(' ×'+i.qty):'')).join(', ');
+    const when=(r.created_at||'').replace('T',' ').slice(5,16);
+    return `<div class="rrow"><span class="badge ${r.status}">${
+      ({pending:'ממתין',done:'הוזן',error:'שגיאה',cancelled:'בוטל'}[r.status]||r.status)}</span>
+      <span style="flex:1;min-width:0"><b>${esc(r.employee_name||'')}</b> · ${items} ${r.amount?('· ₪'+r.amount):''}</span>
+      <span style="color:var(--ink2)">${when}</span>
+      ${r.status==='pending'?`<button class="x" onclick="cancelR(${r.id})" title="בטל">×</button>`:''}
+    </div>`;
+  }).join('');
+}
+async function cancelR(id){ try{ await api('/api/admin/pos/removal/'+id+'/cancel',{method:'POST'}); loadQueue(); }catch(e){ toast(e,true); } }
+
+/* keep scanner focused */
+document.addEventListener('click',e=>{ if(e.target.closest('.overlay,.item,.rrow,button,a,input,textarea')) return;
+  setTimeout(focusScan,0); });
+setInterval(loadQueue, 30000);
+
+/* start */
+if(KEY){ boot(); } else { document.getElementById('gateKey').focus(); }
+</script>
+</body>
+</html>

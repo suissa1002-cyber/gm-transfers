@@ -1760,6 +1760,211 @@ def admin_live_serial(q: str, x_admin_key: Optional[str] = Header(None), x_devic
     return {"found": bool(matches), "matches": matches}
 
 
+# ══════════════════════════════════════════════════════════════════════
+# 📦 הורדה מהמלאי + בדיקת מחיר (מסך סריקה חכם) — נקלט ב-GreenOS, מוזן לקופה ע"י
+#    סוכן RPA. שדה סריקה אחד: סריאל בהעברה → קליטה; אחרת → כרטיס מחיר + הורדה.
+# ══════════════════════════════════════════════════════════════════════
+CITY_BRANCH_ID = 3        # "מחסן\מרלוג" = סיטי (יעד ברירת המחדל להורדות)
+
+_pos_emp_cache = {"at": 0.0, "data": None}
+
+
+@app.get("/api/admin/pos/employees")
+def pos_employees(x_admin_key: Optional[str] = Header(None),
+                  x_device_token: Optional[str] = Header(None)):
+    """רשימת עובדים לבחירה בפעולת הורדה (שם + מס' עובד בקופה). cache שעה."""
+    _require_admin_or_device(x_admin_key, x_device_token)
+    import time as _t
+    if _pos_emp_cache["data"] and _t.time() - _pos_emp_cache["at"] < 3600:
+        return _pos_emp_cache["data"]
+    try:
+        raw = poller.client().get_employees() or []
+    except Exception as e:  # noqa: BLE001
+        return {"employees": [], "error": str(e)[:120]}
+    # מסננים "עובדי-סניף" פסאודו (שם = שם סניף) — משאירים בני-אדם אמיתיים
+    branch_names = {"סטאר", "גן העיר", "עד הלום", "מחסן\\מרלוג", "אתר", "מרלוג", "סיטי"}
+    emps = []
+    for e in raw:
+        nm = (e.get("name") or "").strip()
+        if not nm or nm in branch_names:
+            continue
+        emps.append({"id": str(e.get("id") or ""), "name": nm,
+                     "branch": ((e.get("branchInfo") or {}).get("branchName") or "")})
+    emps.sort(key=lambda x: x["name"])
+    out = {"employees": emps}
+    _pos_emp_cache.update(at=_t.time(), data=out)
+    return out
+
+
+def _pos_price_card(pid: str) -> dict:
+    """כרטיס מוצר לסריקה: שם, מחיר קופה, מחיר אתר, תמונה, קישור, מלאי לפי סניף.
+    מק"ט הקופה == SKU באתר. קורא NewOrder (מחיר+מלאי) + WooCommerce (מחיר+תמונה)."""
+    pid = str(pid).strip()
+    card = {"product_id": pid, "name": "", "pos_price": None, "site_price": None,
+            "site_regular": None, "image": "", "permalink": "", "is_serial": False,
+            "stock": {}, "pos_known": True}
+    # קטלוג מקומי לשם/סוג (מהיר, בלי קריאת רשת)
+    cat = (db.catalog_load() or {}).get(pid) or {}
+    if cat:
+        card["name"] = cat.get("name") or ""
+        card["is_serial"] = (cat.get("kind") == "serial")
+    # מחיר קופה + זיהוי מזהה לא-מוכר
+    try:
+        prod = poller.client().get_product(pid)
+        if prod:
+            card["pos_price"] = prod.get("price")
+            card["name"] = card["name"] or (prod.get("name") or "")
+            card["is_serial"] = card["is_serial"] or bool(prod.get("isSerial"))
+        else:
+            card["pos_known"] = False
+    except Exception as e:  # noqa: BLE001
+        logger.warning("pos price card: get_product %s failed: %s", pid, e)
+    # מלאי לפי סניף
+    try:
+        card["stock"] = {int(b): q for b, q in (poller.client().get_product_stock(pid) or {}).items()}
+    except Exception as e:  # noqa: BLE001
+        logger.warning("pos price card: stock %s failed: %s", pid, e)
+    # אתר: מחיר + תמונה + קישור (מק"ט == SKU)
+    creds = _wc_creds()
+    if creds:
+        base, k, s = creds
+        try:
+            import requests as _rq
+            r = _rq.get(base + "/wp-json/wc/v3/products", params={"sku": pid},
+                        auth=(k, s), timeout=15)
+            arr = r.json() if r.ok else []
+            p = arr[0] if isinstance(arr, list) and arr else None
+            if p:
+                img = (p.get("image") or (p.get("images") or [{}])[0] or {})
+                card.update({"name": card["name"] or p.get("name"),
+                             "site_price": p.get("price"),
+                             "site_regular": p.get("regular_price"),
+                             "image": (img or {}).get("src", ""),
+                             "permalink": p.get("permalink", "")})
+        except Exception as e:  # noqa: BLE001
+            logger.warning("pos price card: wc %s failed: %s", pid, e)
+    return card
+
+
+@app.get("/api/admin/pos/lookup")
+def pos_lookup(code: str, branch_id: int = CITY_BRANCH_ID,
+               x_admin_key: Optional[str] = Header(None),
+               x_device_token: Optional[str] = Header(None)):
+    """סריקה חכמה. מחזיר mode:
+       • receive   — הקוד תואם פריט בהעברה נכנסת פתוחה (סריאל = חד-משמעי).
+       • ambiguous — ברקוד לא-סידורי שתואם גם העברה פתוחה → המשתמש חייב לבחור.
+       • product   — לא תואם העברה → כרטיס מחיר (+ אפשר להוסיף להורדה).
+       • unknown   — הקוד לא זוהה בקופה/קטלוג בכלל."""
+    _require_admin_or_device(x_admin_key, x_device_token)
+    code = (code or "").strip()
+    if not code:
+        raise HTTPException(400, "קוד ריק")
+
+    # 1) האם תואם העברה נכנסת פתוחה לסניף?
+    matches = db.pos_open_transfer_match(branch_id, code)
+    serial_hit = next((m for m in matches if m.get("is_serial")), None)
+    if serial_hit:
+        # סריאל בהעברה = חד-משמעי → קליטה
+        return {"mode": "receive", "code": code, "branch_id": branch_id,
+                "transfer": serial_hit, "matches": matches}
+
+    # 2) פתרון הקוד למק"ט (סריאל→מוצר, או ברקוד/מק"ט מהקטלוג)
+    pid = None
+    is_serial_code = False
+    srec = db.serial_product(code)
+    if srec:
+        pid = str(srec.get("product_id"))
+        is_serial_code = True
+    if not pid:
+        catalog = db.catalog_load() or {}
+        if code in catalog:                       # הוקלד מק"ט ישירות
+            pid = code
+        else:
+            for k2, v in catalog.items():         # ברקוד → מק"ט
+                if (v.get("barcode") or "").strip() == code:
+                    pid = k2
+                    break
+
+    if matches and not is_serial_code:
+        # ברקוד לא-סידורי שתואם העברה פתוחה = דו-משמעי → המשתמש בוחר
+        card = _pos_price_card(pid) if pid else None
+        return {"mode": "ambiguous", "code": code, "branch_id": branch_id,
+                "matches": matches, "product": card}
+
+    if not pid:
+        return {"mode": "unknown", "code": code,
+                "message": "הקוד לא זוהה בקופה — בדוק שהמוצר מחובר (מק\"ט/ברקוד)"}
+
+    return {"mode": "product", "code": code, "branch_id": branch_id,
+            "product": _pos_price_card(pid)}
+
+
+class PosRemovalItem(BaseModel):
+    sku: str
+    name: str = ""
+    qty: float = 1
+    serial: str = ""
+
+
+class PosRemovalIn(BaseModel):
+    branch_id: int = CITY_BRANCH_ID
+    employee_name: str
+    employee_no: str = ""
+    amount: float = 0
+    note: str = ""
+    items: list[PosRemovalItem]
+
+
+@app.post("/api/admin/pos/removal")
+def pos_removal_create(body: PosRemovalIn, x_admin_key: Optional[str] = Header(None),
+                       x_device_token: Optional[str] = Header(None)):
+    """קליטת פעולת הורדה מהמלאי לתור. חובה: עובד + לפחות פריט אחד."""
+    _require_admin_or_device(x_admin_key, x_device_token)
+    if not (body.employee_name or "").strip():
+        raise HTTPException(400, "חובה לבחור עובד")
+    items = [i.model_dump() for i in (body.items or []) if (i.sku or "").strip()]
+    if not items:
+        raise HTTPException(400, "אין פריטים בפעולה")
+    rid = db.pos_removal_add(
+        branch_id=body.branch_id, employee_name=body.employee_name,
+        employee_no=body.employee_no, amount=body.amount, note=body.note,
+        items=items, created_by=_actor_name(x_admin_key, x_device_token))
+    return {"id": rid, "status": "pending", "items": len(items)}
+
+
+@app.get("/api/admin/pos/removals")
+def pos_removals_list(status: Optional[str] = None, limit: int = 100,
+                      x_admin_key: Optional[str] = Header(None),
+                      x_device_token: Optional[str] = Header(None)):
+    """רשימת פעולות ההורדה בתור (לניטור + לסוכן ה-RPA)."""
+    _require_admin_or_device(x_admin_key, x_device_token)
+    rows = db.pos_removals_list(status=status, limit=limit)
+    for r in rows:
+        r["branch_name"] = cfg.branch_name(r.get("branch_id"))
+    return {"removals": rows}
+
+
+@app.post("/api/admin/pos/removal/{rid}/cancel")
+def pos_removal_cancel(rid: int, x_admin_key: Optional[str] = Header(None),
+                       x_device_token: Optional[str] = Header(None)):
+    _require_admin_or_device(x_admin_key, x_device_token)
+    r = db.pos_removal_get(rid)
+    if not r:
+        raise HTTPException(404, "לא נמצא")
+    if r.get("status") not in ("pending", "error"):
+        raise HTTPException(400, f"לא ניתן לבטל פעולה בסטטוס {r.get('status')}")
+    db.pos_removal_set_status(rid, "cancelled")
+    return {"ok": True, "id": rid, "status": "cancelled"}
+
+
+@app.get("/removals")
+def removals_page():
+    p = os.path.join(_static_dir, "removals.html")
+    if os.path.exists(p):
+        return FileResponse(p, headers={"Cache-Control": "no-cache"})
+    raise HTTPException(404)
+
+
 # micro-cache קצרצר כדי לרכך לחיצות כפולות/כמה מסכי ניהול במקביל — עדיין "חי" לכל דבר
 _live_stock_cache: dict = {}
 # cache משותף לכל הסניפים — עם כמה סניפים פעילים, ערך גבוה יותר חוסך הצפת
