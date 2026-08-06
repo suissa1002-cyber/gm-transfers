@@ -1935,7 +1935,16 @@ function zapPlanRender(){
     if(s.state==='need_unhide') return `<button class="btn sm" onclick="zapVis('${escW(rid)}',0)">הצג בזאפ</button>`;
     if(s.state==='need_title') return `<button class="btn sm" onclick="zapRename(${i})">שנה כותרת</button>
       <button class="zib" title="העתק בלבד" onclick="zapCopy(${i})">${ico('copy',15)}</button>`;
-    if(s.state==='zap_side') return `<span class="muted" style="font-size:11px">פנייה לזאפ</span>`;
+    // ⚠️ גם כשבדיקת הפער אומרת "הכותרת תואמת" צריך לאפשר יישור מדויק לכותרת
+    // זאפ: הבדיקה משווה אסימונים של 2+ תווים, ולכן היא **עיוורת** לסיומת-גרסה
+    // בת תו אחד — "FreeClip 2 S" מול "FreeClip 2S" עובר אצלה כזהה, בעוד שזאפ
+    // עצמו לא שייך אותנו 3 ימים. זו הפעולה האחרונה שבשליטתנו לפני פנייה
+    // אליהם, ובלי כפתור לא הייתה שום דרך לבצע אותה (אסי, 05/08/2026).
+    if(s.state==='zap_side') return s.modelid
+      ? `<button class="btn sm" onclick="zapRename(${i})">כותרת מדויקת מזאפ</button>
+         <button class="zib" title="העתק בלבד" onclick="zapCopy(${i})">${ico('copy',15)}</button>
+         <small style="display:block;margin-top:5px;color:var(--txt-3);font-size:10.5px">אם גם אחרי 24ש׳ לא שויך — פנייה לזאפ</small>`
+      : `<span class="muted" style="font-size:11px">פנייה לזאפ</span>`;
     return '';
   };
   const rows=(j.steps||[]).map((s,i)=>{
