@@ -10,7 +10,7 @@ import time
 
 from pywinauto import Application, Desktop, mouse
 
-DRIVER_VERSION = "2026-08-07.8"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
+DRIVER_VERSION = "2026-08-07.9"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
 POS_TITLE_RE = ".*אורדר.*"
 FORM_TITLE = "הורדה מהמלאי"
 ITEM_TITLE = "הורדה מהמלאי - פעולה חדשה"
@@ -169,6 +169,19 @@ def _click_emp_button(popup, emp_name, T):
     _click_rect(popup, [rect[0] + dx, rect[1] + dy, rect[2] + dx, rect[3] + dy])
 
 
+def _is_selected(c):
+    """האם כפתור-הרדיו מסומן. VB6 OptionButton עונה ל-BM_GETCHECK (0xF0)."""
+    try:
+        import win32gui
+        import win32con
+        return bool(win32gui.SendMessage(c.handle, 0x00F0, 0, 0))   # BM_GETCHECK
+    except Exception:                    # noqa: BLE001
+        try:
+            return bool(c.get_check_state())
+        except Exception:                # noqa: BLE001
+            return False
+
+
 def _select_option(c):
     """מסמן OptionButton של VB6 — **בלי לחיצות עכבר לפי מיקום**.
 
@@ -176,16 +189,22 @@ def _select_option(c):
     והם נחתו על כפתור-הרדיו השכן — כלומר *ביטלו* את הבחירה שכבר הצליחה
     ('נבחר עדכון מלאי ואז חזר להחזרה לספק', אסי 07/08). שתי השיטות כאן
     חסינות-מיקום: הודעת click, ואז פוקוס + רווח."""
-    # ✅ מה שעובד בפועל: לחיצה פיזית **על העיגול** — בטופס RTL הוא בקצה הימני
-    #    של הפקד. הודעת click "מצליחה" אך לא מסמנת (הרדיו נשאר על 'החזרה לספק',
-    #    אומת 07/08), ולחיצה במרכז נוחתת על הטקסט/שכן.
-    try:
-        r = c.rectangle()
-        mouse.click(coords=(r.right - 8, (r.top + r.bottom) // 2))
-        time.sleep(0.25)
-        return
-    except Exception:                    # noqa: BLE001
-        pass
+    # ⚠️ **קואורדינטות יחסיות בלבד.** rectangle() של פקדי הטופס הזה אינו במרחב
+    # המסך (המיפוי דיווח על הטופס בפינה השמאלית-עליונה בעוד שהוא מוצג ממורכז),
+    # ולכן mouse.click על מיקום מוחלט נחת במקום שגוי — הרדיו "נבחר ונעלם"
+    # (אסי, 07/08). click_input עם coords יחסיים מבצע את ההמרה בעצמו.
+    for rel in ("center", "circle"):
+        try:
+            r = c.rectangle()
+            w, h = r.right - r.left, r.bottom - r.top
+            if rel == "center":
+                c.click_input()
+            else:                        # RTL: העיגול בקצה הימני של הפקד
+                c.click_input(coords=(max(w - 8, 1), max(h // 2, 1)))
+            time.sleep(0.3)
+            return
+        except Exception:                # noqa: BLE001
+            continue
     try:                                 # נפילה אחרונה: מקלדת
         from pywinauto.keyboard import send_keys
         c.set_focus()
@@ -535,7 +554,17 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
     # (ברירת המחדל) הקופה עוצרת עם "חסר שדה חובה! ... (שם ספק)". מסמנים בסוף כדי
     # ששום מילוי אחר אחריו לא יאפס אותו (נצפה 07/08: נבחר ואז חזר).
     try:
-        _select_option(_child(form, F_OPTYPE_UPDATE))
+        opt = _child(form, F_OPTYPE_UPDATE)
+        for _ in range(3):               # מנסים עד שהסימון "נתפס" בפועל
+            _select_option(opt)
+            if _is_selected(opt):
+                break
+        if not _is_selected(opt):
+            _shot("optype")
+            raise RuntimeError("'עדכון מלאי' לא נתפס אחרי 3 ניסיונות — "
+                               "הטופס נשאר על 'החזרה לספק'")
+    except RuntimeError:
+        raise
     except Exception as e:               # noqa: BLE001
         _shot("optype")
         raise RuntimeError("סימון 'עדכון מלאי' נכשל: %s" % _err(e))
