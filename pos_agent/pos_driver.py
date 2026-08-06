@@ -41,17 +41,14 @@ def connect():
     return app, app.window(title_re=POS_TITLE_RE)
 
 
-def _win(title, timeout=8):
-    end = time.time() + timeout
-    while time.time() < end:
-        for w in Desktop(backend="win32").windows():
-            try:
-                if (w.window_text() or "") == title:
-                    return w
-            except Exception:            # noqa: BLE001
-                pass
-        time.sleep(0.3)
-    return None
+def _spec(app, title, timeout=8):
+    """WindowSpecification לחלון של הקופה לפי כותרת מדויקת (יש לו child_window,
+    בניגוד ל-wrapper מ-Desktop().windows()). None אם לא הופיע בזמן."""
+    w = app.window(title=title)
+    try:
+        return w if w.exists(timeout=timeout) else None
+    except Exception:                    # noqa: BLE001
+        return None
 
 
 def _click_rect(win, rect):
@@ -86,13 +83,13 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
     time.sleep(1.0)
 
     # 2) פופאפ "בחר שם עובד" — סוגרים (נזין בטופס)
-    emp_popup = _win("בחר שם עובד", timeout=3)
+    emp_popup = _spec(app, "בחר שם עובד", timeout=3)
     if emp_popup is not None:
         try: emp_popup.type_keys("{ESC}")
         except Exception: pass           # noqa: BLE001
         time.sleep(0.5)
 
-    form = _win(FORM_TITLE, timeout=8)
+    form = _spec(app, FORM_TITLE, timeout=8)
     if form is None:
         raise RuntimeError("טופס 'הורדה מהמלאי' לא נפתח")
 
@@ -142,7 +139,7 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
     # 3) התחל פעולה → מסך פריטים
     _click_rect(form, T["start_rect"])
     time.sleep(1.2)
-    items_win = _win(ITEM_TITLE, timeout=8)
+    items_win = _spec(app, ITEM_TITLE, timeout=8)
     if items_win is None:
         raise RuntimeError("מסך הזנת הפריטים לא נפתח")
 
