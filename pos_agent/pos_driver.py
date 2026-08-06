@@ -23,6 +23,7 @@ DEFAULT_TUNING = {
     # קואורדינטות מסך של כפתורים owner-drawn (מרכז מלבן) — לכיול:
     "emp_set_rect":  [35, 321, 96, 354],    # "הצב" בטופס
     "start_rect":    [491, 417, 596, 458],  # "התחל פעולה" בטופס
+    "cancel_rect":   [363, 417, 468, 458],  # "ביטול" בטופס
     "add_rect":      [623, 328, 904, 353],  # "הורד מהמלאי" במסך פריטים
     "finish_rect":   None,                  # "סיים פעולה" — יימדד בכיול
 }
@@ -65,6 +66,30 @@ def _child(win, cid):
     return win.child_window(control_id=cid)
 
 
+def _cleanup(app, T):
+    """סוגר שאריות דיאלוגים מהרצה קודמת שנכשלה (טופס/מסך פריטים/פופאפ עובד),
+    כדי שהתפריט יהיה פנוי. ריצה שנכשלה משאירה חלון פתוח שחוסם את הבא."""
+    for _ in range(3):
+        closed = False
+        for title in (ITEM_TITLE, FORM_TITLE, "בחר שם עובד"):
+            w = _spec(app, title, timeout=1)
+            if w is None:
+                continue
+            closed = True
+            try:
+                w.set_focus()
+                w.type_keys("{ESC}")
+                time.sleep(0.4)
+            except Exception:            # noqa: BLE001
+                pass
+            # אם ESC לא סגר את הטופס — לחיצה על "ביטול"
+            if title == FORM_TITLE and _spec(app, FORM_TITLE, timeout=1):
+                _click_rect(w, T["cancel_rect"])
+                time.sleep(0.4)
+        if not closed:
+            break
+
+
 def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
     """מבצע פעולת הורדה אחת. dry_run=True → ממלא אבל לא שומר (יוצא ב-ESC).
     tuning: dict מהשרת שדורס את DEFAULT_TUNING. מחזיר מס' תעודה ('' ב-dry)."""
@@ -75,11 +100,15 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
     app, pos = connect()
     pos.set_focus()
 
+    # 0) ניקוי שאריות מהרצה קודמת (חלון פתוח חוסם את התפריט)
+    _cleanup(app, T)
+    pos.set_focus()
+
     # 1) תפריט → טופס הורדה
     try:
         pos.menu_select(T["menu_path"])
     except Exception as e:               # noqa: BLE001
-        raise RuntimeError("פתיחת תפריט מלאי נכשלה: %s" % e)
+        raise RuntimeError("פתיחת תפריט מלאי נכשלה: %s (%s)" % (e, type(e).__name__))
     time.sleep(1.0)
 
     # 2) פופאפ "בחר שם עובד" — סוגרים (נזין בטופס)
