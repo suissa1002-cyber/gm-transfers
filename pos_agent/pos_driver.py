@@ -10,7 +10,7 @@ import time
 
 from pywinauto import Application, Desktop, mouse
 
-DRIVER_VERSION = "2026-08-07.38"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
+DRIVER_VERSION = "2026-08-07.39"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
 POS_TITLE_RE = ".*אורדר.*"
 FORM_TITLE = "הורדה מהמלאי"
 ITEM_TITLE = "הורדה מהמלאי - פעולה חדשה"
@@ -429,6 +429,22 @@ def _click_ok(w):
         return False
 
 
+def _answer_smart(timeout=3):
+    """עונה לחלון שעל המסך **לפי תוכנו**: הדפסה→לא, הודעה→OK, השאר→כן.
+
+    ⛔ זו הפונקציה היחידה שמותר לה לענות על חלון לא-ידוע. שלושה מקומות שונים
+    לחצו "כן" בעיוורון (סיום, יציאה, ניקוי כפוי), וכל אחד מהם הספיק בפני עצמו
+    כדי לגרום לקופה להדפיס ולהיתקע — גם אחרי שהמקומות האחרים תוקנו (אסי, 07/08).
+    """
+    w, body, kind = _dialog_with_buttons()
+    if w is None:
+        return False
+    if kind == "ack":
+        return _click_ok(w)
+    yes = not any(k in body for k in _ANSWER_NO_KEYWORDS)
+    return _confirm_dialog(yes=yes, timeout=timeout)
+
+
 def _items_screen_gone():
     """מסך הפריטים נסגר → הפעולה נסגרה ולא יגיעו עוד חלונות."""
     if _APP is None:
@@ -555,7 +571,7 @@ def _exit_item_screen(app, items_win, tries=4):
             except Exception:            # noqa: BLE001
                 pass
             _wait_until(_dialog_open, 2.5, 0.15)
-        if not _confirm_dialog(yes=True, timeout=3):
+        if not _answer_smart(timeout=3):
             _dump_dialogs("יציאה %d: " % (i + 1))
             # נפילה אחרונה: מזיזים פוקוס לכפתור השני ומקישים רווח. ברירת המחדל
             # היא 'ביטול', ולכן TAB מעביר אל 'כן'.
@@ -594,7 +610,7 @@ def _guard_new_item(app, sku):
                 break
     except Exception:                    # noqa: BLE001
         pass
-    _confirm_dialog(yes=True, timeout=3)
+    _answer_smart(timeout=3)
     raise RuntimeError("הקופה לא מזהה את המק\"ט '%s' ופתחה 'פריט חדש' — בוטל. "
                        "בדוק שהמק\"ט קיים בקופה." % sku)
 
@@ -933,8 +949,8 @@ def _force_close_extra(app, pos):
                     time.sleep(0.3)
             except Exception:            # noqa: BLE001
                 pass
-            # שאלת "האם ברצונך לצאת?" — עונים "כן" (ENTER היה בוחר 'ביטול')
-            _confirm_dialog(yes=True, timeout=1.5)
+            # עונים לפי תוכן — לא "כן" עיוור (ראה _answer_smart)
+            _answer_smart(timeout=1.5)
             _dismiss_message_box()
             closed += 1
         time.sleep(0.3)
@@ -1241,7 +1257,7 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
             time.sleep(0.4)
             # ⏱️ timeout קצר: ברשימה ריקה הקופה **לא** שואלת כלום, וההמתנה
             # המלאה (6ש') הייתה נשרפת בכל הרצה על דיאלוג שלא יגיע.
-            _confirm_dialog(yes=True, timeout=1.5)
+            _answer_smart(timeout=1.5)
             time.sleep(0.3)
             _dismiss_message_box()
     except Exception:                        # noqa: BLE001
