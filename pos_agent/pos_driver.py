@@ -10,7 +10,7 @@ import time
 
 from pywinauto import Application, Desktop, mouse
 
-DRIVER_VERSION = "2026-08-07.36"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
+DRIVER_VERSION = "2026-08-07.37"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
 POS_TITLE_RE = ".*אורדר.*"
 FORM_TITLE = "הורדה מהמלאי"
 ITEM_TITLE = "הורדה מהמלאי - פעולה חדשה"
@@ -395,6 +395,14 @@ def _dialog_with_buttons():
             has_ok = any(t in ok for t in texts)
             if not (has_yn or has_ok):
                 continue
+        # ⚠️ הטקסט **תמיד** מכל הצאצאים, גם כשהכפתורים נמצאו בילדים הישירים:
+        # ההודעה עצמה עשויה לשבת עמוק יותר, ואז body הכיל רק את הכותרת
+        # ("הודעת מערכת") — בלי המילה "להדפיס". התוצאה: הוכרע "כן", והקופה
+        # ניסתה להדפיס (אסי, 07/08). ההכרעה חייבת להתבסס על הטקסט המלא.
+        try:
+            texts = [_norm(c.window_text()) for c in w.descendants()]
+        except Exception:                # noqa: BLE001
+            pass
         body = " ".join(t for t in texts if t and t not in yn and t not in ok)
         try:
             body = (_norm(w.window_text()) + " " + body).strip()
@@ -462,6 +470,10 @@ def _answer_dialog_chain(rounds=10, first_wait=6.0, next_wait=6.0):
             answered.append((body[:70], "OK"))
         else:
             yes = not any(k in body for k in _ANSWER_NO_KEYWORDS)
+            if len(body) < 15:
+                # ⚠️ הכרעה על סמך כותרת בלבד = ניחוש. ברירת המחדל "כן" נכונה
+                # לשמירה/יציאה, אבל אם זו שאלת הדפסה שהטקסט שלה לא נקרא — נדע.
+                _log("  ⚠️ שאלה בלי טקסט מזוהה ('%s') — נענה כן כברירת מחדל" % body)
             if not _confirm_dialog(yes=yes, timeout=2):
                 break
             answered.append((body[:70], "כן" if yes else "לא"))
