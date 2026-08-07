@@ -250,9 +250,18 @@
   .feedhead h3{margin:0;font-size:14px;font-weight:800}
   .feedhead .n{font-size:11.5px;font-weight:800;color:#04150c;background:var(--brand);
     border-radius:var(--r-pill);padding:2px 9px;font-variant-numeric:tabular-nums}
-  /* גריד שממלא את הרוחב: בגלילה אופקית עם 1-2 עדכונים נשאר שטח מת ענק */
+  /* ⚠️ הכרטיס משנה **צורה** לפי הכמות. גריד לבדו לא פותר שטח מת: עדכון אחד
+     לא ימלא שש עמודות. עם 1-2 עדכונים הכרטיס נפרס לרוחב (תמונה בצד, טקסט
+     לידה) וממלא את השורה; מ-3 ומעלה חוזרים לכרטיסים אנכיים. */
   .strip{display:grid;grid-template-columns:repeat(auto-fill,minmax(238px,1fr));
     gap:var(--s3);padding-bottom:var(--s2)}
+  .strip.wide{grid-template-columns:repeat(auto-fit,minmax(340px,1fr))}
+  .strip.wide .nc{flex-direction:row;align-items:stretch}
+  .strip.wide .nc .hero{height:auto;width:160px;flex:0 0 160px}
+  .strip.wide .nc .nb{flex:1;min-width:0;padding:var(--s4)}
+  .strip.wide .nc .nt{font-size:15.5px}
+  .strip.wide .nc .nd{-webkit-line-clamp:3;font-size:12.5px}
+  .strip.wide .nc .np .now{font-size:22px}
   @media(max-width:700px){.strip{display:flex;overflow-x:auto;scroll-snap-type:x mandatory}
     .nc{flex:0 0 238px}}
   .strip::-webkit-scrollbar{height:6px}
@@ -3018,7 +3027,7 @@ function feedHTML(){
     </div>`;}).join('');
   return `<div class="feed"><div class="feedhead"><h3>עדכונים מהמטה</h3>${
     S.feedUnread?`<span class="n">${S.feedUnread} חדשים</span>`:''}</div>
-    <div class="strip">${cards}</div></div>`;
+    <div class="strip${f.length<=2?' wide':''}">${cards}</div></div>`;
 }
 function openUpd(id){
   const u=(S.feed||[]).find(x=>x.id===id); if(!u) return;
