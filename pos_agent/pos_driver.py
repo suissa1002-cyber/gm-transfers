@@ -10,7 +10,7 @@ import time
 
 from pywinauto import Application, Desktop, mouse
 
-DRIVER_VERSION = "2026-08-07.28"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
+DRIVER_VERSION = "2026-08-07.29"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
 POS_TITLE_RE = ".*אורדר.*"
 FORM_TITLE = "הורדה מהמלאי"
 ITEM_TITLE = "הורדה מהמלאי - פעולה חדשה"
@@ -467,7 +467,10 @@ def _type_code_verified(c, code, tries=4, start_pace=0):
         _clear_field(c)
         send_keys(code, pause=paces[min(i + start_pace, len(paces) - 1)])
         time.sleep(0.15 + 0.1 * i)           # הקלדה מהירה → בדיקה מהירה
-        for _ in range(6):                   # קריאה-חוזרת עד שהערך מתייצב
+        # ⏱️ סבלנות ארוכה בקריאה-חוזרת עולה **אפס** כשהערך כבר נכון (יוצאים מיד),
+        # אבל חוסכת מחזור הקלדה שלם כשהקופה פשוט איטית לצייר — וזה בדיוק מה שקורה
+        # בפריט הראשון אחרי פתיחת המסך (4.9ש' מול 2.2ש' לשאר).
+        for _ in range(14):                  # קריאה-חוזרת עד שהערך מתייצב
             try:
                 got = (c.window_text() or "").strip()
             except Exception:                # noqa: BLE001
@@ -1015,35 +1018,35 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
     #    (2) לחיצה על הפקד הימני בשורה התחתונה.
     #    (3) הפקד הבא בשורה — רק אם הטופס עדיין פתוח (כלומר לא לחצנו "ביטול").
     #    ⛔ אם הטופס נסגר בלי שנפתח מסך פריטים — לחצנו "ביטול", ומדווחים במפורש.
+    # ⏱️ **לחיצה קודם.** המדידה הראתה start[CLICK] בכל הרצה — כלומר ה-Enter
+    # מעולם לא פתח את המסך, ורק שרפנו עליו המתנה. Enter נשאר כרשת ביטחון אחרי.
     items_win = None
-    how = "ENTER"
-    try:
-        form.set_focus()
-        from pywinauto.keyboard import send_keys as _sk
-        _sk("{ENTER}")
-    except Exception:                    # noqa: BLE001
-        pass
-    # ⏱️ 1.5ש' ולא 4: אם ה-Enter פתח את המסך הוא עושה זאת מיד, ואם לא — עדיף
-    # ליפול מהר ללחיצה מאשר לשרוף 4 שניות בכל הרצה על המתנה שלא תניב כלום.
-    items_win = _spec(app, ITEM_TITLE, timeout=1.5)
+    how = "CLICK"
+    row = _bottom_row(form)              # ממוין מימין לשמאל
+    for cand in row[:2]:
+        if _spec(app, FORM_TITLE, timeout=1) is None:
+            raise RuntimeError("הטופס נסגר בלי לפתוח מסך פריטים — ככל הנראה "
+                               "נלחץ 'ביטול' במקום 'התחל פעולה'")
+        try:
+            _click_ctrl(cand)
+        except Exception:                # noqa: BLE001
+            continue
+        # ⏱️ בלי sleep קבוע לפני הבדיקה — exists() כבר ממתין עד שיופיע
+        items_win = _spec(app, ITEM_TITLE, timeout=4)
+        if items_win is not None:
+            break
+        if _read_message_box():          # הקופה התלוננה — לא ננסה כפתור נוסף
+            break
 
-    if items_win is None:
-        how = "CLICK"
-        row = _bottom_row(form)          # ממוין מימין לשמאל
-        for cand in row[:2]:
-            if _spec(app, FORM_TITLE, timeout=1) is None:
-                raise RuntimeError("הטופס נסגר בלי לפתוח מסך פריטים — ככל הנראה "
-                                   "נלחץ 'ביטול' במקום 'התחל פעולה'")
-            try:
-                _click_ctrl(cand)
-            except Exception:            # noqa: BLE001
-                continue
-            # ⏱️ בלי sleep קבוע לפני הבדיקה — exists() כבר ממתין עד שיופיע
-            items_win = _spec(app, ITEM_TITLE, timeout=4)
-            if items_win is not None:
-                break
-            if _read_message_box():      # הקופה התלוננה — לא ננסה כפתור נוסף
-                break
+    if items_win is None and _spec(app, FORM_TITLE, timeout=1) is not None:
+        how = "ENTER"                    # רשת ביטחון: אם מיקום הכפתור השתנה
+        try:
+            form.set_focus()
+            from pywinauto.keyboard import send_keys as _sk
+            _sk("{ENTER}")
+        except Exception:                # noqa: BLE001
+            pass
+        items_win = _spec(app, ITEM_TITLE, timeout=3)
     if items_win is None:
         # 🔍 אבחון: הקופה כנראה הציגה הודעה (שדה חסר וכו'). קוראים את הטקסט שלה
         # ומחזירים אותו בשגיאה — במקום לנחש מה הפריע לה.
