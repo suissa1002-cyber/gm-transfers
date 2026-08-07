@@ -27,9 +27,46 @@ import requests
 # ⚠️ חייב לרוץ **לפני** ה-import. אחרת מריצים קוד ישן בלי לדעת: ה-CDN של GitHub
 # מגיש גרסה מהמטמון, וכבר פעמיים רצה בדיקה שלמה על דרייבר ישן והמסקנות ממנה
 # היו שגויות (07/08). ניתן לכבות ב-POS_AGENT_AUTOUPDATE=0.
+_REPO = os.environ.get("POS_REPO", "suissa1002-cyber/gm-transfers")
+_DRIVER_PATH = "pos_agent/pos_driver.py"
 _DRIVER_URL = os.environ.get(
     "POS_DRIVER_URL",
-    "https://raw.githubusercontent.com/suissa1002-cyber/gm-transfers/main/pos_agent/pos_driver.py")
+    "https://raw.githubusercontent.com/%s/main/%s" % (_REPO, _DRIVER_PATH))
+
+
+def _fetch_driver():
+    """מוריד את הדרייבר העדכני. מחזיר (טקסט, מקור) או (None, סיבה).
+
+    ⚠️ raw.githubusercontent יושב מאחורי CDN ש**מתעלם מפרמטרים בכתובת**, ולכן
+    התעלול של `?t=<זמן>` לא עקף כלום: הסוכן הוריד גרסה ישנה, ראה שהיא זהה
+    למקומית, ולא עדכן — בשקט (אסי, 07/08). לכן קודם כל דרך ה-API, שמחזיר את
+    התוכן של ה-commit העדכני ולא נשמר במטמון קצה."""
+    api = "https://api.github.com/repos/%s/contents/%s?ref=main" % (_REPO, _DRIVER_PATH)
+    try:
+        r = requests.get(api, timeout=25, headers={
+            "Accept": "application/vnd.github.raw",
+            "Cache-Control": "no-cache", "Pragma": "no-cache"})
+        if r.ok and r.text:
+            r.encoding = "utf-8"
+            return r.text, "API"
+    except Exception as e:                # noqa: BLE001
+        print("עדכון דרייבר: API נכשל (%s) — מנסה raw" % e)
+    try:
+        r = requests.get(_DRIVER_URL, timeout=25,
+                         params={"t": str(int(time.time()))},
+                         headers={"Cache-Control": "no-cache", "Pragma": "no-cache"})
+        if not r.ok:
+            return None, "HTTP %s" % r.status_code
+        r.encoding = "utf-8"
+        return r.text, "raw"
+    except Exception as e:                # noqa: BLE001
+        return None, str(e)
+
+
+def _ver_of(text):
+    import re
+    m = re.search(r'DRIVER_VERSION\s*=\s*"([^"]+)"', text or "")
+    return m.group(1) if m else "?"
 
 
 def _self_update():
@@ -37,14 +74,10 @@ def _self_update():
         return
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pos_driver.py")
     try:
-        r = requests.get(_DRIVER_URL, timeout=25,
-                         params={"t": str(int(time.time()))},      # עוקף מטמון CDN
-                         headers={"Cache-Control": "no-cache", "Pragma": "no-cache"})
-        if not r.ok:
-            print("עדכון דרייבר: HTTP %s — ממשיכים עם הקובץ המקומי" % r.status_code)
+        new, src = _fetch_driver()
+        if new is None:
+            print("עדכון דרייבר: %s — ממשיכים עם הקובץ המקומי" % src)
             return
-        r.encoding = "utf-8"
-        new = r.text
         if "DRIVER_VERSION" not in new or len(new) < 5000:
             print("עדכון דרייבר: התוכן נראה שגוי — ממשיכים עם הקובץ המקומי")
             return
@@ -54,7 +87,20 @@ def _self_update():
         if new != cur:
             with open(path, "w", encoding="utf-8", newline="") as f:
                 f.write(new)
-            print("↻ הדרייבר עודכן מ-GitHub")
+            # ⚠️ מנקים __pycache__: אם ה-.pyc הישן נשאר, Python עלול לטעון אותו
+            # והקובץ החדש לא ייכנס לתוקף (נצפה 07/08).
+            try:
+                import shutil
+                shutil.rmtree(os.path.join(os.path.dirname(path), "__pycache__"),
+                              ignore_errors=True)
+            except Exception:                # noqa: BLE001
+                pass
+            print("↻ הדרייבר עודכן מ-GitHub (%s): %s ← %s"
+                  % (src, _ver_of(new), _ver_of(cur)))
+        else:
+            # ⚠️ אומרים גם כשאין שינוי, עם הגרסה: "שקט" הוא בדיוק מה שהסתיר
+            # שהורדנו גרסה ישנה מהמטמון וחשבנו שאנחנו מעודכנים.
+            print("✓ הדרייבר עדכני (%s): %s" % (src, _ver_of(cur)))
     except Exception as e:                   # noqa: BLE001
         print("עדכון דרייבר נכשל (%s) — ממשיכים עם הקובץ המקומי" % e)
 
