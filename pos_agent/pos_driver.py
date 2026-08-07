@@ -10,7 +10,7 @@ import time
 
 from pywinauto import Application, Desktop, mouse
 
-DRIVER_VERSION = "2026-08-07.33"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
+DRIVER_VERSION = "2026-08-07.34"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
 POS_TITLE_RE = ".*אורדר.*"
 FORM_TITLE = "הורדה מהמלאי"
 ITEM_TITLE = "הורדה מהמלאי - פעולה חדשה"
@@ -362,44 +362,94 @@ _ANSWER_NO_KEYWORDS = ("הדפס", "הדפסה", "print", "מדבק", "פקס", 
                        "email", "שלח")
 
 
+_OK_ONLY = ("OK", "&OK", "אישור", "&אישור", "סגור", "המשך", "Close")
+
+
 def _dialog_with_buttons():
-    """מחזיר (חלון, טקסט) של שאלת אישור פתוחה, או (None, "")."""
-    keys = [_norm(x) for x in (_YES + _NO)]
+    """מאתר חלון שממתין לתשובה. מחזיר (חלון, טקסט, סוג):
+       'confirm' — יש כן/לא (שאלה)      ·  'ack' — יש רק OK (הודעה)
+    ⚠️ שני הסוגים חוסמים באותה מידה: חלון שנשאר פתוח משבית את תפריט הקופה
+    ומפיל את ההרצה הבאה. לכן שניהם מטופלים באותה שרשרת."""
+    yn = [_norm(x) for x in (_YES + _NO)]
+    ok = [_norm(x) for x in _OK_ONLY]
     for w in _dialog_candidates():
         try:
             kids = list(w.children())
         except Exception:                # noqa: BLE001
             continue
         texts = [_norm(c.window_text()) for c in kids]
-        if any(t in keys for t in texts):
-            body = " ".join(t for t in texts if t and t not in keys)
-            try:
-                body = (_norm(w.window_text()) + " " + body).strip()
-            except Exception:            # noqa: BLE001
-                pass
-            return w, body
-    return None, ""
+        has_yn = any(t in yn for t in texts)
+        has_ok = any(t in ok for t in texts)
+        if not (has_yn or has_ok):
+            continue
+        body = " ".join(t for t in texts if t and t not in yn and t not in ok)
+        try:
+            body = (_norm(w.window_text()) + " " + body).strip()
+        except Exception:                # noqa: BLE001
+            pass
+        return w, body, ("confirm" if has_yn else "ack")
+    return None, "", ""
 
 
-def _answer_dialog_chain(rounds=10):
-    """עונה לשרשרת השאלות שאחרי "סיים פעולה": שמירה→כן, הדפסה→לא.
+def _click_ok(w):
+    """סוגר הודעת OK. לחיצה על הכפתור לפי טקסט, ובנפילה ENTER."""
+    ok = [_norm(x) for x in _OK_ONLY]
+    try:
+        for c in w.children():
+            if _norm(c.window_text()) in ok and _click_button(c):
+                return True
+    except Exception:                    # noqa: BLE001
+        pass
+    try:
+        w.set_focus()
+        w.type_keys("{ENTER}")
+        return True
+    except Exception:                    # noqa: BLE001
+        return False
 
-    ⚠️ שאלה שלא נענית משאירה חלון פתוח, וחלון פתוח משבית את תפריט הקופה ומפיל
-    את ההרצה הבאה. מחזיר רשימת (שאלה, תשובה) — **נרשמת ביומן**, כדי שכל שאלה
-    חדשה שתופיע בשטח תזוהה מיד ולא תדרוש ניחוש."""
+
+def _answer_dialog_chain(rounds=10, first_wait=5.0, next_wait=2.0):
+    """עונה לשרשרת החלונות שאחרי "סיים פעולה": שמירה→כן, הדפסה→לא, הודעה→OK.
+
+    ⚠️ נבנה מהריצה החיה הראשונה (אסי, 07/08): אחרי השמירה מגיעה שאלת הדפסה,
+    ואחרי "לא" מגיעה הודעת "בעיה בהגדרת מדפסת קופה" עם OK. שום שלב מזה לא הופיע
+    בהרצות היבשות, כי שם לא לוחצים "סיים פעולה" בכלל.
+    מחזיר רשימת (שאלה, תשובה) — **נרשמת ביומן**, כדי שכל חלון חדש שיופיע בשטח
+    יזוהה מיד ולא ידרוש ניחוש."""
     answered = []
-    for _ in range(rounds):
-        w, body = _dialog_with_buttons()
+    for _i in range(rounds):
+        # ⏱️ החלונות מופיעים בזה אחר זה, כל אחד רק אחרי שקודמו נסגר — ולכן
+        # ממתינים לכל אחד במקום לבדוק פעם אחת ולפספס את השרשרת.
+        wait = first_wait if _i == 0 else next_wait
+        if not _wait_until(lambda: _dialog_with_buttons()[0] is not None, wait, 0.15):
+            break
+        w, body, kind = _dialog_with_buttons()
         if w is None:
             break
-        yes = not any(k in body for k in _ANSWER_NO_KEYWORDS)
-        if not _confirm_dialog(yes=yes, timeout=2):
-            break
-        answered.append((body[:70], "כן" if yes else "לא"))
+        if kind == "ack":
+            if not _click_ok(w):
+                break
+            answered.append((body[:70], "OK"))
+        else:
+            yes = not any(k in body for k in _ANSWER_NO_KEYWORDS)
+            if not _confirm_dialog(yes=yes, timeout=2):
+                break
+            answered.append((body[:70], "כן" if yes else "לא"))
         time.sleep(0.4)
     if answered:
-        _log("  שאלות הקופה: " + " | ".join("%s → %s" % a for a in answered))
+        _log("  חלונות הקופה: " + " | ".join("%s → %s" % a for a in answered))
     return answered
+
+
+def _doc_no_from(answered):
+    """שולף את מספר התעודה מהודעת הסיום ("פעולה עודכנה בהצלחה. מספר פעולה: 15088").
+    זה המזהה שמאפשר להצליב הורדה ב-GreenOS מול התעודה בקופה."""
+    import re
+    for body, _ans in answered or []:
+        m = re.search(r"מספר\s*פעולה\s*[:：]?\s*(\d+)", body)
+        if m:
+            return m.group(1)
+    return ""
 
 
 def _dialog_open():
@@ -1233,15 +1283,18 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
     else:
         raise RuntimeError("לא אותר כפתור 'סיים פעולה'")
     # ⚠️ לא "כן לכל דבר": אחרי השמירה הקופה שואלת גם על **הדפסה**, ושם התשובה
-    # היא לא. _answer_dialog_chain מכריע לפי תוכן השאלה וממשיך עד שאין עוד.
-    time.sleep(0.6)
-    _answer_dialog_chain()
-    time.sleep(0.6)
-    _answer_dialog_chain()               # שאלות שמופיעות רק אחרי הקודמת
+    # היא לא, ואז מגיעות שתי הודעות OK. השרשרת (07/08, ההרצה החיה הראשונה):
+    #   "האם להדפיס בהדפסה רחבה?" → לא
+    #   "בעיה בהגדרת מדפסת קופה"  → OK
+    #   "פעולה עודכנה בהצלחה. מספר פעולה: NNNNN" → OK  ← ממנה נשלף מס' התעודה
+    answered = _answer_dialog_chain()
+    doc_no = _doc_no_from(answered)
     _dismiss_message_box()
     # אחרי שמירה המסך אמור להיסגר לבד; אם נשאר — סוגרים, אחרת הוא יחסום את הבא
     if _spec(app, ITEM_TITLE, timeout=0.5) is not None:
         _exit_item_screen(app, items_win)
     _lap("finish", _t)
     _log("TIMING total=%.1fs | %s" % (time.time() - _run0, " ".join(_TIMING)))
-    return ""
+    if doc_no:
+        _log("  📄 תעודה בקופה: %s" % doc_no)
+    return doc_no
