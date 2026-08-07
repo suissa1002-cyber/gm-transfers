@@ -792,6 +792,40 @@ _SCHEMA = [
         last_try_at   TEXT                      -- מתי נתפס לאחרונה (זיהוי תקיעה)
     )
     """.format(pk=_PK),
+    # עדכונים מהמטה לסניפים — מחליף הודעות בקבוצת וואטסאפ. היתרון שבגללו
+    # זה קיים: מיקוד לסניף, תוקף אוטומטי, ו**מי קרא** (branch_updates_reads).
+    """
+    CREATE TABLE IF NOT EXISTS branch_updates (
+        id          {pk},
+        created_at  TEXT,
+        kind        TEXT,        -- deal / new / note / info
+        title       TEXT,
+        body        TEXT,
+        image_url   TEXT,
+        sku         TEXT,        -- מוצר מהקטלוג (מושך תמונה/מחיר/קישור)
+        permalink   TEXT,
+        price_now   REAL,
+        price_old   REAL,
+        branches    TEXT,        -- CSV של מזהי סניפים; ריק = כל הסניפים
+        starts_at   TEXT,
+        ends_at     TEXT,        -- ריק = ללא תוקף
+        ack         INTEGER DEFAULT 0,   -- דורש אישור קריאה מפורש (נהלים)
+        pinned      INTEGER DEFAULT 0,
+        status      TEXT DEFAULT 'published',   -- published / draft / archived
+        created_by  TEXT
+    )
+    """.format(pk=_PK),
+    # קריאה/אישור לכל (עדכון, סניף) — הבסיס לדוח "2/5 סניפים קראו"
+    """
+    CREATE TABLE IF NOT EXISTS branch_updates_reads (
+        id         {pk},
+        update_id  INTEGER,
+        branch_id  INTEGER,
+        employee   TEXT,
+        read_at    TEXT,
+        acked      INTEGER DEFAULT 0
+    )
+    """.format(pk=_PK),
 ]
 
 
@@ -4764,3 +4798,108 @@ def stats() -> dict:
             cur.execute(_q("SELECT COUNT(*) AS n FROM transfers WHERE status = ?"), (st,))
             out[st] = cur.fetchone()["n"]
         return out
+
+
+# ── עדכונים לסניפים ──────────────────────────────────────────────────
+def _bu_row(r) -> dict:
+    d = dict(r)
+    d["branches"] = [b for b in (d.get("branches") or "").split(",") if b]
+    d["ack"] = bool(d.get("ack"))
+    d["pinned"] = bool(d.get("pinned"))
+    return d
+
+
+def branch_update_add(**kw) -> int:
+    cols = ("kind", "title", "body", "image_url", "sku", "permalink", "price_now",
+            "price_old", "branches", "starts_at", "ends_at", "ack", "pinned",
+            "status", "created_by")
+    vals = [kw.get(c) for c in cols]
+    with _conn() as c:
+        cur = c.cursor()
+        q = ("INSERT INTO branch_updates (created_at, %s) VALUES (%s)"
+             % (", ".join(cols), ", ".join(["?"] * (len(cols) + 1))))
+        if _USE_PG:
+            cur.execute(_q(q + " RETURNING id"), [now_iso()] + vals)
+            return int(cur.fetchone()["id"])
+        cur.execute(q, [now_iso()] + vals)
+        return int(cur.lastrowid)
+
+
+def branch_update_set(uid, **kw) -> None:
+    if not kw:
+        return
+    sets = ", ".join("%s = ?" % k for k in kw)
+    with _conn() as c:
+        c.cursor().execute(_q("UPDATE branch_updates SET %s WHERE id = ?" % sets),
+                           list(kw.values()) + [int(uid)])
+
+
+def branch_updates_list(status="published", limit=100) -> list:
+    with _conn() as c:
+        cur = c.cursor()
+        if status:
+            cur.execute(_q("SELECT * FROM branch_updates WHERE status = ? "
+                           "ORDER BY pinned DESC, id DESC LIMIT ?"), (status, int(limit)))
+        else:
+            cur.execute(_q("SELECT * FROM branch_updates ORDER BY id DESC LIMIT ?"),
+                        (int(limit),))
+        return [_bu_row(r) for r in cur.fetchall()]
+
+
+def branch_updates_for(branch_id, limit=30) -> list:
+    """עדכונים שרלוונטיים לסניף **עכשיו**: פורסמו, בתוקף, וממוקדים אליו.
+    ⚠️ הסינון כאן ולא בצד הלקוח — מבצע שפג תוקפו לא אמור להגיע למכשיר בכלל."""
+    today = now_iso()[:10]
+    out = []
+    for u in branch_updates_list("published", 200):
+        if u.get("starts_at") and str(u["starts_at"])[:10] > today:
+            continue
+        if u.get("ends_at") and str(u["ends_at"])[:10] < today:
+            continue
+        if u["branches"] and str(branch_id) not in u["branches"]:
+            continue
+        out.append(u)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def branch_update_read(uid, branch_id, employee="", acked=False) -> None:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT id FROM branch_updates_reads WHERE update_id = ? "
+                       "AND branch_id = ?"), (int(uid), int(branch_id)))
+        row = cur.fetchone()
+        if row:
+            if acked:
+                cur.execute(_q("UPDATE branch_updates_reads SET acked = 1, employee = ?, "
+                               "read_at = ? WHERE id = ?"),
+                            (employee or "", now_iso(), row["id"]))
+            return
+        cur.execute(_q("INSERT INTO branch_updates_reads (update_id, branch_id, employee, "
+                       "read_at, acked) VALUES (?, ?, ?, ?, ?)"),
+                    (int(uid), int(branch_id), employee or "", now_iso(), 1 if acked else 0))
+
+
+def branch_updates_reads(uid) -> list:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM branch_updates_reads WHERE update_id = ? "
+                       "ORDER BY read_at"), (int(uid),))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def branch_updates_read_map(uids) -> dict:
+    """{update_id: [branch_id,...]} — לדוח הקריאה במסך הניהול."""
+    uids = [int(u) for u in uids if u is not None]
+    if not uids:
+        return {}
+    out = {}
+    with _conn() as c:
+        cur = c.cursor()
+        marks = ",".join(["?"] * len(uids))
+        cur.execute(_q("SELECT update_id, branch_id FROM branch_updates_reads "
+                       "WHERE update_id IN (%s)" % marks), uids)
+        for r in cur.fetchall():
+            out.setdefault(int(r["update_id"]), []).append(int(r["branch_id"]))
+    return out

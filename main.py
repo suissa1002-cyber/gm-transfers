@@ -2103,6 +2103,95 @@ def pos_removal_cancel(rid: int, x_admin_key: Optional[str] = Header(None),
     return {"ok": True, "id": rid, "status": "cancelled"}
 
 
+# ── עדכונים מהמטה לסניפים ────────────────────────────────────────────
+# מחליף הודעות בקבוצת וואטסאפ. מה שקבוצה לא נותנת ובגללו זה קיים:
+# מיקוד לסניף, תוקף אוטומטי, ודוח **מי קרא**.
+class BranchUpdateIn(BaseModel):
+    kind: str = "info"                 # deal / new / note / info
+    title: str
+    body: str = ""
+    image_url: str = ""
+    sku: str = ""
+    permalink: str = ""
+    price_now: Optional[float] = None
+    price_old: Optional[float] = None
+    branches: list[int] = []           # ריק = כל הסניפים
+    starts_at: str = ""
+    ends_at: str = ""
+    ack: bool = False
+    pinned: bool = False
+    status: str = "published"
+
+
+@app.post("/api/admin/branch-updates")
+def branch_update_create(body: BranchUpdateIn, x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    if not (body.title or "").strip():
+        raise HTTPException(400, "חובה כותרת")
+    uid = db.branch_update_add(
+        kind=body.kind, title=body.title.strip(), body=body.body.strip(),
+        image_url=body.image_url.strip(), sku=body.sku.strip(),
+        permalink=body.permalink.strip(), price_now=body.price_now,
+        price_old=body.price_old,
+        branches=",".join(str(b) for b in (body.branches or [])),
+        starts_at=body.starts_at, ends_at=body.ends_at,
+        ack=1 if body.ack else 0, pinned=1 if body.pinned else 0,
+        status=body.status, created_by="admin")
+    return {"ok": True, "id": uid}
+
+
+@app.get("/api/admin/branch-updates")
+def branch_updates_admin(status: Optional[str] = None,
+                         x_admin_key: Optional[str] = Header(None)):
+    """רשימת העדכונים + דוח קריאה לכל אחד (כמה סניפים מתוך היעד)."""
+    _require_admin(x_admin_key)
+    rows = db.branch_updates_list(status=status, limit=200)
+    reads = db.branch_updates_read_map([r["id"] for r in rows])
+    all_ids = [b for b in cfg.BRANCHES if int(b) != 5]      # "אתר" אינו סניף פיזי
+    for r in rows:
+        target = [int(b) for b in r["branches"]] or all_ids
+        got = [b for b in reads.get(r["id"], []) if b in target]
+        r["read_branches"] = got
+        r["target_branches"] = target
+        r["read_count"] = len(got)
+        r["target_count"] = len(target)
+    return {"updates": rows}
+
+
+@app.post("/api/admin/branch-updates/{uid}/archive")
+def branch_update_archive(uid: int, x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    db.branch_update_set(uid, status="archived")
+    return {"ok": True}
+
+
+@app.get("/api/branch-updates")
+def branch_updates_feed(branch_id: int, x_admin_key: Optional[str] = Header(None),
+                        x_device_token: Optional[str] = Header(None)):
+    """מה שסניף מסוים אמור לראות עכשיו, כולל אילו כבר נקראו אצלו."""
+    _require_admin_or_device(x_admin_key, x_device_token)
+    rows = db.branch_updates_for(branch_id)
+    reads = db.branch_updates_read_map([r["id"] for r in rows])
+    for r in rows:
+        r["read"] = int(branch_id) in reads.get(r["id"], [])
+    return {"updates": rows, "unread": sum(1 for r in rows if not r["read"])}
+
+
+class UpdateReadIn(BaseModel):
+    branch_id: int
+    employee: str = ""
+    acked: bool = False
+
+
+@app.post("/api/branch-updates/{uid}/read")
+def branch_update_mark_read(uid: int, body: UpdateReadIn,
+                            x_admin_key: Optional[str] = Header(None),
+                            x_device_token: Optional[str] = Header(None)):
+    _require_admin_or_device(x_admin_key, x_device_token)
+    db.branch_update_read(uid, body.branch_id, body.employee, body.acked)
+    return {"ok": True}
+
+
 @app.get("/removals")
 def removals_page():
     p = os.path.join(_static_dir, "removals.html")
