@@ -4954,3 +4954,44 @@ def branch_update_questions(uid=None, unanswered=False) -> list:
         cur = c.cursor()
         cur.execute(_q(sql), args)
         return [dict(r) for r in cur.fetchall()]
+
+
+def branch_update_delete(uid) -> str:
+    """מוחק עדכון + הקריאות + השאלות, ומחזיר את מפתח התמונה למחיקה.
+    ⚠️ התמונות הן מה שתופח באמת (blob לכל עדכון), לא השורות."""
+    uid = int(uid)
+    img = ""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT image_url FROM branch_updates WHERE id = ?"), (uid,))
+        r = cur.fetchone()
+        if r:
+            u = str(r["image_url"] or "")
+            if "/api/branch-updates/image/" in u:
+                img = u.rsplit("/", 1)[-1]
+        cur.execute(_q("DELETE FROM branch_update_questions WHERE update_id = ?"), (uid,))
+        cur.execute(_q("DELETE FROM branch_updates_reads WHERE update_id = ?"), (uid,))
+        cur.execute(_q("DELETE FROM branch_updates WHERE id = ?"), (uid,))
+    if img:
+        try:
+            with _conn() as c:
+                c.cursor().execute(_q("DELETE FROM wa_media_blob WHERE wamid = ?"), (img,))
+        except Exception:  # noqa: BLE001
+            pass
+    return img
+
+
+def branch_updates_stale(days=90) -> list:
+    """עדכונים שראוי לנקות: מוסתרים, או שתוקפם פג לפני יותר מ-days."""
+    from datetime import timedelta
+    cutoff = (datetime.now(timezone.utc).astimezone()
+              - timedelta(days=int(days))).strftime("%Y-%m-%d")
+    out = []
+    for u in branch_updates_list(None, 500):
+        ends = str(u.get("ends_at") or "")[:10]
+        created = str(u.get("created_at") or "")[:10]
+        if u.get("status") == "archived" and created and created < cutoff:
+            out.append(u["id"])
+        elif ends and ends < cutoff:
+            out.append(u["id"])
+    return out

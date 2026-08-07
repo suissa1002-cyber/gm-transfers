@@ -623,6 +623,9 @@ def register_recurring_jobs():
     scheduler.add_job(_poll_watchdog_job, "interval", minutes=5,
                       id="poll_watchdog", max_instances=1)
     scheduler.add_job(_alerts_job, "interval", minutes=15, id="alerts", max_instances=1)
+    # ניקוי עדכונים ישנים לסניפים — 03:30 יומי (ראה _branch_updates_cleanup_job)
+    scheduler.add_job(_branch_updates_cleanup_job, "cron", id="upd_cleanup",
+                      hour=3, minute=30, max_instances=1)
     # דוח יומי 09:00 (Sun-Thu) למנהלים
     scheduler.add_job(_digest_job, "cron", id="digest",
                       hour=cfg.DIGEST_HOUR, minute=0, day_of_week=cfg.DIGEST_DAYS,
@@ -2177,6 +2180,28 @@ def branch_update_edit(uid: int, body: BranchUpdateIn,
         ack=1 if body.ack else 0, pinned=1 if body.pinned else 0,
         status=body.status)
     return {"ok": True, "id": uid}
+
+
+
+def _branch_updates_cleanup_job():
+    """ניקוי יומי של עדכונים ישנים. ⚠️ בלי זה מצטברים מאות עדכונים — ובעיקר
+    התמונות שלהם (blob לכל אחד), וזה מה שתופח בפועל."""
+    try:
+        ids = db.branch_updates_stale(int(os.getenv("BRANCH_UPDATES_KEEP_DAYS", "90")))
+        for uid in ids:
+            db.branch_update_delete(uid)
+        if ids:
+            logger.info("branch updates cleanup: נמחקו %d עדכונים ישנים", len(ids))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("branch updates cleanup failed: %s", e)
+
+
+@app.post("/api/admin/branch-updates/{uid}/delete")
+def branch_update_delete(uid: int, x_admin_key: Optional[str] = Header(None)):
+    """מחיקה מלאה — כולל הקריאות, השאלות והתמונה."""
+    _require_admin(x_admin_key)
+    img = db.branch_update_delete(uid)
+    return {"ok": True, "id": uid, "image_removed": bool(img)}
 
 
 @app.post("/api/admin/branch-updates/{uid}/archive")

@@ -451,7 +451,8 @@ async function loadPub(){
       <div class="read"><span class="n">${u.read_count}/${u.target_count}</span>
         <span class="dots">${dots}</span></div>
       <button class="arch" onclick='startEdit(${JSON.stringify(u).replace(/'/g,"&#39;")})'>ערוך</button>
-      <button class="arch" onclick="archive(${u.id})">הסתר</button></div>`;
+      <button class="arch" onclick="archive(${u.id})">הסתר</button>
+      <button class="arch" style="color:var(--red-ink)" onclick="del(${u.id},'${esc(u.title).replace(/'/g,'')}')">מחק</button></div>`;
   }).join('');
   rows.forEach(u=>loadQs(u.id));
 }
@@ -469,6 +470,12 @@ async function answer(qid,txt,uid){
   txt=(txt||'').trim(); if(!txt) return;
   try{ await api('/api/admin/branch-updates/question/'+qid+'/answer',{method:'POST',
     body:JSON.stringify({answer:txt})}); toast('✓ נשלח לסניפים',true); loadQs(uid); }
+  catch(e){ toast(String(e),false); }
+}
+async function del(id,title){
+  if(!confirm('למחוק לצמיתות את "'+title+'"?\nכולל השאלות, דוח הקריאה והתמונה.')) return;
+  try{ await api('/api/admin/branch-updates/'+id+'/delete',{method:'POST'});
+    toast('✓ נמחק',true); if(EDIT===id) resetForm(); loadPub(); }
   catch(e){ toast(String(e),false); }
 }
 async function archive(id){
