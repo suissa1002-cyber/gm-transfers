@@ -300,6 +300,44 @@
   .nc .shifts .sl b{font-weight:800}
   .nc .shifts .sl span{color:var(--muted);font-variant-numeric:tabular-nums}
   .nc .closed{margin-top:6px;font-size:15px;font-weight:800;color:var(--amber-ink)}
+  /* ══ הורדה מהמלאי — סיטי בלבד ══════════════════════════════════════ */
+  .rmcart{background:var(--card);border:1px solid var(--line);border-radius:var(--r-md);
+    box-shadow:var(--sh-1);overflow:hidden}
+  .rmcart .rh{padding:var(--s4) var(--s4) var(--s3);display:flex;align-items:center;gap:8px;
+    background:linear-gradient(180deg,var(--card-2),transparent)}
+  .rmcart .rh h3{margin:0;font-size:14px;font-weight:800;flex:1}
+  .rmcart .rh .n{font-size:11.5px;font-weight:800;background:var(--brand-bg);color:var(--brand-ink);
+    border-radius:var(--r-pill);padding:2px 9px}
+  .rmcart .rbody{padding:0 var(--s4) var(--s4)}
+  .rmi{display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--line)}
+  .rmi .t{flex:1;min-width:0}
+  .rmi .t .a{font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .rmi .t .b{font-size:11px;color:var(--txt-2);margin-top:1px}
+  .rmi .x{background:none;border:0;color:var(--red-ink);font-size:17px;font-weight:800;
+    cursor:pointer;line-height:1;padding:0 4px}
+  .rmq{display:inline-flex;align-items:center;gap:5px}
+  .rmq button{width:26px;height:26px;border-radius:var(--r-xs);border:1px solid var(--line);
+    background:var(--card-2);color:var(--txt);font-weight:800;cursor:pointer}
+  .rmq input{width:42px;text-align:center;font-weight:800;border:1px solid var(--line);
+    border-radius:var(--r-xs);padding:4px;background:var(--bg);color:var(--txt);font-size:13px}
+  .rmf{margin-top:var(--s3)}
+  .rmf label{display:block;font-size:11.5px;font-weight:700;color:var(--txt-2);margin-bottom:4px}
+  .rmf input{width:100%;border:1px solid var(--line-2);border-radius:var(--r-sm);padding:10px 12px;
+    background:var(--bg);color:var(--txt);font-size:14px;outline:none}
+  .rmf input:focus{border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-bg)}
+  #rmAmount{font-size:19px;font-weight:800;text-align:center;font-variant-numeric:tabular-nums}
+  .rmemp{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--txt-2);
+    margin-bottom:var(--s3)}
+  .rmemp b{color:var(--txt)} .rmemp .miss{color:var(--red-ink);font-weight:800}
+  .rmemp a{color:var(--blue);font-weight:700;cursor:pointer;margin-inline-start:auto}
+  .rmsave{width:100%;margin-top:var(--s3);border:0;border-radius:var(--r-sm);padding:13px;
+    background:var(--brand);color:#04150c;font-weight:800;font-size:14.5px;cursor:pointer}
+  .rmsave[disabled]{opacity:.5;cursor:default}
+  .rmempty{color:var(--txt-2);font-size:12.5px;text-align:center;padding:14px 0}
+  .empgridm{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}
+  .empgridm button{border:1px solid var(--line);background:var(--card-2);color:var(--txt);
+    border-radius:var(--r-sm);padding:14px 8px;font-weight:800;font-size:14.5px;cursor:pointer}
+  .empgridm button:hover{border-color:var(--brand);background:var(--brand-bg);color:var(--brand-ink)}
   /* פופאפ הסידור — עמוד הצפייה המעוצב ב-iframe */
   .schmd{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);
     width:min(980px,100%);height:min(86vh,900px);box-shadow:var(--sh-3);position:relative;
@@ -2977,7 +3015,7 @@ async function renderBoard(app, silent){
         </div>
       </div>
 
-      <div class="b-rail brail"><div id="tiWidgetHost"></div><div id="gcWidgetHost"></div></div>
+      <div class="b-rail brail">${rmCartHTML()}<div id="tiWidgetHost"></div><div id="gcWidgetHost"></div></div>
     </div>
     <div class="uov" id="uOv" onclick="if(event.target===this)closeUpd()"><div class="umd" id="uMd"></div></div>`;
   tiWidgetEnsure();
@@ -3156,6 +3194,83 @@ async function markUpdRead(id, acked){
 function ackUpd(id){ markUpdRead(id,true); closeUpd();
   if(S.view==='board') renderBoard(document.getElementById('app'), true); }
 
+
+// ══ הורדה מהמלאי — סיטי בלבד ═══════════════════════════════════════════
+// המסך הזה הוא מסך הקליטה; ההורדה נכנסת אליו כדי לנצל את שדה הסריקה שכבר
+// קיים, במקום מסך נפרד. ⛔ מוצג רק בסניף סיטי (3).
+const RM_BRANCH=3;
+function rmOn(){ return String(S.branchId)===String(RM_BRANCH); }
+function rmCart(){ if(!S.rmCart) S.rmCart=[]; return S.rmCart; }
+function rmEmp(){ if(S.rmEmp===undefined){ try{ S.rmEmp=JSON.parse(localStorage.getItem('gm_rm_emp')||'null'); }catch(e){ S.rmEmp=null; } } return S.rmEmp; }
+function rmAdd(it){
+  const c=rmCart(), key=(it.serial||it.sku);
+  const ex=c.find(x=>(x.serial||x.sku)===key);
+  if(ex && !it.serial) ex.qty++;
+  else if(ex && it.serial) { toast('הסידורי כבר בפעולה'); return; }
+  else c.push({sku:it.sku,name:it.name,serial:it.serial||'',barcode:it.barcode||'',qty:1});
+  S.priceCard=null; toast('נוסף להורדה: '+it.name);
+  renderBoard(document.getElementById('app'), true); focusScan();
+}
+function rmQty(i,d){ const c=rmCart(); c[i].qty=Math.max(1,(Number(c[i].qty)||1)+d);
+  renderBoard(document.getElementById('app'), true); }
+function rmSetQty(i,v){ rmCart()[i].qty=Math.max(1,Number(v)||1); }
+function rmDel(i){ rmCart().splice(i,1); renderBoard(document.getElementById('app'), true); }
+async function rmPickEmp(){
+  let emps=[];
+  try{ const d=await api('/api/admin/pos/employees'); emps=d.employees||[]; }catch(e){}
+  const root=document.getElementById('modalRoot');
+  root.innerHTML=`<div class="overlay" onclick="closeModal()"><div class="modal" style="max-width:460px" onclick="event.stopPropagation()">
+    <h3 style="text-align:center;margin-top:0">מי מבצע את ההורדה?</h3>
+    <div class="empgridm">${emps.map(e=>`<button onclick='rmSetEmp(${JSON.stringify(e).replace(/'/g,"&#39;")})'>${escW(e.name)}</button>`).join('')
+      ||'<div class="rmempty">לא נטענו עובדים</div>'}</div></div></div>`;
+}
+function rmSetEmp(e){ S.rmEmp={id:e.id,name:e.name};
+  try{ localStorage.setItem('gm_rm_emp',JSON.stringify(S.rmEmp)); }catch(x){}
+  closeModal(); renderBoard(document.getElementById('app'), true); }
+function rmCartHTML(){
+  if(!rmOn()) return '';
+  const c=rmCart(), e=rmEmp();
+  const rows=c.length? c.map((it,i)=>`<div class="rmi">
+      <div class="t"><div class="a">${escW(it.name||it.sku)}</div>
+        <div class="b">מק״ט ${escW(it.sku)}${it.serial?(' · '+escW(it.serial)):(it.barcode?(' · '+escW(it.barcode)):'')}</div></div>
+      ${it.serial?'<b style="color:var(--txt-2);font-size:13px">1</b>':
+        `<div class="rmq"><button onclick="rmQty(${i},-1)">−</button>
+          <input type="number" min="1" value="${it.qty}" onchange="rmSetQty(${i},this.value)">
+          <button onclick="rmQty(${i},1)">+</button></div>`}
+      <button class="x" onclick="rmDel(${i})" title="הסר">×</button></div>`).join('')
+    : '<div class="rmempty">סרוק פריט והוסף להורדה</div>';
+  return `<div class="rmcart"><div class="rh"><h3>📦 פעולת הורדה</h3>${
+      c.length?`<span class="n">${c.length}</span>`:''}</div>
+    <div class="rbody">
+      <div class="rmemp">עובד: ${e?`<b>${escW(e.name)}</b>`:'<span class="miss">לא נבחר</span>'}
+        <a onclick="rmPickEmp()">${e?'החלף':'בחר'}</a></div>
+      ${rows}
+      <div class="rmf"><label>סכום כללי לפעולה (₪) — חובה</label>
+        <input id="rmAmount" type="number" inputmode="decimal" placeholder="0" min="0" step="1"
+          value="${escW(S.rmAmount||'')}" oninput="S.rmAmount=this.value"></div>
+      <div class="rmf"><label>הערה (אופציונלי)</label>
+        <input id="rmNote" placeholder="הערה חופשית" value="${escW(S.rmNote||'')}" oninput="S.rmNote=this.value"></div>
+      <button class="rmsave" ${c.length?'':'disabled'} onclick="rmSave()">שמור פעולת הורדה</button>
+    </div></div>`;
+}
+async function rmSave(){
+  const c=rmCart(), e=rmEmp();
+  if(!e){ toast('בחר עובד קודם',false); return rmPickEmp(); }
+  if(!c.length){ toast('אין פריטים בפעולה',false); return; }
+  const amt=Number(S.rmAmount||0);
+  if(!amt||amt<=0){ toast('חובה להזין סכום לפעולה',false);
+    const el=document.getElementById('rmAmount'); if(el) el.focus(); return; }
+  try{
+    const r=await api('/api/admin/pos/removal',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({branch_id:RM_BRANCH,employee_name:e.name,employee_no:e.id,
+        amount:amt,note:S.rmNote||'',
+        items:c.map(x=>({sku:x.sku,name:x.name,qty:Number(x.qty)||1,serial:x.serial||'',barcode:x.barcode||''}))})});
+    S.rmCart=[]; S.rmAmount=''; S.rmNote='';
+    toast('✓ נשמר לתור ('+r.items+' פריטים)',true);
+    renderBoard(document.getElementById('app'), true); focusScan();
+  }catch(err){ toast(String(err&&(err.detail||err.message)||err),false); }
+}
+
 // ── בדיקת מחיר ומלאי (כל הסניפים) ──────────────────────────────────
 // אותו כרטיס שנבנה למסך ההורדה בסיטי, בלי שום פעולה על המלאי — תצוגה בלבד.
 async function loadPriceCard(code){
@@ -3167,7 +3282,8 @@ async function loadPriceCard(code){
   catch(e){ err=String((e&&(e.message||e.detail))||e||'שגיאת רשת'); }
   // ⚠️ לא נכשלים בשקט: בלי הודעה, כשל נראה בדיוק כמו "אין מה להציג",
   // ואי אפשר לדעת אם הקוד לא זוהה או שהקריאה בכלל לא עברה.
-  S.priceCard = (d && d.product) ? {product:d.product, code}
+  S.priceCard = (d && d.product) ? {product:d.product, code, check:(d.serial_check||null),
+                                    mode:(d.mode||'')}
               : {error: err || (d && d.message) || 'הקוד לא זוהה בקופה', code};
   try{ console.log('[pricecard]', code, err||'', d||''); }catch(e){}
   try{ await renderBoard(document.getElementById('app'), true); }catch(e){}
@@ -3192,6 +3308,10 @@ function priceCardHTML(){
     const cls=(String(b)===String(S.branchId)?'me':'')+((!has||!(q>0))?' zero':'');
     return `<span class="sp ${cls}">${names[b]}<b>${!has?'—':(q<0?'—':q)}</b></span>`;
   }).join('');
+  const blocked=(pc.check&&pc.check.ok===false)
+    ? `<div style="margin-top:var(--s3);background:var(--red-bg);color:var(--red-ink);
+        border-radius:var(--r-sm);padding:9px 11px;font-size:12.5px;font-weight:700">⛔ ${
+        escW(pc.check.message||'הסידורי לא זמין להורדה כאן')}</div>` : '';
   const disc=(p.site_regular&&p.site_price&&Number(p.site_regular)>Number(p.site_price))
     ? `<span class="was">${money(p.site_regular)}</span>` : '';
   return `<div class="pcard">${X}
@@ -3205,7 +3325,10 @@ function priceCardHTML(){
         </div>
       </div>
     </div>
-    <div class="pcStock">${pills}</div>
+    <div class="pcStock">${pills}</div>${blocked}
+    ${rmOn()&&!(pc.check&&pc.check.ok===false)?`<button class="rmsave"
+      onclick='rmAdd(${JSON.stringify({sku:(p.product_id||''),name:(p.name||pc.code||''),
+        serial:(p.is_serial?pc.code:''),barcode:(p.barcode||'')}).replace(/'/g,"&#39;")})'>הוסף להורדה</button>`:''}
     <div class="pcFoot">
       <span>מק״ט <span class="mono">${escW(p.product_id||'')}</span></span>
       ${p.barcode?`<span>ברקוד <span class="mono">${escW(p.barcode)}</span></span>`:''}
