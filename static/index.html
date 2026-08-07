@@ -2766,10 +2766,15 @@ async function doScanBoard(code, method){
 async function loadPriceCard(code){
   S.priceCard={loading:true, code};
   try{ await renderBoard(document.getElementById('app'), true); }catch(e){}
-  let d=null;
+  let d=null, err='';
   try{ d=await api('/api/admin/pos/lookup?code='+encodeURIComponent(code)
-        +'&branch_id='+encodeURIComponent(S.branchId)); }catch(e){}
-  S.priceCard = (d && d.product) ? {product:d.product, code} : null;
+        +'&branch_id='+encodeURIComponent(S.branchId)); }
+  catch(e){ err=String((e&&(e.message||e.detail))||e||'שגיאת רשת'); }
+  // ⚠️ לא נכשלים בשקט: בלי הודעה, כשל נראה בדיוק כמו "אין מה להציג",
+  // ואי אפשר לדעת אם הקוד לא זוהה או שהקריאה בכלל לא עברה.
+  S.priceCard = (d && d.product) ? {product:d.product, code}
+              : {error: err || (d && d.message) || 'הקוד לא זוהה בקופה', code};
+  try{ console.log('[pricecard]', code, err||'', d||''); }catch(e){}
   try{ await renderBoard(document.getElementById('app'), true); }catch(e){}
 }
 function closePriceCard(){ S.priceCard=null; renderBoard(document.getElementById('app'), true); }
@@ -2777,6 +2782,11 @@ function priceCardHTML(){
   const pc=S.priceCard;
   if(!pc) return '';
   if(pc.loading) return `<div class="pcard"><div class="pi"><div class="st">בודק מחיר ומלאי…</div></div></div>`;
+  if(pc.error) return `<div class="pcard"><div class="pi">
+      <div class="pn">בדיקת מחיר לא זמינה</div>
+      <div class="st">${escW(pc.error)}</div>
+      <div class="st" style="unicode-bidi:isolate;direction:ltr;font-family:monospace">${escW(pc.code||'')}</div>
+    </div><button class="px" onclick="closePriceCard()" title="סגור">×</button></div>`;
   const p=pc.product||{}, st=p.stock||{};
   const names={1:'גן העיר',2:'סטאר',3:'מחסן/מרלוג',4:'עד הלום',5:'אתר'};
   const stock=Object.keys(st).map(b=>`${names[b]||('סניף '+b)}: <b>${st[b]}</b>`).join(' · ')||'—';
