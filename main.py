@@ -2156,7 +2156,9 @@ def pos_agent_config_set(body: PosAgentCfgIn, x_admin_key: Optional[str] = Heade
             except Exception: cur = {}   # noqa: BLE001
         cur.update(body.tuning)
         db.setting_set("pos_agent_tuning", json_mod.dumps(cur, ensure_ascii=False), "admin")
-    return pos_agent_config(x_admin_key)
+    # ⚠️ keyword מפורש: הפרמטר הראשון של pos_agent_config הוא ping, ולכן העברה
+    # מיקומית של המפתח הפילה את השמירה ב-"admin auth required".
+    return pos_agent_config(x_admin_key=x_admin_key)
 
 
 @app.post("/api/admin/pos/removal/{rid}/claim")
