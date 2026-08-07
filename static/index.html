@@ -109,22 +109,47 @@
   .lastscan.ok{background:rgba(31,191,107,.12);border:1px solid var(--green);color:var(--green)}
   .lastscan.err{background:rgba(229,72,77,.1);border:1px solid var(--red);color:var(--red)}
   .lastscan.warn{background:rgba(245,165,36,.12);border:1px solid var(--amber);color:var(--amber)}
-  /* כרטיס בדיקת מחיר — מוצג כשקוד שנסרק אינו שייך לאף העברה נכנסת */
-  .pcard{max-width:640px;margin:-14px auto 26px;background:var(--card);border:1px solid var(--line);
-    border-radius:16px;padding:14px;display:flex;gap:14px;align-items:flex-start;text-align:right}
-  .pcard img{width:86px;height:86px;object-fit:contain;background:#fff;border-radius:12px;flex:0 0 auto}
+  /* כרטיס בדיקת מחיר — מוצג כשקוד שנסרק אינו נקלט להעברה */
+  .pcard{max-width:640px;margin:-12px auto 26px;position:relative;text-align:right;
+    background:var(--card);border:1px solid var(--line);border-radius:20px;padding:18px;
+    box-shadow:0 14px 34px rgba(0,0,0,.09);animation:pcIn .22s cubic-bezier(.2,.8,.3,1)}
+  @keyframes pcIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
+  .pcard .pcTop{display:flex;gap:16px;align-items:flex-start}
+  .pcard .pcImg{width:96px;height:96px;border-radius:16px;background:#fff;flex:0 0 auto;
+    border:1px solid var(--line);display:flex;align-items:center;justify-content:center;overflow:hidden}
+  .pcard .pcImg img{width:100%;height:100%;object-fit:contain}
   .pcard .pi{flex:1;min-width:0}
-  .pcard .pn{font-weight:800;font-size:15px;margin-bottom:6px}
-  .pcard .pp{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}
-  .pcard .pb{border:1px solid var(--line);border-radius:10px;padding:6px 10px;min-width:96px}
-  .pcard .pb .k{font-size:11px;color:var(--muted)}
-  .pcard .pb .v{font-size:17px;font-weight:800}
+  .pcard .pn{font-weight:800;font-size:16.5px;line-height:1.35;margin:0 0 11px;padding-inline-end:30px}
+  .pcard .pp{display:flex;gap:10px;flex-wrap:wrap}
+  .pcard .pb{flex:1;min-width:118px;border-radius:14px;padding:8px 12px;
+    border:1px solid var(--line);background:var(--bg)}
+  .pcard .pb.pos{background:rgba(46,206,125,.10);border-color:rgba(46,206,125,.32)}
+  .pcard .pb .k{font-size:11px;font-weight:700;color:var(--muted);margin-bottom:1px}
+  .pcard .pb .v{font-size:20px;font-weight:800;letter-spacing:-.3px}
   .pcard .pb.pos .v{color:var(--green)}
-  .pcard .st{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.6}
-  .pcard .st b{color:var(--txt)}
-  .pcard .px{background:none;border:0;color:var(--muted);font-size:20px;line-height:1;padding:0 4px;cursor:pointer}
-  @media(max-width:520px){.pcard{flex-direction:column;align-items:center;text-align:center}
-    .pcard .pp{justify-content:center}}
+  .pcard .pb .was{font-size:12px;font-weight:700;color:var(--muted);
+    text-decoration:line-through;margin-inline-start:6px}
+  .pcard .pcStock{display:flex;flex-wrap:wrap;gap:6px;margin-top:13px}
+  .pcard .sp{font-size:12px;font-weight:700;border-radius:999px;padding:4px 11px;
+    background:var(--bg);border:1px solid var(--line);color:var(--muted)}
+  .pcard .sp b{color:var(--txt);margin-inline-start:5px;font-size:13px}
+  .pcard .sp.zero{opacity:.42}
+  .pcard .sp.me{background:rgba(76,141,255,.12);border-color:rgba(76,141,255,.34);color:var(--blue)}
+  .pcard .sp.me b{color:var(--blue)}
+  .pcard .pcFoot{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:13px;
+    padding-top:11px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+  .pcard .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.02em;
+    unicode-bidi:isolate;direction:ltr;color:var(--txt);font-weight:700}
+  .pcard .px{position:absolute;top:10px;inset-inline-end:10px;background:none;border:0;
+    color:var(--muted);font-size:20px;line-height:1;cursor:pointer;padding:5px 9px;border-radius:10px}
+  .pcard .px:hover{background:var(--bg);color:var(--txt)}
+  @media(max-width:520px){
+    .pcard{padding:16px}
+    .pcard .pcTop{flex-direction:column;align-items:center;text-align:center}
+    .pcard .pn{padding-inline-end:0}
+    .pcard .pi{width:100%}
+    .pcard .pcStock,.pcard .pcFoot{justify-content:center}
+  }
   .lastscan.idle{color:var(--muted);border:1px dashed var(--line);font-weight:600;font-size:16px}
   .mtag{font-size:11px;font-weight:700;border-radius:6px;padding:1px 7px;margin-inline-start:6px;white-space:nowrap}
   .mtag.ok{background:rgba(31,191,107,.15);color:var(--green)}
@@ -2781,29 +2806,41 @@ function closePriceCard(){ S.priceCard=null; renderBoard(document.getElementById
 function priceCardHTML(){
   const pc=S.priceCard;
   if(!pc) return '';
-  if(pc.loading) return `<div class="pcard"><div class="pi"><div class="st">בודק מחיר ומלאי…</div></div></div>`;
-  if(pc.error) return `<div class="pcard"><div class="pi">
-      <div class="pn">בדיקת מחיר לא זמינה</div>
-      <div class="st">${escW(pc.error)}</div>
-      <div class="st" style="unicode-bidi:isolate;direction:ltr;font-family:monospace">${escW(pc.code||'')}</div>
-    </div><button class="px" onclick="closePriceCard()" title="סגור">×</button></div>`;
+  const X=`<button class="px" onclick="closePriceCard()" title="סגור">×</button>`;
+  if(pc.loading) return `<div class="pcard">${X}<div class="st" style="color:var(--muted);font-size:13px">בודק מחיר ומלאי…</div></div>`;
+  if(pc.error) return `<div class="pcard">${X}
+      <div class="pn" style="margin-bottom:6px">בדיקת מחיר לא זמינה</div>
+      <div style="font-size:12.5px;color:var(--muted)">${escW(pc.error)}</div>
+      <div class="pcFoot"><span class="mono">${escW(pc.code||'')}</span></div></div>`;
   const p=pc.product||{}, st=p.stock||{};
   const names={1:'גן העיר',2:'סטאר',3:'מחסן/מרלוג',4:'עד הלום',5:'אתר'};
-  const stock=Object.keys(st).map(b=>`${names[b]||('סניף '+b)}: <b>${st[b]}</b>`).join(' · ')||'—';
   const money=v=>(v==null||v==='')?'—':'₪'+Number(v).toLocaleString('en-US');
-  const img=p.image?`<img src="${escW(p.image)}" onerror="this.style.display='none'">`:'';
-  return `<div class="pcard">${img}
-    <div class="pi">
-      <div class="pn">${escW(p.name||pc.code)}</div>
-      <div class="pp">
-        <div class="pb pos"><div class="k">מחיר קופה</div><div class="v">${money(p.pos_price)}</div></div>
-        <div class="pb"><div class="k">מחיר אתר</div><div class="v">${money(p.site_price)}</div></div>
+  // גלולה לכל סניף: הסניף שלי מודגש, אפס/לא-נסחר מעומעם
+  const pills=Object.keys(names).map(b=>{
+    const raw=st[b], has=(raw!=null);
+    const q=Number(raw);
+    const cls=(String(b)===String(S.branchId)?'me':'')+((!has||!(q>0))?' zero':'');
+    return `<span class="sp ${cls}">${names[b]}<b>${!has?'—':(q<0?'—':q)}</b></span>`;
+  }).join('');
+  const disc=(p.site_regular&&p.site_price&&Number(p.site_regular)>Number(p.site_price))
+    ? `<span class="was">${money(p.site_regular)}</span>` : '';
+  return `<div class="pcard">${X}
+    <div class="pcTop">
+      ${p.image?`<div class="pcImg"><img src="${escW(p.image)}" onerror="this.closest('.pcImg').style.display='none'"></div>`:''}
+      <div class="pi">
+        <div class="pn">${escW(p.name||pc.code)}</div>
+        <div class="pp">
+          <div class="pb pos"><div class="k">מחיר קופה</div><div class="v">${money(p.pos_price)}</div></div>
+          <div class="pb"><div class="k">מחיר אתר</div><div class="v">${money(p.site_price)}${disc}</div></div>
+        </div>
       </div>
-      <div class="st">מלאי: ${stock}</div>
-      <div class="st">מק״ט ${escW(p.product_id||'')}${p.barcode?(' · ברקוד '+escW(p.barcode)):''}</div>
-      ${p.permalink?`<div class="st"><a href="${escW(p.permalink)}" target="_blank" style="color:var(--blue)">פתח באתר ↗</a></div>`:''}
     </div>
-    <button class="px" onclick="closePriceCard()" title="סגור">×</button>
+    <div class="pcStock">${pills}</div>
+    <div class="pcFoot">
+      <span>מק״ט <span class="mono">${escW(p.product_id||'')}</span></span>
+      ${p.barcode?`<span>ברקוד <span class="mono">${escW(p.barcode)}</span></span>`:''}
+      ${p.permalink?`<a href="${escW(p.permalink)}" target="_blank" style="color:var(--blue);font-weight:700">פתח באתר ↗</a>`:''}
+    </div>
   </div>`;
 }
 function fmtTime(iso){ if(!iso)return''; const d=new Date(iso); if(isNaN(d))return iso;
