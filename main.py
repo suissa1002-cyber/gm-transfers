@@ -2192,6 +2192,68 @@ def branch_update_mark_read(uid: int, body: UpdateReadIn,
     return {"ok": True}
 
 
+class UpdateQuestionIn(BaseModel):
+    branch_id: int
+    employee: str = ""
+    text: str
+
+
+@app.post("/api/branch-updates/{uid}/question")
+def branch_update_ask(uid: int, body: UpdateQuestionIn,
+                      x_admin_key: Optional[str] = Header(None),
+                      x_device_token: Optional[str] = Header(None)):
+    """שאלה של סניף על עדכון — נשמרת צמודה לכרטיס.
+    ⚠️ שולחת טלגרם מיד: שאלה שיושבת במסך שאף אחד לא פותח גרועה מהודעה בקבוצה,
+    כי המוכר מחכה לתשובה מול לקוח."""
+    _require_admin_or_device(x_admin_key, x_device_token)
+    txt = (body.text or "").strip()
+    if not txt:
+        raise HTTPException(400, "שאלה ריקה")
+    upd = next((u for u in db.branch_updates_list(None, 300) if u["id"] == uid), None)
+    qid = db.branch_update_question_add(uid, body.branch_id, body.employee, txt)
+    try:
+        _tg_admin("❓ שאלה מסניף %s על עדכון \"%s\"\n%s%s" % (
+            cfg.branch_name(body.branch_id), (upd or {}).get("title", "?"),
+            txt[:400], ("\n— " + body.employee) if body.employee else ""))
+    except Exception:  # noqa: BLE001
+        pass
+    return {"ok": True, "id": qid}
+
+
+@app.get("/api/branch-updates/{uid}/questions")
+def branch_update_questions(uid: int, x_admin_key: Optional[str] = Header(None),
+                            x_device_token: Optional[str] = Header(None)):
+    _require_admin_or_device(x_admin_key, x_device_token)
+    rows = db.branch_update_questions(uid)
+    for r in rows:
+        r["branch_name"] = cfg.branch_name(r.get("branch_id"))
+    return {"questions": rows}
+
+
+class UpdateAnswerIn(BaseModel):
+    answer: str
+
+
+@app.post("/api/admin/branch-updates/question/{qid}/answer")
+def branch_update_answer(qid: int, body: UpdateAnswerIn,
+                         x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    db.branch_update_question_answer(qid, body.answer, "אדמין")
+    return {"ok": True}
+
+
+@app.get("/api/admin/branch-updates/questions")
+def branch_update_all_questions(unanswered: int = 0,
+                                x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    rows = db.branch_update_questions(None, bool(unanswered))
+    titles = {u["id"]: u["title"] for u in db.branch_updates_list(None, 300)}
+    for r in rows:
+        r["branch_name"] = cfg.branch_name(r.get("branch_id"))
+        r["update_title"] = titles.get(r.get("update_id"), "")
+    return {"questions": rows}
+
+
 @app.get("/removals")
 def removals_page():
     p = os.path.join(_static_dir, "removals.html")

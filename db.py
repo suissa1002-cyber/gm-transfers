@@ -817,6 +817,19 @@ _SCHEMA = [
     """.format(pk=_PK),
     # קריאה/אישור לכל (עדכון, סניף) — הבסיס לדוח "2/5 סניפים קראו"
     """
+    CREATE TABLE IF NOT EXISTS branch_update_questions (
+        id          {pk},
+        update_id   INTEGER,
+        branch_id   INTEGER,
+        employee    TEXT,
+        text        TEXT,
+        created_at  TEXT,
+        answer      TEXT,
+        answered_at TEXT,
+        answered_by TEXT
+    )
+    """.format(pk=_PK),
+    """
     CREATE TABLE IF NOT EXISTS branch_updates_reads (
         id         {pk},
         update_id  INTEGER,
@@ -4903,3 +4916,41 @@ def branch_updates_read_map(uids) -> dict:
         for r in cur.fetchall():
             out.setdefault(int(r["update_id"]), []).append(int(r["branch_id"]))
     return out
+
+
+def branch_update_question_add(uid, branch_id, employee, text) -> int:
+    with _conn() as c:
+        cur = c.cursor()
+        q = ("INSERT INTO branch_update_questions (update_id, branch_id, employee, text, "
+             "created_at) VALUES (?, ?, ?, ?, ?)")
+        args = (int(uid), int(branch_id), (employee or "").strip(),
+                (text or "").strip(), now_iso())
+        if _USE_PG:
+            cur.execute(_q(q + " RETURNING id"), args)
+            return int(cur.fetchone()["id"])
+        cur.execute(q, args)
+        return int(cur.lastrowid)
+
+
+def branch_update_question_answer(qid, answer, by="") -> None:
+    with _conn() as c:
+        c.cursor().execute(_q("UPDATE branch_update_questions SET answer = ?, "
+                              "answered_at = ?, answered_by = ? WHERE id = ?"),
+                           ((answer or "").strip(), now_iso(), by or "", int(qid)))
+
+
+def branch_update_questions(uid=None, unanswered=False) -> list:
+    where, args = [], []
+    if uid is not None:
+        where.append("update_id = ?")
+        args.append(int(uid))
+    if unanswered:
+        where.append("(answer IS NULL OR answer = '')")
+    sql = "SELECT * FROM branch_update_questions"
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    sql += " ORDER BY id DESC LIMIT 200"
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q(sql), args)
+        return [dict(r) for r in cur.fetchall()]
