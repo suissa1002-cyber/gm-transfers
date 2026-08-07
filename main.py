@@ -2110,7 +2110,9 @@ def pos_agent_config(ping: int = 0, locked: int = 0,
         # ⚠️ "רץ" ≠ "יכול לעבוד": הדופק הוא בקשת רשת ועובד גם כשמסך המחשב נעול,
         # אבל ההזנה לקופה מבוססת קליק פיזי ולא תרוץ. שומרים בנפרד כדי שהמסך
         # יראה את האמת ולא ירוק מטעה.
+        was = db.setting_get("pos_agent_locked") == "1"
         db.setting_set("pos_agent_locked", "1" if locked else "0", "agent")
+        _pos_lock_alert(was, bool(locked))
     tuning = {}
     raw = db.setting_get("pos_agent_tuning")
     if raw:
@@ -2123,6 +2125,35 @@ def pos_agent_config(ping: int = 0, locked: int = 0,
             "poll_sec": int(db.setting_get("pos_agent_poll_sec") or 25),
             "tuning": tuning, "seen_sec_ago": _agent_seen_sec(),
             "desktop_locked": db.setting_get("pos_agent_locked") == "1"}
+
+
+_POS_LOCK_ALERT_EVERY = 900        # תזכורת כל רבע שעה כל עוד תקוע
+
+
+def _pos_lock_alert(was_locked: bool, now_locked: bool):
+    """מתריע כשמסך המחשב בקופה נעול **ויש הורדות שממתינות בגללו**.
+
+    ⚠️ לא מתריעים על עצם הנעילה: אסי נועל/פותח את המחשב במהלך היום, וזה היה
+    הופך להצפה שמאבדים בה את ההתראה האמיתית. ההתראה יוצאת רק כשיש נזק בפועל —
+    פעולה שסניף כבר ביצע ולא יורדת בקופה — ומזכירה כל רבע שעה עד שנפתר."""
+    import time as _t
+    try:
+        if now_locked:
+            pend = db.pos_removals_list(status="pending", limit=50)
+            if not pend:
+                return
+            last = db.setting_get("pos_lock_alert_at")
+            if last and (_t.time() - float(last)) < _POS_LOCK_ALERT_EVERY:
+                return
+            db.setting_set("pos_lock_alert_at", str(_t.time()), "system")
+            _tg_admin("🔒 מסך המחשב בקופה נעול — %d הורדות ממתינות ולא יורדות "
+                      "בקופה.\nהן שמורות ויתבצעו מעצמן ברגע שהמסך ייפתח.\n"
+                      "התחבר למחשב כדי לשחרר." % len(pend))
+        elif was_locked and db.setting_get("pos_lock_alert_at"):
+            db.setting_set("pos_lock_alert_at", "", "system")
+            _tg_admin("✅ המסך בקופה נפתח — ההורדות שהמתינו מתבצעות עכשיו.")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("pos lock alert failed: %s", e)
 
 
 def _agent_seen_sec():
