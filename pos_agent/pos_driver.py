@@ -10,7 +10,7 @@ import time
 
 from pywinauto import Application, Desktop, mouse
 
-DRIVER_VERSION = "2026-08-07.22"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
+DRIVER_VERSION = "2026-08-07.23"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
 POS_TITLE_RE = ".*אורדר.*"
 FORM_TITLE = "הורדה מהמלאי"
 ITEM_TITLE = "הורדה מהמלאי - פעולה חדשה"
@@ -81,6 +81,21 @@ def _wait_until(pred, timeout=2.0, step=0.1):
             pass
         time.sleep(step)
     return False
+
+
+# הסוכן מציב כאן את פונקציית הלוג שלו, כדי שהודעות הדרייבר (כולל שורת הזמנים)
+# ייכנסו גם ל-agent.log ולא ייעלמו עם החלון.
+LOG = None
+
+
+def _log(msg):
+    if LOG:
+        try:
+            LOG(msg)
+            return
+        except Exception:                # noqa: BLE001
+            pass
+    print(msg, flush=True)
 
 
 # ⏱️ מדידת זמנים — מודפס בסוף כל הרצה כדי לראות בדיוק איפה הזמן נשרף
@@ -226,6 +241,52 @@ def _confirm_dialog(yes=True, timeout=6):
             pass
         time.sleep(0.4)
     return False
+
+
+def _dialog_open():
+    """האם מוצגת כרגע תיבת אישור/הודעה של Windows (#32770)."""
+    try:
+        for w in Desktop(backend="win32").windows():
+            try:
+                if w.class_name() == "#32770" and w.is_visible():
+                    return True
+            except Exception:            # noqa: BLE001
+                continue
+    except Exception:                    # noqa: BLE001
+        pass
+    return False
+
+
+def _exit_item_screen(app, items_win, tries=4):
+    """יוצא ממסך הפריטים **ומוודא שהוא באמת נסגר**.
+
+    ⚠️ למה זה קריטי: מסך פריטים שנשאר פתוח משבית את תפריט הקופה, וכל הרצה
+    הבאה נופלת ב-ElementNotEnabled (זה מה שהפיל את #27 עשרות פעמים). בנוסף,
+    בשאלת היציאה ברירת המחדל היא **ביטול** — ENTER או ESC רק ישאירו אותנו בפנים.
+    לכן: ESC → ממתינים שהשאלה תופיע → לוחצים "כן" מפורשות → מאמתים.
+    מחזיר True אם המסך נסגר."""
+    for i in range(tries):
+        if _spec(app, ITEM_TITLE, timeout=0.3) is None:
+            return True
+        try:
+            items_win.set_focus()
+            items_win.type_keys("{ESC}")
+        except Exception:                # noqa: BLE001
+            pass
+        if not _wait_until(_dialog_open, 2.0, 0.15):
+            # ESC לא הרים את השאלה → לוחצים "יציאה" (הכפתור התחתון בעמודה הימנית)
+            try:
+                cands = [(c, c.rectangle()) for c in items_win.descendants()
+                         if c.class_name() == "ThunderRT6UserControlDC"]
+                if cands:
+                    _click_ctrl(max(cands, key=lambda cr: (cr[1].top, cr[1].left))[0])
+            except Exception:            # noqa: BLE001
+                pass
+            _wait_until(_dialog_open, 2.5, 0.15)
+        _confirm_dialog(yes=True, timeout=3)
+        _dismiss_message_box()
+        time.sleep(0.4)
+    return _spec(app, ITEM_TITLE, timeout=0.5) is None
 
 
 NEW_ITEM_TITLE = "פריט חדש"
@@ -604,17 +665,9 @@ def _cleanup(app, T):
     try:
         iw = _spec(app, ITEM_TITLE, timeout=0.4)
         if iw is not None:
-            cands = [(c, c.rectangle()) for c in iw.descendants()
-                     if c.class_name() == "ThunderRT6UserControlDC"]
-            if cands:
-                exit_btn = max(cands, key=lambda cr: (cr[1].top, cr[1].left))[0]
-                _click_ctrl(exit_btn)
-                time.sleep(1.0)
-                # ⚠️ "כן" מפורש: בשאלת היציאה ברירת המחדל היא **ביטול**, ולכן
-                # ENTER היה משאיר את המסך פתוח וחוסם את ההרצה הבאה.
-                _confirm_dialog(yes=True)
-                time.sleep(0.8)
-                _dismiss_message_box()
+            # ⚠️ "כן" מפורש ואימות סגירה — ברירת המחדל בשאלת היציאה היא **ביטול**,
+            # ומסך שנשאר פתוח משבית את תפריט הקופה בהרצה הבאה.
+            _exit_item_screen(app, iw)
     except Exception:                    # noqa: BLE001
         pass
     # ⏱️ timeout קצר: בקופה נקייה החלונות לא קיימים, וכל בדיקה עם timeout=1
@@ -950,26 +1003,16 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
 
     # 5) סיום
     if dry_run:
-        # יציאה בלי לשמור: ESC ואז "כן" בשאלה "הפעולה לא הושלמה, האם ברצונך לצאת?"
-        try:
-            items_win.set_focus()
-            items_win.type_keys("{ESC}")
-        except Exception:                # noqa: BLE001
-            pass
-        time.sleep(0.4)
-        if not _confirm_dialog(yes=True, timeout=4):
-            btns = _item_action_buttons(items_win)     # נפילה: כפתור "יציאה"
-            try:
-                cands = [(c, c.rectangle()) for c in items_win.descendants()
-                         if c.class_name() == "ThunderRT6UserControlDC"]
-                if cands:
-                    _click_ctrl(max(cands, key=lambda cr: (cr[1].top, cr[1].left))[0])
-                    time.sleep(0.8)
-                    _confirm_dialog(yes=True)
-            except Exception:            # noqa: BLE001
-                pass
+        # יציאה בלי לשמור — ומוודאים שהמסך אכן נסגר, אחרת הוא יחסום את הריצה הבאה
+        ok = _exit_item_screen(app, items_win)
+        if not ok:
+            _force_close_extra(app, pos)
+            ok = _spec(app, ITEM_TITLE, timeout=0.5) is None
         _lap("יציאה (יבש)", _t)
-        print("⏱️ סה\"כ %.1fs | %s" % (time.time() - _run0, " · ".join(_TIMING)), flush=True)
+        _log("⏱️ סה\"כ %.1fs | %s" % (time.time() - _run0, " · ".join(_TIMING)))
+        if not ok:
+            raise RuntimeError("מסך הפריטים לא נסגר אחרי היציאה — הוא יחסום את "
+                               "ההרצה הבאה. סגור אותו בקופה ('יציאה' → 'כן').")
         return ""
 
     btns = _item_action_buttons(items_win)       # [0] = "סיים פעולה"
@@ -983,6 +1026,9 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
     _confirm_dialog(yes=True, timeout=4)   # אישור שמירה, אם נשאל
     time.sleep(1.0)
     _dismiss_message_box()
+    # אחרי שמירה המסך אמור להיסגר לבד; אם נשאר — סוגרים, אחרת הוא יחסום את הבא
+    if _spec(app, ITEM_TITLE, timeout=0.5) is not None:
+        _exit_item_screen(app, items_win)
     _lap("סיום פעולה", _t)
-    print("⏱️ סה\"כ %.1fs | %s" % (time.time() - _run0, " · ".join(_TIMING)), flush=True)
+    _log("⏱️ סה\"כ %.1fs | %s" % (time.time() - _run0, " · ".join(_TIMING)))
     return ""

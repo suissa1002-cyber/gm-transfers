@@ -181,6 +181,8 @@ def process(r, cfg=None):
 
 
 def main():
+    if pos_driver is not None:
+        pos_driver.LOG = log         # הודעות הדרייבר (כולל שורת הזמנים) → agent.log
     ver = getattr(pos_driver, "DRIVER_VERSION", "?") if pos_driver else "no-driver"
     log("סוכן הורדה מהמלאי — GreenOS=%s | גרסת דרייבר: %s" % (GREENOS_URL, ver))
     log("ממתין לפעולות. (enabled/dry_run נשלטים מ-GreenOS; ברירת מחדל: מושבת+dry)")
