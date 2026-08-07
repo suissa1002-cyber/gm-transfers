@@ -10,7 +10,7 @@ import time
 
 from pywinauto import Application, Desktop, mouse
 
-DRIVER_VERSION = "2026-08-07.39"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
+DRIVER_VERSION = "2026-08-07.40"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
 POS_TITLE_RE = ".*אורדר.*"
 FORM_TITLE = "הורדה מהמלאי"
 ITEM_TITLE = "הורדה מהמלאי - פעולה חדשה"
@@ -403,13 +403,33 @@ def _dialog_with_buttons():
             texts = [_norm(c.window_text()) for c in w.descendants()]
         except Exception:                # noqa: BLE001
             pass
-        body = " ".join(t for t in texts if t and t not in yn and t not in ok)
+        msg = " ".join(t for t in texts if t and t not in yn and t not in ok)
         try:
-            body = (_norm(w.window_text()) + " " + body).strip()
+            title = _norm(w.window_text())
         except Exception:                # noqa: BLE001
-            pass
-        return w, body, ("confirm" if has_yn else "ack")
-    return None, "", ""
+            title = ""
+        body = (title + " " + msg).strip()
+        # informative = יש טקסט אמיתי מעבר לכותרת. בקופה הזאת נוסח השאלה מצויר
+        # ואינו חשוף כפקד, ולכן לרוב מגיעה רק הכותרת — ואז אסור להכריע לפי תוכן.
+        return w, body, ("confirm" if has_yn else "ack"), bool(msg.strip()), title
+    return None, "", "", False, ""
+
+
+# כותרות של שאלות שהתשובה להן "כן" גם כשנוסח השאלה אינו קריא.
+# ⚠️ בקופה הזאת נוסח השאלה מצויר ואינו חשוף כפקד — הקוד מקבל רק את הכותרת
+# ("הודעת מערכת"), ולכן הכרעה לפי מילות מפתח בנוסח פשוט לא אפשרית (אסי, 07/08).
+_TITLE_YES = ("אשר",)          # "בבקשה אשר" = אישור שמירה/יציאה
+
+
+def _decide_yes(body, informative, title):
+    """האם לענות "כן". ⛔ ברירת המחדל לשאלה שלא הצלחנו לקרוא היא **לא**:
+    סירוב לפעולה לא מוכרת הוא שחזיר (הפעולה חוזרת לתור ומנוסה שוב), בעוד
+    הסכמה יכולה להדפיס/למחוק ולתקוע את הקופה — וזה מה שקרה שוב ושוב."""
+    if any(k in body for k in _ANSWER_NO_KEYWORDS):
+        return False
+    if not informative:
+        return any(t in title for t in _TITLE_YES)
+    return True
 
 
 def _click_ok(w):
@@ -436,13 +456,12 @@ def _answer_smart(timeout=3):
     לחצו "כן" בעיוורון (סיום, יציאה, ניקוי כפוי), וכל אחד מהם הספיק בפני עצמו
     כדי לגרום לקופה להדפיס ולהיתקע — גם אחרי שהמקומות האחרים תוקנו (אסי, 07/08).
     """
-    w, body, kind = _dialog_with_buttons()
+    w, body, kind, informative, title = _dialog_with_buttons()
     if w is None:
         return False
     if kind == "ack":
         return _click_ok(w)
-    yes = not any(k in body for k in _ANSWER_NO_KEYWORDS)
-    return _confirm_dialog(yes=yes, timeout=timeout)
+    return _confirm_dialog(yes=_decide_yes(body, informative, title), timeout=timeout)
 
 
 def _items_screen_gone():
@@ -477,7 +496,7 @@ def _answer_dialog_chain(rounds=10, first_wait=6.0, next_wait=6.0):
             break
         if _dialog_with_buttons()[0] is None:
             break
-        w, body, kind = _dialog_with_buttons()
+        w, body, kind, informative, title = _dialog_with_buttons()
         if w is None:
             break
         if kind == "ack":
@@ -485,11 +504,10 @@ def _answer_dialog_chain(rounds=10, first_wait=6.0, next_wait=6.0):
                 break
             answered.append((body[:70], "OK"))
         else:
-            yes = not any(k in body for k in _ANSWER_NO_KEYWORDS)
-            if len(body) < 15:
-                # ⚠️ הכרעה על סמך כותרת בלבד = ניחוש. ברירת המחדל "כן" נכונה
-                # לשמירה/יציאה, אבל אם זו שאלת הדפסה שהטקסט שלה לא נקרא — נדע.
-                _log("  ⚠️ שאלה בלי טקסט מזוהה ('%s') — נענה כן כברירת מחדל" % body)
+            yes = _decide_yes(body, informative, title)
+            if not informative:
+                _log("  ⚠️ נוסח השאלה לא נקרא ('%s') — הוכרע לפי כותרת: %s"
+                     % (title, "כן" if yes else "לא"))
             if not _confirm_dialog(yes=yes, timeout=2):
                 break
             answered.append((body[:70], "כן" if yes else "לא"))
@@ -751,7 +769,7 @@ def _dismiss_message_box():
     כלומר גם כששרשרת הסיום ענתה "לא" כמו שצריך, השורה הזאת לחצה "כן" אחריה
     והקופה נתקעה על "ממתין לחיבור מדפסת" (אסי, 07/08). שאלות שייכות אך ורק
     ל-_answer_dialog_chain, שמכריע לפי תוכן."""
-    w, body, kind = _dialog_with_buttons()
+    w, body, kind, informative, title = _dialog_with_buttons()
     if w is None:
         return _read_message_box()
     if kind == "confirm":
