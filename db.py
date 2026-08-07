@@ -4431,10 +4431,14 @@ def pos_removal_claim(rid) -> bool:
     מקדם attempts ומסמן last_try_at — כדי לזהות תקיעה ולחשב backoff."""
     with _conn() as c:
         cur = c.cursor()
+        # ⚠️ גם ה-backoff נאכף כאן ולא רק בשאילתת ה"ממתינות": סוכן בגרסה ישנה
+        # (או כל קורא אחר) לא יוכל לעקוף אותו ולהצית לולאת ניסיונות צמודה.
         cur.execute(_q("UPDATE pos_removals "
                        "SET status='applying', attempts = COALESCE(attempts,0) + 1, "
                        "    last_try_at = ? "
-                       "WHERE id = ? AND status = 'pending'"), (now_iso(), int(rid)))
+                       "WHERE id = ? AND status = 'pending' "
+                       "  AND (next_try_at IS NULL OR next_try_at <= ?)"),
+                    (now_iso(), int(rid), now_iso()))
         return (cur.rowcount or 0) > 0
 
 

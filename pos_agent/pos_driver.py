@@ -10,7 +10,7 @@ import time
 
 from pywinauto import Application, Desktop, mouse
 
-DRIVER_VERSION = "2026-08-07.21"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
+DRIVER_VERSION = "2026-08-07.22"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
 POS_TITLE_RE = ".*אורדר.*"
 FORM_TITLE = "הורדה מהמלאי"
 ITEM_TITLE = "הורדה מהמלאי - פעולה חדשה"
@@ -547,6 +547,54 @@ def _set_text(c, text):
               with_spaces=True, pause=0.02)
 
 
+def _force_close_extra(app, pos):
+    """סוגר **כל** חלון של הקופה שאינו החלון הראשי.
+
+    ⚠️ למה זה קיים: _cleanup סוגר רק חלונות ששמם ידוע לנו. חלון שלא הכרנו
+    ('פריט חדש', דיאלוג עובד חדש, כל טופס אחר שנשאר פתוח) נשאר על המסך, מבטל
+    את תפריט הקופה, וכל ניסיון הזנה נופל ב-ElementNotEnabled — שוב ושוב, בלי
+    שהמערכת מצליחה להיחלץ לבד (פעולה #27 נכשלה כך 26 פעמים, אסי 07/08).
+    מחזיר כמה חלונות נסגרו."""
+    try:
+        main = pos.handle
+    except Exception:                    # noqa: BLE001
+        main = None
+    closed = 0
+    for _ in range(4):
+        extras = []
+        try:
+            for w in app.windows(visible_only=True, enabled_only=False):
+                try:
+                    if main is not None and w.handle == main:
+                        continue
+                    extras.append(w)
+                except Exception:        # noqa: BLE001
+                    continue
+        except Exception:                # noqa: BLE001
+            break
+        if not extras:
+            break
+        for w in extras:
+            try:
+                w.set_focus()
+                w.type_keys("{ESC}")
+                time.sleep(0.3)
+            except Exception:            # noqa: BLE001
+                pass
+            try:
+                if w.exists():
+                    w.close()
+                    time.sleep(0.3)
+            except Exception:            # noqa: BLE001
+                pass
+            # שאלת "האם ברצונך לצאת?" — עונים "כן" (ENTER היה בוחר 'ביטול')
+            _confirm_dialog(yes=True, timeout=1.5)
+            _dismiss_message_box()
+            closed += 1
+        time.sleep(0.3)
+    return closed
+
+
 def _cleanup(app, T):
     """סוגר שאריות דיאלוגים מהרצה קודמת שנכשלה (טופס/מסך פריטים/פופאפ עובד),
     כדי שהתפריט יהיה פנוי. ריצה שנכשלה משאירה חלון פתוח שחוסם את הבא."""
@@ -605,6 +653,7 @@ def recover(tuning=None):
     except Exception:                    # noqa: BLE001
         pass
     _cleanup(app, T)
+    _force_close_extra(app, pos)         # גם חלונות שלא מוכרים לנו בשם
     return True
 
 
@@ -628,10 +677,21 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
     _t = _lap("ניקוי", _t)
 
     # 1) תפריט → טופס הורדה
+    # ⚠️ ElementNotEnabled כאן = חלון אחר של הקופה נשאר פתוח ומשבית את התפריט.
+    # במקום להיכשל (ולחזור על אותו כשל בכל ניסיון חוזר) — סוגרים הכל ומנסים שוב.
     try:
         pos.menu_select(T["menu_path"])
     except Exception as e:               # noqa: BLE001
-        raise RuntimeError("פתיחת תפריט מלאי נכשלה: %s (%s)" % (e, type(e).__name__))
+        n = _force_close_extra(app, pos)
+        try:
+            pos.set_focus()
+            time.sleep(0.5)
+            pos.menu_select(T["menu_path"])
+        except Exception as e2:          # noqa: BLE001
+            raise RuntimeError(
+                "פתיחת תפריט מלאי נכשלה: %s (%s). נסגרו %d חלונות שנשארו פתוחים "
+                "בקופה ועדיין לא ניתן — בדוק שאין מסך פתוח בקופה." %
+                (e2, type(e2).__name__, n))
     time.sleep(0.4)
 
     # 2) פופאפ "בחר שם עובד" — ⚠️ חלון **ללא כותרת**, ולכן לא ניתן לאתר לפי שם.

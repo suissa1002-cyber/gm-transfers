@@ -236,6 +236,16 @@ header.top{position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1
   <div class="empgrid" id="empGrid"><div class="emptycart">טוען…</div></div>
 </div></div>
 
+<!-- אישור פעולה. ⚠️ לא window.confirm: בדפדפנים מוטמעים הוא חסום ומחזיר false
+     בשקט, וכך "בטל"/"נקה רשימה" פשוט לא עשו כלום (אסי, 07/08). -->
+<div class="overlay" id="askOverlay"><div class="modal" style="max-width:420px">
+  <h3 id="askText">?</h3>
+  <div class="actions" style="justify-content:flex-start;margin-top:16px">
+    <button class="btn primary" id="askYes">אישור</button>
+    <button class="btn ghost" id="askNo">ביטול</button>
+  </div>
+</div></div>
+
 <div id="toast"></div>
 
 <script>
@@ -558,12 +568,25 @@ async function loadQueue(){
       </div>${_itemsTable(r)}</div>`;
   }).join('');
 }
+/* אישור בתוך העמוד — window.confirm חסום בדפדפן המוטמע ומחזיר false בשקט */
+function ask(text){
+  return new Promise(res=>{
+    const ov=document.getElementById('askOverlay');
+    document.getElementById('askText').textContent=text;
+    const yes=document.getElementById('askYes'), no=document.getElementById('askNo');
+    const close=v=>{ ov.classList.remove('on'); yes.onclick=null; no.onclick=null; res(v); };
+    yes.onclick=()=>close(true); no.onclick=()=>close(false);
+    ov.classList.add('on');
+  });
+}
+
 async function cancelR(id){
-  if(!confirm('לבטל את הורדה #'+id+'? היא לא תוזן לקופה.')) return;
-  try{ await api('/api/admin/pos/removal/'+id+'/cancel',{method:'POST'}); loadQueue(); }catch(e){ toast(e,true); } }
+  if(!await ask('לבטל את הורדה #'+id+'? היא לא תוזן לקופה.')) return;
+  try{ await api('/api/admin/pos/removal/'+id+'/cancel',{method:'POST'});
+    toast('✓ בוטלה #'+id); loadQueue(); }catch(e){ toast(e,true); } }
 
 async function purgeList(){
-  if(!confirm('למחוק את כל רשימת ההורדות ולהתחיל מחדש? (כולל ממתינות ושגיאות)')) return;
+  if(!await ask('למחוק את כל רשימת ההורדות ולהתחיל מחדש? (כולל ממתינות ושגיאות)')) return;
   try{ const r=await api('/api/admin/pos/removals/purge',{method:'POST'});
     toast('✓ נמחקו '+r.deleted+' שורות'); loadQueue(); }
   catch(e){ toast(e,true); } }
