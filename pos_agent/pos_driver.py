@@ -10,7 +10,7 @@ import time
 
 from pywinauto import Application, Desktop, mouse
 
-DRIVER_VERSION = "2026-08-07.24"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
+DRIVER_VERSION = "2026-08-07.25"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
 POS_TITLE_RE = ".*אורדר.*"
 FORM_TITLE = "הורדה מהמלאי"
 ITEM_TITLE = "הורדה מהמלאי - פעולה חדשה"
@@ -632,21 +632,21 @@ def _dismiss_popup(app, popup):
     ⚠️ 'ביטול' מאותר לפי מיקום **יחסי**: בשורה התחתונה הסדר מימין הוא
     [חדש, ביטול, ...] — ולכן השני מימין. ⛔ לעולם לא הראשון מימין: זה 'חדש',
     ולחיצה עליו פותחת יצירת עובד חדש (קרה 07/08)."""
+    # ⏱️ בדיקה צפופה במקום sleep קבוע: בפועל ה-ESC סוגר תוך פחות מחצי שנייה,
+    # וההמתנות הקבועות (3.6ש' במקרה הגרוע) נשרפו כמעט תמיד לחינם.
     for attempt in range(3):
         try:
             popup.set_focus()
             popup.type_keys("{ESC}")
         except Exception:                # noqa: BLE001
             pass
-        time.sleep(0.6)
-        if _find_popup(app) is None:
+        if _wait_until(lambda: _find_popup(app) is None, 1.0, 0.1):
             return
         try:
             popup.close()                # WM_CLOSE — שקול ללחיצה על ה-X
         except Exception:                # noqa: BLE001
             pass
-        time.sleep(0.6)
-        if _find_popup(app) is None:
+        if _wait_until(lambda: _find_popup(app) is None, 1.0, 0.1):
             return
         # ⛔ **אין ללחוץ על שורת הכפתורים התחתונה.** "חדש" יושב שם צמוד ל"ביטול",
         # ולחיצה שמפספסת פותחת יצירת עובד חדש ומקלידה לתוכה (קרה פעמיים, 07/08).
@@ -853,7 +853,8 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
                 "פתיחת תפריט מלאי נכשלה: %s (%s). נסגרו %d חלונות שנשארו פתוחים "
                 "בקופה ועדיין לא ניתן — בדוק שאין מסך פתוח בקופה." %
                 (e2, type(e2).__name__, n))
-    time.sleep(0.4)
+    time.sleep(0.25)
+    _t = _lap("תפריט", _t)
 
     # 2) פופאפ "בחר שם עובד" — ⚠️ חלון **ללא כותרת**, ולכן לא ניתן לאתר לפי שם.
     #    לוחצים על כפתור העובד לפי הטקסט שלו, בדיוק כמו משתמש. הפופאפ מודאלי:
@@ -864,11 +865,13 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
     #    וממלאים שם+מספר עובד ישירות בשדות הטופס (פקדים אמיתיים עם id).
     emp_name = (removal.get("employee_name") or "").strip()
     popup = None
-    for _ in range(30):                  # עד ~6 שניות עד שהפופאפ מצויר
+    # ⏱️ הפופאפ מצויר מיד עם פתיחת הטופס. המתנה של 6ש' "ליתר ביטחון" נשרפה
+    # במלואה בכל הרצה שבה הוא לא מופיע. 2.5ש' בדגימה צפופה מספיקים בהרבה.
+    for _ in range(25):
         popup = _find_popup(app)
         if popup is not None:
             break
-        time.sleep(0.2)
+        time.sleep(0.1)
     if popup is not None:
         # קודם מנסים לסגור (ESC/X/ביטול) — אז נמלא עובד בשדות הטופס.
         _dismiss_popup(app, popup)
@@ -888,14 +891,14 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
                     "הפופאפ לא נסגר ואין אינדקס תקין ל'%s' (נמצאו %d כפתורים). "
                     "הגדר tuning.emp_index" % (emp_name, len(grid)))
             _click_ctrl(grid[idx])
-            time.sleep(1.0)
-            if _find_popup(app) is not None:
+            if not _wait_until(lambda: _find_popup(app) is None, 2.0, 0.1):
                 raise RuntimeError("פופאפ בחירת העובד עדיין פתוח אחרי לחיצה על אינדקס %d" % idx)
+    _t = _lap("פופאפ עובד", _t)
 
     form = _spec(app, FORM_TITLE, timeout=8)
     if form is None:
         raise RuntimeError("טופס 'הורדה מהמלאי' לא נפתח")
-    _t = _lap("תפריט+עובד", _t)
+    _t = _lap("טופס נפתח", _t)
 
     # 📸 צילום מצב הטופס בכל כשל — כדי לראות בדיוק איפה נעצר
     def _shot(tag):
