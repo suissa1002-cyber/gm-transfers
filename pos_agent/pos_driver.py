@@ -10,7 +10,7 @@ import time
 
 from pywinauto import Application, Desktop, mouse
 
-DRIVER_VERSION = "2026-08-07.32"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
+DRIVER_VERSION = "2026-08-07.33"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
 POS_TITLE_RE = ".*אורדר.*"
 FORM_TITLE = "הורדה מהמלאי"
 ITEM_TITLE = "הורדה מהמלאי - פעולה חדשה"
@@ -352,6 +352,54 @@ def _confirm_dialog(yes=True, timeout=6):
                 return True
         time.sleep(0.3)
     return False
+
+
+# שאלות שהתשובה להן היא **לא**. כל השאר (שמירה/אישור) → כן.
+# ⚠️ עד ההרצה החיה הראשונה כל השאלות אחרי "סיים פעולה" היו שאלות שמירה, ולכן
+# הקוד ענה "כן" לכולן. "האם להדפיס בהדפסה רחבה?" היא הראשונה שבה כן = מדפסת
+# מיותרת (אסי, 07/08). מוסיפים כאן מילת מפתח כשמתגלה שאלה חדשה מסוגה.
+_ANSWER_NO_KEYWORDS = ("הדפס", "הדפסה", "print", "מדבק", "פקס", "מייל", "אימייל",
+                       "email", "שלח")
+
+
+def _dialog_with_buttons():
+    """מחזיר (חלון, טקסט) של שאלת אישור פתוחה, או (None, "")."""
+    keys = [_norm(x) for x in (_YES + _NO)]
+    for w in _dialog_candidates():
+        try:
+            kids = list(w.children())
+        except Exception:                # noqa: BLE001
+            continue
+        texts = [_norm(c.window_text()) for c in kids]
+        if any(t in keys for t in texts):
+            body = " ".join(t for t in texts if t and t not in keys)
+            try:
+                body = (_norm(w.window_text()) + " " + body).strip()
+            except Exception:            # noqa: BLE001
+                pass
+            return w, body
+    return None, ""
+
+
+def _answer_dialog_chain(rounds=10):
+    """עונה לשרשרת השאלות שאחרי "סיים פעולה": שמירה→כן, הדפסה→לא.
+
+    ⚠️ שאלה שלא נענית משאירה חלון פתוח, וחלון פתוח משבית את תפריט הקופה ומפיל
+    את ההרצה הבאה. מחזיר רשימת (שאלה, תשובה) — **נרשמת ביומן**, כדי שכל שאלה
+    חדשה שתופיע בשטח תזוהה מיד ולא תדרוש ניחוש."""
+    answered = []
+    for _ in range(rounds):
+        w, body = _dialog_with_buttons()
+        if w is None:
+            break
+        yes = not any(k in body for k in _ANSWER_NO_KEYWORDS)
+        if not _confirm_dialog(yes=yes, timeout=2):
+            break
+        answered.append((body[:70], "כן" if yes else "לא"))
+        time.sleep(0.4)
+    if answered:
+        _log("  שאלות הקופה: " + " | ".join("%s → %s" % a for a in answered))
+    return answered
 
 
 def _dialog_open():
@@ -1184,9 +1232,12 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
         _click_rect(items_win, T["finish_rect"])
     else:
         raise RuntimeError("לא אותר כפתור 'סיים פעולה'")
-    time.sleep(0.8)
-    _confirm_dialog(yes=True, timeout=4)   # אישור שמירה, אם נשאל
-    time.sleep(1.0)
+    # ⚠️ לא "כן לכל דבר": אחרי השמירה הקופה שואלת גם על **הדפסה**, ושם התשובה
+    # היא לא. _answer_dialog_chain מכריע לפי תוכן השאלה וממשיך עד שאין עוד.
+    time.sleep(0.6)
+    _answer_dialog_chain()
+    time.sleep(0.6)
+    _answer_dialog_chain()               # שאלות שמופיעות רק אחרי הקודמת
     _dismiss_message_box()
     # אחרי שמירה המסך אמור להיסגר לבד; אם נשאר — סוגרים, אחרת הוא יחסום את הבא
     if _spec(app, ITEM_TITLE, timeout=0.5) is not None:
