@@ -277,7 +277,7 @@ textarea{min-height:96px;resize:vertical;line-height:1.6}
 const BR={1:'גן העיר',2:'סטאר',3:'מחסן/מרלוג',4:'עד הלום'};
 const T={deal:'מבצע',new:'מוצר חדש',note:'נוהל',info:'מידע'};
 let KEY=localStorage.getItem('gm_admin_key')||'';
-let KIND='deal', BSEL=[], PROD=null;
+let KIND='deal', BSEL=[], PROD=null, EDIT=null;
 
 function H(){ return {'X-Admin-Key':KEY,'Content-Type':'application/json'}; }
 async function api(path,opts){
@@ -392,13 +392,45 @@ function preview(){
       <div class="f">${when}<span>${who}</span></div></div></div>`;
 }
 function resetForm(){ ['fTitle','fBody','fNow','fOld','fTo','skuInp'].forEach(i=>document.getElementById(i).value='');
-  PROD=null; BSEL=[]; document.getElementById('pickBox').innerHTML=''; setImg(''); renderChips(); preview(); }
+  PROD=null; BSEL=[]; EDIT=null; document.getElementById('pickBox').innerHTML='';
+  setImg(''); renderChips(); preview(); editUI();
+  document.getElementById('fFrom').value=new Date().toISOString().slice(0,10); }
 
+function startEdit(u){
+  EDIT=u.id; KIND=u.kind||'info';
+  [...document.getElementById('segKind').children].forEach(b=>
+    b.classList.toggle('on', b.dataset.k===KIND));
+  document.getElementById('fTitle').value=u.title||'';
+  document.getElementById('fBody').value=u.body||'';
+  document.getElementById('fNow').value=(u.price_now==null?'':u.price_now);
+  document.getElementById('fOld').value=(u.price_old==null?'':u.price_old);
+  document.getElementById('fFrom').value=(u.starts_at||'').slice(0,10);
+  document.getElementById('fTo').value=(u.ends_at||'').slice(0,10);
+  document.getElementById('togAck').classList.toggle('on', !!u.ack);
+  document.getElementById('togPin').classList.toggle('on', !!u.pinned);
+  BSEL=(u.branches||[]).map(Number);
+  PROD = u.sku ? {product_id:u.sku, image:u.image_url, permalink:u.permalink, name:u.title} : null;
+  document.getElementById('pickBox').innerHTML = u.sku
+    ? `<div class="pick" style="margin-top:8px"><div class="im"></div><div><div class="nm">מק״ט ${esc(u.sku)}</div>
+       <div class="sb">מקושר לעדכון</div></div>
+       <button class="ch" onclick="PROD=null;document.getElementById('pickBox').innerHTML='';preview()">הסר</button></div>` : '';
+  setImg(u.image_url||'');
+  renderChips(); preview(); editUI();
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+function editUI(){
+  const btn=document.querySelector('.acts .p'), can=document.querySelector('.acts .g');
+  btn.textContent = EDIT ? 'שמור שינויים' : 'פרסם לסניפים';
+  can.textContent = EDIT ? 'בטל עריכה' : 'נקה';
+  const ph=document.querySelector('.pane .ph h3');
+  if(ph) ph.textContent = EDIT ? ('עריכת עדכון #'+EDIT) : 'עדכון חדש';
+}
 async function publish(){
   const f=formData();
   if(!f.title){ toast('חובה כותרת',false); return; }
-  try{ await api('/api/admin/branch-updates',{method:'POST',body:JSON.stringify(f)});
-    toast('✓ פורסם לסניפים',true); resetForm(); loadPub(); }
+  try{ await api('/api/admin/branch-updates'+(EDIT?('/'+EDIT):''),
+      {method:'POST',body:JSON.stringify(f)});
+    toast(EDIT?'✓ השינויים נשמרו':'✓ פורסם לסניפים',true); resetForm(); loadPub(); }
   catch(e){ toast(String(e),false); }
 }
 
@@ -418,6 +450,7 @@ async function loadPub(){
         <div id="q${u.id}"></div></div>
       <div class="read"><span class="n">${u.read_count}/${u.target_count}</span>
         <span class="dots">${dots}</span></div>
+      <button class="arch" onclick='startEdit(${JSON.stringify(u).replace(/'/g,"&#39;")})'>ערוך</button>
       <button class="arch" onclick="archive(${u.id})">הסתר</button></div>`;
   }).join('');
   rows.forEach(u=>loadQs(u.id));

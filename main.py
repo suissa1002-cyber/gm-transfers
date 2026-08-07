@@ -2159,6 +2159,26 @@ def branch_updates_admin(status: Optional[str] = None,
     return {"updates": rows}
 
 
+@app.post("/api/admin/branch-updates/{uid}")
+def branch_update_edit(uid: int, body: BranchUpdateIn,
+                       x_admin_key: Optional[str] = Header(None)):
+    """עריכת עדכון קיים. ⚠️ הקריאות **לא** מתאפסות: עדכון מחיר או ניסוח אינו
+    הודעה חדשה, ומי שכבר ראה לא צריך לראות אותה שוב כלא-נקראה."""
+    _require_admin(x_admin_key)
+    if not (body.title or "").strip():
+        raise HTTPException(400, "חובה כותרת")
+    db.branch_update_set(
+        uid, kind=body.kind, title=body.title.strip(), body=body.body.strip(),
+        image_url=body.image_url.strip(), sku=body.sku.strip(),
+        permalink=body.permalink.strip(), price_now=body.price_now,
+        price_old=body.price_old,
+        branches=",".join(str(b) for b in (body.branches or [])),
+        starts_at=body.starts_at, ends_at=body.ends_at,
+        ack=1 if body.ack else 0, pinned=1 if body.pinned else 0,
+        status=body.status)
+    return {"ok": True, "id": uid}
+
+
 @app.post("/api/admin/branch-updates/{uid}/archive")
 def branch_update_archive(uid: int, x_admin_key: Optional[str] = Header(None)):
     _require_admin(x_admin_key)
