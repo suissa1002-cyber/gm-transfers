@@ -10,7 +10,7 @@ import time
 
 from pywinauto import Application, Desktop, mouse
 
-DRIVER_VERSION = "2026-08-07.29"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
+DRIVER_VERSION = "2026-08-07.30"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
 POS_TITLE_RE = ".*אורדר.*"
 FORM_TITLE = "הורדה מהמלאי"
 ITEM_TITLE = "הורדה מהמלאי - פעולה חדשה"
@@ -467,10 +467,10 @@ def _type_code_verified(c, code, tries=4, start_pace=0):
         _clear_field(c)
         send_keys(code, pause=paces[min(i + start_pace, len(paces) - 1)])
         time.sleep(0.15 + 0.1 * i)           # הקלדה מהירה → בדיקה מהירה
-        # ⏱️ סבלנות ארוכה בקריאה-חוזרת עולה **אפס** כשהערך כבר נכון (יוצאים מיד),
-        # אבל חוסכת מחזור הקלדה שלם כשהקופה פשוט איטית לצייר — וזה בדיוק מה שקורה
-        # בפריט הראשון אחרי פתיחת המסך (4.9ש' מול 2.2ש' לשאר).
-        for _ in range(14):                  # קריאה-חוזרת עד שהערך מתייצב
+        # ⏱️ 6 בדיקות (~0.5ש') ולא יותר: נמדד (07/08) שהארכה ל-14 רק **הוסיפה**
+        # זמן — כשההקלדה הראשונה נבלעת היא לא "מופיעה מאוחר", היא פשוט אבדה,
+        # ועדיף להיכשל מהר ולהקליד שוב. השורש טופל בהמתנה לקופה פנויה, למטה.
+        for _ in range(6):                   # קריאה-חוזרת עד שהערך מתייצב
             try:
                 got = (c.window_text() or "").strip()
             except Exception:                # noqa: BLE001
@@ -1073,6 +1073,13 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
             _confirm_dialog(yes=True, timeout=1.5)
             time.sleep(0.3)
             _dismiss_message_box()
+    except Exception:                        # noqa: BLE001
+        pass
+    # ⏱️ ההקלדה של הפריט הראשון נבלעה **בכל הרצה** (4.9ש' מול 2.2ש' לשאר), כי
+    # הקופה עדיין עסוקה מ"מחק הכל". במקום לנחש כמה להמתין — ממתינים עד שהתהליך
+    # שלה באמת נרגע. חוזר מיד כשהיא פנויה, ולכן לא עולה כלום כשאין בעיה.
+    try:
+        app.wait_cpu_usage_lower(threshold=8, timeout=4)
     except Exception:                        # noqa: BLE001
         pass
     _t = _lap("clear_all", _t)
