@@ -2173,6 +2173,7 @@ class PosAgentCfgIn(BaseModel):
     dry_run: Optional[bool] = None
     poll_sec: Optional[int] = None
     tuning: Optional[dict] = None       # כיול חי: menu_path, *_rect, branch_city...
+    force: bool = False                 # מעבר לחי למרות פעולות ממתינות בתור
 
 
 @app.post("/api/admin/pos/agent-config")
@@ -2181,6 +2182,19 @@ def pos_agent_config_set(body: PosAgentCfgIn, x_admin_key: Optional[str] = Heade
     if body.enabled is not None:
         db.setting_set("pos_agent_enabled", "1" if body.enabled else "0", "admin")
     if body.dry_run is not None:
+        # 🛡️ מעבר מיבש לחי עם פעולות ממתינות = הורדה אמיתית של שאריות בדיקה.
+        # ⚠️ קרה בפועל (07/08): המתג כובה כשפעולת בדיקה עדיין בתור, והקופה
+        # הורידה 3 יחידות אמיתיות. בהרצה יבשה הפעולה **נשארת ממתינה בכוונה**,
+        # ולכן כל שארית הופכת להורדה חיה ברגע ההדלקה. חוסמים ודורשים החלטה.
+        going_live = (body.dry_run is False
+                      and db.setting_get("pos_agent_dry_run") != "0")
+        if going_live and not body.force:
+            pend = db.pos_removals_list(status="pending", limit=50)
+            if pend:
+                raise HTTPException(409,
+                    "יש %d פעולות ממתינות בתור. מעבר לחי יוריד אותן מהמלאי בפועל. "
+                    "בטל אותן קודם, או שלח force=true אם זו הכוונה. (%s)" %
+                    (len(pend), ", ".join("#%s" % r["id"] for r in pend[:5])))
         db.setting_set("pos_agent_dry_run", "1" if body.dry_run else "0", "admin")
     if body.poll_sec is not None:
         # רצפה 5ש': הקריאה היא לשרת שלנו בלבד (לא NewOrder), והיא מה שקובע כמה
