@@ -10,7 +10,7 @@ import time
 
 from pywinauto import Application, Desktop, mouse
 
-DRIVER_VERSION = "2026-08-07.26"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
+DRIVER_VERSION = "2026-08-07.27"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
 POS_TITLE_RE = ".*אורדר.*"
 FORM_TITLE = "הורדה מהמלאי"
 ITEM_TITLE = "הורדה מהמלאי - פעולה חדשה"
@@ -288,10 +288,19 @@ def _confirm_dialog(yes=True, timeout=6):
             time.sleep(0.12)      # סריקת כל חלונות ה-Desktop יקרה — לא בלולאה צמודה
         _first = False
         for w in _dialog_candidates():
+            # ⏱️ children() ולא descendants(): כפתורי "כן"/"ביטול" הם ילדים
+            # ישירים של הדיאלוג, וסריקת כל הצאצאים של כל חלון עלתה שניות
+            # (5.7ש' בשלב "מחק הכל" בלבד). נופלים ל-descendants רק אם לא נמצא.
             try:
-                ctrls = list(w.descendants())
+                ctrls = list(w.children())
             except Exception:            # noqa: BLE001
                 continue
+            if not any(_norm(getattr(c, "window_text", lambda: "")()) in
+                       [_norm(x) for x in (_YES + _NO)] for c in ctrls):
+                try:
+                    ctrls = list(w.descendants())
+                except Exception:        # noqa: BLE001
+                    continue
             texts = []
             target = None
             for c in ctrls:
@@ -328,7 +337,7 @@ def _dialog_open():
     keys = [_norm(x) for x in (_YES + _NO)]
     for w in _dialog_candidates():
         try:
-            for c in w.descendants():
+            for c in w.children():       # ⏱️ ילדים ישירים — זול; ראה _confirm_dialog
                 if _norm(c.window_text()) in keys:
                     return True
         except Exception:                # noqa: BLE001
@@ -438,7 +447,7 @@ def _clear_field(c):
     time.sleep(0.08)
 
 
-def _type_code_verified(c, code, tries=4):
+def _type_code_verified(c, code, tries=4, start_pace=0):
     """מקליד קוד/סריאל לשדה **ומוודא שהוא נקלט במלואו** לפני Enter.
 
     ⚠️ למה: אחרי שפריט נוסף לרשימה הקופה עסוקה רגע, והתווים הראשונים של הקוד
@@ -454,7 +463,7 @@ def _type_code_verified(c, code, tries=4):
     got = ""
     for i in range(tries):
         _clear_field(c)
-        send_keys(code, pause=paces[min(i, len(paces) - 1)])
+        send_keys(code, pause=paces[min(i + start_pace, len(paces) - 1)])
         time.sleep(0.15 + 0.1 * i)           # הקלדה מהירה → בדיקה מהירה
         for _ in range(6):                   # קריאה-חוזרת עד שהערך מתייצב
             try:
@@ -995,7 +1004,8 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
     _t = _lap("מילוי טופס", _t)
 
     # 3) התחל פעולה → מסך פריטים
-    _shot("filled")                      # צילום הטופס המלא לפני ההמשך
+    # ⏱️ ⛔ אין צילום כאן. capture_as_image על הטופס עולה ~5 שניות — שישית מזמן
+    # ההרצה — והוא תיעוד בלבד. _shot נשאר בכל נתיבי הכשל, שם הוא באמת שווה משהו.
     # הכפתור owner-drawn (בלי טקסט/id) — מאתרים אותו **דינמית**: השורה התחתונה
     # של הטופס, והכפתור הימני ביותר בה (RTL: ימין = "התחל פעולה", שמאל = "ביטול").
     # ⚠️ "התחל פעולה" owner-drawn: מנסים בסדר עולה של סיכון, ובודקים אחרי כל צעד.
@@ -1003,7 +1013,6 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
     #    (2) לחיצה על הפקד הימני בשורה התחתונה.
     #    (3) הפקד הבא בשורה — רק אם הטופס עדיין פתוח (כלומר לא לחצנו "ביטול").
     #    ⛔ אם הטופס נסגר בלי שנפתח מסך פריטים — לחצנו "ביטול", ומדווחים במפורש.
-    _t = _lap("צילום טופס", _t)
     items_win = None
     how = "ENTER"
     try:
@@ -1060,13 +1069,11 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
     except Exception:                        # noqa: BLE001
         pass
     _t = _lap("מחק הכל", _t)
-    _shot("cleared")                         # תיעוד: הרשימה לפני ההזנה
-    _t = _lap("צילום רשימה", _t)
 
     # 4) הזנת פריטים — לכל פריט: קוד → Enter → **כמות (תמיד)** → "הורד מהמלאי".
     #    ⚠️ הכמות היא id=22; id=21 הוא "מלאי נוכחי" (תצוגה). בלי מילוי כמות
     #    הפריט לא נכנס לרשימה שבתחתית (אסי, 07/08).
-    for it in (removal.get("items") or []):
+    for _idx, it in enumerate(removal.get("items") or []):
         sku = str(it.get("sku") or "").strip()
         serial = str(it.get("serial") or "").strip()
         qty = float(it.get("qty") or 1)
@@ -1079,7 +1086,10 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
         items_win.set_focus()
         from pywinauto.keyboard import send_keys as _sk2
         code_ctrl = _child(items_win, I_CODE)
-        _type_code_verified(code_ctrl, code)
+        # ⏱️ הפריט הראשון נכשל בהקלדה המהירה **בכל הרצה** (הקופה עדיין נרגעת
+        # מפתיחת המסך) ואז חוזר לאט — 4.9ש' מול 2.2ש' לשאר. מתחילים אותו ישר
+        # בקצב הבינוני: הקלדה מעט איטית זולה בהרבה ממחזור שלם שנכשל.
+        _type_code_verified(code_ctrl, code, start_pace=1 if _idx == 0 else 0)
         _sk2("{ENTER}")
         # ⏱️ במקום להמתין 1.2ש' קבועות: מחכים לאות שהקופה סיימה לעבד — היא
         # מרוקנת את שדה הקוד לפריט הבא. בפועל זה ~0.3ש', לא 1.2.
