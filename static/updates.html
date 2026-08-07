@@ -119,7 +119,8 @@ textarea{min-height:96px;resize:vertical;line-height:1.6}
   border-color:color-mix(in srgb,var(--brand) 45%,transparent);
   box-shadow:0 0 0 3px var(--brand-bg), var(--sh-1)}
 .nc .hero{height:98px;position:relative;background:linear-gradient(135deg,#ff5a5f22,#ff5a5f08);
-  display:flex;align-items:center;justify-content:center}
+  display:flex;align-items:center;justify-content:center;overflow:hidden}
+.nc .hero img{display:block;width:100%;height:100%;object-fit:cover}
 .nc .type{position:absolute;top:10px;inset-inline-start:10px;font-size:11px;font-weight:800;
   border-radius:var(--r-pill);padding:4px 10px;background:rgba(255,90,95,.92);color:#fff}
 .nc .dot{position:absolute;top:10px;inset-inline-end:10px;width:9px;height:9px;border-radius:50%;
@@ -348,13 +349,41 @@ async function uploadDataUrl(dataUrl){
     setImg(r.url); toast('✓ התמונה הועלתה',true); }
   catch(e){ toast(String(e),false); }
 }
-function onFile(f){
+
+// ⚠️ מנרמלים את התמונה **בהעלאה**, לא בתצוגה. כל מקור מגיע ביחס אחר —
+// לוגו רחב, צילום מסך, רנדר מוצר — ואי אפשר לגרום לכולם להיראות טוב עם
+// כלל CSS אחד. כאן כל תמונה מצוירת ממורכזת על בד 800×450 (16:9) בהתאמה
+// מלאה, על רקע לבן, ונשמרת כ-JPEG. התוצאה: כל הכרטיסים אחידים, והקובץ קטן.
+const IMG_W=800, IMG_H=450;
+function normalizeImage(file){
+  return new Promise((res,rej)=>{
+    const fr=new FileReader();
+    fr.onerror=()=>rej('לא ניתן לקרוא את הקובץ');
+    fr.onload=()=>{
+      const im=new Image();
+      im.onerror=()=>rej('קובץ התמונה פגום');
+      im.onload=()=>{
+        const c=document.createElement('canvas'); c.width=IMG_W; c.height=IMG_H;
+        const g=c.getContext('2d');
+        g.fillStyle='#ffffff'; g.fillRect(0,0,IMG_W,IMG_H);
+        const sc=Math.min(IMG_W/im.width, IMG_H/im.height);   // contain — בלי חיתוך
+        const w=Math.round(im.width*sc), h=Math.round(im.height*sc);
+        g.imageSmoothingQuality='high';
+        g.drawImage(im, Math.round((IMG_W-w)/2), Math.round((IMG_H-h)/2), w, h);
+        res(c.toDataURL('image/jpeg', 0.86));
+      };
+      im.src=fr.result;
+    };
+    fr.readAsDataURL(file);
+  });
+}
+async function onFile(f){
   if(!f) return;
   if(!/^image\//.test(f.type)){ toast('קובץ שאינו תמונה',false); return; }
-  const fr=new FileReader();
-  fr.onload=()=>uploadDataUrl(fr.result);
-  fr.readAsDataURL(f);
+  try{ const d=await normalizeImage(f); await uploadDataUrl(d); }
+  catch(e){ toast(String(e),false); }
 }
+
 (function(){
   const d=document.getElementById('drop');
   if(d){
