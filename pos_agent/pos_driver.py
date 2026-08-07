@@ -10,7 +10,7 @@ import time
 
 from pywinauto import Application, Desktop, mouse
 
-DRIVER_VERSION = "2026-08-07.35"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
+DRIVER_VERSION = "2026-08-07.36"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
 POS_TITLE_RE = ".*אורדר.*"
 FORM_TITLE = "הורדה מהמלאי"
 ITEM_TITLE = "הורדה מהמלאי - פעולה חדשה"
@@ -383,7 +383,18 @@ def _dialog_with_buttons():
         has_yn = any(t in yn for t in texts)
         has_ok = any(t in ok for t in texts)
         if not (has_yn or has_ok):
-            continue
+            # ⚠️ נפילה ל-descendants: בטופס VB6 מותאם הכפתורים יושבים בתוך
+            # Frame ואינם ילדים ישירים. _confirm_dialog כבר עשה את הנפילה הזאת,
+            # וכאן היא נשכחה — כלומר חלון כזה לא זוהה בכלל כשאלה פתוחה.
+            try:
+                kids = list(w.descendants())
+            except Exception:            # noqa: BLE001
+                continue
+            texts = [_norm(c.window_text()) for c in kids]
+            has_yn = any(t in yn for t in texts)
+            has_ok = any(t in ok for t in texts)
+            if not (has_yn or has_ok):
+                continue
         body = " ".join(t for t in texts if t and t not in yn and t not in ok)
         try:
             body = (_norm(w.window_text()) + " " + body).strip()
@@ -457,6 +468,11 @@ def _answer_dialog_chain(rounds=10, first_wait=6.0, next_wait=6.0):
         time.sleep(0.4)
     if answered:
         _log("  חלונות הקופה: " + " | ".join("%s → %s" % a for a in answered))
+    # ⚠️ אם נשאר חלון פתוח — מדפיסים בדיוק מה יש שם. חלון שנשאר חוסם את ההרצה
+    # הבאה, ובלי התיעוד הזה כל אבחון הוא ניחוש (בזבזנו על כך שני סבבים, 07/08).
+    if _dialog_with_buttons()[0] is not None:
+        _log("  ⚠️ נשאר חלון פתוח אחרי שרשרת הסיום:")
+        _dump_dialogs()
     return answered
 
 
@@ -980,6 +996,9 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
     del _TIMING[:]
     _run0 = time.time()
     _t = _run0
+    # ⚠️ הגרסה בכל הרצה, לא רק בהפעלה: פעמיים נותחו כשלים על סמך ההנחה שרצה
+    # הגרסה החדשה, בזמן שהסוכן לא הופעל מחדש (07/08). שורה אחת שמסיימת ויכוח.
+    _log("  דרייבר %s" % DRIVER_VERSION)
 
     # ⛔ בודקים **לפני** שנוגעים בקופה: על מסך נעול ההזנה תיכשל באמצע ותשאיר
     # טופס פתוח שיחסום גם את ההרצה הבאה. עדיף לא להתחיל.
