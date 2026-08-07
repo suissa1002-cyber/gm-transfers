@@ -5136,12 +5136,11 @@ def branch_today_shift(branch_id: int, x_admin_key: Optional[str] = Header(None)
     ⚠️ נקודת קצה נפרדת ולא /api/schedule/data: זו דורשת מפתח סידור שלמכשירי
     הסניף אין, והכרטיס צריך לעבוד מכל מכשיר בסניף."""
     _require_admin_or_device(x_admin_key, x_device_token)
-    today = _il_today()
+    today = _il_today()          # ⚠️ מחזיר date, לא מחרוזת
     wk = _week_start_of(today)
-    try:
-        dow = (datetime.strptime(today, "%Y-%m-%d").weekday() + 1) % 7   # ראשון=0
-    except Exception:  # noqa: BLE001
-        dow = 0
+    # ראשון=0 (כמו _SHIFT_DAYS). ⚠️ לא strptime על התוצאה — היא כבר date,
+    # וה-try/except הבליע את השגיאה והחזיר תמיד "ראשון" עם משמרות של יום א'.
+    dow = (today.weekday() + 1) % 7
     rows = [r for r in db.shift_roster_for_week(wk)
             if int(r.get("branch_id") or 0) == int(branch_id) and int(r.get("dow") or 0) == dow]
     return {"date": today, "dow": dow, "day_name": _SHIFT_DAYS[dow],
