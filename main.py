@@ -2146,7 +2146,9 @@ def pos_agent_config_set(body: PosAgentCfgIn, x_admin_key: Optional[str] = Heade
     if body.dry_run is not None:
         db.setting_set("pos_agent_dry_run", "1" if body.dry_run else "0", "admin")
     if body.poll_sec is not None:
-        db.setting_set("pos_agent_poll_sec", str(max(10, int(body.poll_sec))), "admin")
+        # רצפה 5ש': הקריאה היא לשרת שלנו בלבד (לא NewOrder), והיא מה שקובע כמה
+        # מהר פעולה שנשמרה במסך נתפסת ע"י הסוכן.
+        db.setting_set("pos_agent_poll_sec", str(max(5, int(body.poll_sec))), "admin")
     if body.tuning is not None:
         # מיזוג מעל הקיים — אפשר לעדכן שדה בודד (למשל רק add_rect)
         cur = {}
