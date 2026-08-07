@@ -300,6 +300,18 @@
   .nc .shifts .sl b{font-weight:800}
   .nc .shifts .sl span{color:var(--muted);font-variant-numeric:tabular-nums}
   .nc .closed{margin-top:6px;font-size:15px;font-weight:800;color:var(--amber-ink)}
+  /* פופאפ הסידור — עמוד הצפייה המעוצב ב-iframe */
+  .schmd{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);
+    width:min(980px,100%);height:min(86vh,900px);box-shadow:var(--sh-3);position:relative;
+    display:flex;flex-direction:column;overflow:hidden;
+    animation:umIn .24s cubic-bezier(.2,.8,.3,1)}
+  .schmd .sbar{display:flex;align-items:center;gap:var(--s3);padding:var(--s3) var(--s4);
+    border-bottom:1px solid var(--line);background:var(--card-2)}
+  .schmd .sbar b{font-size:14.5px}
+  .schmd .sbar .sx{margin-inline-start:auto;background:none;border:0;color:var(--muted);
+    font-size:20px;cursor:pointer;padding:4px 10px;border-radius:var(--r-sm)}
+  .schmd .sbar .sx:hover{background:var(--card-3);color:var(--txt)}
+  .schmd iframe{flex:1;width:100%;border:0;background:#fff}
   /* פופאפ עדכון */
   .uov{position:fixed;inset:0;z-index:60;background:rgba(4,8,14,.62);backdrop-filter:blur(6px);
     display:none;align-items:center;justify-content:center;padding:var(--s5)}
@@ -3027,7 +3039,7 @@ function shiftCardHTML(){
     : `<div class="shifts">${(sh.shifts||[]).slice(0,4).map(r=>
         `<div class="sl"><b>${escW(r.employee||'')}</b><span>${escW(r.hours||'')}</span></div>`).join('')}
        ${sh.shifts.length>4?`<div class="sl"><span>+${sh.shifts.length-4} נוספים</span></div>`:''}</div>`;
-  return `<div class="nc fixed" onclick="window.open('/schedule','_blank')">
+  return `<div class="nc fixed" onclick="openSchedule()">
     <div class="hero"><span class="type" style="background:rgba(76,141,255,.92)">סידור עבודה</span>
       <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="1.8"
         stroke-linecap="round"><rect x="3" y="4.5" width="18" height="16" rx="3"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg></div>
@@ -3069,7 +3081,11 @@ function openUpd(id){
   const facts=[['סוג',T[u.kind]||'מידע'],['סניפים',tgt]];
   if(u.ends_at) facts.push(['בתוקף עד',String(u.ends_at).slice(0,10)]);
   if(u.sku) facts.push(['מק״ט',u.sku]);
-  document.getElementById('uMd').innerHTML=`
+  // הפופאפ משותף עם מסך הסידור, שמחליף את תוכן המעטפת — מוודאים שהיא קיימת
+  let md=document.getElementById('uMd');
+  if(!md){ const ov=document.getElementById('uOv');
+    ov.innerHTML='<div class="umd" id="uMd"></div>'; md=document.getElementById('uMd'); }
+  md.innerHTML=`
     <div class="uh">${u.image_url?`<img src="${escW(u.image_url)}">`:''}
       <button class="ux" onclick="closeUpd()">×</button>
       <span class="type ${escW(u.kind||'info')}" style="position:absolute;top:14px;inset-inline-start:14px">${T[u.kind]||'מידע'}</span></div>
@@ -3111,7 +3127,23 @@ async function sendQ(uid){
     setTimeout(()=>{ btn.disabled=false; btn.textContent='שלח שאלה'; },1600);
   }catch(e){ btn.disabled=false; btn.textContent='שלח שאלה'; toast('שליחה נכשלה',false); }
 }
-function closeUpd(){ const o=document.getElementById('uOv'); if(o) o.classList.remove('on'); }
+// ⛔ לא מנווטים ל-/schedule — זו מערכת **עריכת** הסידור. פותחים את עמוד
+// הצפייה המעוצב (אותו אחד שנשלח בטלגרם) בתוך פופאפ.
+async function openSchedule(){
+  let url='';
+  try{ const d=await api('/api/branch/schedule-link'); url=d.url||''; }catch(e){}
+  if(!url){ toast('לא ניתן לפתוח את הסידור כרגע',false); return; }
+  const ov=document.getElementById('uOv');
+  ov.innerHTML=`<div class="schmd" onclick="event.stopPropagation()">
+      <div class="sbar"><b>סידור עבודה · השבוע</b>
+        <button class="sx" onclick="closeUpd()">×</button></div>
+      <iframe src="${escW(url)}" title="סידור עבודה"></iframe></div>`;
+  ov.classList.add('on');
+}
+function closeUpd(){ const o=document.getElementById('uOv'); if(!o) return;
+  o.classList.remove('on');
+  // הפופאפ משמש גם לסידור (iframe) וגם לעדכון — מחזירים את המעטפת המקורית
+  o.innerHTML='<div class="umd" id="uMd"></div>'; }
 async function markUpdRead(id, acked){
   const u=(S.feed||[]).find(x=>x.id===id);
   if(u && u.read && !acked) return;

@@ -5148,6 +5148,18 @@ def branch_today_shift(branch_id: int, x_admin_key: Optional[str] = Header(None)
             "branch_name": cfg.branch_name(branch_id)}
 
 
+@app.get("/api/branch/schedule-link")
+def branch_schedule_link(week: str = "", x_admin_key: Optional[str] = Header(None),
+                         x_device_token: Optional[str] = Header(None)):
+    """קישור חתום לעמוד הצפייה המעוצב של הסידור — למכשירי סניף.
+    ⛔ לא /schedule: זו מערכת **עריכת** הסידור, ואין שום סיבה שסניף ייכנס אליה.
+    /schedule/view הוא עמוד קריאה בלבד (אותו אחד שנשלח בטלגרם)."""
+    _require_admin_or_device(x_admin_key, x_device_token)
+    wk = (week or "").strip() or _week_start_of(_il_today())
+    return {"url": "/schedule/view?week=%s&sig=%s" % (wk, _schedule_view_sig(wk, "")),
+            "week": wk}
+
+
 @app.get("/schedule")
 def schedule_page():
     p = os.path.join(_static_dir, "schedule.html")
