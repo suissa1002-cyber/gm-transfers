@@ -190,10 +190,18 @@ if (!window.toggleNav) { window.toggleNav = function () {
     }).join(''); }
     var subEl=document.getElementById('cartSubtotal'); if(subEl) subEl.textContent=money(+c.totals.total_items,minor);
     setCount(count);
-    var sub=(+c.totals.total_items)/Math.pow(10,minor), TH=500, ship=document.getElementById('cartShip');
+    /* ⚠️ זכאות מהשרת (extensions.gm) — ראה gm-freeship.php. פריטים במחלקת
+       "משלוח כבד" מוחרגים, וחישוב מהסכום בלבד הבטיח משלוח חינם שהקופה
+       סותרת (אסי, 07/08/2026). בלי התוסף — ההתנהגות הישנה נשמרת. */
+    var gmx=(c.extensions&&c.extensions.gm)||null;
+    var sub=(+c.totals.total_items)/Math.pow(10,minor);
+    var TH=gmx?+gmx.threshold:500, ship=document.getElementById('cartShip');
+    var elig=gmx?+gmx.eligible_subtotal:sub;
+    var okFree=gmx?!!gmx.qualifies:(sub>=TH);
     if(ship){
-      if(sub>=TH) ship.innerHTML='<b>קיבלת משלוח חינם!</b><div class="bar"><div class="fill" style="width:100%"></div></div>';
-      else ship.innerHTML='עוד <b>‏₪'+(TH-sub).toLocaleString('en-US')+'</b> ותיהנו ממשלוח חינם<div class="bar"><div class="fill" style="width:'+Math.min(100,Math.round(sub/TH*100))+'%"></div></div>';
+      if(gmx&&gmx.has_excluded&&!okFree) ship.innerHTML='<b>חלק מהפריטים נשלחים ישירות מהמחסן</b><div class="cart-ship-note">עלות המשלוח שלהם מחושבת בקופה</div>';
+      else if(okFree) ship.innerHTML='<b>קיבלת משלוח חינם!</b><div class="bar"><div class="fill" style="width:100%"></div></div>';
+      else ship.innerHTML='עוד <b>‏₪'+(TH-elig).toLocaleString('en-US')+'</b> ותיהנו ממשלוח חינם<div class="bar"><div class="fill" style="width:'+Math.min(100,Math.round(elig/TH*100))+'%"></div></div>';
     }
     gmBpCartLine(sub);
   }

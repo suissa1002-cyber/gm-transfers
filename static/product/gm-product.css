@@ -856,3 +856,7 @@ body.gm-product-new [class*="yith-wapo"]{display:none!important;}
    align-items:stretch ומותח את הכפתור ובורר הכמות לבלונים. שורה מלאה לכל
    ילד שאינו הכמות או הכפתור — פעם אחת, לתמיד (03/08/2026). */
 .gm-atc form.cart.gm-simple>*:not(.quantity):not(.single_add_to_cart_button){flex:1 1 100%!important;min-width:100%;}
+
+
+/* הערת משלוח במיני-עגלה כשיש פריט שנשלח ישירות מהמחסן (r9) */
+.cart-ship-note{font-size:12.5px;color:var(--txt-3,#6b7280);margin-top:4px;line-height:1.35}

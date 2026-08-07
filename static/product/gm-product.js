@@ -930,10 +930,19 @@
     $('.cart-count-n').text(count);
     $('.mcart-b').text(count);
     $('.cart-pill').html($('.cart-pill svg').prop('outerHTML') + ' הסל שלי (' + count + ')');
+    /* ⚠️ הזכאות מגיעה מהשרת (extensions.gm) ולא מחושבת כאן: פריטים במחלקת
+       "משלוח כבד" מוחרגים מהמשלוח החינם, וה-Store API אינו חושף מחלקת
+       משלוח לחזית. פס שהראה "קיבלת משלוח חינם!" על כיסא ב-589 ש"ח גרם
+       לנטישת עגלה (אסי, 07/08/2026). בלי התוסף — נשמרת ההתנהגות הישנה. */
+    var gmx = (c.extensions && c.extensions.gm) || null;
     var sub = (+c.totals.total_items) / Math.pow(10, minor);
-    var TH = 500, $ship = $('#cartShip');
-    if (sub >= TH) $ship.html('<b>קיבלת משלוח חינם!</b><div class="bar"><div class="fill" style="width:100%"></div></div>');
-    else $ship.html('עוד <b>‏₪' + (TH - sub).toLocaleString('en-US') + '</b> ותיהנו ממשלוח חינם<div class="bar"><div class="fill" style="width:' + Math.min(100, Math.round(sub / TH * 100)) + '%"></div></div>');
+    var TH = gmx ? +gmx.threshold : 500, $ship = $('#cartShip');
+    var elig = gmx ? +gmx.eligible_subtotal : sub;
+    var okFree = gmx ? !!gmx.qualifies : (sub >= TH);
+    if (gmx && gmx.has_excluded && !okFree)
+      $ship.html('<b>חלק מהפריטים נשלחים ישירות מהמחסן</b><div class="cart-ship-note">עלות המשלוח שלהם מחושבת בקופה</div>');
+    else if (okFree) $ship.html('<b>קיבלת משלוח חינם!</b><div class="bar"><div class="fill" style="width:100%"></div></div>');
+    else $ship.html('עוד <b>‏₪' + (TH - elig).toLocaleString('en-US') + '</b> ותיהנו ממשלוח חינם<div class="bar"><div class="fill" style="width:' + Math.min(100, Math.round(elig / TH * 100)) + '%"></div></div>');
     gmBpCartLine(sub);
   }
   /* וו רענון ציבורי — בעמוד מוצר gm-product.js הוא הבעלים של הסל (מודול
