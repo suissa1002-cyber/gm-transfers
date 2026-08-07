@@ -10,7 +10,7 @@ import time
 
 from pywinauto import Application, Desktop, mouse
 
-DRIVER_VERSION = "2026-08-07.37"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
+DRIVER_VERSION = "2026-08-07.38"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
 POS_TITLE_RE = ".*אורדר.*"
 FORM_TITLE = "הורדה מהמלאי"
 ITEM_TITLE = "הורדה מהמלאי - פעולה חדשה"
@@ -728,24 +728,21 @@ def _select_option(c):
 
 
 def _dismiss_message_box():
-    """סוגר תיבת הודעה של Windows (#32770) בלחיצה על OK — כדי שהטופס לא יישאר
-    תקוע מאחוריה ויחסום את הריצה הבאה. מחזיר את הטקסט שהוצג."""
-    msg = _read_message_box()
-    try:
-        for w in Desktop(backend="win32").windows():
-            try:
-                if w.class_name() == "#32770" and w.is_visible():
-                    try:
-                        w.set_focus()
-                        w.type_keys("{ENTER}")
-                    except Exception:    # noqa: BLE001
-                        pass
-                    time.sleep(0.4)
-            except Exception:            # noqa: BLE001
-                continue
-    except Exception:                    # noqa: BLE001
-        pass
-    return msg
+    """סוגר **הודעה** (חלון עם OK בלבד). מחזיר את הטקסט שהוצג.
+
+    ⛔ לא נוגע בשאלה עם כן/לא. הגרסה הקודמת הקישה ENTER על כל חלון #32770,
+    ו-ENTER בשאלת "האם להדפיס בהדפסה רחבה?" הוא **כן** (כפתור ברירת המחדל) —
+    כלומר גם כששרשרת הסיום ענתה "לא" כמו שצריך, השורה הזאת לחצה "כן" אחריה
+    והקופה נתקעה על "ממתין לחיבור מדפסת" (אסי, 07/08). שאלות שייכות אך ורק
+    ל-_answer_dialog_chain, שמכריע לפי תוכן."""
+    w, body, kind = _dialog_with_buttons()
+    if w is None:
+        return _read_message_box()
+    if kind == "confirm":
+        return body                      # שאלה — משאירים לשרשרת
+    _click_ok(w)
+    time.sleep(0.3)
+    return body
 
 
 def _read_message_box():
@@ -1338,6 +1335,8 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
     #   "בעיה בהגדרת מדפסת קופה"  → OK
     #   "פעולה עודכנה בהצלחה. מספר פעולה: NNNNN" → OK  ← ממנה נשלף מס' התעודה
     answered = _answer_dialog_chain()
+    # סבב שני: חלון שהופיע באיחור אחרי שהשרשרת כבר סיימה
+    answered += _answer_dialog_chain(first_wait=2.0, next_wait=4.0)
     doc_no = _doc_no_from(answered)
     _dismiss_message_box()
     # אחרי שמירה המסך אמור להיסגר לבד; אם נשאר — סוגרים, אחרת הוא יחסום את הבא
