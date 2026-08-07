@@ -5129,6 +5129,26 @@ def _require_schedule(x_admin_key, x_schedule_key):
         raise HTTPException(401, "schedule auth required")
 
 
+@app.get("/api/branch/today-shift")
+def branch_today_shift(branch_id: int, x_admin_key: Optional[str] = Header(None),
+                       x_device_token: Optional[str] = Header(None)):
+    """מי עובד **היום** בסניף הזה. משמש את כרטיס הסידור הקבוע במסך הקליטה.
+    ⚠️ נקודת קצה נפרדת ולא /api/schedule/data: זו דורשת מפתח סידור שלמכשירי
+    הסניף אין, והכרטיס צריך לעבוד מכל מכשיר בסניף."""
+    _require_admin_or_device(x_admin_key, x_device_token)
+    today = _il_today()
+    wk = _week_start_of(today)
+    try:
+        dow = (datetime.strptime(today, "%Y-%m-%d").weekday() + 1) % 7   # ראשון=0
+    except Exception:  # noqa: BLE001
+        dow = 0
+    rows = [r for r in db.shift_roster_for_week(wk)
+            if int(r.get("branch_id") or 0) == int(branch_id) and int(r.get("dow") or 0) == dow]
+    return {"date": today, "dow": dow, "day_name": _SHIFT_DAYS[dow],
+            "week": wk, "shifts": rows, "closed": not rows,
+            "branch_name": cfg.branch_name(branch_id)}
+
+
 @app.get("/schedule")
 def schedule_page():
     p = os.path.join(_static_dir, "schedule.html")
