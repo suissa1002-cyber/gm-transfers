@@ -23,6 +23,44 @@ import io
 
 import requests
 
+# ── עדכון עצמי של הדרייבר ────────────────────────────────────────────
+# ⚠️ חייב לרוץ **לפני** ה-import. אחרת מריצים קוד ישן בלי לדעת: ה-CDN של GitHub
+# מגיש גרסה מהמטמון, וכבר פעמיים רצה בדיקה שלמה על דרייבר ישן והמסקנות ממנה
+# היו שגויות (07/08). ניתן לכבות ב-POS_AGENT_AUTOUPDATE=0.
+_DRIVER_URL = os.environ.get(
+    "POS_DRIVER_URL",
+    "https://raw.githubusercontent.com/suissa1002-cyber/gm-transfers/main/pos_agent/pos_driver.py")
+
+
+def _self_update():
+    if os.environ.get("POS_AGENT_AUTOUPDATE", "1") == "0":
+        return
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pos_driver.py")
+    try:
+        r = requests.get(_DRIVER_URL, timeout=25,
+                         params={"t": str(int(time.time()))},      # עוקף מטמון CDN
+                         headers={"Cache-Control": "no-cache", "Pragma": "no-cache"})
+        if not r.ok:
+            print("עדכון דרייבר: HTTP %s — ממשיכים עם הקובץ המקומי" % r.status_code)
+            return
+        r.encoding = "utf-8"
+        new = r.text
+        if "DRIVER_VERSION" not in new or len(new) < 5000:
+            print("עדכון דרייבר: התוכן נראה שגוי — ממשיכים עם הקובץ המקומי")
+            return
+        cur = ""
+        if os.path.exists(path):
+            cur = open(path, encoding="utf-8").read()
+        if new != cur:
+            with open(path, "w", encoding="utf-8", newline="") as f:
+                f.write(new)
+            print("↻ הדרייבר עודכן מ-GitHub")
+    except Exception as e:                   # noqa: BLE001
+        print("עדכון דרייבר נכשל (%s) — ממשיכים עם הקובץ המקומי" % e)
+
+
+_self_update()
+
 try:
     import pos_driver
 except Exception as e:                       # noqa: BLE001
