@@ -2254,6 +2254,14 @@ def branch_update_all_questions(unanswered: int = 0,
     return {"questions": rows}
 
 
+@app.get("/updates")
+def updates_admin_page():
+    p = os.path.join(_static_dir, "updates.html")
+    if os.path.exists(p):
+        return FileResponse(p, headers={"Cache-Control": "no-cache"})
+    raise HTTPException(404)
+
+
 @app.get("/removals")
 def removals_page():
     p = os.path.join(_static_dir, "removals.html")
