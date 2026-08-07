@@ -157,11 +157,15 @@
   .bwrap{display:grid;gap:var(--s5);align-items:start;
     grid-template-columns:minmax(0,1.15fr) minmax(0,1fr) 304px;
     grid-template-areas:"scan transfers rail"}
+  /* בסיטי הסריקה **באמצע**, צמודה לעגלת ההורדה שברייל: מה שסורקים ומה
+     שנוסף להורדה חייבים להיות זה ליד זה, בלי כרטיסי קליטה שמפרידים ביניהם. */
+  .bwrap.city{grid-template-columns:minmax(0,1fr) minmax(0,1.15fr) 320px;
+    grid-template-areas:"transfers scan rail"}
   .b-scan{grid-area:scan}.b-tr{grid-area:transfers}.b-rail{grid-area:rail}
-  @media(max-width:1380px){.bwrap{grid-template-columns:minmax(0,1fr) 304px;
+  @media(max-width:1380px){.bwrap,.bwrap.city{grid-template-columns:minmax(0,1fr) 304px;
     grid-template-areas:"scan rail" "transfers rail"}}
-  @media(max-width:980px){.bwrap{grid-template-columns:1fr;
-    grid-template-areas:"scan" "transfers" "rail"}}
+  @media(max-width:980px){.bwrap,.bwrap.city{grid-template-columns:1fr;
+    grid-template-areas:"scan" "rail" "transfers"}}
   @media(min-width:1381px){.tcards{grid-template-columns:1fr}}
   /* תחנת סריקה — סריקה + תוצאה + מוצר על משטח אחד */
   .station{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);
@@ -300,6 +304,12 @@
   .nc .shifts .sl b{font-weight:800}
   .nc .shifts .sl span{color:var(--muted);font-variant-numeric:tabular-nums}
   .nc .closed{margin-top:6px;font-size:15px;font-weight:800;color:var(--amber-ink)}
+  /* ⚠️ כרטיס המחיר בתוך תחנת הסריקה הוא **המשך של המשטח**, לא כרטיס בפני
+     עצמו — אחרת מתקבל כרטיס בתוך כרטיס. מפשיטים מסגרת/צל/רדיוס ומשאירים
+     רק קו מפריד, בדיוק כמו שורת התוצאה שמעליו. */
+  .station .pcard{margin:0;max-width:none;border:0;border-radius:0;box-shadow:none;
+    border-top:1px solid var(--line);padding:var(--s4) var(--s5);animation:none}
+  .station .pcard .px{top:var(--s3);inset-inline-end:var(--s4)}
   /* ══ הורדה מהמלאי — סיטי בלבד ══════════════════════════════════════ */
   .rmcart{background:var(--card);border:1px solid var(--line);border-radius:var(--r-md);
     box-shadow:var(--sh-1);overflow:hidden}
@@ -2985,7 +2995,7 @@ async function renderBoard(app, silent){
     <div style="text-align:center">${notifBtn}</div>
     ${bcHtml}
     ${feedHTML()}
-    <div class="bwrap">
+    <div class="bwrap${rmOn()?' city':''}">
       <div class="b-scan">
         <div class="station">
           <div class="sh">
