@@ -786,7 +786,10 @@ _SCHEMA = [
         created_by    TEXT,                     -- מי קלט (אדמין/מכשיר סניף)
         applied_at    TEXT,                     -- מתי הסוכן הזין לקופה
         pos_doc_no    TEXT,                     -- מס' תעודה שהקופה החזירה
-        error         TEXT                      -- סיבת כשל אם status=error
+        error         TEXT,                     -- סיבת הכשל האחרון (גם כשחוזר לתור)
+        attempts      INTEGER DEFAULT 0,        -- כמה ניסיונות הזנה בוצעו
+        next_try_at   TEXT,                     -- מתי מותר לנסות שוב (backoff)
+        last_try_at   TEXT                      -- מתי נתפס לאחרונה (זיהוי תקיעה)
     )
     """.format(pk=_PK),
 ]
@@ -840,6 +843,11 @@ def _migrate():
         ("greencare_policies", "serial", "TEXT"),
         # מס' חשבונית (קופה/אתר) — מוזן/נערך מאזור ניהול הפוליסות
         ("greencare_policies", "invoice_ref", "TEXT"),
+        # רשת ביטחון להורדות מהמלאי: כשל אינו סופי — הפעולה חוזרת לתור ומנוסה
+        # שוב (backoff), עד שהיא באמת יורדת. אסור שהורדה "תיעלם" בשגיאה.
+        ("pos_removals", "attempts", "INTEGER"),
+        ("pos_removals", "next_try_at", "TEXT"),
+        ("pos_removals", "last_try_at", "TEXT"),
     ]
     for table, col, typ in cols:
         try:
@@ -4392,10 +4400,15 @@ def _pos_removal_row(r) -> dict:
     return d
 
 
-def pos_removals_list(status=None, limit=100) -> list:
+def pos_removals_list(status=None, limit=100, due_only=False) -> list:
+    """due_only = רק פעולות שהגיע זמנן (אחרי backoff של ניסיון שנכשל) — לסוכן."""
     with _conn() as c:
         cur = c.cursor()
-        if status:
+        if status and due_only:
+            cur.execute(_q("SELECT * FROM pos_removals WHERE status = ? "
+                           "AND (next_try_at IS NULL OR next_try_at <= ?) "
+                           "ORDER BY id ASC LIMIT ?"), (status, now_iso(), int(limit)))
+        elif status:
             cur.execute(_q("SELECT * FROM pos_removals WHERE status = ? "
                            "ORDER BY id DESC LIMIT ?"), (status, int(limit)))
         else:
@@ -4414,15 +4427,68 @@ def pos_removal_get(rid) -> dict:
 
 def pos_removal_claim(rid) -> bool:
     """תפיסה אטומית: pending → applying. מחזיר True אם נתפס עכשיו (מונע הרצה כפולה
-    של הסוכן על אותה פעולה). False = כבר לא pending (מישהו/משהו אחר תפס)."""
+    של הסוכן על אותה פעולה). False = כבר לא pending (מישהו/משהו אחר תפס).
+    מקדם attempts ומסמן last_try_at — כדי לזהות תקיעה ולחשב backoff."""
     with _conn() as c:
         cur = c.cursor()
-        cur.execute(_q("UPDATE pos_removals SET status='applying' "
-                       "WHERE id = ? AND status = 'pending'"), (int(rid),))
+        cur.execute(_q("UPDATE pos_removals "
+                       "SET status='applying', attempts = COALESCE(attempts,0) + 1, "
+                       "    last_try_at = ? "
+                       "WHERE id = ? AND status = 'pending'"), (now_iso(), int(rid)))
         return (cur.rowcount or 0) > 0
 
 
+def pos_removal_retry(rid, error=None, delay_sec=60) -> None:
+    """כשל אינו סוף הדרך: הפעולה חוזרת ל-pending עם זמן ניסיון הבא.
+    ⚠️ עיקרון: פריט שהוזן להורדה חייב בסוף לרדת בקופה — לא נוטשים אותו בשגיאה."""
+    nxt = (datetime.now(timezone.utc).astimezone()
+           + timedelta(seconds=int(delay_sec))).isoformat(timespec="seconds")
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""
+            UPDATE pos_removals
+               SET status = 'pending', next_try_at = ?, error = ?, applied_at = NULL
+             WHERE id = ?
+        """), (nxt, (str(error)[:400] if error else None), int(rid)))
+
+
+def pos_removals_requeue_stale(max_sec=900) -> int:
+    """פעולה שנתפסה (applying) והסוכן קרס/נסגר באמצע — חוזרת לתור אחרי max_sec.
+    בלי זה היא הייתה נשארת 'מוזן עכשיו' לנצח, והמלאי לא היה יורד."""
+    cutoff = (datetime.now(timezone.utc).astimezone()
+              - timedelta(seconds=int(max_sec))).isoformat(timespec="seconds")
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""
+            UPDATE pos_removals
+               SET status = 'pending', next_try_at = NULL,
+                   error = 'הסוכן נעצר באמצע ההזנה — הפעולה הוחזרה לתור'
+             WHERE status = 'applying' AND COALESCE(last_try_at, created_at) < ?
+        """), (cutoff,))
+        return cur.rowcount or 0
+
+
+def pos_removals_purge(keep_done=False) -> int:
+    """ניקוי הרשימה (התחלה מחדש). keep_done=True משאיר פעולות שהושלמו."""
+    with _conn() as c:
+        cur = c.cursor()
+        if keep_done:
+            cur.execute(_q("DELETE FROM pos_removals WHERE status <> 'done'"))
+        else:
+            cur.execute(_q("DELETE FROM pos_removals"))
+        return cur.rowcount or 0
+
+
 def pos_removal_set_status(rid, status, pos_doc_no=None, error=None) -> None:
+    if status == "pending":
+        # חזרה מוצלחת לתור (הרצה יבשה) — לא נחשבת ניסיון כושל; מאפסים את המונה
+        # כדי שלא תיצבע בטעות כ"תקועה".
+        with _conn() as c:
+            cur = c.cursor()
+            cur.execute(_q("UPDATE pos_removals SET status='pending', attempts=0, "
+                           "next_try_at=NULL, applied_at=NULL, error=? WHERE id=?"),
+                        ((str(error)[:400] if error else None), int(rid)))
+        return
     with _conn() as c:
         cur = c.cursor()
         cur.execute(_q("""

@@ -1812,12 +1812,13 @@ def _pos_price_card(pid: str) -> dict:
     pid = str(pid).strip()
     card = {"product_id": pid, "name": "", "pos_price": None, "site_price": None,
             "site_regular": None, "image": "", "permalink": "", "is_serial": False,
-            "stock": {}, "pos_known": True}
+            "barcode": "", "stock": {}, "pos_known": True}
     # קטלוג מקומי לשם/סוג (מהיר, בלי קריאת רשת)
     cat = (db.catalog_load() or {}).get(pid) or {}
     if cat:
         card["name"] = cat.get("name") or ""
         card["is_serial"] = (cat.get("kind") == "serial")
+        card["barcode"] = (cat.get("barcode") or "").strip()
     # מחיר קופה + זיהוי מזהה לא-מוכר
     try:
         prod = poller.client().get_product(pid)
@@ -1914,6 +1915,7 @@ class PosRemovalItem(BaseModel):
     name: str = ""
     qty: float = 1
     serial: str = ""
+    barcode: str = ""      # לתיעוד: כשאין סידורי, מזהים את הפריט לפי מק"ט+ברקוד
 
 
 class PosRemovalIn(BaseModel):
@@ -1944,16 +1946,50 @@ def pos_removal_create(body: PosRemovalIn, x_admin_key: Optional[str] = Header(N
     return {"id": rid, "status": "pending", "items": len(items)}
 
 
+# ── מדיניות ניסיון חוזר להורדות ────────────────────────────────────────
+# עיקרון: פעולת הורדה שנקלטה בסניף **חייבת** בסוף לרדת בקופה. כשל בהזנה הוא
+# עיכוב, לא סיום — הפעולה חוזרת לתור ומנוסה שוב, לנצח, ב-backoff עולה.
+# אחרי POS_RETRY_ALERT_AT ניסיונות היא מסומנת "תקועה" ובולטת במסך (וטלגרם).
+POS_RETRY_DELAYS = [45, 90, 180, 300, 600]      # ואז 900 ש' קבוע
+POS_RETRY_ALERT_AT = 3
+POS_APPLYING_STALE_SEC = 900                    # 15 דק' ב-applying = הסוכן קרס
+
+
+def _pos_retry_delay(attempts: int) -> int:
+    i = max(0, int(attempts or 1) - 1)
+    return POS_RETRY_DELAYS[i] if i < len(POS_RETRY_DELAYS) else 900
+
+
 @app.get("/api/admin/pos/removals")
 def pos_removals_list(status: Optional[str] = None, limit: int = 100,
+                      due: int = 0,
                       x_admin_key: Optional[str] = Header(None),
                       x_device_token: Optional[str] = Header(None)):
-    """רשימת פעולות ההורדה בתור (לניטור + לסוכן ה-RPA)."""
+    """רשימת פעולות ההורדה בתור (לניטור + לסוכן ה-RPA).
+    `due=1` — רק פעולות שהגיע זמן הניסיון החוזר שלהן (הסוכן משתמש בזה).
+    בכל קריאה מחזירים לתור פעולות שנתקעו ב-applying (הסוכן קרס באמצע)."""
     _require_admin_or_device(x_admin_key, x_device_token)
-    rows = db.pos_removals_list(status=status, limit=limit)
+    try:
+        n = db.pos_removals_requeue_stale(POS_APPLYING_STALE_SEC)
+        if n:
+            logger.warning("pos removals: %d פעולות תקועות הוחזרו לתור", n)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("requeue stale removals failed: %s", e)
+    rows = db.pos_removals_list(status=status, limit=limit, due_only=bool(due))
     for r in rows:
         r["branch_name"] = cfg.branch_name(r.get("branch_id"))
+        r["stuck"] = int(r.get("attempts") or 0) >= POS_RETRY_ALERT_AT and \
+            r.get("status") in ("pending", "applying")
     return {"removals": rows}
+
+
+@app.post("/api/admin/pos/removals/purge")
+def pos_removals_purge(keep_done: int = 0, x_admin_key: Optional[str] = Header(None)):
+    """ניקוי רשימת ההורדות — התחלה מחדש. (אדמין בלבד, לא מכשירי סניף.)"""
+    _require_admin(x_admin_key)
+    n = db.pos_removals_purge(keep_done=bool(keep_done))
+    logger.warning("pos removals purge: נמחקו %d שורות", n)
+    return {"ok": True, "deleted": n}
 
 
 @app.post("/api/admin/pos/removal/{rid}/cancel")
@@ -2064,8 +2100,12 @@ class PosResultIn(BaseModel):
 def pos_removal_result(rid: int, body: PosResultIn,
                        x_admin_key: Optional[str] = Header(None),
                        x_device_token: Optional[str] = Header(None)):
-    """הסוכן מדווח תוצאה: done (עם מס' תעודה) או error. מחזיר סטטוס ל-pending
-    אם הוא רוצה שינסה שוב — לא כאן; error נשאר error עד טיפול ידני."""
+    """הסוכן מדווח תוצאה.
+       • done    — הוזן ואומת. סוף.
+       • pending — dry-run: לא נשמר בקופה, נשאר בתור.
+       • error   — ❗לא סוף: הפעולה **חוזרת אוטומטית לתור** לניסיון נוסף (backoff).
+                   פריט שסניף הוריד מהמלאי חייב לרדת גם בקופה — לא נוטשים בשגיאה.
+                   רק ביטול ידני של אסי מוציא פעולה מהתור."""
     _require_admin_or_device(x_admin_key, x_device_token)
     r = db.pos_removal_get(rid)
     if not r:
@@ -2073,6 +2113,22 @@ def pos_removal_result(rid: int, body: PosResultIn,
     st = (body.status or "").strip()
     if st not in ("done", "error", "pending"):
         raise HTTPException(400, "status חייב להיות done/error/pending")
+
+    if st == "error":
+        att = int(r.get("attempts") or 1)
+        delay = _pos_retry_delay(att)
+        db.pos_removal_retry(rid, error=body.error or "כשל בהזנה", delay_sec=delay)
+        if att == POS_RETRY_ALERT_AT:
+            try:
+                _tg_admin("⚠️ הורדה מהמלאי #%s נכשלה %d פעמים ועדיין לא ירדה בקופה.\n"
+                          "%s · ₪%s\nשגיאה: %s\nהמערכת ממשיכה לנסות." %
+                          (rid, att, r.get("employee_name") or "",
+                           r.get("amount") or "", (body.error or "")[:200]))
+            except Exception:  # noqa: BLE001
+                pass
+        return {"ok": True, "id": rid, "status": "pending",
+                "attempts": att, "retry_in_sec": delay}
+
     db.pos_removal_set_status(rid, st, pos_doc_no=body.pos_doc_no or None,
                               error=body.error or None)
     return {"ok": True, "id": rid, "status": st}

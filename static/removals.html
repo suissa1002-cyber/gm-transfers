@@ -114,7 +114,31 @@ header.top{position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1
 .badge.pending{background:var(--accent-soft);color:var(--accent)}
 .badge.done{background:#e7f0ff;color:#1f6fd6}
 .badge.error{background:#fdecec;color:var(--deal)}
+.badge.applying{background:#fff6e2;color:var(--warn)}
+.badge.retry{background:#fff6e2;color:var(--warn)}
+.badge.stuck{background:var(--deal);color:#fff}
 .badge.cancelled{background:var(--line);color:var(--ink2)}
+/* פירוט הפעולה — מתקפל בתוך השורה עצמה (מק״ט + סידורי/ברקוד לכל פריט) */
+.rgroup{border-bottom:1px solid var(--line)}
+.rgroup .rrow{border-bottom:0;cursor:pointer}
+.rgroup .rchev{color:var(--ink2);transition:.15s;display:inline-block;font-size:.8rem}
+.rgroup.open .rchev{transform:rotate(90deg)}
+.rdet{display:none;padding:2px 0 12px;font-size:.85rem}
+.rgroup.open .rdet{display:block}
+.rdet table{width:100%;border-collapse:collapse}
+.rdet th{text-align:right;font-size:.72rem;color:var(--ink2);font-weight:700;padding:4px 8px;
+  border-bottom:1px solid var(--line)}
+.rdet td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+.rdet tr:last-child td{border-bottom:0}
+.rdet .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.82rem;letter-spacing:.02em}
+.rdet .tag{font-size:.68rem;font-weight:800;padding:2px 7px;border-radius:99px;
+  background:var(--accent-soft);color:var(--accent);margin-inline-end:6px}
+.rdet .tag.bc{background:var(--line);color:var(--ink2)}
+.rdet .err{margin-top:8px;background:#fdecec;color:var(--deal);border-radius:10px;
+  padding:8px 10px;font-size:.82rem}
+.rdet .meta{color:var(--ink2);margin-top:6px;font-size:.78rem}
+.alertbar{background:#fdecec;color:var(--deal);border:1px solid var(--deal);border-radius:var(--r);
+  padding:12px 14px;margin-bottom:14px;font-weight:700;font-size:.9rem}
 /* employee popup */
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:50;padding:20px}
 .overlay.on{display:flex}
@@ -159,6 +183,7 @@ header.top{position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1
   </div>
 
   <div id="liveTrack" class="track" style="display:none"></div>
+  <div id="stuckBar" class="alertbar" style="display:none"></div>
 
   <div class="grid">
     <!-- scan + result -->
@@ -197,6 +222,10 @@ header.top{position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1
     </h2>
     <div id="logBody" style="display:none;margin-top:12px">
       <div id="queue"><div class="emptycart">—</div></div>
+      <div style="margin-top:12px;display:flex;justify-content:flex-end">
+        <button class="btn ghost" onclick="purgeList()"
+                style="font-size:.8rem;padding:7px 12px">נקה רשימה והתחל מחדש</button>
+      </div>
     </div>
   </div>
 </div>
@@ -331,7 +360,7 @@ function prodCard(p, code){
     </div></div>
     ${warn}
     <div class="actions">
-      <button class="btn primary" onclick='addToCart(${JSON.stringify({sku:p.product_id,name:p.name||code,serial:(p.is_serial?code:''),image:p.image||""}).replace(/'/g,"&#39;")})'>הוסף להורדה</button>
+      <button class="btn primary" onclick='addToCart(${JSON.stringify({sku:p.product_id,name:p.name||code,serial:(p.is_serial?code:''),barcode:(p.barcode||(p.is_serial?'':code)||''),image:p.image||""}).replace(/'/g,"&#39;")})'>הוסף להורדה</button>
       <button class="btn ghost" onclick="focusScan()">בדיקת מחיר בלבד</button>
     </div>`;
 }
@@ -349,7 +378,8 @@ function addToCart(it){
   const key=(it.serial||it.sku);
   const ex=CART.find(x=>(x.serial||x.sku)===key);
   if(ex && !it.serial){ ex.qty++; } else if(ex && it.serial){ toast('הסידורי כבר בפעולה'); }
-  else { CART.push({sku:it.sku,name:it.name,serial:it.serial||'',image:it.image||'',qty:1}); }
+  else { CART.push({sku:it.sku,name:it.name,serial:it.serial||'',barcode:it.barcode||'',
+                    image:it.image||'',qty:1}); }
   renderCart(); document.getElementById('result').innerHTML=''; focusScan();
   toast('נוסף: '+it.name);
 }
@@ -361,7 +391,8 @@ function renderCart(){
   if(!CART.length){ el.innerHTML='<div class="emptycart">אין פריטים עדיין — סרוק כדי להוסיף</div>'; return; }
   el.innerHTML=CART.map((it,i)=>`<div class="item">
     <div class="nm"><div class="t">${esc(it.name)}</div>
-      <div class="s">מק״ט ${esc(it.sku)}${it.serial?(' · סידורי '+esc(it.serial)):''}</div></div>
+      <div class="s">מק״ט ${esc(it.sku)}${it.serial?(' · סידורי '+esc(it.serial)):
+        (it.barcode?(' · ברקוד '+esc(it.barcode)):'')}</div></div>
     ${it.serial?'<b style="color:var(--ink2)">1</b>':
       `<div class="qtywrap"><button onclick="chQty(${i},-1)">−</button>
        <input type="number" min="1" value="${it.qty}" onchange="setQty(${i},this.value)">
@@ -380,7 +411,8 @@ async function saveRemoval(){
   const body={ branch_id:BR, employee_name:EMP.name, employee_no:EMP.id,
     amount:amt,
     note:document.getElementById('note').value.trim(),
-    items:CART.map(x=>({sku:x.sku,name:x.name,qty:Number(x.qty)||1,serial:x.serial||''})) };
+    items:CART.map(x=>({sku:x.sku,name:x.name,qty:Number(x.qty)||1,
+                        serial:x.serial||'',barcode:x.barcode||''})) };
   try{ const r=await api('/api/admin/pos/removal',{method:'POST',body:JSON.stringify(body)});
     toast('✓ נשמר לתור ('+r.items+' פריטים)');
     CART=[]; renderCart(); document.getElementById('amount').value=''; document.getElementById('note').value='';
@@ -428,10 +460,13 @@ async function trackRemoval(id){
       _track('<div class="txt">✅ הוזן לקופה ואומת — המלאי ירד'
             +'<div class="sub2">פעולה #'+id+(r.pos_doc_no?(' · תעודה '+esc(r.pos_doc_no)):'')+'</div></div>','ok');
       loadQueue(); return;
-    } else if(r.status==='error'){
-      _track('<div class="txt">⚠️ הסוכן נעצר'
-            +'<div class="sub2">'+esc(r.error||'')+'</div></div>','bad');
-      loadQueue(); return;
+    } else if(r.status==='pending' && r.error){
+      // כשל אינו סוף — הפעולה חזרה לתור וננסה שוב עד שתרד בפועל
+      _track('<div class="spin"></div><div class="txt">⚠️ ניסיון '+(r.attempts||1)+' נכשל — מנסים שוב'
+            +'<div class="sub2">'+esc(r.error||'')
+            +(r.next_try_at?(' · ניסיון הבא ב-'+String(r.next_try_at).replace('T',' ').slice(11,16)):'')
+            +'</div></div>','bad');
+      loadQueue();
     }
   }
   _track('<div class="txt">⏳ עדיין ממתין'
@@ -445,29 +480,88 @@ function toggleLog(){ const b=document.getElementById('logBody'), c=document.get
 
 function _todayISO(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 
+/* מצב הסטטוס לתצוגה. שגיאה אינה סופית — הפעולה חוזרת לתור עד שתרד בפועל. */
+function _statusChip(r){
+  const att=Number(r.attempts||0);
+  if(r.status==='done')      return {cls:'done', txt:'הוזן'};
+  if(r.status==='cancelled') return {cls:'cancelled', txt:'בוטל'};
+  if(r.status==='applying')  return {cls:'applying', txt:'מוזן עכשיו'};
+  if(r.stuck)                return {cls:'stuck', txt:'תקוע · ניסיון '+att};
+  if(r.error && att>0)       return {cls:'retry', txt:'ינוסה שוב · '+att};
+  return {cls:'pending', txt:'ממתין'};
+}
+
+function _itemsTable(r){
+  const rows=(r.items||[]).map(i=>{
+    const id = i.serial ? `<span class="tag">סידורי</span><span class="mono">${esc(i.serial)}</span>`
+             : (i.barcode ? `<span class="tag bc">ברקוד</span><span class="mono">${esc(i.barcode)}</span>`
+                          : `<span style="color:var(--ink2)">— אין ברקוד בקטלוג —</span>`);
+    return `<tr><td>${esc(i.name||'')}</td>
+      <td class="mono">${esc(i.sku||'')}</td>
+      <td>${id}</td>
+      <td style="text-align:center">${Number(i.qty)||1}</td></tr>`;
+  }).join('');
+  let extra='';
+  if(r.error) extra+=`<div class="err">${esc(r.error)}${
+    r.status!=='done'&&r.status!=='cancelled'?' — המערכת תנסה שוב אוטומטית':''}</div>`;
+  const bits=[];
+  if(r.attempts) bits.push('ניסיונות: '+r.attempts);
+  if(r.next_try_at && r.status==='pending')
+    bits.push('ניסיון הבא: '+String(r.next_try_at).replace('T',' ').slice(11,16));
+  if(r.pos_doc_no) bits.push('תעודה ' + r.pos_doc_no);
+  if(r.note) bits.push('הערה: '+r.note);
+  if(bits.length) extra+=`<div class="meta">${esc(bits.join(' · '))}</div>`;
+  return `<div class="rdet"><table>
+    <tr><th>פריט</th><th>מק״ט</th><th>מזהה</th><th style="text-align:center">כמות</th></tr>
+    ${rows}</table>${extra}</div>`;
+}
+
+function toggleRow(id){ const g=document.getElementById('rg'+id); if(g) g.classList.toggle('open'); }
+
 async function loadQueue(){
   let d; try{ d=await api('/api/admin/pos/removals?limit=100'); }catch(e){ return; }
   const today=_todayISO();
   const rows=(d.removals||[]).filter(r=>(r.created_at||'').slice(0,10)===today && r.status!=='cancelled');
   // סיכום תמיד גלוי (גם כשמקופל)
   const sum=rows.reduce((a,r)=>a+(Number(r.amount)||0),0);
-  const pend=rows.filter(r=>r.status==='pending').length;
+  const open=rows.filter(r=>r.status==='pending'||r.status==='applying').length;
   const summ=document.getElementById('logSummary');
-  summ.textContent = rows.length ? (rows.length+' הורדות · ₪'+sum.toLocaleString('en-US')+(pend?(' · '+pend+' ממתין'):'')) : 'אין הורדות היום';
+  summ.textContent = rows.length ? (rows.length+' הורדות · ₪'+sum.toLocaleString('en-US')+(open?(' · '+open+' בתהליך'):'')) : 'אין הורדות היום';
+
+  // באנר בולט: פעולה שנכשלה שוב ושוב עדיין לא ירדה בקופה — חייבת טיפול
+  const stuck=rows.filter(r=>r.stuck);
+  const bar=document.getElementById('stuckBar');
+  if(stuck.length){ bar.style.display='block';
+    bar.textContent='⚠️ '+stuck.length+' הורדות עדיין לא ירדו בקופה אחרי כמה ניסיונות ('
+      +stuck.map(r=>'#'+r.id).join(', ')+'). המערכת ממשיכה לנסות — בדוק שהקופה פנויה ושהסוכן רץ.';
+  } else { bar.style.display='none'; }
+
   const el=document.getElementById('queue');
   if(!rows.length){ el.innerHTML='<div class="emptycart">אין הורדות היום</div>'; return; }
+  const wasOpen=new Set([...el.querySelectorAll('.rgroup.open')].map(g=>g.id));
   el.innerHTML=rows.map(r=>{
     const items=(r.items||[]).map(i=>esc(i.name||i.sku)+(i.qty>1?(' ×'+i.qty):'')).join(', ');
     const when=(r.created_at||'').replace('T',' ').slice(11,16);
-    return `<div class="rrow"><span class="badge ${r.status}">${
-      ({pending:'ממתין',done:'הוזן',error:'שגיאה'}[r.status]||r.status)}</span>
-      <span style="flex:1;min-width:0"><b>${esc(r.employee_name||'')}</b> · ${items} ${r.amount?('· ₪'+r.amount):''}</span>
-      <span style="color:var(--ink2)">${when}</span>
-      ${r.status==='pending'?`<button class="x" onclick="cancelR(${r.id})" title="בטל">×</button>`:''}
-    </div>`;
+    const s=_statusChip(r);
+    return `<div class="rgroup${wasOpen.has('rg'+r.id)?' open':''}" id="rg${r.id}">
+      <div class="rrow" onclick="toggleRow(${r.id})">
+        <span class="rchev">▸</span>
+        <span class="badge ${s.cls}">${s.txt}</span>
+        <span style="flex:1;min-width:0"><b>${esc(r.employee_name||'')}</b> · ${items} ${r.amount?('· ₪'+r.amount):''}</span>
+        <span style="color:var(--ink2)">${when}</span>
+        ${r.status==='pending'?`<button class="x" onclick="event.stopPropagation();cancelR(${r.id})" title="בטל">×</button>`:''}
+      </div>${_itemsTable(r)}</div>`;
   }).join('');
 }
-async function cancelR(id){ try{ await api('/api/admin/pos/removal/'+id+'/cancel',{method:'POST'}); loadQueue(); }catch(e){ toast(e,true); } }
+async function cancelR(id){
+  if(!confirm('לבטל את הורדה #'+id+'? היא לא תוזן לקופה.')) return;
+  try{ await api('/api/admin/pos/removal/'+id+'/cancel',{method:'POST'}); loadQueue(); }catch(e){ toast(e,true); } }
+
+async function purgeList(){
+  if(!confirm('למחוק את כל רשימת ההורדות ולהתחיל מחדש? (כולל ממתינות ושגיאות)')) return;
+  try{ const r=await api('/api/admin/pos/removals/purge',{method:'POST'});
+    toast('✓ נמחקו '+r.deleted+' שורות'); loadQueue(); }
+  catch(e){ toast(e,true); } }
 
 /* keep scanner focused */
 document.addEventListener('click',e=>{ if(e.target.closest('.overlay,.item,.rrow,button,a,input,textarea')) return;

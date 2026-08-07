@@ -10,7 +10,7 @@ import time
 
 from pywinauto import Application, Desktop, mouse
 
-DRIVER_VERSION = "2026-08-07.19"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
+DRIVER_VERSION = "2026-08-07.20"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
 POS_TITLE_RE = ".*אורדר.*"
 FORM_TITLE = "הורדה מהמלאי"
 ITEM_TITLE = "הורדה מהמלאי - פעולה חדשה"
@@ -550,6 +550,22 @@ def _cleanup(app, T):
                 time.sleep(0.4)
         if not closed:
             break
+
+
+def recover(tuning=None):
+    """ניקוי מצב אחרי כשל — סוגר כל שארית מסך/דיאלוג בקופה.
+    נקרא ע"י הסוכן מיד אחרי שגיאה, כדי שהניסיון החוזר (שתמיד יגיע) יתחיל נקי
+    ולא ייתקל ב-ElementNotEnabled בגלל חלון שנשאר פתוח."""
+    T = dict(DEFAULT_TUNING)
+    if tuning:
+        T.update({k: v for k, v in tuning.items() if v is not None})
+    app, pos = connect()
+    try:
+        pos.set_focus()
+    except Exception:                    # noqa: BLE001
+        pass
+    _cleanup(app, T)
+    return True
 
 
 def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):

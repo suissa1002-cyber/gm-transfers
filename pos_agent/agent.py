@@ -82,7 +82,9 @@ def get_config():
 
 
 def get_pending():
-    r = api("GET", "/api/admin/pos/removals?status=pending&limit=50")
+    # due=1 → רק פעולות שהגיע זמנן. פעולה שנכשלה חוזרת לתור עם השהיה עולה,
+    # כדי שלא ננסה אותה בלולאה צמודה — אבל היא **תמיד** תחזור עד שתרד בפועל.
+    r = api("GET", "/api/admin/pos/removals?status=pending&due=1&limit=50")
     return (r.json() or {}).get("removals", []) if r.ok else []
 
 
@@ -151,8 +153,13 @@ def process(r, cfg=None):
     try:
         doc_no = pos_driver.apply_removal(r, dry_run=dry, screenshot_path=shot, tuning=tuning)
     except Exception as e:                    # noqa: BLE001
-        log("  ❌ כשל בהזנה: %s" % e)
+        # השרת מחזיר את הפעולה לתור אוטומטית (backoff) — לא נוטשים הורדה בשגיאה.
+        log("  ❌ כשל בהזנה: %s — יוחזר לתור לניסיון נוסף" % e)
         report(rid, "error", error=str(e))
+        try:                                   # מנקים שאריות מסך כדי שהניסיון הבא יתחיל נקי
+            pos_driver.recover()
+        except Exception as e2:                # noqa: BLE001
+            log("  (ניקוי מסך נכשל: %s)" % e2)
         return
 
     if dry:
