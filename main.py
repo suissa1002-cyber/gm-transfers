@@ -1806,10 +1806,23 @@ def pos_employees(x_admin_key: Optional[str] = Header(None),
     return out
 
 
+_price_card_cache: dict = {}
+_PRICE_CARD_TTL = 180
+
+
 def _pos_price_card(pid: str) -> dict:
     """כרטיס מוצר לסריקה: שם, מחיר קופה, מחיר אתר, תמונה, קישור, מלאי לפי סניף.
-    מק"ט הקופה == SKU באתר. קורא NewOrder (מחיר+מלאי) + WooCommerce (מחיר+תמונה)."""
+    מק"ט הקופה == SKU באתר. קורא NewOrder (מחיר+מלאי) + WooCommerce (מחיר+תמונה).
+
+    ⚠️ ממוטמן 3 דקות: מרגע שבדיקת המחיר פתוחה לכל הסניפים, כל סריקה שאינה
+    שייכת להעברה יוצרת שתי קריאות ל-NewOrder. בלי מטמון, סניף שסורק ברצף היה
+    מחזיר אותנו לבעיית המכסה שנפתרה ב-21/07 (ראה ref_neworder_quota)."""
+    import time as _t
     pid = str(pid).strip()
+    hit = _price_card_cache.get(pid)
+    if hit and (_t.time() - hit[0]) < _PRICE_CARD_TTL:
+        import copy as _cp
+        return _cp.deepcopy(hit[1])
     card = {"product_id": pid, "name": "", "pos_price": None, "site_price": None,
             "site_regular": None, "image": "", "permalink": "", "is_serial": False,
             "barcode": "", "stock": {}, "pos_known": True}
@@ -1854,6 +1867,9 @@ def _pos_price_card(pid: str) -> dict:
                              "permalink": p.get("permalink", "")})
         except Exception as e:  # noqa: BLE001
             logger.warning("pos price card: wc %s failed: %s", pid, e)
+    if len(_price_card_cache) > 200:
+        _price_card_cache.clear()
+    _price_card_cache[pid] = (_t.time(), card)
     return card
 
 
