@@ -170,6 +170,15 @@ textarea{min-height:96px;resize:vertical;line-height:1.6}
 .qbox .qq{font-size:13px;font-weight:700}
 .qbox .qm{font-size:11px;color:var(--txt-3);margin-bottom:3px}
 .qbox input{width:100%;margin-top:6px;font-size:13.5px}
+.drop{margin-top:8px;border:1.5px dashed var(--line-2);border-radius:var(--r-md);padding:var(--s4);
+  text-align:center;color:var(--muted);font-size:13px;cursor:pointer;transition:.15s;background:var(--card-2)}
+.drop:hover,.drop.over{border-color:var(--brand);background:var(--brand-bg);color:var(--brand-ink)}
+.drop b{display:block;font-size:13.5px;color:var(--txt);margin-bottom:2px}
+.imgprev{margin-top:8px;position:relative;border:1px solid var(--line);border-radius:var(--r-md);
+  overflow:hidden;background:#fff;height:150px;display:flex;align-items:center;justify-content:center}
+.imgprev img{max-width:100%;max-height:100%;object-fit:contain}
+.imgprev .rm{position:absolute;top:8px;inset-inline-end:8px;background:rgba(0,0,0,.55);color:#fff;
+  border:0;border-radius:50%;width:28px;height:28px;font-size:16px;cursor:pointer}
 </style>
 </head>
 <body class="light">
@@ -207,6 +216,13 @@ textarea{min-height:96px;resize:vertical;line-height:1.6}
             <button class="hbtn" style="padding:11px 16px" onclick="pickProduct()">מצא</button>
           </div>
           <div id="pickBox"></div>
+
+          <label>תמונה — בחר קובץ, גרור לכאן, או הדבק (Ctrl+V)</label>
+          <div class="drop" id="drop" onclick="document.getElementById('imgFile').click()">
+            <b>לחץ לבחירת קובץ</b>גרירה או הדבקה מהלוח עובדות גם
+          </div>
+          <input type="file" id="imgFile" accept="image/*" style="display:none" onchange="onFile(this.files[0])">
+          <div id="imgBox"></div>
 
           <label>כותרת</label>
           <input type="text" id="fTitle" oninput="preview()">
@@ -310,10 +326,49 @@ async function pickProduct(){
   }catch(e){ toast(String(e),false); }
 }
 
+
+// ── תמונה: קובץ / גרירה / הדבקה ─────────────────────────────────────
+// ⚠️ נשמרת בשרת ולא כ-data URL בתוך העדכון: תמונה בבסיס-64 בתוך השורה
+// מנפחת כל קריאה של הפיד בכל הסניפים.
+let IMG='';
+function setImg(url){
+  IMG=url||'';
+  document.getElementById('imgBox').innerHTML = IMG
+    ? `<div class="imgprev"><img src="${esc(IMG)}"><button class="rm" onclick="setImg('')">×</button></div>` : '';
+  preview();
+}
+async function uploadDataUrl(dataUrl){
+  try{ const r=await api('/api/admin/branch-updates/image',{method:'POST',
+        body:JSON.stringify({data_url:dataUrl})});
+    setImg(r.url); toast('✓ התמונה הועלתה',true); }
+  catch(e){ toast(String(e),false); }
+}
+function onFile(f){
+  if(!f) return;
+  if(!/^image\//.test(f.type)){ toast('קובץ שאינו תמונה',false); return; }
+  const fr=new FileReader();
+  fr.onload=()=>uploadDataUrl(fr.result);
+  fr.readAsDataURL(f);
+}
+(function(){
+  const d=document.getElementById('drop');
+  if(d){
+    ['dragenter','dragover'].forEach(ev=>d.addEventListener(ev,e=>{e.preventDefault();d.classList.add('over');}));
+    ['dragleave','drop'].forEach(ev=>d.addEventListener(ev,e=>{e.preventDefault();d.classList.remove('over');}));
+    d.addEventListener('drop',e=>{ const f=e.dataTransfer.files&&e.dataTransfer.files[0]; if(f) onFile(f); });
+  }
+  // הדבקה מכל מקום בעמוד — הדרך המהירה: צילום מסך של מבצע → Ctrl+V
+  document.addEventListener('paste',e=>{
+    const items=(e.clipboardData&&e.clipboardData.items)||[];
+    for(const it of items){ if(it.type&&it.type.indexOf('image')===0){
+      const f=it.getAsFile(); if(f){ e.preventDefault(); onFile(f); return; } } }
+  });
+})();
+
 function formData(){
   return {kind:KIND, title:document.getElementById('fTitle').value.trim(),
     body:document.getElementById('fBody').value.trim(),
-    image_url:(PROD&&PROD.image)||'', sku:(PROD&&PROD.product_id)||'',
+    image_url: IMG || ((PROD&&PROD.image)||''), sku:(PROD&&PROD.product_id)||'',
     permalink:(PROD&&PROD.permalink)||'',
     price_now:document.getElementById('fNow').value?Number(document.getElementById('fNow').value):null,
     price_old:document.getElementById('fOld').value?Number(document.getElementById('fOld').value):null,
@@ -337,7 +392,7 @@ function preview(){
       <div class="f">${when}<span>${who}</span></div></div></div>`;
 }
 function resetForm(){ ['fTitle','fBody','fNow','fOld','fTo','skuInp'].forEach(i=>document.getElementById(i).value='');
-  PROD=null; BSEL=[]; document.getElementById('pickBox').innerHTML=''; renderChips(); preview(); }
+  PROD=null; BSEL=[]; document.getElementById('pickBox').innerHTML=''; setImg(''); renderChips(); preview(); }
 
 async function publish(){
   const f=formData();

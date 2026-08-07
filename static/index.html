@@ -348,6 +348,36 @@
   .empgridm button{border:1px solid var(--line);background:var(--card-2);color:var(--txt);
     border-radius:var(--r-sm);padding:14px 8px;font-weight:800;font-size:14.5px;cursor:pointer}
   .empgridm button:hover{border-color:var(--brand);background:var(--brand-bg);color:var(--brand-ink)}
+  /* מצב הסוכן + יומן הורדות — פריטי שוויון מול המסך הנפרד */
+  .rmst{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:800;
+    border-radius:var(--r-pill);padding:4px 10px;margin:0 var(--s4) var(--s3)}
+  .rmst.on{background:var(--brand-bg);color:var(--brand-ink)}
+  .rmst.dry{background:var(--amber-bg);color:var(--amber-ink)}
+  .rmst.off{background:var(--red-bg);color:var(--red-ink)}
+  .rmtrack{margin:0 var(--s4) var(--s3);border:1px solid var(--brand);border-radius:var(--r-sm);
+    padding:var(--s3);display:flex;gap:8px;align-items:flex-start;font-size:12.5px}
+  .rmtrack.bad{border-color:var(--red)} .rmtrack.ok{border-color:var(--brand)}
+  .rmtrack .sp2{width:15px;height:15px;border:2px solid var(--line);border-top-color:var(--brand);
+    border-radius:50%;animation:lvp2 .8s linear infinite;flex:0 0 auto;margin-top:2px}
+  @keyframes lvp2{to{transform:rotate(360deg)}}
+  .rmtrack b{display:block}
+  .rmtrack .s2{color:var(--txt-2);margin-top:2px}
+  .rmstuck{margin:0 var(--s4) var(--s3);background:var(--red-bg);color:var(--red-ink);
+    border:1px solid var(--red);border-radius:var(--r-sm);padding:9px 11px;font-size:12px;font-weight:800}
+  .rmlog{border-top:1px solid var(--line);margin-top:var(--s3);padding-top:var(--s3)}
+  .rmlog .lh{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:800;
+    cursor:pointer;color:var(--txt-2)}
+  .rmlog .lh .n{margin-inline-start:auto;font-weight:700;font-size:11.5px}
+  .rmlog .lb{display:none;margin-top:var(--s2)}
+  .rmlog.open .lb{display:block}
+  .rmlog .lr{display:flex;align-items:center;gap:7px;padding:7px 0;border-bottom:1px solid var(--line);
+    font-size:11.5px}
+  .rmlog .lr:last-child{border-bottom:0}
+  .rmlog .bdg{font-size:10px;font-weight:800;padding:2px 8px;border-radius:var(--r-pill);white-space:nowrap}
+  .bdg.done{background:var(--blue-bg);color:var(--blue-ink)}
+  .bdg.pending{background:var(--brand-bg);color:var(--brand-ink)}
+  .bdg.applying,.bdg.retry{background:var(--amber-bg);color:var(--amber-ink)}
+  .bdg.stuck{background:var(--red);color:#fff}
   /* פופאפ הסידור — עמוד הצפייה המעוצב ב-iframe */
   .schmd{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);
     width:min(980px,100%);height:min(86vh,900px);box-shadow:var(--sh-3);position:relative;
@@ -3032,6 +3062,8 @@ async function renderBoard(app, silent){
     <div class="uov" id="uOv" onclick="if(event.target===this)closeUpd()"><div class="umd" id="uMd"></div></div>`;
   tiWidgetEnsure();
   gcwEnsure();
+  if(rmOn() && S._rmFor!==S.branchId){ S._rmFor=S.branchId; rmLoadStatus();
+    clearInterval(S._rmT); S._rmT=setInterval(()=>{ if(S.view==='board'&&rmOn()) rmLoadStatus(); }, 30000); }
   if(S._feedFor!==S.branchId){ S._feedFor=S.branchId; loadFeed();
     clearInterval(S._feedT); S._feedT=setInterval(()=>{ if(S.view==='board') loadFeed(); }, 120000); }
   if(needEmp){
@@ -3258,6 +3290,76 @@ async function rmPickEmp(){
 function rmSetEmp(e){ S.rmEmp={id:e.id,name:e.name};
   try{ localStorage.setItem('gm_rm_emp',JSON.stringify(S.rmEmp)); }catch(x){}
   closeModal(); renderBoard(document.getElementById('app'), true); }
+
+// ── שוויון מלא מול המסך הנפרד: מצב הסוכן, מעקב חי, יומן היום, באנר תקיעה ──
+async function rmLoadStatus(){
+  if(!rmOn()) return;
+  try{ S.rmAgent=await api('/api/admin/pos/agent-config'); }catch(e){ S.rmAgent=null; }
+  try{ const d=await api('/api/admin/pos/removals?limit=100');
+    const today=new Date().toISOString().slice(0,10);
+    S.rmLog=(d.removals||[]).filter(r=>(r.created_at||'').slice(0,10)===today && r.status!=='cancelled');
+  }catch(e){ S.rmLog=[]; }
+  if(S.view==='board') renderBoard(document.getElementById('app'), true);
+}
+function rmAgentHTML(){
+  const a=S.rmAgent;
+  if(!a) return '<div class="rmst off">⛔ מצב הסוכן לא נקרא</div>';
+  const seen=a.seen_sec_ago;
+  if(seen===null||seen===undefined||seen>90)
+    return `<div class="rmst off">🔌 הסוכן לא מחובר${seen==null?'':' (לפני '+Math.round(seen/60)+' דק׳)'} — ההורדות ימתינו</div>`;
+  if(a.desktop_locked) return '<div class="rmst off">🔒 מסך המחשב בקופה נעול — ההזנה תמתין</div>';
+  if(!a.enabled) return '<div class="rmst off">⛔ הסוכן מושבת — לא יוזן לקופה</div>';
+  if(a.dry_run) return '<div class="rmst dry">🧪 הרצה יבשה — לא יורד מלאי בפועל</div>';
+  return '<div class="rmst on">🟢 סוכן פעיל — מוזן לקופה</div>';
+}
+function rmLogHTML(){
+  const L=S.rmLog||[];
+  const sum=L.reduce((a,r)=>a+(Number(r.amount)||0),0);
+  const open=L.filter(r=>r.status==='pending'||r.status==='applying').length;
+  const stuck=L.filter(r=>r.stuck);
+  const stuckHTML=stuck.length?`<div class="rmstuck">⚠️ ${stuck.length} הורדות עדיין לא ירדו בקופה (${
+    stuck.map(r=>'#'+r.id).join(', ')}) — המערכת ממשיכה לנסות</div>`:'';
+  const S2={pending:'ממתין',applying:'מוזן',done:'הוזן',error:'שגיאה'};
+  const rows=L.map(r=>{
+    const cls=r.stuck?'stuck':(r.status==='pending'&&r.error?'retry':r.status);
+    const txt=r.stuck?('תקוע · '+r.attempts):(r.status==='pending'&&r.error?('ינוסה שוב · '+r.attempts):(S2[r.status]||r.status));
+    const items=(r.items||[]).map(i=>i.name||i.sku).join(', ');
+    return `<div class="lr"><span class="bdg ${cls}">${txt}</span>
+      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(items)}</span>
+      ${r.pos_doc_no?`<span class="mono" style="font-size:10.5px">${escW(r.pos_doc_no)}</span>`:''}
+      <span style="color:var(--txt-3)">${(r.created_at||'').slice(11,16)}</span></div>`;}).join('');
+  return `${stuckHTML}<div class="rmlog${S.rmLogOpen?' open':''}">
+    <div class="lh" onclick="S.rmLogOpen=!S.rmLogOpen;renderBoard(document.getElementById('app'),true)">
+      <span style="transition:.15s;display:inline-block${S.rmLogOpen?';transform:rotate(90deg)':''}">▸</span>
+      הורדות היום<span class="n">${L.length?`${L.length} · ₪${sum.toLocaleString('en-US')}${open?' · '+open+' בתהליך':''}`:'אין'}</span></div>
+    <div class="lb">${rows||'<div class="rmempty">אין הורדות היום</div>'}</div></div>`;
+}
+function rmTrackHTML(){
+  const t=S.rmTrack; if(!t) return '';
+  return `<div class="rmtrack ${t.cls||''}">${t.cls==='ok'?'':'<div class="sp2"></div>'}
+    <div><b>${escW(t.t)}</b><div class="s2">${escW(t.s||'')}</div></div></div>`;
+}
+async function rmTrack(id){
+  const dry=!(S.rmAgent&&S.rmAgent.dry_run===false);
+  S.rmTrack={t:'ממתין שהסוכן יזין לקופה…', s:'פעולה #'+id+(dry?' · הרצה יבשה':'')};
+  renderBoard(document.getElementById('app'), true);
+  const t0=Date.now();
+  while(Date.now()-t0<180000){
+    await new Promise(r=>setTimeout(r,3000));
+    let d; try{ d=await api('/api/admin/pos/removals?limit=30'); }catch(e){ continue; }
+    const r=(d.removals||[]).find(x=>x.id===id); if(!r) continue;
+    if(r.status==='applying') S.rmTrack={t:'הסוכן מזין עכשיו לקופה…', s:'פעולה #'+id};
+    else if(r.status==='done'){ S.rmTrack={t:'✅ הוזן לקופה ואומת — המלאי ירד',
+      s:'פעולה #'+id+(r.pos_doc_no?(' · תעודה '+r.pos_doc_no):''), cls:'ok'};
+      rmLoadStatus(); setTimeout(()=>{ S.rmTrack=null; renderBoard(document.getElementById('app'),true); },9000); return; }
+    else if(r.status==='pending'&&r.error){ S.rmTrack={t:'⚠️ ניסיון '+(r.attempts||1)+' נכשל — מנסים שוב',
+      s:r.error, cls:'bad'}; }
+    renderBoard(document.getElementById('app'), true);
+  }
+  S.rmTrack={t:'⏳ עדיין ממתין', s:'הפעולה נשמרה ותתבצע כשהסוכן יעלה.', cls:'bad'};
+  renderBoard(document.getElementById('app'), true);
+}
+
 function rmCartHTML(){
   if(!rmOn()) return '';
   const c=rmCart(), e=rmEmp();
@@ -3272,6 +3374,7 @@ function rmCartHTML(){
     : '<div class="rmempty">סרוק פריט והוסף להורדה</div>';
   return `<div class="rmcart"><div class="rh"><h3>📦 פעולת הורדה</h3>${
       c.length?`<span class="n">${c.length}</span>`:''}</div>
+    ${rmAgentHTML()}${rmTrackHTML()}
     <div class="rbody">
       <div class="rmemp">עובד: ${e?`<b>${escW(e.name)}</b>`:'<span class="miss">לא נבחר</span>'}
         <a onclick="rmPickEmp()">${e?'החלף':'בחר'}</a></div>
@@ -3282,6 +3385,7 @@ function rmCartHTML(){
       <div class="rmf"><label>הערה (אופציונלי)</label>
         <input id="rmNote" placeholder="הערה חופשית" value="${escW(S.rmNote||'')}" oninput="S.rmNote=this.value"></div>
       <button class="rmsave" ${c.length?'':'disabled'} onclick="rmSave()">שמור פעולת הורדה</button>
+      ${rmLogHTML()}
     </div></div>`;
 }
 async function rmSave(){
@@ -3299,6 +3403,7 @@ async function rmSave(){
     S.rmCart=[]; S.rmAmount=''; S.rmNote='';
     toast('✓ נשמר לתור ('+r.items+' פריטים)',true);
     renderBoard(document.getElementById('app'), true); focusScan();
+    rmTrack(r.id);
   }catch(err){ toast(String(err&&(err.detail||err.message)||err),false); }
 }
 

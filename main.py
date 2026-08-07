@@ -4,6 +4,7 @@ Transfers app — FastAPI backend.
 """
 
 import os
+import uuid
 import re
 import json as json_mod
 import logging
@@ -2252,6 +2253,44 @@ def branch_update_all_questions(unanswered: int = 0,
         r["branch_name"] = cfg.branch_name(r.get("branch_id"))
         r["update_title"] = titles.get(r.get("update_id"), "")
     return {"questions": rows}
+
+
+class UpdateImageIn(BaseModel):
+    data_url: str            # data:image/png;base64,....
+
+
+@app.post("/api/admin/branch-updates/image")
+def branch_update_image_up(body: UpdateImageIn, x_admin_key: Optional[str] = Header(None)):
+    """מעלה תמונה לעדכון. נשמרת כ-blob ב-DB (אותו מנגנון של גיבוי מדיית וואטסאפ)
+    ⚠️ לא לקובץ בדיסק: ה-filesystem ב-Render זמני ונמחק בכל דיפלוי."""
+    _require_admin(x_admin_key)
+    import base64
+    raw = (body.data_url or "").strip()
+    if not raw.startswith("data:"):
+        raise HTTPException(400, "פורמט תמונה לא נתמך")
+    try:
+        head, b64 = raw.split(",", 1)
+        mime = head.split(";")[0].replace("data:", "") or "image/png"
+        data = base64.b64decode(b64)
+    except Exception:  # noqa: BLE001
+        raise HTTPException(400, "לא ניתן לקרוא את התמונה")
+    if len(data) > 4 * 1024 * 1024:
+        raise HTTPException(400, "התמונה גדולה מ-4MB — הקטן ונסה שוב")
+    key = "upd:%s" % uuid.uuid4().hex[:16]
+    db.wa_media_blob_set(key, mime, data)
+    return {"url": "/api/branch-updates/image/%s" % key, "bytes": len(data)}
+
+
+@app.get("/api/branch-updates/image/{key}")
+def branch_update_image_get(key: str):
+    """הגשת התמונה. ציבורי בכוונה — התמונה מוצגת במכשירי הסניף, והמפתח אקראי."""
+    from fastapi.responses import Response
+    got = db.wa_media_blob_get(key)
+    if not got:
+        raise HTTPException(404, "not found")
+    mime, data = got
+    return Response(content=data, media_type=mime or "image/png",
+                    headers={"Cache-Control": "public, max-age=604800"})
 
 
 @app.get("/updates")
