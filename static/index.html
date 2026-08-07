@@ -230,18 +230,34 @@
   /* רייל הווידג'טים — במקום קופסאות צפות בפינה */
   .brail{display:flex;flex-direction:column;gap:var(--s3);position:sticky;top:76px}
   @media(max-width:980px){.brail{position:static}}
-  .brail .gcard,.brail .gcw-widget{width:100%!important}
+  .brail .gcard,.brail .gcw-widget,.brail .ti-widget{width:100%!important}
+  /* פריט רייל — אייקון בריבוע מעוגל, כותרת ותת-כותרת, שברון */
+  .rw{display:flex;align-items:center;gap:var(--s3);background:var(--card);
+    border:1px solid var(--line);border-radius:var(--r-md);box-shadow:var(--sh-1);
+    padding:var(--s4);cursor:pointer;transition:.16s;text-align:right}
+  .rw:hover{border-color:var(--line-2);box-shadow:var(--sh-2)}
+  .rw .rwi{width:38px;height:38px;border-radius:var(--r-sm);display:flex;align-items:center;
+    justify-content:center;flex:0 0 auto;font-size:19px}
+  .rw.ti .rwi{background:var(--blue-bg)}
+  .rw.gc .rwi{background:var(--brand-bg)}
+  .rw .rwt{flex:1;min-width:0}
+  .rw .rwt .t{font-weight:800;font-size:14px}
+  .rw .rwt .s{font-size:11.5px;color:var(--muted);margin-top:2px;line-height:1.4}
+  .rw .rwc{color:var(--txt-3);font-size:13px}
   /* רצועת עדכונים מהמטה */
   .feed{margin-bottom:var(--s5)}
   .feedhead{display:flex;align-items:center;gap:var(--s3);margin-bottom:var(--s3)}
   .feedhead h3{margin:0;font-size:14px;font-weight:800}
   .feedhead .n{font-size:11.5px;font-weight:800;color:#04150c;background:var(--brand);
     border-radius:var(--r-pill);padding:2px 9px;font-variant-numeric:tabular-nums}
-  .strip{display:flex;gap:var(--s3);overflow-x:auto;padding-bottom:var(--s2);
-    scroll-snap-type:x mandatory}
+  /* גריד שממלא את הרוחב: בגלילה אופקית עם 1-2 עדכונים נשאר שטח מת ענק */
+  .strip{display:grid;grid-template-columns:repeat(auto-fill,minmax(238px,1fr));
+    gap:var(--s3);padding-bottom:var(--s2)}
+  @media(max-width:700px){.strip{display:flex;overflow-x:auto;scroll-snap-type:x mandatory}
+    .nc{flex:0 0 238px}}
   .strip::-webkit-scrollbar{height:6px}
   .strip::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:99px}
-  .nc{flex:0 0 244px;scroll-snap-align:start;background:var(--card);border:1px solid var(--line);
+  .nc{scroll-snap-align:start;min-width:0;background:var(--card);border:1px solid var(--line);
     border-radius:var(--r-md);overflow:hidden;box-shadow:var(--sh-1);cursor:pointer;
     transition:.16s;display:flex;flex-direction:column}
   .nc:hover{transform:translateY(-3px);box-shadow:var(--sh-2);border-color:var(--line-2)}
@@ -8741,14 +8757,14 @@ function osTiBuild(){
 // ווידג'ט קבוע על לוח הסניף (לא מודאל) — אותו מנוע בדיוק
 function tiWidgetRender(b){
   const host=document.getElementById('tiWidgetHost'); if(!host) return;
-  if(window.matchMedia('(max-width:1199px)').matches){ host.innerHTML=''; return; }
+  if(window.matchMedia('(max-width:979px)').matches){ host.innerHTML=''; return; }
   const t=b.t;
   if(!t.open){
-    host.innerHTML=`<div class="gcard ti-widget" onclick="tiWidgetToggle(true)" style="width:200px;z-index:5;padding:16px;text-align:center;cursor:pointer">
-      <div style="font-size:26px;line-height:1">🔄</div>
-      <div style="font-weight:800;font-size:13.5px;color:#149c40;margin-top:6px">מחשבון טרייד-אין</div>
-      <div class="muted" style="font-size:11px;margin-top:2px">תמחור מכשיר ללקוח בסניף</div>
-      <div class="muted" style="font-size:15px;margin-top:4px">▾</div>
+    host.innerHTML=`<div class="rw ti" onclick="tiWidgetToggle(true)">
+      <div class="rwi">🔄</div>
+      <div class="rwt"><div class="t">מחשבון טרייד-אין</div>
+        <div class="s">תמחור מכשיר ללקוח בסניף</div></div>
+      <span class="rwc">⌄</span>
     </div>`;
     return;
   }
@@ -8848,14 +8864,14 @@ function gcwStatusChip(st,start){
 }
 function gcwRender(){
   const host=document.getElementById('gcWidgetHost'); if(!host) return;
-  if(window.matchMedia('(max-width:1199px)').matches){ host.innerHTML=''; return; }
+  if(window.matchMedia('(max-width:979px)').matches){ host.innerHTML=''; return; }
   const w=gcwState();
   if(!w.open){
-    host.innerHTML=`<div class="gcard gcw-widget" onclick="gcwToggle(true)" style="width:200px;z-index:5;padding:16px;text-align:center;cursor:pointer">
-      <div style="font-size:26px;line-height:1">🛡️</div>
-      <div style="font-weight:800;font-size:13.5px;color:#149c40;margin-top:6px">Green Care</div>
-      <div class="muted" style="font-size:11px;margin-top:2px">פוליסה חדשה / בדיקה לפי סריאל</div>
-      <div class="muted" style="font-size:15px;margin-top:4px">▾</div>
+    host.innerHTML=`<div class="rw gc" onclick="gcwToggle(true)">
+      <div class="rwi">🛡️</div>
+      <div class="rwt"><div class="t">Green Care</div>
+        <div class="s">פוליסה חדשה / בדיקה לפי סריאל</div></div>
+      <span class="rwc">⌄</span>
     </div>`;
     return;
   }
