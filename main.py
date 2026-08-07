@@ -1857,6 +1857,71 @@ def _pos_price_card(pid: str) -> dict:
     return card
 
 
+# ── הגנת סידורי: יחידה ששייכת לסניף אחר לא תרד מהמלאי כאן ─────────────
+# הסריאל מזוהה לפי המוצר, אבל **היחידה עצמה** יושבת בסניף מסוים בקופה. הורדה
+# בסיטי של יחידה שרשומה בסטאר הייתה מורידה את הפריט הלא נכון (או נופלת בקופה).
+_serial_live_cache: dict = {}          # {pid: (ts, {serial: {...}})}
+_SERIAL_LIVE_TTL = 120
+
+
+def _serial_live_map(pid: str) -> Optional[dict]:
+    """{serial: {branch_id, status}} מהקופה. None = לא ניתן לקרוא (לא חוסמים)."""
+    import time as _t
+    pid = str(pid)
+    hit = _serial_live_cache.get(pid)
+    if hit and (_t.time() - hit[0]) < _SERIAL_LIVE_TTL:
+        return hit[1]
+    try:
+        raw = poller.client().get_product_serials(pid) or []
+    except Exception as e:  # noqa: BLE001
+        logger.warning("serial guard: get_product_serials %s failed: %s", pid, e)
+        return None
+    out = {}
+    for s in raw:
+        sn = str(s.get("serial") or "").strip()
+        if not sn:
+            continue
+        try:
+            bid = int(s.get("branchId"))
+        except (TypeError, ValueError):
+            bid = None
+        out[sn] = {"branch_id": bid, "status": s.get("status")}
+    if len(_serial_live_cache) > 60:
+        _serial_live_cache.clear()
+    _serial_live_cache[pid] = (_t.time(), out)
+    return out
+
+
+def _serial_branch_check(pid: str, serial: str, branch_id: int) -> dict:
+    """האם מותר להוריד את הסריאל הזה **בסניף הזה**.
+    ok=False רק כשידוע בוודאות שלא (סניף אחר / לא במלאי). כשל קריאה מהקופה →
+    ok=True עם reason='unknown' — לא חוסמים עבודה בסניף בגלל תקלת רשת."""
+    serial = str(serial or "").strip()
+    out = {"ok": True, "reason": "unknown", "serial": serial,
+           "branch_id": None, "branch_name": ""}
+    if not serial or not pid:
+        return out
+    m = _serial_live_map(pid)
+    if m is None:
+        return out
+    rec = m.get(serial)
+    if rec is None:
+        out.update(ok=False, reason="missing",
+                   message="הסידורי %s לא נמצא במלאי החי באף סניף — ייתכן שכבר "
+                           "נמכר או הורד." % serial)
+        return out
+    bid = rec.get("branch_id")
+    out.update(branch_id=bid, branch_name=cfg.branch_name(bid) if bid else "")
+    if bid and int(bid) != int(branch_id):
+        out.update(ok=False, reason="elsewhere",
+                   message="הסידורי %s רשום בקופה בסניף %s — לא ניתן להוריד אותו "
+                           "מהמלאי כאן. צריך קודם העברה לסניף." %
+                           (serial, out["branch_name"] or bid))
+        return out
+    out.update(reason="ok")
+    return out
+
+
 @app.get("/api/admin/pos/lookup")
 def pos_lookup(code: str, branch_id: int = CITY_BRANCH_ID,
                x_admin_key: Optional[str] = Header(None),
@@ -1906,8 +1971,12 @@ def pos_lookup(code: str, branch_id: int = CITY_BRANCH_ID,
         return {"mode": "unknown", "code": code,
                 "message": "הקוד לא זוהה בקופה — בדוק שהמוצר מחובר (מק\"ט/ברקוד)"}
 
-    return {"mode": "product", "code": code, "branch_id": branch_id,
-            "product": _pos_price_card(pid)}
+    out = {"mode": "product", "code": code, "branch_id": branch_id,
+           "product": _pos_price_card(pid)}
+    if is_serial_code:
+        # 🛡️ היחידה הסידורית חייבת לשבת בסניף הזה, אחרת אין מה להוריד כאן
+        out["serial_check"] = _serial_branch_check(pid, code, branch_id)
+    return out
 
 
 class PosRemovalItem(BaseModel):
@@ -1939,6 +2008,19 @@ def pos_removal_create(body: PosRemovalIn, x_admin_key: Optional[str] = Header(N
     items = [i.model_dump() for i in (body.items or []) if (i.sku or "").strip()]
     if not items:
         raise HTTPException(400, "אין פריטים בפעולה")
+    # 🛡️ שכבת אכיפה אחרונה: יחידה סידורית שיושבת בסניף אחר (או שכבר לא במלאי)
+    # לא נכנסת לתור בכלל — כדי שהסוכן לא ינסה להוריד אותה שוב ושוב בלי סיכוי.
+    seen_serials = set()
+    for it in items:
+        sn = (it.get("serial") or "").strip()
+        if not sn:
+            continue
+        if sn in seen_serials:
+            raise HTTPException(400, "הסידורי %s מופיע פעמיים בפעולה" % sn)
+        seen_serials.add(sn)
+        chk = _serial_branch_check(it.get("sku"), sn, body.branch_id)
+        if not chk.get("ok"):
+            raise HTTPException(400, chk.get("message") or "סידורי לא תקין לסניף זה")
     rid = db.pos_removal_add(
         branch_id=body.branch_id, employee_name=body.employee_name,
         employee_no=body.employee_no, amount=body.amount, note=body.note,

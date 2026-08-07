@@ -260,6 +260,8 @@ function toast(msg, err){ const el=document.getElementById('toast'); el.textCont
 function money(v){ if(v==null||v==='') return '—'; const n=Number(v); return '₪'+n.toLocaleString('en-US'); }
 function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function focusScan(){ const s=document.getElementById('scan'); s.value=''; s.focus(); }
+/* סיום בדיקת מחיר — מנקה גם את כרטיס התוצאה, לא רק את שדה הסריקה */
+function resetScan(){ document.getElementById('result').innerHTML=''; focusScan(); }
 
 /* ---- gate ---- */
 function gateGo(){ const k=document.getElementById('gateKey').value.trim(); if(!k) return;
@@ -334,11 +336,13 @@ function render(d){
         <span style="align-self:center;color:var(--ink2)">— או המשך להורדה למטה —</span>
       </div>`;
   }
-  R.innerHTML = head + prodCard(p, d.code);
+  R.innerHTML = head + prodCard(p, d.code, d.serial_check);
 }
 
-function prodCard(p, code){
+function prodCard(p, code, chk){
   if(!p) return `<div class="banner unk">אין נתוני מוצר</div>`;
+  // 🛡️ יחידה סידורית ששייכת לסניף אחר / כבר לא במלאי — אין מה להוריד כאן
+  const blocked = chk && chk.ok===false;
   const st=p.stock||{};
   const cityQ = (st[BR]!=null?st[BR]:'—');
   const names={1:'גן העיר',2:'סטאר',3:'מחסן/מרלוג',4:'עד הלום',5:'אתר'};
@@ -359,9 +363,10 @@ function prodCard(p, code){
       ${p.permalink?`<div class="stockline"><a href="${esc(p.permalink)}" target="_blank" style="color:var(--accent)">פתח באתר ↗</a></div>`:''}
     </div></div>
     ${warn}
+    ${blocked?`<div class="banner unk" style="margin-top:8px">⛔ ${esc(chk.message||'הסידורי לא זמין להורדה בסניף זה')}</div>`:''}
     <div class="actions">
-      <button class="btn primary" onclick='addToCart(${JSON.stringify({sku:p.product_id,name:p.name||code,serial:(p.is_serial?code:''),barcode:(p.barcode||(p.is_serial?'':code)||''),image:p.image||""}).replace(/'/g,"&#39;")})'>הוסף להורדה</button>
-      <button class="btn ghost" onclick="focusScan()">בדיקת מחיר בלבד</button>
+      ${blocked?'':`<button class="btn primary" onclick='addToCart(${JSON.stringify({sku:p.product_id,name:p.name||code,serial:(p.is_serial?code:''),barcode:(p.barcode||(p.is_serial?'':code)||''),image:p.image||""}).replace(/'/g,"&#39;")})'>הוסף להורדה</button>`}
+      <button class="btn ghost" onclick="resetScan()">${blocked?'סגור':'בדיקת מחיר בלבד'}</button>
     </div>`;
 }
 

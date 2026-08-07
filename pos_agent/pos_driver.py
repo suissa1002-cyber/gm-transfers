@@ -10,7 +10,7 @@ import time
 
 from pywinauto import Application, Desktop, mouse
 
-DRIVER_VERSION = "2026-08-07.20"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
+DRIVER_VERSION = "2026-08-07.21"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
 POS_TITLE_RE = ".*אורדר.*"
 FORM_TITLE = "הורדה מהמלאי"
 ITEM_TITLE = "הורדה מהמלאי - פעולה חדשה"
@@ -66,6 +66,31 @@ I_NOTE          = 14    # TextBox "הערה" (הרחב)
 def connect():
     app = Application(backend="win32").connect(title_re=POS_TITLE_RE, timeout=15)
     return app, app.window(title_re=POS_TITLE_RE)
+
+
+def _wait_until(pred, timeout=2.0, step=0.1):
+    """ממתין לתנאי במקום sleep קבוע. מחזיר True אם התקיים.
+    ⏱️ זה מה שהופך את ההרצה למהירה: רוב ההמתנות הקבועות היו 'מספיק לגרוע ביותר',
+    ובפועל הקופה מגיבה הרבה יותר מהר."""
+    end = time.time() + timeout
+    while time.time() < end:
+        try:
+            if pred():
+                return True
+        except Exception:                # noqa: BLE001
+            pass
+        time.sleep(step)
+    return False
+
+
+# ⏱️ מדידת זמנים — מודפס בסוף כל הרצה כדי לראות בדיוק איפה הזמן נשרף
+_TIMING = []
+
+
+def _lap(tag, t0):
+    dt = time.time() - t0
+    _TIMING.append("%s %.1fs" % (tag, dt))
+    return time.time()
 
 
 def _spec(app, title, timeout=8):
@@ -179,7 +204,11 @@ def _confirm_dialog(yes=True, timeout=6):
     ברירת המחדל הוא **ביטול**, ולכן ENTER היה משאיר אותנו תקועים בפנים."""
     wanted = ("כן", "&כן", "Yes", "&Yes") if yes else ("ביטול", "לא", "Cancel", "No")
     end = time.time() + timeout
+    _first = True
     while time.time() < end:
+        if not _first:
+            time.sleep(0.12)      # סריקת כל חלונות ה-Desktop יקרה — לא בלולאה צמודה
+        _first = False
         try:
             for w in Desktop(backend="win32").windows():
                 try:
@@ -206,7 +235,9 @@ def _guard_new_item(app, sku):
     """⛔ הגנה: אם הקופה פתחה 'פריט חדש' — המק"ט לא נמצא אצלה. סוגרים ב'ביטול'
     ועוצרים. **אסור בשום מצב ליצור מוצר בקופה** (קרה 07/08: הקוד נכנס חלקי,
     הקופה הציעה מוצר חדש, והסוכן הקליד לתוכו את הכמות כשם המוצר)."""
-    w = _spec(app, NEW_ITEM_TITLE, timeout=2)
+    # 0.5ש' מספיק: החלון נפתח מיד אחרי Enter, וכבר המתנּו אחריו. timeout ארוך
+    # כאן היה עולה 2 שניות **לכל פריט** בלי שום תועלת.
+    w = _spec(app, NEW_ITEM_TITLE, timeout=0.5)
     if w is None:
         return
     try:
@@ -231,9 +262,11 @@ def _clear_field(c):
     except Exception:                    # noqa: BLE001
         pass
     c.click_input()
-    time.sleep(0.15)
-    send_keys("{END}" + "{BACKSPACE}" * 40 + "{DELETE}" * 10)
-    time.sleep(0.15)
+    time.sleep(0.08)
+    # ⏱️ pause מפורש: ברירת המחדל של send_keys היא 0.05ש' **לכל תו**, כלומר
+    # 50 תווי מחיקה = 2.5ש' מבוזבזים בכל ניקוי שדה. 24 מספיקים (סריאל=15 תווים).
+    send_keys("{END}" + "{BACKSPACE}" * 24 + "{DELETE}" * 6, pause=0.005)
+    time.sleep(0.08)
 
 
 def _type_code_verified(c, code, tries=4):
@@ -241,22 +274,27 @@ def _type_code_verified(c, code, tries=4):
 
     ⚠️ למה: אחרי שפריט נוסף לרשימה הקופה עסוקה רגע, והתווים הראשונים של הקוד
     הבא נבלעים — סריאל 863631087396667 נקלט כ-087396667 ואז נפתח "פריט חדש"
-    (אסי, 07/08). מקלידים לאט, קוראים בחזרה, ומנסים שוב עד שזהה.
+    (אסי, 07/08). קוראים בחזרה ומנסים שוב עד שזהה.
+
+    ⏱️ מהיר-קודם: מתחילים בהקלדה מהירה, ורק אם היא לא נקלטה במלואה מאטים.
+    ברוב הפעמים המהירה עובדת — וזה חוסך ~1ש' לכל פריט מול pause קבוע של 0.06.
     """
     from pywinauto.keyboard import send_keys
     code = str(code)
-    for _ in range(tries):
+    paces = [0.015, 0.045, 0.08, 0.12]
+    got = ""
+    for i in range(tries):
         _clear_field(c)
-        time.sleep(0.25)
-        send_keys(code, pause=0.06)          # לאט — VB6 מפספס הקלדה מהירה
-        time.sleep(0.45)
-        try:
-            got = (c.window_text() or "").strip()
-        except Exception:                    # noqa: BLE001
-            got = ""
-        if got == code:
-            return
-        time.sleep(0.4)
+        send_keys(code, pause=paces[min(i, len(paces) - 1)])
+        time.sleep(0.15 + 0.1 * i)           # הקלדה מהירה → בדיקה מהירה
+        for _ in range(6):                   # קריאה-חוזרת עד שהערך מתייצב
+            try:
+                got = (c.window_text() or "").strip()
+            except Exception:                # noqa: BLE001
+                got = ""
+            if got == code:
+                return
+            time.sleep(0.08)
     raise RuntimeError("הקוד '%s' לא נקלט במלואו בשדה (התקבל '%s') — "
                        "נעצר לפני Enter כדי לא לפתוח 'פריט חדש'" % (code, got))
 
@@ -270,10 +308,10 @@ def _type_text(c, text):
     TAB בסוף מאלץ את הקופה לאמת ולקבע את הערך."""
     from pywinauto.keyboard import send_keys
     _clear_field(c)
-    send_keys(str(text))
-    time.sleep(0.2)
+    send_keys(str(text), pause=0.03)
+    time.sleep(0.12)
     send_keys("{TAB}")
-    time.sleep(0.3)
+    time.sleep(0.2)
 
 
 def _item_action_buttons(win):
@@ -516,7 +554,7 @@ def _cleanup(app, T):
     # מסך הפריטים אינו נסגר ב-ESC — לוחצים "יציאה" (הכפתור התחתון בעמודה הימנית).
     # בלעדיו הוא נשאר פתוח וחוסם את תפריט הקופה בריצה הבאה (ElementNotEnabled).
     try:
-        iw = _spec(app, ITEM_TITLE, timeout=1)
+        iw = _spec(app, ITEM_TITLE, timeout=0.4)
         if iw is not None:
             cands = [(c, c.rectangle()) for c in iw.descendants()
                      if c.class_name() == "ThunderRT6UserControlDC"]
@@ -531,10 +569,12 @@ def _cleanup(app, T):
                 _dismiss_message_box()
     except Exception:                    # noqa: BLE001
         pass
+    # ⏱️ timeout קצר: בקופה נקייה החלונות לא קיימים, וכל בדיקה עם timeout=1
+    # הייתה עולה שנייה שלמה — ~4ש' קבועות בכל הרצה בלי שום סיבה.
     for _ in range(3):
         closed = False
         for title in (ITEM_TITLE, FORM_TITLE, "בחר שם עובד"):
-            w = _spec(app, title, timeout=1)
+            w = _spec(app, title, timeout=0.3)
             if w is None:
                 continue
             closed = True
@@ -545,7 +585,7 @@ def _cleanup(app, T):
             except Exception:            # noqa: BLE001
                 pass
             # אם ESC לא סגר את הטופס — לחיצה על "ביטול"
-            if title == FORM_TITLE and _spec(app, FORM_TITLE, timeout=1):
+            if title == FORM_TITLE and _spec(app, FORM_TITLE, timeout=0.4):
                 _click_rect(w, T["cancel_rect"])
                 time.sleep(0.4)
         if not closed:
@@ -575,19 +615,24 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
     if tuning:
         T.update({k: v for k, v in tuning.items() if v is not None})
 
+    del _TIMING[:]
+    _run0 = time.time()
+    _t = _run0
+
     app, pos = connect()
     pos.set_focus()
 
     # 0) ניקוי שאריות מהרצה קודמת (חלון פתוח חוסם את התפריט)
     _cleanup(app, T)
     pos.set_focus()
+    _t = _lap("ניקוי", _t)
 
     # 1) תפריט → טופס הורדה
     try:
         pos.menu_select(T["menu_path"])
     except Exception as e:               # noqa: BLE001
         raise RuntimeError("פתיחת תפריט מלאי נכשלה: %s (%s)" % (e, type(e).__name__))
-    time.sleep(1.0)
+    time.sleep(0.4)
 
     # 2) פופאפ "בחר שם עובד" — ⚠️ חלון **ללא כותרת**, ולכן לא ניתן לאתר לפי שם.
     #    לוחצים על כפתור העובד לפי הטקסט שלו, בדיוק כמו משתמש. הפופאפ מודאלי:
@@ -598,11 +643,11 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
     #    וממלאים שם+מספר עובד ישירות בשדות הטופס (פקדים אמיתיים עם id).
     emp_name = (removal.get("employee_name") or "").strip()
     popup = None
-    for _ in range(12):                  # עד ~6 שניות עד שהפופאפ מצויר
+    for _ in range(30):                  # עד ~6 שניות עד שהפופאפ מצויר
         popup = _find_popup(app)
         if popup is not None:
             break
-        time.sleep(0.5)
+        time.sleep(0.2)
     if popup is not None:
         # קודם מנסים לסגור (ESC/X/ביטול) — אז נמלא עובד בשדות הטופס.
         _dismiss_popup(app, popup)
@@ -629,6 +674,7 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
     form = _spec(app, FORM_TITLE, timeout=8)
     if form is None:
         raise RuntimeError("טופס 'הורדה מהמלאי' לא נפתח")
+    _t = _lap("תפריט+עובד", _t)
 
     # 📸 צילום מצב הטופס בכל כשל — כדי לראות בדיוק איפה נעצר
     def _shot(tag):
@@ -722,6 +768,8 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
         _shot("optype")
         raise RuntimeError("סימון 'עדכון מלאי' נכשל: %s" % _err(e))
 
+    _t = _lap("מילוי טופס", _t)
+
     # 3) התחל פעולה → מסך פריטים
     _shot("filled")                      # צילום הטופס המלא לפני ההמשך
     # הכפתור owner-drawn (בלי טקסט/id) — מאתרים אותו **דינמית**: השורה התחתונה
@@ -738,8 +786,7 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
         _sk("{ENTER}")
     except Exception:                    # noqa: BLE001
         pass
-    time.sleep(1.5)
-    items_win = _spec(app, ITEM_TITLE, timeout=3)
+    items_win = _spec(app, ITEM_TITLE, timeout=4)
 
     if items_win is None:
         row = _bottom_row(form)          # ממוין מימין לשמאל
@@ -776,13 +823,16 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
         btns = _item_action_buttons(items_win)
         if len(btns) >= 5:
             _click_ctrl(btns[4])             # מחק הכל
-            time.sleep(0.8)
-            _confirm_dialog(yes=True)
-            time.sleep(0.8)
+            time.sleep(0.4)
+            # ⏱️ timeout קצר: ברשימה ריקה הקופה **לא** שואלת כלום, וההמתנה
+            # המלאה (6ש') הייתה נשרפת בכל הרצה על דיאלוג שלא יגיע.
+            _confirm_dialog(yes=True, timeout=1.5)
+            time.sleep(0.3)
             _dismiss_message_box()
     except Exception:                        # noqa: BLE001
         pass
     _shot("cleared")                         # תיעוד: הרשימה לפני ההזנה
+    _t = _lap("פתיחת מסך פריטים", _t)
 
     # 4) הזנת פריטים — לכל פריט: קוד → Enter → **כמות (תמיד)** → "הורד מהמלאי".
     #    ⚠️ הכמות היא id=22; id=21 הוא "מלאי נוכחי" (תצוגה). בלי מילוי כמות
@@ -799,9 +849,12 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
         code = serial or sku
         items_win.set_focus()
         from pywinauto.keyboard import send_keys as _sk2
-        _type_code_verified(_child(items_win, I_CODE), code)
+        code_ctrl = _child(items_win, I_CODE)
+        _type_code_verified(code_ctrl, code)
         _sk2("{ENTER}")
-        time.sleep(1.2)
+        # ⏱️ במקום להמתין 1.2ש' קבועות: מחכים לאות שהקופה סיימה לעבד — היא
+        # מרוקנת את שדה הקוד לפריט הבא. בפועל זה ~0.3ש', לא 1.2.
+        _wait_until(lambda: (code_ctrl.window_text() or "").strip() != code, 2.0)
         _guard_new_item(app, code)        # ⛔ מק"ט לא מוכר → ביטול ועצירה
 
         # ⚠️ שני מסלולים שונים (אסי, 07/08):
@@ -810,7 +863,8 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
         #  • פריט **לא-סידורי** → חייבים למלא כמות ואז "הורד מהמלאי", אחרת
         #    הפריט לא נכנס לרשימה שבתחתית.
         if serial:
-            time.sleep(0.6)
+            time.sleep(0.25)
+            _t = _lap("פריט %s" % code, _t)
             continue
 
         qty_s = str(int(qty) if float(qty).is_integer() else qty)
@@ -827,7 +881,8 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
             _click_ctrl(btns[1])
         else:
             _click_rect(items_win, T["add_rect"])
-        time.sleep(0.9)
+        time.sleep(0.45)
+        _t = _lap("פריט %s" % code, _t)
 
     if screenshot_path:
         try: items_win.capture_as_image().save(screenshot_path.replace(".png", "_items.png"))
@@ -841,8 +896,8 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
             items_win.type_keys("{ESC}")
         except Exception:                # noqa: BLE001
             pass
-        time.sleep(0.8)
-        if not _confirm_dialog(yes=True):
+        time.sleep(0.4)
+        if not _confirm_dialog(yes=True, timeout=4):
             btns = _item_action_buttons(items_win)     # נפילה: כפתור "יציאה"
             try:
                 cands = [(c, c.rectangle()) for c in items_win.descendants()
@@ -853,6 +908,8 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
                     _confirm_dialog(yes=True)
             except Exception:            # noqa: BLE001
                 pass
+        _lap("יציאה (יבש)", _t)
+        print("⏱️ סה\"כ %.1fs | %s" % (time.time() - _run0, " · ".join(_TIMING)), flush=True)
         return ""
 
     btns = _item_action_buttons(items_win)       # [0] = "סיים פעולה"
@@ -862,8 +919,10 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
         _click_rect(items_win, T["finish_rect"])
     else:
         raise RuntimeError("לא אותר כפתור 'סיים פעולה'")
-    time.sleep(1.2)
-    _confirm_dialog(yes=True)            # אישור שמירה, אם נשאל
-    time.sleep(1.5)
+    time.sleep(0.8)
+    _confirm_dialog(yes=True, timeout=4)   # אישור שמירה, אם נשאל
+    time.sleep(1.0)
     _dismiss_message_box()
+    _lap("סיום פעולה", _t)
+    print("⏱️ סה\"כ %.1fs | %s" % (time.time() - _run0, " · ".join(_TIMING)), flush=True)
     return ""

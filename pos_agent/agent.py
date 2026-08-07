@@ -185,10 +185,14 @@ def main():
     log("סוכן הורדה מהמלאי — GreenOS=%s | גרסת דרייבר: %s" % (GREENOS_URL, ver))
     log("ממתין לפעולות. (enabled/dry_run נשלטים מ-GreenOS; ברירת מחדל: מושבת+dry)")
     while True:
+        nap = 5
         try:
             cfg = get_config()
+            # ⏱️ poll_sec נמוך = הפעולה נתפסת כמעט מיד אחרי השמירה במסך. זו קריאה
+            # אחת קלה לשרת שלנו (לא ל-NewOrder), ולכן אין לה מחיר במכסה.
+            nap = max(3, int(cfg.get("poll_sec", 5)))
             if not cfg.get("enabled"):
-                time.sleep(max(10, int(cfg.get("poll_sec", 25))))
+                time.sleep(max(10, nap))
                 continue
             for r in get_pending():
                 _t = _dry_done.get(r["id"])
@@ -197,7 +201,7 @@ def main():
                 process(r, cfg)
         except Exception as e:                # noqa: BLE001
             log("סבב נכשל: %s" % e)
-        time.sleep(max(10, int(get_config().get("poll_sec", 25))))
+        time.sleep(nap)                       # ⛔ בלי get_config נוסף — סבב = קריאה אחת
 
 
 if __name__ == "__main__":
