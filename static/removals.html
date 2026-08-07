@@ -448,6 +448,8 @@ async function loadAgent(){
     el.textContent='🔌 הסוכן לא מחובר'+(seen==null?'':(' (נראה לפני '+Math.round(seen/60)+' דק׳)'))
       +' — הפעולות ימתינו';
   }
+  else if(AGENT.desktop_locked){ el.className='chip off';
+    el.textContent='🔒 מסך המחשב בקופה נעול — ההזנה תמתין'; }
   else if(!AGENT.enabled){ el.className='chip off'; el.textContent='⛔ הסוכן מושבת — לא יוזן לקופה'; }
   else if(AGENT.dry_run){ el.className='chip dry'; el.textContent='🧪 הרצה יבשה — לא יורד מלאי בפועל'; }
   else { el.className='chip on'; el.textContent='🟢 סוכן פעיל — מוזן לקופה'; }

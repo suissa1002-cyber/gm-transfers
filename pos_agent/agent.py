@@ -115,7 +115,16 @@ def api(method, path, **kw):
 
 
 def get_config():
-    r = api("GET", "/api/admin/pos/agent-config?ping=1")   # ping=1 → חותמת חיים למסך
+    # ping=1 → חותמת חיים למסך. locked מדווח אם מסך המחשב נעול: הדופק עצמו הוא
+    # בקשת רשת ועובד מצוין על מסך נעול, ולכן בלעדיו המסך היה מציג "סוכן פעיל"
+    # בזמן ששום הזנה לקופה לא יכולה לרוץ.
+    lk = 0
+    try:
+        if pos_driver is not None and not pos_driver._desktop_active():
+            lk = 1
+    except Exception:                        # noqa: BLE001
+        pass
+    r = api("GET", "/api/admin/pos/agent-config?ping=1&locked=%d" % lk)
     return r.json() if r.ok else {"enabled": False, "dry_run": True, "poll_sec": 25}
 
 

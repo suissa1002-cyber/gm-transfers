@@ -2097,7 +2097,8 @@ def removals_page():
 
 # ── ממשק לסוכן ה-RPA (מכונת Windows) ──────────────────────────────────
 @app.get("/api/admin/pos/agent-config")
-def pos_agent_config(ping: int = 0, x_admin_key: Optional[str] = Header(None)):
+def pos_agent_config(ping: int = 0, locked: int = 0,
+                     x_admin_key: Optional[str] = Header(None)):
     """דגלי שליטה לסוכן: enabled (kill-switch) + dry_run (בלי שמירה בקופה).
     ברירת מחדל: מושבת + dry-run — כלום לא רץ/נשמר עד שאסי מפעיל במפורש.
     `ping=1` = הקריאה מגיעה **מהסוכן עצמו** → נרשמת חותמת חיים, כדי שהמסך יבדיל
@@ -2106,6 +2107,10 @@ def pos_agent_config(ping: int = 0, x_admin_key: Optional[str] = Header(None)):
     if ping:
         from datetime import timezone as _tz9
         db.setting_set("pos_agent_seen", datetime.now(_tz9.utc).isoformat(), "agent")
+        # ⚠️ "רץ" ≠ "יכול לעבוד": הדופק הוא בקשת רשת ועובד גם כשמסך המחשב נעול,
+        # אבל ההזנה לקופה מבוססת קליק פיזי ולא תרוץ. שומרים בנפרד כדי שהמסך
+        # יראה את האמת ולא ירוק מטעה.
+        db.setting_set("pos_agent_locked", "1" if locked else "0", "agent")
     tuning = {}
     raw = db.setting_get("pos_agent_tuning")
     if raw:
@@ -2116,7 +2121,8 @@ def pos_agent_config(ping: int = 0, x_admin_key: Optional[str] = Header(None)):
     return {"enabled": db.setting_get("pos_agent_enabled") == "1",
             "dry_run": db.setting_get("pos_agent_dry_run") != "0",   # ברירת מחדל dry
             "poll_sec": int(db.setting_get("pos_agent_poll_sec") or 25),
-            "tuning": tuning, "seen_sec_ago": _agent_seen_sec()}
+            "tuning": tuning, "seen_sec_ago": _agent_seen_sec(),
+            "desktop_locked": db.setting_get("pos_agent_locked") == "1"}
 
 
 def _agent_seen_sec():
