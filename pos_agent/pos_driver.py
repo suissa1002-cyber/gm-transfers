@@ -1003,7 +1003,9 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
     #    (2) לחיצה על הפקד הימני בשורה התחתונה.
     #    (3) הפקד הבא בשורה — רק אם הטופס עדיין פתוח (כלומר לא לחצנו "ביטול").
     #    ⛔ אם הטופס נסגר בלי שנפתח מסך פריטים — לחצנו "ביטול", ומדווחים במפורש.
+    _t = _lap("צילום טופס", _t)
     items_win = None
+    how = "ENTER"
     try:
         form.set_focus()
         from pywinauto.keyboard import send_keys as _sk
@@ -1013,6 +1015,7 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
     items_win = _spec(app, ITEM_TITLE, timeout=4)
 
     if items_win is None:
+        how = "לחיצה"
         row = _bottom_row(form)          # ממוין מימין לשמאל
         for cand in row[:2]:
             if _spec(app, FORM_TITLE, timeout=1) is None:
@@ -1036,6 +1039,7 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
         raise RuntimeError("מסך הזנת הפריטים לא נפתח%s"
                            % (" — הקופה אמרה: %s" % msg if msg else
                               " (לא הוצגה הודעה — ייתכן שהלחיצה פספסה)"))
+    _t = _lap("התחל פעולה (%s)" % how, _t)
 
     # 🛡️ ניקוי הרשימה לפני הזנה — **קריטי לבטיחות.** הקופה משחזרת פעולה שלא
     # הושלמה, ולכן פריטים מריצה קודמת עלולים להישאר ברשימה (נצפה 07/08: SmartTag
@@ -1055,8 +1059,9 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
             _dismiss_message_box()
     except Exception:                        # noqa: BLE001
         pass
+    _t = _lap("מחק הכל", _t)
     _shot("cleared")                         # תיעוד: הרשימה לפני ההזנה
-    _t = _lap("פתיחת מסך פריטים", _t)
+    _t = _lap("צילום רשימה", _t)
 
     # 4) הזנת פריטים — לכל פריט: קוד → Enter → **כמות (תמיד)** → "הורד מהמלאי".
     #    ⚠️ הכמות היא id=22; id=21 הוא "מלאי נוכחי" (תצוגה). בלי מילוי כמות
