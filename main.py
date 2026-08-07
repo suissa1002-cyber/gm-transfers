@@ -1853,6 +1853,7 @@ def _pos_price_card(pid: str) -> dict:
     except Exception as e:  # noqa: BLE001
         logger.warning("pos price card: stock %s failed: %s", pid, e)
     # אתר: מחיר + תמונה + קישור (מק"ט == SKU)
+    wc_ok = True
     creds = _wc_creds()
     if creds:
         base, k, s = creds
@@ -1871,9 +1872,14 @@ def _pos_price_card(pid: str) -> dict:
                              "permalink": p.get("permalink", "")})
         except Exception as e:  # noqa: BLE001
             logger.warning("pos price card: wc %s failed: %s", pid, e)
-    if len(_price_card_cache) > 200:
-        _price_card_cache.clear()
-    _price_card_cache[pid] = (_t.time(), card)
+            wc_ok = False
+    # ⚠️ לא ממטמנים כרטיס שהאתר לא ענה עליו: אחרת כשל רגעי אחד "נתקע" ל-3 דקות
+    # וכל הסניפים מקבלים מוצר בלי תמונה ובלי מחיר אתר, גם כשהאתר כבר עונה
+    # (נצפה 07/08 — מוצר מחובר עם תמונה באתר הופיע בלי תמונה).
+    if wc_ok:
+        if len(_price_card_cache) > 200:
+            _price_card_cache.clear()
+        _price_card_cache[pid] = (_t.time(), card)
     return card
 
 

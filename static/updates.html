@@ -322,12 +322,14 @@ async function pickProduct(){
     const p=d.product; if(!p) throw 'לא נמצא';
     PROD=p;
     document.getElementById('pickBox').innerHTML=`<div class="pick" style="margin-top:8px">
-      <div class="im">${p.image?`<img src="${esc(p.image)}" style="width:100%;height:100%;object-fit:contain">`:''}</div>
+      <div class="im">${p.image?`<img src="${esc(p.image)}" style="width:100%;height:100%;object-fit:contain">`
+        :'<span style="font-size:9px;color:var(--txt-3);text-align:center;line-height:1.2">אין<br>תמונה</span>'}</div>
       <div><div class="nm">${esc(p.name||'')}</div>
         <div class="sb">מק״ט ${esc(p.product_id)} · קופה ${money(p.pos_price)} · אתר ${money(p.site_price)}</div></div>
       <button class="ch" onclick="PROD=null;document.getElementById('pickBox').innerHTML='';preview()">הסר</button></div>`;
     if(!document.getElementById('fTitle').value) document.getElementById('fTitle').value=p.name||'';
     if(!document.getElementById('fNow').value && p.site_price) document.getElementById('fNow').value=p.site_price;
+    if(!p.image) toast('המוצר נמצא אך ללא תמונה מהאתר — נסה שוב או העלה ידנית',false);
     preview();
   }catch(e){ toast(String(e),false); }
 }
