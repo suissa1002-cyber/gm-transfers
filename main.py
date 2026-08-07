@@ -2304,10 +2304,12 @@ class UpdateImageIn(BaseModel):
     data_url: str            # data:image/png;base64,....
 
 
-@app.post("/api/admin/branch-updates/image")
+@app.post("/api/admin/branch-update-image")
 def branch_update_image_up(body: UpdateImageIn, x_admin_key: Optional[str] = Header(None)):
-    """מעלה תמונה לעדכון. נשמרת כ-blob ב-DB (אותו מנגנון של גיבוי מדיית וואטסאפ)
-    ⚠️ לא לקובץ בדיסק: ה-filesystem ב-Render זמני ונמחק בכל דיפלוי."""
+    """מעלה תמונה לעדכון. נשמרת כ-blob ב-DB (אותו מנגנון של גיבוי מדיית וואטסאפ).
+    ⚠️ לא לקובץ בדיסק: ה-filesystem ב-Render זמני ונמחק בכל דיפלוי.
+    ⚠️ הנתיב **אינו** תחת /branch-updates/: שם הוא נבלע ע"י /{uid} של העריכה,
+    והמילה "image" נקראה כמזהה עדכון (422 עם שני שדות — אסי, 07/08)."""
     _require_admin(x_admin_key)
     import base64
     raw = (body.data_url or "").strip()

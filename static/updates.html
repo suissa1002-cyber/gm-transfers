@@ -284,7 +284,12 @@ async function api(path,opts){
   const r=await fetch(path,Object.assign({headers:H()},opts||{}));
   if(r.status===401){ localStorage.removeItem('gm_admin_key'); location.reload(); }
   const j=await r.json().catch(()=>({}));
-  if(!r.ok) throw (j.detail||('שגיאה '+r.status));
+  if(!r.ok){
+    let d=j.detail;
+    if(Array.isArray(d)) d=d.map(x=>(x&&(x.msg||x.type))||'שגיאה').join(' · ');
+    else if(d&&typeof d==='object') d=JSON.stringify(d);
+    throw (d||('שגיאה '+r.status));
+  }
   return j;
 }
 function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
@@ -338,7 +343,7 @@ function setImg(url){
   preview();
 }
 async function uploadDataUrl(dataUrl){
-  try{ const r=await api('/api/admin/branch-updates/image',{method:'POST',
+  try{ const r=await api('/api/admin/branch-update-image',{method:'POST',
         body:JSON.stringify({data_url:dataUrl})});
     setImg(r.url); toast('✓ התמונה הועלתה',true); }
   catch(e){ toast(String(e),false); }
