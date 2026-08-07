@@ -150,6 +150,153 @@
     .pcard .pi{width:100%}
     .pcard .pcStock,.pcard .pcFoot{justify-content:center}
   }
+
+  /* ══ מסך קליטה — עיצוב מחודש (07/08) ══════════════════════════════
+     בנוי על טוקני העיצוב הקיימים (--brand/--sh-2/--r-lg/--sN). המסך היה
+     על המשתנים הישנים ורדיוסים קשיחים, ולכן נראה ישן משאר GreenOS. */
+  .bwrap{display:grid;gap:var(--s5);align-items:start;
+    grid-template-columns:minmax(0,1.15fr) minmax(0,1fr) 304px;
+    grid-template-areas:"scan transfers rail"}
+  .b-scan{grid-area:scan}.b-tr{grid-area:transfers}.b-rail{grid-area:rail}
+  @media(max-width:1380px){.bwrap{grid-template-columns:minmax(0,1fr) 304px;
+    grid-template-areas:"scan rail" "transfers rail"}}
+  @media(max-width:980px){.bwrap{grid-template-columns:1fr;
+    grid-template-areas:"scan" "transfers" "rail"}}
+  @media(min-width:1381px){.tcards{grid-template-columns:1fr}}
+  /* תחנת סריקה — סריקה + תוצאה + מוצר על משטח אחד */
+  .station{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);
+    box-shadow:var(--sh-2);overflow:hidden}
+  .station .sh{padding:var(--s5) var(--s5) var(--s4);
+    background:linear-gradient(180deg,var(--card-2),transparent)}
+  .station .sh h2{margin:0 0 var(--s4);font-size:15px;display:flex;align-items:center;gap:8px}
+  .station .sh h2 .lv{width:7px;height:7px;border-radius:50%;background:var(--brand);
+    box-shadow:0 0 0 4px var(--brand-bg);animation:lvp 2.4s ease-in-out infinite}
+  @keyframes lvp{0%,100%{opacity:1}50%{opacity:.45}}
+  .sbox{position:relative}
+  .sbox input{width:100%;background:var(--bg);border:1.5px solid var(--line-2);color:var(--txt);
+    border-radius:var(--r-md);padding:18px;font-size:20px;font-weight:700;text-align:center;
+    letter-spacing:.5px;transition:.16s;outline:none}
+  .sbox input::placeholder{color:var(--txt-3);font-weight:600;letter-spacing:0}
+  .sbox input:focus{border-color:var(--brand);box-shadow:0 0 0 4px var(--brand-bg)}
+  .smeta{display:flex;align-items:center;gap:var(--s4);flex-wrap:wrap;margin-top:var(--s3);
+    font-size:13px;color:var(--muted)}
+  .smeta b{color:var(--txt);font-variant-numeric:tabular-nums}
+  .smeta .sep{width:1px;height:14px;background:var(--line)}
+  .smeta a{color:var(--blue);font-weight:700;cursor:pointer}
+  .sres{border-top:1px solid var(--line);padding:var(--s4) var(--s5);display:flex;gap:var(--s3);
+    align-items:flex-start;animation:srIn .22s cubic-bezier(.2,.8,.3,1)}
+  @keyframes srIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+  .sres .bdg{width:34px;height:34px;border-radius:var(--r-sm);display:flex;align-items:center;
+    justify-content:center;flex:0 0 auto;font-size:17px;font-weight:800}
+  .sres.ok .bdg{background:var(--brand-bg);color:var(--brand-ink)}
+  .sres.err .bdg{background:var(--red-bg);color:var(--red-ink)}
+  .sres.warn .bdg{background:var(--amber-bg);color:var(--amber-ink)}
+  .sres .rt{flex:1;min-width:0}
+  .sres .rt .t{font-weight:800;font-size:15px;line-height:1.4}
+  .sres.ok .rt .t{color:var(--brand-ink)} .sres.err .rt .t{color:var(--red-ink)}
+  .sres.warn .rt .t{color:var(--amber-ink)}
+  .sres .rt .s{font-size:12.5px;color:var(--muted);margin-top:3px}
+  .sres.idle{color:var(--muted);font-size:13px;justify-content:center}
+  /* משטח ההעברות — כותרת בפנים, כדי שיתיישר עם תחנת הסריקה */
+  .pane{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);
+    box-shadow:var(--sh-2);overflow:hidden}
+  .pane .ph{padding:var(--s5) var(--s5) var(--s4);display:flex;align-items:center;gap:var(--s3);
+    background:linear-gradient(180deg,var(--card-2),transparent)}
+  .pane .ph h3{margin:0;font-size:15px;font-weight:800}
+  .pane .ph .n{font-size:12px;font-weight:800;color:var(--muted);background:var(--card);
+    border:1px solid var(--line);border-radius:var(--r-pill);padding:2px 9px;
+    font-variant-numeric:tabular-nums}
+  .tcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:var(--s3);
+    padding:0 var(--s4) var(--s4)}
+  .tc{background:var(--card-2);border:1px solid var(--line);border-radius:var(--r-md);
+    padding:var(--s4);cursor:pointer;transition:.16s;position:relative;overflow:hidden}
+  .tc::before{content:'';position:absolute;inset-inline-start:0;top:0;bottom:0;width:3px;
+    background:var(--amber)}
+  .tc.partial::before{background:var(--blue)}
+  .tc.received::before,.tc.closed::before{background:var(--brand)}
+  .tc:hover{border-color:var(--line-2);background:var(--card-3)}
+  .tc .r1{display:flex;align-items:center;justify-content:space-between;gap:var(--s2)}
+  .tc .op{font-weight:800;font-size:16px;font-variant-numeric:tabular-nums}
+  .tc .r2{color:var(--muted);font-size:12.5px;margin-top:6px}
+  .tc .r2 b{color:var(--txt)}
+  .tc .prg{display:flex;align-items:center;gap:var(--s3);margin-top:var(--s3)}
+  .tbar{flex:1;height:6px;background:var(--card);border:1px solid var(--line);
+    border-radius:var(--r-pill);overflow:hidden}
+  .tbar i{display:block;height:100%;background:var(--brand);transition:width .4s}
+  .tc.in_transit .tbar i{background:var(--amber)}
+  .tc.partial .tbar i{background:var(--blue)}
+  .tc .cnt{font-size:12.5px;font-weight:800;color:var(--muted);font-variant-numeric:tabular-nums}
+  .tc .cnt b{color:var(--txt)}
+  /* רייל הווידג'טים — במקום קופסאות צפות בפינה */
+  .brail{display:flex;flex-direction:column;gap:var(--s3);position:sticky;top:76px}
+  @media(max-width:980px){.brail{position:static}}
+  .brail .gcard,.brail .gcw-widget{width:100%!important}
+  /* רצועת עדכונים מהמטה */
+  .feed{margin-bottom:var(--s5)}
+  .feedhead{display:flex;align-items:center;gap:var(--s3);margin-bottom:var(--s3)}
+  .feedhead h3{margin:0;font-size:14px;font-weight:800}
+  .feedhead .n{font-size:11.5px;font-weight:800;color:#04150c;background:var(--brand);
+    border-radius:var(--r-pill);padding:2px 9px;font-variant-numeric:tabular-nums}
+  .strip{display:flex;gap:var(--s3);overflow-x:auto;padding-bottom:var(--s2);
+    scroll-snap-type:x mandatory}
+  .strip::-webkit-scrollbar{height:6px}
+  .strip::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:99px}
+  .nc{flex:0 0 244px;scroll-snap-align:start;background:var(--card);border:1px solid var(--line);
+    border-radius:var(--r-md);overflow:hidden;box-shadow:var(--sh-1);cursor:pointer;
+    transition:.16s;display:flex;flex-direction:column}
+  .nc:hover{transform:translateY(-3px);box-shadow:var(--sh-2);border-color:var(--line-2)}
+  .nc.unread{border-color:color-mix(in srgb,var(--brand) 45%,transparent);
+    box-shadow:0 0 0 3px var(--brand-bg),var(--sh-1)}
+  .nc .hero{height:98px;position:relative;background:var(--card-3);display:flex;
+    align-items:center;justify-content:center;overflow:hidden}
+  .nc .hero img{width:100%;height:100%;object-fit:cover}
+  .nc .type{position:absolute;top:10px;inset-inline-start:10px;font-size:11px;font-weight:800;
+    border-radius:var(--r-pill);padding:4px 10px;color:#fff}
+  .type.deal{background:rgba(255,90,95,.92)} .type.new{background:rgba(76,141,255,.92)}
+  .type.note{background:rgba(255,176,32,.95);color:#2a1a00} .type.info{background:rgba(0,0,0,.55)}
+  .nc .ud{position:absolute;top:10px;inset-inline-end:10px;width:9px;height:9px;border-radius:50%;
+    background:var(--brand);box-shadow:0 0 0 3px rgba(255,255,255,.85)}
+  .nc .nb{padding:10px var(--s3) var(--s3);flex:1;display:flex;flex-direction:column}
+  .nc .nt{font-weight:800;font-size:14px;line-height:1.3}
+  .nc .np{display:flex;align-items:baseline;gap:7px;margin-top:4px}
+  .nc .np .now{font-size:19px;font-weight:800;color:var(--red-ink);font-variant-numeric:tabular-nums}
+  .nc .np .old{font-size:13px;color:var(--txt-3);text-decoration:line-through;font-weight:700}
+  .nc .nd{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.45;flex:1;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .nc .nf{display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:8px;
+    border-top:1px solid var(--line);font-size:11.5px;color:var(--txt-3)}
+  .nc .nf .tag{background:var(--card-2);border:1px solid var(--line);border-radius:var(--r-pill);
+    padding:2px 8px;font-weight:700;color:var(--muted)}
+  /* פופאפ עדכון */
+  .uov{position:fixed;inset:0;z-index:60;background:rgba(4,8,14,.62);backdrop-filter:blur(6px);
+    display:none;align-items:center;justify-content:center;padding:var(--s5)}
+  .uov.on{display:flex}
+  .umd{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);
+    width:min(680px,100%);max-height:88vh;overflow:auto;box-shadow:var(--sh-3);position:relative;
+    animation:umIn .24s cubic-bezier(.2,.8,.3,1)}
+  @keyframes umIn{from{opacity:0;transform:translateY(14px) scale(.985)}to{opacity:1;transform:none}}
+  .umd .uh{height:230px;position:relative;display:flex;align-items:center;justify-content:center;
+    background:var(--card-3);overflow:hidden}
+  .umd .uh img{width:100%;height:100%;object-fit:cover}
+  .umd .ux{position:absolute;top:12px;inset-inline-end:12px;width:34px;height:34px;border-radius:50%;
+    border:0;background:rgba(0,0,0,.42);color:#fff;font-size:18px;cursor:pointer}
+  .umd .ui{padding:var(--s5) var(--s6) var(--s6)}
+  .umd h3{margin:0;font-size:22px;font-weight:800;letter-spacing:-.4px;line-height:1.3}
+  .umd .upr{display:flex;align-items:baseline;gap:10px;margin-top:var(--s3)}
+  .umd .upr .now{font-size:32px;font-weight:800;letter-spacing:-1px;color:var(--red-ink);
+    font-variant-numeric:tabular-nums}
+  .umd .upr .old{font-size:17px;color:var(--txt-3);text-decoration:line-through;font-weight:700}
+  .umd p{margin:var(--s4) 0 0;font-size:15px;line-height:1.75;color:var(--txt-2);white-space:pre-wrap}
+  .umd .ufacts{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:var(--s2);
+    margin-top:var(--s5);padding-top:var(--s4);border-top:1px solid var(--line)}
+  .umd .ufacts .k{font-size:11.5px;color:var(--txt-3);font-weight:700}
+  .umd .ufacts .v{font-size:13.5px;font-weight:700;margin-top:2px}
+  .umd .uacts{display:flex;gap:var(--s2);margin-top:var(--s5);flex-wrap:wrap}
+  .umd .uacts button,.umd .uacts a{flex:1;min-width:150px;border:0;border-radius:var(--r-sm);
+    padding:13px;font-size:14.5px;font-weight:800;cursor:pointer;text-align:center;
+    text-decoration:none;display:block}
+  .umd .uacts .p{background:var(--brand);color:#04150c}
+  .umd .uacts .g{background:var(--card-2);color:var(--txt);border:1px solid var(--line)}
   .lastscan.idle{color:var(--muted);border:1px dashed var(--line);font-weight:600;font-size:16px}
   .mtag{font-size:11px;font-weight:700;border-radius:6px;padding:1px 7px;margin-inline-start:6px;white-space:nowrap}
   .mtag.ok{background:rgba(31,191,107,.15);color:var(--green)}
@@ -1336,7 +1483,7 @@ function focusScan(){
   // לא גונבים פוקוס כשמודאל/חלון פתוח או כשהמשתמש מקליד בשדה אחר
   // (טפסי הזמנה/תשלום, iframe של PayPlus, תיבת וואטסאפ) — הרענון התקופתי קרא
   // לכאן כל 15ש׳ והעיף את הסמן באמצע הקלדה
-  if(document.querySelector('.overlay,.wa-lb')) return;
+  if(document.querySelector('.overlay,.wa-lb,.uov.on')) return;   // גם פופאפ עדכון
   const el=document.getElementById('boardScan')||document.getElementById('scanInput')||document.getElementById('empInput');
   if(!el) return;
   const a=document.activeElement;
@@ -2722,34 +2869,59 @@ async function renderBoard(app, silent){
   const pending=list.reduce((a,t)=>a+(t.total_units-t.received_units),0);
   const ls=S.lastScan;
   const okCls = (ls&&(ls.method==='manual'||ls.method==='paste'))?'warn':'ok';
-  const lastHtml = needEmp ? '' : (ls
+  // תוצאת הסריקה — חלק מתחנת הסריקה, לא באנר נפרד
+  const resHtml = needEmp ? '' : (ls
     ? (ls.ok
-       ? `<div class="lastscan ${okCls}">✓ ${ls.name||'נקלט'} <span class="sub">· פעולה ${ls.op} (${ls.prog})</span> ${methodTag(ls.method)}</div>`
-       : `<div class="lastscan err">✗ ${ls.message}${ls.name?` <span class="sub">· ${ls.name}</span>`:''}${ls.code?` <span class="sub" style="unicode-bidi:isolate;direction:ltr;font-family:monospace">· ${ls.code}</span>`:''}</div>`)
-    : `<div class="lastscan idle">המכשיר האחרון שתסרוק יוצג כאן</div>`);
+       ? `<div class="sres ${okCls}"><div class="bdg">✓</div><div class="rt">
+            <div class="t">${escW(ls.name||'נקלט')}</div>
+            <div class="s">פעולה ${escW(ls.op||'')} · ${escW(ls.prog||'')} ${methodTag(ls.method)}</div></div></div>`
+       : `<div class="sres err"><div class="bdg">✕</div><div class="rt">
+            <div class="t">${escW(ls.message||'לא נקלט')}</div>
+            <div class="s">${ls.name?escW(ls.name)+' · ':''}<span class="mono">${escW(ls.code||'')}</span></div></div></div>`)
+    : `<div class="sres idle">המכשיר האחרון שתסרוק יוצג כאן</div>`);
+
   app.innerHTML=`
     ${branchTabsHTML()}
     <h1 class="title" style="display:flex;align-items:center;gap:8px">${ico('inbox',19)} קליטת מכשירים נכנסים</h1>
     <div style="text-align:center">${notifBtn}</div>
     ${bcHtml}
-    <div class="panel board-scan">
-      ${needEmp
-        ? `<div class="scan-icon">👤</div>
-           <input id="empInput" class="scan-input" autocomplete="off" placeholder="מי קולט? שם הנציג">
-           <div class="count" style="color:var(--amber)">הזן את שמך ולחץ Enter כדי להתחיל לסרוק</div>`
-        : `<div class="scan-icon">📷</div>
-           <input id="boardScan" class="scan-input" autocomplete="off" placeholder="סרוק מכשיר…">
-           ${IS_MOBILE?`<button class="btn-cam" onclick="openCameraNow()">📸 סרוק מהמצלמה</button>`:''}
-           <div class="count">${list.length} העברות פתוחות · <b>${pending}</b> מכשירים ממתינים</div>
-           <div class="emp">קולט: <b>${S.employee}</b> · <a onclick="changeEmployee()">החלף</a></div>`}
+    ${feedHTML()}
+    <div class="bwrap">
+      <div class="b-scan">
+        <div class="station">
+          <div class="sh">
+            ${needEmp
+              ? `<h2>👤 מי קולט?</h2>
+                 <div class="sbox"><input id="empInput" autocomplete="off" placeholder="שם הנציג"></div>
+                 <div class="smeta" style="color:var(--amber)">הזן את שמך ולחץ Enter כדי להתחיל לסרוק</div>`
+              : `<h2><span class="lv"></span>סריקה</h2>
+                 <div class="sbox"><input id="boardScan" autocomplete="off" placeholder="סרוק ברקוד / סידורי / מק״ט"></div>
+                 <div class="smeta">
+                   <span><b>${list.length}</b> העברות פתוחות</span><span class="sep"></span>
+                   <span><b>${pending}</b> מכשירים ממתינים</span><span class="sep"></span>
+                   <span>קולט: <b>${escW(S.employee)}</b> · <a onclick="changeEmployee()">החלף</a></span>
+                 </div>
+                 ${IS_MOBILE?`<button class="btn-cam" onclick="openCameraNow()">📸 סרוק מהמצלמה</button>`:''}`}
+          </div>
+          ${resHtml}
+          ${priceCardHTML()}
+        </div>
+      </div>
+
+      <div class="b-tr">
+        <div class="pane">
+          <div class="ph"><h3>העברות בדרך אליך</h3><span class="n">${list.length}</span></div>
+          ${list.length?`<div class="tcards">${list.map(cardHtml).join('')}</div>`
+            :`<div class="empty" style="padding:40px 0">${S._boardErr?'בעיית רשת — מתחבר מחדש… 🔄':'אין כרגע העברות בדרך אליך 🎉'}</div>`}
+        </div>
+      </div>
+
+      <div class="b-rail brail"><div id="tiWidgetHost"></div><div id="gcWidgetHost"></div></div>
     </div>
-    ${lastHtml}
-    ${priceCardHTML()}
-    ${list.length?`<div class="board-grid">${list.map(cardHtml).join('')}</div>`
-                 :(S._boardErr?'<div class="empty">בעיית רשת — מתחבר מחדש… 🔄</div>':'<div class="empty">אין כרגע העברות בדרך אליך 🎉</div>')}
-    <div id="cornerWidgets" style="position:fixed;left:18px;top:106px;z-index:5;display:flex;flex-direction:column;gap:12px;align-items:flex-start;max-height:calc(100vh - 120px);overflow-y:auto"><div id="tiWidgetHost"></div><div id="gcWidgetHost"></div></div>`;
+    <div class="uov" id="uOv" onclick="if(event.target===this)closeUpd()"><div class="umd" id="uMd"></div></div>`;
   tiWidgetEnsure();
   gcwEnsure();
+  if(S._feedFor!==S.branchId){ S._feedFor=S.branchId; loadFeed(); }
   if(needEmp){
     const e=document.getElementById('empInput'); try{e.focus();}catch(x){}
     e.addEventListener('keydown',ev=>{ if(ev.key!=='Enter')return; const v=e.value.trim(); if(!v)return; if(submitEmployee(v)) render(); });
@@ -2785,6 +2957,72 @@ async function doScanBoard(code, method){
   // הודעת ניתוב שגוי — ההודעה נשארת, והכרטיס רק מוסיף מידע.
   if(!res.matched) loadPriceCard(code);
 }
+
+
+// ── עדכונים מהמטה: פיד ממוקד לסניף, כרטיס, ופופאפ מלא ──────────────
+async function loadFeed(){
+  try{ const d=await api('/api/branch-updates?branch_id='+encodeURIComponent(S.branchId));
+    S.feed=d.updates||[]; S.feedUnread=d.unread||0;
+    if(S.view==='board') renderBoard(document.getElementById('app'), true);
+  }catch(e){}
+}
+function feedHTML(){
+  const f=S.feed||[];
+  if(!f.length) return '';
+  const money=v=>(v==null||v==='')?'':'₪'+Number(v).toLocaleString('en-US');
+  const T={deal:'מבצע',new:'מוצר חדש',note:'שים לב',info:'מידע'};
+  const cards=f.map(u=>{
+    const price=u.price_now!=null?`<div class="np"><span class="now">${money(u.price_now)}</span>${
+      u.price_old?`<span class="old">${money(u.price_old)}</span>`:''}</div>`:'';
+    const when=u.ends_at?`<span class="tag">עד ${String(u.ends_at).slice(8,10)}.${String(u.ends_at).slice(5,7)}</span>`:'';
+    const who=(u.branches&&u.branches.length)?'ממוקד לסניף':'כל הסניפים';
+    return `<div class="nc ${u.read?'':'unread'}" onclick="openUpd(${u.id})">
+      <div class="hero">${u.image_url?`<img src="${escW(u.image_url)}">`:''}
+        <span class="type ${escW(u.kind||'info')}">${T[u.kind]||'מידע'}</span>
+        ${u.read?'':'<span class="ud"></span>'}</div>
+      <div class="nb"><div class="nt">${escW(u.title||'')}</div>${price}
+        <div class="nd">${escW(u.body||'')}</div>
+        <div class="nf">${when}<span>${who}</span></div></div>
+    </div>`;}).join('');
+  return `<div class="feed"><div class="feedhead"><h3>עדכונים מהמטה</h3>${
+    S.feedUnread?`<span class="n">${S.feedUnread} חדשים</span>`:''}</div>
+    <div class="strip">${cards}</div></div>`;
+}
+function openUpd(id){
+  const u=(S.feed||[]).find(x=>x.id===id); if(!u) return;
+  const money=v=>(v==null||v==='')?'':'₪'+Number(v).toLocaleString('en-US');
+  const T={deal:'מבצע',new:'מוצר חדש',note:'שים לב',info:'מידע'};
+  const names={1:'גן העיר',2:'סטאר',3:'מחסן/מרלוג',4:'עד הלום',5:'אתר'};
+  const tgt=(u.branches&&u.branches.length)?u.branches.map(b=>names[b]||b).join(' · '):'כל הסניפים';
+  const facts=[['סוג',T[u.kind]||'מידע'],['סניפים',tgt]];
+  if(u.ends_at) facts.push(['בתוקף עד',String(u.ends_at).slice(0,10)]);
+  if(u.sku) facts.push(['מק״ט',u.sku]);
+  document.getElementById('uMd').innerHTML=`
+    <div class="uh">${u.image_url?`<img src="${escW(u.image_url)}">`:''}
+      <button class="ux" onclick="closeUpd()">×</button>
+      <span class="type ${escW(u.kind||'info')}" style="position:absolute;top:14px;inset-inline-start:14px">${T[u.kind]||'מידע'}</span></div>
+    <div class="ui"><h3>${escW(u.title||'')}</h3>
+      ${u.price_now!=null?`<div class="upr"><span class="now">${money(u.price_now)}</span>${
+        u.price_old?`<span class="old">${money(u.price_old)}</span>`:''}</div>`:''}
+      <p>${escW(u.body||'')}</p>
+      <div class="ufacts">${facts.map(f=>`<div><div class="k">${f[0]}</div><div class="v">${escW(String(f[1]))}</div></div>`).join('')}</div>
+      <div class="uacts"><button class="p" onclick="ackUpd(${u.id})">${u.ack?'קראתי והבנתי':'סמן כנקרא'}</button>
+        ${u.permalink?`<a class="g" href="${escW(u.permalink)}" target="_blank">פתח את המוצר באתר</a>`:''}</div></div>`;
+  document.getElementById('uOv').classList.add('on');
+  markUpdRead(u.id,false);
+}
+function closeUpd(){ const o=document.getElementById('uOv'); if(o) o.classList.remove('on'); }
+async function markUpdRead(id, acked){
+  const u=(S.feed||[]).find(x=>x.id===id);
+  if(u && u.read && !acked) return;
+  try{ await api('/api/branch-updates/'+id+'/read',{method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({branch_id:Number(S.branchId),employee:S.employee||'',acked:!!acked})});
+    if(u){ u.read=true; S.feedUnread=(S.feed||[]).filter(x=>!x.read).length; }
+  }catch(e){}
+}
+function ackUpd(id){ markUpdRead(id,true); closeUpd();
+  if(S.view==='board') renderBoard(document.getElementById('app'), true); }
 
 // ── בדיקת מחיר ומלאי (כל הסניפים) ──────────────────────────────────
 // אותו כרטיס שנבנה למסך ההורדה בסיטי, בלי שום פעולה על המלאי — תצוגה בלבד.
@@ -2848,13 +3086,15 @@ function fmtTime(iso){ if(!iso)return''; const d=new Date(iso); if(isNaN(d))retu
 const STATUS={in_transit:'ממתין לסריקה',partial:'חלקי',received:'נקלט',closed:'נסגר (חוסר)'};
 function cardHtml(t){
   const pct=t.total_units?Math.round(100*t.received_units/t.total_units):0;
-  return `<div class="card" data-op="${t.op_id}" onclick="openScan('${t.op_id}')">
-    <div class="top"><div class="op">פעולה ${t.op_id}</div><div class="pill ${t.status}">${STATUS[t.status]||t.status}</div></div>
-    <div class="meta">מ<b>${t.from_branch_name}</b> · ${fmtTime(t.created_at)} · ${t.employee||''}</div>
-    <div class="meta"><b>${t.received_units}/${t.total_units}</b> נקלטו</div>
-    <div class="progress"><i style="width:${pct}%"></i></div>
+  return `<div class="tc ${t.status}" data-op="${t.op_id}" onclick="openScan('${t.op_id}')">
+    <div class="r1"><span class="op">${t.op_id}</span>
+      <span class="pill ${t.status}">${STATUS[t.status]||t.status}</span></div>
+    <div class="r2">מ<b>${escW(t.from_branch_name||'')}</b> · ${fmtTime(t.created_at)}${t.employee?' · '+escW(t.employee):''}</div>
+    <div class="prg"><div class="tbar"><i style="width:${pct}%"></i></div>
+      <span class="cnt"><b>${t.received_units}</b>/${t.total_units}</span></div>
   </div>`;
 }
+
 
 // ── מסך קליטה ──
 // שם נציג תקין: לפחות 2 תווים, מכיל אות, ובלי ספרות (שלא יזינו סריאל/ברקוד בטעות)
