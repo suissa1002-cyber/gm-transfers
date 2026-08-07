@@ -2756,8 +2756,9 @@ async function doScanBoard(code, method){
     else   S.lastScan={ok:false, message:res.message||'לא שייך לאף העברה נכנסת', code};
   }
   await renderBoard(document.getElementById('app'), true);
-  // קוד שאינו שייך להעברה = כנראה בדיקת מחיר/מלאי. מציגים כרטיס מוצר.
-  if(!res.matched && !res.misroute) loadPriceCard(code);
+  // כל קוד שלא נקלט = כנראה בדיקת מחיר/מלאי. מציגים כרטיס מוצר גם כשיש
+  // הודעת ניתוב שגוי — ההודעה נשארת, והכרטיס רק מוסיף מידע.
+  if(!res.matched) loadPriceCard(code);
 }
 
 // ── בדיקת מחיר ומלאי (כל הסניפים) ──────────────────────────────────
