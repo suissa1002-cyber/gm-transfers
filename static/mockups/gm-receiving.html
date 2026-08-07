@@ -1,0 +1,327 @@
+<!doctype html>
+<html dir="rtl" lang="he">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>קליטת העברות — עיצוב מחודש · GreenOS</title>
+<style>
+/* ── טוקנים: זהים למערכת העיצוב הקיימת של GreenOS (index.html) ─────────── */
+:root{
+  --bg:#0b0e13; --card:#151a22; --line:rgba(255,255,255,.08);
+  --txt:#eef2f8; --green:#2ece7d; --red:#ff5a5f; --amber:#ffb020; --blue:#4c8dff;
+  --card-2:#1c222c; --card-3:#232a35; --line-2:rgba(255,255,255,.14);
+  --txt-2:#a9b4c4; --txt-3:#6b7686;
+  --brand:#2ece7d; --brand-ink:#7ff0b4; --brand-bg:rgba(46,206,125,.12);
+  --red-ink:#ff9a9d; --red-bg:rgba(255,90,95,.11);
+  --amber-ink:#ffca6a; --amber-bg:rgba(255,176,32,.12);
+  --blue-ink:#8fb6ff; --blue-bg:rgba(76,141,255,.12);
+  --purple:#a879ff; --purple-ink:#c4a4ff; --purple-bg:rgba(168,121,255,.12);
+  --card2:var(--card-2); --muted:var(--txt-2);
+  --sh-1:0 1px 2px rgba(0,0,0,.28), 0 0 0 .5px rgba(255,255,255,.03);
+  --sh-2:0 2px 6px rgba(0,0,0,.30), 0 8px 24px rgba(0,0,0,.22);
+  --sh-3:0 12px 40px rgba(0,0,0,.45);
+  --r-xs:8px; --r-sm:12px; --r-md:16px; --r-lg:20px; --r-pill:999px;
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:20px; --s6:24px; --s8:32px;
+}
+body.light{
+  --bg:#f5f7fa; --card:#ffffff; --line:rgba(16,24,40,.09);
+  --txt:#10151d; --green:#12a355; --red:#e5484d; --amber:#c07a0c; --blue:#2f6fed;
+  --card-2:#f3f6fa; --card-3:#eaeff5; --line-2:rgba(16,24,40,.16);
+  --txt-2:#55606f; --txt-3:#8a95a4;
+  --brand:#12a355; --brand-ink:#0c7d41; --brand-bg:rgba(18,163,85,.10);
+  --red-ink:#c0343a; --red-bg:rgba(229,72,77,.08);
+  --amber-ink:#9a610a; --amber-bg:rgba(192,122,12,.10);
+  --blue-ink:#1f52c0; --blue-bg:rgba(47,111,237,.09);
+  --purple:#7c4dff; --purple-ink:#5f34d6; --purple-bg:rgba(124,77,255,.09);
+  --card2:var(--card-2); --muted:var(--txt-2);
+  --sh-1:0 1px 2px rgba(16,24,40,.06), 0 0 0 .5px rgba(16,24,40,.03);
+  --sh-2:0 2px 8px rgba(16,24,40,.06), 0 10px 30px rgba(16,24,40,.05);
+  --sh-3:0 16px 44px rgba(16,24,40,.16);
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{font-family:-apple-system,Segoe UI,Roboto,Arial,"Heebo",sans-serif;
+  background:var(--bg);color:var(--txt);font-size:15px;-webkit-font-smoothing:antialiased}
+button,input{font-family:inherit}
+.wrap{max-width:1180px;margin:0 auto;padding:0 var(--s5) 80px}
+
+/* ── סרגל עליון ─────────────────────────────────────────────────────── */
+header{position:sticky;top:0;z-index:30;background:color-mix(in srgb,var(--bg) 86%,transparent);
+  backdrop-filter:saturate(180%) blur(14px);border-bottom:1px solid var(--line)}
+header .in{max-width:1180px;margin:0 auto;padding:12px var(--s5);
+  display:flex;align-items:center;gap:var(--s3)}
+.logo{font-weight:800;font-size:19px;letter-spacing:-.4px;display:flex;align-items:center;gap:8px}
+.logo i{width:9px;height:9px;border-radius:50%;background:var(--brand);
+  box-shadow:0 0 0 3px var(--brand-bg)}
+.hspace{flex:1}
+.hbtn{background:var(--card);border:1px solid var(--line);color:var(--txt);border-radius:var(--r-pill);
+  padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.hbtn:hover{border-color:var(--line-2)}
+.hbranch{font-size:13px;color:var(--muted);font-weight:700}
+.hbranch b{color:var(--txt)}
+
+/* ── טאבים ───────────────────────────────────────────────────────────── */
+.tabs{display:flex;gap:var(--s1);background:var(--card-2);border:1px solid var(--line);
+  border-radius:var(--r-pill);padding:var(--s1);margin:var(--s6) 0 var(--s5);width:fit-content}
+.tab{border:0;background:none;color:var(--muted);font-weight:800;font-size:13.5px;
+  padding:9px 18px;border-radius:var(--r-pill);cursor:pointer;transition:.15s;white-space:nowrap}
+.tab.on{background:var(--card);color:var(--txt);box-shadow:var(--sh-1)}
+.tab:not(.on):hover{color:var(--txt)}
+
+/* ── פריסה ───────────────────────────────────────────────────────────── */
+.grid{display:grid;grid-template-columns:1fr 320px;gap:var(--s5);align-items:start}
+@media(max-width:1000px){.grid{grid-template-columns:1fr}}
+
+/* ── תחנת הסריקה — משטח אחד ─────────────────────────────────────────── */
+.station{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);
+  box-shadow:var(--sh-2);overflow:hidden}
+.station .head{padding:var(--s5) var(--s5) var(--s4);
+  background:linear-gradient(180deg,var(--card-2),transparent)}
+.station h2{margin:0 0 var(--s4);font-size:15px;display:flex;align-items:center;gap:8px}
+.station h2 .dot{width:7px;height:7px;border-radius:50%;background:var(--brand);
+  box-shadow:0 0 0 4px var(--brand-bg);animation:pulse 2.4s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+.scanbox{position:relative}
+.scanbox input{width:100%;background:var(--bg);border:1.5px solid var(--line-2);color:var(--txt);
+  border-radius:var(--r-md);padding:18px 54px 18px 18px;font-size:20px;font-weight:700;
+  text-align:center;letter-spacing:.5px;transition:.16s;outline:none}
+.scanbox input::placeholder{color:var(--txt-3);font-weight:600;letter-spacing:0}
+.scanbox input:focus{border-color:var(--brand);box-shadow:0 0 0 4px var(--brand-bg)}
+.scanbox .ic{position:absolute;inset-inline-start:18px;top:50%;transform:translateY(-50%);
+  color:var(--txt-3);pointer-events:none;display:flex}
+.meta{display:flex;align-items:center;gap:var(--s4);flex-wrap:wrap;margin-top:var(--s3);
+  font-size:13px;color:var(--muted)}
+.meta .m{display:flex;align-items:center;gap:6px}
+.meta b{color:var(--txt);font-variant-numeric:tabular-nums}
+.meta .sep{width:1px;height:14px;background:var(--line)}
+.meta a{color:var(--blue);font-weight:700;text-decoration:none;cursor:pointer}
+
+/* תוצאת הסריקה — בתוך אותו משטח, מופרדת בקו */
+.result{border-top:1px solid var(--line);padding:var(--s4) var(--s5);display:flex;gap:var(--s3);
+  align-items:flex-start;animation:slideIn .22s cubic-bezier(.2,.8,.3,1)}
+@keyframes slideIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+.result .badge{width:34px;height:34px;border-radius:var(--r-sm);display:flex;align-items:center;
+  justify-content:center;flex:0 0 auto;font-size:17px;font-weight:800}
+.result.ok .badge{background:var(--brand-bg);color:var(--brand-ink)}
+.result.err .badge{background:var(--red-bg);color:var(--red-ink)}
+.result.warn .badge{background:var(--amber-bg);color:var(--amber-ink)}
+.result .rt{flex:1;min-width:0}
+.result .rt .t{font-weight:800;font-size:15px;line-height:1.4}
+.result.ok .rt .t{color:var(--brand-ink)}
+.result.err .rt .t{color:var(--red-ink)}
+.result.warn .rt .t{color:var(--amber-ink)}
+.result .rt .s{font-size:12.5px;color:var(--muted);margin-top:3px}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;direction:ltr;unicode-bidi:isolate;
+  letter-spacing:.02em;font-weight:700}
+
+/* כרטיס המוצר — ממשיך את אותו משטח */
+.prod{border-top:1px solid var(--line);padding:var(--s4) var(--s5) var(--s5)}
+.prod .row{display:flex;gap:var(--s4);align-items:flex-start}
+.prod .img{width:88px;height:88px;border-radius:var(--r-md);background:#fff;flex:0 0 auto;
+  border:1px solid var(--line);display:flex;align-items:center;justify-content:center;overflow:hidden}
+.prod .img img{width:100%;height:100%;object-fit:contain}
+.prod .nm{font-weight:800;font-size:16px;line-height:1.35;margin-bottom:var(--s3)}
+.prices{display:flex;gap:var(--s2);flex-wrap:wrap}
+.pchip{flex:1;min-width:120px;border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 12px;
+  background:var(--card-2)}
+.pchip.pos{background:var(--brand-bg);border-color:color-mix(in srgb,var(--brand) 32%,transparent)}
+.pchip .k{font-size:11px;font-weight:700;color:var(--muted)}
+.pchip .v{font-size:20px;font-weight:800;letter-spacing:-.4px;font-variant-numeric:tabular-nums}
+.pchip.pos .v{color:var(--brand-ink)}
+.pchip .was{font-size:12px;color:var(--txt-3);text-decoration:line-through;margin-inline-start:6px;font-weight:700}
+.stock{display:flex;gap:6px;flex-wrap:wrap;margin-top:var(--s3)}
+.sp{font-size:12px;font-weight:700;border-radius:var(--r-pill);padding:5px 11px;
+  background:var(--card-2);border:1px solid var(--line);color:var(--muted)}
+.sp b{color:var(--txt);margin-inline-start:5px;font-variant-numeric:tabular-nums}
+.sp.zero{opacity:.4}
+.sp.me{background:var(--blue-bg);border-color:color-mix(in srgb,var(--blue) 34%,transparent);color:var(--blue-ink)}
+.sp.me b{color:var(--blue-ink)}
+.prodfoot{display:flex;gap:var(--s4);flex-wrap:wrap;align-items:center;margin-top:var(--s4);
+  padding-top:var(--s3);border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+.prodfoot a{color:var(--blue);font-weight:700;text-decoration:none}
+
+/* ── כרטיסי העברות ──────────────────────────────────────────────────── */
+.sechead{display:flex;align-items:center;gap:var(--s3);margin:var(--s6) 0 var(--s3)}
+.sechead h3{margin:0;font-size:14px;font-weight:800}
+.sechead .n{font-size:12px;font-weight:800;color:var(--muted);background:var(--card-2);
+  border:1px solid var(--line);border-radius:var(--r-pill);padding:2px 9px;font-variant-numeric:tabular-nums}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:var(--s3)}
+.tc{background:var(--card);border:1px solid var(--line);border-radius:var(--r-md);padding:var(--s4);
+  cursor:pointer;transition:.16s;box-shadow:var(--sh-1);position:relative;overflow:hidden}
+.tc::before{content:'';position:absolute;inset-inline-start:0;top:0;bottom:0;width:3px;background:var(--amber)}
+.tc.partial::before{background:var(--blue)}
+.tc.received::before{background:var(--brand)}
+.tc:hover{transform:translateY(-2px);box-shadow:var(--sh-2);border-color:var(--line-2)}
+.tc .r1{display:flex;align-items:center;justify-content:space-between;gap:var(--s2)}
+.tc .op{font-weight:800;font-size:16px;font-variant-numeric:tabular-nums}
+.pill{font-size:11.5px;font-weight:800;border-radius:var(--r-pill);padding:4px 10px;white-space:nowrap}
+.pill.in_transit{background:var(--amber-bg);color:var(--amber-ink)}
+.pill.partial{background:var(--blue-bg);color:var(--blue-ink)}
+.pill.received{background:var(--brand-bg);color:var(--brand-ink)}
+.tc .r2{color:var(--muted);font-size:12.5px;margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.tc .r2 b{color:var(--txt)}
+.tc .prog{display:flex;align-items:center;gap:var(--s3);margin-top:var(--s3)}
+.bar{flex:1;height:6px;background:var(--card-3);border-radius:var(--r-pill);overflow:hidden}
+.bar i{display:block;height:100%;border-radius:var(--r-pill);background:var(--brand);transition:width .4s}
+.tc.in_transit .bar i{background:var(--amber)}
+.tc.partial .bar i{background:var(--blue)}
+.tc .cnt{font-size:12.5px;font-weight:800;color:var(--muted);font-variant-numeric:tabular-nums}
+.tc .cnt b{color:var(--txt)}
+
+/* ── ווידג'טים ──────────────────────────────────────────────────────── */
+.rail{display:flex;flex-direction:column;gap:var(--s3);position:sticky;top:84px}
+@media(max-width:1000px){.rail{position:static}}
+.w{background:var(--card);border:1px solid var(--line);border-radius:var(--r-md);box-shadow:var(--sh-1);
+  overflow:hidden;transition:.16s}
+.w:hover{border-color:var(--line-2);box-shadow:var(--sh-2)}
+.w .wh{display:flex;align-items:center;gap:var(--s3);padding:var(--s4);cursor:pointer}
+.w .wi{width:38px;height:38px;border-radius:var(--r-sm);display:flex;align-items:center;
+  justify-content:center;flex:0 0 auto}
+.w.ti .wi{background:var(--blue-bg);color:var(--blue-ink)}
+.w.gc .wi{background:var(--brand-bg);color:var(--brand-ink)}
+.w .wt{flex:1;min-width:0}
+.w .wt .t{font-weight:800;font-size:14px}
+.w .wt .s{font-size:11.5px;color:var(--muted);margin-top:2px;line-height:1.4}
+.w .chev{color:var(--txt-3);transition:.2s}
+.w.open .chev{transform:rotate(180deg)}
+.w .wb{display:none;padding:0 var(--s4) var(--s4);border-top:1px solid var(--line);padding-top:var(--s3)}
+.w.open .wb{display:block}
+.w .wb input{width:100%;background:var(--bg);border:1px solid var(--line-2);color:var(--txt);
+  border-radius:var(--r-sm);padding:11px 13px;font-size:14px;outline:none}
+.w .wb input:focus{border-color:var(--blue);box-shadow:0 0 0 3px var(--blue-bg)}
+.w .wb .b{width:100%;margin-top:var(--s2);border:0;border-radius:var(--r-sm);padding:11px;
+  font-weight:800;font-size:14px;cursor:pointer;background:var(--blue);color:#fff}
+.w.gc .wb .b{background:var(--brand);color:#04150c}
+
+.note{margin-top:var(--s8);padding:var(--s4);border:1px dashed var(--line-2);border-radius:var(--r-md);
+  color:var(--muted);font-size:12.5px;line-height:1.7}
+.note b{color:var(--txt)}
+</style>
+</head>
+<body class="light">
+
+<header><div class="in">
+  <div class="logo"><i></i>GreenOS</div>
+  <div class="hspace"></div>
+  <span class="hbranch">סניף: <b>גן העיר</b></span>
+  <button class="hbtn" onclick="document.body.classList.toggle('light')">מצב תצוגה</button>
+  <button class="hbtn">החלף סניף</button>
+</div></header>
+
+<div class="wrap">
+
+  <div class="tabs">
+    <button class="tab on">קליטת העברות</button>
+    <button class="tab">מלאי חי</button>
+    <button class="tab">blenderPay</button>
+  </div>
+
+  <div class="grid">
+    <div>
+      <!-- ─── תחנת סריקה: הכל במשטח אחד ─── -->
+      <div class="station">
+        <div class="head">
+          <h2><span class="dot"></span>סריקה</h2>
+          <div class="scanbox">
+            <span class="ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M3 12h18"/></svg></span>
+            <input placeholder="סרוק ברקוד / סידורי / מק״ט" autofocus>
+          </div>
+          <div class="meta">
+            <span class="m"><b>1</b> העברות פתוחות</span>
+            <span class="sep"></span>
+            <span class="m"><b>2</b> מכשירים ממתינים</span>
+            <span class="sep"></span>
+            <span class="m">קולט: <b>אסי</b> · <a>החלף</a></span>
+          </div>
+        </div>
+
+        <div class="result err">
+          <div class="badge">✕</div>
+          <div class="rt">
+            <div class="t">לא שייך לאף העברה נכנסת</div>
+            <div class="s">נסרק <span class="mono">6932554493172</span> · מוצג מידע מהקופה למטה</div>
+          </div>
+        </div>
+
+        <div class="prod">
+          <div class="row">
+            <div class="img"><img src="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 88 88'%3E%3Crect width='88' height='88' rx='10' fill='%23eef1f6'/%3E%3Crect x='28' y='16' width='32' height='56' rx='6' fill='%231b2430'/%3E%3Ccircle cx='38' cy='30' r='4' fill='%234c8dff'/%3E%3C/svg%3E"></div>
+            <div style="flex:1;min-width:0">
+              <div class="nm">Xiaomi Redmi A7 Pro 128GB · Black</div>
+              <div class="prices">
+                <div class="pchip pos"><div class="k">מחיר קופה</div><div class="v">₪499</div></div>
+                <div class="pchip"><div class="k">מחיר אתר</div><div class="v">₪449<span class="was">₪499</span></div></div>
+              </div>
+            </div>
+          </div>
+          <div class="stock">
+            <span class="sp me">גן העיר<b>5</b></span>
+            <span class="sp">סטאר<b>53</b></span>
+            <span class="sp">מחסן/מרלוג<b>5</b></span>
+            <span class="sp">עד הלום<b>1</b></span>
+            <span class="sp zero">אתר<b>0</b></span>
+          </div>
+          <div class="prodfoot">
+            <span>מק״ט <span class="mono">520390</span></span>
+            <span>ברקוד <span class="mono">6932554493172</span></span>
+            <a href="#">פתח באתר ↗</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="sechead"><h3>העברות בדרך אליך</h3><span class="n">3</span></div>
+      <div class="cards">
+        <div class="tc in_transit">
+          <div class="r1"><span class="op">15083</span><span class="pill in_transit">ממתין לסריקה</span></div>
+          <div class="r2">מ<b>סטאר</b><span>·</span>06.08, 18:51<span>·</span>אודי</div>
+          <div class="prog"><div class="bar"><i style="width:0%"></i></div><span class="cnt"><b>0</b>/2</span></div>
+        </div>
+        <div class="tc partial">
+          <div class="r1"><span class="op">15079</span><span class="pill partial">חלקי</span></div>
+          <div class="r2">מ<b>מחסן/מרלוג</b><span>·</span>06.08, 14:20<span>·</span>יעקב.ע</div>
+          <div class="prog"><div class="bar"><i style="width:60%"></i></div><span class="cnt"><b>3</b>/5</span></div>
+        </div>
+        <div class="tc received">
+          <div class="r1"><span class="op">15074</span><span class="pill received">נקלט</span></div>
+          <div class="r2">מ<b>עד הלום</b><span>·</span>05.08, 09:12<span>·</span>אירה</div>
+          <div class="prog"><div class="bar"><i style="width:100%"></i></div><span class="cnt"><b>4</b>/4</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── ווידג'טים ─── -->
+    <div class="rail">
+      <div class="w ti open">
+        <div class="wh" onclick="this.parentNode.classList.toggle('open')">
+          <div class="wi"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 2l4 4-4 4M3 11V9a4 4 0 0 1 4-4h14M7 22l-4-4 4-4M21 13v2a4 4 0 0 1-4 4H3"/></svg></div>
+          <div class="wt"><div class="t">מחשבון טרייד-אין</div><div class="s">תמחור מכשיר ללקוח בסניף</div></div>
+          <span class="chev">⌄</span>
+        </div>
+        <div class="wb">
+          <input placeholder="דגם או סידורי">
+          <button class="b">חשב שווי</button>
+        </div>
+      </div>
+
+      <div class="w gc">
+        <div class="wh" onclick="this.parentNode.classList.toggle('open')">
+          <div class="wi"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l8 3v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6l8-3z"/></svg></div>
+          <div class="wt"><div class="t">Green Care</div><div class="s">פוליסה חדשה / בדיקה לפי סריאל</div></div>
+          <span class="chev">⌄</span>
+        </div>
+        <div class="wb">
+          <input placeholder="סידורי / IMEI">
+          <button class="b">בדוק זכאות</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="note">
+    <b>מוקאפ בלבד — לא מחובר לנתונים.</b> נבנה על טוקני העיצוב הקיימים של GreenOS
+    (צבעים, רדיוסים, צללים, רווחים), כך שהמעבר לחי הוא החלפת סגנון ולא כתיבה מחדש.
+    לחיצה על <b>מצב תצוגה</b> מחליפה בהיר/כהה. גרור את חלון הדפדפן לרוחב צר כדי לראות טלפון.
+  </div>
+</div>
+</body>
+</html>
