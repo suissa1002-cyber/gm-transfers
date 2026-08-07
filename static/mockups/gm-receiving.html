@@ -193,6 +193,47 @@ header .in{max-width:1180px;margin:0 auto;padding:12px var(--s5);
   font-weight:800;font-size:14px;cursor:pointer;background:var(--blue);color:#fff}
 .w.gc .wb .b{background:var(--brand);color:#04150c}
 
+/* ── לוח עדכונים לסניפים (מחליף הודעות בקבוצה) ───────────────────────── */
+.feed{margin:var(--s5) 0 var(--s6)}
+.feedhead{display:flex;align-items:center;gap:var(--s3);margin-bottom:var(--s3)}
+.feedhead h3{margin:0;font-size:14px;font-weight:800}
+.feedhead .n{font-size:11.5px;font-weight:800;color:#04150c;background:var(--brand);
+  border-radius:var(--r-pill);padding:2px 9px;font-variant-numeric:tabular-nums}
+.feedhead .all{margin-inline-start:auto;font-size:12.5px;color:var(--blue);font-weight:700;
+  cursor:pointer;text-decoration:none}
+.strip{display:flex;gap:var(--s3);overflow-x:auto;padding-bottom:var(--s2);
+  scroll-snap-type:x mandatory;scrollbar-width:thin}
+.strip::-webkit-scrollbar{height:6px}
+.strip::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:99px}
+.nc{flex:0 0 268px;scroll-snap-align:start;background:var(--card);border:1px solid var(--line);
+  border-radius:var(--r-md);overflow:hidden;box-shadow:var(--sh-1);cursor:pointer;transition:.16s;
+  position:relative;display:flex;flex-direction:column}
+.nc:hover{transform:translateY(-3px);box-shadow:var(--sh-2);border-color:var(--line-2)}
+.nc.unread{border-color:color-mix(in srgb,var(--brand) 45%,transparent);
+  box-shadow:0 0 0 3px var(--brand-bg), var(--sh-1)}
+.nc .hero{height:132px;position:relative;background:var(--card-3);display:flex;
+  align-items:center;justify-content:center;overflow:hidden}
+.nc .hero img{width:100%;height:100%;object-fit:cover}
+.nc .type{position:absolute;top:10px;inset-inline-start:10px;font-size:11px;font-weight:800;
+  border-radius:var(--r-pill);padding:4px 10px;backdrop-filter:blur(8px)}
+.type.deal{background:rgba(255,90,95,.92);color:#fff}
+.type.new{background:rgba(76,141,255,.92);color:#fff}
+.type.info{background:rgba(0,0,0,.55);color:#fff}
+.type.urgent{background:rgba(255,176,32,.95);color:#2a1a00}
+.nc .dot{position:absolute;top:10px;inset-inline-end:10px;width:9px;height:9px;border-radius:50%;
+  background:var(--brand);box-shadow:0 0 0 3px rgba(255,255,255,.85)}
+.nc .body{padding:var(--s3) var(--s4) var(--s4);flex:1;display:flex;flex-direction:column}
+.nc .t{font-weight:800;font-size:14.5px;line-height:1.35}
+.nc .d{font-size:12.5px;color:var(--muted);margin-top:5px;line-height:1.5;flex:1}
+.nc .f{display:flex;align-items:center;gap:8px;margin-top:var(--s3);padding-top:var(--s2);
+  border-top:1px solid var(--line);font-size:11.5px;color:var(--txt-3)}
+.nc .f .tag{background:var(--card-2);border:1px solid var(--line);border-radius:var(--r-pill);
+  padding:2px 8px;font-weight:700;color:var(--muted)}
+.nc .price{display:flex;align-items:baseline;gap:8px;margin-top:6px}
+.nc .price .now{font-size:21px;font-weight:800;color:var(--red-ink);letter-spacing:-.5px;
+  font-variant-numeric:tabular-nums}
+.nc .price .old{font-size:13px;color:var(--txt-3);text-decoration:line-through;font-weight:700}
+
 .note{margin-top:var(--s8);padding:var(--s4);border:1px dashed var(--line-2);border-radius:var(--r-md);
   color:var(--muted);font-size:12.5px;line-height:1.7}
 .note b{color:var(--txt)}
@@ -214,6 +255,68 @@ header .in{max-width:1180px;margin:0 auto;padding:12px var(--s5);
     <button class="tab on">קליטת העברות</button>
     <button class="tab">מלאי חי</button>
     <button class="tab">blenderPay</button>
+  </div>
+
+
+  <!-- ─── לוח עדכונים לסניפים ─── -->
+  <div class="feed">
+    <div class="feedhead">
+      <h3>עדכונים מהמטה</h3><span class="n">2 חדשים</span>
+      <a class="all">לכל העדכונים ›</a>
+    </div>
+    <div class="strip">
+
+      <div class="nc unread">
+        <div class="hero" style="background:linear-gradient(135deg,#ff5a5f22,#ff5a5f08)">
+          <span class="type deal">מבצע</span><span class="dot"></span>
+          <svg width="120" height="110" viewBox="0 0 120 110"><rect x="40" y="10" width="40" height="90" rx="8" fill="#1b2430"/><circle cx="52" cy="26" r="5" fill="#ff5a5f"/></svg>
+        </div>
+        <div class="body">
+          <div class="t">Redmi A7 Pro 128GB</div>
+          <div class="price"><span class="now">₪449</span><span class="old">₪499</span></div>
+          <div class="d">מחיר מבצע לכל הסניפים. יש מלאי בסטאר ובמרלוג.</div>
+          <div class="f"><span class="tag">עד 12.08</span><span>כל הסניפים</span></div>
+        </div>
+      </div>
+
+      <div class="nc unread">
+        <div class="hero" style="background:linear-gradient(135deg,#4c8dff22,#4c8dff08)">
+          <span class="type new">מוצר חדש</span><span class="dot"></span>
+          <svg width="120" height="110" viewBox="0 0 120 110"><rect x="32" y="24" width="56" height="62" rx="12" fill="#1b2430"/><circle cx="60" cy="55" r="14" fill="#4c8dff"/></svg>
+        </div>
+        <div class="body">
+          <div class="t">Galaxy Buds 4 Pro</div>
+          <div class="price"><span class="now" style="color:var(--txt)">₪799</span></div>
+          <div class="d">הגיע למלאי. ביטול רעשים אקטיבי, 30 שעות סוללה.</div>
+          <div class="f"><span class="tag">חדש</span><span>כל הסניפים</span></div>
+        </div>
+      </div>
+
+      <div class="nc">
+        <div class="hero" style="background:linear-gradient(135deg,#ffb02022,#ffb02008)">
+          <span class="type urgent">שים לב</span>
+          <svg width="70" height="70" viewBox="0 0 24 24" fill="none" stroke="#ffb020" stroke-width="2" stroke-linecap="round"><path d="M12 8v5M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+        </div>
+        <div class="body">
+          <div class="t">החזרות סטאר — נוהל חדש</div>
+          <div class="d">מהשבוע כל החזרה נרשמת ב-GreenOS לפני מסירה ללקוח.</div>
+          <div class="f"><span class="tag">נוהל</span><span>סטאר · גן העיר</span></div>
+        </div>
+      </div>
+
+      <div class="nc">
+        <div class="hero" style="background:linear-gradient(135deg,#2ece7d22,#2ece7d08)">
+          <span class="type info">מידע</span>
+          <svg width="70" height="70" viewBox="0 0 24 24" fill="none" stroke="#2ece7d" stroke-width="2" stroke-linecap="round"><path d="M12 16v-4M12 8h.01"/><circle cx="12" cy="12" r="9"/></svg>
+        </div>
+        <div class="body">
+          <div class="t">Green Care — עמלות עודכנו</div>
+          <div class="d">מדרגות חדשות למכשירים מעל ₪2,000.</div>
+          <div class="f"><span class="tag">28%</span><span>כל הסניפים</span></div>
+        </div>
+      </div>
+
+    </div>
   </div>
 
   <div class="grid">
