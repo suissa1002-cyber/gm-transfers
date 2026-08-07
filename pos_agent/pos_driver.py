@@ -10,7 +10,7 @@ import time
 
 from pywinauto import Application, Desktop, mouse
 
-DRIVER_VERSION = "2026-08-07.40"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
+DRIVER_VERSION = "2026-08-07.42"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
 POS_TITLE_RE = ".*אורדר.*"
 FORM_TITLE = "הורדה מהמלאי"
 ITEM_TITLE = "הורדה מהמלאי - פעולה חדשה"
@@ -379,22 +379,25 @@ def _dialog_with_buttons():
             kids = list(w.children())
         except Exception:                # noqa: BLE001
             continue
+        # ⚠️ **שאלה מזוהה לפי קיום אפשרות שלילית**, לא לפי כפתור חיובי: "OK"
+        # מופיע גם ברשימת החיוביים, ולכן הודעה עם OK בלבד סווגה כשאלה, נענתה
+        # "לא", ומשלא נמצא כפתור "לא" — השרשרת נעצרה והחלון נשאר (אסי, 07/08).
+        no_l = [_norm(x) for x in _NO]
         texts = [_norm(c.window_text()) for c in kids]
-        has_yn = any(t in yn for t in texts)
-        has_ok = any(t in ok for t in texts)
-        if not (has_yn or has_ok):
-            # ⚠️ נפילה ל-descendants: בטופס VB6 מותאם הכפתורים יושבים בתוך
-            # Frame ואינם ילדים ישירים. _confirm_dialog כבר עשה את הנפילה הזאת,
-            # וכאן היא נשכחה — כלומר חלון כזה לא זוהה בכלל כשאלה פתוחה.
+        has_no = any(t in no_l for t in texts)
+        has_btn = has_no or any(t in yn or t in ok for t in texts)
+        if not has_btn:
+            # נפילה ל-descendants: בטופס VB6 הכפתורים עשויים לשבת בתוך Frame
             try:
                 kids = list(w.descendants())
             except Exception:            # noqa: BLE001
                 continue
             texts = [_norm(c.window_text()) for c in kids]
-            has_yn = any(t in yn for t in texts)
-            has_ok = any(t in ok for t in texts)
-            if not (has_yn or has_ok):
+            has_no = any(t in no_l for t in texts)
+            has_btn = has_no or any(t in yn or t in ok for t in texts)
+            if not has_btn:
                 continue
+        has_yn = has_no
         # ⚠️ הטקסט **תמיד** מכל הצאצאים, גם כשהכפתורים נמצאו בילדים הישירים:
         # ההודעה עצמה עשויה לשבת עמוק יותר, ואז body הכיל רק את הכותרת
         # ("הודעת מערכת") — בלי המילה "להדפיס". התוצאה: הוכרע "כן", והקופה
@@ -421,6 +424,28 @@ def _dialog_with_buttons():
 _TITLE_YES = ("אשר",)          # "בבקשה אשר" = אישור שמירה/יציאה
 
 
+_LAST_DOC = {"no": ""}
+
+
+def _scan_doc_no():
+    """מלקט את מספר התעודה מכותרות החלונות ("...פעולה מספר: 15095").
+    ⚠️ מקור אמין יותר מהודעת הסיום: הכותרת קריאה תמיד, בעוד נוסח ההודעה מצויר
+    ולעיתים אינו חשוף כלל."""
+    import re
+    if _APP is None:
+        return
+    try:
+        for w in _APP.windows(visible_only=True, enabled_only=False):
+            try:
+                m = re.search(r"פעולה\s*מספר\s*[:：]?\s*(\d+)", w.window_text() or "")
+            except Exception:            # noqa: BLE001
+                continue
+            if m:
+                _LAST_DOC["no"] = m.group(1)
+    except Exception:                    # noqa: BLE001
+        pass
+
+
 def _decide_yes(body, informative, title):
     """האם לענות "כן". ⛔ ברירת המחדל לשאלה שלא הצלחנו לקרוא היא **לא**:
     סירוב לפעולה לא מוכרת הוא שחזיר (הפעולה חוזרת לתור ומנוסה שוב), בעוד
@@ -432,21 +457,46 @@ def _decide_yes(body, informative, title):
     return True
 
 
-def _click_ok(w):
-    """סוגר הודעת OK. לחיצה על הכפתור לפי טקסט, ובנפילה ENTER."""
-    ok = [_norm(x) for x in _OK_ONLY]
+def _win_gone(w):
+    """האם החלון באמת נעלם. בלי זה 'לחצתי' אינו אומר 'נסגר'."""
     try:
-        for c in w.children():
-            if _norm(c.window_text()) in ok and _click_button(c):
-                return True
-    except Exception:                    # noqa: BLE001
-        pass
-    try:
-        w.set_focus()
-        w.type_keys("{ENTER}")
-        return True
+        import win32gui
+        return not win32gui.IsWindow(w.handle) or not win32gui.IsWindowVisible(w.handle)
     except Exception:                    # noqa: BLE001
         return False
+
+
+def _click_ok(w):
+    """סוגר הודעת OK **ומוודא שנסגרה**.
+
+    ⚠️ הגרסה הקודמת חיפשה את הכפתור רק בילדים הישירים והחזירה True מיד. בקופה
+    הזאת פקדים יושבים גם עמוק יותר (נוסח ההודעה כלל אינו חשוף), ולכן היא יכלה
+    לדווח הצלחה בלי שנלחץ דבר — וההודעה נשארה על המסך וחסמה את ההרצה הבאה.
+    """
+    ok = [_norm(x) for x in _OK_ONLY]
+    for getter in (w.children, w.descendants):
+        try:
+            kids = list(getter())
+        except Exception:                # noqa: BLE001
+            continue
+        for c in kids:
+            try:
+                if _norm(c.window_text()) not in ok:
+                    continue
+            except Exception:            # noqa: BLE001
+                continue
+            _click_button(c)
+            if _wait_until(lambda: _win_gone(w), 1.5, 0.1):
+                return True
+    for key in ("{ENTER}", "{SPACE}", "{ESC}"):
+        try:
+            w.set_focus()
+            w.type_keys(key)
+        except Exception:                # noqa: BLE001
+            continue
+        if _wait_until(lambda: _win_gone(w), 1.2, 0.1):
+            return True
+    return False
 
 
 def _answer_smart(timeout=3):
@@ -490,6 +540,7 @@ def _answer_dialog_chain(rounds=10, first_wait=6.0, next_wait=6.0):
         # המתנה של 2ש' הספיקה לשאלת השמירה ופספסה את שאלת ההדפסה שאחריה
         # (אסי, 07/08). ממתינים ארוך — אבל יוצאים מיד כשמסך הפריטים נסגר,
         # כי אז בטוח שאין עוד חלונות בדרך.
+        _scan_doc_no()
         wait = first_wait if _i == 0 else next_wait
         if not _wait_until(lambda: _dialog_with_buttons()[0] is not None
                            or _items_screen_gone(), wait, 0.15):
@@ -1037,6 +1088,7 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
         T.update({k: v for k, v in tuning.items() if v is not None})
 
     del _TIMING[:]
+    _LAST_DOC["no"] = ""
     _run0 = time.time()
     _t = _run0
     # ⚠️ הגרסה בכל הרצה, לא רק בהפעלה: פעמיים נותחו כשלים על סמך ההנחה שרצה
@@ -1371,7 +1423,8 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
     answered = _answer_dialog_chain()
     # סבב שני: חלון שהופיע באיחור אחרי שהשרשרת כבר סיימה
     answered += _answer_dialog_chain(first_wait=2.0, next_wait=4.0)
-    doc_no = _doc_no_from(answered)
+    _scan_doc_no()
+    doc_no = _doc_no_from(answered) or _LAST_DOC["no"]
     _dismiss_message_box()
     # אחרי שמירה המסך אמור להיסגר לבד; אם נשאר — סוגרים, אחרת הוא יחסום את הבא
     if _spec(app, ITEM_TITLE, timeout=0.5) is not None:
