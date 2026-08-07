@@ -3144,9 +3144,9 @@ function shiftCardHTML(){
     <div class="hero"><span class="type" style="background:rgba(76,141,255,.92)">סידור עבודה</span>
       <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="1.8"
         stroke-linecap="round"><rect x="3" y="4.5" width="18" height="16" rx="3"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg></div>
-    <div class="nb"><div class="nt">${escW(sh.day_name||'')} · ${escW(sh.branch_name||'')}</div>
+    <div class="nb"><div class="nt">${escW(sh.day_name||'')} ${escW(sh.date_short||'')} · ${escW(sh.branch_name||'')}</div>
       ${body}
-      <div class="nf"><span class="tag">השבוע</span><span>לחץ לסידור המלא</span></div></div>
+      <div class="nf"><span class="tag">${escW(sh.week_range||'השבוע')}</span><span>לחץ לסידור המלא</span></div></div>
   </div>`;
 }
 function feedHTML(){

@@ -5190,8 +5190,11 @@ def branch_today_shift(branch_id: int, x_admin_key: Optional[str] = Header(None)
     dow = (today.weekday() + 1) % 7
     rows = [r for r in db.shift_roster_for_week(wk)
             if int(r.get("branch_id") or 0) == int(branch_id) and int(r.get("dow") or 0) == dow]
+    # טווח השבוע מוצג בכרטיס כדי שהסניף יראה שזה **השבוע הנכון** ולא ישן
     return {"date": today, "dow": dow, "day_name": _SHIFT_DAYS[dow],
-            "week": wk, "shifts": rows, "closed": not rows,
+            "week": wk, "week_range": _fmt_week_range(wk),
+            "date_short": "%02d/%02d" % (today.day, today.month),
+            "shifts": rows, "closed": not rows,
             "branch_name": cfg.branch_name(branch_id)}
 
 
