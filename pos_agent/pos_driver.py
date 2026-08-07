@@ -10,7 +10,7 @@ import time
 
 from pywinauto import Application, Desktop, mouse
 
-DRIVER_VERSION = "2026-08-07.23"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
+DRIVER_VERSION = "2026-08-07.24"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
 POS_TITLE_RE = ".*אורדר.*"
 FORM_TITLE = "הורדה מהמלאי"
 ITEM_TITLE = "הורדה מהמלאי - פעולה חדשה"
@@ -63,8 +63,13 @@ I_QTY           = 22    # TextBox "כמות" ← זה השדה שממלאים
 I_NOTE          = 14    # TextBox "הערה" (הרחב)
 
 
+_APP = None          # האפליקציה המחוברת — כדי שאיתור דיאלוגים לא יהיה תלוי בקורא
+
+
 def connect():
+    global _APP
     app = Application(backend="win32").connect(title_re=POS_TITLE_RE, timeout=15)
+    _APP = app
     return app, app.window(title_re=POS_TITLE_RE)
 
 
@@ -213,48 +218,138 @@ def _click_emp_button(popup, emp_name, T):
     _click_rect(popup, [rect[0] + dx, rect[1] + dy, rect[2] + dx, rect[3] + dy])
 
 
+_YES = ("כן", "&כן", "Yes", "&Yes", "אישור", "&אישור", "OK", "&OK")
+_NO = ("ביטול", "&ביטול", "לא", "&לא", "Cancel", "&Cancel", "No", "&No")
+
+
+def _norm(t):
+    return (t or "").replace("&", "").strip()
+
+
+def _dialog_candidates():
+    """כל החלונות שעשויים להיות תיבת אישור.
+
+    ⚠️ לא רק #32770! שאלת היציאה של הקופה ("בבקשה אשר" · כן/ביטול) היא **טופס
+    VB6 מותאם**, לא MsgBox תקני — הצירוף כן+ביטול בכלל לא קיים ב-MsgBox. לכן
+    חיפוש לפי מחלקה בלבד פשוט לא מצא אותה, ה"כן" מעולם לא נלחץ, ומסך הפריטים
+    נשאר פתוח (אסי, 07/08). כאן סורקים גם את חלונות האפליקציה עצמה."""
+    out, seen = [], set()
+    try:
+        for w in Desktop(backend="win32").windows():
+            try:
+                if w.class_name() == "#32770" and w.is_visible():
+                    out.append(w)
+                    seen.add(w.handle)
+            except Exception:            # noqa: BLE001
+                continue
+    except Exception:                    # noqa: BLE001
+        pass
+    if _APP is not None:
+        try:
+            for w in _APP.windows(visible_only=True, enabled_only=False):
+                try:
+                    if w.handle in seen:
+                        continue
+                    title = (w.window_text() or "").strip()
+                    if "אורדר" in title or title in (ITEM_TITLE, FORM_TITLE):
+                        continue         # החלון הראשי / מסכי העבודה — לא דיאלוג
+                    out.append(w)
+                except Exception:        # noqa: BLE001
+                    continue
+        except Exception:                # noqa: BLE001
+            pass
+    return out
+
+
+def _click_button(c):
+    """לחיצה על כפתור — קלט עכבר אמיתי, ובנפילה גם הודעת BM_CLICK ישירה
+    (עובדת גם כשהחלון אינו בחזית או שמשהו מסתיר אותו)."""
+    try:
+        c.click_input()
+        return True
+    except Exception:                    # noqa: BLE001
+        pass
+    try:
+        c.click()
+        return True
+    except Exception:                    # noqa: BLE001
+        return False
+
+
 def _confirm_dialog(yes=True, timeout=6):
-    """עונה לשאלת אישור של הקופה (#32770) בלחיצה על 'כן' / 'ביטול'.
+    """עונה לשאלת אישור של הקופה בלחיצה על 'כן' / 'ביטול'.
     ⚠️ לא ENTER: בשאלת היציאה ('הפעולה לא הושלמה, האם ברצונך לצאת?') כפתור
     ברירת המחדל הוא **ביטול**, ולכן ENTER היה משאיר אותנו תקועים בפנים."""
-    wanted = ("כן", "&כן", "Yes", "&Yes") if yes else ("ביטול", "לא", "Cancel", "No")
+    wanted, other = (_YES, _NO) if yes else (_NO, _YES)
     end = time.time() + timeout
     _first = True
     while time.time() < end:
         if not _first:
             time.sleep(0.12)      # סריקת כל חלונות ה-Desktop יקרה — לא בלולאה צמודה
         _first = False
-        try:
-            for w in Desktop(backend="win32").windows():
+        for w in _dialog_candidates():
+            try:
+                ctrls = list(w.descendants())
+            except Exception:            # noqa: BLE001
+                continue
+            texts = []
+            target = None
+            for c in ctrls:
                 try:
-                    if w.class_name() != "#32770" or not w.is_visible():
-                        continue
-                    for c in w.descendants():
-                        t = (c.window_text() or "").strip()
-                        if t in wanted:
-                            c.click_input()
-                            time.sleep(0.6)
-                            return True
+                    t = _norm(c.window_text())
                 except Exception:        # noqa: BLE001
                     continue
-        except Exception:                # noqa: BLE001
-            pass
-        time.sleep(0.4)
+                if t:
+                    texts.append(t)
+                if target is None and t in [_norm(x) for x in wanted]:
+                    target = c
+            if target is None:
+                # אין התאמת טקסט, אבל יש כאן כפתור "ביטול" → זו תיבת אישור:
+                # לוקחים את הכפתור **השני** (זה שאינו הביטול).
+                if any(t in [_norm(x) for x in other] for t in texts):
+                    btns = [c for c in ctrls
+                            if (c.class_name() or "").lower().startswith("button")]
+                    alt = [c for c in btns
+                           if _norm(c.window_text()) not in [_norm(x) for x in other]]
+                    target = alt[0] if alt else None
+                    if target is not None:
+                        _log("  (דיאלוג ללא טקסט תואם — נלחץ הכפתור שאינו ביטול: '%s')"
+                             % _norm(target.window_text()))
+            if target is not None and _click_button(target):
+                time.sleep(0.5)
+                return True
+        time.sleep(0.3)
     return False
 
 
 def _dialog_open():
-    """האם מוצגת כרגע תיבת אישור/הודעה של Windows (#32770)."""
-    try:
-        for w in Desktop(backend="win32").windows():
-            try:
-                if w.class_name() == "#32770" and w.is_visible():
+    """האם מוצגת כרגע שאלת אישור — כלומר חלון שיש בו כפתור 'כן'/'ביטול'.
+    ⚠️ לא לפי מחלקת החלון: שאלת היציאה של הקופה אינה MsgBox תקני."""
+    keys = [_norm(x) for x in (_YES + _NO)]
+    for w in _dialog_candidates():
+        try:
+            for c in w.descendants():
+                if _norm(c.window_text()) in keys:
                     return True
-            except Exception:            # noqa: BLE001
-                continue
-    except Exception:                    # noqa: BLE001
-        pass
+        except Exception:                # noqa: BLE001
+            continue
     return False
+
+
+def _dump_dialogs(tag=""):
+    """מדפיס מה באמת פתוח על המסך — כדי שכשל ייתן לנו עובדות, לא ניחוש."""
+    for w in _dialog_candidates():
+        try:
+            title = (w.window_text() or "").strip()
+            cls = w.class_name()
+            texts = []
+            for c in w.descendants():
+                t = _norm(c.window_text())
+                if t and t not in texts:
+                    texts.append(t)
+            _log("  🔍 %sחלון '%s' [%s]: %s" % (tag, title, cls, " | ".join(texts[:10])))
+        except Exception:                # noqa: BLE001
+            continue
 
 
 def _exit_item_screen(app, items_win, tries=4):
@@ -283,8 +378,21 @@ def _exit_item_screen(app, items_win, tries=4):
             except Exception:            # noqa: BLE001
                 pass
             _wait_until(_dialog_open, 2.5, 0.15)
-        _confirm_dialog(yes=True, timeout=3)
-        _dismiss_message_box()
+        if not _confirm_dialog(yes=True, timeout=3):
+            _dump_dialogs("יציאה %d: " % (i + 1))
+            # נפילה אחרונה: מזיזים פוקוס לכפתור השני ומקישים רווח. ברירת המחדל
+            # היא 'ביטול', ולכן TAB מעביר אל 'כן'.
+            try:
+                from pywinauto.keyboard import send_keys as _sk3
+                _sk3("{TAB}")
+                time.sleep(0.2)
+                _sk3("{SPACE}")
+            except Exception:            # noqa: BLE001
+                pass
+        # ⛔ רק כשאין שאלת אישור פתוחה: _dismiss_message_box מקיש ENTER, ובשאלת
+        # היציאה ENTER = "ביטול" — כלומר היינו סוגרים לעצמנו את הדלת.
+        if not _dialog_open():
+            _dismiss_message_box()
         time.sleep(0.4)
     return _spec(app, ITEM_TITLE, timeout=0.5) is None
 
