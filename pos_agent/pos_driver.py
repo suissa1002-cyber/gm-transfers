@@ -10,7 +10,7 @@ import time
 
 from pywinauto import Application, Desktop, mouse
 
-DRIVER_VERSION = "2026-08-07.27"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
+DRIVER_VERSION = "2026-08-07.28"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
 POS_TITLE_RE = ".*אורדר.*"
 FORM_TITLE = "הורדה מהמלאי"
 ITEM_TITLE = "הורדה מהמלאי - פעולה חדשה"
@@ -108,8 +108,10 @@ _TIMING = []
 
 
 def _lap(tag, t0):
+    # ⚠️ תוויות באנגלית בכוונה: שורת הזמנים נקראת במסוף Windows, ובתצוגת RTL
+    # תוויות עבריות ומספרים מתערבבים עד שאי אפשר לדעת איזה מספר שייך למי.
     dt = time.time() - t0
-    _TIMING.append("%s %.1fs" % (tag, dt))
+    _TIMING.append("%s=%.1f" % (tag, dt))
     return time.time()
 
 
@@ -844,7 +846,7 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
     # 0) ניקוי שאריות מהרצה קודמת (חלון פתוח חוסם את התפריט)
     _cleanup(app, T)
     pos.set_focus()
-    _t = _lap("ניקוי", _t)
+    _t = _lap("cleanup", _t)
 
     # 1) תפריט → טופס הורדה
     # ⚠️ ElementNotEnabled כאן = חלון אחר של הקופה נשאר פתוח ומשבית את התפריט.
@@ -863,7 +865,7 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
                 "בקופה ועדיין לא ניתן — בדוק שאין מסך פתוח בקופה." %
                 (e2, type(e2).__name__, n))
     time.sleep(0.25)
-    _t = _lap("תפריט", _t)
+    _t = _lap("menu", _t)
 
     # 2) פופאפ "בחר שם עובד" — ⚠️ חלון **ללא כותרת**, ולכן לא ניתן לאתר לפי שם.
     #    לוחצים על כפתור העובד לפי הטקסט שלו, בדיוק כמו משתמש. הפופאפ מודאלי:
@@ -902,12 +904,12 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
             _click_ctrl(grid[idx])
             if not _wait_until(lambda: _find_popup(app) is None, 2.0, 0.1):
                 raise RuntimeError("פופאפ בחירת העובד עדיין פתוח אחרי לחיצה על אינדקס %d" % idx)
-    _t = _lap("פופאפ עובד", _t)
+    _t = _lap("emp_popup", _t)
 
     form = _spec(app, FORM_TITLE, timeout=8)
     if form is None:
         raise RuntimeError("טופס 'הורדה מהמלאי' לא נפתח")
-    _t = _lap("טופס נפתח", _t)
+    _t = _lap("form_open", _t)
 
     # 📸 צילום מצב הטופס בכל כשל — כדי לראות בדיוק איפה נעצר
     def _shot(tag):
@@ -1001,7 +1003,7 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
         _shot("optype")
         raise RuntimeError("סימון 'עדכון מלאי' נכשל: %s" % _err(e))
 
-    _t = _lap("מילוי טופס", _t)
+    _t = _lap("form_fill", _t)
 
     # 3) התחל פעולה → מסך פריטים
     # ⏱️ ⛔ אין צילום כאן. capture_as_image על הטופס עולה ~5 שניות — שישית מזמן
@@ -1021,10 +1023,12 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
         _sk("{ENTER}")
     except Exception:                    # noqa: BLE001
         pass
-    items_win = _spec(app, ITEM_TITLE, timeout=4)
+    # ⏱️ 1.5ש' ולא 4: אם ה-Enter פתח את המסך הוא עושה זאת מיד, ואם לא — עדיף
+    # ליפול מהר ללחיצה מאשר לשרוף 4 שניות בכל הרצה על המתנה שלא תניב כלום.
+    items_win = _spec(app, ITEM_TITLE, timeout=1.5)
 
     if items_win is None:
-        how = "לחיצה"
+        how = "CLICK"
         row = _bottom_row(form)          # ממוין מימין לשמאל
         for cand in row[:2]:
             if _spec(app, FORM_TITLE, timeout=1) is None:
@@ -1034,7 +1038,7 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
                 _click_ctrl(cand)
             except Exception:            # noqa: BLE001
                 continue
-            time.sleep(1.5)
+            # ⏱️ בלי sleep קבוע לפני הבדיקה — exists() כבר ממתין עד שיופיע
             items_win = _spec(app, ITEM_TITLE, timeout=4)
             if items_win is not None:
                 break
@@ -1048,7 +1052,7 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
         raise RuntimeError("מסך הזנת הפריטים לא נפתח%s"
                            % (" — הקופה אמרה: %s" % msg if msg else
                               " (לא הוצגה הודעה — ייתכן שהלחיצה פספסה)"))
-    _t = _lap("התחל פעולה (%s)" % how, _t)
+    _t = _lap("start[%s]" % how, _t)
 
     # 🛡️ ניקוי הרשימה לפני הזנה — **קריטי לבטיחות.** הקופה משחזרת פעולה שלא
     # הושלמה, ולכן פריטים מריצה קודמת עלולים להישאר ברשימה (נצפה 07/08: SmartTag
@@ -1068,7 +1072,7 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
             _dismiss_message_box()
     except Exception:                        # noqa: BLE001
         pass
-    _t = _lap("מחק הכל", _t)
+    _t = _lap("clear_all", _t)
 
     # 4) הזנת פריטים — לכל פריט: קוד → Enter → **כמות (תמיד)** → "הורד מהמלאי".
     #    ⚠️ הכמות היא id=22; id=21 הוא "מלאי נוכחי" (תצוגה). בלי מילוי כמות
@@ -1086,10 +1090,9 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
         items_win.set_focus()
         from pywinauto.keyboard import send_keys as _sk2
         code_ctrl = _child(items_win, I_CODE)
-        # ⏱️ הפריט הראשון נכשל בהקלדה המהירה **בכל הרצה** (הקופה עדיין נרגעת
-        # מפתיחת המסך) ואז חוזר לאט — 4.9ש' מול 2.2ש' לשאר. מתחילים אותו ישר
-        # בקצב הבינוני: הקלדה מעט איטית זולה בהרבה ממחזור שלם שנכשל.
-        _type_code_verified(code_ctrl, code, start_pace=1 if _idx == 0 else 0)
+        # ⏱️ נוסה (07/08) להאיט את הפריט הראשון — זה רק **הוסיף** שנייה (4.9→5.9).
+        # כלומר העיכוב אינו בקצב ההקלדה אלא בקופה עצמה מיד אחרי פתיחת המסך.
+        _type_code_verified(code_ctrl, code)
         _sk2("{ENTER}")
         # ⏱️ במקום להמתין 1.2ש' קבועות: מחכים לאות שהקופה סיימה לעבד — היא
         # מרוקנת את שדה הקוד לפריט הבא. בפועל זה ~0.3ש', לא 1.2.
@@ -1103,7 +1106,7 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
         #    הפריט לא נכנס לרשימה שבתחתית.
         if serial:
             time.sleep(0.25)
-            _t = _lap("פריט %s" % code, _t)
+            _t = _lap("item_%s" % code, _t)
             continue
 
         qty_s = str(int(qty) if float(qty).is_integer() else qty)
@@ -1121,7 +1124,7 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
         else:
             _click_rect(items_win, T["add_rect"])
         time.sleep(0.45)
-        _t = _lap("פריט %s" % code, _t)
+        _t = _lap("item_%s" % code, _t)
 
     if screenshot_path:
         try: items_win.capture_as_image().save(screenshot_path.replace(".png", "_items.png"))
@@ -1134,8 +1137,8 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
         if not ok:
             _force_close_extra(app, pos)
             ok = _spec(app, ITEM_TITLE, timeout=0.5) is None
-        _lap("יציאה (יבש)", _t)
-        _log("⏱️ סה\"כ %.1fs | %s" % (time.time() - _run0, " · ".join(_TIMING)))
+        _lap("exit_dry", _t)
+        _log("TIMING total=%.1fs | %s" % (time.time() - _run0, " ".join(_TIMING)))
         if not ok:
             raise RuntimeError("מסך הפריטים לא נסגר אחרי היציאה — הוא יחסום את "
                                "ההרצה הבאה. סגור אותו בקופה ('יציאה' → 'כן').")
@@ -1155,6 +1158,6 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
     # אחרי שמירה המסך אמור להיסגר לבד; אם נשאר — סוגרים, אחרת הוא יחסום את הבא
     if _spec(app, ITEM_TITLE, timeout=0.5) is not None:
         _exit_item_screen(app, items_win)
-    _lap("סיום פעולה", _t)
-    _log("⏱️ סה\"כ %.1fs | %s" % (time.time() - _run0, " · ".join(_TIMING)))
+    _lap("finish", _t)
+    _log("TIMING total=%.1fs | %s" % (time.time() - _run0, " ".join(_TIMING)))
     return ""
