@@ -10,7 +10,7 @@ import time
 
 from pywinauto import Application, Desktop, mouse
 
-DRIVER_VERSION = "2026-08-07.34"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
+DRIVER_VERSION = "2026-08-07.35"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
 POS_TITLE_RE = ".*אורדר.*"
 FORM_TITLE = "הורדה מהמלאי"
 ITEM_TITLE = "הורדה מהמלאי - פעולה חדשה"
@@ -358,8 +358,10 @@ def _confirm_dialog(yes=True, timeout=6):
 # ⚠️ עד ההרצה החיה הראשונה כל השאלות אחרי "סיים פעולה" היו שאלות שמירה, ולכן
 # הקוד ענה "כן" לכולן. "האם להדפיס בהדפסה רחבה?" היא הראשונה שבה כן = מדפסת
 # מיותרת (אסי, 07/08). מוסיפים כאן מילת מפתח כשמתגלה שאלה חדשה מסוגה.
-_ANSWER_NO_KEYWORDS = ("הדפס", "הדפסה", "print", "מדבק", "פקס", "מייל", "אימייל",
-                       "email", "שלח")
+# ⚠️ שורש ולא מילה מלאה: השאלה בפועל היא "האם ל**הדפיס** בהדפסה רחבה?" —
+# ו-"הדפס" **אינו** תת-מחרוזת של "להדפיס" (יש י' בין פ' לס'). לכן "הדפ".
+_ANSWER_NO_KEYWORDS = ("הדפ", "דפיס", "print", "מדפס", "מדבק", "פקס", "מייל",
+                       "אימייל", "email", "שלח")
 
 
 _OK_ONLY = ("OK", "&OK", "אישור", "&אישור", "סגור", "המשך", "Close")
@@ -408,7 +410,17 @@ def _click_ok(w):
         return False
 
 
-def _answer_dialog_chain(rounds=10, first_wait=5.0, next_wait=2.0):
+def _items_screen_gone():
+    """מסך הפריטים נסגר → הפעולה נסגרה ולא יגיעו עוד חלונות."""
+    if _APP is None:
+        return False
+    try:
+        return _spec(_APP, ITEM_TITLE, timeout=0.1) is None
+    except Exception:                    # noqa: BLE001
+        return False
+
+
+def _answer_dialog_chain(rounds=10, first_wait=6.0, next_wait=6.0):
     """עונה לשרשרת החלונות שאחרי "סיים פעולה": שמירה→כן, הדפסה→לא, הודעה→OK.
 
     ⚠️ נבנה מהריצה החיה הראשונה (אסי, 07/08): אחרי השמירה מגיעה שאלת הדפסה,
@@ -420,8 +432,15 @@ def _answer_dialog_chain(rounds=10, first_wait=5.0, next_wait=2.0):
     for _i in range(rounds):
         # ⏱️ החלונות מופיעים בזה אחר זה, כל אחד רק אחרי שקודמו נסגר — ולכן
         # ממתינים לכל אחד במקום לבדוק פעם אחת ולפספס את השרשרת.
+        # ⚠️ החלון הבא מופיע רק אחרי שהקופה סיימה לשמור, וזה לוקח לה כמה שניות.
+        # המתנה של 2ש' הספיקה לשאלת השמירה ופספסה את שאלת ההדפסה שאחריה
+        # (אסי, 07/08). ממתינים ארוך — אבל יוצאים מיד כשמסך הפריטים נסגר,
+        # כי אז בטוח שאין עוד חלונות בדרך.
         wait = first_wait if _i == 0 else next_wait
-        if not _wait_until(lambda: _dialog_with_buttons()[0] is not None, wait, 0.15):
+        if not _wait_until(lambda: _dialog_with_buttons()[0] is not None
+                           or _items_screen_gone(), wait, 0.15):
+            break
+        if _dialog_with_buttons()[0] is None:
             break
         w, body, kind = _dialog_with_buttons()
         if w is None:
