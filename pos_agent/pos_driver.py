@@ -10,7 +10,7 @@ import time
 
 from pywinauto import Application, Desktop, mouse
 
-DRIVER_VERSION = "2026-08-07.31"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
+DRIVER_VERSION = "2026-08-07.32"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
 POS_TITLE_RE = ".*אורדר.*"
 FORM_TITLE = "הורדה מהמלאי"
 ITEM_TITLE = "הורדה מהמלאי - פעולה חדשה"
@@ -64,6 +64,27 @@ I_NOTE          = 14    # TextBox "הערה" (הרחב)
 
 
 _APP = None          # האפליקציה המחוברת — כדי שאיתור דיאלוגים לא יהיה תלוי בקורא
+
+DESKTOP_LOCKED_MSG = (
+    "מסך המחשב נעול — אי אפשר להזין לקופה. כפתורי הקופה מצוירים ודורשים עכבר "
+    "אמיתי, שלא פועל על מסך נעול. הפעולה נשארה בתור ותתבצע כשהמסך ייפתח. "
+    "לתפעול 24/7: להשאיר את המחשב מחובר ולא נעול.")
+
+
+def _desktop_active():
+    """האם יש שולחן עבודה פעיל (המסך לא נעול / הסשן לא מנותק).
+
+    ⚠️ קריטי: ההזנה לקופה מבוססת על **קליק פיזי** (הכפתורים owner-drawn ואינם
+    מגיבים ללחיצה בהודעה — ניסיון כזה שבר את 'התחל פעולה' בעבר). על מסך נעול
+    כל הזזת עכבר נכשלת, ולכן עדיף לזהות מראש ולומר זאת בבירור מאשר להיכשל
+    באמצע הזנה עם הודעה באנגלית (נצפה 07/08: הסשן ננעל ושתי הרצות נפלו)."""
+    try:
+        import win32api
+        x, y = win32api.GetCursorPos()
+        win32api.SetCursorPos((x, y))        # נכשל בדיוק כשאין שולחן עבודה פעיל
+        return True
+    except Exception:                        # noqa: BLE001
+        return False
 
 
 def connect():
@@ -842,6 +863,11 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
     del _TIMING[:]
     _run0 = time.time()
     _t = _run0
+
+    # ⛔ בודקים **לפני** שנוגעים בקופה: על מסך נעול ההזנה תיכשל באמצע ותשאיר
+    # טופס פתוח שיחסום גם את ההרצה הבאה. עדיף לא להתחיל.
+    if not _desktop_active():
+        raise RuntimeError(DESKTOP_LOCKED_MSG)
 
     app, pos = connect()
     pos.set_focus()

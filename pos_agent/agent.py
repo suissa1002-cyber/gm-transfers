@@ -192,12 +192,17 @@ def process(r, cfg=None):
         doc_no = pos_driver.apply_removal(r, dry_run=dry, screenshot_path=shot, tuning=tuning)
     except Exception as e:                    # noqa: BLE001
         # השרת מחזיר את הפעולה לתור אוטומטית (backoff) — לא נוטשים הורדה בשגיאה.
-        log("  ❌ כשל בהזנה: %s — יוחזר לתור לניסיון נוסף" % e)
-        report(rid, "error", error=str(e))
-        try:                                   # מנקים שאריות מסך כדי שהניסיון הבא יתחיל נקי
-            pos_driver.recover()
-        except Exception as e2:                # noqa: BLE001
-            log("  (ניקוי מסך נכשל: %s)" % e2)
+        msg = str(e)
+        if "no active desktop" in msg.lower():
+            msg = getattr(pos_driver, "DESKTOP_LOCKED_MSG", msg)
+        log("  ❌ כשל בהזנה: %s — יוחזר לתור לניסיון נוסף" % msg)
+        report(rid, "error", error=msg)
+        # ⛔ בלי ניקוי מסך כשהמסך נעול — גם הוא מבוסס קליקים ורק ייכשל שוב
+        if "נעול" not in msg:
+            try:                               # שאריות מסך יחסמו את הניסיון הבא
+                pos_driver.recover()
+            except Exception as e2:            # noqa: BLE001
+                log("  (ניקוי מסך נכשל: %s)" % e2)
         return
 
     if dry:
