@@ -486,15 +486,18 @@ if (!window.toggleNav) { window.toggleNav = function () {
   /* שלד טעינה: המשתמש רואה מיד שמשהו נטען, במקום 'כלום' לכמה שניות */
   function skeleton(){
     var box=document.getElementById('cartSideList'), d=document.getElementById('cartDrawer');
-    if(!box||!d||box.children.length) return;
+    if(!box||!d||box.children.length) return;   /* שלד רק לציור הראשון */
     d.classList.remove('no-rail');
     box.innerHTML='<div class="acard sk"><div class="skimg"></div><div class="skln"></div><div class="skln s"></div></div>'.repeat(3);
   }
   function rail(items, inCart){
     var box=document.getElementById('cartSideList'), d=document.getElementById('cartDrawer');
     if(!box||!d) return;
-    if(!items.length){ box.innerHTML=''; d.classList.add('no-rail'); cta(0); return; }
+    if(!items.length){ box.innerHTML=''; box.removeAttribute('data-sig'); d.classList.add('no-rail'); cta(0); return; }
     d.classList.remove('no-rail'); cta(items.length);
+    var sig=items.map(function(a){return a.id+':'+(inCart.indexOf(+a.id)>-1?1:0);}).join(',');
+    if(box.getAttribute('data-sig')===sig) return;    /* אותו תוכן ⇒ בלי הבהוב */
+    box.setAttribute('data-sig',sig);
     box.innerHTML=items.map(function(a){
       var has=inCart.indexOf(+a.id)>-1;
       return '<div class="acard"><img src="'+a.img+'" alt="" loading="lazy">'+
@@ -562,23 +565,37 @@ if (!window.toggleNav) { window.toggleNav = function () {
         return (dec(it.name||'')+' '+extra).toLowerCase(); });
     document.querySelectorAll('#cartDrawer .citem').forEach(function(ci){
       var nx=ci.nextElementSibling;
-      while(nx && (nx.classList.contains('gcopts')||nx.classList.contains('gcmore'))){ var k=nx.nextElementSibling; nx.remove(); nx=k; }
+      var exist=(nx&&nx.classList.contains('gcopts'))?nx:null;   /* לא מוחקים לפני שיודעים */
       var key=ci.getAttribute('data-key'), pid=ci.getAttribute('data-pid');
       if(!pid){ var m=items.filter(function(it){return it.key===key;})[0]; pid=m?String(m.id):''; }
-      var conf=map[pid]; if(!conf) return;
+      var conf=map[pid];
+      if(!conf){ if(exist){ drop(exist); } return; }
       var nm=(conf.name||'').toLowerCase().slice(0,14);
       var isAdded=!!nm && addedTxt.some(function(t){return t.indexOf(nm)>-1;});
       var rows='';
       if(conf.tiers&&+conf.tiers.gc&&+conf.prices.gc>0) rows+=gcBtn(conf.pid||pid,'gc',conf.prices.gc,'Green Care','אחריות שנה שנייה מלאה',isAdded);
       if(conf.tiers&&+conf.tiers.gcp&&+conf.prices.gcp>0) rows+=gcBtn(conf.pid||pid,'gcp',conf.prices.gcp,'Green Care <b>+</b>','24 חודשים, כולל שברים ונזקי נוזלים',isAdded);
-      if(!rows) return;
-      var wrap=document.createElement('div'); wrap.className='gcopts'; wrap.innerHTML=rows;
+      if(!rows){ if(exist){ drop(exist); } return; }
+      /* ⛔ בלי ציור-מחדש מיותר: פעימות הסנכרון גרמו להבהוב של הכרטיסייה
+         (אסי, 09/08). אם המסלולים והמחירים זהים — רק מעדכנים סימון. */
+      var sig=pid+'|'+(conf.prices.gc||0)+'|'+(conf.prices.gcp||0);
+      if(exist && exist.getAttribute('data-sig')===sig){
+        exist.querySelectorAll('.gcopt').forEach(function(b){
+          if(b.classList.contains('added')!==isAdded) gcPaint(b,isAdded);
+        });
+        return;
+      }
+      if(exist){ drop(exist); }
+      var wrap=document.createElement('div'); wrap.className='gcopts'; wrap.setAttribute('data-sig',sig); wrap.innerHTML=rows;
       ci.insertAdjacentElement('afterend', wrap);
       var a=document.createElement('a'); a.className='gcmore'; a.href='/green-care/';
       a.innerHTML='מה כלול בכל מסלול? <u>לפרטים המלאים</u>';
       wrap.insertAdjacentElement('afterend', a);
     });
   }
+  /* הסרת בלוק המסלולים + שורת "לפרטים" שאחריו */
+  function drop(el){ var n=el.nextElementSibling; if(n&&n.classList.contains('gcmore')) n.remove(); el.remove(); }
+  var cIds='', cAdd=null, cGc=null;   /* מטמון לפי הרכב הסל */
   function isGc(it){ return /green ?care/i.test(dec(it.name||'')); }
   function sync(){
     var d=document.getElementById('cartDrawer'); if(!d) return;
@@ -598,14 +615,18 @@ if (!window.toggleNav) { window.toggleNav = function () {
       }
       var ids=items.map(function(it){return it.id;}).filter(Boolean);
       var inCart=ids.map(Number);
-      gcRender({}, all);                          /* מנקה כפתורים ישנים */
-      if(!ids.length){ rail([],inCart); return; }
+      if(!ids.length){ gcRender({}, all); rail([],inCart); cIds=''; cAdd=null; cGc=null; return; }
+      var key=ids.slice().sort().join(',');
+      if(key===cIds && cAdd){                     /* הרכב הסל לא השתנה */
+        rail(cAdd,inCart); gcRender(cGc||{}, items); return;
+      }
+      cIds=key; cAdd=null; cGc=null;
       skeleton();
       fetch('/wp-json/gm-addons/v1/for-cart?ids='+ids.join(','),{credentials:'same-origin'})
-        .then(function(r){return r.json();}).then(function(x){ rail(((x&&x.items)||[]), inCart); })
+        .then(function(r){return r.json();}).then(function(x){ cAdd=((x&&x.items)||[]); rail(cAdd, inCart); })
         .catch(function(){ rail([],inCart); });
       fetch('/wp-json/gm-services/v1/greencare?ids='+ids.join(','),{credentials:'same-origin'})
-        .then(function(r){return r.json();}).then(function(x){ gcRender((x&&x.items)||{}, items); })
+        .then(function(r){return r.json();}).then(function(x){ cGc=(x&&x.items)||{}; gcRender(cGc, items); })
         .catch(function(){});
     });
   }
