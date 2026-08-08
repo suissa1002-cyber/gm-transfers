@@ -601,6 +601,17 @@ if (!window.toggleNav) { window.toggleNav = function () {
       if(real.indexOf(nm)>-1) g.remove();
     });
   }
+  /* מה שהמשתמש בחר עכשיו גובר על תשובת השרת עד שהיא מדביקה אותו —
+     אחרת סנכרון שרץ באמצע מוחק את הסימון שנצבע בלחיצה (אסי, 09/08). */
+  var gcPend={};
+  function gcWant(pid,want){ gcPend[pid]={w:!!want,t:now()}; }
+  function now(){ return (window.performance&&performance.now)?performance.now():+new Date(); }
+  function gcResolve(pid,isAdded){
+    var p=gcPend[pid]; if(!p) return isAdded;
+    if(p.w===isAdded){ delete gcPend[pid]; return isAdded; }
+    if(now()-p.t<15000) return p.w;
+    delete gcPend[pid]; return isAdded;
+  }
   var hgBusy=false;
   function hideGcDom(){
     var d=document.getElementById('cartDrawer'); if(!d||hgBusy) return 0;
@@ -633,6 +644,7 @@ if (!window.toggleNav) { window.toggleNav = function () {
       if(!conf){ if(exist){ drop(exist); } return; }
       var nm=(conf.name||'').toLowerCase().slice(0,14);
       var isAdded=!!nm && addedTxt.some(function(t){return t.indexOf(nm)>-1;});
+      isAdded=gcResolve(String(conf.pid||pid), isAdded);
       var rows='';
       if(conf.tiers&&+conf.tiers.gc&&+conf.prices.gc>0) rows+=gcBtn(conf.pid||pid,'gc',conf.prices.gc,'Green Care','אחריות שנה שנייה מלאה',isAdded);
       if(conf.tiers&&+conf.tiers.gcp&&+conf.prices.gcp>0) rows+=gcBtn(conf.pid||pid,'gcp',conf.prices.gcp,'Green Care <b>+</b>','24 חודשים, כולל שברים ונזקי נוזלים',isAdded);
@@ -658,8 +670,10 @@ if (!window.toggleNav) { window.toggleNav = function () {
   function drop(el){ var n=el.nextElementSibling; if(n&&n.classList.contains('gcmore')) n.remove(); el.remove(); }
   var cIds='', cAdd=null, cGc=null;   /* מטמון לפי הרכב הסל */
   function isGc(it){ return /green ?care/i.test(dec(it.name||'')); }
+  var syncing=false;
   function sync(){
-    var d=document.getElementById('cartDrawer'); if(!d) return;
+    var d=document.getElementById('cartDrawer'); if(!d||syncing) return;   /* בלי חפיפה */
+    syncing=true; setTimeout(function(){ syncing=false; }, 1200);
     style(); upgrade(d); watch(); dropGhosts();   /* הרשימה עשויה להיות מוחלפת ע"י סקריפט העמוד */
     get().then(function(c){
       var all=(c&&c.items)||[];
@@ -694,7 +708,7 @@ if (!window.toggleNav) { window.toggleNav = function () {
   function later(ms){ clearTimeout(tmr); tmr=setTimeout(sync, ms||400); }
   /* הוספה/הסרה יכולה להסתיים בזמנים שונים (Store API + רינדור של סקריפט
      העמוד). פעימות קצרות מבטיחות שהפס יופיע/ייעלם בלי רענון עמוד. */
-  function burst(){ [250,900,2000,3500].forEach(function(ms){ setTimeout(sync, ms); }); }
+  function burst(){ [400,1600,3600].forEach(function(ms){ setTimeout(sync, ms); }); }
   document.addEventListener('click', function(e){
     var t=e.target;
     if(t.closest('.cart-pill,.mcart,a.card-btn,.gm-atc')) { sideOpen(false); later(60); burst(); return; }
@@ -720,23 +734,23 @@ if (!window.toggleNav) { window.toggleNav = function () {
     /* לחיצה שנייה על מסלול שכבר נוסף ⇒ הסרה מהסל (אסי, 09/08) */
     if(gc && gc.classList.contains('added')){ e.preventDefault(); e.stopPropagation();
       var pr=+gc.getAttribute('data-price')||0;
-      gcPaint(gc, false); bumpSub(-pr);                     /* מיידי */
+      gcPaint(gc, false); bumpSub(-pr); gcWant(gc.getAttribute('data-pid'),false);   /* מיידי */
       gcRemove(gc.getAttribute('data-pid'))
         .then(function(){ refresh(); later(400); })
-        .catch(function(){ gcPaint(gc, true); bumpSub(pr); });
+        .catch(function(){ gcPaint(gc, true); bumpSub(pr); gcWant(gc.getAttribute('data-pid'),true); });
       return; }
     if(gc){ e.preventDefault(); e.stopPropagation();
       var pr=+gc.getAttribute('data-price')||0;
-      gcPaint(gc, true); bumpSub(pr);                       /* מיידי */
+      gcPaint(gc, true); bumpSub(pr); gcWant(gc.getAttribute('data-pid'),true);      /* מיידי */
       var fd=new FormData(); fd.append('action','gm_svc_greencare');
       fd.append('plan',gc.getAttribute('data-gc'));
       fd.append('product_id',gc.getAttribute('data-pid'));
       fd.append('price',gc.getAttribute('data-price'));
       fetch('/wp-admin/admin-ajax.php',{method:'POST',credentials:'same-origin',body:fd})
         .then(function(r){ return r.json(); })
-        .then(function(j){ if(j&&j.success===false){ gcPaint(gc,false); bumpSub(-pr); return; }
+        .then(function(j){ if(j&&j.success===false){ gcPaint(gc,false); bumpSub(-pr); gcWant(gc.getAttribute('data-pid'),false); return; }
           refresh(); later(400); })
-        .catch(function(){ gcPaint(gc,false); bumpSub(-pr); });
+        .catch(function(){ gcPaint(gc,false); bumpSub(-pr); gcWant(gc.getAttribute('data-pid'),false); });
       return; }
   }, true);
   function watch(){
