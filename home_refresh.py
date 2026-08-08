@@ -47,6 +47,7 @@ def _slim(p):
             "regular": p.get("regular_price") or "",
             "type": p.get("type", "simple"), "link": p.get("permalink"),
             "outlet": any(t.get("id") == 3709 for t in (p.get("tags") or [])),
+            "gifts": any(t.get("id") == 3514 for t in (p.get("tags") or [])),
             "img": imgs[0]["src"] if imgs else ""}
 
 
@@ -69,12 +70,15 @@ def fetch_best(n=8, days=60):
         rows = []
     ids = [r.get("product_id") for r in rows
            if r.get("product_id") and r.get("product_id") not in CODE_IDS]
-    vis = {}
+    vis, gifts = {}, {}
     if ids:
         try:
             prods = _get("wc/v3/products", include=",".join(map(str, ids)),
                          per_page=len(ids), status="publish")
             vis = {p["id"]: _in_catalog(p) for p in prods}
+            # ⚠️ דוח ה-analytics לא מחזיר תגיות — מושכים אותן מאותה קריאה
+            gifts = {p["id"]: any(t.get("id") == 3514 for t in (p.get("tags") or []))
+                     for p in prods}
         except Exception:
             vis = {}
     for r in rows:
@@ -90,7 +94,8 @@ def fetch_best(n=8, days=60):
         out.append({"id": pid, "name": info.get("name", ""),
                     "price": str(info.get("price") or ""), "regular": "",
                     "type": "variable" if (info.get("variations") or []) else "simple",
-                    "link": info.get("permalink"), "img": img})
+                    "link": info.get("permalink"), "img": img,
+                    "gifts": gifts.get(pid, False)})
         if len(out) >= n:
             break
     if len(out) < 6:                        # נפילת דוח → נסיגה ל-popularity כללי
@@ -146,20 +151,24 @@ def _fmt(v):
 def _card(p, kind):
     name = html.escape(p["name"]); img = p.get("img", "")
     price = _fmt(p.get("price")); reg = _fmt(p.get("regular")) if p.get("regular") else ""
-    badge = ""
+    bh = ""
     if kind == "sale" and reg and reg != price:
         try:
             pct = round((1 - float(p["price"]) / float(p["regular"])) * 100)
             if pct > 0:
-                badge = f'<span class="badge deal">{pct}%- מבצע</span>'
+                bh += f'<span class="badge deal">{pct}%- מבצע</span>'
         except (TypeError, ValueError, ZeroDivisionError):
             pass
     elif kind == "best":
-        badge = '<span class="badge best">רב־מכר</span>'
+        bh += '<span class="badge best">רב־מכר</span>'
     elif kind == "new":
         # מציאון גובר על "חדש" (אסי 15/07) — כמו ב-generate_mockup.card
-        badge = ('<span class="badge outlet">מציאון</span>' if p.get("outlet")
-                 else '<span class="badge new">חדש</span>')
+        bh += ('<span class="badge outlet">מציאון</span>' if p.get("outlet")
+               else '<span class="badge new">חדש</span>')
+    # מתנה ברכישה (תגית 3514) — נוסף לצד באדג' הקטע, כמו בעמודי הקטגוריה
+    if p.get("gifts"):
+        bh += '<span class="badge gifts">מתנה ברכישה</span>'
+    badge = f'<div class="badges">{bh}</div>' if bh else ""
     regline = f'<s class="reg">‏₪{reg}</s>' if (kind == "sale" and reg and reg != price) else ""
     link = p.get("link") or f'{_base()}/?p={p.get("id")}'
     is_var = p.get("type") != "simple"
