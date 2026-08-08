@@ -1627,10 +1627,14 @@ function modal({title,sub,placeholder,value,type,onok}){
 function closeModal(){ document.getElementById('modalRoot').innerHTML=''; }
 
 // ── ניהול פוקוס לשדה הסריקה (סורק = מקלדת) ──
-function focusScan(){
+function focusScan(force){
   // לא גונבים פוקוס כשמודאל/חלון פתוח או כשהמשתמש מקליד בשדה אחר
   // (טפסי הזמנה/תשלום, iframe של PayPlus, תיבת וואטסאפ) — הרענון התקופתי קרא
   // לכאן כל 15ש׳ והעיף את הסמן באמצע הקלדה
+  // ⛔ במובייל: פוקוס = פתיחת מקלדת. בלי force הסמן היה חוזר לשדה כל רענון
+  // וכל קליק, והמקלדת נפתחה שוב ושוב (אסי, 07/08). שם סורקים במצלמה או
+  // נוגעים בשדה במפורש.
+  if(IS_MOBILE && !force) return;
   if(document.querySelector('.overlay,.wa-lb,.uov.on')) return;   // גם פופאפ עדכון
   const el=document.getElementById('boardScan')||document.getElementById('scanInput')||document.getElementById('empInput');
   if(!el) return;
@@ -2987,7 +2991,10 @@ function finishPick(id,name){
 // ⚠️ רענון שקט אינו אמור להזיז את המסך. app.innerHTML= בונה מחדש את כל הלוח,
 // ולכן הגלילה קפצה חזרה למעלה כל 15 שניות — מפריע בדיוק בזמן עבודה (אסי, 07/08).
 // שני מנגנונים: (א) דילוג כשהתוכן לא השתנה, (ב) שחזור מיקום הגלילה.
+let _wasScanFocused=false;
 function _boardPaint(app, html, silent){
+  const ae=document.activeElement;
+  _wasScanFocused = !!(ae && ae.id==='boardScan');
   if(silent && S._boardHTML===html) return;      // אין שינוי — לא נוגעים ב-DOM
   const y = window.scrollY;
   S._boardHTML=html;
@@ -3091,7 +3098,9 @@ async function renderBoard(app, silent){
   }
   const inp=document.getElementById('boardScan');
   attachScan(inp, (code,method)=>doScanBoard(code,method));
-  focusScan();
+  // ברענון שקט מחזירים פוקוס רק אם הוא כבר היה בשדה — אחרת המסך "חוטף"
+  // את הסמן בזמן שהמשתמש קורא כרטיס או מקליד במקום אחר
+  if(!silent || _wasScanFocused) focusScan();
   if(S._flashOp){ const el=document.querySelector(`[data-op="${S._flashOp}"]`);
     if(el){ el.classList.add('flash'); setTimeout(()=>{el&&el.classList.remove('flash');},900); } S._flashOp=null; }
 }
@@ -3290,7 +3299,7 @@ function rmAdd(it){
   else if(ex && it.serial) { toast('הסידורי כבר בפעולה'); return; }
   else c.push({sku:it.sku,name:it.name,serial:it.serial||'',barcode:it.barcode||'',qty:1});
   S.priceCard=null; toast('נוסף להורדה: '+it.name);
-  renderBoard(document.getElementById('app'), true); focusScan();
+  renderBoard(document.getElementById('app'), true); focusScan(true);
 }
 function rmQty(i,d){ const c=rmCart(); c[i].qty=Math.max(1,(Number(c[i].qty)||1)+d);
   renderBoard(document.getElementById('app'), true); }
@@ -3420,7 +3429,7 @@ async function rmSave(){
         items:c.map(x=>({sku:x.sku,name:x.name,qty:Number(x.qty)||1,serial:x.serial||'',barcode:x.barcode||''}))})});
     S.rmCart=[]; S.rmAmount=''; S.rmNote='';
     toast('✓ נשמר לתור ('+r.items+' פריטים)',true);
-    renderBoard(document.getElementById('app'), true); focusScan();
+    renderBoard(document.getElementById('app'), true); focusScan(true);
     rmTrack(r.id);
   }catch(err){ toast(String(err&&(err.detail||err.message)||err),false); }
 }
@@ -10240,6 +10249,7 @@ function waBadgeClear(){ try{ if(navigator.clearAppBadge) navigator.clearAppBadg
 // ── init ──
 // שומר פוקוס על שדה הסריקה — אבל לא גונב בחירת טקסט (העתקת ברקוד/סריאל) או קליק על פריט
 document.addEventListener('click', (e)=>{
+  if(IS_MOBILE) return;                                            // ⛔ במובייל פותח מקלדת
   if(window.getSelection && String(window.getSelection()).trim()) return;   // המשתמש מסמן טקסט
   const t=e.target;
   if(t.closest && t.closest('.item, .serial, .sub, a, button, input, select, textarea, .arow, table, .drawer, .embed-frame')) return;
