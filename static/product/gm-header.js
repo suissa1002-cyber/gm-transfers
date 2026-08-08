@@ -366,6 +366,9 @@ if (!window.toggleNav) { window.toggleNav = function () {
    '.gcopt-p{margin-inline-start:auto;font-weight:900;font-size:.85rem;white-space:nowrap;}',
    '.gcopt.added{border-color:var(--accent,#149c40);background:var(--accent-soft,#e7f6ec);}',
    '.gcmore{display:block;margin:0 0 14px;font-size:.72rem;color:var(--ink2,#5c666d);text-decoration:none;}',
+   /* רצועת הכניסה וכפתור החזרה שייכים למובייל בלבד */
+   '.gm-side-cta{display:none;}',
+   '.side-back{display:none;}',
    /* ── מובייל: אין מקום לעמודה שנייה ⇒ שלב נפרד (כמו GoMobile): רצועת
       כניסה מעל הפוטר, ומסך תוספות שנפתח מעל הסל עם "חזרה לסל". הפוטר
       (סכום + מעבר לתשלום) נשאר גלוי — bottom מחושב ב-JS לפי גובהו. ── */
@@ -374,9 +377,9 @@ if (!window.toggleNav) { window.toggleNav = function () {
    '.cart-drawer.gmv2 .cart-side{position:absolute;inset-inline:0;top:0;bottom:0;transform:translateX(105%);transition:transform .28s ease;z-index:6;border:0;background:var(--bg,#fff);}',
    '.cart-drawer.gmv2.side-open .cart-side{transform:none;}',
    '.cart-drawer.gmv2.no-rail .cart-side{display:flex;}',
-   '.side-back{display:flex;align-items:center;gap:8px;background:none;border:none;font:inherit;font-weight:900;font-size:1rem;color:var(--ink,#111417);padding:16px 18px 10px;cursor:pointer;width:100%;}',
+   '.side-back{display:flex!important;align-items:center;gap:8px;background:none;border:none;font:inherit;font-weight:900;font-size:1rem;color:var(--ink,#111417);padding:16px 18px 10px;cursor:pointer;width:100%;}',
    '.side-back svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;}',
-   '.gm-side-cta{display:flex;align-items:center;gap:10px;width:100%;background:var(--accent-soft,#e7f6ec);border:none;border-radius:14px;padding:12px 14px;margin:0 0 12px;font:inherit;font-weight:800;color:#0e5c2b;cursor:pointer;text-align:start;}',
+   '.gm-side-cta{display:flex!important;align-items:center;gap:10px;width:100%;background:var(--accent-soft,#e7f6ec);border:none;border-radius:14px;padding:12px 14px;margin:0 0 12px;font:inherit;font-weight:800;color:#0e5c2b;cursor:pointer;text-align:start;}',
    '.gm-side-cta i{margin-inline-start:auto;font-style:normal;font-weight:900;}',
    '.acard{display:flex;align-items:center;gap:12px;text-align:start;padding:10px;}',
    '.acard img{width:64px;height:64px;margin:0;}',
