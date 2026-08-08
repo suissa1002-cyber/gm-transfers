@@ -279,9 +279,12 @@
   .nc .hero{height:98px;position:relative;background:var(--card-3);display:flex;
     align-items:center;justify-content:center;overflow:hidden}
   .nc .hero{overflow:hidden}
+  /* ⚠️ contain ולא cover: תמונת מוצר מהקטלוג באה ביחס משלה, ו-cover מגדיל
+     וחותך אותה עד שהיא נראית ענקית. העלאות כבר מנורמלות ל-16:9, ולכן שם
+     contain זהה ל-cover — כלל אחד שנכון לשניהם. */
   .nc .hero img{display:block;width:100%;height:100%;max-width:100%;max-height:100%;
-    object-fit:cover;object-position:center}
-  .strip.wide .nc .hero img{object-fit:cover}
+    object-fit:contain;object-position:center}
+  .nc .hero:has(img){background:#fff}
   .nc .type{position:absolute;top:10px;inset-inline-start:10px;font-size:11px;font-weight:800;
     border-radius:var(--r-pill);padding:4px 10px;color:#fff}
   .type.deal{background:rgba(255,90,95,.92)} .type.new{background:rgba(76,141,255,.92)}
@@ -2981,6 +2984,16 @@ function finishPick(id,name){
 }
 
 // ── לוח בהעברה ──
+// ⚠️ רענון שקט אינו אמור להזיז את המסך. app.innerHTML= בונה מחדש את כל הלוח,
+// ולכן הגלילה קפצה חזרה למעלה כל 15 שניות — מפריע בדיוק בזמן עבודה (אסי, 07/08).
+// שני מנגנונים: (א) דילוג כשהתוכן לא השתנה, (ב) שחזור מיקום הגלילה.
+function _boardPaint(app, html, silent){
+  if(silent && S._boardHTML===html) return;      // אין שינוי — לא נוגעים ב-DOM
+  const y = window.scrollY;
+  S._boardHTML=html;
+  app.innerHTML=html;
+  if(silent && y) window.scrollTo(0, y);
+}
 async function renderBoard(app, silent){
   if(!silent) showLoading();
   let list=[], loadErr=false; try{ list=await api('/api/transfers?branch_id='+S.branchId); }catch(e){ loadErr=true; }
@@ -3026,7 +3039,7 @@ async function renderBoard(app, silent){
             <div class="s">${ls.name?escW(ls.name)+' · ':''}<span class="mono">${escW(ls.code||'')}</span></div></div></div>`)
     : `<div class="sres idle">המכשיר האחרון שתסרוק יוצג כאן</div>`);
 
-  app.innerHTML=`
+  _boardPaint(app, `
     ${branchTabsHTML()}
     <h1 class="title" style="display:flex;align-items:center;gap:8px">${ico('inbox',19)} קליטת מכשירים נכנסים</h1>
     <div style="text-align:center">${notifBtn}</div>
@@ -3064,7 +3077,7 @@ async function renderBoard(app, silent){
 
       <div class="b-rail brail">${rmCartHTML()}<div id="tiWidgetHost"></div><div id="gcWidgetHost"></div></div>
     </div>
-    <div class="uov" id="uOv" onclick="if(event.target===this)closeUpd()"><div class="umd" id="uMd"></div></div>`;
+    <div class="uov" id="uOv" onclick="if(event.target===this)closeUpd()"><div class="umd" id="uMd"></div></div>`, silent);
   tiWidgetEnsure();
   gcwEnsure();
   if(rmOn() && S._rmFor!==S.branchId){ S._rmFor=S.branchId; rmLoadStatus();
@@ -10141,6 +10154,11 @@ function startPoll(){ clearInterval(S.pollTimer);
       // לא מרעננים תוך כדי הקלדה/סריקה פעילה כדי לא לשבש
       const bs=document.getElementById('boardScan');
       if(bs && document.activeElement===bs && bs.value) return;
+      // ⛔ לא מרעננים כשפופאפ פתוח (עדכון/סידור) או כשמקלידים בשדה כלשהו —
+      // רינדור מחדש היה סוגר אותם ומאבד הקלדה
+      if(document.querySelector('.uov.on,.overlay')) return;
+      const ae=document.activeElement;
+      if(ae && (ae.tagName==='INPUT'||ae.tagName==='TEXTAREA') && ae.value) return;
       renderBoard(a, true);
     } else if(S.view==='admin'){
       if(S.adminTab==='wa'){ waPollTick(); return; }   // וואטסאפ: רענון שקט של רשימה+שיחה
