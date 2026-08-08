@@ -309,6 +309,9 @@
   /* כרטיס קבוע — סידור עבודה. תמיד ראשון, לא נמחק ולא נקרא/לא-נקרא */
   .nc.fixed{border-color:color-mix(in srgb,var(--blue) 30%,transparent)}
   .nc.fixed .hero{background:linear-gradient(135deg,var(--blue-bg),transparent)}
+  .shift-hero{padding:0}
+  .shiftart{width:100%;height:100%;display:block}
+  .strip.wide .nc.fixed .hero{width:200px;flex:0 0 200px}
   /* סידור היום — שורה לכל סניף, הסניף שלי מודגש */
   .nc .shifts{margin-top:6px;display:flex;flex-direction:column;gap:2px}
   .nc .shifts .sl{font-size:12px;display:flex;gap:6px;align-items:baseline;
@@ -3169,6 +3172,64 @@ async function loadFeed(){
     if(S.view==='board') renderBoard(document.getElementById('app'), true);
   }catch(e){}
 }
+
+// איור הכרטיס — SVG מוטמע ולא תמונה: נשאר חד בכל גודל, מתאים למצב בהיר/כהה
+// דרך משתני העיצוב, ולא מוסיף בקשת רשת אחת.
+function shiftArtSVG(){
+  return `<svg class="shiftart" viewBox="0 0 320 170" preserveAspectRatio="xMidYMid meet"
+      xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <defs>
+      <linearGradient id="sgPage" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="var(--card)"/><stop offset="1" stop-color="var(--card-2)"/>
+      </linearGradient>
+      <linearGradient id="sgTop" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0" stop-color="var(--blue)"/><stop offset="1" stop-color="var(--brand)"/>
+      </linearGradient>
+    </defs>
+    <circle cx="272" cy="34" r="46" fill="var(--brand)" opacity=".07"/>
+    <circle cx="44" cy="140" r="34" fill="var(--blue)" opacity=".07"/>
+    <!-- לוח שנה -->
+    <g transform="translate(74 26)">
+      <rect x="4" y="8" width="170" height="118" rx="14" fill="var(--txt)" opacity=".07"/>
+      <rect x="0" y="0" width="170" height="118" rx="14" fill="url(#sgPage)"
+            stroke="var(--line-2)" stroke-width="1.5"/>
+      <path d="M0 14a14 14 0 0 1 14-14h142a14 14 0 0 1 14 14v14H0z" fill="url(#sgTop)"/>
+      <g fill="var(--card)" opacity=".85">
+        <rect x="34" y="-6" width="7" height="18" rx="3.5"/>
+        <rect x="82" y="-6" width="7" height="18" rx="3.5"/>
+        <rect x="130" y="-6" width="7" height="18" rx="3.5"/>
+      </g>
+      <!-- רשת הימים -->
+      <g fill="var(--txt)" opacity=".13">
+        <rect x="18" y="44" width="24" height="14" rx="4"/><rect x="50" y="44" width="24" height="14" rx="4"/>
+        <rect x="114" y="44" width="24" height="14" rx="4"/>
+        <rect x="18" y="66" width="24" height="14" rx="4"/><rect x="82" y="66" width="24" height="14" rx="4"/>
+        <rect x="114" y="66" width="24" height="14" rx="4"/>
+        <rect x="50" y="88" width="24" height="14" rx="4"/><rect x="114" y="88" width="24" height="14" rx="4"/>
+      </g>
+      <!-- משמרות מסומנות -->
+      <rect x="82" y="44" width="24" height="14" rx="4" fill="var(--brand)" opacity=".85"/>
+      <rect x="50" y="66" width="24" height="14" rx="4" fill="var(--blue)" opacity=".8"/>
+      <rect x="18" y="88" width="24" height="14" rx="4" fill="var(--amber)" opacity=".8"/>
+      <rect x="82" y="88" width="24" height="14" rx="4" fill="var(--brand)" opacity=".45"/>
+    </g>
+    <!-- שעון -->
+    <g transform="translate(38 92)">
+      <circle cx="24" cy="24" r="25" fill="var(--card)" stroke="var(--line-2)" stroke-width="1.5"/>
+      <circle cx="24" cy="24" r="25" fill="none" stroke="var(--blue)" stroke-width="3"
+              stroke-linecap="round" stroke-dasharray="42 200" transform="rotate(-90 24 24)"/>
+      <path d="M24 12v13l9 5" fill="none" stroke="var(--blue)" stroke-width="3"
+            stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+    <!-- וי -->
+    <g transform="translate(238 104)">
+      <circle cx="18" cy="18" r="18" fill="var(--brand)" opacity=".16"/>
+      <path d="M11 18.5l5 5 10-11" fill="none" stroke="var(--brand)" stroke-width="3.2"
+            stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+  </svg>`;
+}
+
 function shiftCardHTML(){
   const sh=S.shift; if(!sh) return '';
   // כל הסניפים להיום — לדעת מי עובד איפה, למי להתקשר ומי סגור
@@ -3182,9 +3243,8 @@ function shiftCardHTML(){
           <span class="who">${escW(who)}</span></div>`;}).join('')}</div>`
     : `<div class="sl cl"><span class="who">אין סידור להיום</span></div>`;
   return `<div class="nc fixed" onclick="openSchedule()">
-    <div class="hero"><span class="type" style="background:rgba(76,141,255,.92)">סידור עבודה</span>
-      <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="1.8"
-        stroke-linecap="round"><rect x="3" y="4.5" width="18" height="16" rx="3"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg></div>
+    <div class="hero shift-hero"><span class="type" style="background:rgba(76,141,255,.92)">סידור עבודה</span>
+      ${shiftArtSVG()}</div>
     <div class="nb"><div class="nt">סידור ${escW(sh.day_name||'')} ${escW(sh.date_short||'')}</div>
       ${body}
       <div class="nf"><span class="tag">${escW(sh.week_range||'השבוע')}</span><span>לחץ לסידור המלא</span></div></div>
