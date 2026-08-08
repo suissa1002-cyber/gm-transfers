@@ -469,8 +469,10 @@ if (!window.toggleNav) { window.toggleNav = function () {
   /* רענון עמודת הסל עצמה — המודול האפוי חושף וו ציבורי; בלעדיו המשתמש היה
      רואה את התוספת רק אחרי רענון עמוד (אסי, 09/08). */
   function refresh(){ try{ if(typeof window.gmCartRefresh==='function') window.gmCartRefresh(); }catch(e){}
-    hideGcDom(); dropGhosts(); setTimeout(function(){hideGcDom();dropGhosts();},60);
-    setTimeout(function(){hideGcDom();dropGhosts();},300); }
+    /* הרענון בונה מחדש את שורות הסל ומוחק את בלוקי המסלולים — מציירים
+       אותם מיד מהמטמון כדי שלא ייווצר רגע ריק (אסי, 09/08). */
+    var re=function(){ hideGcDom(); dropGhosts(); if(cGc) gcRender(cGc, cAll); };
+    re(); setTimeout(re,60); setTimeout(re,250); setTimeout(re,700); }
   /* הסרת שורת Green Care המשויכת למכשיר (מזוהה לפי שם המכשיר ב-item_data) */
   function gcRemove(pid){
     return get().then(function(c){
@@ -668,7 +670,7 @@ if (!window.toggleNav) { window.toggleNav = function () {
   }
   /* הסרת בלוק המסלולים + שורת "לפרטים" שאחריו */
   function drop(el){ var n=el.nextElementSibling; if(n&&n.classList.contains('gcmore')) n.remove(); el.remove(); }
-  var cIds='', cAdd=null, cGc=null;   /* מטמון לפי הרכב הסל */
+  var cIds='', cAdd=null, cGc=null, cAll=[];   /* מטמון לפי הרכב הסל */
   function isGc(it){ return /green ?care/i.test(dec(it.name||'')); }
   var syncing=false;
   function sync(){
@@ -680,6 +682,7 @@ if (!window.toggleNav) { window.toggleNav = function () {
       /* ⛔ שורת Green Care אינה "מוצר בסל": היא לא מזכה בתוספות ולא סופרת.
          בלעדי הסינון, שורה יתומה שנשארה אחרי הסרת המכשיר השאירה את הפס חי
          (אסי, 09/08: "אין מוצרים בסל אין שום סיבה שיופיע"). */
+      cAll=all;
       var items=all.filter(function(it){ return !isGc(it); });
       var orphans=all.filter(isGc);
       if(!items.length && orphans.length){        // נשארו רק שורות שירות ⇒ מנקים
