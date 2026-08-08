@@ -543,18 +543,26 @@ if (!window.toggleNav) { window.toggleNav = function () {
   /* ⛔ שורת Green Care לא מוצגת כפריט נפרד בסל: הכרטיסייה המסומנת היא הביטוי
      של התוספת (אסי, 09/08). השורה נשארת ב-WooCommerce לצורך חיוב, ולכן
      סכום הביניים כולל אותה — רק התצוגה הכפולה יורדת. גם המונה מתוקן. */
+  /* ⚠️ כתיבה רק כשהערך שונה: המונה יושב בתוך המגירה, וכתיבה חוזרת יוצרת
+     מוטציה → מאזין → כתיבה … לולאה שמקפיאה את הדפדפן (09/08). */
   function setCount(n){
-    document.querySelectorAll('.cart-count-n').forEach(function(e){e.textContent=n;});
+    n=String(n);
+    document.querySelectorAll('.cart-count-n').forEach(function(e){ if(e.textContent!==n) e.textContent=n; });
     var pill=document.querySelector('.cart-pill');
-    if(pill){var svg=pill.querySelector('svg'); pill.innerHTML=(svg?svg.outerHTML:'')+' הסל שלי ('+n+')';}
-    var mb=document.querySelector('.mcart-b'); if(mb) mb.textContent=n;
+    if(pill && pill.getAttribute('data-n')!==n){
+      pill.setAttribute('data-n',n);
+      var svg=pill.querySelector('svg'); pill.innerHTML=(svg?svg.outerHTML:'')+' הסל שלי ('+n+')';
+    }
+    var mb=document.querySelector('.mcart-b'); if(mb && mb.textContent!==n) mb.textContent=n;
   }
   /* ⛔ שורת Green Care לא מוצגת בסל — הסימון על הכרטיסייה הוא הביטוי היחיד
      (אסי, 09/08: "כל הסקשין שמתווסף אני לא מעוניין").
      ההסתרה מונעת-DOM ולא מונעת-API: סקריפט העמוד מצייר את השורה אחרי
      תשובת הסל, ולכן הסתרה לפי נתוני API לבדה החזירה את השורה למסך. */
+  var hgBusy=false;
   function hideGcDom(){
-    var d=document.getElementById('cartDrawer'); if(!d) return 0;
+    var d=document.getElementById('cartDrawer'); if(!d||hgBusy) return 0;
+    hgBusy=true;                       /* מונע כניסה חוזרת דרך המאזין */
     var gcQty=0, rest=0;
     d.querySelectorAll('.citem').forEach(function(r){
       var nm=dec((r.querySelector('.citem-nm')||{}).textContent||'');
@@ -565,6 +573,7 @@ if (!window.toggleNav) { window.toggleNav = function () {
       } else { rest+=q; }
     });
     if(gcQty) setCount(rest);
+    hgBusy=false;
     return gcQty;
   }
   function hideGcLines(items){ hideGcDom(); }
