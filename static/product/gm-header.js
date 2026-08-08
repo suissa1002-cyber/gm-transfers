@@ -352,6 +352,12 @@ if (!window.toggleNav) { window.toggleNav = function () {
    '.side-scroll{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 12px 14px;}',
    '.acard{background:var(--surface,#fff);border:1px solid var(--line,#e6eae8);border-radius:14px;padding:10px 10px 11px;margin-bottom:8px;text-align:center;transition:border-color .15s,box-shadow .15s;}',
    '.acard:hover{border-color:#bfe0cb;box-shadow:0 3px 12px rgba(17,20,23,.06);}',
+   '.acard.sk{pointer-events:none;}',
+   '.skimg{width:88px;height:88px;margin:0 auto 8px;border-radius:12px;}',
+   '.skln{height:11px;border-radius:6px;margin:6px auto;width:80%;}',
+   '.skln.s{width:45%;height:14px;}',
+   '.skimg,.skln{background:linear-gradient(90deg,#eef1f0 25%,#e2e7e5 37%,#eef1f0 63%);background-size:400% 100%;animation:gmsk 1.2s ease-in-out infinite;}',
+   '@keyframes gmsk{0%{background-position:100% 50%}100%{background-position:0 50%}}',
    '.acard img{width:88px;height:88px;object-fit:contain;display:block;margin:0 auto 6px;}',
    '.acard-n{font-size:.74rem;font-weight:700;line-height:1.28;color:var(--ink,#111417);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:1.9em;}',
    '.acard-row{display:flex;flex-direction:column;align-items:center;gap:7px;margin-top:7px;}',
@@ -363,6 +369,10 @@ if (!window.toggleNav) { window.toggleNav = function () {
    '.aadd.done{background:var(--accent-soft,#e7f6ec);color:#0e5c2b;font-size:1rem;}',
    /* תמונות פריטי הסל — בלי מסגרת/רקע, כמו GoMobile (אסי 09/08) */
    '.cart-drawer.gmv2 .citem-img{border:none!important;background:transparent!important;padding:0!important;border-radius:10px;}',
+   '.cart-clear{display:inline-flex;align-items:center;gap:6px;margin-inline-start:auto;background:none;border:none;font:inherit;font-size:.82rem;font-weight:700;color:var(--ink2,#5c666d);cursor:pointer;padding:6px 8px;border-radius:10px;}',
+   '.cart-clear:hover,.cart-clear:focus{background:var(--alt,#f5f7f6)!important;color:var(--deal,#e2551f)!important;}',
+   '.cart-clear svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;}',
+   '.cart-drawer.gmv2 .cart-head .mclose{margin-inline-start:8px;}',
    '.gcopts{display:grid;grid-template-columns:1fr;gap:7px;margin:14px 0 8px;width:66%;}',
    '.gcopt{display:flex;align-items:center;gap:9px;background:var(--surface,#fff);border:1.5px solid var(--line,#e6eae8);border-radius:13px;padding:10px 12px;cursor:pointer;font-family:inherit;text-align:start;width:100%;}',
    '.gcopt:hover,.gcopt:focus,.gcopt:active,.gcopt:focus-visible{background:var(--surface,#fff)!important;color:var(--ink,#111417)!important;border-color:#9ad7b0!important;box-shadow:0 2px 10px rgba(20,156,64,.10)!important;}',
@@ -407,9 +417,34 @@ if (!window.toggleNav) { window.toggleNav = function () {
   function style(){ if(document.getElementById('gm-cart-v2')) return;
     var st=document.createElement('style'); st.id='gm-cart-v2'; st.textContent=CSS;
     (document.body||document.head).appendChild(st); }
+  var TRASH='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"/><path d="M9.5 7V5.2A1.2 1.2 0 0 1 10.7 4h2.6a1.2 1.2 0 0 1 1.2 1.2V7"/><path d="M6.5 7l.9 12.1A1.5 1.5 0 0 0 8.9 20.5h6.2a1.5 1.5 0 0 0 1.5-1.4L17.5 7"/><path d="M10.5 11v6M13.5 11v6"/></svg>';
+  /* "ריקון סל" בכותרת (אסי 09/08) — אייקון SVG מהסט שלנו, לא אמוג'י */
+  function headerClear(d){
+    var head=d.querySelector('.cart-head'); if(!head || head.querySelector('.cart-clear')) return;
+    var b=document.createElement('button');
+    b.type='button'; b.className='cart-clear'; b.id='cartClear';
+    b.innerHTML=TRASH+'<span>ריקון סל</span>';
+    var x=head.querySelector('.mclose');
+    if(x){ head.insertBefore(b, x); } else { head.appendChild(b); }
+  }
+  function clearCart(){
+    var b=document.getElementById('cartClear'); if(b){ b.disabled=true; b.style.opacity='.5'; }
+    return get().then(function(c){
+      var items=(c&&c.items)||[];
+      return items.reduce(function(chain,it){
+        return chain.then(function(){
+          return fetch(API+'/remove-item',{method:'POST',credentials:'same-origin',
+            headers:{'Content-Type':'application/json','Nonce':nonce},body:JSON.stringify({key:it.key})});
+        });
+      }, Promise.resolve());
+    }).then(function(){
+      if(b){ b.disabled=false; b.style.opacity=''; }
+      refresh(); later(120);
+    });
+  }
   function upgrade(d){
     if(d.querySelector('.cart-main')){          /* נוצר ע"י המודול הרגיל */
-      d.classList.add('gmv2');
+      d.classList.add('gmv2'); headerClear(d);
       if(!d.querySelector('.cart-side')) d.insertAdjacentHTML('beforeend', SIDE);
       return d.querySelector('.cart-main');
     }
@@ -419,6 +454,7 @@ if (!window.toggleNav) { window.toggleNav = function () {
     /* ⛔ ה-CSS של v2 ממוקד ל-.gmv2 — נוסף רק כאן, אחרי שהמבנה באמת שודרג.
        (08/08: הזרקת grid למגירה עם מבנה ישן שברה את הפריסה בעמודי מוצר.) */
     d.classList.add('gmv2'); d.classList.add('no-rail');
+    headerClear(d);
     return main;
   }
   function get(){ return fetch(API,{credentials:'same-origin'}).then(function(r){nonce=r.headers.get('Nonce');return r.json();}); }
@@ -446,6 +482,13 @@ if (!window.toggleNav) { window.toggleNav = function () {
       return fetch(API+'/remove-item',{method:'POST',credentials:'same-origin',
         headers:{'Content-Type':'application/json','Nonce':nonce},body:JSON.stringify({key:line})});
     });
+  }
+  /* שלד טעינה: המשתמש רואה מיד שמשהו נטען, במקום 'כלום' לכמה שניות */
+  function skeleton(){
+    var box=document.getElementById('cartSideList'), d=document.getElementById('cartDrawer');
+    if(!box||!d||box.children.length) return;
+    d.classList.remove('no-rail');
+    box.innerHTML='<div class="acard sk"><div class="skimg"></div><div class="skln"></div><div class="skln s"></div></div>'.repeat(3);
   }
   function rail(items, inCart){
     var box=document.getElementById('cartSideList'), d=document.getElementById('cartDrawer');
@@ -527,13 +570,28 @@ if (!window.toggleNav) { window.toggleNav = function () {
       wrap.insertAdjacentElement('afterend', a);
     });
   }
+  function isGc(it){ return /green ?care/i.test(dec(it.name||'')); }
   function sync(){
     var d=document.getElementById('cartDrawer'); if(!d) return;
     style(); upgrade(d);
     get().then(function(c){
-      var items=(c&&c.items)||[], ids=items.map(function(it){return it.id;}).filter(Boolean);
+      var all=(c&&c.items)||[];
+      /* ⛔ שורת Green Care אינה "מוצר בסל": היא לא מזכה בתוספות ולא סופרת.
+         בלעדי הסינון, שורה יתומה שנשארה אחרי הסרת המכשיר השאירה את הפס חי
+         (אסי, 09/08: "אין מוצרים בסל אין שום סיבה שיופיע"). */
+      var items=all.filter(function(it){ return !isGc(it); });
+      var orphans=all.filter(isGc);
+      if(!items.length && orphans.length){        // נשארו רק שורות שירות ⇒ מנקים
+        Promise.all(orphans.map(function(o){
+          return fetch(API+'/remove-item',{method:'POST',credentials:'same-origin',
+            headers:{'Content-Type':'application/json','Nonce':nonce},body:JSON.stringify({key:o.key})});
+        })).then(function(){ refresh(); });
+      }
+      var ids=items.map(function(it){return it.id;}).filter(Boolean);
       var inCart=ids.map(Number);
+      gcRender({}, all);                          /* מנקה כפתורים ישנים */
       if(!ids.length){ rail([],inCart); return; }
+      skeleton();
       fetch('/wp-json/gm-addons/v1/for-cart?ids='+ids.join(','),{credentials:'same-origin'})
         .then(function(r){return r.json();}).then(function(x){ rail(((x&&x.items)||[]), inCart); })
         .catch(function(){ rail([],inCart); });
@@ -545,8 +603,9 @@ if (!window.toggleNav) { window.toggleNav = function () {
   function later(ms){ clearTimeout(tmr); tmr=setTimeout(sync, ms||400); }
   document.addEventListener('click', function(e){
     var t=e.target;
-    if(t.closest('.cart-pill,.mcart,a.card-btn,.gm-atc')) { sideOpen(false); later(600); return; }
+    if(t.closest('.cart-pill,.mcart,a.card-btn,.gm-atc')) { sideOpen(false); later(60); return; }
     if(t.closest('#cartClose,.cart-overlay')) { sideOpen(false); return; }
+    if(t.closest('#cartClear')){ e.preventDefault(); e.stopPropagation(); clearCart(); return; }
     if(t.closest('#gmSideCta')){ e.preventDefault(); sideOpen(true); return; }
     if(t.closest('#cartSideBack')){ e.preventDefault(); sideOpen(false); return; }
     if(t.closest('#cartDrawer .citem-rm') || t.closest('#cartDrawer .cqty button')){ later(500); }
@@ -578,7 +637,12 @@ if (!window.toggleNav) { window.toggleNav = function () {
        נעלם ברגע שהסל מתרוקן, וגם מתעדכן כשמוסיפים מוצר. (אסי, 09/08) */
     new MutationObserver(function(){ later(250); }).observe(it,{childList:true,subtree:true});
   }
-  function boot(){ style(); var d=document.getElementById('cartDrawer'); if(d){ upgrade(d); watch(); } later(900); }
+  function boot(){
+    style(); var d=document.getElementById('cartDrawer'); if(d){ upgrade(d); watch(); }
+    /* טעינה מוקדמת בזמן סרק — כשהלקוח פותח את המגירה המידע כבר כאן */
+    var idle=window.requestIdleCallback||function(f){return setTimeout(f,250);};
+    idle(function(){ sync(); });
+  }
   if(document.readyState!=='loading') boot(); else document.addEventListener('DOMContentLoaded', boot);
   setTimeout(function(){ var d=document.getElementById('cartDrawer'); if(d){ upgrade(d); watch(); } }, 1500);
 })();
