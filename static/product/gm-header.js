@@ -618,7 +618,7 @@ if (!window.toggleNav) { window.toggleNav = function () {
       if(!ids.length){ gcRender({}, all); rail([],inCart); cIds=''; cAdd=null; cGc=null; return; }
       var key=ids.slice().sort().join(',');
       if(key===cIds && cAdd){                     /* הרכב הסל לא השתנה */
-        rail(cAdd,inCart); gcRender(cGc||{}, items); return;
+        rail(cAdd,inCart); gcRender(cGc||{}, all); return;   /* all — שורת השירות היא מקור הסימון */
       }
       cIds=key; cAdd=null; cGc=null;
       skeleton();
@@ -626,7 +626,7 @@ if (!window.toggleNav) { window.toggleNav = function () {
         .then(function(r){return r.json();}).then(function(x){ cAdd=((x&&x.items)||[]); rail(cAdd, inCart); })
         .catch(function(){ rail([],inCart); });
       fetch('/wp-json/gm-services/v1/greencare?ids='+ids.join(','),{credentials:'same-origin'})
-        .then(function(r){return r.json();}).then(function(x){ cGc=(x&&x.items)||{}; gcRender(cGc, items); })
+        .then(function(r){return r.json();}).then(function(x){ cGc=(x&&x.items)||{}; gcRender(cGc, all); })
         .catch(function(){});
     });
   }
