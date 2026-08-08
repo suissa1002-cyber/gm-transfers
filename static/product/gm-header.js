@@ -369,6 +369,8 @@ if (!window.toggleNav) { window.toggleNav = function () {
    '.aadd.done{background:var(--accent-soft,#e7f6ec);color:#0e5c2b;font-size:1rem;}',
    /* תמונות פריטי הסל — בלי מסגרת/רקע, כמו GoMobile (אסי 09/08) */
    '.cart-drawer.gmv2 .citem-img{border:none!important;background:transparent!important;padding:0!important;border-radius:10px;}',
+   '.cart-drawer.gmv2 .citem.gmghost{opacity:.7}',
+   '.cart-drawer.gmv2 .citem.gmghost .cqty{opacity:.5}',
    '.cart-clear{display:inline-flex;align-items:center;gap:6px;margin-inline-start:auto;background:none;border:none;font:inherit;font-size:.82rem;font-weight:700;color:var(--ink2,#5c666d);cursor:pointer;padding:6px 8px;border-radius:10px;}',
    '.cart-clear:hover,.cart-clear:focus{background:var(--alt,#f5f7f6)!important;color:var(--deal,#e2551f)!important;}',
    '.cart-clear svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;}',
@@ -467,7 +469,8 @@ if (!window.toggleNav) { window.toggleNav = function () {
   /* רענון עמודת הסל עצמה — המודול האפוי חושף וו ציבורי; בלעדיו המשתמש היה
      רואה את התוספת רק אחרי רענון עמוד (אסי, 09/08). */
   function refresh(){ try{ if(typeof window.gmCartRefresh==='function') window.gmCartRefresh(); }catch(e){}
-    hideGcDom(); setTimeout(hideGcDom,60); setTimeout(hideGcDom,300); }
+    hideGcDom(); dropGhosts(); setTimeout(function(){hideGcDom();dropGhosts();},60);
+    setTimeout(function(){hideGcDom();dropGhosts();},300); }
   /* הסרת שורת Green Care המשויכת למכשיר (מזוהה לפי שם המכשיר ב-item_data) */
   function gcRemove(pid){
     return get().then(function(c){
@@ -559,6 +562,45 @@ if (!window.toggleNav) { window.toggleNav = function () {
      (אסי, 09/08: "כל הסקשין שמתווסף אני לא מעוניין").
      ההסתרה מונעת-DOM ולא מונעת-API: סקריפט העמוד מצייר את השורה אחרי
      תשובת הסל, ולכן הסתרה לפי נתוני API לבדה החזירה את השורה למסך. */
+  /* ══ תצוגה מיידית ══════════════════════════════════════════════
+     כל קריאה לשרת כאן עולה 1.2–2.6 שניות, והשרשור שלהן הרגיש כמו 10–15
+     (אסי, 09/08: "זה לא חוויה נעימה לחכות לראות שמשהו קורה").
+     לכן: הסכום והשורה נכנסים ברגע הלחיצה, והשרת מתעדכן מאחורי הקלעים
+     ומיישר את המספרים כשהוא חוזר. */
+  function money(n){ return '‏₪'+Math.round(n).toLocaleString('en-US'); }
+  function subEl(){ return document.querySelector('#cartDrawer .cs-amt, #cartSubtotal'); }
+  function bumpSub(delta){
+    var e=subEl(); if(!e) return;
+    var cur=parseFloat((e.textContent||'').replace(/[^0-9.]/g,''))||0;
+    e.textContent=money(Math.max(0,cur+delta));
+  }
+  function bumpCount(delta){
+    var e=document.querySelector('#cartDrawer .cart-count-n');
+    setCount(Math.max(0,(parseInt(e&&e.textContent,10)||0)+delta));
+  }
+  /* שורת פריט זמנית — נמחקת ברגע שהשורה האמיתית מגיעה מהשרת */
+  function ghost(a){
+    var box=document.getElementById('cartItems'); if(!box) return;
+    var em=box.querySelector('.cart-empty'); if(em) em.remove();
+    var row=document.createElement('div'); row.className='citem gmghost';
+    row.setAttribute('data-nm', a.name);
+    row.innerHTML='<img class="citem-img" src="'+a.img+'" alt="">'+
+      '<div class="citem-main"><div class="citem-nm">'+esc(a.name)+'</div>'+
+      '<div class="citem-bottom"><div class="cqty"><button type="button" disabled>−</button>'+
+      '<span>1</span><button type="button" disabled>+</button></div>'+
+      '<span class="citem-pr">'+money(a.price)+'</span></div></div>';
+    box.appendChild(row);
+    setTimeout(function(){ if(row.parentNode) row.remove(); }, 20000);  /* רשת ביטחון */
+  }
+  /* מסירים רק כשהשורה האמיתית כבר על המסך — אחרת נוצר ריצוד */
+  function dropGhosts(){
+    var real=[].slice.call(document.querySelectorAll('#cartDrawer .citem:not(.gmghost) .citem-nm'))
+      .map(function(e){return (e.textContent||'').trim();});
+    document.querySelectorAll('#cartDrawer .gmghost').forEach(function(g){
+      var nm=(g.getAttribute('data-nm')||'').trim();
+      if(real.indexOf(nm)>-1) g.remove();
+    });
+  }
   var hgBusy=false;
   function hideGcDom(){
     var d=document.getElementById('cartDrawer'); if(!d||hgBusy) return 0;
@@ -618,7 +660,7 @@ if (!window.toggleNav) { window.toggleNav = function () {
   function isGc(it){ return /green ?care/i.test(dec(it.name||'')); }
   function sync(){
     var d=document.getElementById('cartDrawer'); if(!d) return;
-    style(); upgrade(d); watch();   /* הרשימה עשויה להיות מוחלפת ע"י סקריפט העמוד */
+    style(); upgrade(d); watch(); dropGhosts();   /* הרשימה עשויה להיות מוחלפת ע"י סקריפט העמוד */
     get().then(function(c){
       var all=(c&&c.items)||[];
       /* ⛔ שורת Green Care אינה "מוצר בסל": היא לא מזכה בתוספות ולא סופרת.
@@ -664,28 +706,37 @@ if (!window.toggleNav) { window.toggleNav = function () {
     var aa=t.closest('.aadd');
     if(aa && !aa.disabled){ e.preventDefault(); e.stopPropagation();
       var id=+aa.getAttribute('data-aid'); if(!id) return;
-      aa.disabled=true; aa.classList.add('done'); aa.textContent='✓';   /* מיידי */
-      add(id).then(function(){ refresh(); later(120); })
-        .catch(function(){ aa.disabled=false; aa.classList.remove('done'); aa.textContent='+'; });
+      var card=aa.closest('.acard');
+      var info={ name:(card.querySelector('.acard-n')||{}).textContent||'',
+                 img:(card.querySelector('img')||{}).src||'',
+                 price:parseFloat(((card.querySelector('.acard-p')||{}).textContent||'').replace(/[^0-9.]/g,''))||0 };
+      aa.disabled=true; aa.classList.add('done'); aa.textContent='✓';
+      ghost(info); bumpSub(info.price); bumpCount(1);          /* מיידי — לפני השרת */
+      add(id).then(function(){ refresh(); later(400); })
+        .catch(function(){ aa.disabled=false; aa.classList.remove('done'); aa.textContent='+';
+          bumpSub(-info.price); bumpCount(-1); dropGhosts(); });
       return; }
     var gc=t.closest('.gcopt');
     /* לחיצה שנייה על מסלול שכבר נוסף ⇒ הסרה מהסל (אסי, 09/08) */
     if(gc && gc.classList.contains('added')){ e.preventDefault(); e.stopPropagation();
-      gcPaint(gc, false);                                   /* מיידי */
+      var pr=+gc.getAttribute('data-price')||0;
+      gcPaint(gc, false); bumpSub(-pr);                     /* מיידי */
       gcRemove(gc.getAttribute('data-pid'))
-        .then(function(){ refresh(); later(200); })
-        .catch(function(){ gcPaint(gc, true); });           /* נכשל ⇒ חזרה */
+        .then(function(){ refresh(); later(400); })
+        .catch(function(){ gcPaint(gc, true); bumpSub(pr); });
       return; }
     if(gc){ e.preventDefault(); e.stopPropagation();
-      gcPaint(gc, true);                                    /* מיידי */
+      var pr=+gc.getAttribute('data-price')||0;
+      gcPaint(gc, true); bumpSub(pr);                       /* מיידי */
       var fd=new FormData(); fd.append('action','gm_svc_greencare');
       fd.append('plan',gc.getAttribute('data-gc'));
       fd.append('product_id',gc.getAttribute('data-pid'));
       fd.append('price',gc.getAttribute('data-price'));
       fetch('/wp-admin/admin-ajax.php',{method:'POST',credentials:'same-origin',body:fd})
         .then(function(r){ return r.json(); })
-        .then(function(j){ if(j&&j.success===false){ gcPaint(gc,false); return; } refresh(); later(200); })
-        .catch(function(){ gcPaint(gc,false); });
+        .then(function(j){ if(j&&j.success===false){ gcPaint(gc,false); bumpSub(-pr); return; }
+          refresh(); later(400); })
+        .catch(function(){ gcPaint(gc,false); bumpSub(-pr); });
       return; }
   }, true);
   function watch(){
