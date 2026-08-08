@@ -357,7 +357,7 @@ if (!window.toggleNav) { window.toggleNav = function () {
    '.aadd{width:34px;height:34px;border-radius:50%;border:none;background:var(--accent,#149c40);color:#fff;font-size:1.3rem;line-height:1;cursor:pointer;margin:0 auto;display:block;}',
    '.aadd[disabled]{opacity:.55;cursor:default;}',
    '.aadd.done{background:var(--accent-soft,#e7f6ec);color:#0e5c2b;font-size:1rem;}',
-   '.gcopts{display:grid;grid-template-columns:1fr;gap:7px;margin:2px 0 6px;}',
+   '.gcopts{display:grid;grid-template-columns:1fr;gap:7px;margin:14px 0 8px;width:66%;}',
    '.gcopt{display:flex;align-items:center;gap:9px;background:var(--surface,#fff);border:1.5px solid var(--line,#e6eae8);border-radius:13px;padding:10px 12px;cursor:pointer;font-family:inherit;text-align:start;width:100%;}',
    '.gcopt:hover{border-color:#9ad7b0;}',
    '.gcopt .ic{width:17px;height:17px;flex:none;fill:none;stroke:var(--accent,#149c40);stroke-width:1.9;}',
@@ -365,7 +365,7 @@ if (!window.toggleNav) { window.toggleNav = function () {
    '.gcopt-t span{display:block;font-weight:600;color:var(--ink2,#5c666d);font-size:.72rem;margin-top:1px;}',
    '.gcopt-p{margin-inline-start:auto;font-weight:900;font-size:.85rem;white-space:nowrap;}',
    '.gcopt.added{border-color:var(--accent,#149c40);background:var(--accent-soft,#e7f6ec);}',
-   '.gcmore{display:block;margin:0 0 12px;font-size:.72rem;color:var(--ink2,#5c666d);text-decoration:none;}',
+   '.gcmore{display:block;margin:0 0 14px;font-size:.72rem;color:var(--ink2,#5c666d);text-decoration:none;}',
    '@media(max-width:820px){.cart-drawer.gmv2,.cart-drawer.gmv2.no-rail{width:min(93vw,430px)!important;grid-template-columns:minmax(0,1fr);}.cart-drawer.gmv2 .cart-side{display:none;}}'
   ].join('');
   var SIDE='<div class="cart-side" id="cartSide"><div class="side-h"><b>שווה להוסיף עכשיו 🚀</b>'+
