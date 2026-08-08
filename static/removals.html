@@ -47,8 +47,8 @@ button,input,textarea{font-family:inherit}
 header.top{position:sticky;top:0;z-index:30;background:color-mix(in srgb,var(--bg) 86%,transparent);
   backdrop-filter:saturate(180%) blur(14px);border-bottom:1px solid var(--line);padding:12px 0;margin-bottom:var(--s6)}
 .top .wrap{display:flex;align-items:center;gap:var(--s3);padding-bottom:0}
-.logo{font-weight:800;font-size:19px;letter-spacing:-.4px;display:flex;align-items:center;gap:8px}
-.logo .dot{color:var(--brand)}   /* "GreenOS" — ה-OS צבוע, לא נקודה */
+.logo{font-weight:800;font-size:23px;letter-spacing:-.6px}
+.logo .os{color:var(--brand)}
 .sub{color:var(--muted,var(--txt-2));font-size:13px;margin-inline-start:auto;font-weight:700}
 /* סרגל עובד */
 .empbar{display:flex;align-items:center;gap:var(--s3);background:var(--card);border:1px solid var(--line);
@@ -191,14 +191,14 @@ header.top{position:sticky;top:0;z-index:30;background:color-mix(in srgb,var(--b
 </head>
 <body>
 <div id="gate"><div class="box">
-  <div class="logo">Green<span class="dot">OS</span></div>
+  <div class="logo">Green<span class="os">OS</span></div>
   <div style="color:var(--ink2);font-size:.9rem;margin-top:6px">הורדה מהמלאי — הזן מפתח ניהול</div>
   <input id="gateKey" type="password" placeholder="מפתח ניהול" autocomplete="off">
   <button class="btn primary" style="width:100%" onclick="gateGo()">כניסה</button>
 </div></div>
 
 <header class="top"><div class="wrap">
-  <span class="logo">Green<span class="dot">OS</span></span>
+  <span class="logo">Green<span class="os">OS</span></span>
   <span style="font-weight:700">הורדה מהמלאי · בדיקת מחיר</span>
   <span class="sub" id="branchLbl">סניף: מחסן\מרלוג (סיטי)</span>
 </div></header>
