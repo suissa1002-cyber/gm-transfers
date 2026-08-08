@@ -358,12 +358,16 @@ if (!window.toggleNav) { window.toggleNav = function () {
    '.acard-p{font-weight:900;font-size:.95rem;}',
    '.aadd{width:32px;height:32px;border-radius:50%;border:none;background:var(--accent,#149c40);color:#fff;font:700 19px/1 system-ui,sans-serif;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;flex:none;}',
    '.aadd[disabled]{opacity:.55;cursor:default;}',
+   '.aadd:hover,.aadd:focus,.aadd:active{background:#0f8235!important;color:#fff!important;}',
+   '.aadd.done:hover,.aadd.done:focus{background:var(--accent-soft,#e7f6ec)!important;color:#0e5c2b!important;}',
    '.aadd.done{background:var(--accent-soft,#e7f6ec);color:#0e5c2b;font-size:1rem;}',
    /* תמונות פריטי הסל — בלי מסגרת/רקע, כמו GoMobile (אסי 09/08) */
    '.cart-drawer.gmv2 .citem-img{border:none!important;background:transparent!important;padding:0!important;border-radius:10px;}',
    '.gcopts{display:grid;grid-template-columns:1fr;gap:7px;margin:14px 0 8px;width:66%;}',
    '.gcopt{display:flex;align-items:center;gap:9px;background:var(--surface,#fff);border:1.5px solid var(--line,#e6eae8);border-radius:13px;padding:10px 12px;cursor:pointer;font-family:inherit;text-align:start;width:100%;}',
-   '.gcopt:hover{border-color:#9ad7b0;}',
+   '.gcopt:hover,.gcopt:focus,.gcopt:active,.gcopt:focus-visible{background:var(--surface,#fff)!important;color:var(--ink,#111417)!important;border-color:#9ad7b0!important;box-shadow:0 2px 10px rgba(20,156,64,.10)!important;}',
+   '.gcopt.added:hover,.gcopt.added:focus,.gcopt.added:active{background:var(--accent-soft,#e7f6ec)!important;border-color:var(--accent,#149c40)!important;}',
+   '.gcopt:hover .gcopt-t,.gcopt:hover .gcopt-p,.gcopt:hover .gcopt-t span{color:inherit!important;}',
    '.gcopt .ic{width:17px;height:17px;flex:none;fill:none;stroke:var(--accent,#149c40);stroke-width:1.9;}',
    '.gcopt-t{font-size:.8rem;font-weight:800;line-height:1.25;color:var(--ink,#111417);}',
    '.gcopt-t span{display:block;font-weight:600;color:var(--ink2,#5c666d);font-size:.72rem;margin-top:1px;}',
@@ -480,7 +484,27 @@ if (!window.toggleNav) { window.toggleNav = function () {
       '" data-price="'+price+'">'+SHIELD+'<span class="gcopt-t">'+(added?'':'הוספת ')+title+
       '<span>'+sub+'</span></span><span class="gcopt-p">+‏₪'+(+price).toLocaleString('en-US')+'</span></button>';
   }
+  /* ⛔ שורת Green Care לא מוצגת כפריט נפרד בסל: הכרטיסייה המסומנת היא הביטוי
+     של התוספת (אסי, 09/08). השורה נשארת ב-WooCommerce לצורך חיוב, ולכן
+     סכום הביניים כולל אותה — רק התצוגה הכפולה יורדת. גם המונה מתוקן. */
+  function hideGcLines(items){
+    var gcKeys=[], gcQty=0;
+    (items||[]).forEach(function(it){
+      if(/green ?care/i.test(dec(it.name||''))){ gcKeys.push(it.key); gcQty+=(it.quantity||1); }
+    });
+    gcKeys.forEach(function(k){
+      var row=document.querySelector('#cartDrawer .citem[data-key="'+k+'"]');
+      if(row) row.style.display='none';
+    });
+    if(!gcQty) return;
+    var total=(items||[]).reduce(function(n,it){return n+(it.quantity||1);},0)-gcQty;
+    document.querySelectorAll('.cart-count-n').forEach(function(e){e.textContent=total;});
+    var pill=document.querySelector('.cart-pill');
+    if(pill){var svg=pill.querySelector('svg'); pill.innerHTML=(svg?svg.outerHTML:'')+' הסל שלי ('+total+')';}
+    var mb=document.querySelector('.mcart-b'); if(mb) mb.textContent=total;
+  }
   function gcRender(map, items){
+    hideGcLines(items);
     var addedTxt=items.filter(function(it){return /green ?care/i.test(dec(it.name||''));})
       .map(function(it){ var extra=(it.item_data||[]).map(function(m){return m.value;}).join(' ');
         return (dec(it.name||'')+' '+extra).toLowerCase(); });
