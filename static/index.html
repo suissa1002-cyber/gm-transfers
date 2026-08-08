@@ -62,9 +62,11 @@
   header{display:flex;align-items:center;justify-content:space-between;gap:16px;
          padding:14px 24px;background:var(--card);border-bottom:1px solid var(--line);
          position:sticky;top:0;z-index:20}
-  /* לוגו GreenOS — ה-OS בירוק המותג, בלי נקודה. זהה בכל מסכי המערכת. */
-  header .brand{font-weight:800;font-size:23px;white-space:nowrap;letter-spacing:-.6px}
-  header .brand .os{color:var(--brand)}
+  /* לוגו GreenOS — ה-OS בירוק המותג, בלי נקודה. זהה בכל מסכי המערכת.
+     ⚠️ הכלל **לא** תחת header: הלוגו מופיע גם במגירה, ושם הוא נשאר שחור. */
+  .brand{font-weight:800;font-size:23px;white-space:nowrap;letter-spacing:-.6px}
+  .brand .os,.logo .os{color:var(--brand)}
+  .dr-head .brand{font-size:21px}
   header .right{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--muted);flex-wrap:wrap}
   header .right b{color:var(--txt)}
   button{font-family:inherit;cursor:pointer;border:none;border-radius:10px;
