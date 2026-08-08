@@ -439,7 +439,7 @@ if (!window.toggleNav) { window.toggleNav = function () {
       }, Promise.resolve());
     }).then(function(){
       if(b){ b.disabled=false; b.style.opacity=''; }
-      refresh(); later(120);
+      refresh(); burst();
     });
   }
   function upgrade(d){
@@ -582,7 +582,7 @@ if (!window.toggleNav) { window.toggleNav = function () {
   function isGc(it){ return /green ?care/i.test(dec(it.name||'')); }
   function sync(){
     var d=document.getElementById('cartDrawer'); if(!d) return;
-    style(); upgrade(d);
+    style(); upgrade(d); watch();   /* הרשימה עשויה להיות מוחלפת ע"י סקריפט העמוד */
     get().then(function(c){
       var all=(c&&c.items)||[];
       /* ⛔ שורת Green Care אינה "מוצר בסל": היא לא מזכה בתוספות ולא סופרת.
@@ -610,14 +610,17 @@ if (!window.toggleNav) { window.toggleNav = function () {
     });
   }
   function later(ms){ clearTimeout(tmr); tmr=setTimeout(sync, ms||400); }
+  /* הוספה/הסרה יכולה להסתיים בזמנים שונים (Store API + רינדור של סקריפט
+     העמוד). פעימות קצרות מבטיחות שהפס יופיע/ייעלם בלי רענון עמוד. */
+  function burst(){ [250,900,2000,3500].forEach(function(ms){ setTimeout(sync, ms); }); }
   document.addEventListener('click', function(e){
     var t=e.target;
-    if(t.closest('.cart-pill,.mcart,a.card-btn,.gm-atc')) { sideOpen(false); later(60); return; }
+    if(t.closest('.cart-pill,.mcart,a.card-btn,.gm-atc')) { sideOpen(false); later(60); burst(); return; }
     if(t.closest('#cartClose,.cart-overlay')) { sideOpen(false); return; }
     if(t.closest('#cartClear')){ e.preventDefault(); e.stopPropagation(); clearCart(); return; }
     if(t.closest('#gmSideCta')){ e.preventDefault(); sideOpen(true); return; }
     if(t.closest('#cartSideBack')){ e.preventDefault(); sideOpen(false); return; }
-    if(t.closest('#cartDrawer .citem-rm') || t.closest('#cartDrawer .cqty button')){ later(500); }
+    if(t.closest('#cartDrawer .citem-rm') || t.closest('#cartDrawer .cqty button')){ burst(); }
     var aa=t.closest('.aadd');
     if(aa && !aa.disabled){ e.preventDefault(); e.stopPropagation();
       var id=+aa.getAttribute('data-aid'); if(!id) return;
@@ -646,6 +649,12 @@ if (!window.toggleNav) { window.toggleNav = function () {
       return; }
   }, true);
   function watch(){
+    var dr=document.getElementById('cartDrawer');
+    if(dr && !dr.__gmw2){ dr.__gmw2=1;
+      /* fallback: אם סקריפט העמוד מחליף את .cart-items כולו, המשקיף הפנימי
+         מתנתק — לכן משקיפים גם על המגירה עצמה (אסי, 09/08). */
+      new MutationObserver(function(){ later(300); }).observe(dr,{childList:true,subtree:true});
+    }
     var it=document.getElementById('cartItems'); if(!it||it.__gmw) return; it.__gmw=1;
     /* כל שינוי ברשימת הפריטים (הוספה/הסרה/ריקון) מפעיל סנכרון — כך שהפס
        נעלם ברגע שהסל מתרוקן, וגם מתעדכן כשמוסיפים מוצר. (אסי, 09/08) */
