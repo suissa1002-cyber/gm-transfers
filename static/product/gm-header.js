@@ -366,9 +366,28 @@ if (!window.toggleNav) { window.toggleNav = function () {
    '.gcopt-p{margin-inline-start:auto;font-weight:900;font-size:.85rem;white-space:nowrap;}',
    '.gcopt.added{border-color:var(--accent,#149c40);background:var(--accent-soft,#e7f6ec);}',
    '.gcmore{display:block;margin:0 0 14px;font-size:.72rem;color:var(--ink2,#5c666d);text-decoration:none;}',
-   '@media(max-width:820px){.cart-drawer.gmv2,.cart-drawer.gmv2.no-rail{width:min(93vw,430px)!important;grid-template-columns:minmax(0,1fr);}.cart-drawer.gmv2 .cart-side{display:none;}}'
+   /* ── מובייל: אין מקום לעמודה שנייה ⇒ שלב נפרד (כמו GoMobile): רצועת
+      כניסה מעל הפוטר, ומסך תוספות שנפתח מעל הסל עם "חזרה לסל". הפוטר
+      (סכום + מעבר לתשלום) נשאר גלוי — bottom מחושב ב-JS לפי גובהו. ── */
+   '@media(max-width:820px){',
+   '.cart-drawer.gmv2,.cart-drawer.gmv2.no-rail{width:min(93vw,430px)!important;grid-template-columns:minmax(0,1fr);}',
+   '.cart-drawer.gmv2 .cart-side{position:absolute;inset-inline:0;top:0;bottom:0;transform:translateX(105%);transition:transform .28s ease;z-index:6;border:0;background:var(--bg,#fff);}',
+   '.cart-drawer.gmv2.side-open .cart-side{transform:none;}',
+   '.cart-drawer.gmv2.no-rail .cart-side{display:flex;}',
+   '.side-back{display:flex;align-items:center;gap:8px;background:none;border:none;font:inherit;font-weight:900;font-size:1rem;color:var(--ink,#111417);padding:16px 18px 10px;cursor:pointer;width:100%;}',
+   '.side-back svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;}',
+   '.gm-side-cta{display:flex;align-items:center;gap:10px;width:100%;background:var(--accent-soft,#e7f6ec);border:none;border-radius:14px;padding:12px 14px;margin:0 0 12px;font:inherit;font-weight:800;color:#0e5c2b;cursor:pointer;text-align:start;}',
+   '.gm-side-cta i{margin-inline-start:auto;font-style:normal;font-weight:900;}',
+   '.acard{display:flex;align-items:center;gap:12px;text-align:start;padding:10px;}',
+   '.acard img{width:64px;height:64px;margin:0;}',
+   '.acard-n{min-height:0;}',
+   '.acard-p{margin:4px 0 0;font-size:.95rem;}',
+   '.aadd{margin:0;flex:none;}',
+   '}'
   ].join('');
-  var SIDE='<div class="cart-side" id="cartSide"><div class="side-h"><b>שווה להוסיף עכשיו 🚀</b>'+
+  var BACK='<button class="side-back" id="cartSideBack" type="button" hidden>'+
+    '<svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg> חזרה לסל קניות</button>';
+  var SIDE='<div class="cart-side" id="cartSide">'+BACK+'<div class="side-h"><b>שווה להוסיף עכשיו 🚀</b>'+
     '<small>האביזרים שמתאימים למכשירים שבסל</small></div><div class="side-scroll" id="cartSideList"></div></div>';
   var SHIELD='<svg class="ic" viewBox="0 0 24 24"><path d="M12 2.5 4.5 5.5v6c0 4.5 3.2 8 7.5 10 4.3-2 7.5-5.5 7.5-10v-6z"/><path d="M8.8 11.8l2.3 2.3 4.3-4.5"/></svg>';
   function esc(s){var d=document.createElement('div');d.textContent=(s==null?'':s);return d.innerHTML;}
@@ -400,8 +419,8 @@ if (!window.toggleNav) { window.toggleNav = function () {
   function rail(items, inCart){
     var box=document.getElementById('cartSideList'), d=document.getElementById('cartDrawer');
     if(!box||!d) return;
-    if(!items.length){ box.innerHTML=''; d.classList.add('no-rail'); return; }
-    d.classList.remove('no-rail');
+    if(!items.length){ box.innerHTML=''; d.classList.add('no-rail'); cta(0); return; }
+    d.classList.remove('no-rail'); cta(items.length);
     box.innerHTML=items.map(function(a){
       var has=inCart.indexOf(+a.id)>-1;
       return '<div class="acard"><img src="'+a.img+'" alt="" loading="lazy">'+
@@ -410,6 +429,24 @@ if (!window.toggleNav) { window.toggleNav = function () {
         '<button class="aadd'+(has?' done':'')+'" type="button" data-aid="'+a.id+'"'+(has?' disabled':'')+
         ' aria-label="הוספה לסל">'+(has?'✓':'+')+'</button></div>';
     }).join('');
+  }
+  /* רצועת הכניסה למסך התוספות — מוצגת רק במובייל (CSS) ורק כשיש תוספות */
+  function cta(n){
+    var foot=document.querySelector('#cartDrawer .cart-foot'); if(!foot) return;
+    var b=document.getElementById('gmSideCta');
+    if(!n){ if(b) b.remove(); return; }
+    if(!b){ b=document.createElement('button'); b.id='gmSideCta'; b.type='button'; b.className='gm-side-cta';
+      foot.insertAdjacentElement('afterbegin', b); }
+    b.innerHTML='🚀 שווה להוסיף עכשיו <i>'+n+' אביזרים ›</i>';
+  }
+  function sideOpen(on){
+    var d=document.getElementById('cartDrawer'); if(!d) return;
+    d.classList.toggle('side-open', !!on);
+    var back=document.getElementById('cartSideBack'); if(back) back.hidden=!on;
+    var side=document.getElementById('cartSide'), foot=document.querySelector('#cartDrawer .cart-foot');
+    if(side&&foot&&window.matchMedia('(max-width:820px)').matches){
+      side.style.bottom = on ? (foot.getBoundingClientRect().height+'px') : '';
+    } else if(side){ side.style.bottom=''; }
   }
   function gcBtn(pid,plan,price,title,sub,added){
     return '<button class="gcopt'+(added?' added':'')+'" type="button" data-gc="'+plan+'" data-pid="'+pid+
@@ -457,7 +494,10 @@ if (!window.toggleNav) { window.toggleNav = function () {
   function later(ms){ clearTimeout(tmr); tmr=setTimeout(sync, ms||400); }
   document.addEventListener('click', function(e){
     var t=e.target;
-    if(t.closest('.cart-pill,.mcart,a.card-btn,.gm-atc')) { later(600); return; }
+    if(t.closest('.cart-pill,.mcart,a.card-btn,.gm-atc')) { sideOpen(false); later(600); return; }
+    if(t.closest('#cartClose,.cart-overlay')) { sideOpen(false); return; }
+    if(t.closest('#gmSideCta')){ e.preventDefault(); sideOpen(true); return; }
+    if(t.closest('#cartSideBack')){ e.preventDefault(); sideOpen(false); return; }
     var aa=t.closest('.aadd');
     if(aa && !aa.disabled){ e.preventDefault(); e.stopPropagation();
       var id=+aa.getAttribute('data-aid'); if(!id) return;
