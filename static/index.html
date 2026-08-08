@@ -8815,7 +8815,19 @@ async function orderServicesLoad(d){
   try{ data=await api('/api/admin/order-services/'+d.id,null,45000); }catch(e){}
   if(!data){ box.innerHTML=''; return; }
   S._osD=data;                       // נשמר לדיאלוגים (מימוש/צירוף) בלי טעינה חוזרת
-  box.innerHTML=osRenderHTML(data,d);
+  // ⚠️ שגיאה ברינדור השאירה את הכרטיס תקוע על "טוען שירותים…" **לנצח**: ההשמה
+  // ל-innerHTML לא מתבצעת, הפלייסהולדר נשאר, ואי אפשר להבין שמשהו נכשל — לא
+  // הטרייד-אין ולא ה-Green Care נגישים (אסי, 06/08/2026). מוטב להציג את
+  // השגיאה מאשר להיתקע: כך רואים שיש תקלה ואפשר לדווח עליה.
+  try{
+    box.innerHTML=osRenderHTML(data,d);
+  }catch(e){
+    console.error('orderServices render failed', e);
+    box.innerHTML=`<div style="border-top:1px solid var(--line);padding-top:12px;margin-top:2px;font-size:12.5px;color:var(--red-ink)">
+      ⚠️ שגיאה בהצגת שירותי הלקוח — ${escW((e&&e.message)||'שגיאה לא ידועה')}
+      <button class="btn-ghost" style="margin-inline-start:8px;padding:4px 10px;font-size:12px" onclick="orderServicesLoad(S._osOrder||{id:${Number(d.id)||0}})">נסה שוב</button></div>`;
+  }
+  S._osOrder=d;
 }
 function osChip(txt,col){ return `<span class="ord-st" style="color:${col};border-color:${col}55;background:${col}14;display:inline-flex;align-items:center;gap:5px;font-size:12px">${txt}</span>`; }
 function osCounter(label,used,limit,col){
