@@ -466,7 +466,8 @@ if (!window.toggleNav) { window.toggleNav = function () {
   }
   /* רענון עמודת הסל עצמה — המודול האפוי חושף וו ציבורי; בלעדיו המשתמש היה
      רואה את התוספת רק אחרי רענון עמוד (אסי, 09/08). */
-  function refresh(){ try{ if(typeof window.gmCartRefresh==='function') window.gmCartRefresh(); }catch(e){} }
+  function refresh(){ try{ if(typeof window.gmCartRefresh==='function') window.gmCartRefresh(); }catch(e){}
+    hideGcDom(); setTimeout(hideGcDom,60); setTimeout(hideGcDom,300); }
   /* הסרת שורת Green Care המשויכת למכשיר (מזוהה לפי שם המכשיר ב-item_data) */
   function gcRemove(pid){
     return get().then(function(c){
@@ -542,22 +543,31 @@ if (!window.toggleNav) { window.toggleNav = function () {
   /* ⛔ שורת Green Care לא מוצגת כפריט נפרד בסל: הכרטיסייה המסומנת היא הביטוי
      של התוספת (אסי, 09/08). השורה נשארת ב-WooCommerce לצורך חיוב, ולכן
      סכום הביניים כולל אותה — רק התצוגה הכפולה יורדת. גם המונה מתוקן. */
-  function hideGcLines(items){
-    var gcKeys=[], gcQty=0;
-    (items||[]).forEach(function(it){
-      if(/green ?care/i.test(dec(it.name||''))){ gcKeys.push(it.key); gcQty+=(it.quantity||1); }
-    });
-    gcKeys.forEach(function(k){
-      var row=document.querySelector('#cartDrawer .citem[data-key="'+k+'"]');
-      if(row) row.style.display='none';
-    });
-    if(!gcQty) return;
-    var total=(items||[]).reduce(function(n,it){return n+(it.quantity||1);},0)-gcQty;
-    document.querySelectorAll('.cart-count-n').forEach(function(e){e.textContent=total;});
+  function setCount(n){
+    document.querySelectorAll('.cart-count-n').forEach(function(e){e.textContent=n;});
     var pill=document.querySelector('.cart-pill');
-    if(pill){var svg=pill.querySelector('svg'); pill.innerHTML=(svg?svg.outerHTML:'')+' הסל שלי ('+total+')';}
-    var mb=document.querySelector('.mcart-b'); if(mb) mb.textContent=total;
+    if(pill){var svg=pill.querySelector('svg'); pill.innerHTML=(svg?svg.outerHTML:'')+' הסל שלי ('+n+')';}
+    var mb=document.querySelector('.mcart-b'); if(mb) mb.textContent=n;
   }
+  /* ⛔ שורת Green Care לא מוצגת בסל — הסימון על הכרטיסייה הוא הביטוי היחיד
+     (אסי, 09/08: "כל הסקשין שמתווסף אני לא מעוניין").
+     ההסתרה מונעת-DOM ולא מונעת-API: סקריפט העמוד מצייר את השורה אחרי
+     תשובת הסל, ולכן הסתרה לפי נתוני API לבדה החזירה את השורה למסך. */
+  function hideGcDom(){
+    var d=document.getElementById('cartDrawer'); if(!d) return 0;
+    var gcQty=0, rest=0;
+    d.querySelectorAll('.citem').forEach(function(r){
+      var nm=dec((r.querySelector('.citem-nm')||{}).textContent||'');
+      var q=parseInt((r.querySelector('.cqty span')||{}).textContent,10)||1;
+      if(/green ?care/i.test(nm)){
+        gcQty+=q;
+        if(r.style.display!=='none'){ r.style.display='none'; r.setAttribute('data-gcline','1'); }
+      } else { rest+=q; }
+    });
+    if(gcQty) setCount(rest);
+    return gcQty;
+  }
+  function hideGcLines(items){ hideGcDom(); }
   function gcRender(map, items){
     hideGcLines(items);
     var addedTxt=items.filter(function(it){return /green ?care/i.test(dec(it.name||''));})
@@ -674,12 +684,12 @@ if (!window.toggleNav) { window.toggleNav = function () {
     if(dr && !dr.__gmw2){ dr.__gmw2=1;
       /* fallback: אם סקריפט העמוד מחליף את .cart-items כולו, המשקיף הפנימי
          מתנתק — לכן משקיפים גם על המגירה עצמה (אסי, 09/08). */
-      new MutationObserver(function(){ later(300); }).observe(dr,{childList:true,subtree:true});
+      new MutationObserver(function(){ hideGcDom(); later(300); }).observe(dr,{childList:true,subtree:true});
     }
     var it=document.getElementById('cartItems'); if(!it||it.__gmw) return; it.__gmw=1;
     /* כל שינוי ברשימת הפריטים (הוספה/הסרה/ריקון) מפעיל סנכרון — כך שהפס
        נעלם ברגע שהסל מתרוקן, וגם מתעדכן כשמוסיפים מוצר. (אסי, 09/08) */
-    new MutationObserver(function(){ later(250); }).observe(it,{childList:true,subtree:true});
+    new MutationObserver(function(){ hideGcDom(); later(250); }).observe(it,{childList:true,subtree:true});
   }
   function boot(){
     style(); var d=document.getElementById('cartDrawer'); if(d){ upgrade(d); watch(); }
