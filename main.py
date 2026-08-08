@@ -3807,12 +3807,28 @@ def _detect_order_services(o: dict) -> dict:
                     if any(mk in str(li.get("name")).lower() for mk in _TI_ITEM_MARKERS)), None)
     ti_meta = any(str(kk).startswith("_gm_tradein_") for kk in meta)
     ti_detected = bool(ti_item or ti_meta)
-    ti_brand = meta.get("_gm_tradein_brand") or _guess_brand(device_label)
-    ti_model = meta.get("_gm_tradein_model") or (device_label if not ti_item else
-                                                 (ti_item.get("name") or ""))
-    ti_storage = meta.get("_gm_tradein_storage") or _parse_storage(device_label)
+    # ⚠️ המחשבון באתר שומר את מה שהלקוח בדק וקיבל כהצעה תחת `_gm_tradein_intent`
+    # (JSON: device / credit / product_id) — וזה היה **לא נקרא כאן כלל**. התוצאה:
+    # `model` נפל לשם המכשיר ה**נרכש**, ה-storage הראה את ה-RAM שלו, וההצעה
+    # הוצגה כ-0. כלומר לא רק שהפירוט לא הופיע במסך — הנתון עצמו היה מטעה
+    # (הזמנה 50121: S25 Ultra 256GB ב-1,760₪ הוצג כ-vivo X300 ב-0₪; אסי, 06/08).
+    ti_intent = {}
+    _raw_intent = meta.get("_gm_tradein_intent")
+    if _raw_intent:
+        try:
+            ti_intent = (json_mod.loads(_raw_intent) if isinstance(_raw_intent, str)
+                         else dict(_raw_intent or {}))
+        except Exception:  # noqa: BLE001
+            ti_intent = {}
+    ti_device = str(ti_intent.get("device") or "").strip()
+    # מקור האמת: מטא מפורש → כוונת המחשבון → שורת פריט טרייד-אין. **לעולם לא**
+    # שם המכשיר הנרכש: זה מכשיר אחר לגמרי והצגתו כאן היא הטעיה.
+    ti_model = (meta.get("_gm_tradein_model") or ti_device
+                or (ti_item.get("name") if ti_item else "") or "")
+    ti_brand = meta.get("_gm_tradein_brand") or _guess_brand(ti_model)
+    ti_storage = meta.get("_gm_tradein_storage") or _parse_storage(ti_model)
     try:
-        ti_est = float(meta.get("_gm_tradein_value") or 0)
+        ti_est = float(meta.get("_gm_tradein_value") or ti_intent.get("credit") or 0)
     except (TypeError, ValueError):
         ti_est = 0.0
 
@@ -3825,7 +3841,11 @@ def _detect_order_services(o: dict) -> dict:
         "device_price": device_price,
         "greencare": {"detected": gc_detected, "plan": gc_plan, "price": gc_price},
         "tradein": {"detected": ti_detected, "brand": ti_brand, "model": ti_model,
-                    "storage": ti_storage, "est_value": ti_est},
+                    "storage": ti_storage, "est_value": ti_est,
+                    # מה שהלקוח בדק בפועל במחשבון — לתצוגה בכרטיס ההזמנה
+                    "quoted_device": ti_device, "quoted_credit": ti_est,
+                    "quoted_product_id": ti_intent.get("product_id") or None,
+                    "from_calculator": bool(ti_device)},
     }
 
 
