@@ -350,13 +350,17 @@ if (!window.toggleNav) { window.toggleNav = function () {
    '.side-h b{display:block;font-size:.87rem;font-weight:900;line-height:1.35;}',
    '.side-h small{display:block;color:var(--ink2,#5c666d);font-size:.72rem;font-weight:600;line-height:1.35;margin-top:4px;}',
    '.side-scroll{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 12px 14px;}',
-   '.acard{background:var(--surface,#fff);border:1px solid var(--line,#e6eae8);border-radius:16px;padding:12px 10px 13px;margin-bottom:10px;text-align:center;}',
-   '.acard img{width:104px;height:104px;object-fit:contain;display:block;margin:0 auto 8px;}',
-   '.acard-n{font-size:.75rem;font-weight:700;line-height:1.3;color:var(--ink2,#5c666d);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:2.1em;}',
-   '.acard-p{font-weight:900;font-size:1rem;margin:6px 0 8px;}',
-   '.aadd{width:34px;height:34px;border-radius:50%;border:none;background:var(--accent,#149c40);color:#fff;font-size:1.3rem;line-height:1;cursor:pointer;margin:0 auto;display:block;}',
+   '.acard{background:var(--surface,#fff);border:1px solid var(--line,#e6eae8);border-radius:14px;padding:10px 10px 11px;margin-bottom:8px;text-align:center;transition:border-color .15s,box-shadow .15s;}',
+   '.acard:hover{border-color:#bfe0cb;box-shadow:0 3px 12px rgba(17,20,23,.06);}',
+   '.acard img{width:88px;height:88px;object-fit:contain;display:block;margin:0 auto 6px;}',
+   '.acard-n{font-size:.74rem;font-weight:700;line-height:1.28;color:var(--ink,#111417);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:1.9em;}',
+   '.acard-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px;}',
+   '.acard-p{font-weight:900;font-size:.95rem;}',
+   '.aadd{width:32px;height:32px;border-radius:50%;border:none;background:var(--accent,#149c40);color:#fff;font:700 19px/1 system-ui,sans-serif;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;flex:none;}',
    '.aadd[disabled]{opacity:.55;cursor:default;}',
    '.aadd.done{background:var(--accent-soft,#e7f6ec);color:#0e5c2b;font-size:1rem;}',
+   /* תמונות פריטי הסל — בלי מסגרת/רקע, כמו GoMobile (אסי 09/08) */
+   '.cart-drawer.gmv2 .citem-img{border:none!important;background:transparent!important;padding:0!important;border-radius:10px;}',
    '.gcopts{display:grid;grid-template-columns:1fr;gap:7px;margin:14px 0 8px;width:66%;}',
    '.gcopt{display:flex;align-items:center;gap:9px;background:var(--surface,#fff);border:1.5px solid var(--line,#e6eae8);border-radius:13px;padding:10px 12px;cursor:pointer;font-family:inherit;text-align:start;width:100%;}',
    '.gcopt:hover{border-color:#9ad7b0;}',
@@ -384,7 +388,8 @@ if (!window.toggleNav) { window.toggleNav = function () {
    '.acard{display:flex;align-items:center;gap:12px;text-align:start;padding:10px;}',
    '.acard img{width:64px;height:64px;margin:0;}',
    '.acard-n{min-height:0;}',
-   '.acard-p{margin:4px 0 0;font-size:.95rem;}',
+   '.acard-p{margin:0;font-size:.95rem;}',
+   '.acard-row{margin:0;flex:none;gap:12px;}',
    '.aadd{margin:0;flex:none;}',
    '}'
   ].join('');
@@ -419,6 +424,25 @@ if (!window.toggleNav) { window.toggleNav = function () {
       headers:{'Content-Type':'application/json','Nonce':n},body:JSON.stringify({id:id,quantity:1})}); })
       .then(function(r){ nonce=r.headers.get('Nonce')||nonce; return r.json(); });
   }
+  /* רענון עמודת הסל עצמה — המודול האפוי חושף וו ציבורי; בלעדיו המשתמש היה
+     רואה את התוספת רק אחרי רענון עמוד (אסי, 09/08). */
+  function refresh(){ try{ if(typeof window.gmCartRefresh==='function') window.gmCartRefresh(); }catch(e){} }
+  /* הסרת שורת Green Care המשויכת למכשיר (מזוהה לפי שם המכשיר ב-item_data) */
+  function gcRemove(pid){
+    return get().then(function(c){
+      var items=(c&&c.items)||[], phone=null, line=null;
+      items.forEach(function(it){ if(String(it.id)===String(pid)) phone=dec(it.name||''); });
+      var key=(phone||'').toLowerCase().slice(0,14);
+      items.forEach(function(it){
+        if(!/green ?care/i.test(dec(it.name||''))) return;
+        var txt=((it.item_data||[]).map(function(m){return m.value;}).join(' ')).toLowerCase();
+        if(!line && (!key || txt.indexOf(key)>-1 || items.filter(function(x){return /green ?care/i.test(dec(x.name||''));}).length===1)) line=it.key;
+      });
+      if(!line) return null;
+      return fetch(API+'/remove-item',{method:'POST',credentials:'same-origin',
+        headers:{'Content-Type':'application/json','Nonce':nonce},body:JSON.stringify({key:line})});
+    });
+  }
   function rail(items, inCart){
     var box=document.getElementById('cartSideList'), d=document.getElementById('cartDrawer');
     if(!box||!d) return;
@@ -428,9 +452,9 @@ if (!window.toggleNav) { window.toggleNav = function () {
       var has=inCart.indexOf(+a.id)>-1;
       return '<div class="acard"><img src="'+a.img+'" alt="" loading="lazy">'+
         '<div class="acard-n">'+esc(dec(a.name))+'</div>'+
-        '<div class="acard-p">‏₪'+(+a.price).toLocaleString('en-US')+'</div>'+
+        '<div class="acard-row"><span class="acard-p">‏₪'+(+a.price).toLocaleString('en-US')+'</span>'+
         '<button class="aadd'+(has?' done':'')+'" type="button" data-aid="'+a.id+'"'+(has?' disabled':'')+
-        ' aria-label="הוספה לסל">'+(has?'✓':'+')+'</button></div>';
+        ' aria-label="הוספה לסל">'+(has?'✓':'+')+'</button></div></div>';
     }).join('');
   }
   /* רצועת הכניסה למסך התוספות — מוצגת רק במובייל (CSS) ורק כשיש תוספות */
@@ -506,17 +530,21 @@ if (!window.toggleNav) { window.toggleNav = function () {
     if(aa && !aa.disabled){ e.preventDefault(); e.stopPropagation();
       var id=+aa.getAttribute('data-aid'); if(!id) return;
       aa.disabled=true; aa.textContent='…';
-      add(id).then(function(){ later(120); }).catch(function(){ aa.disabled=false; aa.textContent='+'; });
+      add(id).then(function(){ refresh(); later(120); }).catch(function(){ aa.disabled=false; aa.textContent='+'; });
       return; }
     var gc=t.closest('.gcopt');
-    if(gc && !gc.classList.contains('added')){ e.preventDefault(); e.stopPropagation();
+    /* לחיצה שנייה על מסלול שכבר נוסף ⇒ הסרה מהסל (אסי, 09/08) */
+    if(gc && gc.classList.contains('added')){ e.preventDefault(); e.stopPropagation();
+      gc.style.opacity='.6'; gcRemove(gc.getAttribute('data-pid')).then(function(){ gc.style.opacity=''; refresh(); later(150); });
+      return; }
+    if(gc){ e.preventDefault(); e.stopPropagation();
       var fd=new FormData(); fd.append('action','gm_svc_greencare');
       fd.append('plan',gc.getAttribute('data-gc'));
       fd.append('product_id',gc.getAttribute('data-pid'));
       fd.append('price',gc.getAttribute('data-price'));
       gc.style.opacity='.6';
       fetch('/wp-admin/admin-ajax.php',{method:'POST',credentials:'same-origin',body:fd})
-        .then(function(){ gc.style.opacity=''; later(150); })
+        .then(function(){ gc.style.opacity=''; refresh(); later(150); })
         .catch(function(){ gc.style.opacity=''; });
       return; }
   }, true);
