@@ -341,15 +341,15 @@ if (!window.toggleNav) { window.toggleNav = function () {
   if (window.__gmCartV2) return; window.__gmCartV2 = 1;
   var API='/wp-json/wc/store/v1/cart', nonce=null, tmr=null;
   var CSS=[
-   '.cart-drawer.gmv2{width:min(96vw,790px)!important;display:grid!important;grid-template-columns:minmax(0,1fr) minmax(0,250px);flex-direction:unset!important;}',
-   '.cart-drawer.gmv2.no-rail{width:min(93vw,470px)!important;grid-template-columns:minmax(0,1fr);}',
+   '.cart-drawer.gmv2{width:min(96vw,740px)!important;display:grid!important;grid-template-columns:minmax(0,1fr) minmax(0,240px);flex-direction:unset!important;overflow:hidden;}',
+   '.cart-drawer.gmv2.no-rail{width:min(93vw,450px)!important;grid-template-columns:minmax(0,1fr);}',
    '.cart-drawer.gmv2.no-rail .cart-side{display:none;}',
-   '.cart-main{display:flex;flex-direction:column;min-width:0;overflow:hidden;}',
-   '.cart-side{background:var(--alt,#f5f7f6);border-inline-end:1px solid var(--line,#e6eae8);display:flex;flex-direction:column;min-width:0;}',
+   '.cart-main{display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden;}',
+   '.cart-side{background:var(--alt,#f5f7f6);border-inline-end:1px solid var(--line,#e6eae8);display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden;}',
    '.side-h{padding:15px 14px 11px;flex:none;text-align:center;}',
    '.side-h b{display:block;font-size:.87rem;font-weight:900;line-height:1.35;}',
    '.side-h small{display:block;color:var(--ink2,#5c666d);font-size:.72rem;font-weight:600;line-height:1.35;margin-top:4px;}',
-   '.side-scroll{flex:1;overflow-y:auto;padding:0 12px 14px;}',
+   '.side-scroll{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 12px 14px;}',
    '.acard{background:var(--surface,#fff);border:1px solid var(--line,#e6eae8);border-radius:16px;padding:12px 10px 13px;margin-bottom:10px;text-align:center;}',
    '.acard img{width:104px;height:104px;object-fit:contain;display:block;margin:0 auto 8px;}',
    '.acard-n{font-size:.75rem;font-weight:700;line-height:1.3;color:var(--ink2,#5c666d);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:2.1em;}',
@@ -498,6 +498,7 @@ if (!window.toggleNav) { window.toggleNav = function () {
     if(t.closest('#cartClose,.cart-overlay')) { sideOpen(false); return; }
     if(t.closest('#gmSideCta')){ e.preventDefault(); sideOpen(true); return; }
     if(t.closest('#cartSideBack')){ e.preventDefault(); sideOpen(false); return; }
+    if(t.closest('#cartDrawer .citem-rm') || t.closest('#cartDrawer .cqty button')){ later(500); }
     var aa=t.closest('.aadd');
     if(aa && !aa.disabled){ e.preventDefault(); e.stopPropagation();
       var id=+aa.getAttribute('data-aid'); if(!id) return;
@@ -518,7 +519,9 @@ if (!window.toggleNav) { window.toggleNav = function () {
   }, true);
   function watch(){
     var it=document.getElementById('cartItems'); if(!it||it.__gmw) return; it.__gmw=1;
-    new MutationObserver(function(){ later(250); }).observe(it,{childList:true});
+    /* כל שינוי ברשימת הפריטים (הוספה/הסרה/ריקון) מפעיל סנכרון — כך שהפס
+       נעלם ברגע שהסל מתרוקן, וגם מתעדכן כשמוסיפים מוצר. (אסי, 09/08) */
+    new MutationObserver(function(){ later(250); }).observe(it,{childList:true,subtree:true});
   }
   function boot(){ style(); var d=document.getElementById('cartDrawer'); if(d){ upgrade(d); watch(); } later(900); }
   if(document.readyState!=='loading') boot(); else document.addEventListener('DOMContentLoaded', boot);
