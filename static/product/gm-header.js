@@ -56,7 +56,35 @@ document.addEventListener('click',e=>{ if(!e.target.closest('.gsrch')) document.
 (function () {
   if (window.__gmHdrBoost) return; window.__gmHdrBoost = 1;
   var st = document.createElement('style'); st.id = 'gm-hdr-boost';
-  st.textContent = 'nav.cats{font-size:1.02rem;font-weight:700;}'
+  st.textContent = ''
+    /* ── מיני-סל v2 (אסי 07-08/08): מגירה רחבה + פס תוספות + Green Care.
+       ⚠️ מוזרק מ-JS כי ה-CSS של המגירה אפוי בכל עמוד בנפרד. ── */
+    + '.cart-drawer{width:min(96vw,790px)!important;display:grid!important;grid-template-columns:minmax(0,1fr) minmax(0,250px);flex-direction:unset!important;}'
+    + '.cart-drawer.no-rail{width:min(93vw,470px)!important;grid-template-columns:minmax(0,1fr);}'
+    + '.cart-drawer.no-rail .cart-side{display:none;}'
+    + '.cart-main{display:flex;flex-direction:column;min-width:0;overflow:hidden;}'
+    + '.cart-side{background:var(--alt);border-inline-end:1px solid var(--line);display:flex;flex-direction:column;min-width:0;}'
+    + '.side-h{padding:15px 14px 11px;flex:none;text-align:center;}'
+    + '.side-h b{display:block;font-size:.87rem;font-weight:900;line-height:1.35;}'
+    + '.side-h small{display:block;color:var(--ink2);font-size:.72rem;font-weight:600;line-height:1.35;margin-top:4px;}'
+    + '.side-scroll{flex:1;overflow-y:auto;padding:0 12px 14px;}'
+    + '.acard{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:12px 10px 13px;margin-bottom:10px;text-align:center;}'
+    + '.acard img{width:104px;height:104px;object-fit:contain;display:block;margin:0 auto 8px;}'
+    + '.acard-n{font-size:.75rem;font-weight:700;line-height:1.3;color:var(--ink2);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:2.1em;}'
+    + '.acard-p{font-weight:900;font-size:1rem;margin:6px 0 8px;}'
+    + '.aadd{width:34px;height:34px;border-radius:50%;border:none;background:var(--accent);color:#fff;font-size:1.3rem;line-height:1;cursor:pointer;margin:0 auto;display:block;}'
+    + '.aadd[disabled]{opacity:.55;cursor:default;} .aadd.done{background:var(--accent-soft);color:#0e5c2b;font-size:1rem;}'
+    + '.gcopts{display:grid;grid-template-columns:1fr;gap:7px;margin:2px 0 6px;}'
+    + '.gcopt{display:flex;align-items:center;gap:9px;background:var(--surface);border:1.5px solid var(--line);border-radius:13px;padding:10px 12px;cursor:pointer;font-family:inherit;text-align:start;width:100%;}'
+    + '.gcopt:hover{border-color:#9ad7b0;}'
+    + '.gcopt .ic{width:17px;height:17px;flex:none;fill:none;stroke:var(--accent);stroke-width:1.9;}'
+    + '.gcopt-t{font-size:.8rem;font-weight:800;line-height:1.25;color:var(--ink);}'
+    + '.gcopt-t span{display:block;font-weight:600;color:var(--ink2);font-size:.72rem;margin-top:1px;}'
+    + '.gcopt-p{margin-inline-start:auto;font-weight:900;font-size:.85rem;white-space:nowrap;}'
+    + '.gcopt.added{border-color:var(--accent);background:var(--accent-soft);}'
+    + '.gcmore{display:block;margin:0 0 12px;font-size:.72rem;color:var(--ink2);text-decoration:none;}'
+    + '@media(max-width:820px){.cart-drawer,.cart-drawer.no-rail{width:min(93vw,430px)!important;grid-template-columns:minmax(0,1fr);}.cart-side{display:none;}}'
+    + 'nav.cats{font-size:1.02rem;font-weight:700;}'
     + '.gmnav{font-size:1rem;font-weight:700;}'
     + '.logo-img{height:40px!important;}'
     + '@media (max-width:820px){.logo-img{height:32px!important;}}'
@@ -126,8 +154,25 @@ if (!window.toggleNav) { window.toggleNav = function () {
     if(pill){var svg=pill.querySelector('svg'); pill.innerHTML=(svg?svg.outerHTML:'')+' הסל שלי ('+n+')';}
     document.querySelectorAll('.cart-count-n').forEach(function(e){e.textContent=n;});
   }
+  var SIDE_HTML='<div class="cart-side" id="cartSide">'+
+    '<div class="side-h"><b>שווה להוסיף עכשיו 🚀</b>'+
+    '<small>האביזרים שמתאימים למכשירים שבסל</small></div>'+
+    '<div class="side-scroll" id="cartSideList"></div></div>';
+  /* ⚠️ רוב עמודי האתר **אופים** את מגירת הסל ב-HTML שלהם (העתק של הקוד הזה
+     מזמן הבנייה). לכן v2 לא יכול "לדלג אם קיים" — הוא משדרג את הקיים:
+     עוטף את תוכנו ב-.cart-main ומוסיף את פס התוספות. ככה השדרוג חל בכל
+     עמוד מיד, בלי לבנות מחדש עשרות עמודים. (אסי, 08/08) */
+  function upgrade(d){
+    if(!d || d.querySelector('.cart-main')) return;
+    var main=document.createElement('div'); main.className='cart-main';
+    while(d.firstChild) main.appendChild(d.firstChild);
+    d.appendChild(main);
+    d.insertAdjacentHTML('beforeend', SIDE_HTML);
+    d.classList.add('no-rail');
+  }
   function ensure(){
-    if(document.getElementById('cartDrawer')) return;
+    var ex=document.getElementById('cartDrawer');
+    if(ex){ upgrade(ex); return; }
     var w=document.createElement('div');
     w.innerHTML=''+
       '<div class="cart-overlay" id="cartOverlay"></div>'+
@@ -141,12 +186,7 @@ if (!window.toggleNav) { window.toggleNav = function () {
       '<div class="cart-note">המשלוח מחושב בעמוד התשלום</div>'+
       gmBpCartHtml()+
       '<a class="cart-checkout" href="/מעבר-לתשלום/">מעבר לתשלום</a></div></div>'+
-      /* פס התוספות — נמלא ב-JS מ-gm-addons/v1/for-cart; ריק ⇒ .no-rail מסתיר */
-      '<div class="cart-side" id="cartSide">'+
-      '<div class="side-h"><b>שווה להוסיף עכשיו 🚀</b>'+
-      '<small>האביזרים שמתאימים למכשירים שבסל</small></div>'+
-      '<div class="side-scroll" id="cartSideList"></div></div>'+
-      '</aside>';
+      SIDE_HTML+'</aside>';
     while(w.firstChild) document.body.appendChild(w.firstChild);
     document.getElementById('cartOverlay').addEventListener('click',close);
     document.getElementById('cartClose').addEventListener('click',close);
