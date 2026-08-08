@@ -161,15 +161,15 @@
   .bwrap{display:grid;gap:var(--s5);align-items:start;
     grid-template-columns:minmax(0,1.15fr) minmax(0,1fr) 304px;
     grid-template-areas:"scan transfers rail"}
-  /* בסיטי הסריקה **באמצע**, צמודה לעגלת ההורדה שברייל: מה שסורקים ומה
-     שנוסף להורדה חייבים להיות זה ליד זה, בלי כרטיסי קליטה שמפרידים ביניהם. */
-  .bwrap.city{grid-template-columns:minmax(0,1fr) minmax(0,1.15fr) 320px;
-    grid-template-areas:"transfers scan rail"}
+  /* ℹ️ בסיטי הסריקה הייתה באמצע כדי להיות צמודה לעגלה שברייל. מרגע שהעגלה
+     עברה לתוך תחנת הסריקה, הצורך נעלם — והסריקה חזרה למקום הראשי (הרחב
+     והימני), כי היא העמודה הגבוהה והחשובה. הקליטה עברה לאמצע. */
+  .bwrap.city{grid-template-columns:minmax(0,1.25fr) minmax(0,1fr) 304px}
   .b-scan{grid-area:scan}.b-tr{grid-area:transfers}.b-rail{grid-area:rail}
   @media(max-width:1380px){.bwrap,.bwrap.city{grid-template-columns:minmax(0,1fr) 304px;
     grid-template-areas:"scan rail" "transfers rail"}}
   @media(max-width:980px){.bwrap,.bwrap.city{grid-template-columns:1fr;
-    grid-template-areas:"scan" "rail" "transfers"}}
+    grid-template-areas:"scan" "transfers" "rail"}}
   @media(min-width:1381px){.tcards{grid-template-columns:1fr}}
   /* תחנת סריקה — סריקה + תוצאה + מוצר על משטח אחד */
   .station{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);
