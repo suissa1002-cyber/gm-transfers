@@ -329,14 +329,14 @@
     border-top:1px solid var(--line);padding:var(--s4) var(--s5);animation:none}
   .station .pcard .px{top:var(--s3);inset-inline-end:var(--s4)}
   /* ══ הורדה מהמלאי — סיטי בלבד ══════════════════════════════════════ */
-  .rmcart{background:var(--card);border:1px solid var(--line);border-radius:var(--r-md);
-    box-shadow:var(--sh-1);overflow:hidden}
-  .rmcart .rh{padding:var(--s4) var(--s4) var(--s3);display:flex;align-items:center;gap:8px;
-    background:linear-gradient(180deg,var(--card-2),transparent)}
+  /* ⚠️ העגלה היא **המשך של תחנת הסריקה**, לא כרטיס נפרד: סורקים → רואים
+     את המוצר → מוסיפים להורדה. פיצול לשני משטחים שבר את הרצף (אסי, 07/08). */
+  .rmcart{border-top:1px solid var(--line)}
+  .rmcart .rh{padding:var(--s4) var(--s5) var(--s3);display:flex;align-items:center;gap:8px}
   .rmcart .rh h3{margin:0;font-size:14px;font-weight:800;flex:1}
   .rmcart .rh .n{font-size:11.5px;font-weight:800;background:var(--brand-bg);color:var(--brand-ink);
     border-radius:var(--r-pill);padding:2px 9px}
-  .rmcart .rbody{padding:0 var(--s4) var(--s4)}
+  .rmcart .rbody{padding:0 var(--s5) var(--s5)}
   .rmi{display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--line)}
   .rmi .t{flex:1;min-width:0}
   .rmi .t .a{font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -367,12 +367,12 @@
     border-radius:var(--r-sm);padding:14px 8px;font-weight:800;font-size:14.5px;cursor:pointer}
   .empgridm button:hover{border-color:var(--brand);background:var(--brand-bg);color:var(--brand-ink)}
   /* מצב הסוכן + יומן הורדות — פריטי שוויון מול המסך הנפרד */
-  .rmst{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:800;
-    border-radius:var(--r-pill);padding:4px 10px;margin:0 var(--s4) var(--s3)}
+  .rmst{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:800;
+    border-radius:var(--r-pill);padding:4px 10px;margin:0 var(--s5) var(--s3)}
   .rmst.on{background:var(--brand-bg);color:var(--brand-ink)}
   .rmst.dry{background:var(--amber-bg);color:var(--amber-ink)}
   .rmst.off{background:var(--red-bg);color:var(--red-ink)}
-  .rmtrack{margin:0 var(--s4) var(--s3);border:1px solid var(--brand);border-radius:var(--r-sm);
+  .rmtrack{margin:0 var(--s5) var(--s3);border:1px solid var(--brand);border-radius:var(--r-sm);
     padding:var(--s3);display:flex;gap:8px;align-items:flex-start;font-size:12.5px}
   .rmtrack.bad{border-color:var(--red)} .rmtrack.ok{border-color:var(--brand)}
   .rmtrack .sp2{width:15px;height:15px;border:2px solid var(--line);border-top-color:var(--brand);
@@ -380,7 +380,7 @@
   @keyframes lvp2{to{transform:rotate(360deg)}}
   .rmtrack b{display:block}
   .rmtrack .s2{color:var(--txt-2);margin-top:2px}
-  .rmstuck{margin:0 var(--s4) var(--s3);background:var(--red-bg);color:var(--red-ink);
+  .rmstuck{margin:0 var(--s5) var(--s3);background:var(--red-bg);color:var(--red-ink);
     border:1px solid var(--red);border-radius:var(--r-sm);padding:9px 11px;font-size:12px;font-weight:800}
   .rmlog{border-top:1px solid var(--line);margin-top:var(--s3);padding-top:var(--s3)}
   .rmlog .lh{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:800;
@@ -3083,6 +3083,7 @@ async function renderBoard(app, silent){
           </div>
           ${resHtml}
           ${priceCardHTML()}
+          ${rmCartHTML()}
         </div>
       </div>
 
@@ -3094,7 +3095,7 @@ async function renderBoard(app, silent){
         </div>
       </div>
 
-      <div class="b-rail brail">${rmCartHTML()}<div id="tiWidgetHost"></div><div id="gcWidgetHost"></div></div>
+      <div class="b-rail brail"><div id="tiWidgetHost"></div><div id="gcWidgetHost"></div></div>
     </div>
     <div class="uov" id="uOv" onclick="if(event.target===this)closeUpd()"><div class="umd" id="uMd"></div></div>`, silent);
   tiWidgetEnsure();
