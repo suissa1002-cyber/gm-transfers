@@ -614,6 +614,17 @@ if (!window.toggleNav) { window.toggleNav = function () {
     if(now()-p.t<15000) return p.w;
     delete gcPend[pid]; return isAdded;
   }
+  /* ציור מיידי של הבלוקים ברגע שרשימת השורות נבנתה מחדש — בלי להמתין
+     לסנכרון (שעולה ~2.6 שניות). מוגן מכניסה חוזרת: gcRender עצמו כותב
+     לתוך התת-עץ שעליו מאזינים. */
+  var gcBusy=false, gcLast=0;
+  function gcRepaint(){
+    if(gcBusy||!cGc) return;
+    var t=(window.performance&&performance.now)?performance.now():+new Date();
+    if(t-gcLast<150) return; gcLast=t;
+    gcBusy=true; try{ gcRender(cGc, cAll); }catch(e){}
+    setTimeout(function(){ gcBusy=false; },0);
+  }
   var hgBusy=false;
   function hideGcDom(){
     var d=document.getElementById('cartDrawer'); if(!d||hgBusy) return 0;
@@ -761,12 +772,12 @@ if (!window.toggleNav) { window.toggleNav = function () {
     if(dr && !dr.__gmw2){ dr.__gmw2=1;
       /* fallback: אם סקריפט העמוד מחליף את .cart-items כולו, המשקיף הפנימי
          מתנתק — לכן משקיפים גם על המגירה עצמה (אסי, 09/08). */
-      new MutationObserver(function(){ hideGcDom(); later(300); }).observe(dr,{childList:true,subtree:true});
+      new MutationObserver(function(){ hideGcDom(); dropGhosts(); gcRepaint(); later(300); }).observe(dr,{childList:true,subtree:true});
     }
     var it=document.getElementById('cartItems'); if(!it||it.__gmw) return; it.__gmw=1;
     /* כל שינוי ברשימת הפריטים (הוספה/הסרה/ריקון) מפעיל סנכרון — כך שהפס
        נעלם ברגע שהסל מתרוקן, וגם מתעדכן כשמוסיפים מוצר. (אסי, 09/08) */
-    new MutationObserver(function(){ hideGcDom(); later(250); }).observe(it,{childList:true,subtree:true});
+    new MutationObserver(function(){ hideGcDom(); dropGhosts(); gcRepaint(); later(250); }).observe(it,{childList:true,subtree:true});
   }
   function boot(){
     style(); var d=document.getElementById('cartDrawer'); if(d){ upgrade(d); watch(); }
