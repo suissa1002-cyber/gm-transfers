@@ -8864,7 +8864,11 @@ function osRenderHTML(data,d){
            ${q?`<span style="background:#eef2ff;color:#3730a3;border:1px solid #c7d2fe;border-radius:999px;padding:2px 9px;font-size:12px;font-weight:700">${escW(q)}</span>`:''}
            ${cr?`<span style="background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0;border-radius:999px;padding:2px 9px;font-size:12px;font-weight:800">זיכוי ₪${Number(cr).toLocaleString('he-IL')}</span>`:''}
            <span class="muted" style="font-size:11px">הערכה מהמחשבון באתר — טרם אומתה פיזית</span>
-         </div>` : '';
+         </div>
+         ${(t.condition||[]).length?`<div style="margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+           <span class="muted" style="font-size:11px">סימן:</span>
+           ${t.condition.map(c=>`<span title="${escW(c.label)}" style="border-radius:999px;padding:2px 8px;font-size:11.5px;font-weight:600;border:1px solid ${c.bad?'#fecaca':'#d1d5db'};background:${c.bad?'#fef2f2':'var(--card2)'};color:${c.bad?'#991b1b':'var(--txt-2)'}">${escW(c.label)}: ${escW(c.text)}</span>`).join('')}
+         </div>`:(q?`<div style="margin-top:5px"><span class="muted" style="font-size:11px">· סימוני מצב לא נשמרו בהזמנה זו (נוסף 08/08/2026)</span></div>`:'')}` : '';
     html+=`<div style="background:var(--card2);border:1px dashed var(--line);border-radius:12px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
       <span style="font-size:13px"><span class="muted">${on?'🔄 זוהה טרייד-אין בהזמנה — צרף רשומה':'אין טרייד-אין להזמנה זו'}</span>${detail}</span>
       <button class="btn-ghost" style="padding:7px 13px;font-size:12.5px;border-color:#2563eb;color:#2563eb" onclick="osAttachTradein()">➕ צרף טרייד-אין</button></div>`;

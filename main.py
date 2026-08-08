@@ -3745,6 +3745,37 @@ def _parse_storage(txt: str) -> str:
     return f"{m.group(1)} {unit}"
 
 
+# תשובות מחשבון הטרייד-אין באתר → תווית קריאה. מקור המפתחות: QS ב-gm-services.js
+# (התוסף שומר מפתחות בלבד; התוויות כאן, כדי שלא יהיו שני נוסחים שמתפצלים).
+_TI_COND_LABELS = {
+    "power":  ("הדלקה",  {"yes": "נדלק ומחזיק טעינה", "no": "לא נדלק"}),
+    "screen": ("מסך",    {"ok": "תקין", "scratch": "שריטות קלות", "crack": "סדוק / שבור"}),
+    "body":   ("גוף",    {"ok": "ללא פגמים", "scratch": "שריטות קלות",
+                          "dent": "שקעים ומכות", "backglass": "גב סדוק / שבור"}),
+    "func":   ("תפקוד",  {"none": "הכל עובד", "fault": "יש תקלה (מצלמה/רמקול/כפתורים)"}),
+}
+# תשובות שמשמעותן פגם — לסימון ויזואלי, כדי שהעין תתפוס מיד מה לבדוק בקבלה.
+_TI_COND_BAD = {"no", "crack", "dent", "backglass", "fault", "scratch"}
+
+
+def _ti_condition(cond) -> list:
+    """סימוני מצב המכשיר כפי שהלקוח בחר, מוכנים לתצוגה.
+    מחזיר [] כשאין — הזמנות שקדמו ל-08/08/2026 לא שמרו את זה כלל."""
+    if not isinstance(cond, dict):
+        return []
+    out = []
+    for key, (label, opts) in _TI_COND_LABELS.items():
+        val = str(cond.get(key) or "").strip()
+        # ⚠️ רק ערכים מוכרים. הערך מגיע במקורו מהדפדפן; ה-PHP מסנן ברשימה
+        # לבנה, וכאן שכבה שנייה — כך גם מטא ישן/זר לא מגיע למסך.
+        if not val or val not in opts:
+            continue
+        out.append({"key": key, "label": label,
+                    "value": val, "text": opts[val],
+                    "bad": val in _TI_COND_BAD})
+    return out
+
+
 def _guess_brand(label: str) -> str:
     """ניחוש מותג משם המוצר לפי מפתחות קטלוג היד-שנייה (Apple/Samsung/Google...)."""
     low = str(label or "").lower()
@@ -3845,7 +3876,12 @@ def _detect_order_services(o: dict) -> dict:
                     # מה שהלקוח בדק בפועל במחשבון — לתצוגה בכרטיס ההזמנה
                     "quoted_device": ti_device, "quoted_credit": ti_est,
                     "quoted_product_id": ti_intent.get("product_id") or None,
-                    "from_calculator": bool(ti_device)},
+                    "from_calculator": bool(ti_device),
+                    # מה שהלקוח סימן במחשבון (מ-08/08/2026 ואילך). בהזמנות
+                    # ישנות זה יהיה ריק — הנתון לא נשמר אז ואי אפשר לשחזרו.
+                    "quoted_storage": str(ti_intent.get("storage") or "").strip(),
+                    "quoted_at": str(ti_intent.get("quoted_at") or "").strip(),
+                    "condition": _ti_condition(ti_intent.get("cond"))},
     }
 
 
