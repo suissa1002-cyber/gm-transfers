@@ -56,35 +56,7 @@ document.addEventListener('click',e=>{ if(!e.target.closest('.gsrch')) document.
 (function () {
   if (window.__gmHdrBoost) return; window.__gmHdrBoost = 1;
   var st = document.createElement('style'); st.id = 'gm-hdr-boost';
-  st.textContent = ''
-    /* ── מיני-סל v2 (אסי 07-08/08): מגירה רחבה + פס תוספות + Green Care.
-       ⚠️ מוזרק מ-JS כי ה-CSS של המגירה אפוי בכל עמוד בנפרד. ── */
-    + '.cart-drawer{width:min(96vw,790px)!important;display:grid!important;grid-template-columns:minmax(0,1fr) minmax(0,250px);flex-direction:unset!important;}'
-    + '.cart-drawer.no-rail{width:min(93vw,470px)!important;grid-template-columns:minmax(0,1fr);}'
-    + '.cart-drawer.no-rail .cart-side{display:none;}'
-    + '.cart-main{display:flex;flex-direction:column;min-width:0;overflow:hidden;}'
-    + '.cart-side{background:var(--alt);border-inline-end:1px solid var(--line);display:flex;flex-direction:column;min-width:0;}'
-    + '.side-h{padding:15px 14px 11px;flex:none;text-align:center;}'
-    + '.side-h b{display:block;font-size:.87rem;font-weight:900;line-height:1.35;}'
-    + '.side-h small{display:block;color:var(--ink2);font-size:.72rem;font-weight:600;line-height:1.35;margin-top:4px;}'
-    + '.side-scroll{flex:1;overflow-y:auto;padding:0 12px 14px;}'
-    + '.acard{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:12px 10px 13px;margin-bottom:10px;text-align:center;}'
-    + '.acard img{width:104px;height:104px;object-fit:contain;display:block;margin:0 auto 8px;}'
-    + '.acard-n{font-size:.75rem;font-weight:700;line-height:1.3;color:var(--ink2);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:2.1em;}'
-    + '.acard-p{font-weight:900;font-size:1rem;margin:6px 0 8px;}'
-    + '.aadd{width:34px;height:34px;border-radius:50%;border:none;background:var(--accent);color:#fff;font-size:1.3rem;line-height:1;cursor:pointer;margin:0 auto;display:block;}'
-    + '.aadd[disabled]{opacity:.55;cursor:default;} .aadd.done{background:var(--accent-soft);color:#0e5c2b;font-size:1rem;}'
-    + '.gcopts{display:grid;grid-template-columns:1fr;gap:7px;margin:2px 0 6px;}'
-    + '.gcopt{display:flex;align-items:center;gap:9px;background:var(--surface);border:1.5px solid var(--line);border-radius:13px;padding:10px 12px;cursor:pointer;font-family:inherit;text-align:start;width:100%;}'
-    + '.gcopt:hover{border-color:#9ad7b0;}'
-    + '.gcopt .ic{width:17px;height:17px;flex:none;fill:none;stroke:var(--accent);stroke-width:1.9;}'
-    + '.gcopt-t{font-size:.8rem;font-weight:800;line-height:1.25;color:var(--ink);}'
-    + '.gcopt-t span{display:block;font-weight:600;color:var(--ink2);font-size:.72rem;margin-top:1px;}'
-    + '.gcopt-p{margin-inline-start:auto;font-weight:900;font-size:.85rem;white-space:nowrap;}'
-    + '.gcopt.added{border-color:var(--accent);background:var(--accent-soft);}'
-    + '.gcmore{display:block;margin:0 0 12px;font-size:.72rem;color:var(--ink2);text-decoration:none;}'
-    + '@media(max-width:820px){.cart-drawer,.cart-drawer.no-rail{width:min(93vw,430px)!important;grid-template-columns:minmax(0,1fr);}.cart-side{display:none;}}'
-    + 'nav.cats{font-size:1.02rem;font-weight:700;}'
+  st.textContent = 'nav.cats{font-size:1.02rem;font-weight:700;}'
     + '.gmnav{font-size:1rem;font-weight:700;}'
     + '.logo-img{height:40px!important;}'
     + '@media (max-width:820px){.logo-img{height:32px!important;}}'
@@ -154,30 +126,12 @@ if (!window.toggleNav) { window.toggleNav = function () {
     if(pill){var svg=pill.querySelector('svg'); pill.innerHTML=(svg?svg.outerHTML:'')+' הסל שלי ('+n+')';}
     document.querySelectorAll('.cart-count-n').forEach(function(e){e.textContent=n;});
   }
-  var SIDE_HTML='<div class="cart-side" id="cartSide">'+
-    '<div class="side-h"><b>שווה להוסיף עכשיו 🚀</b>'+
-    '<small>האביזרים שמתאימים למכשירים שבסל</small></div>'+
-    '<div class="side-scroll" id="cartSideList"></div></div>';
-  /* ⚠️ רוב עמודי האתר **אופים** את מגירת הסל ב-HTML שלהם (העתק של הקוד הזה
-     מזמן הבנייה). לכן v2 לא יכול "לדלג אם קיים" — הוא משדרג את הקיים:
-     עוטף את תוכנו ב-.cart-main ומוסיף את פס התוספות. ככה השדרוג חל בכל
-     עמוד מיד, בלי לבנות מחדש עשרות עמודים. (אסי, 08/08) */
-  function upgrade(d){
-    if(!d || d.querySelector('.cart-main')) return;
-    var main=document.createElement('div'); main.className='cart-main';
-    while(d.firstChild) main.appendChild(d.firstChild);
-    d.appendChild(main);
-    d.insertAdjacentHTML('beforeend', SIDE_HTML);
-    d.classList.add('no-rail');
-  }
   function ensure(){
-    var ex=document.getElementById('cartDrawer');
-    if(ex){ upgrade(ex); return; }
+    if(document.getElementById('cartDrawer')) return;
     var w=document.createElement('div');
     w.innerHTML=''+
       '<div class="cart-overlay" id="cartOverlay"></div>'+
-      '<aside class="cart-drawer no-rail" id="cartDrawer" aria-label="עגלת הקניות">'+
-      '<div class="cart-main">'+
+      '<aside class="cart-drawer" id="cartDrawer" aria-label="עגלת הקניות">'+
       '<div class="cart-head"><strong>הסל שלי (<span class="cart-count-n">0</span>)</strong>'+
       '<button class="mclose" id="cartClose" aria-label="סגור">×</button></div>'+
       '<div class="cart-ship" id="cartShip"></div>'+
@@ -185,8 +139,7 @@ if (!window.toggleNav) { window.toggleNav = function () {
       '<div class="cart-foot"><div class="cart-subtotal"><span>סכום ביניים</span><span class="cs-amt" id="cartSubtotal">‏₪0</span></div>'+
       '<div class="cart-note">המשלוח מחושב בעמוד התשלום</div>'+
       gmBpCartHtml()+
-      '<a class="cart-checkout" href="/מעבר-לתשלום/">מעבר לתשלום</a></div></div>'+
-      SIDE_HTML+'</aside>';
+      '<a class="cart-checkout" href="/מעבר-לתשלום/">מעבר לתשלום</a></div></aside>';
     while(w.firstChild) document.body.appendChild(w.firstChild);
     document.getElementById('cartOverlay').addEventListener('click',close);
     document.getElementById('cartClose').addEventListener('click',close);
@@ -228,7 +181,7 @@ if (!window.toggleNav) { window.toggleNav = function () {
       count+=it.quantity;
       var img=(it.images&&it.images[0])?it.images[0].thumbnail:'';
       var vv=(it.variation||[]).map(function(v){return v.value;}).join(' · ');
-      return '<div class="citem" data-key="'+it.key+'" data-pid="'+it.id+'"><img class="citem-img" src="'+img+'" alt="">'+
+      return '<div class="citem" data-key="'+it.key+'"><img class="citem-img" src="'+img+'" alt="">'+
         '<div class="citem-main"><div class="citem-nm">'+esc(dec(it.name))+'</div>'+
         (vv?'<div class="citem-var">'+esc(dec(vv))+'</div>':'')+
         '<div class="citem-bottom"><div class="cqty"><button data-d="-1">−</button><span>'+it.quantity+'</span><button data-d="1">+</button></div>'+
@@ -237,74 +190,20 @@ if (!window.toggleNav) { window.toggleNav = function () {
     }).join(''); }
     var subEl=document.getElementById('cartSubtotal'); if(subEl) subEl.textContent=money(+c.totals.total_items,minor);
     setCount(count);
-    var sub=(+c.totals.total_items)/Math.pow(10,minor), TH=500, ship=document.getElementById('cartShip');
+    /* ⚠️ זכאות מהשרת (extensions.gm) — ראה gm-freeship.php. פריטים במחלקת
+       "משלוח כבד" מוחרגים, וחישוב מהסכום בלבד הבטיח משלוח חינם שהקופה
+       סותרת (אסי, 07/08/2026). בלי התוסף — ההתנהגות הישנה נשמרת. */
+    var gmx=(c.extensions&&c.extensions.gm)||null;
+    var sub=(+c.totals.total_items)/Math.pow(10,minor);
+    var TH=gmx?+gmx.threshold:500, ship=document.getElementById('cartShip');
+    var elig=gmx?+gmx.eligible_subtotal:sub;
+    var okFree=gmx?!!gmx.qualifies:(sub>=TH);
     if(ship){
-      if(sub>=TH) ship.innerHTML='<b>קיבלת משלוח חינם!</b><div class="bar"><div class="fill" style="width:100%"></div></div>';
-      else ship.innerHTML='עוד <b>‏₪'+(TH-sub).toLocaleString('en-US')+'</b> ותיהנו ממשלוח חינם<div class="bar"><div class="fill" style="width:'+Math.min(100,Math.round(sub/TH*100))+'%"></div></div>';
+      if(gmx&&gmx.has_excluded&&!okFree) ship.innerHTML='<b>חלק מהפריטים נשלחים ישירות מהמחסן</b><div class="cart-ship-note">עלות המשלוח שלהם מחושבת בקופה</div>';
+      else if(okFree) ship.innerHTML='<b>קיבלת משלוח חינם!</b><div class="bar"><div class="fill" style="width:100%"></div></div>';
+      else ship.innerHTML='עוד <b>‏₪'+(TH-elig).toLocaleString('en-US')+'</b> ותיהנו ממשלוח חינם<div class="bar"><div class="fill" style="width:'+Math.min(100,Math.round(elig/TH*100))+'%"></div></div>';
     }
     gmBpCartLine(sub);
-    extras(list);
-  }
-  /* ══ תוספות + Green Care לפי הסל (אסי 07/08) ══════════════════════════
-     שתי נקודות קצה ציבוריות לקריאה בלבד:
-       gm-addons/v1/for-cart?ids=   → התוספות המשויכות למוצרים שבסל
-       gm-services/v1/greencare?ids= → זכאות Green Care לכל מוצר (tiers+prices)
-     נכשל / אין תוצאות ⇒ הפס נעלם (.no-rail) והכפתורים לא מוצגים. אפס שבירה. */
-  function extras(list){
-    var ids=(list||[]).map(function(it){return it.id;}).filter(Boolean).join(',');
-    var side=document.getElementById('cartSideList'), drawer=document.getElementById('cartDrawer');
-    if(!ids){ if(side)side.innerHTML=''; if(drawer)drawer.classList.add('no-rail'); return; }
-    fetch('/wp-json/gm-addons/v1/for-cart?ids='+ids,{credentials:'same-origin'})
-      .then(function(r){return r.json();}).then(function(d){ rail((d&&d.items)||[]); })
-      .catch(function(){ rail([]); });
-    fetch('/wp-json/gm-services/v1/greencare?ids='+ids,{credentials:'same-origin'})
-      .then(function(r){return r.json();}).then(function(d){ gcRender((d&&d.items)||{}, list); })
-      .catch(function(){});
-  }
-  function rail(items){
-    var side=document.getElementById('cartSideList'), drawer=document.getElementById('cartDrawer');
-    if(!side||!drawer) return;
-    if(!items.length){ side.innerHTML=''; drawer.classList.add('no-rail'); return; }
-    drawer.classList.remove('no-rail');
-    side.innerHTML=items.map(function(a){
-      return '<div class="acard" data-aid="'+a.id+'">'+
-        '<img src="'+a.img+'" alt="" loading="lazy">'+
-        '<div class="acard-n">'+esc(dec(a.name))+'</div>'+
-        '<div class="acard-p">‏₪'+(+a.price).toLocaleString('en-US')+'</div>'+
-        '<button class="aadd" type="button" data-aid="'+a.id+'" aria-label="הוספה לסל">+</button></div>';
-    }).join('');
-  }
-  var GC_SHIELD='<svg class="ic" viewBox="0 0 24 24"><path d="M12 2.5 4.5 5.5v6c0 4.5 3.2 8 7.5 10 4.3-2 7.5-5.5 7.5-10v-6z"/><path d="M8.8 11.8l2.3 2.3 4.3-4.5"/></svg>';
-  function gcRender(map, list){
-    /* שורות Green Care שכבר בסל — מזוהות לפי שם הפריט (מוצר-העוגן) */
-    var added=(list||[]).filter(function(it){return /green\s?care/i.test(dec(it.name||''));})
-      .map(function(it){ return (dec(it.name||'')+' '+((it.item_data||[]).map(function(m){return m.value;}).join(' '))).toLowerCase(); });
-    document.querySelectorAll('.citem').forEach(function(ci){
-      var old=ci.nextElementSibling;
-      while(old && (old.classList.contains('gcopts')||old.classList.contains('gcmore'))){ var nx=old.nextElementSibling; old.remove(); old=nx; }
-      var pid=ci.getAttribute('data-pid'), conf=map[pid];
-      if(!conf) return;
-      var nm=(conf.name||'').toLowerCase().slice(0,14);
-      var isAdded=added.some(function(t){return nm && t.indexOf(nm)>-1;});
-      var rows='';
-      if(conf.tiers&&conf.tiers.gc&&conf.prices.gc>0){
-        rows+=btn(pid,'gc',conf.prices.gc,'Green Care','אחריות שנה שנייה מלאה',isAdded);
-      }
-      if(conf.tiers&&conf.tiers.gcp&&conf.prices.gcp>0){
-        rows+=btn(pid,'gcp',conf.prices.gcp,'Green Care <b>+</b>','24 חודשים, כולל שברים ונזקי נוזלים',isAdded);
-      }
-      if(!rows) return;
-      var wrap=document.createElement('div'); wrap.className='gcopts'; wrap.innerHTML=rows;
-      ci.insertAdjacentElement('afterend', wrap);
-      var more=document.createElement('a'); more.className='gcmore'; more.href='/green-care/';
-      more.innerHTML='מה כלול בכל מסלול? <u>לפרטים המלאים</u>';
-      wrap.insertAdjacentElement('afterend', more);
-    });
-  }
-  function btn(pid,plan,price,title,sub,isAdded){
-    return '<button class="gcopt'+(isAdded?' added':'')+'" type="button" data-gc="'+plan+'" data-pid="'+pid+'" data-price="'+price+'">'+
-      GC_SHIELD+'<span class="gcopt-t">'+(isAdded?'':'הוספת ')+title+
-      '<span>'+sub+'</span></span><span class="gcopt-p">+‏₪'+(+price).toLocaleString('en-US')+'</span></button>';
   }
   function open(){ ensure(); document.getElementById('cartDrawer').classList.add('open'); document.getElementById('cartOverlay').classList.add('open'); document.body.style.overflow='hidden'; get().then(render); }
   function close(){ var d=document.getElementById('cartDrawer'),o=document.getElementById('cartOverlay'); if(d)d.classList.remove('open'); if(o)o.classList.remove('open'); document.body.style.overflow=''; }
@@ -335,32 +234,11 @@ if (!window.toggleNav) { window.toggleNav = function () {
       (cur<1?op('remove-item',{key:ci.getAttribute('data-key')}):op('update-item',{key:ci.getAttribute('data-key'),quantity:cur})).then(render); return; }
     var rm=t.closest('.citem-rm');
     if(rm){ op('remove-item',{key:rm.getAttribute('data-key')}).then(render); return; }
-    /* + על תוספת בפס הצדדי */
-    var aa=t.closest('.aadd');
-    if(aa && !aa.classList.contains('done')){
-      var aid=+aa.getAttribute('data-aid'); if(!aid) return;
-      aa.disabled=true; aa.textContent='…';
-      op('add-item',{id:aid,quantity:1}).then(function(c){ if(c&&c.items) render(c); else { aa.disabled=false; aa.textContent='+'; } })
-        .catch(function(){ aa.disabled=false; aa.textContent='+'; });
-      return;
-    }
-    /* בחירת מסלול Green Care — נשמר דרך אותו נתיב של עמוד המוצר
-       (admin-ajax gm_svc_greencare), שכבר יודע לצרף שורה למכשיר שבסל. */
-    var gc=t.closest('.gcopt');
-    if(gc && !gc.classList.contains('added')){
-      var fd=new FormData();
-      fd.append('action','gm_svc_greencare');
-      fd.append('plan',gc.getAttribute('data-gc'));
-      fd.append('product_id',gc.getAttribute('data-pid'));
-      fd.append('price',gc.getAttribute('data-price'));
-      gc.style.opacity='.6';
-      fetch('/wp-admin/admin-ajax.php',{method:'POST',credentials:'same-origin',body:fd})
-        .then(function(r){return r.json();})
-        .then(function(){ gc.style.opacity=''; get().then(render); })
-        .catch(function(){ gc.style.opacity=''; });
-      return;
-    }
   });
   function init(){ ensure(); get().then(render); }
+  /* וו רענון ציבורי: המונה נטען פעם אחת בעליית העמוד, וכל הוספה מהירה
+     (כפתורי הנפח, גלריית המקושרים) השאירה אותו קפוא — אסי לחץ +, ראה (0)
+     והסיק שההוספה נשברה בזמן שהפריט כן נכנס לסל (03/08/2026). */
+  window.gmCartRefresh = function(){ get().then(render); };
   if(document.readyState!=='loading') init(); else document.addEventListener('DOMContentLoaded',init);
 })();
