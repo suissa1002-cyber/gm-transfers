@@ -524,8 +524,17 @@ if (!window.toggleNav) { window.toggleNav = function () {
   }
   function gcBtn(pid,plan,price,title,sub,added){
     return '<button class="gcopt'+(added?' added':'')+'" type="button" data-gc="'+plan+'" data-pid="'+pid+
-      '" data-price="'+price+'">'+SHIELD+'<span class="gcopt-t">'+(added?'':'הוספת ')+title+
-      '<span>'+sub+'</span></span><span class="gcopt-p">+‏₪'+(+price).toLocaleString('en-US')+'</span></button>';
+      '" data-price="'+price+'" data-title="'+title+'" data-sub="'+sub+'">'+gcInner(title,sub,price,added)+'</button>';
+  }
+  function gcInner(title,sub,price,added){
+    return SHIELD+'<span class="gcopt-t">'+(added?title+' נוסף להזמנה':'הוספת '+title)+
+      '<span>'+sub+'</span></span><span class="gcopt-p">+‏₪'+(+price).toLocaleString('en-US')+'</span>';
+  }
+  /* ציור מיידי של מצב הבחירה — בלי להמתין לשרת (אסי, 09/08) */
+  function gcPaint(btn, added){
+    btn.classList.toggle('added', !!added);
+    btn.innerHTML=gcInner(btn.getAttribute('data-title'), btn.getAttribute('data-sub'),
+                          btn.getAttribute('data-price'), added);
   }
   /* ⛔ שורת Green Care לא מוצגת כפריט נפרד בסל: הכרטיסייה המסומנת היא הביטוי
      של התוספת (אסי, 09/08). השורה נשארת ב-WooCommerce לצורך חיוב, ולכן
@@ -612,23 +621,28 @@ if (!window.toggleNav) { window.toggleNav = function () {
     var aa=t.closest('.aadd');
     if(aa && !aa.disabled){ e.preventDefault(); e.stopPropagation();
       var id=+aa.getAttribute('data-aid'); if(!id) return;
-      aa.disabled=true; aa.textContent='…';
-      add(id).then(function(){ refresh(); later(120); }).catch(function(){ aa.disabled=false; aa.textContent='+'; });
+      aa.disabled=true; aa.classList.add('done'); aa.textContent='✓';   /* מיידי */
+      add(id).then(function(){ refresh(); later(120); })
+        .catch(function(){ aa.disabled=false; aa.classList.remove('done'); aa.textContent='+'; });
       return; }
     var gc=t.closest('.gcopt');
     /* לחיצה שנייה על מסלול שכבר נוסף ⇒ הסרה מהסל (אסי, 09/08) */
     if(gc && gc.classList.contains('added')){ e.preventDefault(); e.stopPropagation();
-      gc.style.opacity='.6'; gcRemove(gc.getAttribute('data-pid')).then(function(){ gc.style.opacity=''; refresh(); later(150); });
+      gcPaint(gc, false);                                   /* מיידי */
+      gcRemove(gc.getAttribute('data-pid'))
+        .then(function(){ refresh(); later(200); })
+        .catch(function(){ gcPaint(gc, true); });           /* נכשל ⇒ חזרה */
       return; }
     if(gc){ e.preventDefault(); e.stopPropagation();
+      gcPaint(gc, true);                                    /* מיידי */
       var fd=new FormData(); fd.append('action','gm_svc_greencare');
       fd.append('plan',gc.getAttribute('data-gc'));
       fd.append('product_id',gc.getAttribute('data-pid'));
       fd.append('price',gc.getAttribute('data-price'));
-      gc.style.opacity='.6';
       fetch('/wp-admin/admin-ajax.php',{method:'POST',credentials:'same-origin',body:fd})
-        .then(function(){ gc.style.opacity=''; refresh(); later(150); })
-        .catch(function(){ gc.style.opacity=''; });
+        .then(function(r){ return r.json(); })
+        .then(function(j){ if(j&&j.success===false){ gcPaint(gc,false); return; } refresh(); later(200); })
+        .catch(function(){ gcPaint(gc,false); });
       return; }
   }, true);
   function watch(){
