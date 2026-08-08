@@ -5241,13 +5241,23 @@ def branch_today_shift(branch_id: int, x_admin_key: Optional[str] = Header(None)
     # ראשון=0 (כמו _SHIFT_DAYS). ⚠️ לא strptime על התוצאה — היא כבר date,
     # וה-try/except הבליע את השגיאה והחזיר תמיד "ראשון" עם משמרות של יום א'.
     dow = (today.weekday() + 1) % 7
-    rows = [r for r in db.shift_roster_for_week(wk)
-            if int(r.get("branch_id") or 0) == int(branch_id) and int(r.get("dow") or 0) == dow]
+    all_rows = [r for r in db.shift_roster_for_week(wk) if int(r.get("dow") or 0) == dow]
+    # ⚠️ **כל הסניפים**, לא רק המחובר: הסניף צריך לדעת מי עובד היום גם במקומות
+    # האחרים — למי להתקשר, לאן להפנות לקוח, ומי סגור (אסי, 07/08).
+    branches = []
+    for b in _SHIFT_BRANCH_IDS:
+        rows = [{"employee": r.get("employee") or "", "hours": r.get("hours") or ""}
+                for r in all_rows if int(r.get("branch_id") or 0) == int(b)]
+        branches.append({"id": b, "name": _sched_bname(b), "shifts": rows,
+                         "closed": not rows, "me": int(b) == int(branch_id)})
+    mine = next((b for b in branches if b["me"]), None)
     # טווח השבוע מוצג בכרטיס כדי שהסניף יראה שזה **השבוע הנכון** ולא ישן
     return {"date": today, "dow": dow, "day_name": _SHIFT_DAYS[dow],
             "week": wk, "week_range": _fmt_week_range(wk),
             "date_short": "%02d/%02d" % (today.day, today.month),
-            "shifts": rows, "closed": not rows,
+            "branches": branches,
+            "shifts": (mine or {}).get("shifts", []),
+            "closed": bool((mine or {}).get("closed", True)),
             "branch_name": cfg.branch_name(branch_id)}
 
 

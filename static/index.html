@@ -305,11 +305,16 @@
   /* כרטיס קבוע — סידור עבודה. תמיד ראשון, לא נמחק ולא נקרא/לא-נקרא */
   .nc.fixed{border-color:color-mix(in srgb,var(--blue) 30%,transparent)}
   .nc.fixed .hero{background:linear-gradient(135deg,var(--blue-bg),transparent)}
-  .nc .shifts{margin-top:6px;display:flex;flex-direction:column;gap:3px}
-  .nc .shifts .sl{font-size:12.5px;display:flex;gap:6px;align-items:baseline}
-  .nc .shifts .sl b{font-weight:800}
-  .nc .shifts .sl span{color:var(--muted);font-variant-numeric:tabular-nums}
-  .nc .closed{margin-top:6px;font-size:15px;font-weight:800;color:var(--amber-ink)}
+  /* סידור היום — שורה לכל סניף, הסניף שלי מודגש */
+  .nc .shifts{margin-top:6px;display:flex;flex-direction:column;gap:2px}
+  .nc .shifts .sl{font-size:12px;display:flex;gap:6px;align-items:baseline;
+    padding:2px 5px;border-radius:6px}
+  .nc .shifts .sl.me{background:var(--blue-bg)}
+  .nc .shifts .sl .bn{font-weight:800;flex:0 0 auto;min-width:74px}
+  .nc .shifts .sl.me .bn{color:var(--blue-ink)}
+  .nc .shifts .sl .who{color:var(--muted);flex:1;min-width:0;overflow:hidden;
+    text-overflow:ellipsis;white-space:nowrap}
+  .nc .shifts .sl.cl .who{color:var(--amber-ink);font-weight:700}
   /* ⚠️ כרטיס המחיר בתוך תחנת הסריקה הוא **המשך של המשטח**, לא כרטיס בפני
      עצמו — אחרת מתקבל כרטיס בתוך כרטיס. מפשיטים מסגרת/צל/רדיוס ומשאירים
      רק קו מפריד, בדיוק כמו שורת התוצאה שמעליו. */
@@ -3162,16 +3167,21 @@ async function loadFeed(){
 }
 function shiftCardHTML(){
   const sh=S.shift; if(!sh) return '';
-  const body = sh.closed
-    ? `<div class="closed">היום סגור</div>`
-    : `<div class="shifts">${(sh.shifts||[]).slice(0,4).map(r=>
-        `<div class="sl"><b>${escW(r.employee||'')}</b><span>${escW(r.hours||'')}</span></div>`).join('')}
-       ${sh.shifts.length>4?`<div class="sl"><span>+${sh.shifts.length-4} נוספים</span></div>`:''}</div>`;
+  // כל הסניפים להיום — לדעת מי עובד איפה, למי להתקשר ומי סגור
+  const list=(sh.branches&&sh.branches.length)?sh.branches:[];
+  const body = list.length
+    ? `<div class="shifts">${list.map(b=>{
+        const who = b.closed ? 'סגור'
+          : b.shifts.map(x=>x.employee).filter(Boolean).join(', ');
+        return `<div class="sl${b.me?' me':''}${b.closed?' cl':''}">
+          <span class="bn">${escW(b.name)}</span>
+          <span class="who">${escW(who)}</span></div>`;}).join('')}</div>`
+    : `<div class="sl cl"><span class="who">אין סידור להיום</span></div>`;
   return `<div class="nc fixed" onclick="openSchedule()">
     <div class="hero"><span class="type" style="background:rgba(76,141,255,.92)">סידור עבודה</span>
       <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="1.8"
         stroke-linecap="round"><rect x="3" y="4.5" width="18" height="16" rx="3"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg></div>
-    <div class="nb"><div class="nt">${escW(sh.day_name||'')} ${escW(sh.date_short||'')} · ${escW(sh.branch_name||'')}</div>
+    <div class="nb"><div class="nt">סידור ${escW(sh.day_name||'')} ${escW(sh.date_short||'')}</div>
       ${body}
       <div class="nf"><span class="tag">${escW(sh.week_range||'השבוע')}</span><span>לחץ לסידור המלא</span></div></div>
   </div>`;
