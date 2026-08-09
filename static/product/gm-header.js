@@ -891,7 +891,15 @@ if (!window.toggleNav) { window.toggleNav = function () {
   document.addEventListener('keydown', function(e){ if(e.key==='Escape') giClose(); });
   function flagOpen(){
     var dr=document.getElementById('cartDrawer');
-    document.documentElement.classList.toggle('gm-cart-open', !!dr && dr.classList.contains('open'));
+    var on=!!dr && dr.classList.contains('open');
+    document.documentElement.classList.toggle('gm-cart-open', on);
+    /* ⚠️ ל-Chaty יש !important משלו — כלל בגיליון שלנו לא ניצח. סגנון
+       inline עם important הוא הדרך היחידה לנצח אותו (אסי, 09/08). */
+    document.querySelectorAll('.chaty-widget,#chaty-widget-0').forEach(function(w){
+      if(on){ w.style.setProperty('opacity','0','important');
+              w.style.setProperty('pointer-events','none','important'); }
+      else  { w.style.removeProperty('opacity'); w.style.removeProperty('pointer-events'); }
+    });
   }
   function watch(){
     var dr=document.getElementById('cartDrawer');
