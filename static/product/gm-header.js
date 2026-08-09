@@ -429,19 +429,38 @@ if (!window.toggleNav) { window.toggleNav = function () {
     var x=head.querySelector('.mclose');
     if(x){ head.insertBefore(b, x); } else { head.appendChild(b); }
   }
+  /* ריקון הסל: קריאה אחת שמוחקת הכל במקום שרשרת הסרות.
+     הישן הסיר פריט-אחר-פריט בטור (1.3 שנ' לכל אחד) עם nonce ישן — ולכן
+     לקח 20-30 שניות ולפעמים השאיר פריט (אסי, 09/08). */
+  function wipeDom(){
+    var box=document.getElementById('cartItems');
+    if(box) box.innerHTML='<div class="cart-empty">הסל ריק</div>';
+    var e=subEl(); if(e) e.textContent=money(0);
+    setCount(0); rail([],[]); gcPend={};
+    var d=document.getElementById('cartDrawer'); if(d) d.classList.add('no-rail');
+  }
   function clearCart(){
     var b=document.getElementById('cartClear'); if(b){ b.disabled=true; b.style.opacity='.5'; }
+    wipeDom();                                  /* מיידי — לפני השרת */
+    cIds=''; cAdd=null; cGc=null; cAll=[];
+    var done=function(){ if(b){ b.disabled=false; b.style.opacity=''; } refresh(); burst(); };
+    /* Store API תומך במחיקת כל הפריטים בבת אחת */
+    return fetch(API+'/items',{method:'DELETE',credentials:'same-origin',
+        headers:{'Content-Type':'application/json','Nonce':nonce}})
+      .then(function(r){ nonce=r.headers.get('Nonce')||nonce; return r.ok?null:'fallback'; })
+      .catch(function(){ return 'fallback'; })
+      .then(function(){ return sweep(2); })     /* אימות + ניקוי שאריות */
+      .then(done, done);
+  }
+  /* מוודא שהסל באמת ריק; מסיר שאריות במקביל, עם nonce טרי */
+  function sweep(tries){
     return get().then(function(c){
-      var items=(c&&c.items)||[];
-      return items.reduce(function(chain,it){
-        return chain.then(function(){
-          return fetch(API+'/remove-item',{method:'POST',credentials:'same-origin',
-            headers:{'Content-Type':'application/json','Nonce':nonce},body:JSON.stringify({key:it.key})});
-        });
-      }, Promise.resolve());
-    }).then(function(){
-      if(b){ b.disabled=false; b.style.opacity=''; }
-      refresh(); burst();
+      var left=(c&&c.items)||[];
+      if(!left.length || tries<=0) return;
+      return Promise.all(left.map(function(it){
+        return fetch(API+'/remove-item',{method:'POST',credentials:'same-origin',
+          headers:{'Content-Type':'application/json','Nonce':nonce},body:JSON.stringify({key:it.key})});
+      })).then(function(){ return sweep(tries-1); });
     });
   }
   function upgrade(d){
