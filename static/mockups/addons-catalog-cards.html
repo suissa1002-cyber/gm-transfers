@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>מוקאפ · מוצר קיים כתוספת · GreenOS</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  /* ⚠️ ה-CSS הועתק 1:1 מ-static/addons.html כדי שהמוקאפ יהיה זהה למסך האמיתי */
+  :root{
+    --ink:#111827; --ink2:#6b7280; --line:#e5e7eb; --surface:#f9fafb;
+    --bg:#fff; --accent:#16a34a; --accent-soft:#ecfdf5; --accent-ink:#fff; --danger:#dc2626;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{--ink:#f3f4f6;--ink2:#9ca3af;--line:#374151;--surface:#1f2937;--bg:#111827;--accent:#22c55e;--accent-soft:#052e16;}
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:Assistant,system-ui,sans-serif}
+  .wrap{max-width:1100px;margin:0 auto;padding:18px 16px 60px}
+  h1{font-size:1.35rem;font-weight:800;margin:0 0 4px}
+  .sub{color:var(--ink2);font-size:.92rem;margin-bottom:18px;line-height:1.5}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:16px}
+  label{display:block;font-weight:700;font-size:.88rem;margin:12px 0 6px}
+  input,select{width:100%;padding:11px 13px;border:1.5px solid var(--line);border-radius:11px;
+    background:var(--bg);color:var(--ink);font-family:inherit;font-size:.98rem}
+  .row{display:flex;gap:12px;flex-wrap:wrap}
+  .row>div{flex:1;min-width:150px}
+  .btn{border:none;border-radius:99px;padding:12px 24px;font-family:inherit;font-weight:800;
+       font-size:1rem;cursor:pointer;background:var(--accent);color:var(--accent-ink)}
+  .btn-ghost{background:transparent;color:var(--ink);border:1.5px solid var(--line)}
+  .btn-sm{padding:7px 14px;font-size:.85rem}
+  .drop{border:2px dashed var(--line);border-radius:14px;padding:20px;text-align:center;color:var(--ink2)}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+  .chip{background:var(--bg);border:1.5px solid var(--line);border-radius:10px;padding:8px 14px;
+    font-size:.9rem;font-weight:700;font-family:inherit;color:var(--ink)}
+  .chip.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+  .tag{display:inline-flex;align-items:center;gap:6px;background:var(--accent-soft);color:var(--accent);
+    border:1px solid var(--accent);border-radius:99px;padding:5px 11px;font-size:.85rem;font-weight:700;margin:4px 4px 0 0}
+  .res{border:1px solid var(--line);border-radius:11px;margin-top:8px;background:var(--bg);overflow:hidden}
+  .res .r{padding:9px 12px;border-bottom:1px solid var(--line);font-size:.9rem;display:flex;align-items:center;gap:10px}
+  .res .r:last-child{border-bottom:none}
+  .res .r.hi{background:var(--accent-soft)}
+  .res .r img{width:34px;height:34px;object-fit:contain;background:#fff;border-radius:7px}
+  .res .r .nm{flex:1;font-weight:700}
+  .res .r .mk{color:var(--ink2);font-size:.8rem;font-weight:700}
+  .hint{color:var(--ink2);font-size:.82rem;margin-top:5px;line-height:1.45}
+  .card.fold{padding:0}
+  .chead{display:flex;align-items:center;gap:10px;padding:15px 16px}
+  .chead b{flex:1}
+  .chead .arw{color:var(--ink2);font-size:.9rem;transform:rotate(180deg)}
+  .cbody{padding:0 16px 16px}
+  .tabs{display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
+  .tb{background:transparent;border:1.5px solid var(--line);color:var(--ink);border-radius:10px;
+    padding:8px 16px;font-family:inherit;font-weight:700;font-size:.9rem;cursor:pointer}
+  .tb.on{border-color:var(--accent);color:var(--accent);box-shadow:0 0 0 1.5px var(--accent)}
+  .warn{background:#fffbeb;color:#92400e;border:1px solid #fcd34d;border-radius:10px;
+    padding:9px 12px;font-size:.85rem;font-weight:700;margin-top:10px}
+
+  /* ── מה שנוסף: פס המוצר שנבחר, רשימת וריאציות, שדות ההנחה ── */
+  .picked{display:flex;gap:12px;align-items:center;background:var(--bg);border:1.5px solid var(--accent);
+    border-radius:13px;padding:11px 12px;margin-top:8px}
+  .picked img{width:52px;height:52px;object-fit:contain;background:#fff;border-radius:9px}
+  .picked .m{flex:1;min-width:0}
+  .picked .m b{display:block;font-size:.92rem;line-height:1.3}
+  .picked .m span{color:var(--ink2);font-size:.8rem;font-weight:700}
+  .picked .x{background:none;border:none;color:var(--ink2);font-size:1.1rem;cursor:pointer}
+  .vhead{display:flex;gap:8px;align-items:center;margin:14px 0 6px}
+  .vhead label{margin:0;flex:1}
+  .vlist{border:1px solid var(--line);border-radius:12px;background:var(--bg);overflow:hidden}
+  .v{display:flex;gap:10px;align-items:center;padding:9px 12px;border-bottom:1px solid var(--line);font-size:.9rem}
+  .v:last-child{border-bottom:none}
+  .v input{width:auto;margin:0}
+  .v img{width:34px;height:34px;object-fit:contain;background:#fff;border-radius:7px}
+  .v .nm{flex:1;font-weight:700}
+  .v .pr{font-weight:800}
+  .v .oos{color:var(--ink2);font-weight:700;font-size:.8rem}
+  .v.off{opacity:.55}
+  .deal{background:var(--bg);border:1.5px solid var(--line);border-radius:13px;padding:12px;margin-top:8px}
+  .prev{display:flex;align-items:baseline;gap:9px;margin-top:10px;font-weight:800}
+  .prev s{color:var(--ink2);font-weight:700}
+  .prev .now{color:var(--accent);font-size:1.15rem}
+  .prev .sv{background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent);
+    border-radius:99px;padding:2px 9px;font-size:.78rem}
+
+  /* ── תצוגת הכרטיסיות בעמוד המוצר (רפרנס) ── */
+  .site{background:#fff;color:#111827;border-radius:16px;padding:16px;border:1px solid #e5e7eb}
+  .site h3{margin:0 0 10px;font-size:1.05rem;font-weight:800}
+  .sc{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+  .sc button{border:1.5px solid #e5e7eb;background:#fff;border-radius:10px;padding:7px 14px;
+    font-family:inherit;font-weight:700;font-size:.88rem;color:#111827}
+  .sc button.on{border-color:#16a34a;color:#16a34a;box-shadow:0 0 0 1.5px #16a34a}
+  .grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+  .ac{position:relative;border:1.5px solid #e5e7eb;border-radius:14px;padding:10px;background:#fff;min-height:98px}
+  .ac.sel{border:2.5px solid #16a34a}
+  .ac img{display:block;width:82px;height:82px;object-fit:contain;margin:0 auto 6px}
+  .ac .n{font-size:.78rem;font-weight:700;line-height:1.28;text-align:center;min-height:2.6em}
+  .ac .pl{display:flex;align-items:baseline;justify-content:center;gap:6px;margin-top:5px}
+  .ac .pl s{color:#6b7280;font-size:.78rem}
+  .ac .pl b{font-size:.95rem}
+  .ac .pl b.deal{color:#16a34a}
+  .ac .sv{display:block;text-align:center;background:#ecfdf5;color:#16a34a;border:1px solid #16a34a;
+    border-radius:99px;padding:1px 8px;font-size:.68rem;font-weight:800;margin:6px auto 0;width:fit-content}
+  .ac .plus{position:absolute;inset-inline-start:8px;inset-block-start:8px;width:24px;height:24px;
+    border-radius:50%;border:1.5px solid #16a34a;color:#16a34a;background:#fff;font-weight:800;
+    display:flex;align-items:center;justify-content:center;font-size:14px}
+  .ac select{padding:6px 8px;font-size:.78rem;border-radius:8px;margin-top:6px}
+  .note{font-size:.8rem;color:#6b7280;margin-top:10px;line-height:1.5}
+  .lbl{font-size:.72rem;font-weight:800;color:var(--accent);letter-spacing:.04em;margin:26px 0 8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>מוצר קיים מהקטלוג ככרטיסיית תוספת</h1>
+  <div class="sub">
+    מוקאפ. הכל יושב <b>בתוך</b> כרטיס "תוספת חדשה" הקיים — אותו זרם, אותם צ׳יפים, אותה עריכה.
+    מה שמשתנה הוא רק המקור של הפריט, ושדות ההנחה שנוספים כשהמקור הוא מוצר קיים.
+  </div>
+
+  <div class="lbl">1 · המסך /addons — כרטיס "תוספת חדשה"</div>
+
+  <div class="card fold">
+    <div class="chead"><b>תוספת חדשה</b><span class="arw">▾</span></div>
+    <div class="cbody">
+
+      <!-- ⬇︎ היחיד שנוסף בראש הכרטיס: מאיפה הפריט מגיע -->
+      <div class="tabs" style="margin-top:2px">
+        <button class="tb">יצירת מוצר חדש</button>
+        <button class="tb on">מוצר קיים מהקטלוג</button>
+      </div>
+
+      <label for="q">איזה מוצר? חיפוש בשם או במק״ט</label>
+      <input id="q" value="dualsense">
+      <div class="res">
+        <div class="r hi">
+          <img src="https://greenmobile.co.il/wp-content/uploads/2024/05/ps5-dualsense-white.png" alt="">
+          <span class="nm">בקר אלחוטי Sony DualSense — PlayStation 5</span>
+          <span class="mk">מק״ט 511204 · וריאציות: 6</span>
+          <span class="mk">₪329</span>
+        </div>
+        <div class="r">
+          <img src="https://greenmobile.co.il/wp-content/uploads/2024/05/ps5-dualsense-white.png" alt="">
+          <span class="nm">בקר אלחוטי Sony DualSense Edge</span>
+          <span class="mk">מק״ט 512880 · מוצר יחיד</span>
+          <span class="mk">₪899</span>
+        </div>
+      </div>
+
+      <div class="picked">
+        <img src="https://greenmobile.co.il/wp-content/uploads/2024/05/ps5-dualsense-white.png" alt="">
+        <div class="m">
+          <b>בקר אלחוטי Sony DualSense — PlayStation 5</b>
+          <span>מק״ט 511204 · מחיר קטלוג ₪329 · מוצר עם וריאציות</span>
+        </div>
+        <button class="x">✕</button>
+      </div>
+
+      <div class="vhead">
+        <label>איך להציג את הוריאציות?</label>
+      </div>
+      <div class="tabs" style="margin:0 0 8px">
+        <button class="tb on">כרטיסיה לכל וריאציה שאבחר</button>
+        <button class="tb">כרטיסיה אחת עם בורר צבע</button>
+      </div>
+
+      <div class="vlist">
+        <div class="v"><input type="checkbox" checked>
+          <img src="https://greenmobile.co.il/wp-content/uploads/2024/05/ps5-dualsense-white.png" alt="">
+          <span class="nm">לבן</span><span class="pr">₪329</span></div>
+        <div class="v"><input type="checkbox" checked>
+          <img src="https://greenmobile.co.il/wp-content/uploads/2024/05/ps5-dualsense-white.png" alt="">
+          <span class="nm">שחור מידנייט</span><span class="pr">₪329</span></div>
+        <div class="v"><input type="checkbox">
+          <img src="https://greenmobile.co.il/wp-content/uploads/2024/05/ps5-dualsense-white.png" alt="">
+          <span class="nm">אדום קוסמי</span><span class="pr">₪349</span></div>
+        <div class="v off"><input type="checkbox" disabled>
+          <img src="https://greenmobile.co.il/wp-content/uploads/2024/05/ps5-dualsense-white.png" alt="">
+          <span class="nm">כחול גלקסי</span><span class="oos">אזל — לא ניתן לבחירה</span></div>
+      </div>
+      <div class="hint">כל וריאציה מסומנת תיצור כרטיסיה נפרדת בעמוד המוצר. וריאציה שאוזלת נעלמת לבד וחוזרת כשהמלאי חוזר.</div>
+
+      <label style="margin-top:16px">מחיר בהוספה להזמנה</label>
+      <div class="deal">
+        <div class="row">
+          <div>
+            <label for="dt" style="margin-top:0">סוג ההנחה</label>
+            <select id="dt">
+              <option>סכום הנחה (₪)</option>
+              <option selected>מחיר סופי בחבילה (₪)</option>
+              <option>אחוז הנחה (%)</option>
+              <option>בלי הנחה — מחיר הקטלוג</option>
+            </select>
+          </div>
+          <div>
+            <label for="dv" style="margin-top:0">ערך</label>
+            <input id="dv" type="number" value="279">
+          </div>
+        </div>
+        <div class="prev">
+          <s>₪329</s><span class="now">₪279</span><span class="sv">חסכון ₪50</span>
+        </div>
+        <div class="hint">
+          מחיר הקטלוג ובפיד זאפ לא משתנה. מחיר החבילה נכנס <b>רק כשהמכשיר שאליו הכרטיסיה משויכת נמצא בסל</b>;
+          הוסר המכשיר — השורה חוזרת אוטומטית למחיר המלא עם הודעה בסל.
+        </div>
+      </div>
+
+      <!-- ⬇︎ מכאן והלאה — בדיוק המסך הקיים, בלי שינוי -->
+      <label>באיזה צ׳יפים תופיע התוספת?</label>
+      <div class="chips">
+        <button class="chip">חבילות ומבצעים</button>
+        <button class="chip">כיסויים</button>
+        <button class="chip on">שלטים ובקרים</button>
+        <button class="chip">אוזניות</button>
+        <button class="chip">מטענים</button>
+      </div>
+      <div class="hint">ניתן לבחור <b>כמה צ׳יפים</b>.</div>
+
+      <label>באיזה מוצרים יופיע?</label>
+      <input value="" placeholder="הקלידו שם מוצר (2 תווים ומעלה)…">
+      <div>
+        <span class="tag"><b>PlayStation 5 Slim Digital</b> <button>✕</button></span>
+        <span class="tag"><b>PlayStation 5 Pro</b> <button>✕</button></span>
+      </div>
+
+      <label>או בקטגוריות שלמות</label>
+      <select><option>— בחרו קטגוריה להוספה —</option></select>
+      <div><span class="tag"><b>גיימינג · קונסולות</b> <button>✕</button></span></div>
+
+      <div class="warn">מוצר קיים נשאר בקטלוג ובפיד זאפ כרגיל — הבורר "להציג גם בקטלוג" לא רלוונטי כאן ולכן מוסתר.</div>
+
+      <div style="margin-top:18px"><button class="btn">שמירה</button></div>
+    </div>
+  </div>
+
+  <div class="lbl">2 · איך זה נראה ללקוח בעמוד המוצר</div>
+
+  <div class="card">
+    <div class="site">
+      <h3>מוצרים שיכולים להתאים לך</h3>
+      <div class="sc">
+        <button class="on">שלטים ובקרים</button>
+        <button>אוזניות</button>
+        <button>משחקים</button>
+        <button>כיסויים</button>
+      </div>
+      <div class="grid">
+        <div class="ac sel"><span class="plus">✓</span>
+          <img src="https://greenmobile.co.il/wp-content/uploads/2024/05/ps5-dualsense-white.png" alt="">
+          <div class="n">בקר DualSense — לבן</div>
+          <div class="pl"><s>₪329</s><b class="deal">₪279</b></div>
+          <span class="sv">חסכון ₪50</span>
+        </div>
+        <div class="ac"><span class="plus">+</span>
+          <img src="https://greenmobile.co.il/wp-content/uploads/2024/05/ps5-dualsense-white.png" alt="">
+          <div class="n">בקר DualSense — שחור מידנייט</div>
+          <div class="pl"><s>₪329</s><b class="deal">₪279</b></div>
+          <span class="sv">חסכון ₪50</span>
+        </div>
+        <div class="ac"><span class="plus">+</span>
+          <img src="https://greenmobile.co.il/wp-content/uploads/2024/05/ps5-dualsense-white.png" alt="">
+          <div class="n">אוזניות Sony PULSE Explore</div>
+          <div class="pl"><b>₪899</b></div>
+          <select><option>בחרו צבע</option><option>לבן</option><option>שחור</option></select>
+        </div>
+      </div>
+      <div class="note">
+        הכרטיסיה השלישית היא הדוגמה למצב "כרטיסיה אחת עם בורר" — הלקוח בוחר צבע בתוך הכרטיסיה.
+        שתי הראשונות הן וריאציות שנבחרו ככרטיסיות נפרדות.
+        הסימון לא נוגע בסל: הכל נכנס בלחיצה על "הוספה לסל", המכשיר ראשון — בדיוק כמו היום.
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
