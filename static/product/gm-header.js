@@ -424,6 +424,9 @@ if (!window.toggleNav) { window.toggleNav = function () {
    '.cart-drawer.gmv2,.cart-drawer.gmv2.no-rail{width:min(93vw,430px)!important;grid-template-columns:minmax(0,1fr);}',
    '.cart-drawer.gmv2 .cart-side{position:absolute;inset-inline:0;top:0;bottom:0;transform:translateX(105%);transition:transform .28s ease;z-index:6;border:0;background:var(--bg,#fff);}',
    '.cart-drawer.gmv2.side-open .cart-side{transform:none;}',
+   /* בתוך מסך התוספות אין טעם בפס שמוביל אליו (אסי, 09/08) */
+   '.cart-drawer.gmv2.side-open .gm-side-cta{display:none!important;}',
+   '.side-back{direction:rtl;justify-content:flex-start;}',
    '.cart-drawer.gmv2.no-rail .cart-side{display:flex;}',
    '.side-back{display:flex!important;align-items:center;gap:8px;background:none;border:none;font:inherit;font-weight:900;font-size:1rem;color:var(--ink,#111417);padding:16px 18px 10px;cursor:pointer;width:100%;}',
    '.side-back svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;}',
