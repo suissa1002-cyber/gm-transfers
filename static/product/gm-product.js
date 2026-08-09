@@ -1082,7 +1082,8 @@
     var runBatch = function (n) {
       var reqs = [{ method: 'POST', path: '/wc/store/v1/cart/add-item', body: { id: pid, quantity: qty } }];
       addIds.forEach(function (id) {
-        reqs.push({ method: 'POST', path: '/wc/store/v1/cart/add-item', body: { id: +id, quantity: 1 } });
+        var b = gmAdBody(id);
+        if (b) reqs.push({ method: 'POST', path: '/wc/store/v1/cart/add-item', body: b });
       });
       reqs.push({ method: 'GET', path: '/wc/store/v1/cart' });
       return fetch('/wp-json/wc/store/v1/batch', {
@@ -1158,6 +1159,11 @@
      הסימון יושב על ה-DOM ועל GM_AD_SEL, ולא נמחק במעבר בין קבוצות. */
   function gmAdToggle($c) {
     var id = +$c.data('id'); if (!id) return;
+    /* כרטיסיה עם בורר: בלי בחירה אין מה להוסיף — מפנים לבורר במקום לסמן */
+    if (!GM_AD_SEL[id] && $c.attr('data-variable') === '1' && !$c.find('.gm-ad-pick').val()) {
+      $c.find('.gm-ad-pick').addClass('gm-ad-need').focus();
+      return;
+    }
     if (GM_AD_SEL[id]) { delete GM_AD_SEL[id]; } else { GM_AD_SEL[id] = true; }
     var on = !!GM_AD_SEL[id];
     /* ⚠️ תוספת שמשויכת לכמה צ׳יפים מרונדרת כ**כמה כרטיסיות** עם אותו data-id.
@@ -1204,6 +1210,36 @@
    * מול WP מאחורי Cloudflare ⇒ אסי חיכה ~20 שניות עד שהמיני-עגלה נפתחה.
    * Store API תומך ב-/batch: כל התוספות בסבב אחד. אם ה-batch נכשל (גרסת
    * WooCommerce ללא תמיכה) — נפילה חזרה לשרשרת, כדי שלא נשבור פונקציונליות. */
+  /* v0.6.0 — כרטיסיה של מוצר קיים יכולה להיות **וריאציה** (DualSense לבן)
+   * או הורה עם בורר בתוך הכרטיסיה. Store API מקבל את מזהה הוריאציה, ואם יש
+   * לנו את המאפיינים — שולחים גם אותם, כי וריאציה עם מאפיין "כל" לא נפתרת
+   * בלעדיהם. מחזיר null כשחסרה בחירה בבורר. */
+  function gmAdBody(cardId) {
+    var $c = $('.gm-ad-card[data-id="' + cardId + '"]').first();
+    var id = +cardId, attrs = null;
+    if ($c.length && $c.attr('data-variable') === '1') {
+      var $sel = $c.find('.gm-ad-pick');
+      var v = $sel.val();
+      if (!v) return null;
+      id = +v;
+      var oa = $sel.find('option:selected').attr('data-attrs');
+      if (oa) { try { attrs = JSON.parse(oa); } catch (e) { attrs = null; } }
+    } else if ($c.length && $c.attr('data-attrs')) {
+      try { attrs = JSON.parse($c.attr('data-attrs')); } catch (e) { attrs = null; }
+    }
+    var body = { id: id, quantity: 1 };
+    if (attrs && typeof attrs === 'object') {
+      var arr = [];
+      Object.keys(attrs).forEach(function (k) {
+        if (attrs[k] !== '' && attrs[k] != null) arr.push({ attribute: k, value: String(attrs[k]) });
+      });
+      if (arr.length) body.variation = arr;
+    }
+    return body;
+  }
+  /* הבורר בתוך הכרטיסיה לא אמור לסמן/לבטל את הכרטיסיה */
+  $(document).on('click change', '.gm-ad-pick', function (e) { e.stopPropagation(); });
+
   function gmAdClear() {
     GM_AD_SEL = {};
     $('.gm-ad-card').removeClass('added').attr('aria-pressed', 'false')
@@ -1212,7 +1248,9 @@
   }
   function gmAdSeq(ids) {
     return ids.reduce(function (chain, id) {
-      return chain.then(function () { return cartOp('add-item', { id: +id, quantity: 1 }); });
+      var b = gmAdBody(id);
+      if (!b) return chain;
+      return chain.then(function () { return cartOp('add-item', b); });
     }, Promise.resolve());
   }
   function gmAdAddAll() {
@@ -1223,10 +1261,11 @@
         method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json', 'Nonce': n },
         body: JSON.stringify({
-          requests: ids.map(function (id) {
-            return { method: 'POST', path: '/wc/store/v1/cart/add-item',
-                     body: { id: +id, quantity: 1 } };
-          })
+          requests: ids.map(function (id) { return gmAdBody(id); })
+            .filter(Boolean)
+            .map(function (b) {
+              return { method: 'POST', path: '/wc/store/v1/cart/add-item', body: b };
+            })
         })
       }).then(function (r) {
         cartNonce = r.headers.get('Nonce') || cartNonce;
