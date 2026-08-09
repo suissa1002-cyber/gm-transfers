@@ -192,17 +192,30 @@ def report(rid, status, pos_doc_no="", error=""):
 
 
 def stock_of(sku):
-    """מלאי הפריט בסניף סיטi (דרך GreenOS — הסוכן לא צריך טוקן NewOrder)."""
-    r = api("GET", "/api/admin/pos/lookup?code=%s&branch_id=%d" % (sku, CITY_BRANCH))
+    """מלאי הפריט בסניף סיטי — קריאה **טרייה** (בלי מטמון).
+
+    ⛔ עד 09/08/2026 קראנו כאן /api/admin/pos/lookup, שם כרטיס המוצר ממוטמן
+    180 שניות. הקריאה שאחרי ההזנה החזירה את הערך שלפניה, האימות הסיק
+    "לא ירד", והפעולה הוזנה שוב לקופה — 4 תעודות על יחידה אחת (#42)."""
+    r = api("GET", "/api/admin/pos/stock-fresh?pid=%s" % sku)
     if not r.ok:
         return None
-    prod = (r.json() or {}).get("product") or {}
-    st = prod.get("stock") or {}
+    st = (r.json() or {}).get("stock") or {}
     v = st.get(str(CITY_BRANCH), st.get(CITY_BRANCH))
     try:
         return float(v)
     except (TypeError, ValueError):
         return None
+
+
+def already_in_pos(rid):
+    """האם הפעולה כבר נרשמה בקופה? (נשאל רק בניסיון חוזר.)
+    מחזיר (applied, מספרי תעודות) — applied=True ⇒ אסור להזין שוב."""
+    r = api("GET", "/api/admin/pos/removal/%s/pos-applied" % rid)
+    if not r.ok:
+        return False, ""
+    d = r.json() or {}
+    return bool(d.get("applied")), ",".join([x for x in (d.get("docs") or []) if x])
 
 
 # ── עיבוד פעולה ───────────────────────────────────────────────────────
@@ -211,7 +224,11 @@ def snapshot_before(items):
 
 
 def verify_after(items, before):
-    """המלאי ירד בדיוק בכמות שהוזנה? מחזיר (ok, פירוט)."""
+    """המלאי ירד לפחות בכמות שהוזנה? מחזיר (ok, פירוט).
+
+    ⚠️ התנאי הוא "ירד לפחות", לא "ירד בדיוק": בין הקריאות עלולה להיכנס מכירה
+    או הורדה אחרת בסניף, ואז ירידה גדולה מהצפוי אינה סיבה להזין שוב — הזנה
+    חוזרת מורידה מלאי אמיתי פעם נוספת."""
     problems = []
     for it in items:
         sku, qty = it["sku"], float(it.get("qty") or 1)
@@ -219,9 +236,12 @@ def verify_after(items, before):
         a = stock_of(sku)
         if b is None or a is None:
             problems.append("%s: מלאי לא נקרא (before=%s after=%s)" % (sku, b, a))
-        elif abs((b - a) - qty) > 0.001:
+        elif (b - a) < qty - 0.001:
             problems.append("%s: ציפינו לירידה %g, ירד %g" % (sku, qty, (b - a)))
-    return (not problems), "; ".join(problems)
+        elif (b - a) > qty + 0.001:
+            log("  ℹ️ %s ירד %g במקום %g — תנועה נוספת בסניף בין הקריאות" %
+                (sku, (b - a), qty))
+    return (not problems), " · ".join(problems)
 
 
 def process(r, cfg=None):
@@ -240,6 +260,16 @@ def process(r, cfg=None):
     if pos_driver is None:
         report(rid, "error", error="pos_driver לא נטען על המכונה")
         return
+
+    # 🛡️ ניסיון חוזר: אם הפעולה כבר נרשמה בקופה — לא מזינים שוב.
+    # (#42, 09/08/2026: אימות שגוי החזיר את הפעולה לתור ארבע פעמים, וכל פעם
+    #  ירדה יחידה אמיתית מהמלאי.)
+    if int(r.get("attempts") or 1) > 1 and not dry:
+        applied, docs = already_in_pos(rid)
+        if applied:
+            log("  ↩︎ כבר ירד בקופה (תעודות %s) — מסומן כהוזן בלי הזנה נוספת" % (docs or "?"))
+            report(rid, "done", pos_doc_no=docs)
+            return
 
     before = snapshot_before(items)
     shot = os.path.join(SHOT_DIR, "removal_%s.png" % rid)

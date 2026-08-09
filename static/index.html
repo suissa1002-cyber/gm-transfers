@@ -3425,7 +3425,13 @@ function rmLogHTML(){
   const rows=L.map(r=>{
     const cls=r.stuck?'stuck':(r.status==='pending'&&r.error?'retry':r.status);
     const txt=r.stuck?('תקוע · '+r.attempts):(r.status==='pending'&&r.error?('ינוסה שוב · '+r.attempts):(S2[r.status]||r.status));
-    const items=(r.items||[]).map(i=>i.name||i.sku).join(', ');
+    const items=(r.items||[]).map(i=>{
+      const bits=[];
+      if(i.serial) bits.push('סידורי '+i.serial);
+      else if(i.barcode) bits.push('ברקוד '+i.barcode);
+      if(i.sku) bits.push('מק״ט '+i.sku);
+      return (i.name||i.sku)+(bits.length?('  '+bits.join(' · ')):'');
+    }).join(', ');
     return `<div class="lr"><span class="bdg ${cls}">${txt}</span>
       <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(items)}</span>
       ${r.pos_doc_no?`<span class="mono" style="font-size:10.5px">${escW(r.pos_doc_no)}</span>`:''}

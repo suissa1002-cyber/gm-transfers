@@ -2005,6 +2005,93 @@ def pos_lookup(code: str, branch_id: int = CITY_BRANCH_ID,
     return out
 
 
+@app.get("/api/admin/pos/stock-fresh")
+def pos_stock_fresh(pid: str,
+                    x_admin_key: Optional[str] = Header(None),
+                    x_device_token: Optional[str] = Header(None)):
+    """מלאי לפי סניף — קריאה טרייה לקופה, בלי שום מטמון.
+
+    ⚠️ אימות ההורדה חייב את זה. עד 09/08/2026 האימות קרא מלאי דרך
+    `/api/admin/pos/lookup`, ושם כרטיס המוצר (כולל המלאי) ממוטמן 180 שניות.
+    הקריאה שאחרי ההזנה החזירה בדיוק את הערך שלפניה, האימות הסיק "לא ירד",
+    השרת החזיר את הפעולה לתור — והסוכן הזין את הפריט **שוב** לקופה.
+    הורדה #42 (מק"ט 516521, יחידה אחת) ירדה כך 4 פעמים: תעודות 15134-15137."""
+    _require_admin_or_device(x_admin_key, x_device_token)
+    pid = str(pid or "").strip()
+    if not pid:
+        raise HTTPException(400, "pid ריק")
+    st = poller.client().get_product_stock(pid) or {}
+    return {"product_id": pid,
+            "stock": {int(b): float(q) for b, q in st.items()}}
+
+
+@app.get("/api/admin/pos/removal/{rid}/pos-applied")
+def pos_removal_pos_applied(rid: int,
+                            x_admin_key: Optional[str] = Header(None),
+                            x_device_token: Optional[str] = Header(None)):
+    """האם ההורדה הזאת כבר נרשמה בקופה בפועל?
+
+    סוכם את הכמות שהורדה לכל מק"ט בתעודות ההורדה (operationType=2) של הסניף
+    מרגע יצירת הבקשה. ⛔ בלי הבדיקה הזאת ניסיון חוזר מזין את הפריט שוב — וזה
+    בדיוק מה שקרה ב-#42. הבדיקה נקראת רק בניסיון חוזר, ולכן אינה מכבידה על
+    מכסת NewOrder (100/דקה)."""
+    _require_admin_or_device(x_admin_key, x_device_token)
+    r = db.pos_removal_get(rid)
+    if not r:
+        raise HTTPException(404, "לא נמצא")
+    items = r.get("items") or []
+    need: dict = {}
+    for it in items:
+        sku = str(it.get("sku") or "").strip()
+        if sku:
+            need[sku] = need.get(sku, 0.0) + float(it.get("qty") or 1)
+    created = str(r.get("created_at") or "")[:19]
+    # חלון חסד של דקה: שעון הקופה והשרת אינם מסונכרנים לשנייה
+    if len(created) == 19:
+        try:
+            from datetime import datetime as _dt, timedelta as _td
+            created = (_dt.fromisoformat(created) - _td(minutes=1)).isoformat()
+        except ValueError:
+            pass
+    day = created[:10] or now_iso()[:10]
+    bid = int(r.get("branch_id") or CITY_BRANCH_ID)
+
+    def _is_removal(op):
+        return op.get("operationType") == 2
+
+    removed: dict = {}
+    docs: list = []
+    try:
+        ops = poller.client().get_stock_operations(
+            branch_id=bid, from_date=day, to_date=day,
+            page_size=200, page_num=1, items_for=_is_removal)
+    except Exception as e:  # noqa: BLE001
+        # בספק — לא אומרים "כבר ירד". עדיף ניסיון נוסף מאשר להשאיר מלאי לא מסונכרן.
+        logger.warning("pos-applied %s: %s", rid, e)
+        return {"ok": False, "applied": False, "why": "קריאת הקופה נכשלה",
+                "need": need, "removed": {}, "docs": []}
+    for o in ops:
+        if not _is_removal(o):
+            continue
+        when = str(o.get("createDate") or "")[:19]
+        if when and created and when < created:
+            continue
+        hit = False
+        for it in (o.get("stockItems") or []):
+            sku = str(it.get("id") or "").strip()
+            if sku not in need:
+                continue
+            removed[sku] = removed.get(sku, 0.0) + abs(float(it.get("quantity") or 0))
+            hit = True
+        if hit:
+            docs.append(str(o.get("documentNumber") or o.get("id") or ""))
+    applied = bool(need) and all(removed.get(k, 0.0) >= v - 0.001 for k, v in need.items())
+    extra = {k: round(removed.get(k, 0.0) - v, 3) for k, v in need.items()
+             if removed.get(k, 0.0) - v > 0.001}
+    return {"ok": True, "applied": applied, "need": need, "removed": removed,
+            "docs": docs, "over_removed": extra}
+
+
 class PosRemovalItem(BaseModel):
     sku: str
     name: str = ""

@@ -187,6 +187,7 @@ header.top{position:sticky;top:0;z-index:30;background:color-mix(in srgb,var(--b
   font-weight:800;font-size:14px;opacity:0;pointer-events:none;transition:.2s;z-index:80}
 #toast.on{opacity:1}
 #toast.err{background:var(--red);color:#fff}
+  .idb{color:var(--ink2);font-size:11px;font-weight:600}
 </style>
 </head>
 <body>
@@ -586,7 +587,15 @@ async function loadQueue(){
   if(!rows.length){ el.innerHTML='<div class="emptycart">אין הורדות היום</div>'; return; }
   const wasOpen=new Set([...el.querySelectorAll('.rgroup.open')].map(g=>g.id));
   el.innerHTML=rows.map(r=>{
-    const items=(r.items||[]).map(i=>esc(i.name||i.sku)+(i.qty>1?(' ×'+i.qty):'')).join(', ');
+    // מזהים גלויים בשורה עצמה: סידורי / ברקוד + מק״ט הקופה (אסי, 09/08)
+    const items=(r.items||[]).map(i=>{
+      const bits=[];
+      if(i.serial)  bits.push('סידורי '+i.serial);
+      else if(i.barcode) bits.push('ברקוד '+i.barcode);
+      if(i.sku) bits.push('מק״ט '+i.sku);
+      return esc(i.name||i.sku)+(i.qty>1?(' ×'+i.qty):'')
+        + (bits.length?` <span class="idb mono">${esc(bits.join(' · '))}</span>`:'');
+    }).join(', ');
     const when=(r.created_at||'').replace('T',' ').slice(11,16);
     const s=_statusChip(r);
     return `<div class="rgroup${wasOpen.has('rg'+r.id)?' open':''}" id="rg${r.id}">
