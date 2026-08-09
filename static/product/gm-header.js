@@ -432,7 +432,9 @@ if (!window.toggleNav) { window.toggleNav = function () {
   /* ריקון הסל: קריאה אחת שמוחקת הכל במקום שרשרת הסרות.
      הישן הסיר פריט-אחר-פריט בטור (1.3 שנ' לכל אחד) עם nonce ישן — ולכן
      לקח 20-30 שניות ולפעמים השאיר פריט (אסי, 09/08). */
+  var clearedAt=0;
   function wipeDom(){
+    clearedAt=now();          /* חלון שבו תשובת שרת ישנה לא מחזירה תוכן */
     var box=document.getElementById('cartItems');
     if(box) box.innerHTML='<div class="cart-empty">הסל ריק</div>';
     var e=subEl(); if(e) e.textContent=money(0);
@@ -712,6 +714,9 @@ if (!window.toggleNav) { window.toggleNav = function () {
       /* ⛔ שורת Green Care אינה "מוצר בסל": היא לא מזכה בתוספות ולא סופרת.
          בלעדי הסינון, שורה יתומה שנשארה אחרי הסרת המכשיר השאירה את הפס חי
          (אסי, 09/08: "אין מוצרים בסל אין שום סיבה שיופיע"). */
+      /* בזמן ריקון: תשובה שנוצרה לפני המחיקה עדיין מחזירה פריטים —
+         אין לצייר אותם מחדש (אסי, 09/08: הפס הבהב אחרי ריקון). */
+      if(now()-clearedAt<4000 && all.length) return;
       cAll=all;
       var items=all.filter(function(it){ return !isGc(it); });
       var orphans=all.filter(isGc);
