@@ -90,6 +90,35 @@
   .crow button:hover{border-color:var(--accent)}
   .crow button.del:hover{border-color:var(--danger);color:var(--danger)}
   .crow .used{color:var(--ink2);font-size:.78rem;white-space:nowrap}
+  /* v0.6.0 — מוצר קיים מהקטלוג ככרטיסיה (אסי, 09/08) */
+  .stabs{display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 14px}
+  .stb{background:transparent;border:1.5px solid var(--line);color:var(--ink);border-radius:10px;
+    padding:8px 16px;font-family:inherit;font-weight:700;font-size:.9rem;cursor:pointer}
+  .stb.on{border-color:var(--accent);color:var(--accent);box-shadow:0 0 0 1.5px var(--accent)}
+  .picked{display:flex;gap:12px;align-items:center;background:var(--bg);border:1.5px solid var(--accent);
+    border-radius:13px;padding:11px 12px;margin-top:8px}
+  .picked img{width:52px;height:52px;object-fit:contain;background:#fff;border-radius:9px;flex:0 0 auto}
+  .picked .m{flex:1;min-width:0}
+  .picked .m b{display:block;font-size:.92rem;line-height:1.3}
+  .picked .m span{color:var(--ink2);font-size:.8rem;font-weight:700}
+  .picked .x{background:none;border:none;color:var(--ink2);font-size:1.1rem;cursor:pointer}
+  .vlist{border:1px solid var(--line);border-radius:12px;background:var(--bg);overflow:hidden;margin-top:6px}
+  .vrow{display:flex;gap:10px;align-items:center;padding:9px 12px;border-bottom:1px solid var(--line);font-size:.9rem}
+  .vrow:last-child{border-bottom:none}
+  .vrow input{width:auto;margin:0}
+  .vrow img{width:34px;height:34px;object-fit:contain;background:#fff;border-radius:7px}
+  .vrow .nm{flex:1;font-weight:700}
+  .vrow .pr{font-weight:800}
+  .vrow .oos{color:var(--ink2);font-weight:700;font-size:.8rem}
+  .vrow.off{opacity:.55}
+  .deal{background:var(--bg);border:1.5px solid var(--line);border-radius:13px;padding:12px;margin-top:8px}
+  .prev{display:flex;align-items:baseline;gap:9px;margin-top:10px;font-weight:800;flex-wrap:wrap}
+  .prev s{color:var(--ink2);font-weight:700}
+  .prev .now{color:var(--accent);font-size:1.15rem}
+  .prev .sv{background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent);
+    border-radius:99px;padding:2px 9px;font-size:.78rem}
+  .kind{display:inline-block;background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent);
+    border-radius:99px;padding:1px 8px;font-size:.7rem;font-weight:800;margin-inline-start:6px}
 </style>
 </head>
 <body>
@@ -131,6 +160,57 @@
       <button class="btn btn-ghost btn-sm" id="resetBtn" hidden>ביטול עריכה</button>
     </div>
 
+    <!-- v0.6.0 — מאיפה הפריט מגיע. כל מה שמתחת (צ׳יפים, שיוך, שמירה) משותף
+         לשני המצבים, כדרישת אסי: "משולב בפנים באותה צורת בנייה". -->
+    <div class="stabs" id="srcTabs">
+      <button type="button" class="stb on" data-src="own">יצירת מוצר חדש</button>
+      <button type="button" class="stb" data-src="cat">מוצר קיים מהקטלוג</button>
+    </div>
+
+    <div id="catFields" hidden>
+      <label for="kq">איזה מוצר? חיפוש בשם או במק״ט</label>
+      <input id="kq" placeholder="למשל: dualsense · airpods · 511204" autocomplete="off">
+      <div class="res" id="kres" hidden></div>
+      <div id="kpick"></div>
+      <div id="kvarsWrap" hidden>
+        <label>איך להציג את הוריאציות?</label>
+        <div class="stabs" id="vmTabs">
+          <button type="button" class="stb on" data-vm="each">כרטיסיה לכל וריאציה שאבחר</button>
+          <button type="button" class="stb" data-vm="pick">כרטיסיה אחת עם בורר</button>
+        </div>
+        <div class="vlist" id="kvars"></div>
+        <div class="hint">וריאציה שאזלה לא ניתנת לבחירה, ובעמוד המוצר היא לא מוצגת — וחוזרת לבד כשהמלאי חוזר.</div>
+      </div>
+
+      <label for="klabel">כיתוב לכרטיסיה — לא חובה</label>
+      <input id="klabel" placeholder="ברירת מחדל: שם המוצר (בוריאציה — שם + הצבע)">
+
+      <label>מחיר בהוספה להזמנה</label>
+      <div class="deal">
+        <div class="row">
+          <div>
+            <label for="dtype" style="margin-top:0">סוג ההנחה</label>
+            <select id="dtype">
+              <option value="off">בלי הנחה — מחיר הקטלוג</option>
+              <option value="amt">סכום הנחה (₪)</option>
+              <option value="final">מחיר סופי בחבילה (₪)</option>
+              <option value="pct">אחוז הנחה (%)</option>
+            </select>
+          </div>
+          <div>
+            <label for="dval" style="margin-top:0">ערך</label>
+            <input id="dval" type="number" inputmode="decimal" min="0" step="1" placeholder="0">
+          </div>
+        </div>
+        <div class="prev" id="dprev"></div>
+        <div class="hint">
+          החיסכון מוצג ללקוח <b>תמיד באחוזים</b>. מחיר הקטלוג ופיד זאפ לא משתנים —
+          מחיר החבילה נכנס כמחיר שורה בסל, ורק כשאחד המוצרים שבחרת למטה נמצא בסל.
+        </div>
+      </div>
+    </div>
+
+    <div id="ownFields">
     <label>תמונה</label>
     <div class="drop" id="drop">
       <div id="dropTxt">גררו תמונה לכאן · או הדביקו (⌘V) · או לחצו לבחירה</div>
@@ -153,6 +233,7 @@
       </div>
     </div>
     <div class="hint">אם מוזן מחיר מבצע — הוא המחיר שנגבה, ומחיר המקסימום מוצג מחוק.</div>
+    </div><!-- /ownFields -->
 
     <label>באיזה צ׳יפים תופיע התוספת?</label>
     <div class="chips" id="chips"></div>
@@ -168,11 +249,14 @@
     <div id="ctags"></div>
     <div class="hint">קטגוריה = התוספת תופיע אוטומטית בכל מוצר בקטגוריה, כולל מוצרים שיתווספו בעתיד.</div>
 
+    <div id="catalogWrap">
     <label style="display:flex;align-items:center;gap:9px;margin-top:16px;font-weight:700">
       <input type="checkbox" id="catalog" style="width:auto;margin:0">
       להציג גם בקטלוג האתר (עמודי קטגוריה וחיפוש)
     </label>
     <div class="hint">כברירת מחדל מוסתר. הבורר הזה מיועד לקטגוריות האביזרים העתידיות.</div>
+    </div>
+    <div class="warn" id="catNote" hidden>מוצר קיים נשאר בקטלוג ובפיד זאפ כרגיל — אנחנו לא נוגעים בשם, במחיר או בנראות שלו.</div>
 
     <div style="margin-top:18px"><button class="btn" id="save">שמירה</button></div>
     <div id="msg"></div>
@@ -222,6 +306,9 @@ const $ = id => document.getElementById(id);
 
 let CHIPS = {}, CATS = [], CHIP_ROWS = [];
 let state = { id: 0, chips: [], img_b64: '', image_id: 0, targets: [], tcats: [] };
+/* v0.6.0 — מקור הפריט: own = נוצר כאן · cat = הפניה למוצר קיים בקטלוג.
+   ref = המוצר שנבחר · refs = הוריאציות שסומנו · vm = each|pick (אסי, 09/08) */
+Object.assign(state, { src: 'own', ref: null, refs: [], vm: 'each' });
 
 function say(t, cls) { $('msg').className = 'msg ' + cls; $('msg').textContent = t; }
 function clearMsg() { $('msg').className = ''; $('msg').textContent = ''; }
@@ -257,6 +344,122 @@ document.addEventListener('paste', e => {
   const it = [...(e.clipboardData || {}).items || []].find(x => /^image\//.test(x.type));
   if (it) readFile(it.getAsFile());
 });
+
+/* ---------- v0.6.0: מוצר קיים מהקטלוג ככרטיסיה ---------- */
+function setSrc(src) {
+  state.src = src;
+  document.querySelectorAll('#srcTabs .stb').forEach(b => b.classList.toggle('on', b.dataset.src === src));
+  $('ownFields').hidden = src !== 'own';
+  $('catFields').hidden = src !== 'cat';
+  $('catalogWrap').hidden = src === 'cat';   /* מוצר חי נשאר בקטלוג ממילא */
+  $('catNote').hidden = src !== 'cat';
+}
+$('srcTabs').addEventListener('click', e => {
+  const b = e.target.closest('.stb'); if (!b) return;
+  setSrc(b.dataset.src); clearMsg();
+});
+$('vmTabs').addEventListener('click', e => {
+  const b = e.target.closest('.stb'); if (!b) return;
+  state.vm = b.dataset.vm;
+  document.querySelectorAll('#vmTabs .stb').forEach(x => x.classList.toggle('on', x === b));
+  drawVars(); dealPreview();
+});
+
+/* חיפוש מוצר קיים — שם או מק״ט */
+$('kq').addEventListener('input', dbounce(async () => {
+  const q = $('kq').value.trim();
+  if (q.length < 2) { $('kres').hidden = true; return; }
+  try {
+    const d = await api('catalog-search?q=' + encodeURIComponent(q));
+    $('kres').innerHTML = (d || []).map((p, i) => `
+      <div data-k="${i}">
+        <img src="${p.img || ''}" alt="" style="width:32px;height:32px;object-fit:contain;background:#fff;border-radius:6px;vertical-align:middle;margin-inline-end:8px">
+        <b>${esc(p.name)}</b>
+        <span style="color:var(--ink2)"> · מק״ט ${esc(p.sku || '—')} · ₪${p.price}
+        ${p.type === 'variable' ? ' · ' + p.vars.length + ' וריאציות' : ''}
+        ${p.in_stock ? '' : ' · אזל'}${p.already ? ' · כבר מוצג ככרטיסיה' : ''}</span>
+      </div>`).join('') || '<div style="color:var(--ink2)">אין תוצאות</div>';
+    $('kres').hidden = false;
+    KRES = d || [];
+  } catch (e) { say(e.message, 'err'); }
+}, 320));
+let KRES = [];
+function esc(t) { const d = document.createElement('div'); d.textContent = (t == null ? '' : t); return d.innerHTML; }
+
+$('kres').addEventListener('click', e => {
+  const row = e.target.closest('[data-k]'); if (!row) return;
+  pickRef(KRES[+row.dataset.k]);
+  $('kres').hidden = true; $('kq').value = '';
+});
+
+function pickRef(p) {
+  if (!p) return;
+  state.ref = p;
+  state.refs = (p.type === 'variable') ? [] : [p.id];
+  state.vm = 'each';
+  document.querySelectorAll('#vmTabs .stb').forEach(x => x.classList.toggle('on', x.dataset.vm === 'each'));
+  $('kpick').innerHTML = `<div class="picked">
+    <img src="${p.img || ''}" alt="">
+    <div class="m"><b>${esc(p.name)}</b>
+      <span>מק״ט ${esc(p.sku || '—')} · מחיר קטלוג ₪${p.price}${p.type === 'variable' ? ' · מוצר עם וריאציות' : ''}</span></div>
+    <button type="button" class="x" id="kclear">✕</button></div>`;
+  $('kvarsWrap').hidden = p.type !== 'variable';
+  drawVars(); dealPreview();
+}
+$('kpick').addEventListener('click', e => {
+  if (!e.target.closest('#kclear')) return;
+  state.ref = null; state.refs = [];
+  $('kpick').innerHTML = ''; $('kvarsWrap').hidden = true; $('dprev').innerHTML = '';
+});
+
+function drawVars() {
+  const p = state.ref;
+  if (!p || p.type !== 'variable') { $('kvars').innerHTML = ''; return; }
+  if (state.vm === 'pick') {
+    $('kvars').innerHTML = '<div class="vrow"><span class="nm">' +
+      'כל הוריאציות הזמינות יוצגו בבורר בתוך כרטיסיה אחת</span></div>';
+    return;
+  }
+  $('kvars').innerHTML = p.vars.map(v => `
+    <div class="vrow${v.in_stock ? '' : ' off'}">
+      <input type="checkbox" data-v="${v.id}" ${state.refs.includes(v.id) ? 'checked' : ''} ${v.in_stock ? '' : 'disabled'}>
+      <img src="${v.img || p.img || ''}" alt="">
+      <span class="nm">${esc(v.label)}</span>
+      ${v.in_stock ? `<span class="pr">₪${v.price}</span>` : '<span class="oos">אזל — לא ניתן לבחירה</span>'}
+    </div>`).join('') || '<div class="vrow"><span class="oos">אין וריאציות זמינות</span></div>';
+}
+$('kvars').addEventListener('change', e => {
+  const c = e.target.closest('[data-v]'); if (!c) return;
+  const id = +c.dataset.v;
+  state.refs = c.checked ? state.refs.concat(id) : state.refs.filter(x => x !== id);
+  dealPreview();
+});
+
+/* מחיר הבסיס להצגה: הוריאציה הראשונה שסומנה, אחרת מחיר המוצר */
+function dealBase() {
+  const p = state.ref; if (!p) return 0;
+  if (p.type === 'variable' && state.vm === 'each' && state.refs.length) {
+    const v = p.vars.find(x => x.id === state.refs[0]);
+    if (v) return +v.price;
+  }
+  return +p.price;
+}
+function dealCalc(base) {
+  const t = $('dtype').value, v = parseFloat($('dval').value || '0');
+  if (t === 'off' || !(v > 0) || !(base > 0)) return null;
+  let out = t === 'amt' ? base - v : (t === 'pct' ? base * (1 - Math.min(90, v) / 100) : v);
+  out = Math.round(out * 100) / 100;
+  return (out > 0 && out < base) ? out : null;
+}
+function dealPreview() {
+  const base = dealBase(), d = dealCalc(base);
+  if (!base) { $('dprev').innerHTML = ''; return; }
+  if (d == null) { $('dprev').innerHTML = `<span class="now">₪${base}</span><span style="color:var(--ink2);font-weight:700">מחיר הקטלוג — בלי הנחה</span>`; return; }
+  const pct = Math.round((1 - d / base) * 100);
+  $('dprev').innerHTML = `<s>₪${base}</s><span class="now">₪${d}</span>` +
+    (pct > 0 ? `<span class="sv">הוסף וחסוך ${pct}%</span>` : '');
+}
+['dtype', 'dval'].forEach(id => $(id).addEventListener('input', dealPreview));
 
 /* ---------- צ׳יפים: בחירה בטופס (רב-בחירה) ---------- */
 function drawChips() {
@@ -364,6 +567,9 @@ $('cq').addEventListener('change', () => {
 /* ---------- שמירה ---------- */
 $('save').addEventListener('click', async () => {
   clearMsg();
+  /* v0.6.0 — מוצר קיים מהקטלוג: לא יוצרים מוצר, רק רושמים הפניה + הנחה.
+     ⛔ לא נוגעים בשם, במחיר, בנראות ובמק״ט של המוצר החי. */
+  if (state.src === 'cat') return saveCatalog();
   const name = $('name').value.trim();
   const reg = parseFloat($('reg').value || '0');
   if (!name) return say('חסר שם מוצר', 'err');
@@ -392,8 +598,42 @@ $('save').addEventListener('click', async () => {
   $('save').disabled = false; $('save').textContent = 'שמירה';
 });
 
+async function saveCatalog() {
+  const p = state.ref;
+  if (!p) return say('בחרו מוצר מהקטלוג', 'err');
+  let refs = state.refs.slice();
+  if (p.type === 'variable') {
+    if (state.vm === 'pick') refs = [p.id];              // ההורה, עם בורר בכרטיסיה
+    else if (!refs.length) return say('סמנו לפחות וריאציה אחת', 'err');
+  } else if (!refs.length) refs = [p.id];
+  if (!state.chips.length) return say('בחרו לפחות צ׳יפ אחד', 'err');
+  if (!state.targets.length && !state.tcats.length)
+    return say('בחרו לפחות מוצר או קטגוריה אחת שבהם הכרטיסיה תופיע', 'err');
+
+  $('save').disabled = true; $('save').textContent = 'שומר…';
+  try {
+    const d = await api('catalog-register', {
+      refs, chips: state.chips,
+      targets: state.targets.map(t => t.id), tcats: state.tcats.map(t => t.id),
+      deal_type: $('dtype').value, deal_value: parseFloat($('dval').value || '0'),
+      label: $('klabel').value.trim(),
+      vpick: (p.type === 'variable' && state.vm === 'pick') ? 1 : 0
+    });
+    const n = (d.ids || refs).length;
+    say(n > 1 ? ('נוצרו ' + n + ' כרטיסיות ✓') : 'נוצרה כרטיסיה ✓ — מופיעה בעמודי המוצר שנבחרו', 'ok');
+    BY_ID = {}; reset(); load();
+    if (MPROD) showProd();
+  } catch (e) { say(e.message, 'err'); }
+  $('save').disabled = false; $('save').textContent = 'שמירה';
+}
+
 function reset() {
-  state = { id: 0, chips: [], img_b64: '', image_id: 0, has_img: false, targets: [], tcats: [] };
+  state = { id: 0, chips: [], img_b64: '', image_id: 0, has_img: false, targets: [], tcats: [],
+            src: 'own', ref: null, refs: [], vm: 'each' };
+  setSrc('own');
+  ['kq', 'klabel', 'dval'].forEach(k => $(k).value = '');
+  $('dtype').value = 'off'; $('kpick').innerHTML = ''; $('dprev').innerHTML = '';
+  $('kvarsWrap').hidden = true; $('kres').hidden = true;
   ['name', 'reg', 'sale', 'pq'].forEach(k => $(k).value = '');
   $('catalog').checked = false;
   $('prev').hidden = true; $('dropTxt').hidden = false;
@@ -521,8 +761,10 @@ async function load() {
       return `<div class="item">
         <img src="${a.img || ''}" alt="">
         <div style="flex:1;min-width:0">
-          <div class="n">${a.name}</div>
-          <div class="p">₪${(a.sale_price || a.regular_price || a.price).toLocaleString('he-IL')} · ${(a.chips || []).map(c => CHIPS[c] || c).join(' · ')} ${where}</div>
+          <div class="n">${a.name}${a.kind === 'catalog' ? '<span class="kind">מוצר קטלוג</span>' : ''}</div>
+          <div class="p">₪${(a.sale_price || a.regular_price || a.price).toLocaleString('he-IL')}${
+            a.kind === 'catalog' && a.deal_type && a.deal_type !== 'off' ? ' · הנחת חבילה' : ''}${
+            a.sku ? ' · מק״ט ' + a.sku : ''} · ${(a.chips || []).map(c => CHIPS[c] || c).join(' · ')} ${where}</div>
         </div>
         <button class="btn btn-ghost btn-sm" data-edit='${JSON.stringify(a).replace(/'/g, "&#39;")}'>עריכה</button>
       </div>`;
@@ -534,6 +776,7 @@ async function load() {
  * פתיחת עריכה". מעבר לטאב אחר בשביל שינוי מחיר הוא חיכוך מיותר. */
 let BY_ID = {};
 function openEdit(a) {
+  if (a.kind === 'catalog') return openEditCatalog(a);
   state.id = a.id; state.chips = (a.chips || []).slice(); state.image_id = 0; state.img_b64 = '';
   state.has_img = !!a.img;              /* תמונה קיימת בשרת — שמירה בלי חדשה תקינה */
   $('name').value = a.name;
@@ -555,6 +798,38 @@ $('list').addEventListener('click', e => {
   const b = e.target.closest('[data-edit]'); if (!b) return;
   openEdit(JSON.parse(b.dataset.edit));
 });
+
+/* עריכת רשומת "מוצר קיים": אותו טופס, המוצר נעול (החלפת מוצר = רשומה אחרת),
+   וניתן לשנות צ׳יפים, שיוך, הנחה וכיתוב. */
+function openEditCatalog(a) {
+  reset(); setSrc('cat');
+  state.id = a.id; state.chips = (a.chips || []).slice();
+  /* ⚠️ רשומת הורה עם בורר חייבת להישאר כזו בשמירה חוזרת — אחרת עריכת מחיר
+     הייתה מכבה את הבורר בשקט. */
+  state.ref = { id: a.id, name: a.name, sku: a.sku || '', price: a.regular_price || a.price || 0,
+                img: a.img || '', type: a.vpick ? 'variable' : 'simple', vars: [], in_stock: true };
+  state.refs = [a.id];
+  state.vm = a.vpick ? 'pick' : 'each';
+  document.querySelectorAll('#vmTabs .stb').forEach(x => x.classList.toggle('on', x.dataset.vm === state.vm));
+  $('kvarsWrap').hidden = !a.vpick;
+  if (a.vpick) drawVars();
+  $('kpick').innerHTML = `<div class="picked">
+    <img src="${a.img || ''}" alt="">
+    <div class="m"><b>${esc(a.name)}</b>
+      <span>מק״ט ${esc(a.sku || '—')} · מחיר קטלוג ₪${a.regular_price || a.price || 0} · רשומה #${a.id}</span></div>
+  </div>`;
+  $('dtype').value = a.deal_type || 'off';
+  $('dval').value = a.deal_value || '';
+  $('klabel').value = a.label || '';
+  state.tcats = String(a.tcats || '').split(',').filter(Boolean).map(id => {
+    const c = CATS.find(x => x.id === +id); return { id: +id, name: c ? c.name : ('קטגוריה ' + id) };
+  });
+  state.targets = String(a.targets || '').split(',').filter(Boolean).map(id => ({ id: +id, name: 'מוצר ' + id }));
+  $('formTitle').textContent = 'עריכת כרטיסיה #' + a.id + ' (מוצר קטלוג)';
+  $('resetBtn').hidden = false;
+  openFold('foldForm'); drawChips(); drawTags(); dealPreview(); clearMsg();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
 /* preview מחזיר רק {id,name,price,img}; לעריכה צריך את הרשומה המלאה (צ׳יפים,
  * יעדים, שני המחירים) ⇒ מפה מ-/list, נטענת בעצלתיים ומרועננת אחרי שמירה. */
 async function addonById(id) {
