@@ -370,6 +370,34 @@ if (!window.toggleNav) { window.toggleNav = function () {
    /* תמונות פריטי הסל — בלי מסגרת/רקע, כמו GoMobile (אסי 09/08) */
    '.cart-drawer.gmv2 .citem-img{border:none!important;background:transparent!important;padding:0!important;border-radius:10px;}',
    '.cart-drawer.gmv2 .citem.gmghost{opacity:.7}',
+   /* חלון מידע Green Care — נפתח מעל המגירה, בלי לצאת מהסל */
+   '#gmGcInfo{position:fixed;inset:0;z-index:200;display:none;align-items:center;justify-content:center;padding:18px}',
+   '#gmGcInfo.on{display:flex}',
+   '#gmGcInfo .gi-back{position:absolute;inset:0;background:rgba(10,14,12,.55)}',
+   '#gmGcInfo .gi-box{position:relative;background:#fff;border-radius:18px;width:min(100%,460px);max-height:min(86vh,760px);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 22px 60px rgba(17,20,23,.3)}',
+   '#gmGcInfo .gi-head{display:flex;align-items:center;gap:10px;padding:15px 18px;border-bottom:1px solid var(--line,#e6eae8);flex:none}',
+   '#gmGcInfo .gi-head b{font-size:1rem;font-weight:900}',
+   '#gmGcInfo .gi-head .ic{width:20px;height:20px;fill:none;stroke:#149c40;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}',
+   '#gmGcInfo .gi-x{margin-inline-start:auto;width:30px;height:30px;border:none;border-radius:50%;background:#f2f5f3;cursor:pointer;font-size:1rem;line-height:1}',
+   '#gmGcInfo .gi-body{padding:16px 18px 18px;overflow-y:auto;-webkit-overflow-scrolling:touch}',
+   '#gmGcInfo h4{margin:0 0 3px;font-size:1.02rem;font-weight:900}',
+   '#gmGcInfo .gi-sub{margin:0 0 14px;color:var(--ink2,#5c666d);font-size:.82rem;line-height:1.45}',
+   '#gmGcInfo .gi-plan{border:1.5px solid var(--line,#e6eae8);border-radius:14px;padding:13px 14px;margin-bottom:11px}',
+   '#gmGcInfo .gi-ph{display:flex;align-items:center;justify-content:space-between;gap:10px;font-weight:900}',
+   '#gmGcInfo .gi-pp{color:#149c40;font-weight:900;white-space:nowrap}',
+   '#gmGcInfo .gi-per{color:var(--ink2,#5c666d);font-size:.8rem;margin:2px 0 9px}',
+   '#gmGcInfo .gi-badge{display:inline-block;background:#e7f6ec;color:#0e5c2b;border-radius:99px;padding:2px 8px;font-size:.7rem;font-weight:800;margin-inline-start:6px}',
+   '#gmGcInfo ul{list-style:none;margin:0;padding:0;display:grid;gap:7px}',
+   '#gmGcInfo li{display:flex;gap:8px;align-items:flex-start;font-size:.83rem;line-height:1.4}',
+   '#gmGcInfo li svg{width:15px;height:15px;flex:none;margin-top:2px;fill:none;stroke:#149c40;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}',
+   '#gmGcInfo li.no{color:var(--ink2,#5c666d)}',
+   '#gmGcInfo li.no svg{stroke:#98a2a8}',
+   '#gmGcInfo .gi-add{margin-top:11px;width:100%;border:1.5px solid #149c40;background:#fff;color:#149c40!important;border-radius:99px;padding:9px;font-weight:800;font-size:.85rem;cursor:pointer}',
+   '#gmGcInfo .gi-add:hover{background:#e7f6ec!important;color:#0e5c2b!important}',
+   '#gmGcInfo .gi-add.on{background:#149c40!important;color:#fff!important}',
+   '#gmGcInfo .gi-note{background:#f7f9f8;border-radius:12px;padding:11px 12px;font-size:.78rem;line-height:1.5;color:var(--ink2,#5c666d)}',
+   '#gmGcInfo .gi-note b{color:var(--ink,#111417)}',
+   '#gmGcInfo .gi-tak{margin-top:10px;font-size:.74rem;color:var(--ink2,#5c666d);line-height:1.5}',
    '.cart-drawer.gmv2 .citem.gmghost .cqty{opacity:.5}',
    '.cart-clear{display:inline-flex;align-items:center;gap:6px;margin-inline-start:auto;background:none;border:none;font:inherit;font-size:.82rem;font-weight:700;color:var(--ink2,#5c666d);cursor:pointer;padding:6px 8px;border-radius:10px;}',
    '.cart-clear:hover,.cart-clear:focus{background:var(--alt,#f5f7f6)!important;color:var(--deal,#e2551f)!important;}',
@@ -646,6 +674,57 @@ if (!window.toggleNav) { window.toggleNav = function () {
     gcBusy=true; try{ gcRender(cGc, cAll); }catch(e){}
     setTimeout(function(){ gcBusy=false; },0);
   }
+  /* ⛔ "לפרטים המלאים" לא מוציא מהסל: חלון מידע שנבנה מהזכאות של אותו
+     מכשיר (אותו תוכן של המודאל בעמוד המוצר). אסי, 09/08. */
+  var TICK='<svg viewBox="0 0 24 24"><path d="M5 12.5l4.2 4.2L19 7"/></svg>';
+  var XMK ='<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+  var GC_TXT={
+    gc:{ name:'Green Care', per:'הרחבת אחריות · שנה שנייה', badge:'',
+      li:[[1,'שנה שנייה של אחריות מלאה — אותם תנאים של אחריות הבסיס'],
+          [1,'תיקונים במעבדה שלנו · איסוף מהבית'],
+          [0,'לא כולל שברים ונזקי לקוח']] },
+    gcp:{ name:'Green Care <b>+</b>', per:'הגנה מלאה · 24 חודשים', badge:'הכי משתלם',
+      li:[[1,'אחריות תיקונים מלאה לשנתיים'],
+          [1,'עד 4 תיקוני שברים חינם (מצלמות / גב / שקע טעינה)'],
+          [1,'החלפת מסך שבור — פעם אחת, בהשתתפות עצמית'],
+          [1,'נזק מוחלט בשנה השנייה — מכשיר שווה־ערך או זיכוי, לבחירתכם'],
+          [1,'מכשיר חלופי אם התיקון מעל שעתיים']] }
+  };
+  function giPlan(pid,plan,price,added){
+    var t=GC_TXT[plan];
+    return '<div class="gi-plan"><div class="gi-ph"><span>'+t.name+
+      (t.badge?'<span class="gi-badge">'+t.badge+'</span>':'')+'</span>'+
+      '<span class="gi-pp">‏₪'+(+price).toLocaleString('en-US')+'</span></div>'+
+      '<div class="gi-per">'+t.per+'</div><ul>'+
+      t.li.map(function(r){ return '<li'+(r[0]?'':' class="no"')+'>'+(r[0]?TICK:XMK)+'<span>'+r[1]+'</span></li>'; }).join('')+
+      '</ul><button type="button" class="gi-add'+(added?' on':'')+'" data-plan="'+plan+
+      '" data-pid="'+pid+'" data-price="'+price+'">'+(added?'נוסף להזמנה · להסרה':'הוספה להזמנה')+'</button></div>';
+  }
+  function giOpen(pid){
+    var conf=(cGc||{})[pid]; if(!conf) return;
+    var box=document.getElementById('gmGcInfo');
+    if(!box){
+      box=document.createElement('div'); box.id='gmGcInfo';
+      box.innerHTML='<div class="gi-back"></div><div class="gi-box">'+
+        '<div class="gi-head"><svg class="ic" viewBox="0 0 24 24">'+
+        '<path d="M12 2.5 4.5 5.5v6c0 4.5 3.2 8 7.5 10 4.3-2 7.5-5.5 7.5-10v-6z"/>'+
+        '<path d="M8.8 11.8l2.3 2.3 4.3-4.5"/></svg><b>Green Care</b>'+
+        '<button type="button" class="gi-x" aria-label="סגור">✕</button></div>'+
+        '<div class="gi-body"></div></div>';
+      document.body.appendChild(box);
+    }
+    var added=!!document.querySelector('#cartDrawer .gcopt.added[data-pid="'+pid+'"]');
+    var rows='';
+    if(conf.tiers&&+conf.tiers.gc&&+conf.prices.gc>0)  rows+=giPlan(pid,'gc',conf.prices.gc,added);
+    if(conf.tiers&&+conf.tiers.gcp&&+conf.prices.gcp>0) rows+=giPlan(pid,'gcp',conf.prices.gcp,added);
+    box.querySelector('.gi-body').innerHTML=
+      '<h4>מה כלול בהגנה?</h4><p class="gi-sub">'+esc(dec(conf.name||''))+
+      ' · המסלולים המוצגים הם אלה שזמינים למכשיר הזה</p>'+rows+
+      '<div class="gi-note"><b>השתתפות עצמית — שקוף מראש:</b> החלפת מסך = <b>50% ממחיר תיקון המסך</b> ביום הפנייה לפי המחירון באתר · נזק מוחלט = השתתפות עצמית קבועה למדרגת המחיר. שווי המכשיר בנזק מוחלט נקבע לפי מחירון היד־השנייה שלנו ביום הפנייה.</div>'+
+      '<div class="gi-tak">יש לקרוא את <a href="/green-care-terms/" target="_blank" rel="noopener">התקנון וכתב השירות המלא</a> · אינו פוליסת ביטוח · לא כולל אובדן/גניבה</div>';
+    box.classList.add('on');
+  }
+  function giClose(){ var b=document.getElementById('gmGcInfo'); if(b) b.classList.remove('on'); }
   var hgBusy=false;
   function hideGcDom(){
     var d=document.getElementById('cartDrawer'); if(!d||hgBusy) return 0;
@@ -695,7 +774,7 @@ if (!window.toggleNav) { window.toggleNav = function () {
       if(exist){ drop(exist); }
       var wrap=document.createElement('div'); wrap.className='gcopts'; wrap.setAttribute('data-sig',sig); wrap.innerHTML=rows;
       ci.insertAdjacentElement('afterend', wrap);
-      var a=document.createElement('a'); a.className='gcmore'; a.href='/green-care/';
+      var a=document.createElement('a'); a.className='gcmore'; a.href='#';   /* נפתח כחלון, בלי ניווט */
       a.innerHTML='מה כלול בכל מסלול? <u>לפרטים המלאים</u>';
       wrap.insertAdjacentElement('afterend', a);
     });
@@ -750,7 +829,19 @@ if (!window.toggleNav) { window.toggleNav = function () {
   document.addEventListener('click', function(e){
     var t=e.target;
     if(t.closest('.cart-pill,.mcart,a.card-btn,.gm-atc')) { sideOpen(false); later(60); burst(); return; }
-    if(t.closest('#cartClose,.cart-overlay')) { sideOpen(false); return; }
+    if(t.closest('#cartClose,.cart-overlay')) { sideOpen(false); giClose(); return; }
+    if(t.closest('#gmGcInfo .gi-x') || t.closest('#gmGcInfo .gi-back')){ giClose(); return; }
+    var ga=t.closest('#gmGcInfo .gi-add');
+    if(ga){ e.preventDefault();                      /* מפעיל את אותו מסלול בסל */
+      var real=document.querySelector('#cartDrawer .gcopt[data-pid="'+ga.getAttribute('data-pid')+
+        '"][data-gc="'+ga.getAttribute('data-plan')+'"]');
+      if(real) real.click();
+      giClose(); return; }
+    var gm=t.closest('#cartDrawer .gcmore');
+    if(gm){ e.preventDefault(); e.stopPropagation();  /* ⛔ בלי ניווט מהסל */
+      var blk=gm.previousElementSibling, btn=blk&&blk.querySelector('.gcopt');
+      if(btn) giOpen(btn.getAttribute('data-pid'));
+      return; }
     if(t.closest('#cartClear')){ e.preventDefault(); e.stopPropagation(); clearCart(); return; }
     if(t.closest('#gmSideCta')){ e.preventDefault(); sideOpen(true); return; }
     if(t.closest('#cartSideBack')){ e.preventDefault(); sideOpen(false); return; }
@@ -791,6 +882,7 @@ if (!window.toggleNav) { window.toggleNav = function () {
         .catch(function(){ gcPaint(gc,false); bumpSub(-pr); gcWant(gc.getAttribute('data-pid'),false); });
       return; }
   }, true);
+  document.addEventListener('keydown', function(e){ if(e.key==='Escape') giClose(); });
   function watch(){
     var dr=document.getElementById('cartDrawer');
     if(dr && !dr.__gmw2){ dr.__gmw2=1;
