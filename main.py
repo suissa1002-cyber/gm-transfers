@@ -2571,9 +2571,34 @@ def pos_agent_config_set(body: PosAgentCfgIn, x_admin_key: Optional[str] = Heade
 @app.post("/api/admin/pos/removal/{rid}/claim")
 def pos_removal_claim(rid: int, x_admin_key: Optional[str] = Header(None),
                       x_device_token: Optional[str] = Header(None)):
-    """הסוכן תופס פעולה (pending→applying) לפני שהוא מזין אותה לקופה. אטומי —
-    מונע הרצה כפולה. מחזיר את הפעולה המלאה, או 409 אם כבר לא pending."""
+    """הסוכן תופס פעולה. 409 = כבר נתפס/בוטל/כבר ירד בקופה.
+
+    🛡️ בניסיון חוזר בודקים **מול הקופה** אם הפעולה כבר נרשמה שם, ורק אז מוסרים
+    אותה להזנה. ההגנה יושבת כאן ולא רק בסוכן, כי הסוכן שעל מכונת הקופה מתעדכן
+    בהפעלה בלבד — ואסור שגרסה ישנה שלו תוכל להוריד מלאי פעמיים
+    (#42, 09/08/2026: יחידה אחת ירדה ב-4 תעודות)."""
     _require_admin_or_device(x_admin_key, x_device_token)
+    pre = db.pos_removal_get(rid)
+    if pre and int(pre.get("attempts") or 1) > 1:
+        try:
+            chk = pos_removal_pos_applied(rid, x_admin_key, x_device_token)
+        except Exception as e:  # noqa: BLE001
+            chk = None
+            logger.warning("claim %s: pos-applied failed: %s", rid, e)
+        if chk and chk.get("applied"):
+            docs = ",".join([d for d in (chk.get("docs") or []) if d])
+            db.pos_removal_set_status(rid, "done", pos_doc_no=docs,
+                                      error="נמצא בקופה — לא הוזן שוב")
+            over = chk.get("over_removed") or {}
+            if over:
+                try:
+                    _tg_admin("⚠️ הורדה #%s ירדה בקופה יותר מפעם אחת: %s\n"
+                              "תעודות: %s\nיש להחזיר את העודף למלאי ידנית." %
+                              (rid, ", ".join("%s ×%g" % (k, v) for k, v in over.items()),
+                               docs or "?"))
+                except Exception:  # noqa: BLE001
+                    pass
+            raise HTTPException(409, "כבר ירד בקופה (תעודות %s)" % (docs or "?"))
     if not db.pos_removal_claim(rid):
         raise HTTPException(409, "כבר לא ממתין (נתפס/בוטל)")
     r = db.pos_removal_get(rid)

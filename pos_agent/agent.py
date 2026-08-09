@@ -69,6 +69,46 @@ def _ver_of(text):
     return m.group(1) if m else "?"
 
 
+def _self_update_agent():
+    """מעדכן את **הקובץ הזה** מ-GitHub ומפעיל את עצמו מחדש אם השתנה.
+
+    ⚠️ עד 09/08/2026 העדכון העצמי כיסה רק את pos_driver.py, ולכן תיקון באגים
+    בסוכן עצמו (כמו ההגנה מפני הזנה כפולה) לא הגיע למכונה עד הפעלה ידנית."""
+    if os.environ.get("POS_AGENT_AUTOUPDATE", "1") == "0":
+        return
+    me = os.path.abspath(__file__)
+    api = "https://api.github.com/repos/%s/contents/pos_agent/agent.py?ref=main" % _REPO
+    try:
+        r = requests.get(api, timeout=25, headers={
+            "Accept": "application/vnd.github.raw",
+            "Cache-Control": "no-cache", "Pragma": "no-cache"})
+        if not (r.ok and r.text):
+            return
+        r.encoding = "utf-8"
+        new_src = r.text
+    except Exception as e:                # noqa: BLE001
+        print("עדכון סוכן: נכשל (%s) — ממשיכים עם הקובץ המקומי" % e)
+        return
+    try:
+        with open(me, encoding="utf-8") as f:
+            if f.read() == new_src:
+                return
+        compile(new_src, me, "exec")      # ⛔ לא כותבים קוד שבור על עצמנו
+    except Exception as e:                # noqa: BLE001
+        print("עדכון סוכן: הגרסה שהורדה אינה תקינה (%s) — נשארים על המקומית" % e)
+        return
+    try:
+        import shutil
+        shutil.copyfile(me, me + ".bak")
+        with open(me, "w", encoding="utf-8") as f:
+            f.write(new_src)
+    except Exception as e:                # noqa: BLE001
+        print("עדכון סוכן: כתיבה נכשלה (%s)" % e)
+        return
+    print("עדכון סוכן: גרסה חדשה נכתבה — מפעיל מחדש")
+    os.execv(sys.executable, [sys.executable] + sys.argv)
+
+
 def _self_update():
     if os.environ.get("POS_AGENT_AUTOUPDATE", "1") == "0":
         return
@@ -106,6 +146,7 @@ def _self_update():
 
 
 _self_update()
+_self_update_agent()
 
 try:
     import pos_driver
@@ -314,9 +355,14 @@ def main():
     ver = getattr(pos_driver, "DRIVER_VERSION", "?") if pos_driver else "no-driver"
     log("סוכן הורדה מהמלאי — GreenOS=%s | גרסת דרייבר: %s" % (GREENOS_URL, ver))
     log("ממתין לפעולות. (enabled/dry_run נשלטים מ-GreenOS; ברירת מחדל: מושבת+dry)")
+    _last_upd = time.time()
     while True:
         nap = 5
         try:
+            # בדיקת עדכון לעצמו כשאין פעולה בעבודה — חצי שעה מספיקה
+            if time.time() - _last_upd > 1800:
+                _last_upd = time.time()
+                _self_update_agent()
             cfg = get_config()
             # ⏱️ poll_sec נמוך = הפעולה נתפסת כמעט מיד אחרי השמירה במסך. זו קריאה
             # אחת קלה לשרת שלנו (לא ל-NewOrder), ולכן אין לה מחיר במכסה.
