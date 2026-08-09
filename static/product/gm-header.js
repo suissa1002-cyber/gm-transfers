@@ -427,6 +427,9 @@ if (!window.toggleNav) { window.toggleNav = function () {
    /* בתוך מסך התוספות אין טעם בפס שמוביל אליו (אסי, 09/08) */
    '.cart-drawer.gmv2.side-open .gm-side-cta{display:none!important;}',
    '.side-back{direction:rtl;justify-content:flex-start;}',
+   /* ⛔ ווידג'ט ה-WhatsApp הצף יושב מעל "מעבר לתשלום" — לחיצה ליד הכפתור
+      פותחת WhatsApp במקום לצ'קאאוט. מוסתר כל עוד הסל פתוח (אסי, 09/08). */
+   'html.gm-cart-open .chaty-widget,html.gm-cart-open #chaty-widget-0{opacity:0!important;pointer-events:none!important;transition:opacity .15s;}',
    '.cart-drawer.gmv2.no-rail .cart-side{display:flex;}',
    '.side-back{display:flex!important;align-items:center;gap:8px;background:none;border:none;font:inherit;font-weight:900;font-size:1rem;color:var(--ink,#111417);padding:16px 18px 10px;cursor:pointer;width:100%;}',
    '.side-back svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;}',
@@ -886,12 +889,17 @@ if (!window.toggleNav) { window.toggleNav = function () {
       return; }
   }, true);
   document.addEventListener('keydown', function(e){ if(e.key==='Escape') giClose(); });
+  function flagOpen(){
+    var dr=document.getElementById('cartDrawer');
+    document.documentElement.classList.toggle('gm-cart-open', !!dr && dr.classList.contains('open'));
+  }
   function watch(){
     var dr=document.getElementById('cartDrawer');
-    if(dr && !dr.__gmw2){ dr.__gmw2=1;
+    if(dr && !dr.__gmw2){ dr.__gmw2=1; flagOpen();
       /* fallback: אם סקריפט העמוד מחליף את .cart-items כולו, המשקיף הפנימי
          מתנתק — לכן משקיפים גם על המגירה עצמה (אסי, 09/08). */
-      new MutationObserver(function(){ hideGcDom(); dropGhosts(); gcRepaint(); later(300); }).observe(dr,{childList:true,subtree:true});
+      new MutationObserver(function(){ flagOpen(); hideGcDom(); dropGhosts(); gcRepaint(); later(300); })
+        .observe(dr,{childList:true,subtree:true,attributes:true,attributeFilter:['class']});
     }
     var it=document.getElementById('cartItems'); if(!it||it.__gmw) return; it.__gmw=1;
     /* כל שינוי ברשימת הפריטים (הוספה/הסרה/ריקון) מפעיל סנכרון — כך שהפס
