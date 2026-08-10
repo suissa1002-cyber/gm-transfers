@@ -2035,6 +2035,24 @@ def pos_serial_probe(serial: str,
         out["products_serials_route"] = r if not isinstance(r, list) else r[:3]
     except Exception as e:  # noqa: BLE001
         out["products_serials_route"] = "ERR " + str(e)[:120]
+    # האם רשימת המוצרים הסידוריים מחזירה את הסריאלים בתוכה? (מסלול אינדוקס מלא)
+    try:
+        lst = no.get_products(serials_only=True, page_size=5) or []
+        out["serial_products_sample"] = [
+            {"id": p.get("id"), "name": (p.get("name") or "")[:30],
+             "keys": sorted([k for k in p.keys() if "serial" in k.lower()])}
+            for p in lst[:3]
+        ]
+        if lst:
+            pid = lst[0].get("id")
+            try:
+                srs = no.get_product_serials(pid) or []
+                out["per_product_serials"] = {"pid": pid, "count": len(srs),
+                                              "sample": srs[:2]}
+            except Exception as e2:  # noqa: BLE001
+                out["per_product_serials"] = "ERR " + str(e2)[:120]
+    except Exception as e:  # noqa: BLE001
+        out["serial_products_sample"] = "ERR " + str(e)[:120]
     return out
 
 
