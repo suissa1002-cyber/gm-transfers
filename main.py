@@ -796,6 +796,12 @@ def register_recurring_jobs():
     scheduler.add_job(_cargo_shipping_advance_job, "interval", minutes=3,
                       id="cargo_shipping_advance", max_instances=1, coalesce=True)
     # מסירת Cargo (נמסר) → 'נמסרה' (+חוו"ד) → +24ש 'הושלם'; ישנות → ישר 'הושלם'
+    # ⚠️ חימום מסך ההזמנות: וורדפרס עונה ב-3-6 שניות, ולכן המסך מוגש ממטמון
+    # שמשרה זו מרעננת. בלי החימום הלחיצה הראשונה אחרי שקט הייתה משלמת את
+    # מלוא ההמתנה (אסי, 10/08/2026).
+    scheduler.add_job(_orders_prefetch_job, "interval", seconds=20,
+                      id="orders_prefetch", max_instances=1, coalesce=True,
+                      misfire_grace_time=30)
     scheduler.add_job(_cargo_delivery_sync_job, "interval", minutes=30,
                       id="cargo_delivery", max_instances=1, coalesce=True)
     # עדכוני סטטוס אוטומטיים ללקוח (בהפצה/מוכן לאיסוף/נק' מסירה) — מחליף קונקטופ
@@ -10225,11 +10231,77 @@ def admin_orders_latest(x_admin_key: Optional[str] = Header(None)):
     return JSONResponse({"orders": out}, headers={"Cache-Control": "no-store, max-age=0"})
 
 
+
+# ══ מטמון מסך ההזמנות ═════════════════════════════════════════════
+# ⚠️ למה: כל בקשת REST לוורדפרס עולה 3-6 שניות (נמדד מתוך השרת; ה-DB שלנו
+# 3ms). הלקוחות באתר לא מושפעים — Cloudflare מגיש להם עמודים ממטמון — אבל
+# GreenOS הוא היחיד שמשתמש ב-REST, ולכן כל לחיצה על מסך ההזמנות המתינה
+# 6 שניות (אסי, 10/08/2026).
+#
+# הפתרון נמצא **כולו בצד שלנו**: משרה ברקע מרעננת, והמסך מוגש מהמטמון.
+# ⛔ אין שינוי כלשהו באתר, בתוסף או בהגדרה — ולכן אין דרך שזה יפגע בו.
+# כשל ברענון → ממשיכים להגיש את הנתון האחרון הטוב במקום להיכשל.
+_ORD_CACHE: dict = {}
+_ORD_TTL = 20          # שניות. תואם לקצב הרענון של המסך (15ש) — אין אובדן טריות בפועל
+_ORD_MAX = 24          # תקרת מפתחות, שלא ינפח זיכרון על חיפושים חד-פעמיים
+
+
+def _ord_key(page, status, search, after, before, express):
+    return "|".join(str(x) for x in (page, status, search, after, before, express))
+
+
+def _ord_cache_get(key):
+    import time as _t
+    e = _ORD_CACHE.get(key)
+    if not e:
+        return None, None
+    return e["data"], round(_t.time() - e["at"])
+
+
+def _ord_cache_put(key, data):
+    import time as _t
+    if len(_ORD_CACHE) >= _ORD_MAX:      # מפנים את הישן ביותר
+        old = min(_ORD_CACHE, key=lambda k: _ORD_CACHE[k]["at"])
+        _ORD_CACHE.pop(old, None)
+    _ORD_CACHE[key] = {"at": _t.time(), "data": data}
+
+
+def _orders_prefetch_job():
+    """מחמם מראש את התצוגה הראשית, כדי שהלחיצה של אסי תמצא מטמון חם."""
+    try:
+        _orders_payload(1, "", "", "", "", 0)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("orders prefetch failed: %s", e)
+
+
 @app.get("/api/admin/orders")
 def admin_orders_list(page: int = 1, status: str = "", search: str = "",
                       after: str = "", before: str = "", express: int = 0,
-                      x_admin_key: Optional[str] = Header(None)):
+                      fresh: int = 0, x_admin_key: Optional[str] = Header(None)):
+    """מסך ההזמנות. מוגש ממטמון-צד-שרת (ראה _ORD_CACHE); fresh=1 עוקף אותו
+    ומושך נתון טרי — הכפתור "רענן" במסך."""
     _require_admin(x_admin_key)
+    key = _ord_key(page, status, search, after, before, express)
+    if not fresh:
+        data, age = _ord_cache_get(key)
+        if data is not None and age is not None and age <= _ORD_TTL:
+            return JSONResponse({**data, "cached_age_sec": age},
+                                headers={"Cache-Control": "no-store, max-age=0"})
+    try:
+        data = _orders_payload(page, status, search, after, before, express)
+    except Exception:
+        # ⚠️ וורדפרס נפל/איטי — עדיף נתון אחרון טוב מאשר מסך שגיאה
+        data, age = _ord_cache_get(key)
+        if data is None:
+            raise
+        return JSONResponse({**data, "cached_age_sec": age, "stale": True},
+                            headers={"Cache-Control": "no-store, max-age=0"})
+    return JSONResponse({**data, "cached_age_sec": 0},
+                        headers={"Cache-Control": "no-store, max-age=0"})
+
+
+def _orders_payload(page, status, search, after, before, express):
+    """השליפה עצמה מוורדפרס + ההעשרה. תוצאתה נשמרת במטמון."""
     import requests as _rq
     creds = _wc_creds()
     if not creds:
@@ -10329,11 +10401,12 @@ def admin_orders_list(page: int = 1, status: str = "", search: str = "",
         out = [o for o in out if (o.get("ship_tag") or "").startswith("express")]
     # no-store — אסור לקאש ב-edge: אחרת סימוני שודר/חסר/חלקי מתעדכנים באיחור
     # (אותו לקח כמו /orders/latest — שורת שידור חדשה לא נראתה אחרי רענונים)
-    return JSONResponse({"orders": out, "page": page,
-                         "pages": 1 if express else int(r.headers.get("X-WP-TotalPages") or 1),
-                         "total": len(out) if express else int(r.headers.get("X-WP-Total") or len(out)),
-                         "statuses": _wc_statuses(base, k, s)},
-                        headers={"Cache-Control": "no-store, max-age=0"})
+    payload = {"orders": out, "page": page,
+               "pages": 1 if express else int(r.headers.get("X-WP-TotalPages") or 1),
+               "total": len(out) if express else int(r.headers.get("X-WP-Total") or len(out)),
+               "statuses": _wc_statuses(base, k, s)}
+    _ord_cache_put(_ord_key(page, status, search, after, before, express), payload)
+    return payload
 
 
 _wc_statuses_cache = {"at": 0.0, "map": {}}
@@ -11294,6 +11367,28 @@ def zap_selftest(x_admin_key: Optional[str] = Header(None)):
     if not _ok_n1:
         bad += 1
     out.append({"query": "מסך ההזמנות בלי N+1", "want": True, "got": _ok_n1, "ok": _ok_n1})
+    # ⚠️ מטמון מסך ההזמנות — כל השינוי בצד שלנו, בלי לגעת באתר. הבדיקה על
+    # **הפלט**: מפתח זהה מחזיר את אותו אובייקט, ו-TTL תואם לקצב המסך.
+    _ok_k = (_ord_key(1, "", "", "", "", 0) == _ord_key(1, "", "", "", "", 0)
+             and _ord_key(1, "a", "", "", "", 0) != _ord_key(1, "b", "", "", "", 0))
+    if not _ok_k:
+        bad += 1
+    out.append({"query": "מפתח מטמון ההזמנות יציב וייחודי", "want": True,
+                "got": _ok_k, "ok": _ok_k})
+    _probe = {"orders": [{"number": "X"}], "page": 1}
+    _ord_cache_put("selftest", _probe)
+    _got, _age = _ord_cache_get("selftest")
+    _ok_c = (_got == _probe and isinstance(_age, int) and _age <= 2)
+    if not _ok_c:
+        bad += 1
+    out.append({"query": "מטמון מחזיר את אותו נתון + גיל", "want": True,
+                "got": _ok_c, "ok": _ok_c})
+    _ORD_CACHE.pop("selftest", None)
+    # ⛔ תקרת מפתחות — שלא ינפח זיכרון על חיפושים חד-פעמיים
+    _ok_cap = _ORD_MAX <= 50 and _ORD_TTL <= 60
+    if not _ok_cap:
+        bad += 1
+    out.append({"query": "גבולות המטמון שפויים", "want": True, "got": _ok_cap, "ok": _ok_cap})
     # ⚠️ הגרסה שרצה בשרת בפועל. בלי זה ניחשתי ארבע פעמים כמה זמן לוקח deploy
     # ל-Render, הרצתי סריקות ואימותים על קוד ישן, והסקתי מסקנות שגויות.
     sha = (os.getenv("RENDER_GIT_COMMIT") or "")[:7]

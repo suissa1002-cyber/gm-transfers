@@ -8462,7 +8462,8 @@ function renderWcOrders(){
       <button class="btn-ghost wa-ico" onclick="wcoCalToggle()" title="סינון לפי טווח תאריכים" style="position:relative${(W.after||W.before)?';border-color:#16a34a;color:#16a34a':''}">${ico('calendar',15)}</button>
       <button class="btn-ghost wa-ico" onclick="payLinksOpen()" title="תשלומים מהירים — קישורים ידניים">${ico('zap',15)}</button>
       <button class="btn-ghost wa-ico" onclick="wcoSelMode()" title="בחירה מרובה — שינוי סטטוס לכמה הזמנות יחד"${W.selMode?' style="border-color:#16a34a;color:#16a34a"':''}>${ico('checkSquare',15)}</button>
-      <button class="btn-ghost wa-ico" id="wcoRefreshBtn" onclick="loadWcOrders()" title="רענן">${ico('refresh',15)}</button>
+      <button class="btn-ghost wa-ico" id="wcoRefreshBtn" onclick="loadWcOrders(1)" title="רענן — מושך נתונים טריים">${ico('refresh',15)}</button>
+      <span id="wcoAge" class="muted" style="font-size:11.5px;align-self:center"></span>
     </div>
     ${(W.after||W.before)?`<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:13px">
       <span class="ord-st" style="color:#16a34a;border-color:#16a34a55;background:#16a34a14;display:inline-flex;align-items:center;gap:5px">${ico('calendar',12)} ${escW(wcoFmtD(W.after))} — ${escW(wcoFmtD(W.before||W.after))}</span>
@@ -8528,7 +8529,7 @@ function wcoCalPick(ds){
   W.after=a; W.before=b; W.calPick=null; W.page=1;
   loadWcOrders(); renderWcOrders();
 }
-async function loadWcOrders(){
+async function loadWcOrders(fresh){
   const W=S.wco; W.loading=true;
   W.sel={}; W.selLast=null;   // רשימה חדשה (עמוד/סינון/רענון) = בחירה מתאפסת, לא נגררת
   const box=document.getElementById('wcoList');
@@ -8538,13 +8539,26 @@ async function loadWcOrders(){
   try{
     const ex=W.status==='express'?1:0;   // אקספרס = סינון משלוח (לא סטטוס WC) → פרמטר נפרד
     const r=await api('/api/admin/orders?page='+W.page+'&status='+encodeURIComponent(ex?'':W.status)+'&express='+ex+'&search='+encodeURIComponent(W.q)
-      +'&after='+encodeURIComponent(W.after||'')+'&before='+encodeURIComponent(W.before||'')+'&_t='+Date.now(),null,60000);
+      +'&after='+encodeURIComponent(W.after||'')+'&before='+encodeURIComponent(W.before||'')
+      +(fresh?'&fresh=1':'')+'&_t='+Date.now(),null,60000);
     W.rows=r.orders; W.pages=r.pages; W.total=r.total;
+    /* ⚠️ המסך מוגש ממטמון-צד-שרת (וורדפרס עונה ב-3-6 שניות). החיווי אומר
+       בדיוק מה רואים, כדי שלא תהיה אי-ודאות מול נתון שאינו רגעי. */
+    W.age=r.cached_age_sec; W.stale=!!r.stale;
     if(r.statuses) S.wcoStatuses=r.statuses;
   }catch(e){ W.rows=[]; toast('טעינת הזמנות נכשלה',false); }
   W.loading=false;
   if(rb){ rb.style.animation=''; rb.style.pointerEvents=''; }
   const b2=document.getElementById('wcoList'); if(b2) b2.innerHTML=wcoListHTML();
+  wcoAgePaint();
+}
+function wcoAgePaint(){
+  const el=document.getElementById('wcoAge'); if(!el) return;
+  const W=S.wco, a=W.age;
+  if(a===undefined||a===null){ el.textContent=''; return; }
+  el.textContent = W.stale ? '⚠️ נתון אחרון — האתר לא מגיב'
+                 : (a<5 ? 'עודכן עכשיו' : 'עודכן לפני '+a+' שנ׳');
+  el.style.color = W.stale ? 'var(--red,#dc2626)' : 'var(--txt-3)';
 }
 // תמונת/תמונות פריטי ההזמנה: בודד = תמונה אחת; רב-מוצרי = סטאק חופף (עד 3 + "+N")
 function orderThumbs(o){
