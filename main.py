@@ -9498,6 +9498,34 @@ def admin_stellr_catalog(fresh: int = 0, x_admin_key: Optional[str] = Header(Non
             "products": products}
 
 
+
+@app.get("/api/admin/stellr/tx-by-ref")
+def admin_stellr_tx_by_ref(ref: str, x_admin_key: Optional[str] = Header(None)):
+    """שליפת עסקה אצל סטלר לפי ה-ref שלנו — חילוץ קוד שהונפק אצלם אך לא
+    נשמר אצלנו.
+
+    ⚠️ למה זה קיים (10/08/2026): הנפקה בסניף סטאר הצליחה אצל סטלר אך נכשלה
+    אצלנו אחריה, ולכן ניסיון חוזר קיבל 403 "A transaction with the supplied
+    ref already exists" — הלקוחה בחנות, הקוד קיים, ואין לנו דרך להגיע אליו.
+    ⛔ קריאה בלבד: לא מנפיק ולא מחייב. מנסה כמה צורות שאילתה כי הצורה
+    הנתמכת אינה מתועדת אצלנו."""
+    _require_admin(x_admin_key)
+    ref = (ref or "").strip()
+    if not ref:
+        raise HTTPException(400, "חסר ref")
+    out = []
+    for path in (f"/transaction/{ref}", f"/transaction?ref={ref}",
+                 f"/transactions?ref={ref}", f"/transaction/ref/{ref}"):
+        try:
+            r = stellr._request("GET", path, timeout=25)
+            body = r.text[:1500]
+            out.append({"path": path, "http": r.status_code, "body": body})
+            if r.status_code in (200, 201):
+                break
+        except Exception as e:  # noqa: BLE001
+            out.append({"path": path, "error": str(e)[:200]})
+    return {"ref": ref, "attempts": out}
+
 @app.post("/api/admin/stellr/map")
 def admin_stellr_map_set(payload: dict, x_admin_key: Optional[str] = Header(None)):
     """מיפוי מוצר WC → Stellr. body: {wc_key, wc_name, product_ref, value, active}
