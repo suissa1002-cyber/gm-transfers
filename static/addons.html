@@ -53,7 +53,7 @@
   .item{display:flex;gap:10px;align-items:center;background:var(--bg);border:1px solid var(--line);
     border-radius:13px;padding:9px}
   .item img{width:46px;height:46px;object-fit:contain;border-radius:8px;background:#fff;flex:0 0 auto}
-  .item .n{font-size:.85rem;font-weight:700;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;
+  .item .n{font-size:.85rem;font-weight:700;line-height:1.3;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;
     -webkit-box-orient:vertical;overflow:hidden}
   .item .p{font-size:.9rem;font-weight:800;color:var(--ink2)}
   .msg{padding:11px 14px;border-radius:11px;font-weight:700;font-size:.92rem;margin-top:12px}
@@ -117,6 +117,17 @@
   .prev .now{color:var(--accent);font-size:1.15rem}
   .prev .sv{background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent);
     border-radius:99px;padding:2px 9px;font-size:.78rem}
+  /* פעולות בשורת התוספת — אייקונים ולא טקסט: שני כפתורי טקסט מחצו את
+     עמודת השם והשמות נחתכו ל"חביל ח..." (אסי, 10/08). */
+  .iacts{display:flex;gap:6px;flex:0 0 auto}
+  .iact{width:32px;height:32px;min-width:32px;padding:0;border-radius:50%;cursor:pointer;
+    background:var(--bg);border:1.5px solid var(--line);color:var(--ink2);
+    display:flex;align-items:center;justify-content:center}
+  .iact svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;
+    stroke-linecap:round;stroke-linejoin:round}
+  .iact:hover{border-color:var(--accent);color:var(--accent)}
+  .iact.warn-b:hover{border-color:var(--danger);color:var(--danger)}
+  .iact:disabled{opacity:.45;cursor:default}
   .kind{display:inline-block;background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent);
     border-radius:99px;padding:1px 8px;font-size:.7rem;font-weight:800;margin-inline-start:6px}
 </style>
@@ -305,6 +316,11 @@ const H = () => ({ 'Content-Type': 'application/json', 'X-Admin-Key': KEY() });
 const $ = id => document.getElementById(id);
 
 let CHIPS = {}, CATS = [], CHIP_ROWS = [];
+/* אייקונים מהסט שלנו — SVG stroke, לא אימוג׳י */
+const IC_EDIT = '<svg viewBox="0 0 24 24"><path d="M4 20h4.5L19 9.5a2.1 2.1 0 0 0-3-3L5.5 17z"/><path d="M14.5 5.5l3 3"/></svg>';
+const IC_TRASH = '<svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M9.5 7V5.2A1.2 1.2 0 0 1 10.7 4h2.6a1.2 1.2 0 0 1 1.2 1.2V7"/><path d="M6.5 7l.9 12.1A1.5 1.5 0 0 0 8.9 20.5h6.2a1.5 1.5 0 0 0 1.5-1.4L17.5 7"/><path d="M10.5 11v6M13.5 11v6"/></svg>';
+/* הסרה שאינה מחיקה — קישור מנותק, כדי שלא ייראה כמו מחיקת מוצר */
+const IC_UNLINK = '<svg viewBox="0 0 24 24"><path d="M9.5 14.5l5-5"/><path d="M13 6.5l1.6-1.6a3.6 3.6 0 0 1 5.1 5.1L18 11.6"/><path d="M11 17.5l-1.6 1.6a3.6 3.6 0 0 1-5.1-5.1L6 12.4"/><path d="M4 4l16 16"/></svg>';
 let state = { id: 0, chips: [], img_b64: '', image_id: 0, targets: [], tcats: [] };
 /* v0.6.0 — מקור הפריט: own = נוצר כאן · cat = הפניה למוצר קיים בקטלוג.
    ref = המוצר שנבחר · refs = הוריאציות שסומנו · vm = each|pick (אסי, 09/08) */
@@ -766,11 +782,15 @@ async function load() {
             a.kind === 'catalog' && a.deal_type && a.deal_type !== 'off' ? ' · הנחת חבילה' : ''}${
             a.sku ? ' · מק״ט ' + a.sku : ''} · ${(a.chips || []).map(c => CHIPS[c] || c).join(' · ')} ${where}</div>
         </div>
-        <button class="btn btn-ghost btn-sm" data-edit='${JSON.stringify(a).replace(/'/g, "&#39;")}'>עריכה</button>
-        <button class="btn btn-ghost btn-sm bdel" data-del="${a.id}" data-kind="${a.kind || 'own'}"
-          data-nm="${(a.name || '').replace(/"/g, '&quot;')}"
-          title="${a.kind === 'catalog' ? 'הסרת הכרטיסיה — המוצר נשאר בקטלוג' : 'מחיקת התוספת'}">${
-          a.kind === 'catalog' ? 'הסרה' : 'מחיקה'}</button>
+        <div class="iacts">
+          <button class="iact" title="עריכה" aria-label="עריכה"
+            data-edit='${JSON.stringify(a).replace(/'/g, "&#39;")}'>${IC_EDIT}</button>
+          <button class="iact bdel${a.kind === 'catalog' ? '' : ' warn-b'}" data-del="${a.id}"
+            data-kind="${a.kind || 'own'}" data-nm="${(a.name || '').replace(/"/g, '&quot;')}"
+            title="${a.kind === 'catalog' ? 'הסרת הכרטיסיה — המוצר נשאר בקטלוג' : 'מחיקת התוספת'}"
+            aria-label="${a.kind === 'catalog' ? 'הסרת הכרטיסיה' : 'מחיקה'}">${
+            a.kind === 'catalog' ? IC_UNLINK : IC_TRASH}</button>
+        </div>
       </div>`;
     }).join('') || '<div class="hint">אין תוצאות.</div>';
   } catch (e) { say(e.message, 'err'); }
