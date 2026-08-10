@@ -110,6 +110,28 @@ def get_transaction(tx_id: str) -> dict:
     return r.json()
 
 
+def recover(ref: str) -> dict:
+    """שליפת עסקה לפי המזהה שלנו — לחילוץ קוד שהונפק ולא נשמר אצלנו.
+
+    ⚠️ קריאה בלבד. לעולם לא מנפיקה. ההבחנה החשובה:
+      404 = העסקה אינה קיימת → בטוח להנפיק מחדש.
+      503 "Content Partner unavailable" = קיימת ולא נפתרה → ⛔ לא להנפיק מחדש.
+    """
+    try:
+        r = _request("GET", f"/transaction/{ref}", timeout=25)
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "http": 0, "exists": None, "error": f"network: {e}"}
+    if r.status_code in (200, 201):
+        j = r.json() or {}
+        return {"ok": True, "http": r.status_code, "exists": True,
+                "tx_id": str(j.get("id") or ""), "pan": str(j.get("pan") or ""),
+                "pin": str(j.get("pin") or ""), "status": str(j.get("status") or "")}
+    body = (r.text or "")[:300]
+    # 404 = אין עסקה. כל שאר השגיאות = קיימת או לא ידוע — לא מסיקים "אין".
+    return {"ok": False, "http": r.status_code,
+            "exists": False if r.status_code == 404 else None, "error": body}
+
+
 def activate(product_ref: str, value: float, ref: str, currency: str = "") -> dict:
     """הפעלת קוד (transaction). ref ייחודי לכל שורה = אידמפוטנטיות בצד שלנו.
     מחזיר dict בלי לזרוק — הקורא מחליט מה לעשות עם שגיאות (504/507 וכו')."""
@@ -118,8 +140,17 @@ def activate(product_ref: str, value: float, ref: str, currency: str = "") -> di
     try:
         r = _request("POST", "/transaction", payload=payload, timeout=40)
     except Exception as e:  # noqa: BLE001
+        # ⚠️ ניתוק/פסק-זמן אינו "לא הונפק" — ייתכן שסטלר קיבלה וענתה לאוויר.
+        # שולפים לפי המזהה שלנו לפני שמדווחים כישלון (10/08/2026, קבלה 20057462).
         logger.warning("stellr activate %s: network error %s", ref, e)
-        return {"ok": False, "http": 0, "error": f"network: {e}"}
+        rec = recover(ref)
+        if rec.get("ok") and rec.get("pan"):
+            logger.info("stellr activate %s: recovered after network error", ref)
+            return {"ok": True, "http": 200, "recovered": True,
+                    "tx_id": rec.get("tx_id", ""), "pan": rec.get("pan", ""),
+                    "pin": rec.get("pin", ""), "status": rec.get("status", "")}
+        return {"ok": False, "http": 0, "error": f"network: {e}",
+                "orphan": rec.get("exists") is not False}
     if r.status_code in (200, 201):
         j = r.json()
         # בכוונה בלי PAN/PIN בלוג
@@ -129,6 +160,15 @@ def activate(product_ref: str, value: float, ref: str, currency: str = "") -> di
                 "status": str(j.get("status") or "")}
     err = (r.text or "")[:300]
     logger.warning("stellr activate %s: HTTP %s %s", ref, r.status_code, err)
+    # 403 "ref already exists" = שליחה קודמת הגיעה. הקוד אולי קיים — לחלץ, לא להנפיק שוב.
+    if r.status_code == 403 and "already exists" in err.lower():
+        rec = recover(ref)
+        if rec.get("ok") and rec.get("pan"):
+            logger.info("stellr activate %s: recovered from duplicate-ref", ref)
+            return {"ok": True, "http": 200, "recovered": True,
+                    "tx_id": rec.get("tx_id", ""), "pan": rec.get("pan", ""),
+                    "pin": rec.get("pin", ""), "status": rec.get("status", "")}
+        return {"ok": False, "http": r.status_code, "error": err, "orphan": True}
     return {"ok": False, "http": r.status_code, "error": err}
 
 

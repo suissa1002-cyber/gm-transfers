@@ -677,6 +677,8 @@ def register_recurring_jobs():
     scheduler.add_job(_stellr_auto_job, "interval", minutes=5, id="stellr_auto", max_instances=1)
     # 🎫 Watcher ל-allowlist של Stellr (GET בלבד): מתריע ברגע שהקטלוג חי / מזכיר נדנוד
     scheduler.add_job(_stellr_watch_job, "interval", minutes=20, id="stellr_watch", max_instances=1)
+    # 🎫 חילוץ הנפקות שנתקעו אצל הספק (GET בלבד — לעולם לא מנפיק)
+    scheduler.add_job(_stellr_orphan_job, "interval", minutes=10, id="stellr_orphan", max_instances=1)
     # ⏰ מענים מתוזמנים של אלה — שליחה כשמגיע הזמן
     scheduler.add_job(_scheduled_sends_job, "interval", minutes=1, id="scheduled_sends", max_instances=1)
     # 🛟 רשת-ביטחון: שיחה שנתקעה על 'בודקת עבורך' (אלה לא ענתה) → מענה ביניים + נציג + התראה
@@ -9271,21 +9273,25 @@ def _stellr_issue_order(num: str, dry: bool, actor: str, force: bool = False) ->
                                p["value"], stellr.CURRENCY, "dry", "dry")
             issued.append({**p, "dry": True})
             continue
+        mode_v = "auto" if actor == "auto" else "manual"
+        # תפיסה לפני הפנייה לספק — ריצה מקבילה/לחיצה שנייה תיעצר כאן ולא תנפיק שוב.
+        cid = db.stellr_code_reserve(num, p["line_ref"], p["wc_name"], p["product_ref"],
+                                     p["value"], stellr.CURRENCY, mode_v,
+                                     branch="אתר", actor=actor)
+        if cid is None:
+            skipped += 1
+            continue
         res = stellr.activate(p["product_ref"], p["value"], p["line_ref"])
         if res.get("ok"):
-            cid = db.stellr_code_add(num, p["line_ref"], p["wc_name"], p["product_ref"],
-                                     p["value"], stellr.CURRENCY,
-                                     "auto" if actor == "auto" else "manual", "issued",
-                                     tx_id=res.get("tx_id", ""), pan=res.get("pan", ""),
-                                     pin=res.get("pin", ""), branch="אתר", actor=actor)
+            db.stellr_code_update(cid, status="issued", tx_id=res.get("tx_id", ""),
+                                  pan=res.get("pan", ""), pin=res.get("pin", ""))
             issued.append({**p, "id": cid, "tx_id": res.get("tx_id")})
         else:
             # שגיאה (504/507/אחר) — עוצרים מיד, לא ממשיכים להנפיק
-            db.stellr_code_add(num, p["line_ref"], p["wc_name"], p["product_ref"],
-                               p["value"], stellr.CURRENCY,
-                               "auto" if actor == "auto" else "manual", "error",
-                               error=f"HTTP {res.get('http')}: {res.get('error')}")
-            errors.append(f"{p['wc_name']}: HTTP {res.get('http')}")
+            db.stellr_code_update(cid, status="error",
+                                  error=f"HTTP {res.get('http')}: {res.get('error')}")
+            errors.append(f"{p['wc_name']}: HTTP {res.get('http')}"
+                          + (" ⛔ תקועה אצל הספק — לא להנפיק שוב" if res.get("orphan") else ""))
             break
     # שליחה אוטומטית ללקוח מיד אחרי ההנפקה (אסי, 09/07): הודעה נקייה לכל קוד לטלפון
     # שבהזמנה (תבנית gm_code_delivery — עוברת גם מחוץ לחלון 24ש). כשל שליחה אינו מפיל
@@ -9470,6 +9476,49 @@ def _stellr_watch_job():
                       "הגיע הזמן למייל נדנוד — כדאי עם CC ל-Daniel ו-Willem.")
         except Exception:  # noqa: BLE001
             pass
+
+
+def _stellr_orphan_job():
+    """סוגר עסקאות שנתקעו: הנפקה שיצאה ולא חזרה, או 403 'המזהה כבר קיים'.
+
+    ⚠️ 10/08/2026, קבלה 20057462: הנפקת סוני ₪300 יצאה פעמיים, השנייה חטפה 403,
+    ולא נשאר קוד ולא דרך לדעת מה קרה לראשונה — בזמן שלקוחה עמדה בחנות. הספק
+    שולף לפי המזהה שלנו, אז אפשר לסגור את זה לבד במקום לנחש.
+
+    ⛔ קריאה בלבד. לעולם לא מנפיק. שורת pending היא נעילה מכוונת — עדיף סניף
+    חסום מאשר קוד כפול, ולכן משחררים אותה רק כשהספק אמר במפורש 404.
+    """
+    if not stellr.enabled() or stellr.is_uat():
+        return
+    import time as _t
+    now = int(_t.time())
+    for c in db.stellr_codes_list(60):
+        st = str(c.get("status") or "")
+        err = str(c.get("error") or "").lower()
+        stuck = st == "pending" or (st == "error" and "already exists" in err)
+        if not stuck or c.get("pan"):
+            continue
+        age = now - int(c.get("created_at") or now)
+        if age < 180 or age > 172800:        # לתת להנפקה תקינה לחזור; לוותר אחרי יומיים
+            continue
+        rec = stellr.recover(str(c.get("line_ref") or ""))
+        if rec.get("ok") and rec.get("pan"):
+            db.stellr_code_update(int(c["id"]), status="issued", tx_id=rec.get("tx_id", ""),
+                                  pan=rec.get("pan", ""), pin=rec.get("pin", ""), error="")
+            try:
+                _tg_admin(f"🎫✅ <b>קוד תקוע חולץ</b>\n{c.get('wc_name')} · "
+                          f"{c.get('order_number')}\nניתן לשלוח מעמוד הקודים.")
+            except Exception:  # noqa: BLE001
+                pass
+        elif rec.get("exists") is False and st == "pending":
+            # 404 מפורש = לא נוצרה עסקה, אין קוד ואין חיוב. מוחקים כדי לשחרר את
+            # ה-UNIQUE — עדכון סטטוס לבדו לא היה משחרר, והקבלה הייתה נשארת חסומה.
+            db.stellr_code_delete(int(c["id"]))
+            try:
+                _tg_admin(f"🎫🔓 <b>הנפקה תקועה שוחררה</b>\n{c.get('wc_name')} · "
+                          f"{c.get('order_number')}\nהספק אישר שלא נוצרה עסקה — ניתן להנפיק מחדש.")
+            except Exception:  # noqa: BLE001
+                pass
 
 
 @app.get("/api/admin/stellr/status")
@@ -9734,24 +9783,29 @@ def board_stellr_issue(payload: dict, x_admin_key: Optional[str] = Header(None),
         if db.stellr_pos_count_today(branch) + len(plan) > cap:
             raise HTTPException(429, "הסניף הגיע לתקרת ההנפקות היומית — פנה לאסי")
         for p in plan:
-            if db.stellr_code_exists(p["line_ref"]):
+            # תפיסה לפני הפנייה לספק — לחיצה שנייה בזמן ההמתנה תיעצר כאן ולא תנפיק שוב.
+            cid = db.stellr_code_reserve(okey, p["line_ref"], p["wc_name"], p["product_ref"],
+                                         p["value"], stellr.CURRENCY, "pos", branch=branch,
+                                         actor=str(doc.get("employee") or ""), phone=phone)
+            if cid is None:
                 continue
             res = stellr.activate(p["product_ref"], p["value"], p["line_ref"])
             if not res.get("ok"):
-                db.stellr_code_add(okey, p["line_ref"], p["wc_name"], p["product_ref"],
-                                   p["value"], stellr.CURRENCY, "pos", "error",
-                                   error=f"HTTP {res.get('http')}: {res.get('error')}")
+                db.stellr_code_update(cid, status="error",
+                                      error=f"HTTP {res.get('http')}: {res.get('error')}")
+                orphan = bool(res.get("orphan"))
                 try:
                     _tg_admin(f"🎫⚠️ <b>קופה — הנפקה נכשלה</b>\nסניף {cfg.branch_name(int(branch))} · "
-                              f"קבלה {bill}\nHTTP {res.get('http')}: {str(res.get('error'))[:120]}")
+                              f"קבלה {bill}\nHTTP {res.get('http')}: {str(res.get('error'))[:120]}"
+                              + ("\n⛔ העסקה קיימת אצל הספק ולא נפתרה — <b>לא להנפיק שוב</b>"
+                                 if orphan else ""))
                 except Exception:  # noqa: BLE001
                     pass
-                raise HTTPException(502, "ההנפקה נכשלה מול הספק — נסו שוב בעוד רגע או פנו לאסי")
-            db.stellr_code_add(okey, p["line_ref"], p["wc_name"], p["product_ref"],
-                               p["value"], stellr.CURRENCY, "pos", "issued",
-                               tx_id=res.get("tx_id", ""), pan=res.get("pan", ""),
-                               pin=res.get("pin", ""), branch=branch,
-                               actor=str(doc.get("employee") or ""), phone=phone)
+                raise HTTPException(502, "העסקה נתקעה אצל הספק — ⛔ לא להנפיק שוב מקבלה זו, פנו לאסי"
+                                    if orphan else
+                                    "ההנפקה נכשלה מול הספק — נסו שוב בעוד רגע או פנו לאסי")
+            db.stellr_code_update(cid, status="issued", tx_id=res.get("tx_id", ""),
+                                  pan=res.get("pan", ""), pin=res.get("pin", ""))
         existing = [c for c in db.stellr_codes_for_order(okey)
                     if c.get("status") in ("issued", "sent")]
     cust = doc.get("customer") or {}

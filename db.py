@@ -3307,6 +3307,24 @@ def stellr_code_add(order_number, line_ref, wc_name, product_ref, value,
         return int(cur.lastrowid)
 
 
+def stellr_code_reserve(order_number, line_ref, wc_name, product_ref, value,
+                        currency, mode, branch="", actor="", phone=""):
+    """תופס את השורה לפני הפנייה לספק. מחזיר id, או None אם כבר תפוסה.
+
+    ⚠️ למה (10/08/2026, קבלה 20057462): הבדיקה הישנה קראה מהמסד ורק *אחרי*
+    תשובת סטלר (30-60 שניות) כתבה שורה. בחלון הזה לחיצה שנייה עברה את
+    הבדיקה, שתי הנפקות יצאו לאותו מזהה, והשנייה חטפה 403 "המזהה כבר קיים" —
+    בלי קוד ובלי דרך לדעת מה קרה לראשונה. התפיסה סוגרת את החלון: ה-UNIQUE
+    על line_ref הוא מה שמכריע, לא תזמון.
+    """
+    try:
+        return stellr_code_add(order_number, line_ref, wc_name, product_ref, value,
+                               currency, mode, "pending", branch=branch,
+                               actor=actor, phone=phone)
+    except Exception:  # noqa: BLE001  — כולל IntegrityError בכל מנוע
+        return None
+
+
 def stellr_code_update(code_id, **kw):
     allowed = {"status", "tx_id", "pan", "pin", "error", "sent_at", "phone", "mode"}
     sets = {k: v for k, v in kw.items() if k in allowed}
