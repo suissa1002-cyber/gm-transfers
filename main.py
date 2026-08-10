@@ -2005,6 +2005,39 @@ def pos_lookup(code: str, branch_id: int = CITY_BRANCH_ID,
     return out
 
 
+@app.get("/api/admin/pos/serial-probe")
+def pos_serial_probe(serial: str,
+                     x_admin_key: Optional[str] = Header(None)):
+    """כלי מדידה חד-פעמי: מה הקופה מחזירה כשמחפשים סריאל?
+    ⚠️ נכתב כדי לא לנחש איזה מסלול API פותר סריאל→מוצר (עקרון "מודדים לפני
+    שמשערים" מפרויקט ההורדות). אפשר להסיר אחרי שהמסלול נבחר."""
+    _require_admin(x_admin_key)
+    sn = str(serial or "").strip()
+    out = {"serial": sn}
+    no = poller.client()
+    try:
+        r = no.get_products(search=sn, page_size=5)
+        out["products_search"] = [{"id": p.get("id"), "name": p.get("name")} for p in (r or [])][:5]
+    except Exception as e:  # noqa: BLE001
+        out["products_search"] = "ERR " + str(e)[:120]
+    try:
+        r = no.get_products(search=sn, serials_only=True, page_size=5)
+        out["products_search_serials_only"] = [{"id": p.get("id"), "name": p.get("name")} for p in (r or [])][:5]
+    except Exception as e:  # noqa: BLE001
+        out["products_search_serials_only"] = "ERR " + str(e)[:120]
+    try:
+        r = no.find_product_by_barcode(sn)
+        out["by_barcode"] = {"id": r.get("id"), "name": r.get("name")} if r else None
+    except Exception as e:  # noqa: BLE001
+        out["by_barcode"] = "ERR " + str(e)[:120]
+    try:
+        r = no._get("/api/Products/serials", {"search": sn, "page_size": 5})
+        out["products_serials_route"] = r if not isinstance(r, list) else r[:3]
+    except Exception as e:  # noqa: BLE001
+        out["products_serials_route"] = "ERR " + str(e)[:120]
+    return out
+
+
 @app.get("/api/admin/pos/stock-fresh")
 def pos_stock_fresh(pid: str,
                     x_admin_key: Optional[str] = Header(None),
