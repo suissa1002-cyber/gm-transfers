@@ -18,8 +18,13 @@ logger = logging.getLogger("transfers.serial_sync")
 _running = False
 
 
-def full_sync(max_products: int = 5000) -> dict:
-    """סבב מלא: מאנדקס את כל הסריאלים של דגמים סריאליים שיש להם מלאי."""
+def full_sync(max_products: int = 5000, include_zero_stock: bool = False) -> dict:
+    """סבב מלא: מאנדקס את הסריאלים של הדגמים הסידוריים.
+
+    ⚠️ include_zero_stock: הפילטר "מלאי>0" נלקח מהקטלוג **שלנו**, שמתרענן כל 6
+    שעות. יחידה שיושבת בסניף בזמן שהאגרגט אצלנו אפס (או מתעדכן באיחור) נשארת
+    מחוץ לאינדקס, והסריקה אמרה "לא נמצא בקופה" (אסי, 10/08/2026). הסבב הלילי
+    רץ עם include_zero_stock=True כדי שהבסיס יהיה שלם."""
     global _running
     if _running:
         return {"skipped": "already running"}
@@ -32,7 +37,8 @@ def full_sync(max_products: int = 5000) -> dict:
         catalog = db.catalog_load() or {}
         targets = [{"id": pid, "name": c.get("name") or ""}
                    for pid, c in catalog.items()
-                   if c.get("kind") == "serial" and (c.get("stock") or 0) > 0][:max_products]
+                   if c.get("kind") == "serial"
+                   and (include_zero_stock or (c.get("stock") or 0) > 0)][:max_products]
         if not targets:      # קטלוג ריק (טרם רוענן) — נפילה למקור הישן, פעם אחת
             logger.warning("serial full_sync: catalog empty — falling back to get_all_products")
             targets = [{"id": p.get("id"), "name": p.get("name") or ""}

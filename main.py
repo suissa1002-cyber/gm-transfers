@@ -113,10 +113,12 @@ def _digest_job():
         logger.warning("alerts.daily_digest failed: %s", e)
 
 
-def _serial_sync_job():
+def _serial_sync_job(include_zero_stock: bool = True):
+    """⚠️ include_zero_stock=True: אחרת יחידה שיושבת בסניף כשהאגרגט בקטלוג שלנו
+    אפס נשארת מחוץ לאינדקס, והסריקה מחזירה "לא נמצא בקופה"."""
     try:
         import serial_sync
-        serial_sync.full_sync()
+        serial_sync.full_sync(include_zero_stock=include_zero_stock)
     except Exception as e:  # noqa: BLE001
         logger.warning("serial_sync failed: %s", e)
 
@@ -1470,6 +1472,15 @@ def manual_poll():
                 "min_interval_sec": _MANUAL_POLL_MIN_SEC}
     _manual_poll_at["t"] = now
     return poller.poll_once()
+
+
+@app.post("/api/admin/serial-index/ops")
+def admin_serial_ops(days: int = 90, branch_id: Optional[int] = None,
+                     x_admin_key: Optional[str] = Header(None)):
+    """אינדוקס סריאלים מתנועות המלאי — זול ומהיר, לפי בקשה."""
+    _require_admin(x_admin_key)
+    import serial_sync
+    return serial_sync.index_from_operations(days=days, branch_id=branch_id)
 
 
 @app.post("/api/admin/serial-sync")
