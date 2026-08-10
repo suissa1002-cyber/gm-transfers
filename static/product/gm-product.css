@@ -603,7 +603,9 @@ body.gm-product-new *{text-indent:0!important;}
   font-size:.7rem;font-weight:800;line-height:1.5;white-space:nowrap;}
 /* v0.7.0 — עיגולי צבע בשורה אחת בתחתית הכרטיסיה (אסי, 09/08) */
 .gm-ad-card{flex-wrap:wrap;}
-.gm-ad-picks{flex:0 0 100%;order:9;display:flex;flex-wrap:nowrap;gap:8px;margin-top:9px;
+/* ⚠️ בלי flex-basis: בכרטיסיה המוערמת (מובייל) הציר הראשי אנכי, ו-flex:0 0 100%
+   הפך את השורה לעמודה בגובה הכרטיסיה. width:100% עובד בשני הכיוונים. */
+.gm-ad-picks{flex:none;width:100%;order:9;display:flex;flex-direction:row;flex-wrap:nowrap;gap:8px;margin-top:9px;
   align-items:center;justify-content:center;padding-inline-end:34px;
   overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none;}
 .gm-ad-picks::-webkit-scrollbar{display:none;}
