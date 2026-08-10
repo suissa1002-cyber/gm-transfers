@@ -556,6 +556,7 @@ if (!window.toggleNav) { window.toggleNav = function () {
     if(!box||!d) return;
     if(!items.length){ box.innerHTML=''; box.removeAttribute('data-sig'); d.classList.add('no-rail'); cta(0); return; }
     d.classList.remove('no-rail'); cta(items.length);
+    sideCount(items.filter(function(a){return inCart.indexOf(+a.id)>-1;}).length);
     var sig=items.map(function(a){return a.id+':'+(inCart.indexOf(+a.id)>-1?1:0);}).join(',');
     if(box.getAttribute('data-sig')===sig) return;    /* אותו תוכן ⇒ בלי הבהוב */
     box.setAttribute('data-sig',sig);
@@ -567,6 +568,13 @@ if (!window.toggleNav) { window.toggleNav = function () {
         '<button class="aadd'+(has?' done':'')+'" type="button" data-aid="'+a.id+'"'+(has?' disabled':'')+
         ' aria-label="הוספה לסל">'+(has?'✓':'+')+'</button></div></div>';
     }).join('');
+  }
+  /* כמה תוספות כבר בסל — נכתב בכותרת שלב התוספות (אסי, 09/08) */
+  function sideCount(n){
+    var h=document.querySelector('#cartSide .side-h small'); if(!h) return;
+    var base='האביזרים שמתאימים למכשירים שבסל';
+    var txt=n?(base+' · נבחרו '+n):base;
+    if(h.textContent!==txt) h.textContent=txt;
   }
   /* רצועת הכניסה למסך התוספות — מוצגת רק במובייל (CSS) ורק כשיש תוספות */
   function cta(n){
@@ -765,8 +773,13 @@ if (!window.toggleNav) { window.toggleNav = function () {
       var isAdded=!!nm && addedTxt.some(function(t){return t.indexOf(nm)>-1;});
       isAdded=gcResolve(String(conf.pid||pid), isAdded);
       var rows='';
-      if(conf.tiers&&+conf.tiers.gc&&+conf.prices.gc>0) rows+=gcBtn(conf.pid||pid,'gc',conf.prices.gc,'Green Care','אחריות שנה שנייה מלאה',isAdded);
-      if(conf.tiers&&+conf.tiers.gcp&&+conf.prices.gcp>0) rows+=gcBtn(conf.pid||pid,'gcp',conf.prices.gcp,'Green Care <b>+</b>','24 חודשים, כולל שברים ונזקי נוזלים',isAdded);
+      if(conf.tiers&&+conf.tiers.gc&&+conf.prices.gc>0)
+        rows+=gcBtn(conf.pid||pid,'gc',conf.prices.gc,'Green Care','אחריות שנה שנייה מלאה',isAdded);
+      /* במובייל הכרטיסיה נשברה ל-3 שורות — משפט משנה קצר יותר (אסי, 09/08) */
+      var narrow=window.matchMedia('(max-width:820px)').matches;
+      if(conf.tiers&&+conf.tiers.gcp&&+conf.prices.gcp>0)
+        rows+=gcBtn(conf.pid||pid,'gcp',conf.prices.gcp,'Green Care <b>+</b>',
+          narrow?'24 ח׳ · שברים ונזקי נוזלים':'24 חודשים, כולל שברים ונזקי נוזלים',isAdded);
       if(!rows){ if(exist){ drop(exist); } return; }
       /* ⛔ בלי ציור-מחדש מיותר: פעימות הסנכרון גרמו להבהוב של הכרטיסייה
          (אסי, 09/08). אם המסלולים והמחירים זהים — רק מעדכנים סימון. */
