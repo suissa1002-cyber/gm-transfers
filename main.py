@@ -2059,13 +2059,14 @@ def pos_lookup(code: str, branch_id: int = CITY_BRANCH_ID,
 
 
 @app.get("/api/admin/pos/serial-probe")
-def pos_serial_probe(serial: str,
+def pos_serial_probe(serial: str, deep: Optional[str] = None,
                      x_admin_key: Optional[str] = Header(None)):
     """כלי מדידה חד-פעמי: מה הקופה מחזירה כשמחפשים סריאל?
     ⚠️ נכתב כדי לא לנחש איזה מסלול API פותר סריאל→מוצר (עקרון "מודדים לפני
     שמשערים" מפרויקט ההורדות). אפשר להסיר אחרי שהמסלול נבחר."""
     _require_admin(x_admin_key)
     sn = str(serial or "").strip()
+    _req_deep = deep
     out = {"serial": sn}
     no = poller.client()
     try:
@@ -2088,6 +2089,15 @@ def pos_serial_probe(serial: str,
         out["products_serials_route"] = r if not isinstance(r, list) else r[:3]
     except Exception as e:  # noqa: BLE001
         out["products_serials_route"] = "ERR " + str(e)[:120]
+    # סריקה עמוקה לפי בקשה: כל הסניפים, שנה אחורה — האם הסריאל בכלל בתנועות?
+    if str(_req_deep or "") == "1":
+        try:
+            import serial_sync
+            out["deep"] = serial_sync.index_from_operations(days=365, branch_id=None)
+            rec = db.serial_product(sn)
+            out["found_after_deep"] = rec or None
+        except Exception as e:  # noqa: BLE001
+            out["deep"] = "ERR " + str(e)[:150]
     # למה הסריאל חסר באינדקס? הפילטר של הסבב הוא "סידורי + מלאי>0" בקטלוג שלנו
     try:
         cat = db.catalog_load() or {}
