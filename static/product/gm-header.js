@@ -369,6 +369,15 @@ if (!window.toggleNav) { window.toggleNav = function () {
    '.aadd.done{background:var(--accent-soft,#e7f6ec);color:#0e5c2b;font-size:1rem;}',
    /* תמונות פריטי הסל — בלי מסגרת/רקע, כמו GoMobile (אסי 09/08) */
    '.cart-drawer.gmv2 .citem-img{border:none!important;background:transparent!important;padding:0!important;border-radius:10px;}',
+   /* פס התוספות: מחיר מחוק, תו חיסכון ובורר צבע שנפתח בלחיצה על + */
+   '.cart-drawer.gmv2 .acard-p s{color:var(--ink2,#5c666d);font-weight:700;font-size:.8rem;margin-inline-end:5px}',
+   '.cart-drawer.gmv2 .acard-save{display:block;text-align:center;background:var(--accent-soft,#e7f6ec);color:#0e5c2b;border:1px solid #149c40;border-radius:99px;padding:0 7px;margin:4px auto 0;width:fit-content;font-size:.66rem;font-weight:800}',
+   '.cart-drawer.gmv2 .acard-sw{display:flex;flex-wrap:nowrap;gap:7px;justify-content:center;margin-top:8px;overflow-x:auto;scrollbar-width:none}',
+   '.cart-drawer.gmv2 .acard-sw::-webkit-scrollbar{display:none}',
+   '.cart-drawer.gmv2 .asw{width:18px;height:18px;min-width:18px;flex:0 0 auto;padding:0;border-radius:50%;cursor:pointer;border:1px solid rgba(17,20,23,.22);box-shadow:0 1px 2px rgba(17,20,23,.08);transition:transform .12s}',
+   '.cart-drawer.gmv2 .asw:hover{transform:scale(1.12)}',
+   '.cart-drawer.gmv2 .asw-t{width:auto;height:auto;min-width:0;border-radius:99px;padding:2px 8px;background:#fff;color:var(--ink2,#5c666d);font:inherit;font-size:.68rem;font-weight:800;border:1.5px solid var(--line,#e6eae8)}',
+   '.cart-drawer.gmv2 .acard.open{border-color:#bfe0cb}',
    '.cart-drawer.gmv2 .citem.gmghost{opacity:.7}',
    /* חלון מידע Green Care — נפתח מעל המגירה, בלי לצאת מהסל */
    '#gmGcInfo{position:fixed;inset:0;z-index:200;display:none;align-items:center;justify-content:center;padding:18px}',
@@ -515,11 +524,22 @@ if (!window.toggleNav) { window.toggleNav = function () {
     return main;
   }
   function get(){ return fetch(API,{credentials:'same-origin'}).then(function(r){nonce=r.headers.get('Nonce');return r.json();}); }
-  function add(id){
+  /* ⛔ חובה לבדוק את הסטטוס: תשובת 400 (למשל מוצר עם וריאציות בלי בחירה)
+     חזרה כ-JSON תקין, התצוגה המיידית סימנה ✓ והשורה "נוספה" — בלי שכלום
+     נכנס לסל באמת (אסי, 10/08: "יש וי אבל הם לא בעגלה"). */
+  function add(id, variation){
+    var body={id:id, quantity:1};
+    if(variation && variation.length) body.variation=variation;
     var run = nonce ? Promise.resolve(nonce) : get().then(function(){return nonce;});
     return run.then(function(n){ return fetch(API+'/add-item',{method:'POST',credentials:'same-origin',
-      headers:{'Content-Type':'application/json','Nonce':n},body:JSON.stringify({id:id,quantity:1})}); })
-      .then(function(r){ nonce=r.headers.get('Nonce')||nonce; return r.json(); });
+      headers:{'Content-Type':'application/json','Nonce':n},body:JSON.stringify(body)}); })
+      .then(function(r){
+        nonce=r.headers.get('Nonce')||nonce;
+        return r.json().catch(function(){ return {}; }).then(function(j){
+          if(!r.ok){ throw new Error((j && (j.message||j.code)) || ('add ' + r.status)); }
+          return j;
+        });
+      });
   }
   /* רענון עמודת הסל עצמה — המודול האפוי חושף וו ציבורי; בלעדיו המשתמש היה
      רואה את התוספת רק אחרי רענון עמוד (אסי, 09/08). */
@@ -561,11 +581,27 @@ if (!window.toggleNav) { window.toggleNav = function () {
     box.setAttribute('data-sig',sig);
     box.innerHTML=items.map(function(a){
       var has=inCart.indexOf(+a.id)>-1;
-      return '<div class="acard"><img src="'+a.img+'" alt="" loading="lazy">'+
+      var price='‏₪'+(+a.price).toLocaleString('en-US');
+      if(a.was) price='<s>‏₪'+(+a.was).toLocaleString('en-US')+'</s> '+price;
+      /* ⛔ מוצר עם וריאציות: אי אפשר להוסיף בלי צבע. הבורר נפתח רק בלחיצה
+         על + — לא מעמיסים את הפס מראש (אסי, 10/08). */
+      var vars=(a.vars&&a.vars.length)?a.vars:null;
+      return '<div class="acard'+(vars?' hasv':'')+'" data-aid="'+a.id+'">'+
+        '<img src="'+a.img+'" alt="" loading="lazy">'+
         '<div class="acard-n">'+esc(dec(a.name))+'</div>'+
-        '<div class="acard-row"><span class="acard-p">‏₪'+(+a.price).toLocaleString('en-US')+'</span>'+
+        (a.pct?'<span class="acard-save">חסוך '+a.pct+'%</span>':'')+
+        '<div class="acard-row"><span class="acard-p">'+price+'</span>'+
         '<button class="aadd'+(has?' done':'')+'" type="button" data-aid="'+a.id+'"'+(has?' disabled':'')+
-        ' aria-label="הוספה לסל">'+(has?'✓':'+')+'</button></div></div>';
+        ' aria-label="הוספה לסל">'+(has?'✓':'+')+'</button></div>'+
+        (vars?'<div class="acard-sw" hidden>'+vars.map(function(v){
+          return v.hex
+            ? '<button type="button" class="asw" data-vid="'+v.id+'" data-attrs="'+
+              esc(JSON.stringify(v.attrs||{}))+'" style="background:'+esc(v.hex)+
+              '" title="'+esc(v.label)+'" aria-label="'+esc(v.label)+'"></button>'
+            : '<button type="button" class="asw asw-t" data-vid="'+v.id+'" data-attrs="'+
+              esc(JSON.stringify(v.attrs||{}))+'">'+esc(v.label)+'</button>';
+        }).join('')+'</div>':'')+
+        '</div>';
     }).join('');
   }
   /* כמה תוספות כבר בסל — נכתב בכותרת שלב התוספות (אסי, 09/08) */
@@ -646,6 +682,32 @@ if (!window.toggleNav) { window.toggleNav = function () {
     setCount(Math.max(0,(parseInt(e&&e.textContent,10)||0)+delta));
   }
   /* שורת פריט זמנית — נמחקת ברגע שהשורה האמיתית מגיעה מהשרת */
+  /* הוספה מהפס (עם וריאציה או בלי) — כולל החזרת המצב בכישלון אמיתי */
+  function railAdd(card, vid, attrsJson){
+    if(!card) return;
+    var aa=card.querySelector('.aadd');
+    var info={ name:(card.querySelector('.acard-n')||{}).textContent||'',
+               img:(card.querySelector('img')||{}).src||'',
+               price:parseFloat(((card.querySelector('.acard-p')||{}).textContent||'')
+                 .replace(/.*₪/,'').replace(/[^0-9.]/g,''))||0 };
+    var variation=[];
+    try{ var o=JSON.parse(attrsJson||'{}');
+      Object.keys(o).forEach(function(k){ if(o[k]!=='' && o[k]!=null)
+        variation.push({attribute:k, value:String(o[k])}); });
+    }catch(err){}
+    var swbox=card.querySelector('.acard-sw');
+    if(swbox){ swbox.hidden=true; card.classList.remove('open'); }
+    if(aa){ aa.disabled=true; aa.classList.add('done'); aa.textContent='✓'; }
+    RAIL_ADDED[vid]=1; sideCount(Object.keys(RAIL_ADDED).length);
+    ghost(info); bumpSub(info.price); bumpCount(1);
+    add(vid, variation).then(function(){ refresh(); burst(); })
+      .catch(function(){
+        if(aa){ aa.disabled=false; aa.classList.remove('done'); aa.textContent='+'; }
+        delete RAIL_ADDED[vid]; sideCount(Object.keys(RAIL_ADDED).length);
+        bumpSub(-info.price); bumpCount(-1); dropGhosts();
+        if(swbox){ swbox.hidden=false; card.classList.add('open'); }
+      });
+  }
   function ghost(a){
     var box=document.getElementById('cartItems'); if(!box) return;
     var em=box.querySelector('.cart-empty'); if(em) em.remove();
@@ -867,8 +929,15 @@ if (!window.toggleNav) { window.toggleNav = function () {
     if(t.closest('#gmSideCta')){ e.preventDefault(); sideOpen(true); return; }
     if(t.closest('#cartSideBack')){ e.preventDefault(); sideOpen(false); return; }
     if(t.closest('#cartDrawer .citem-rm') || t.closest('#cartDrawer .cqty button')){ burst(); }
+    /* בחירת צבע בפס = ההוספה עצמה */
+    var sw=t.closest('.asw');
+    if(sw){ e.preventDefault(); e.stopPropagation();
+      railAdd(sw.closest('.acard'), +sw.getAttribute('data-vid'), sw.getAttribute('data-attrs'));
+      return; }
     var aa=t.closest('.aadd');
     if(aa && !aa.disabled){ e.preventDefault(); e.stopPropagation();
+      var card0=aa.closest('.acard'), swbox=card0&&card0.querySelector('.acard-sw');
+      if(swbox){ swbox.hidden=!swbox.hidden; card0.classList.toggle('open', !swbox.hidden); return; }
       var id=+aa.getAttribute('data-aid'); if(!id) return;
       var card=aa.closest('.acard');
       var info={ name:(card.querySelector('.acard-n')||{}).textContent||'',
