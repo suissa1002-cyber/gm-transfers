@@ -1144,6 +1144,29 @@
     $l.text(n ? GM_ATC_BASE + ' · סה״כ ' + (n + 1) + ' מוצרים' : GM_ATC_BASE);
   }
   /* צ׳יפ: מחליף קבוצה. לחיצה חוזרת על הפעיל סוגרת. */
+  /* גובה אזור הגלילה = **בדיוק שתי שורות שלמות**. הגובה היה קבוע (266px),
+   * וכשהכרטיסיות התארכו (שורת עיגולי הצבע) הכרטיסיה בשורה השנייה נחתכה
+   * (אסי, 10/08: "צריך לראות 2 כרטיסיות מלאות"). מחשבים מהגובה בפועל, לכל
+   * צ׳יפ בנפרד — לצ׳יפ עם בורר צבע כרטיסיות גבוהות יותר. */
+  function gmAdFit() {
+    var $g = $('.gm-ad-grid.on'); if (!$g.length) return;
+    var $cards = $g.children('.gm-ad-card'); if (!$cards.length) return;
+    var h = 0;
+    $cards.each(function () { h = Math.max(h, this.getBoundingClientRect().height); });
+    if (!h) return;
+    var gap = parseFloat($g.css('row-gap'));
+    if (!gap || isNaN(gap)) gap = 18;
+    var $s = $('.gm-ad-scroll');
+    var pad = parseFloat($s.css('padding-bottom')) || 0;
+    /* שתי שורות + הרווח ביניהן + הריפוד התחתון — בלי שארית של שורה שלישית */
+    $s.css('max-height', Math.ceil(h * 2 + gap + pad) + 'px');
+  }
+  $(window).on('resize', (function () {
+    var t; return function () { clearTimeout(t); t = setTimeout(gmAdFit, 150); };
+  })());
+  /* התמונות נטענות בעצלתיים ⇒ הגובה מתייצב מאוחר */
+  $(function () { gmAdFit(); setTimeout(gmAdFit, 400); setTimeout(gmAdFit, 1200); });
+
   $(document).on('click', '.gm-ad-chip', function () {
     var $b = $(this), chip = $b.data('chip'), was = $b.hasClass('on');
     $('.gm-ad-chip').removeClass('on');
@@ -1154,6 +1177,7 @@
       var sc = document.querySelector('.gm-ad-scroll');
       if (sc) sc.scrollTop = 0;     /* אחרת נכנסים לקבוצה חדשה בגלילה של הקודמת */
     }
+    gmAdFit();                      /* גובה שתי שורות משתנה בין הצ׳יפים */
   });
   /* כרטיסיה: לחיצה בכל מקום מסמנת, לחיצה נוספת מסירה. ריבוי צ׳יפים נשמר כי
      הסימון יושב על ה-DOM ועל GM_AD_SEL, ולא נמחק במעבר בין קבוצות. */
