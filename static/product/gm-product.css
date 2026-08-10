@@ -601,9 +601,18 @@ body.gm-product-new *{text-indent:0!important;}
 .gm-ad-save{display:inline-block;background:var(--accent-soft,#e7f6ec);color:var(--accent);
   border:1px solid var(--accent);border-radius:99px;padding:1px 8px;margin-top:4px;
   font-size:.7rem;font-weight:800;line-height:1.5;white-space:nowrap;}
-.gm-ad-pick{margin-top:5px;max-width:100%;padding:5px 8px;border:1.5px solid var(--line);
-  border-radius:8px;background:#fff;color:var(--ink);font:inherit;font-size:.78rem;font-weight:700;}
-.gm-ad-pick.gm-ad-need{border-color:var(--deal,#e2551f);}
+/* v0.7.0 — עיגולי צבע בתחתית הכרטיסיה (אסי, 09/08) */
+.gm-ad-picks{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px;align-items:center;}
+.gm-ad-sw{width:18px;height:18px;min-width:18px;padding:0;border-radius:50%;cursor:pointer;
+  background:var(--sw,#ccc);border:1px solid rgba(17,20,23,.22);box-shadow:0 1px 2px rgba(17,20,23,.08);
+  transition:transform .12s,box-shadow .12s;}
+.gm-ad-sw:hover{transform:scale(1.12);}
+.gm-ad-sw.on{box-shadow:0 0 0 2px #fff,0 0 0 3.5px var(--accent);}
+/* שם שאינו צבע — תווית קטנה במקום עיגול חסר-משמעות */
+.gm-ad-sw-t{width:auto;height:auto;min-width:0;border-radius:99px;padding:2px 8px;background:#fff;
+  color:var(--ink2);font:inherit;font-size:.7rem;font-weight:800;border:1.5px solid var(--line);}
+.gm-ad-sw-t.on{border-color:var(--accent);color:var(--accent);box-shadow:none;}
+.gm-ad-picks.gm-ad-need .gm-ad-sw{box-shadow:0 0 0 2px #fff,0 0 0 3.5px var(--deal,#e2551f);}
 /* חיווי בלבד — הלחיצה נתפסת ע"י הכרטיסיה כדי שלא תהיה לחיצה כפולה */
 /* ⚠️ בפינה ההפוכה לתמונה — התמונה יושבת ב-inline-start (ימין ב-RTL), ולכן ה-+
  * היה עליה. אסי: "הפלוס יכול להיות באזור הריק ולא על התמונה". */
@@ -639,7 +648,8 @@ body.gm-product-new *{text-indent:0!important;}
   .gm-ad-p{font-size:.95rem;padding-inline-end:0;}
   .gm-ad-was{font-size:.75rem;}
   .gm-ad-save{font-size:.66rem;padding:1px 7px;}
-  .gm-ad-pick{font-size:.74rem;}
+  .gm-ad-sw{width:17px;height:17px;min-width:17px;}
+  .gm-ad-picks{justify-content:center;}
   /* ה-+ בפינה העליונה — הפינה היחידה שנשארת ריקה בפריסה המוערמת */
   .gm-ad-add{inset-block-end:auto;inset-block-start:8px;inset-inline-end:8px;
     width:24px;height:24px;min-width:24px;font-size:16px;}

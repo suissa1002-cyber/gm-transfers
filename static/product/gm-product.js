@@ -1160,8 +1160,8 @@
   function gmAdToggle($c) {
     var id = +$c.data('id'); if (!id) return;
     /* כרטיסיה עם בורר: בלי בחירה אין מה להוסיף — מפנים לבורר במקום לסמן */
-    if (!GM_AD_SEL[id] && $c.attr('data-variable') === '1' && !$c.find('.gm-ad-pick').val()) {
-      $c.find('.gm-ad-pick').addClass('gm-ad-need').focus();
+    if (!GM_AD_SEL[id] && $c.attr('data-variable') === '1' && !$c.find('.gm-ad-sw.on').length) {
+      $c.find('.gm-ad-picks').addClass('gm-ad-need');
       return;
     }
     if (GM_AD_SEL[id]) { delete GM_AD_SEL[id]; } else { GM_AD_SEL[id] = true; }
@@ -1218,11 +1218,10 @@
     var $c = $('.gm-ad-card[data-id="' + cardId + '"]').first();
     var id = +cardId, attrs = null;
     if ($c.length && $c.attr('data-variable') === '1') {
-      var $sel = $c.find('.gm-ad-pick');
-      var v = $sel.val();
-      if (!v) return null;
-      id = +v;
-      var oa = $sel.find('option:selected').attr('data-attrs');
+      var $on = $c.find('.gm-ad-sw.on').first();
+      if (!$on.length) return null;
+      id = +$on.attr('data-v');
+      var oa = $on.attr('data-attrs');
       if (oa) { try { attrs = JSON.parse(oa); } catch (e) { attrs = null; } }
     } else if ($c.length && $c.attr('data-attrs')) {
       try { attrs = JSON.parse($c.attr('data-attrs')); } catch (e) { attrs = null; }
@@ -1237,8 +1236,30 @@
     }
     return body;
   }
-  /* הבורר בתוך הכרטיסיה לא אמור לסמן/לבטל את הכרטיסיה */
-  $(document).on('click change', '.gm-ad-pick', function (e) { e.stopPropagation(); });
+  /* עיגול צבע: בוחר וריאציה, מחליף את תמונת הכרטיסיה ואת המחיר — ואינו
+   * מסמן/מבטל את הכרטיסיה עצמה (הסימון נשאר לחיצה על הכרטיסיה). */
+  $(document).on('click', '.gm-ad-sw', function (e) {
+    e.stopPropagation(); e.preventDefault();
+    var $b = $(this), $c = $b.closest('.gm-ad-card');
+    $c.find('.gm-ad-sw').removeClass('on').attr('aria-pressed', 'false');
+    $b.addClass('on').attr('aria-pressed', 'true');
+    $c.find('.gm-ad-picks').removeClass('gm-ad-need');
+    var img = $b.attr('data-img');
+    if (img) {
+      var $img = $c.find('img').first();
+      /* ⚠️ טעינה עצלה: כשהתמונה עדיין לא נטענה, src מוחלף ע"י data-src
+       * ברגע שהיא נכנסת לתצוגה — לכן מעדכנים את שניהם. */
+      $img.attr('src', img).attr('data-src', img).removeAttr('srcset');
+    }
+    var pr = $b.attr('data-price');
+    if (pr) {
+      var $p = $c.find('.gm-ad-p').last();
+      if ($p.length) $p.text('‏₪' + Math.round(+pr).toLocaleString('en-US'));
+    }
+  });
+  $(document).on('keydown', '.gm-ad-sw', function (e) {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $(this).trigger('click'); }
+  });
 
   function gmAdClear() {
     GM_AD_SEL = {};
