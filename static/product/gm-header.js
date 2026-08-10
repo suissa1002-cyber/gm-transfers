@@ -472,7 +472,7 @@ if (!window.toggleNav) { window.toggleNav = function () {
     var box=document.getElementById('cartItems');
     if(box) box.innerHTML='<div class="cart-empty">הסל ריק</div>';
     var e=subEl(); if(e) e.textContent=money(0);
-    setCount(0); rail([],[]); gcPend={};
+    setCount(0); rail([],[]); gcPend={}; RAIL_ADDED={}; sideCount(0);
     var d=document.getElementById('cartDrawer'); if(d) d.classList.add('no-rail');
   }
   function clearCart(){
@@ -556,7 +556,6 @@ if (!window.toggleNav) { window.toggleNav = function () {
     if(!box||!d) return;
     if(!items.length){ box.innerHTML=''; box.removeAttribute('data-sig'); d.classList.add('no-rail'); cta(0); return; }
     d.classList.remove('no-rail'); cta(items.length);
-    sideCount(items.filter(function(a){return inCart.indexOf(+a.id)>-1;}).length);
     var sig=items.map(function(a){return a.id+':'+(inCart.indexOf(+a.id)>-1?1:0);}).join(',');
     if(box.getAttribute('data-sig')===sig) return;    /* אותו תוכן ⇒ בלי הבהוב */
     box.setAttribute('data-sig',sig);
@@ -570,6 +569,9 @@ if (!window.toggleNav) { window.toggleNav = function () {
     }).join('');
   }
   /* כמה תוספות כבר בסל — נכתב בכותרת שלב התוספות (אסי, 09/08) */
+  /* ⚠️ לא לספור מתוך הפס: for-cart מסנן תוספות שכבר בסל, ולכן הספירה שם
+     תמיד 0. סופרים את מה שהלקוח הוסיף בפועל מהפס. */
+  var RAIL_ADDED={};
   function sideCount(n){
     var h=document.querySelector('#cartSide .side-h small'); if(!h) return;
     var base='האביזרים שמתאימים למכשירים שבסל';
@@ -873,9 +875,11 @@ if (!window.toggleNav) { window.toggleNav = function () {
                  img:(card.querySelector('img')||{}).src||'',
                  price:parseFloat(((card.querySelector('.acard-p')||{}).textContent||'').replace(/[^0-9.]/g,''))||0 };
       aa.disabled=true; aa.classList.add('done'); aa.textContent='✓';
+      RAIL_ADDED[id]=1; sideCount(Object.keys(RAIL_ADDED).length);
       ghost(info); bumpSub(info.price); bumpCount(1);          /* מיידי — לפני השרת */
       add(id).then(function(){ refresh(); later(400); })
         .catch(function(){ aa.disabled=false; aa.classList.remove('done'); aa.textContent='+';
+          delete RAIL_ADDED[id]; sideCount(Object.keys(RAIL_ADDED).length);
           bumpSub(-info.price); bumpCount(-1); dropGhosts(); });
       return; }
     var gc=t.closest('.gcopt');
