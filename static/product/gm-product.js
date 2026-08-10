@@ -102,6 +102,11 @@
     var imgs = GM_VAR_GAL[String(variation.variation_id)];
     if (imgs && imgs.length && main) {
       paintThumbs(imgs, main);
+    } else if (main) {
+      /* ⚠️ וריאציה בלי גלריה ייעודית: להציג את תמונת הווריאציה בלבד.
+         BASE_THUMBS הוא של וריאציית ברירת-המחדל — שחזור שלו מציג ללקוח
+         תמונות בצבע הלא נכון (Fold8 Ultra ירוק הראה מוקטנות של הלבן). */
+      paintThumbs([], main);
     } else if (BASE_THUMBS) {
       $thumbsBox.html(BASE_THUMBS);
       $('.gth').removeClass('sel').first().addClass('sel');
