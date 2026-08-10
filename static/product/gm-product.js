@@ -626,25 +626,9 @@
       selCfg();
     }
   }
-  /* קפיצה חכמה: תצורה שלא קיימת בצבע הנוכחי → עוברים לצבע שיש בו (עדיפות במלאי) */
-  $(document).on('click', '.gm-atc .variable-item.gm-off', function (e) {
-    e.preventDefault(); e.stopImmediatePropagation();
-    var $it = $(this);
-    var attr = $it.closest('.variable-items-wrapper').data('attribute_name');
-    var ai = M.cfgAttrs.indexOf(attr);
-    if (ai < 0 || !M.colorAttr) return;
-    var val = $it.attr('data-value');
-    var candidates = M.colors.filter(function (c) {
-      return M.cfgs.some(function (cfg) { return cfg.split('|')[ai] === val && ((cfg + '||' + c) in M.price); });
-    });
-    var pref = candidates.find(function (c) {
-      return M.cfgs.some(function (cfg) { return cfg.split('|')[ai] === val && M.avail[cfg + '||' + c] !== 'out'; });
-    }) || candidates[0];
-    if (!pref) return;
-    /* בוחרים קודם את הצבע המתאים, ואז את התצורה המבוקשת */
-    itemUL(M.colorAttr).find('.variable-item[data-value="' + pref + '"]').trigger('click');
-    setTimeout(function () { $it.removeClass('gm-off').trigger('click'); setTimeout(refreshSmart, 120); }, 150);
-  });
+  /* ⚠️ הקפיצה החכמה עברה ל-gmSmartCombo למטה (מאזין capture) — הוא מיירט
+     *כל* לחיצה על ערך, לא רק על ערך מאופר, ולכן חייב לרוץ לפני תוסף
+     הסוואצ'ים. אל תחזיר כאן מאזין click על .variable-item: הוא לא ייקרא. */
   $(document).on('click', '.gm-atc .variable-item', function () { setTimeout(refreshSmart, 120); });
   $(document).on('found_variation reset_data', 'form.variations_form', function () { setTimeout(refreshSmart, 60); });
 
@@ -1420,4 +1404,72 @@
   $(document).on('wc_variation_form found_variation reset_data', run);
   setTimeout(run, 400);
   setTimeout(run, 1200);
+})(jQuery);
+
+/* ═══ gmSmartCombo: השלמת בוררים אוטומטית — לעולם לא נשארים במצב "ריק" ═══
+   תוסף הסוואצ'ים מסמן ערך שלא קיים בצירוף הנוכחי כ-disabled, ולחיצה עליו
+   מאפסת את *כל* הבחירות: בלי מחיר, בלי תמונה, כפתור מושבת. (אסי 10/08 —
+   ירוק → 256GB רוקן את העמוד.)
+
+   כאן אנחנו מיירטים את הלחיצה בשלב ה-capture, כלומר לפני התוסף, ובוחרים
+   בעצמנו וריאציה מלאה: הערך שנלחץ הוא העוגן, ושאר התכונות נבחרות כך שישמרו
+   כמה שיותר מהבחירה הקודמת (ומעדיפים מלאי). התוצאה תמיד צירוף חוקי אחד.
+
+   ⚠️ WooCommerce בונה מחדש את רשימות האפשרויות בכל change, ולכן השמה של כל
+   הערכים "בבת אחת" נמחקת — חייבים איפוס ואז ערך-אחרי-ערך, העוגן ראשון. */
+(function ($) {
+  'use strict';
+  function form() { return $('form.variations_form').first(); }
+  function variations() { var f = form(); return (f.length && f.data('product_variations')) || null; }
+  function curSel() {
+    var o = {};
+    form().find('select[name^="attribute_"]').each(function () { o[this.name] = this.value; });
+    return o;
+  }
+  function applyCombo(attrs, anchor) {
+    var f = form();
+    var names = Object.keys(attrs).sort(function (a, b) {
+      return a === anchor ? -1 : (b === anchor ? 1 : 0);
+    });
+    f.find('select[name^="attribute_"]').val('').trigger('change');
+    var i = 0;
+    (function step() {
+      if (i >= names.length) return;
+      var n = names[i++], v = attrs[n];
+      if (v) f.find('select[name="' + n + '"]').val(v).trigger('change');
+      setTimeout(step, 80);
+    })();
+  }
+  function bestFor(attr, val) {
+    var vars = variations();
+    if (!vars) return null;
+    var cur = curSel(), best = null, bestScore = -1;
+    vars.forEach(function (v) {
+      var a = v.attributes || {};
+      if (a[attr] && a[attr] !== val) return;       /* "" אצל WC = כל ערך → מתאים */
+      var score = v.is_in_stock ? 1 : 0;
+      Object.keys(cur).forEach(function (n) {       /* לשמר כמה שיותר מהבחירה הקיימת */
+        if (n !== attr && cur[n] && a[n] === cur[n]) score += 2;
+      });
+      if (score > bestScore) { bestScore = score; best = v; }
+    });
+    if (!best) return null;
+    var out = {};
+    Object.keys(cur).forEach(function (n) { out[n] = (best.attributes || {})[n] || cur[n] || ''; });
+    out[attr] = val;
+    return out;
+  }
+  document.addEventListener('click', function (e) {
+    var it = e.target.closest && e.target.closest('.variable-item');
+    if (!it || !it.closest('.gm-atc')) return;
+    var wrap = it.closest('.variable-items-wrapper');
+    if (!wrap) return;
+    var attr = wrap.getAttribute('data-attribute_name');
+    var val = it.getAttribute('data-value');
+    if (!attr || !val || !variations()) return;
+    var combo = bestFor(attr, val);
+    if (!combo) return;
+    e.preventDefault(); e.stopPropagation();
+    applyCombo(combo, attr);
+  }, true);
 })(jQuery);
