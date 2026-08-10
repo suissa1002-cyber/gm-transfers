@@ -9689,6 +9689,8 @@ def board_stellr_issue(payload: dict, x_admin_key: Optional[str] = Header(None),
             m = db.stellr_map_get(f"pos:{li.get('id')}")
             if not m or not m.get("active"):
                 continue
+            _stellr_branch_guard(_stellr_brand_of(m.get("product_ref"),
+                                                  m.get("wc_name") or li.get("name")), _is_admin)
             if float(m.get("value") or 0) > stellr.MAX_VALUE:
                 raise HTTPException(400, "ערך הקוד מעל התקרה המותרת — פנה לאסי")
             for i in range(int(float(li.get("quantity") or 1))):
@@ -9794,6 +9796,53 @@ def _stellr_manual_branches() -> set:
     return {b.strip() for b in os.environ.get("STELLR_MANUAL_BRANCHES", "3").split(",") if b.strip()}
 
 
+
+# ══ חסימת מותג ברמת הסניפים ═══════════════════════════════════════
+# ⚠️ אסי (10/08/2026): סטלר העלו משמעותית את מחיר קודי ה-Xbox. חוסמים
+# הנפקה **בסניפים בלבד** (קופה + בקשה ידנית מסיטי). מסלול ההזמנות באתר
+# נשאר פתוח — שם אסי מחליט פרטנית אם ללחוץ "הנפק".
+#
+# ⛔ זמני במכוון: הדגל יושב ב-sales_state ולא רק ב-env, כדי שההסרה תהיה
+# מיידית מהקונסולה בלי פריסה. ברירת המחדל נלקחת מ-env אם אין ערך שמור.
+def _stellr_blocked_brands() -> set:
+    try:
+        raw = db.sales_state_get("stellr_block_brands")
+    except Exception:  # noqa: BLE001
+        raw = None
+    if raw is None:
+        raw = os.environ.get("STELLR_BRANCH_BLOCK_BRANDS", "")
+    return {b.strip().lower() for b in str(raw or "").split(",") if b.strip()}
+
+
+def _stellr_brand_of(product_ref: str = "", name: str = "") -> str:
+    """מותג מתוך רשומת מיפוי. ⚠️ קידומת ה-EAN היא הסימן האמין (885370 =
+    Microsoft/Xbox, 7290 = ישראלי/PSN); השם הוא רשת ביטחון בלבד."""
+    r = str(product_ref or "")
+    if r.startswith("885370"):
+        return "xbox"
+    if r.startswith("7290"):
+        return "sony"
+    n = str(name or "").lower()
+    if "xbox" in n or "קסבוקס" in n:
+        return "xbox"
+    if "sony" in n or "playstation" in n or "סוני" in n:
+        return "sony"
+    return ""
+
+
+_BRAND_HE = {"xbox": "Xbox", "sony": "PlayStation"}
+
+
+def _stellr_branch_guard(brand: str, is_admin: bool = False):
+    """עוצר הנפקת-סניף למותג חסום. מנהל עוקף — מוצא-מילוט בלי פריסה."""
+    if is_admin or not brand:
+        return
+    if brand in _stellr_blocked_brands():
+        raise HTTPException(403,
+                            f"הנפקת קודי {_BRAND_HE.get(brand, brand)} מושהית זמנית "
+                            "בסניפים — יש לפנות להנהלה")
+
+
 def _stellr_denoms() -> dict:
     """עריכים (מותג→סכומים) מתוך stellr_map עם מפתחות den:<brand>:<value>."""
     out = {}
@@ -9806,8 +9855,29 @@ def _stellr_denoms() -> dict:
             out.setdefault(brand, []).append(float(val))
         except Exception:  # noqa: BLE001
             continue
-    return {b: sorted(v) for b, v in out.items()}
+    # מותג חסום לא מוצג לעובד כלל — עדיף שלא יראה כפתור מאשר שילחץ ויידחה
+    blocked = _stellr_blocked_brands()
+    return {b: sorted(v) for b, v in out.items() if b not in blocked}
 
+
+
+@app.post("/api/admin/stellr/block-brands")
+def admin_stellr_block_brands(brands: str = "", x_admin_key: Optional[str] = Header(None)):
+    """חסימת מותג להנפקה **בסניפים בלבד**. brands="xbox" לחסימה,
+    brands="" לשחרור. מסלול ההזמנות באתר לעולם אינו מושפע."""
+    _require_admin(x_admin_key)
+    val = ",".join(sorted({b.strip().lower() for b in (brands or "").split(",") if b.strip()}))
+    db.sales_state_set("stellr_block_brands", val)
+    logger.info("stellr: branch block brands = %r", val)
+    return {"ok": True, "blocked": sorted(_stellr_blocked_brands()),
+            "note": "חל על קופה ובקשות סניף בלבד — הזמנות אתר פתוחות"}
+
+
+@app.get("/api/admin/stellr/block-brands")
+def admin_stellr_block_brands_get(x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    return {"blocked": sorted(_stellr_blocked_brands()),
+            "denoms_visible_to_branch": _stellr_denoms()}
 
 @app.get("/api/board/stellr/denoms")
 def board_stellr_denoms(x_admin_key: Optional[str] = Header(None),
@@ -9854,6 +9924,7 @@ def board_stellr_request(payload: dict, x_admin_key: Optional[str] = Header(None
     for it in items:
         brand = str(it.get("brand") or "")
         val = float(it.get("value") or 0)
+        _stellr_branch_guard(str(brand).lower(), _is_admin)
         if brand not in denoms or val not in denoms[brand]:
             raise HTTPException(400, f"סכום לא מוכר: {brand} {val}")
         clean.append({"brand": brand, "value": val})
@@ -11391,6 +11462,35 @@ def zap_selftest(x_admin_key: Optional[str] = Header(None)):
     if not _ok_cap:
         bad += 1
     out.append({"query": "גבולות המטמון שפויים", "want": True, "got": _ok_cap, "ok": _ok_cap})
+    # ⚠️ חסימת Xbox בסניפים (אסי, 10/08/2026 — סטלר העלו מחיר). הבדיקה
+    # מוודאת שהחסימה חלה על סניפים ו**לא** על מסלול ההזמנות באתר.
+    _prev_blk = db.sales_state_get("stellr_block_brands")
+    db.sales_state_set("stellr_block_brands", "xbox")
+    _ok_blk = "xbox" in _stellr_blocked_brands() and "sony" not in _stellr_blocked_brands()
+    _hid = _stellr_denoms()
+    _ok_hid = "xbox" not in _hid and "sony" in _hid
+    _ok_brand = (_stellr_brand_of("885370847031") == "xbox"
+                 and _stellr_brand_of("729011854470") == "sony")
+    _raised = False
+    try:
+        _stellr_branch_guard("xbox", False)
+    except HTTPException:
+        _raised = True
+    _ok_pass = True
+    try:
+        _stellr_branch_guard("sony", False)      # סוני חייב לעבור
+        _stellr_branch_guard("xbox", True)       # מנהל עוקף
+    except HTTPException:
+        _ok_pass = False
+    # ⛔ מסלול ההזמנות לא נוגע בשומר בכלל
+    _ok_orders = "_stellr_branch_guard" not in _in2.getsource(_stellr_issue_order)
+    db.sales_state_set("stellr_block_brands", _prev_blk if _prev_blk is not None else "")
+    for _lbl, _v in (("דגל החסימה נקרא", _ok_blk), ("המותג נסתר מהסניף", _ok_hid),
+                     ("זיהוי מותג לפי EAN", _ok_brand), ("חסום נדחה", _raised),
+                     ("סוני/מנהל עוברים", _ok_pass), ("הזמנות אתר לא מושפעות", _ok_orders)):
+        if not _v:
+            bad += 1
+        out.append({"query": f"stellr: {_lbl}", "want": True, "got": _v, "ok": _v})
     # ⚠️ הגרסה שרצה בשרת בפועל. בלי זה ניחשתי ארבע פעמים כמה זמן לוקח deploy
     # ל-Render, הרצתי סריקות ואימותים על קוד ישן, והסקתי מסקנות שגויות.
     sha = (os.getenv("RENDER_GIT_COMMIT") or "")[:7]
