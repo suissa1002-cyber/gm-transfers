@@ -11362,7 +11362,9 @@ def zap_selftest(x_admin_key: Optional[str] = Header(None)):
         bad += 1
     out.append({"query": "sales_state_get_many זהה לשליפה בודדת", "want": True,
                 "got": _ok_many, "ok": _ok_many})
-    _src_ol = _in2.getsource(admin_orders_list)
+    # ⚠️ עודכן 10/08/2026: גוף השליפה עבר ל-_orders_payload כשנוסף המטמון.
+    # הבדיקה עקבה אחרי הפונקציה הישנה והתריעה שווא — הצבעה ליעד הנכון.
+    _src_ol = _in2.getsource(_orders_payload)
     _ok_n1 = "sales_state_get_many" in _src_ol and "db.sales_state_get(f\"auto_tr_seen" not in _src_ol
     if not _ok_n1:
         bad += 1
