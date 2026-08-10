@@ -2089,15 +2089,27 @@ def pos_serial_probe(serial: str, deep: Optional[str] = None,
         out["products_serials_route"] = r if not isinstance(r, list) else r[:3]
     except Exception as e:  # noqa: BLE001
         out["products_serials_route"] = "ERR " + str(e)[:120]
-    # סריקה עמוקה לפי בקשה: כל הסניפים, שנה אחורה — האם הסריאל בכלל בתנועות?
+    # סריקה עמוקה ברקע (שנה, כל הסניפים) — התשובה נבדקת אחר כך מול האינדקס
     if str(_req_deep or "") == "1":
-        try:
-            import serial_sync
-            out["deep"] = serial_sync.index_from_operations(days=365, branch_id=None)
-            rec = db.serial_product(sn)
-            out["found_after_deep"] = rec or None
-        except Exception as e:  # noqa: BLE001
-            out["deep"] = "ERR " + str(e)[:150]
+        def _deep():
+            try:
+                import serial_sync
+                serial_sync.index_from_operations(days=365, branch_id=None)
+            except Exception as e:  # noqa: BLE001
+                logger.warning("deep serial index failed: %s", e)
+        scheduler.add_job(_deep, "date", id="serial_deep",
+                          run_date=datetime.now() + timedelta(seconds=1), replace_existing=True)
+        out["deep"] = "started"
+    # האם הסריאל שייך למכשיר בתיקון (Fixes) ולא למלאי?
+    try:
+        fx = no._get("/api/Fixes", {"search": sn, "page_size": 5})
+        if isinstance(fx, list):
+            out["fixes"] = [{"fixId": f.get("fixId"), "status": f.get("statusName"),
+                             "serial": ((f.get("deviceInfo") or {}).get("serial"))} for f in fx[:3]]
+        else:
+            out["fixes"] = fx
+    except Exception as e:  # noqa: BLE001
+        out["fixes"] = "ERR " + str(e)[:120]
     # למה הסריאל חסר באינדקס? הפילטר של הסבב הוא "סידורי + מלאי>0" בקטלוג שלנו
     try:
         cat = db.catalog_load() or {}
