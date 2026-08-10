@@ -121,6 +121,16 @@ def _serial_sync_job():
         logger.warning("serial_sync failed: %s", e)
 
 
+def _serial_ops_job():
+    """אינדוקס סריאלים מתנועות המלאי — זול (1-2 קריאות) ותופס מכשירים שהגיעו
+    אחרי הסבב היומי. בלעדיו סריקה של מכשיר חדש אמרה "לא נמצא בקופה"."""
+    try:
+        import serial_sync
+        serial_sync.index_from_operations(days=45)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("serial ops index failed: %s", e)
+
+
 def _rebalance_job():
     try:
         import rebalance_scan
@@ -641,6 +651,9 @@ def register_recurring_jobs():
     # (הקליטה עצמה לא תלויה באינדקס — receive_scan מתאים מול פריטי ההעברה.)
     scheduler.add_job(_serial_sync_job, "cron", hour=4, minute=0,
                       id="serial_sync", max_instances=1)
+    # ⚡ השלמה שעתית מתנועות המלאי — מכשיר שהגיע היום נמצא תוך שעה, ובסריקה
+    # עצמה יש גם השלמה מיידית (ראה pos_lookup).
+    scheduler.add_job(_serial_ops_job, "cron", minute=17, id="serial_ops", max_instances=1)
     if _is_stale(db.serial_index_last_sync(), hours=24):
         scheduler.add_job(_serial_sync_job, "date", id="serial_sync_initial",
                           run_date=datetime.now() + timedelta(seconds=60))
@@ -1948,6 +1961,38 @@ def _serial_branch_check(pid: str, serial: str, branch_id: int) -> dict:
     return out
 
 
+_serial_catchup_at: dict = {}
+
+
+def _looks_like_serial(code: str) -> bool:
+    """סריאל/IMEI: ספרות בלבד באורך 10-20, או קוד אלפאנומרי באורך 8-20 בלי
+    תווים מיוחדים (סריאל של Samsung/Buds). ⚠️ ברקוד EAN הוא 8/13 ספרות ולכן
+    הבדיקה הזאת אינה בלעדית — היא רק מצדיקה **ניסיון** השלמה, והפתרון בפועל
+    נקבע לפי מה שנמצא באינדקס אחריה."""
+    c = (code or "").strip()
+    if not c or len(c) < 8 or len(c) > 20:
+        return False
+    return c.isalnum()
+
+
+def _serial_catchup(branch_id: int) -> bool:
+    """השלמת אינדקס סריאלים מתנועות המלאי, עם צינון של 90 שניות לכל סניף —
+    כדי ששרשרת סריקות של קוד לא-מזוהה לא תייצר קריאות מיותרות לקופה."""
+    key = str(branch_id or 0)
+    import time as _t
+    last = _serial_catchup_at.get(key, 0)
+    if _t.time() - last < 90:
+        return False
+    _serial_catchup_at[key] = _t.time()
+    try:
+        import serial_sync
+        serial_sync.index_from_operations(days=90, branch_id=int(branch_id))
+        return True
+    except Exception as e:  # noqa: BLE001
+        logger.warning("serial catchup failed: %s", e)
+        return False
+
+
 @app.get("/api/admin/pos/lookup")
 def pos_lookup(code: str, branch_id: int = CITY_BRANCH_ID,
                x_admin_key: Optional[str] = Header(None),
@@ -1974,6 +2019,11 @@ def pos_lookup(code: str, branch_id: int = CITY_BRANCH_ID,
     pid = None
     is_serial_code = False
     srec = db.serial_product(code)
+    if not srec and _looks_like_serial(code):
+        # ⚡ מכשיר שהגיע אחרי הסבב היומי אינו באינדקס. במקום להחזיר
+        # "לא נמצא בקופה" (אסי, 10/08) — משלימים מיד מתנועות המלאי של הסניף.
+        if _serial_catchup(branch_id):
+            srec = db.serial_product(code)
     if srec:
         pid = str(srec.get("product_id"))
         is_serial_code = True
@@ -1994,8 +2044,11 @@ def pos_lookup(code: str, branch_id: int = CITY_BRANCH_ID,
                 "matches": matches, "product": card}
 
     if not pid:
-        return {"mode": "unknown", "code": code,
-                "message": "הקוד לא זוהה בקופה — בדוק שהמוצר מחובר (מק\"ט/ברקוד)"}
+        msg = ("הקוד לא זוהה בקופה — בדוק שהמוצר מחובר (מק\"ט/ברקוד)")
+        if _looks_like_serial(code):
+            msg = ("הסריאל לא נמצא בקופה גם אחרי רענון. ייתכן שהמכשיר טרם נקלט "
+                   "בתנועת מלאי, או שהוא שייך לסניף אחר.")
+        return {"mode": "unknown", "code": code, "message": msg}
 
     out = {"mode": "product", "code": code, "branch_id": branch_id,
            "product": _pos_price_card(pid)}

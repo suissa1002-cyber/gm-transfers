@@ -71,3 +71,43 @@ def full_sync(max_products: int = 5000) -> dict:
                 "index_size": db.serial_index_count()}
     finally:
         _running = False
+
+def index_from_operations(days: int = 60, branch_id=None) -> dict:
+    """אינדוקס סריאלים מתוך **תנועות המלאי** של הקופה.
+
+    ⚠️ למה זה קיים: הסבב המלא עובר על מוצרים סידוריים ש**יש להם מלאי בקטלוג
+    שלנו**, ורץ פעם ביום. מכשיר שהגיע לסניף אחרי הסבב האחרון אינו באינדקס,
+    והסריקה אמרה "מכשיר לא מזוהה — לא נמצא בקופה" (אסי, 10/08/2026).
+    כל מכשיר סידורי נכנס לסניף דרך תנועת מלאי, ותנועה מחזירה את הסריאלים
+    שלה — ולכן זו הדרך הזולה לתפוס בדיוק את המקרים שהסבב מפספס:
+    קריאה אחת עד שתיים, במקום סריקה של אלפי מוצרים.
+    """
+    from datetime import date, timedelta
+    no = poller.client()
+    start = (date.today() - timedelta(days=max(1, days))).strftime("%d/%m/%Y")
+    end = date.today().strftime("%d/%m/%Y")
+    rows, ops_seen = [], 0
+    for pn in range(1, 12):
+        try:
+            batch = no.get_stock_operations(branch_id=branch_id, from_date=start,
+                                            to_date=end, page_size=200, page_num=pn,
+                                            items_for=lambda op: True)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("serial index_from_operations page %s failed: %s", pn, e)
+            break
+        if not batch:
+            break
+        ops_seen += len(batch)
+        for o in batch:
+            for it in (o.get("stockItems") or []):
+                pid = it.get("id")
+                name = it.get("name") or ""
+                for sn in (it.get("serials") or []):
+                    if sn:
+                        rows.append((str(sn), pid, name))
+        if len(batch) < 200:
+            break
+    n = db.serial_index_upsert_many(rows) if rows else 0
+    logger.info("serial index_from_operations: branch=%s days=%s ops=%d serials=%d",
+                branch_id, days, ops_seen, n)
+    return {"ops": ops_seen, "serials": n}
