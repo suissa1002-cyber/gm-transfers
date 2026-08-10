@@ -767,6 +767,10 @@ async function load() {
             a.sku ? ' · מק״ט ' + a.sku : ''} · ${(a.chips || []).map(c => CHIPS[c] || c).join(' · ')} ${where}</div>
         </div>
         <button class="btn btn-ghost btn-sm" data-edit='${JSON.stringify(a).replace(/'/g, "&#39;")}'>עריכה</button>
+        <button class="btn btn-ghost btn-sm bdel" data-del="${a.id}" data-kind="${a.kind || 'own'}"
+          data-nm="${(a.name || '').replace(/"/g, '&quot;')}"
+          title="${a.kind === 'catalog' ? 'הסרת הכרטיסיה — המוצר נשאר בקטלוג' : 'מחיקת התוספת'}">${
+          a.kind === 'catalog' ? 'הסרה' : 'מחיקה'}</button>
       </div>`;
     }).join('') || '<div class="hint">אין תוצאות.</div>';
   } catch (e) { say(e.message, 'err'); }
@@ -830,6 +834,46 @@ function openEditCatalog(a) {
   openFold('foldForm'); drawChips(); drawTags(); dealPreview(); clearMsg();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
+/* ⚠️ window.confirm חוזר false בשקט בדפדפן המוטמע — אישור בתוך העמוד.
+   ⚖️ שתי סמנטיקות שונות: תוספת שנוצרה כאן נזרקת לאשפה (הזמנות עבר מפנות
+   לשורה), ואילו **מוצר קטלוגי רק מפסיק להיות כרטיסיה** — הוא מוצר חי בחנות. */
+function askIn(text) {
+  return new Promise(res => {
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(10,14,12,.5);z-index:99;' +
+      'display:flex;align-items:center;justify-content:center;padding:18px';
+    ov.innerHTML = `<div style="background:var(--bg);border-radius:16px;max-width:420px;width:100%;
+      padding:18px;box-shadow:0 20px 50px rgba(0,0,0,.25)">
+      <div style="font-weight:700;line-height:1.5;margin-bottom:14px">${text}</div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn btn-ghost btn-sm" data-no>ביטול</button>
+        <button class="btn btn-sm" data-yes>כן</button></div></div>`;
+    document.body.appendChild(ov);
+    ov.addEventListener('click', e => {
+      if (e.target.closest('[data-yes]')) { ov.remove(); res(true); }
+      else if (e.target.closest('[data-no]') || e.target === ov) { ov.remove(); res(false); }
+    });
+  });
+}
+$('list').addEventListener('click', async e => {
+  const b = e.target.closest('.bdel'); if (!b) return;
+  e.stopPropagation();
+  const isCat = b.dataset.kind === 'catalog';
+  const msg = isCat
+    ? `להסיר את הכרטיסיה "${b.dataset.nm}"?<br><span style="font-weight:400;color:var(--ink2)">
+       המוצר עצמו נשאר בקטלוג ובפיד — הוא רק יפסיק להופיע כתוספת בעמודי המוצר.</span>`
+    : `למחוק את התוספת "${b.dataset.nm}"?<br><span style="font-weight:400;color:var(--ink2)">
+       התוספת תיזרק לאשפה ותיעלם מכל עמודי המוצר. הזמנות עבר לא נפגעות.</span>`;
+  if (!await askIn(msg)) return;
+  b.disabled = true;
+  try {
+    await api('delete', { id: +b.dataset.del });
+    say(isCat ? 'הכרטיסיה הוסרה ✓' : 'נמחק ✓', 'ok');
+    BY_ID = {}; load();
+    if (MPROD) showProd();
+  } catch (err) { say(err.message, 'err'); b.disabled = false; }
+});
+
 /* preview מחזיר רק {id,name,price,img}; לעריכה צריך את הרשומה המלאה (צ׳יפים,
  * יעדים, שני המחירים) ⇒ מפה מ-/list, נטענת בעצלתיים ומרועננת אחרי שמירה. */
 async function addonById(id) {
