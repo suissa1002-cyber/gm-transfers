@@ -2035,6 +2035,19 @@ def pos_serial_probe(serial: str,
         out["products_serials_route"] = r if not isinstance(r, list) else r[:3]
     except Exception as e:  # noqa: BLE001
         out["products_serials_route"] = "ERR " + str(e)[:120]
+    # למה הסריאל חסר באינדקס? הפילטר של הסבב הוא "סידורי + מלאי>0" בקטלוג שלנו
+    try:
+        cat = db.catalog_load() or {}
+        ser = [(pid, c) for pid, c in cat.items() if c.get("kind") == "serial"]
+        out["catalog"] = {
+            "products": len(cat),
+            "serial_products": len(ser),
+            "serial_with_stock": sum(1 for _, c in ser if (c.get("stock") or 0) > 0),
+            "serial_zero_stock": sum(1 for _, c in ser if not (c.get("stock") or 0)),
+        }
+        out["index"] = {"size": db.serial_index_count(), "last_sync": db.serial_index_last_sync()}
+    except Exception as e:  # noqa: BLE001
+        out["catalog"] = "ERR " + str(e)[:120]
     # האם רשימת המוצרים הסידוריים מחזירה את הסריאלים בתוכה? (מסלול אינדוקס מלא)
     try:
         lst = no.get_products(serials_only=True, page_size=5) or []
