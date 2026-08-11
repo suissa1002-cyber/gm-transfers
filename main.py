@@ -679,6 +679,8 @@ def register_recurring_jobs():
     scheduler.add_job(_stellr_watch_job, "interval", minutes=20, id="stellr_watch", max_instances=1)
     # 🎫 חילוץ הנפקות שנתקעו אצל הספק (GET בלבד — לעולם לא מנפיק)
     scheduler.add_job(_stellr_orphan_job, "interval", minutes=10, id="stellr_orphan", max_instances=1)
+    # 🕐 מריץ את המשימות המתוזמנות של וורדפרס מבחוץ — בלי זה הן לא רצות והאתר נחנק
+    scheduler.add_job(_wp_cron_job, "interval", minutes=5, id="wp_cron", max_instances=1)
     # ⏰ מענים מתוזמנים של אלה — שליחה כשמגיע הזמן
     scheduler.add_job(_scheduled_sends_job, "interval", minutes=1, id="scheduled_sends", max_instances=1)
     # 🛟 רשת-ביטחון: שיחה שנתקעה על 'בודקת עבורך' (אלה לא ענתה) → מענה ביניים + נציג + התראה
@@ -9478,6 +9480,55 @@ def _stellr_watch_job():
             pass
 
 
+_WPCRON_FAILS = {"n": 0}
+
+
+def _wp_cron_job():
+    """מריץ את המשימות המתוזמנות של וורדפרס מבחוץ, כל 5 דקות.
+
+    ⚠️ למה זה קיים (אסי, 11/08/2026): המשימות המתוזמנות של וורדפרס לא רצו מאז
+    17/05 — 132 משימות באיחור של 2,334 שעות. המנקות שביניהן (jetpack_clean_nonces,
+    delete_expired_transients) עמדו בתור, ולכן הצטברו כ-112,000 שורות זבל בטבלת
+    ההגדרות: 50,260 nonces של Jetpack ו-31,075 טרנזיינטים פגי תוקף. הטבלה נקראת
+    בכל בקשה, והאתר נחנק בהדרגה — /wp-json/ הגיע ל-8 שניות. ריצת קרון אחת החזירה
+    אותו ל-0.15 שניות.
+
+    הפינג הזה הוא הקבוע: הוא לא תלוי בתעבורה לאתר, לא בחברת האחסון, ולא במנגנון
+    הפנימי של וורדפרס שכשל. ⛔ סוכן משתמש חייב להיראות כמו וורדפרס — Cloudflare
+    מחזיר 403 לסוכן דפדפני על wp-cron.php.
+    """
+    if os.getenv("WP_CRON_PING", "1").strip() in ("0", "false", "no"):
+        return
+    base = os.getenv("WC_STORE_URL", "https://greenmobile.co.il").rstrip("/")
+    import time as _t
+    url = f"{base}/wp-cron.php?doing_wp_cron={_t.time():.4f}"
+    try:
+        import requests as _rq
+        # מפלס גיבוי אחרי הפעלה מחדש: אם התור ארוך הריצה נמשכת, ולכן timeout נדיב.
+        r = _rq.get(url, timeout=120, headers={"User-Agent": f"WordPress/6.9; {base}"})
+        ok = r.status_code == 200
+    except Exception as e:  # noqa: BLE001
+        logger.warning("wp-cron ping: %s", e)
+        ok = False
+    if ok:
+        if _WPCRON_FAILS["n"] >= 3:
+            try:
+                _tg_admin("🕐✅ <b>קרון וורדפרס חזר</b>\nהמשימות המתוזמנות רצות שוב.")
+            except Exception:  # noqa: BLE001
+                pass
+        _WPCRON_FAILS["n"] = 0
+        db.sales_state_set("wp_cron_last_ok", str(int(_t.time())))
+        return
+    _WPCRON_FAILS["n"] += 1
+    # מתריעים פעם אחת בכניסה לכשל — לא בכל מחזור.
+    if _WPCRON_FAILS["n"] == 3:
+        try:
+            _tg_admin("🕐⚠️ <b>קרון וורדפרס לא נענה</b>\n3 ניסיונות ברצף נכשלו.\n"
+                      "⛔ בלי זה הזבל בטבלת ההגדרות מצטבר והאתר מאט בהדרגה.")
+        except Exception:  # noqa: BLE001
+            pass
+
+
 def _stellr_orphan_job():
     """סוגר עסקאות שנתקעו: הנפקה שיצאה ולא חזרה, או 403 'המזהה כבר קיים'.
 
@@ -11937,6 +11988,13 @@ def admin_diag(x_admin_key: Optional[str] = Header(None)):
         pass
     out["commit"] = (os.getenv("RENDER_GIT_COMMIT") or "")[:7]
     out["region"] = os.getenv("RENDER_REGION") or os.getenv("RENDER_SERVICE_REGION") or ""
+    # 🕐 גיל הריצה האחרונה של קרון וורדפרס — כשזה מזדקן, האתר מתחיל להאט
+    try:
+        import time as _t
+        last = int(db.sales_state_get("wp_cron_last_ok", "0") or 0)
+        out["wp_cron_age_s"] = int(_t.time()) - last if last else None
+    except Exception:  # noqa: BLE001
+        pass
     return out
 
 @app.get("/api/admin/scheduled-status")
