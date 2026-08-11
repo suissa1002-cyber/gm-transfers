@@ -99,6 +99,38 @@ if (!window.toggleNav) { window.toggleNav = function () {
   document.body.style.overflow = open ? 'hidden' : '';
 }; }
 
+/* ── מקור אחד לקריאת הסל ──
+   ⚠️ למה זה קיים (אסי, 11/08/2026): בטעינת עמוד הבית יצאו **שלוש** קריאות
+   נפרדות ל-store/v1/cart — ההדר, המיני-סל והפס בעמוד המוצר — כל אחת 1.1 עד
+   2.4 שניות. אותו מידע בדיוק, שלוש פעמים, כמעט 5 שניות מבוזבזות.
+
+   כאן מאחדים: מי שמבקש בזמן שקריאה כבר באוויר מצטרף אליה, ומי שמבקש מיד
+   אחריה מקבל את התשובה השמורה. ⛔ המטמון קצר בכוונה (1.5 שניות) — הוא נועד
+   לאחד את הפרץ בטעינה, לא להחזיק מצב סל ישן. כל פעולה שמשנה את הסל קוראת
+   ל-gmCartGet(true) ודורסת אותו, ולכן המונה לעולם לא מציג מצב שלפני ההוספה.
+
+   ⛔ עותק זהה יושב ב-static/product/gm-product.js: שני הקבצים נטענים בסדר
+   משתנה, והשומר הראשון מבטיח שמי שמגיע ראשון הוא זה שמגדיר. */
+(function () {
+  if (window.gmCartGet) return;
+  var API = '/wp-json/wc/store/v1/cart', TTL = 1500;
+  var inflight = null, cached = null, at = 0;
+  window.gmCartNonce = null;
+  window.gmCartGet = function (force) {
+    if (!force && cached && Date.now() - at < TTL) return Promise.resolve(cached);
+    if (inflight) return inflight;                 /* קריאה כבר באוויר — מצטרפים */
+    inflight = fetch(API, { credentials: 'same-origin' })
+      .then(function (r) {
+        window.gmCartNonce = r.headers.get('Nonce') || window.gmCartNonce;
+        return r.json();
+      })
+      .then(function (j) { cached = j; at = Date.now(); inflight = null; return j; })
+      .catch(function (e) { inflight = null; throw e; });
+    return inflight;
+  };
+  window.gmCartInvalidate = function () { cached = null; at = 0; };
+})();
+
 /* ── מיני-סל משותף: ספירה חיה + מגירה, זהה בכל עמוד. ──
    הבעיה שנפתרת: ספירת הסל נאפתה "0" לתוך עמוד המטמון של LiteSpeed —
    כאן מושכים את הסל האמיתי מ-Store API בכל טעינה ומעדכנים באדג'+פיל.
@@ -112,7 +144,7 @@ if (!window.toggleNav) { window.toggleNav = function () {
   /* Store API מחזיר שמות מקודדי-ישויות (&#8211;) — מפענחים לפני esc, אחרת הישות מוצגת כטקסט */
   function dec(s){var t=document.createElement('textarea');t.innerHTML=(s==null?'':String(s));return t.value;}
   function money(c,m){return '‏₪'+(c/Math.pow(10,m||0)).toLocaleString('en-US');}
-  function get(){return fetch(API,{credentials:'same-origin'}).then(function(r){nonce=r.headers.get('Nonce');return r.json();});}
+  function get(force){return window.gmCartGet(force).then(function(c){nonce=window.gmCartNonce;return c;});}
   function op(path,payload){
     var run = nonce ? Promise.resolve(nonce) : get().then(function(){return nonce;});
     return run.then(function(n){
@@ -278,7 +310,7 @@ if (!window.toggleNav) { window.toggleNav = function () {
       GC_SHIELD+'<span class="gcopt-t">'+(isAdded?'':'הוספת ')+title+
       '<span>'+sub+'</span></span><span class="gcopt-p">+‏₪'+(+price).toLocaleString('en-US')+'</span></button>';
   }
-  function open(){ ensure(); document.getElementById('cartDrawer').classList.add('open'); document.getElementById('cartOverlay').classList.add('open'); document.body.style.overflow='hidden'; get().then(render); }
+  function open(){ ensure(); document.getElementById('cartDrawer').classList.add('open'); document.getElementById('cartOverlay').classList.add('open'); document.body.style.overflow='hidden'; get(1).then(render); }
   function close(){ var d=document.getElementById('cartDrawer'),o=document.getElementById('cartOverlay'); if(d)d.classList.remove('open'); if(o)o.classList.remove('open'); document.body.style.overflow=''; }
   function openWith(c){ ensure(); render(c);
     document.getElementById('cartDrawer').classList.add('open');
@@ -328,7 +360,7 @@ if (!window.toggleNav) { window.toggleNav = function () {
       gc.style.opacity='.6';
       fetch('/wp-admin/admin-ajax.php',{method:'POST',credentials:'same-origin',body:fd})
         .then(function(r){return r.json();})
-        .then(function(){ gc.style.opacity=''; get().then(render); })
+        .then(function(){ gc.style.opacity=''; get(1).then(render); })
         .catch(function(){ gc.style.opacity=''; });
       return;
     }
@@ -499,7 +531,7 @@ if (!window.toggleNav) { window.toggleNav = function () {
   }
   /* מוודא שהסל באמת ריק; מסיר שאריות במקביל, עם nonce טרי */
   function sweep(tries){
-    return get().then(function(c){
+    return get(1).then(function(c){
       var left=(c&&c.items)||[];
       if(!left.length || tries<=0) return;
       return Promise.all(left.map(function(it){
@@ -523,7 +555,7 @@ if (!window.toggleNav) { window.toggleNav = function () {
     headerClear(d);
     return main;
   }
-  function get(){ return fetch(API,{credentials:'same-origin'}).then(function(r){nonce=r.headers.get('Nonce');return r.json();}); }
+  function get(force){ return window.gmCartGet(force).then(function(c){nonce=window.gmCartNonce;return c;}); }
   /* ⛔ חובה לבדוק את הסטטוס: תשובת 400 (למשל מוצר עם וריאציות בלי בחירה)
      חזרה כ-JSON תקין, התצוגה המיידית סימנה ✓ והשורה "נוספה" — בלי שכלום
      נכנס לסל באמת (אסי, 10/08: "יש וי אבל הם לא בעגלה"). */
@@ -550,7 +582,7 @@ if (!window.toggleNav) { window.toggleNav = function () {
     re(); setTimeout(re,60); setTimeout(re,250); setTimeout(re,700); }
   /* הסרת שורת Green Care המשויכת למכשיר (מזוהה לפי שם המכשיר ב-item_data) */
   function gcRemove(pid){
-    return get().then(function(c){
+    return get(1).then(function(c){
       var items=(c&&c.items)||[], phone=null, line=null;
       items.forEach(function(it){ if(String(it.id)===String(pid)) phone=dec(it.name||''); });
       var key=(phone||'').toLowerCase().slice(0,14);

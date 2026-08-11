@@ -1,5 +1,37 @@
 /* Green Mobile — עמוד המוצר החדש: גלריה, טאבים, וסנכרון תמונת-וריאציה.
    הטופס עצמו = WooCommerce המקורי (וריאציות/סל עובדים כרגיל). */
+
+/* ── מקור אחד לקריאת הסל ──
+   ⚠️ למה זה קיים (אסי, 11/08/2026): בטעינת עמוד הבית יצאו **שלוש** קריאות
+   נפרדות ל-store/v1/cart — ההדר, המיני-סל והפס בעמוד המוצר — כל אחת 1.1 עד
+   2.4 שניות. אותו מידע בדיוק, שלוש פעמים, כמעט 5 שניות מבוזבזות.
+
+   כאן מאחדים: מי שמבקש בזמן שקריאה כבר באוויר מקבל את אותה הבטחה, ומי
+   שמבקש מיד אחריה מקבל את התשובה השמורה. ⛔ המטמון קצר בכוונה (1.5 שניות)
+   — הוא נועד לאחד את הפרץ בטעינה, לא להחזיק מצב סל ישן. כל שינוי בסל
+   קורא ל-gmCartGet(true) ודורס אותו.
+
+   ⛔ הבלוק חייב להיות זהה גם ב-gm-product.js: שני הקבצים נטענים בסדר משתנה,
+   והשומר למטה מבטיח שהראשון שמגיע הוא זה שמגדיר. */
+(function () {
+  if (window.gmCartGet) return;
+  var API = '/wp-json/wc/store/v1/cart', TTL = 1500;
+  var inflight = null, cached = null, at = 0;
+  window.gmCartNonce = null;
+  window.gmCartGet = function (force) {
+    if (!force && cached && Date.now() - at < TTL) return Promise.resolve(cached);
+    if (inflight) return inflight;                 /* קריאה באוויר — מצטרפים אליה */
+    inflight = fetch(API, { credentials: 'same-origin' })
+      .then(function (r) {
+        window.gmCartNonce = r.headers.get('Nonce') || window.gmCartNonce;
+        return r.json();
+      })
+      .then(function (j) { cached = j; at = Date.now(); inflight = null; return j; })
+      .catch(function (e) { inflight = null; throw e; });
+    return inflight;
+  };
+  window.gmCartInvalidate = function () { cached = null; at = 0; };
+})();
 (function ($) {
   'use strict';
 
@@ -884,9 +916,8 @@
   var cartNonce = null;
   function storeNonce() {
     if (cartNonce) return Promise.resolve(cartNonce);
-    return fetch('/wp-json/wc/store/v1/cart', { credentials: 'same-origin' })
-      .then(function (r) { cartNonce = r.headers.get('Nonce'); return r.json(); })
-      .then(function (c) { drawerRender(c); return cartNonce; });
+    return window.gmCartGet()
+      .then(function (c) { cartNonce = window.gmCartNonce; drawerRender(c); return cartNonce; });
   }
   function cartOp(path, payload) {
     return storeNonce().then(function (n) {
@@ -939,9 +970,9 @@
      מהירה מכפתורי הנפח (סניפט 41507) עדכנה את הסל בשרת אבל המונה נשאר
      קפוא — אסי ראה (0) והסיק שההוספה נשברה (03/08/2026). */
   window.gmCartRefresh = function () {
-    fetch('/wp-json/wc/store/v1/cart', { credentials: 'same-origin' })
-      .then(function (r) { cartNonce = r.headers.get('Nonce') || cartNonce; return r.json(); })
-      .then(drawerRender);
+    /* אחרי שינוי בסל — תמיד טרי, אחרת המונה יציג את המצב שלפני ההוספה. */
+    return window.gmCartGet(true)
+      .then(function (c) { cartNonce = window.gmCartNonce || cartNonce; drawerRender(c); return c; });
   };
   function drawerEnsure() {
     if ($('#cartDrawer').length) return;
@@ -1100,8 +1131,8 @@
       .then(runBatch)
       .catch(function (err) {
         if (!err || !err.nonce) throw err;
-        return fetch('/wp-json/wc/store/v1/cart', { credentials: 'same-origin' })
-          .then(function (r) { cartNonce = r.headers.get('Nonce') || cartNonce; return runBatch(cartNonce); });
+        return window.gmCartGet(true)
+          .then(function () { cartNonce = window.gmCartNonce || cartNonce; return runBatch(cartNonce); });
       })
       .then(finish)
       .catch(function () {
@@ -1318,8 +1349,7 @@
         /* ⚠️ תשובת add-item בתוך batch **אינה** מכילה את הסל. גרסה קודמת דרשה
          * body.items ולכן נפלה ל-fallback הסדרתי — 10 שניות במקום 1.5.
          * לכן: מושכים את הסל פעם אחת אחרי ה-batch, ומרפאים מה שלא נכנס. */
-        return fetch('/wp-json/wc/store/v1/cart', { credentials: 'same-origin' })
-          .then(function (g) { return g.json(); })
+        return window.gmCartGet(true)
           .then(function (cart) {
             var have = {};
             (cart.items || []).forEach(function (it) { have[it.id] = true; });
