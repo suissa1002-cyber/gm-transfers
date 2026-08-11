@@ -6,31 +6,54 @@
    נפרדות ל-store/v1/cart — ההדר, המיני-סל והפס בעמוד המוצר — כל אחת 1.1 עד
    2.4 שניות. אותו מידע בדיוק, שלוש פעמים, כמעט 5 שניות מבוזבזות.
 
-   כאן מאחדים: מי שמבקש בזמן שקריאה כבר באוויר מקבל את אותה הבטחה, ומי
-   שמבקש מיד אחריה מקבל את התשובה השמורה. ⛔ המטמון קצר בכוונה (1.5 שניות)
-   — הוא נועד לאחד את הפרץ בטעינה, לא להחזיק מצב סל ישן. כל שינוי בסל
-   קורא ל-gmCartGet(true) ודורס אותו.
+   כאן מאחדים: מי שמבקש בזמן שקריאה כבר באוויר מצטרף אליה, ומי שמבקש מיד
+   אחריה מקבל את התשובה השמורה. ⛔ המטמון קצר בכוונה (1.5 שניות) — הוא נועד
+   לאחד את הפרץ בטעינה, לא להחזיק מצב סל ישן. כל פעולה שמשנה את הסל קוראת
+   ל-gmCartGet(true) ודורסת אותו, ולכן המונה לעולם לא מציג מצב שלפני ההוספה.
 
-   ⛔ הבלוק חייב להיות זהה גם ב-gm-product.js: שני הקבצים נטענים בסדר משתנה,
-   והשומר למטה מבטיח שהראשון שמגיע הוא זה שמגדיר. */
+   ⛔ עותק זהה יושב ב-static/product/gm-product.js: שני הקבצים נטענים בסדר
+   משתנה, והשומר הראשון מבטיח שמי שמגיע ראשון הוא זה שמגדיר. */
 (function () {
   if (window.gmCartGet) return;
   var API = '/wp-json/wc/store/v1/cart', TTL = 1500;
+  var orig = window.fetch.bind(window);
   var inflight = null, cached = null, at = 0;
   window.gmCartNonce = null;
-  window.gmCartGet = function (force) {
-    if (!force && cached && Date.now() - at < TTL) return Promise.resolve(cached);
-    if (inflight) return inflight;                 /* קריאה באוויר — מצטרפים אליה */
-    inflight = fetch(API, { credentials: 'same-origin' })
-      .then(function (r) {
-        window.gmCartNonce = r.headers.get('Nonce') || window.gmCartNonce;
-        return r.json();
-      })
-      .then(function (j) { cached = j; at = Date.now(); inflight = null; return j; })
-      .catch(function (e) { inflight = null; throw e; });
-    return inflight;
-  };
+
+  /* מחזיר Response. ⛔ תמיד משוכפל — קורא שקרא את הגוף שורף אותו לשאר. */
+  function raw(force) {
+    if (!force && cached && Date.now() - at < TTL) return Promise.resolve(cached.clone());
+    if (!force && inflight) return inflight.then(function (r) { return r.clone(); });
+    var p = orig(API, { credentials: 'same-origin' }).then(function (r) {
+      cached = r.clone(); at = Date.now();
+      if (inflight === p) inflight = null;
+      window.gmCartNonce = r.headers.get('Nonce') || window.gmCartNonce;
+      return r;
+    }).catch(function (e) { if (inflight === p) inflight = null; throw e; });
+    if (!force) inflight = p;
+    return p.then(function (r) { return r.clone(); });
+  }
+
+  window.gmCartGet = function (force) { return raw(force).then(function (r) { return r.json(); }); };
   window.gmCartInvalidate = function () { cached = null; at = 0; };
+
+  /* ⚠️ רוב עמודי האתר **אופים** עותק ישן של קוד הסל ב-HTML שלהם מזמן הבנייה,
+     והעותק הזה מושך את הסל בעצמו — לכן איחוד ברמת המודולים לבדו לא מספיק
+     (נמדד 11/08/2026: שתי קריאות חופפות, 1833ms ו-2721ms על אותו מידע).
+     כאן מאחדים בשכבת הרשת: כל GET לסל מצטרף לקריאה שכבר באוויר, מי שהוא
+     שיהיה. ⛔ POST לא נוגעים בו לעולם — הוספה/הסרה חייבות להגיע לשרת. */
+  window.fetch = function (input, init) {
+    try {
+      if (window.gmCartDedupe !== false) {
+        var url = typeof input === 'string' ? input : (input && input.url) || '';
+        var m = ((init && init.method) || (input && input.method) || 'GET').toUpperCase();
+        if (m === 'GET' && url.indexOf(API) !== -1 && url.indexOf(API + '/') === -1) {
+          return raw(false);
+        }
+      }
+    } catch (e) { /* כל תקלה כאן = מעבר שקוף ל-fetch המקורי */ }
+    return orig.apply(null, arguments);
+  };
 })();
 (function ($) {
   'use strict';
