@@ -2104,6 +2104,36 @@ function zapComp(r){
 // ההורה (הוא יושב על הוריאציה), ולכן מק"ט אינו זהות תקפה כאן.
 const WCADMIN='https://greenmobile.co.il';
 function zapRid(r){ return String((r&&(r.id||r.product_id))||(r&&r.sku)||''); }
+// ⚠️ אישור מיידי ליצירת מוצר צל. עד 12/08/2026 היצירה הצליחה אבל השורה החדשה
+// הופיעה רק בסריקה הבאה — אסי יצר צל, חיפש את הדגם, וראה שורה אחת בלבד, בלי
+// שום דרך לדעת אם הפעולה הושלמה ואם המבנה (אב + צללים) תקין. כאן נבנית השורה
+// מקומית מיד: היא נשארת עד שהסריקה הבאה דורסת אותה בנתוני אמת.
+function zapAddShadowRow(parentRow, st, res){
+  const Z=zapInit(); if(!Z.rows||!res||!res.shadow_id) return;
+  const id=String(res.shadow_id);
+  if(!Z.rows.some(r=>zapRid(r)===id)){
+    Z.rows.push({
+      id:id, product_id:id,
+      name:res.name||(st&&st.suggested_name)||'',
+      brand:(parentRow&&parentRow.brand)||'',
+      our_price:(st&&st.price)||null, stock:0, sku:(st&&st.sku)||'',
+      modelid:(st&&st.modelid)||null, zap_title:(st&&st.zap_title)||'',
+      status:'missing', reason_code:'missing',
+      reason:'מוצר הצל נוצר — ממתין לשיוך זאפ',
+      is_shadow:1, shadows:0, is_parent:0, in_feed:1, zap_hidden:0,
+      site_instock:1, caps:[], sku_stock:[], variants:[]
+    });
+  }
+  // ההורה מוסתר אוטומטית ביצירה — משקפים זאת מיד, כדי שהתג "מוצר אב" יופיע
+  if(parentRow){
+    parentRow.shadows=(parentRow.shadows||0)+1;
+    parentRow.is_parent=1; parentRow.zap_hidden=1; parentRow.in_feed=0;
+  }
+  // חותמת "נוצר HH:MM · ממתין לשיוך זאפ" — אותו תג שמוצג אחרי סריקה
+  Z.acts=Z.acts||{};
+  Z.acts[id]={kind:'shadow', at:new Date().toISOString().slice(0,19),
+              detail:res.name||''};
+}
 function zapQS(r){ const q=[]; if(r.sku) q.push('sku='+encodeURIComponent(r.sku));
   const p=r.id||r.product_id; if(p) q.push('pid='+encodeURIComponent(p)); return q.join('&'); }
 // ⚠️ רשת ביטחון לפעולות הרסניות: משווים את השם ש**השרת** דיווח עליו לשם
@@ -2397,7 +2427,10 @@ async function zapPlanCreate(i){
     st.action='מוצר הצל נוצר — ממתין לסריקת זאפ';
     st.shadow_id=res.shadow_id;
     zapPlanRender();
-    loadZap(false);
+    // ⚠️ לא loadZap(): הוא מושך את תמונת הסריקה האחרונה ודורס בדיוק את
+    // השורה שזה עתה נוצרה. מוסיפים מקומית ומרנדרים.
+    zapAddShadowRow(zapRow(String(j.product_id)), st, res);
+    renderZap();
   }catch(e){ hideLoading(); toast('שגיאת רשת',false); }
 }
 async function zapMakeShadow(rid){
@@ -2410,6 +2443,8 @@ async function zapMakeShadow(rid){
     if(!j.ok){ toast(j.error||'נכשל',false); return; }
     zapDone(r, j.name, 'נוצר מוצר צל #'+j.shadow_id+' — ודא שהכותרת תואמת לזאפ');
     const Z=zapInit(); if(Z.sh) delete Z.sh[zapRid(r)];
+    zapAddShadowRow(r, null, j);
+    renderZap();
     zapLoadShadow(rid);
   }catch(e){ hideLoading(); toast('שגיאת רשת',false); }
 }
