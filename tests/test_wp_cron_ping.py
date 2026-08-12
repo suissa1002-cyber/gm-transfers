@@ -59,6 +59,9 @@ def run():
         main._wp_cron_job()
         check("נשלחה קריאה אחת", len(calls) == 1)
         check("היעד הוא wp-cron.php", "/wp-cron.php" in calls[0]["url"])
+        # ⛔ הלקח מ-12/08: ערך אחרי doing_wp_cron גורם לוורדפרס לצאת מיד.
+        check("⛔ doing_wp_cron בלי ערך", calls[0]["url"].endswith("?doing_wp_cron"))
+        check("⛔ בלי סימן שווה בכתובת", "doing_wp_cron=" not in calls[0]["url"])
         check("⛔ סוכן משתמש של וורדפרס", calls[0]["ua"].startswith("WordPress/"))
         check("⛔ לא סוכן דפדפני", "Mozilla" not in calls[0]["ua"])
         check("timeout נדיב לתור ארוך", (calls[0]["timeout"] or 0) >= 60)

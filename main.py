@@ -9501,7 +9501,11 @@ def _wp_cron_job():
         return
     base = os.getenv("WC_STORE_URL", "https://greenmobile.co.il").rstrip("/")
     import time as _t
-    url = f"{base}/wp-cron.php?doing_wp_cron={_t.time():.4f}"
+    # ⛔ בלי ערך אחרי doing_wp_cron. עם ערך, וורדפרס משווה אותו לנעילה השמורה
+    # אצלו, לא מוצא התאמה ויוצא מיד — 200 תוך 0.06 שניות בלי להריץ כלום.
+    # בלי ערך הוא תופס נעילה חדשה ובאמת עובד. (נמדד 12/08/2026: עם ערך 0
+    # משימות נוקזו, בלי ערך מיד ירד המונה.)
+    url = f"{base}/wp-cron.php?doing_wp_cron"
     try:
         import requests as _rq
         # מפלס גיבוי אחרי הפעלה מחדש: אם התור ארוך הריצה נמשכת, ולכן timeout נדיב.
