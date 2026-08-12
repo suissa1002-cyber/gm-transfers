@@ -1172,7 +1172,15 @@ def plan(pid, cat=None) -> dict:
                           + (" · שים לב שלא נשלח מק״ט (CATALOG_NUMBER ריק)"
                              if not info["sku"] else ""))
 
+        # ⚠️ השוואה **מילולית** בין מה שמשודר לבין כותרת הדגם. בדיקת הפער
+        # (_title_gap) משווה אסימוני a-z0-9 בלבד, ולכן היא עיוורת למילים
+        # בעברית: זאפ הסירו "הזמנה מוקדמת" מכותרת הדגם, הכותרת שלנו נשארה
+        # איתה, זאפ סירבו להציג אותנו — והכלי הכריז "הכותרת תואמת"
+        # (אסי, 12/08/2026). כאן זה נמדד ישירות.
+        _feed_now = (feed_name or p.get("name") or "").strip()
+        _exact = bool(clean_title) and _feed_now == clean_title.strip()
         steps.append({
+            "feed_title": _feed_now, "title_exact": _exact,
             "cap": cap, "label": label, "price": info["price"], "sku": info["sku"],
             "modelid": mid, "zap_title": clean_title, "query": q, "listed": listed,
             "shadow_id": (sh or {}).get("id"), "shadow_price": (sh or {}).get("price"),

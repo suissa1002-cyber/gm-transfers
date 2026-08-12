@@ -2292,6 +2292,11 @@ function zapPlanRender(){
     // בת תו אחד — "FreeClip 2 S" מול "FreeClip 2S" עובר אצלה כזהה, בעוד שזאפ
     // עצמו לא שייך אותנו 3 ימים. זו הפעולה האחרונה שבשליטתנו לפני פנייה
     // אליהם, ובלי כפתור לא הייתה שום דרך לבצע אותה (אסי, 05/08/2026).
+    // אזהרה מפורשת כשהכותרת המשודרת אינה זהה מילולית לכותרת הדגם — זה מה
+    // שזאפ בודקים, וזה מה שבדיקת-הפער (אסימוני a-z0-9) לא רואה בעברית.
+    if(s.modelid && s.title_exact===false && s.state!=='need_title')
+      return `<button class="btn sm" onclick="zapRename(${i})">כותרת מדויקת מזאפ</button>
+        <small style="display:block;margin-top:5px;color:#991b1b;font-size:10.5px">הכותרת בפיד אינה זהה לכותרת הדגם</small>`;
     if(s.state==='zap_side') return s.modelid
       ? `<button class="btn sm" onclick="zapRename(${i})">כותרת מדויקת מזאפ</button>
          <button class="zib" title="העתק בלבד" onclick="zapCopy(${i})">${ico('copy',15)}</button>
@@ -2342,21 +2347,24 @@ function zapPlanRender(){
 // ⚠️ הכותרת גלויה ללקוחות, ולכן מציגים ישן מול חדש לפני האישור.
 async function zapRename(i){
   const j=S.zapPlan, st=(j.steps||[])[i]; if(!st) return;
-  // כותרת ההורה גלויה ללקוחות ⇒ סגנון החנות. הכותרת המדויקת של זאפ שמורה
-  // למוצרי צל, שמוסתרים ממילא.
-  const nw=st.suggested_our||st.suggested_name; if(!nw) return;
+  // ⚠️ משנים את הכותרת ש**נשלחת בפיד**, לא את שם המוצר באתר. מוצר צל קיים
+  // כולו בשביל זאפ ומייצג נפח בודד, בעוד שההורה באתר כללי לכל הווריאציות —
+  // אין שום סיבה לגעת בכותרת שהלקוח רואה. עד 12/08/2026 היה הפוך: הפעולה
+  // שינתה את שם המוצר בזמן שכותרת-הזאפ השמורה גברה עליו, ולכן הפיד המשיך
+  // לשדר את הכותרת הישנה והפעולה נראתה כאילו אינה עושה דבר (אסי).
+  const nw=st.suggested_name||st.suggested_our; if(!nw) return;
   const cur=j.feed_name||j.name||'';
-  if(!confirm('לשנות את כותרת המוצר?\n\nכעת:\n'+cur+'\n\nלאחר השינוי:\n'+nw
-      +'\n\nהכותרת גלויה ללקוחות באתר. הקישור (slug) לא משתנה.'
+  if(!confirm('לעדכן את הכותרת שנשלחת לזאפ?\n\nכעת בפיד:\n'+cur+'\n\nלאחר השינוי:\n'+nw
+      +'\n\nשם המוצר באתר לא ישתנה — רק מה שזאפ מקבל.'
       +'\nזאפ יסרוק מחדש תוך 6-24 שעות.')) return;
-  showLoading('משנה כותרת…');
+  showLoading('מעדכן כותרת לזאפ…');
   try{
     const res=await api('/api/admin/zap/rename',{method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({pid:j.product_id,name:nw})},60000);
+      body:JSON.stringify({pid:j.product_id,name:nw,feed_only:true})},60000);
     hideLoading();
     if(!res.ok){ toast(res.error||'נכשל',false); return; }
-    toast('הכותרת שונתה: '+String(res.name||'').slice(0,40),true);
+    toast('הכותרת לזאפ עודכנה: '+String(res.name||'').slice(0,40),true);
     closeModal(); loadZap(false);
   }catch(e){ hideLoading(); toast('שגיאת רשת',false); }
 }

@@ -11634,15 +11634,18 @@ def zap_selftest(x_admin_key: Optional[str] = Header(None)):
 class ZapRenameIn(BaseModel):
     pid: int
     name: str
+    # ברירת המחדל: לשנות רק את מה שנשלח לזאפ. שם המוצר באתר גלוי ללקוחות
+    # ואינו קשור לשיוך — מוצר צל קיים כולו בשביל הפיד.
+    feed_only: bool = True
 
 
 @app.post("/api/admin/zap/rename")
 def zap_rename(body: ZapRenameIn, x_admin_key: Optional[str] = Header(None)):
-    """שינוי כותרת המוצר לכותרת דגם ההשוואה — הפעולה שסוגרת פער כותרת.
-    ⚠️ הכותרת גלויה ללקוחות; הממשק מציג ישן מול חדש לפני האישור."""
+    """יישור הכותרת לכותרת דגם ההשוואה — הפעולה שסוגרת פער כותרת.
+    ⚠️ כברירת מחדל משנה **רק את הכותרת שנשלחת בפיד** ולא את שם המוצר באתר."""
     _require_admin(x_admin_key)
     import zap_price
-    return zap_price.rename(body.pid, body.name)
+    return zap_price.rename(body.pid, body.name, feed_only=body.feed_only)
 
 
 @app.get("/api/admin/zap/plan")

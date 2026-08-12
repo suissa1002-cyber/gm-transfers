@@ -533,29 +533,50 @@ def act_clear(pid) -> None:
     db.sales_state_set(f"zap_act:{pid}", "")
 
 
-def rename(pid, name: str) -> dict:
-    """שינוי שם המוצר באתר. ⚠️ הכותרת גלויה ללקוחות, ולכן הפעולה מוצגת
-    לאישור עם השם הישן והחדש זה מול זה. ה-slug (הקישור) אינו משתנה —
-    WooCommerce משנה רק את הכותרת, וקישורים קיימים נשארים תקינים."""
+ZAP_TITLE_META = "_woocommerce_zap_product_name"
+
+
+def rename(pid, name: str, feed_only: bool = True) -> dict:
+    """יישור הכותרת לכותרת דגם ההשוואה בזאפ.
+
+    ⚠️ feed_only=True (ברירת המחדל) כותב ל-`_woocommerce_zap_product_name` —
+    **השדה שבאמת נשלח בפיד** — ולא לשם המוצר באתר. שני טעמים:
+    (א) מוצר צל קיים אך ורק בשביל הפיד; הוא מייצג נפח בודד בעוד שההורה באתר
+        כללי לכל הווריאציות, ולכן אין שום סיבה לשנות כותרות שהלקוח רואה.
+    (ב) עד 12/08/2026 הפעולה שינתה את **שם המוצר** בזמן שהמטא הזה כבר היה
+        מוגדר — והמטא גובר. התוצאה: הכפתור "עבד", המסך הראה שם חדש, והפיד
+        המשיך לשדר את הכותרת הישנה. אסי לחץ שוב ושוב וזאפ המשיכו לדחות
+        ("הכותרת עדיין עם 'הזמנה מוקדמת'"), בלי שום אינדיקציה מה חוסם.
+    feed_only=False משנה גם את שם המוצר באתר (כותרת גלויה ללקוחות).
+    ה-slug אינו משתנה בשני המצבים — קישורים קיימים נשארים תקינים."""
     name = (name or "").strip()
     if not name:
         return {"ok": False, "error": "כותרת ריקה"}
     base, auth = _wc()
     r = requests.get(f"{base}/wp-json/wc/v3/products/{pid}", auth=auth, timeout=45,
-                     params={"_fields": "id,name,slug"})
+                     params={"_fields": "id,name,slug,meta_data"})
     if not r.ok:
         return {"ok": False, "error": f"לא נמצא מוצר ({r.status_code})"}
     before = r.json()
+    old_feed = next((m.get("value") for m in (before.get("meta_data") or [])
+                     if m.get("key") == ZAP_TITLE_META), "") or ""
+    payload = {"meta_data": [{"key": ZAP_TITLE_META, "value": name}]}
+    if not feed_only:
+        payload["name"] = name
     w = requests.put(f"{base}/wp-json/wc/v3/products/{pid}", auth=auth, timeout=45,
-                     json={"name": name})
+                     json=payload)
     if not w.ok:
         return {"ok": False, "error": f"העדכון נכשל ({w.status_code})",
                 "detail": w.text[:200]}
     after = w.json()
-    act_log(pid, "title", after.get("name") or name)
-    return {"ok": True, "product_id": int(pid), "old": before.get("name"),
-            "name": after.get("name"), "slug": after.get("slug"),
-            "note": "⚠️ זאפ סורק את הפיד מחדש תוך 6-24 שעות"}
+    act_log(pid, "title", name)
+    return {"ok": True, "product_id": int(pid),
+            "old": old_feed or before.get("name"), "name": name,
+            "site_name": after.get("name"), "slug": after.get("slug"),
+            "feed_only": bool(feed_only),
+            "note": ("הכותרת שונתה במה שנשלח לזאפ בלבד — שם המוצר באתר לא השתנה. "
+                     "זאפ סורק את הפיד מחדש תוך 6-24 שעות")
+            if feed_only else "⚠️ זאפ סורק את הפיד מחדש תוך 6-24 שעות"}
 
 
 def zap_visibility(product_id: int = 0, hidden: bool = True, sku: str = "") -> dict:
