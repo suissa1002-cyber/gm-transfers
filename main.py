@@ -673,6 +673,9 @@ def register_recurring_jobs():
     scheduler.add_job(_fraud_triage_job, "interval", minutes=30, id="fraud_triage", max_instances=1)
     # 🎓 למידת אלה משיחות שאסי ענה בהן (learn_pending → משימת learn לגשר)
     scheduler.add_job(_ella_learn_job, "interval", minutes=30, id="ella_learn", max_instances=1)
+    # 🧹 איחוד הפלייבוק — פעם ביום בלילה, כדי שהוא לא יגדל לנצח וידלל את עצמו
+    scheduler.add_job(_ella_consolidate_job, "cron", hour=3, minute=20,
+                      id="ella_consolidate", max_instances=1)
     # 🎫 Stellr — הנפקה אוטומטית לירוק מוחלט (STELLR_AUTO=dry/on; off=לא עושה כלום)
     scheduler.add_job(_stellr_auto_job, "interval", minutes=5, id="stellr_auto", max_instances=1)
     # 🎫 Watcher ל-allowlist של Stellr (GET בלבד): מתריע ברגע שהקטלוג חי / מזכיר נדנוד
@@ -7851,11 +7854,109 @@ def _ella_learn_job():
         logger.warning("ella learn job error: %s", e)
 
 
+_ELLA_KB_WARN_CHARS = int(os.getenv("ELLA_KB_WARN_CHARS", "70000"))
+_ELLA_DUP_RATIO = 0.85          # חפיפה שמעליה שני לקחים הם באמת אותו לקח
+_ELLA_DUP_MAX = 5               # תקרת מחיקות לריצה — גדר מפני באג, לא אופטימיזציה
+
+
+def _ella_words(text: str) -> set:
+    import re as _re
+    return {w for w in _re.sub(r"[^\w֐-׿ ]", " ", text or "").split() if len(w) > 2}
+
+
+def _ella_consolidate_job():
+    """מאחד לקחים כפולים בפלייבוק ומתריע כשהוא גדל מדי.
+
+    ⚠️ למה (אסי, 16/08/2026): הפלייבוק הוא רשימה שטוחה שרק גדלה — 228 לקחים,
+    53,765 תווים, ~9 חדשים ביום, והוא נכנס לכל הודעה של כל לקוח. מעבר לעלות,
+    הסכנה האמיתית היא דילול: כשיש מאות כללים, הקריטיים מאבדים משקל מול
+    השוליים. בלי איחוד, "יותר למידה" הופך בשלב מסוים ל"תשובות גרועות יותר".
+
+    ⛔ מוחק רק כפילות כמעט-מוחלטת (85%), עד 5 לריצה, ותמיד מדווח בטלגרם את
+    הטקסט שהוסר — כדי שמחיקה שגויה תהיה הפיכה. כל השאר רק מדווח.
+    """
+    try:
+        rows = db.kb_list() or []
+    except Exception as e:  # noqa: BLE001
+        logger.warning("ella consolidate: %s", e)
+        return
+    if len(rows) < 20:
+        return
+    items = [(int(r.get("id") or 0), str(r.get("lesson") or "")) for r in rows]
+    items = [(i, t) for i, t in items if t.strip()]
+    removed = []
+    kept = []                       # (id, טקסט, מילים) — הראשון שנשמר מנצח
+    for kid, txt in items:
+        w = _ella_words(txt)
+        if not w:
+            continue
+        hit = None
+        for kid2, txt2, w2 in kept:
+            inter = len(w & w2)
+            if inter and inter / max(len(w | w2), 1) >= _ELLA_DUP_RATIO:
+                hit = (kid2, txt2)
+                break
+        if hit and len(removed) < _ELLA_DUP_MAX:
+            # שומרים את הארוך יותר — בדרך כלל הוא המנוסח והמלא מבין השניים
+            if len(txt) > len(hit[1]):
+                kept = [(a, b, c) for a, b, c in kept if a != hit[0]]
+                kept.append((kid, txt, w))
+                removed.append((hit[0], hit[1]))
+                db.kb_delete(hit[0])
+            else:
+                removed.append((kid, txt))
+                db.kb_delete(kid)
+        elif not hit:
+            kept.append((kid, txt, w))
+    total = sum(len(t) for _, t in items)
+    msg = []
+    if removed:
+        msg.append(f"🧹 <b>אלה — איחוד פלייבוק</b>\nאוחדו {len(removed)} לקחים כפולים:")
+        for _kid, t in removed:
+            msg.append("• " + t[:150])
+    if total > _ELLA_KB_WARN_CHARS:
+        msg.append(f"\n⚠️ <b>הפלייבוק גדול</b> — {len(items)} לקחים, {total:,} תווים. "
+                   f"הוא נכנס לכל הודעה לכל לקוח. שווה מעבר ידני על הישנים.")
+    if msg:
+        try:
+            _tg_admin("\n".join(msg)[:3500])
+        except Exception:  # noqa: BLE001
+            pass
+    logger.info("ella consolidate: %d lessons, %d chars, %d merged",
+                len(items), total, len(removed))
+
+
 class LearnResult(BaseModel):
     id: int = 0
     phone: str = ""
     raw: str = ""
     ok: bool = True
+
+
+# ⚠️ מילים שמסמנות שיקול דעת עסקי — לא נכנס לפלייבוק בלי אסי (11-16/08/2026).
+# הרקע: 62 לקחים נערמו בתור אישור בקצב ~9 ליום, ואלה לא למדה כלום עד שאסי לחץ.
+# עובדות (מגבלת בנק, מפרט, נוהל) נכנסות לבד; כל מה שנוגע לכסף או להתחייבות
+# ללקוח ממתין לו. ⛔ הרשימה היא רשת ביטחון מעל התיוג של אלה, לא במקומו —
+# אם היא סימנה FACT אבל הטקסט מזכיר הנחה, זה עדיין הולך אליו.
+# ⚠️ שורשים ולא מילים מלאות — בעברית "התחייב" לא נמצא בתוך "מתחייבים",
+# והבדיקה תפסה בדיוק את זה. לכן "תחייב" (מכסה התחייב/מתחייב/להתחייב/מתחייבים).
+_ELLA_ASI_WORDS = (
+    "הנחה", "הנחת", "הנחות", "פיצוי", "זיכוי", "החזר כספי", "מחיר", "₪", "שקל",
+    "מבצע", "פרומו", "תחייב", "מתנה", "מתנות", "בחינם", "ללא עלות",
+    "וותר", "ויתור", "אשראי", "לקזז", "תשלומים", "עמלה", "בונוס",
+)
+
+
+def _ella_needs_asi(kindtag: str, lesson: str) -> bool:
+    """האם הלקח דורש אישור אסי. ⛔ ברירת המחדל היא כן — בלי תיוג ברור
+    ובלי טקסט של ממש, הלקח ממתין. עדיף תור ארוך מלקח שגוי על כסף."""
+    if kindtag != "FACT":
+        return True
+    txt = (lesson or "").strip()
+    if len(txt) < 25:          # לקח קצר מדי מכדי לעמוד בפני עצמו
+        return True
+    low = txt.lower()
+    return any(w in low for w in _ELLA_ASI_WORDS)
 
 
 @app.post("/api/uri-bridge/learn-result")
@@ -7866,11 +7967,17 @@ def bridge_learn_result(body: LearnResult, x_bridge_key: Optional[str] = Header(
     import re as _re
     raw = (body.raw or "").strip()
     added = []
-    m = _re.search(r"\[LESSON\]\s*(.+)", raw, _re.S)
+    m = _re.search(r"\[LESSON(?::(FACT|CALL))?\]\s*(.+)", raw, _re.S)
     if m:
-        lesson = m.group(1).strip().split("\n")[0][:500]
-        db.kbp_add("lesson", body.phone, "", lesson)
-        added.append("lesson")
+        kindtag = (m.group(1) or "").upper()
+        lesson = m.group(2).strip().split("\n")[0][:500]
+        if _ella_needs_asi(kindtag, lesson):
+            db.kbp_add("lesson", body.phone, "", lesson)
+            added.append("lesson")
+        else:
+            db.kb_add(lesson, by="אלה (עובדה)")
+            added.append("auto")
+            logger.info("ella auto-learned: %r", lesson[:80])
     elif (m := _re.search(r"\[ASK\]\s*(.+)", raw, _re.S)):
         blob = m.group(1).strip()
         case, q = "", blob.split("\n")[0][:400]
@@ -7880,7 +7987,8 @@ def bridge_learn_result(body: LearnResult, x_bridge_key: Optional[str] = Header(
             q = mm.group(2).strip().split("\n")[0][:400]
         db.kbp_add("question", body.phone, case, q)
         added.append("question")
-    if added:
+    if added and added[0] != "auto":
+        # ⛔ על למידה עצמית (auto) לא מתריעים — כל הנקודה היא שאסי לא ייגע בה.
         try:
             _tg_admin("🎓 <b>אלה למדה משיחה</b>\n"
                       + ("הציעה לקח חדש" if added[0] == "lesson" else "יש לה שאלה אליך")
