@@ -676,6 +676,9 @@ def register_recurring_jobs():
     # 🧹 איחוד הפלייבוק — פעם ביום בלילה, כדי שהוא לא יגדל לנצח וידלל את עצמו
     scheduler.add_job(_ella_consolidate_job, "cron", hour=3, minute=20,
                       id="ella_consolidate", max_instances=1)
+    # 🔎 ידע שהתיישן — שבועי בלבד (ראשון 08:30). דיווח בלבד, בלי מחיקה.
+    scheduler.add_job(_ella_stale_job, "cron", day_of_week="sun", hour=8, minute=30,
+                      id="ella_stale", max_instances=1)
     # 🎫 Stellr — הנפקה אוטומטית לירוק מוחלט (STELLR_AUTO=dry/on; off=לא עושה כלום)
     scheduler.add_job(_stellr_auto_job, "interval", minutes=5, id="stellr_auto", max_instances=1)
     # 🎫 Watcher ל-allowlist של Stellr (GET בלבד): מתריע ברגע שהקטלוג חי / מזכיר נדנוד
@@ -7937,6 +7940,72 @@ def _ella_consolidate_job():
             pass
     logger.info("ella consolidate: %d lessons, %d chars, %d merged",
                 len(items), total, len(removed))
+
+
+# ⚠️ כלים ושירותים שיצאו משימוש. לקח שעדיין **מנחה** להשתמש בהם שולח את
+# אלה לעשות דבר שגוי מול לקוח — זה מה שקרה עם TinyURL (לקח #45, 16/08/2026):
+# הקוד עבר למקצר שלנו חודשים קודם, והפלייבוק המשיך להנחות אחרת.
+_ELLA_RETIRED = (
+    ("tinyurl", "המקצר שלנו — greenmobile.co.il/s/XXXXXX, אוטומטי בשליחה"),
+    ("connectop", "שליחה native דרך GreenOS"),
+    ("chatrace", "שליחה native דרך GreenOS"),
+)
+_ELLA_FORBID_MARKS = ("⛔", "לא משתמש", "אין להשתמש", "אסור", "לא לשלוח", "במקום")
+_ELLA_DRIFT_RE = r"\d{2,4}\s*(?:₪|ש[\"״]ח)|₪\s*\d{2,4}|\b\d{1,2}:\d{2}\b"
+
+
+def _ella_forbids(text: str, term: str) -> bool:
+    """האם הלקח מזכיר את המונח כדי **לאסור** אותו. בלי זה, לקח מתקן
+    ('⛔ לא משתמשים ב-TinyURL') היה מסומן כמיושן — כלומר הגלאי היה מסמן
+    דווקא את התיקון. נבדק בחלון של 60 תווים סביב האזכור."""
+    low = (text or "").lower()
+    i = low.find(term.lower())
+    if i < 0:
+        return False
+    win = text[max(0, i - 60): i + 60]
+    return any(m in win for m in _ELLA_FORBID_MARKS)
+
+
+def _ella_stale_job():
+    """מאתר ידע שהתיישן בפלייבוק — ⛔ מדווח בלבד, לעולם לא מוחק.
+
+    ⚠️ למה זה נפרד מהאיחוד (אסי, 16/08/2026): האיחוד משווה לקחים זה לזה,
+    ולכן הוא עיוור לידע שהיה נכון והמציאות עקפה אותו. כפילות עולה טוקנים;
+    ידע מיושן שולח ללקוח קישור מת או מחיר שגוי. זה הנזק הגדול מהשניים.
+
+    ⛔ התיישנות דורשת שיפוט אנושי — מכאן דיווח ולא מחיקה.
+    """
+    import re as _re
+    try:
+        rows = db.kb_list() or []
+    except Exception as e:  # noqa: BLE001
+        logger.warning("ella stale: %s", e)
+        return
+    retired, drift = [], []
+    for r in rows:
+        kid, txt = int(r.get("id") or 0), str(r.get("lesson") or "")
+        low = txt.lower()
+        for term, repl in _ELLA_RETIRED:
+            if term in low and not _ella_forbids(txt, term):
+                retired.append((kid, term, repl, txt))
+        if _re.search(_ELLA_DRIFT_RE, txt):
+            drift.append((kid, txt))
+    msg = []
+    if retired:
+        msg.append("⛔ <b>אלה — לקח שמנחה להשתמש בכלי שיצא משימוש</b>")
+        for kid, term, repl, txt in retired[:5]:
+            msg.append(f"• #{kid} מזכיר <b>{term}</b> (היום: {repl})\n   {txt[:130]}")
+    if drift:
+        msg.append(f"\n💰 <b>סקירת מספרים</b> — {len(drift)} לקחים נושאים סכום או שעה. "
+                   "אלה מתיישנים בשקט כשמחיר או מדיניות משתנים:")
+        for kid, txt in drift[:8]:
+            msg.append(f"• #{kid} {txt[:110]}")
+    if msg:
+        try:
+            _tg_admin("\n".join(msg)[:3800])
+        except Exception:  # noqa: BLE001
+            pass
+    logger.info("ella stale: %d retired, %d with numbers", len(retired), len(drift))
 
 
 class LearnResult(BaseModel):

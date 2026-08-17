@@ -81,6 +81,25 @@ def run():
     check("⛔ סף לא מתירני מדי", main._ELLA_DUP_RATIO >= 0.7)
     check("סף הדיווח נמוך מסף המחיקה", main._ELLA_DUP_SUGGEST < main._ELLA_DUP_RATIO)
 
+    # 8. גלאי ההתיישנות. ⛔ הבדיקה הקריטית: לקח שאוסר כלי ישן אינו "מיושן" —
+    # אחרת הגלאי מסמן דווקא את התיקון שכתבנו.
+    f = main._ella_forbids
+    check("⛔ לקח שאוסר TinyURL אינו מיושן",
+          f("קישור נשלח כ-permalink. ⛔ לא משתמשים ב-TinyURL, הקישורים נשברו", "tinyurl") is True)
+    check("⛔ 'אין להשתמש' נתפס כאיסור",
+          f("אין להשתמש ב-TinyURL בשום מצב מול לקוח", "tinyurl") is True)
+    check("לקח שמנחה להשתמש כן מסומן",
+          f("כשה-slug בעברית — לקצר ידנית דרך TinyURL ולאמת שהקישור עובד", "tinyurl") is False)
+    check("מונח שלא קיים בלקח", f("לקח על משהו אחר לגמרי", "tinyurl") is False)
+
+    import re as _re
+    drift = lambda t: bool(_re.search(main._ELLA_DRIFT_RE, t))  # noqa: E731
+    check("סכום בשקלים מזוהה", drift("אקספרס 89₪ להזמנה עד 13:00"))
+    check("סכום עם ש\"ח מזוהה", drift("אנחנו מוכרים ב 378 ש\"ח"))
+    check("שעה מזוהה", drift("משלוח אקספרס מגיע בין 15:00 ל-21:00"))
+    check("⛔ לקח בלי מספרים לא מסומן",
+          drift("הכנסה למעבדה מתבצעת בנוכחות הלקוח בלבד") is False)
+
     print(f"עברו {passed}/{passed + len(failed)}")
     for f in failed:
         print("  ⛔", f)
