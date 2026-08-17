@@ -7855,7 +7855,11 @@ def _ella_learn_job():
 
 
 _ELLA_KB_WARN_CHARS = int(os.getenv("ELLA_KB_WARN_CHARS", "70000"))
-_ELLA_DUP_RATIO = 0.85          # חפיפה שמעליה שני לקחים הם באמת אותו לקח
+# ⚠️ 0.85 היה מחמיר מדי: בריצה יבשה על 288 לקחים הוא איחד **אפס**, בזמן
+# ששני לקחים כמעט זהים מילה במילה נמדדו 0.82. 0.75 תופס אותם ועדיין רחוק
+# מזוגות שרק עוסקים באותו נושא (הגבוה הבא היה 0.60).
+_ELLA_DUP_RATIO = 0.75          # מעליו — מאחדים לבד
+_ELLA_DUP_SUGGEST = 0.55        # בין השניים — רק מדווחים, אסי מחליט
 _ELLA_DUP_MAX = 5               # תקרת מחיקות לריצה — גדר מפני באג, לא אופטימיזציה
 
 
@@ -7884,18 +7888,22 @@ def _ella_consolidate_job():
         return
     items = [(int(r.get("id") or 0), str(r.get("lesson") or "")) for r in rows]
     items = [(i, t) for i, t in items if t.strip()]
-    removed = []
+    removed, suggest = [], []
     kept = []                       # (id, טקסט, מילים) — הראשון שנשמר מנצח
     for kid, txt in items:
         w = _ella_words(txt)
         if not w:
             continue
-        hit = None
+        hit, near = None, None
         for kid2, txt2, w2 in kept:
-            inter = len(w & w2)
-            if inter and inter / max(len(w | w2), 1) >= _ELLA_DUP_RATIO:
+            r = len(w & w2) / max(len(w | w2), 1)
+            if r >= _ELLA_DUP_RATIO:
                 hit = (kid2, txt2)
                 break
+            if r >= _ELLA_DUP_SUGGEST and not near:
+                near = (round(r, 2), kid2, txt2)
+        if near and not hit and len(suggest) < 4:
+            suggest.append((near[0], kid, txt, near[1], near[2]))
         if hit and len(removed) < _ELLA_DUP_MAX:
             # שומרים את הארוך יותר — בדרך כלל הוא המנוסח והמלא מבין השניים
             if len(txt) > len(hit[1]):
@@ -7914,6 +7922,11 @@ def _ella_consolidate_job():
         msg.append(f"🧹 <b>אלה — איחוד פלייבוק</b>\nאוחדו {len(removed)} לקחים כפולים:")
         for _kid, t in removed:
             msg.append("• " + t[:150])
+    if suggest:
+        # ⛔ אלה לא נמחקים לבד — חופפים חלקית, וזו החלטה של אסי
+        msg.append("\n🔍 <b>דומים — כדאי מבט</b> (לא נגעתי):")
+        for r, a, ta, b, tb in suggest:
+            msg.append(f"• {int(r*100)}% · #{a} מול #{b}\n   {ta[:90]}\n   {tb[:90]}")
     if total > _ELLA_KB_WARN_CHARS:
         msg.append(f"\n⚠️ <b>הפלייבוק גדול</b> — {len(items)} לקחים, {total:,} תווים. "
                    f"הוא נכנס לכל הודעה לכל לקוח. שווה מעבר ידני על הישנים.")

@@ -64,9 +64,8 @@ def run():
     check("ניסוח כמעט זהה → כפילות", ratio(same_a, same_b) >= main._ELLA_DUP_RATIO)
     check("⛔ לקח אחר → לא כפילות", ratio(same_a, diff) < main._ELLA_DUP_RATIO)
 
-    # 5. גדרות הבטיחות של האיחוד.
+    # 5. גדרות הבטיחות של האיחוד. (הסף עצמו נבדק בסעיף 7)
     check("⛔ תקרת מחיקות לריצה", main._ELLA_DUP_MAX <= 5)
-    check("⛔ סף כפילות מחמיר", main._ELLA_DUP_RATIO >= 0.8)
 
     # 6. איחוד לא נוגע בפלייבוק קטן — אין מה לאחד ב-19 לקחים.
     calls = []
@@ -76,6 +75,11 @@ def run():
         check("⛔ פלייבוק קטן — בלי מחיקות", calls == [])
     finally:
         main.db.kb_list, main.db.kb_delete, main._tg_admin = orig_list, orig_del, orig_tg
+
+    # 7. הסף שאוחד: 0.85 לא תפס כפילות אמיתית של 0.82 בריצה יבשה על 288 לקחים.
+    check("סף איחוד תופס 82%", main._ELLA_DUP_RATIO <= 0.82)
+    check("⛔ סף לא מתירני מדי", main._ELLA_DUP_RATIO >= 0.7)
+    check("סף הדיווח נמוך מסף המחיקה", main._ELLA_DUP_SUGGEST < main._ELLA_DUP_RATIO)
 
     print(f"עברו {passed}/{passed + len(failed)}")
     for f in failed:
