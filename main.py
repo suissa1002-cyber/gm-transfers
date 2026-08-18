@@ -2219,7 +2219,11 @@ def pos_removal_pos_applied(rid: int,
             created = (_dt.fromisoformat(created) - _td(minutes=1)).isoformat()
         except ValueError:
             pass
+    # ⚠️ מהיום שנוצרה **ועד היום**: גרסה קודמת חיפשה רק ביום היצירה, ולכן
+    # הורדה שנוצרה ב-13/08 ובוצעה בקופה ב-18/08 לא נמצאה — והשומר לא עצר
+    # ניסיון חוזר שהוריד מלאי בפעם השנייה (18/08/2026).
     day = created[:10] or now_iso()[:10]
+    today = now_iso()[:10]
     bid = int(r.get("branch_id") or CITY_BRANCH_ID)
 
     def _is_removal(op):
@@ -2229,7 +2233,7 @@ def pos_removal_pos_applied(rid: int,
     docs: list = []
     try:
         ops = poller.client().get_stock_operations(
-            branch_id=bid, from_date=day, to_date=day,
+            branch_id=bid, from_date=day, to_date=today,
             page_size=200, page_num=1, items_for=_is_removal)
     except Exception as e:  # noqa: BLE001
         # בספק — לא אומרים "כבר ירד". עדיף ניסיון נוסף מאשר להשאיר מלאי לא מסונכרן.
