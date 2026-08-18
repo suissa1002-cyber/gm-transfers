@@ -2222,8 +2222,9 @@ def pos_removal_pos_applied(rid: int,
     # ⚠️ מהיום שנוצרה **ועד היום**: גרסה קודמת חיפשה רק ביום היצירה, ולכן
     # הורדה שנוצרה ב-13/08 ובוצעה בקופה ב-18/08 לא נמצאה — והשומר לא עצר
     # ניסיון חוזר שהוריד מלאי בפעם השנייה (18/08/2026).
-    day = created[:10] or now_iso()[:10]
-    today = now_iso()[:10]
+    _today = datetime.now().strftime("%Y-%m-%d")
+    day = created[:10] or _today
+    today = _today
     bid = int(r.get("branch_id") or CITY_BRANCH_ID)
 
     def _is_removal(op):
