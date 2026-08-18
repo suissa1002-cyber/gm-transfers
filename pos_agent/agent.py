@@ -319,7 +319,12 @@ def process(r, cfg=None):
     except Exception as e:                    # noqa: BLE001
         # השרת מחזיר את הפעולה לתור אוטומטית (backoff) — לא נוטשים הורדה בשגיאה.
         msg = str(e)
-        if "no active desktop" in msg.lower():
+        low = msg.lower()
+        if "access is denied" in low or "no rights" in low:
+            # ⚠️ 18/08: כשל הרשאות דווח כ"מסך נעול" ושלח את אסי לבדוק את המסך
+            # בזמן שהקופה הייתה פתוחה מולו. ההודעה חייבת לומר את האמת.
+            msg = getattr(pos_driver, "NOT_ADMIN_MSG", msg)
+        elif "no active desktop" in low:
             msg = getattr(pos_driver, "DESKTOP_LOCKED_MSG", msg)
         log("  ❌ כשל בהזנה: %s — יוחזר לתור לניסיון נוסף" % msg)
         report(rid, "error", error=msg)
@@ -354,6 +359,16 @@ def main():
         pos_driver.LOG = log         # הודעות הדרייבר (כולל שורת הזמנים) → agent.log
     ver = getattr(pos_driver, "DRIVER_VERSION", "?") if pos_driver else "no-driver"
     log("סוכן הורדה מהמלאי — GreenOS=%s | גרסת דרייבר: %s" % (GREENOS_URL, ver))
+    if pos_driver is not None:
+        try:
+            elev = pos_driver._is_elevated()
+            if elev is False:
+                log("⚠️ הסוכן רץ **בלי הרשאות מנהל** — Windows יחסום שליטה על חלונות "
+                    "הקופה. לסגור ולהריץ מחדש משורת פקודה כמנהל.")
+            elif elev:
+                log("הרשאות מנהל: כן")
+        except Exception:                     # noqa: BLE001
+            pass
     log("ממתין לפעולות. (enabled/dry_run נשלטים מ-GreenOS; ברירת מחדל: מושבת+dry)")
     _last_upd = time.time()
     while True:

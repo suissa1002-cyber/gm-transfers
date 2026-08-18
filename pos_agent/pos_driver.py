@@ -10,7 +10,7 @@ import time
 
 from pywinauto import Application, Desktop, mouse
 
-DRIVER_VERSION = "2026-08-07.42"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
+DRIVER_VERSION = "2026-08-18.43"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
 POS_TITLE_RE = ".*אורדר.*"
 FORM_TITLE = "הורדה מהמלאי"
 ITEM_TITLE = "הורדה מהמלאי - פעולה חדשה"
@@ -70,6 +70,25 @@ DESKTOP_LOCKED_MSG = (
     "אמיתי, שלא פועל על מסך נעול. הפעולה נשארה בתור ותתבצע כשהמסך ייפתח. "
     "לתפעול 24/7: להשאיר את המחשב מחובר ולא נעול.")
 
+NOT_ADMIN_MSG = (
+    "הסוכן רץ בלי הרשאות מנהל, ולכן Windows חוסם אותו מלשלוט על חלונות הקופה "
+    "(Access is denied). לפתוח שורת פקודה כמנהל (Win → cmd → Ctrl+Shift+Enter) "
+    "ולהריץ שם python agent.py. הפעולה נשארה בתור.")
+
+
+def _is_elevated():
+    """האם התהליך רץ עם הרשאות מנהל. None = לא ניתן לקבוע.
+
+    ⚠️ הקופה רצה מוגברת, ולכן תהליך לא-מוגבר נחסם ע"י UIPI בכל שליחת הודעה
+    לחלון שלה. בלי ההבחנה הזאת כל כשל הרשאות נראה כמו "מסך נעול" — וזה בדיוק
+    מה שקרה ב-18/08/2026: אסי קיבל התראה על מסך נעול כשהקופה הייתה פתוחה
+    מולו, והלוג אמר במפורש "run the script as Administrator"."""
+    try:
+        import ctypes
+        return bool(ctypes.windll.shell32.IsUserAnAdmin())
+    except Exception:                        # noqa: BLE001
+        return None
+
 
 def _desktop_active():
     """האם יש שולחן עבודה פעיל (המסך לא נעול / הסשן לא מנותק).
@@ -77,11 +96,14 @@ def _desktop_active():
     ⚠️ קריטי: ההזנה לקופה מבוססת על **קליק פיזי** (הכפתורים owner-drawn ואינם
     מגיבים ללחיצה בהודעה — ניסיון כזה שבר את 'התחל פעולה' בעבר). על מסך נעול
     כל הזזת עכבר נכשלת, ולכן עדיף לזהות מראש ולומר זאת בבירור מאשר להיכשל
-    באמצע הזנה עם הודעה באנגלית (נצפה 07/08: הסשן ננעל ושתי הרצות נפלו)."""
+    באמצע הזנה עם הודעה באנגלית (נצפה 07/08: הסשן ננעל ושתי הרצות נפלו).
+
+    ⚠️ SetCursorPos נכשל גם כשחסרות הרשאות מנהל — ולכן הבדיקה הזאת אינה
+    מבדילה בין השניים, וההבחנה נעשית ב-apply_removal לפי _is_elevated."""
     try:
         import win32api
         x, y = win32api.GetCursorPos()
-        win32api.SetCursorPos((x, y))        # נכשל בדיוק כשאין שולחן עבודה פעיל
+        win32api.SetCursorPos((x, y))        # נכשל כשאין שולחן עבודה פעיל — או בלי הרשאות
         return True
     except Exception:                        # noqa: BLE001
         return False
@@ -1095,8 +1117,12 @@ def apply_removal(removal, dry_run=True, screenshot_path=None, tuning=None):
     # הגרסה החדשה, בזמן שהסוכן לא הופעל מחדש (07/08). שורה אחת שמסיימת ויכוח.
     _log("  דרייבר %s" % DRIVER_VERSION)
 
-    # ⛔ בודקים **לפני** שנוגעים בקופה: על מסך נעול ההזנה תיכשל באמצע ותשאיר
-    # טופס פתוח שיחסום גם את ההרצה הבאה. עדיף לא להתחיל.
+    # ⛔ בודקים **לפני** שנוגעים בקופה: כשל באמצע משאיר טופס פתוח שיחסום גם
+    # את ההרצה הבאה. סדר הבדיקות חשוב — חוסר הרשאות ומסך נעול נראים זהים
+    # מבחוץ (שניהם מפילים SetCursorPos), וההודעה השגויה שולחת לכיוון הלא נכון.
+    elev = _is_elevated()
+    if elev is False:
+        raise RuntimeError(NOT_ADMIN_MSG)
     if not _desktop_active():
         raise RuntimeError(DESKTOP_LOCKED_MSG)
 
