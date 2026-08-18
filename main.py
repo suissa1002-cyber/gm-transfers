@@ -8584,12 +8584,127 @@ import re as _re_fraud
 _re_pickup = _re_fraud.compile(r"נקודת\s*מסירה|איסוף\s*עצמי|מסירה\s*עצמית|pickup", _re_fraud.I)
 
 _DISPOSABLE_DOMAINS = {
+    # ⚠️ 18/08/2026: הקרדיט ב-IPQS נגמר ולא מתחדש, ואיתו נפל זיהוי המייל
+    # החד-פעמי. הרשימה הזו הייתה 24 דומיינים בלבד — כל בודק-הונאה עוקף אותה.
+    # הורחבה, ומעליה יושב Kickbox (חינם, בלי מפתח) ב-_disposable_email.
     "mailinator.com", "guerrillamail.com", "10minutemail.com", "tempmail.com",
     "temp-mail.org", "yopmail.com", "trashmail.com", "getnada.com", "sharklasers.com",
     "maildrop.cc", "dispostable.com", "fakeinbox.com", "mohmal.com", "emailondeck.com",
     "throwawaymail.com", "mintemail.com", "tempinbox.com", "33mail.com", "spamgourmet.com",
     "guerrillamail.info", "grr.la", "moakt.com", "tempr.email", "burnermail.io",
+    "temp-mail.io", "tempmailo.com", "mailnesia.com", "spam4.me", "byom.de",
+    "mytemp.email", "tmpmail.org", "tmpeml.com", "1secmail.com", "1secmail.org",
+    "emailfake.com", "fakemail.net", "inboxkitten.com", "mailpoof.com", "linshiyouxiang.net",
+    "minuteinbox.com", "mailcatch.com", "anonbox.net", "trbvm.com", "cs.email",
+    "vjuum.com", "laafd.com", "txcct.com", "xkx.me", "yomail.info",
+    "disbox.net", "dropmail.me", "harakirimail.com", "mail-temp.com", "mailbox52.ga",
+    "nowmymail.com", "tempail.com", "tempmailer.com", "wegwerfmail.de", "trashmail.de",
 }
+
+
+def _disposable_email(email: str) -> bool:
+    """האם המייל חד-פעמי. רשימה מקומית תחילה, ואז Kickbox (חינם, בלי מפתח).
+
+    ⚠️ למה (אסי, 18/08/2026): IPQS נגמר לו הקרדיט וזה היה מקור הזיהוי. Kickbox
+    פתוח, ללא הרשמה וללא מכסה מתועדת — ונבדק מול mailinator/guerrillamail.
+
+    ⛔ נכשל-פתוח: תקלת רשת מחזירה False ולא חוסמת לקוח לגיטימי. הרשימה
+    המקומית עובדת גם כשאין רשת, ולכן היא נבדקת ראשונה.
+    """
+    dom = (email or "").split("@")[-1].strip().lower()
+    if not dom or "." not in dom:
+        return False
+    if dom in _DISPOSABLE_DOMAINS:
+        return True
+    ck = f"disp:{dom}"
+    try:
+        cached = db.sales_state_get(ck)
+        if cached in ("1", "0"):
+            return cached == "1"
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        import requests as _rq
+        import urllib.parse as _u          # ⛔ מקומי — אין _up ברמת המודול
+        r = _rq.get(f"https://open.kickbox.com/v1/disposable/{_u.quote(email)}", timeout=8)
+        val = bool((r.json() or {}).get("disposable")) if r.status_code == 200 else False
+    except Exception as e:  # noqa: BLE001
+        logger.info("kickbox disposable %s: %s", dom, e)
+        return False                      # ⛔ לא חוסמים על תקלת רשת
+    try:
+        db.sales_state_set(ck, "1" if val else "0")
+    except Exception:  # noqa: BLE001
+        pass
+    return val
+
+
+# ── מספור טלפון ישראלי ──────────────────────────────────────────────
+# ⚠️ החלפה ל-IPQS phone (18/08/2026). ב-98% מ-100 הזמנות אמיתיות שנבדקו
+# הלקוח הגיע במספר סלולרי; 07X הוא טווח וירטואלי/VoIP. לכן זיהוי "מספר
+# וירטואלי" בישראל הוא **כלל קידומת ודאי**, לא ניחוש של ספק חיצוני —
+# מדויק יותר מ-IPQS, בלי קריאת רשת, בלי קרדיטים ובלי השהיה.
+_IL_MOBILE = {"050", "052", "053", "054", "055", "057", "058", "059"}
+_IL_VIRTUAL = {"072", "073", "074", "076", "077", "078"}
+_IL_LANDLINE = {"02", "03", "04", "08", "09"}
+
+
+def _il_phone_kind(raw) -> str:
+    """mobile / virtual / landline / unknown לפי קידומת ישראלית."""
+    d = "".join(ch for ch in str(raw or "") if ch.isdigit())
+    if d.startswith("972"):
+        d = "0" + d[3:]
+    if len(d) < 9:
+        return "unknown"
+    if d[:3] in _IL_MOBILE:
+        return "mobile"
+    if d[:3] in _IL_VIRTUAL:
+        return "virtual"
+    if d[:2] in _IL_LANDLINE:
+        return "landline"
+    return "unknown"
+
+
+def _pos_known_customer(phone) -> bool:
+    """האם הטלפון מוכר לנו כלקוח בקופה (קנה פיזית בסניף בעבר).
+
+    ⚠️ למה (אסי, 18/08/2026): עם נפילת IPQS איבדנו את "גיל המייל" — לגיטימייזר
+    שהוריד סיכון מלקוחות טובים. בלעדיו המנוע מחמיר יותר וייצר יותר "כתום".
+    לקוח שקנה אצלנו בסניף פיזית הוא אות לגיטימיות **חזק יותר** מגיל מייל
+    גלובלי — ואף ספק חיצוני לא יכול לתת אותו לנו.
+
+    ⛔ נכשל-פתוח: תקלת רשת/מכסה מחזירה False (לא מוריד סיכון), לעולם לא מעלה.
+    """
+    d = "".join(ch for ch in str(phone or "") if ch.isdigit())
+    if d.startswith("972"):
+        d = "0" + d[3:]
+    if len(d) < 9:
+        return False
+    ck = f"posknown:{d}"
+    try:
+        cached = db.sales_state_get(ck)
+        if cached in ("1", "0"):
+            return cached == "1"
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        import poller
+        rows = poller.client().get_customers(search=d) or []
+        val = bool(rows)
+    except Exception as e:  # noqa: BLE001
+        logger.info("pos known customer %s: %s", d[-4:], e)
+        return False
+    try:
+        db.sales_state_set(ck, "1" if val else "0")
+    except Exception:  # noqa: BLE001
+        pass
+    return val
+    if d[:3] in _IL_MOBILE:
+        return "mobile"
+    if d[:3] in _IL_VIRTUAL:
+        return "virtual"
+    if d[:2] in _IL_LANDLINE:
+        return "landline"
+    return "unknown"
 
 
 def _ip_geo(ip: str) -> dict:
@@ -8987,7 +9102,8 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
     ipqs_email = _ipqs_get("email", email)
     email_established = False
     fs_human = ""
-    disposable = bool(dom and dom in _DISPOSABLE_DOMAINS) or bool(ipqs_email.get("disposable"))
+    # ⚠️ IPQS מת (קרדיט נגמר 18/08/2026) — הזיהוי עבר לרשימה המורחבת + Kickbox.
+    disposable = _disposable_email(email) or bool(ipqs_email.get("disposable"))
     if disposable:
         risk += 3; hard_fraud = True
         reasons.append("כתובת מייל חד-פעמית")
@@ -9055,6 +9171,18 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
             reasons.append(f"מייל חדש מאוד (נראה לראשונה: {fs_human or f'{fsd} ימים'})")
 
     # ── 3.5) טלפון: VoIP/מספר וירטואלי + ציון + abuse (IPQS) ──
+    # ── כלל הקידומת הישראלי — עצמאי, ודאי, ובלי קריאת רשת. מחליף את
+    # זיהוי ה-VoIP של IPQS באותו משקל בדיוק (hard_fraud, +3).
+    _ph_kind = _il_phone_kind(b.get("phone") or "")
+    if _ph_kind == "virtual" and is_digital_order:
+        risk += 3; hard_fraud = True
+        reasons.append("מספר וירטואלי/VoIP (קידומת 07X, לא סלולרי) — דגל חזק לקוד דיגיטלי")
+    elif _ph_kind == "virtual":
+        risk += 1
+        reasons.append("מספר וירטואלי/VoIP (קידומת 07X) — לא סלולרי")
+    elif _ph_kind == "landline" and is_digital_order:
+        reasons.append("ℹ️ מספר קווי בהזמנת קוד דיגיטלי — לא שכיח, אך אינו סימן הונאה")
+
     ipqs_phone = _ipqs_get("phone", _il_phone(b.get("phone") or ""))
     if ipqs_phone:
         if ipqs_phone.get("voip"):
@@ -9119,6 +9247,10 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
     elif prior_clean == 1:
         risk = max(0, risk - 1)
         reasons.append("✅ הזמנה תקינה אחת בעבר — לקוח מוכר")
+    # לקוח שקנה פיזית בסניף — לגיטימייזר משלנו, מחליף את "גיל המייל" של IPQS
+    if prior_clean == 0 and _pos_known_customer(b.get("phone") or ""):
+        risk = max(0, risk - 2)
+        reasons.append("✅ הטלפון מוכר לנו מהקופה — הלקוח קנה בסניף בעבר")
     if email_established:   # מייל ותיק (שנים) = זהות מבוססת (פרודן משתמש במייל טרי)
         risk = max(0, risk - 1)
         reasons.append(f"✅ מייל מבוסס — קיים {fs_human} (זהות ותיקה, לא טרייה)")
