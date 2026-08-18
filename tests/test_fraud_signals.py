@@ -74,6 +74,54 @@ def run():
     finally:
         poller.client = orig
 
+    # 8. proxycheck — מבחין בין ענן עסקי ל-VPN/TOR. זה מה שמונע צביעת
+    # לקוח שגלש דרך ענן לגיטימי כאדום.
+    import requests
+    real = requests.get
+
+    class R:
+        def __init__(self, j): self._j = j
+        status_code = 200
+        def json(self): return self._j
+
+    def fake(url, params=None, timeout=None, **kw):
+        if 'proxycheck' in url:
+            ip = url.rsplit('/', 1)[-1]
+            data = {'8.8.8.8': {'proxy': 'no', 'type': 'Business', 'risk': 0},
+                    '45.83.91.1': {'proxy': 'yes', 'type': 'VPN', 'risk': 73,
+                                   'operator': {'name': 'NordVPN'}},
+                    '185.220.101.1': {'proxy': 'yes', 'type': 'TOR', 'risk': 100}}
+            return R({'status': 'ok', ip: data.get(ip, {})})
+        if 'dns.google' in url:
+            dom = (params or {}).get('name', '')
+            return R({'Answer': [{'data': '10 mx'}]} if dom != 'nomx-zz.com' else {})
+        raise RuntimeError('unexpected: ' + url)
+
+    requests.get = fake
+    try:
+        for k in ('pxc:8.8.8.8', 'pxc:45.83.91.1', 'pxc:185.220.101.1',
+                  'mx:gmail.com', 'mx:nomx-zz.com'):
+            try: main.db.sales_state_set(k, '')
+            except Exception: pass
+        biz = main._proxycheck('8.8.8.8')
+        vpn = main._proxycheck('45.83.91.1')
+        tor = main._proxycheck('185.220.101.1')
+        check("⛔ ענן עסקי אינו פרוקסי", biz.get('proxy') is False and biz.get('risk') == 0)
+        check("VPN מזוהה עם מפעיל", vpn.get('type') == 'VPN' and vpn.get('operator') == 'NordVPN')
+        check("TOR מזוהה בנפרד", tor.get('type') == 'TOR' and tor.get('risk') == 100)
+        check("MX תקין", main._email_has_mx('a@gmail.com') is True)
+        check("⛔ בלי MX הקוד לא יגיע", main._email_has_mx('a@nomx-zz.com') is False)
+    finally:
+        requests.get = real
+
+    # ⛔ נכשל-פתוח בשני החדשים
+    requests.get = lambda *a, **k: (_ for _ in ()).throw(RuntimeError('no net'))
+    try:
+        check("⛔ proxycheck נופל → {} ", main._proxycheck('9.9.9.9') == {})
+        check("⛔ DNS נופל → לא חוסם", main._email_has_mx('a@unseen-dom-zz9.com') is True)
+    finally:
+        requests.get = real
+
     print(f"עברו {passed}/{passed + len(failed)}")
     for f in failed:
         print("  ⛔", f)

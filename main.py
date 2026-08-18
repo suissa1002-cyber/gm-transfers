@@ -8669,6 +8669,79 @@ def _il_phone_kind(raw) -> str:
     return "unknown"
 
 
+def _proxycheck(ip: str) -> dict:
+    """סיווג IP מ-proxycheck: VPN / TOR / Business + ציון סיכון + שם המפעיל.
+
+    ⚠️ למה זה נוסף (אסי, 18/08/2026): ip-api מחזיר hosting=true גם ל-IP של
+    גוגל/AWS, ואצלנו זה hard_fraud +3 — כלומר לקוח שגלש דרך שירות ענן לגיטימי
+    נצבע אדום. proxycheck מבחין: 8.8.8.8 = Business risk 0, NordVPN = VPN
+    risk 73, TOR = risk 100. חינם וללא מפתח.
+
+    ⛔ נכשל-פתוח: תקלה מחזירה {} והמנוע ממשיך על ip-api בלבד.
+    """
+    ip = (ip or "").strip()
+    if not ip:
+        return {}
+    import json as _json
+    ck = f"pxc:{ip}"
+    try:
+        raw = db.sales_state_get(ck)
+        if raw:
+            return _json.loads(raw)
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        import requests as _rq
+        r = _rq.get(f"https://proxycheck.io/v2/{ip}", params={"vpn": 1, "risk": 1}, timeout=10)
+        j = r.json() or {}
+        if str(j.get("status")) != "ok":
+            return {}
+        d = j.get(ip) or {}
+        out = {"proxy": str(d.get("proxy") or "no") == "yes",
+               "type": str(d.get("type") or ""),
+               "risk": int(d.get("risk") or 0),
+               "operator": str(((d.get("operator") or {}) or {}).get("name") or "")}
+    except Exception as e:  # noqa: BLE001
+        logger.info("proxycheck %s: %s", ip, e)
+        return {}
+    try:
+        db.sales_state_set(ck, _json.dumps(out, ensure_ascii=False))
+    except Exception:  # noqa: BLE001
+        pass
+    return out
+
+
+def _email_has_mx(email: str) -> bool:
+    """האם דומיין המייל יכול בכלל לקבל דואר (MX דרך DNS-over-HTTPS).
+
+    ⚠️ בהזמנת קוד דיגיטלי זה כפול-חשוב: בלי MX **הקוד לא יכול להגיע** —
+    זו גם נורת הונאה וגם תקלה תפעולית שעדיף לתפוס לפני ההנפקה.
+    חינם, בלי מפתח, בלי מכסה. ⛔ נכשל-פתוח: תקלה מחזירה True.
+    """
+    dom = (email or "").split("@")[-1].strip().lower()
+    if not dom or "." not in dom:
+        return True
+    ck = f"mx:{dom}"
+    try:
+        cached = db.sales_state_get(ck)
+        if cached in ("1", "0"):
+            return cached == "1"
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        import requests as _rq
+        r = _rq.get("https://dns.google/resolve", params={"name": dom, "type": "MX"}, timeout=8)
+        val = bool((r.json() or {}).get("Answer"))
+    except Exception as e:  # noqa: BLE001
+        logger.info("mx %s: %s", dom, e)
+        return True                       # ⛔ לא חוסמים על תקלת DNS
+    try:
+        db.sales_state_set(ck, "1" if val else "0")
+    except Exception:  # noqa: BLE001
+        pass
+    return val
+
+
 def _pos_known_customer(phone) -> bool:
     """האם הטלפון מוכר לנו כלקוח בקופה (קנה פיזית בסניף בעבר).
 
@@ -9049,9 +9122,24 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
     if geo.get("proxy") and not _relay:
         risk += 3; hard_fraud = True
         reasons.append("ההזמנה בוצעה דרך VPN/פרוקסי")
-    if geo.get("hosting") and not _relay:
+    # ⚠️ ip-api מסמן hosting=true גם לענן לגיטימי (גוגל/AWS). proxycheck מבחין
+    # בין דאטה-סנטר עסקי לבין VPN/TOR — בלעדיו לקוח שגלש דרך ענן נצבע אדום.
+    _pxc = _proxycheck(ip) if ip else {}
+    if _pxc.get("type") == "TOR":
+        risk += 4; hard_fraud = True
+        reasons.append("גלישה דרך רשת TOR — הסתרת זהות מכוונת")
+    elif _pxc.get("proxy") and _pxc.get("type") == "VPN":
         risk += 3; hard_fraud = True
-        reasons.append("IP של שרת/דאטה-סנטר (לא גולש רגיל)")
+        _op = _pxc.get("operator")
+        reasons.append(f"ההזמנה בוצעה דרך VPN{' (' + _op + ')' if _op else ''} "
+                       f"— ציון סיכון {_pxc.get('risk')}")
+    elif geo.get("hosting") and not _relay:
+        if _pxc and not _pxc.get("proxy") and _pxc.get("risk", 100) <= 20:
+            reasons.append(f"ℹ️ IP של ספק ענן ({_isp or _pxc.get('type')}) אך אינו VPN/פרוקסי "
+                           f"(ציון סיכון {_pxc.get('risk')}) — לא נחשב דגל")
+        else:
+            risk += 3; hard_fraud = True
+            reasons.append("IP של שרת/דאטה-סנטר (לא גולש רגיל)")
     if ip_cc and ip_cc != "IL":
         risk += 2
         reasons.append(f"IP ממדינה זרה ({ip_cc})")
@@ -9112,6 +9200,11 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
     if disposable:
         risk += 3; hard_fraud = True
         reasons.append("כתובת מייל חד-פעמית")
+    # ⛔ בלי MX הקוד הדיגיטלי פשוט לא יכול להגיע — נורת הונאה וגם תקלה תפעולית
+    if email and not _email_has_mx(email):
+        risk += 2; hard_fraud = True
+        reasons.append("לדומיין המייל אין רשומת MX — הכתובת אינה יכולה לקבל דואר, "
+                       "והקוד לא יגיע אליה")
     email_real_abuse = False
     email_role = False
     if ipqs_email:
