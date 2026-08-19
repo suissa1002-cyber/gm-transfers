@@ -617,11 +617,11 @@ def process(job: dict):
         bp = build_bot_prompt(phone, job["question"])
         # ניסיון + retry על כשל רגעי (timeout/תהליך) — אחרת הלקוח מקבל ❌ על כל הפרעה חולפת.
         # 120ש' (לא 90) כי הפרומפט גדל עם הכלים → לפעמים כמה סבבי-כלים.
-        ok, text, _sid = run_claude(bp, fast=True, timeout_s=120)
+        ok, text, _sid = run_claude(bp, fast=True, timeout_s=180)
         if not ok:
             log.warning("bot job #%s failed (%s) — retrying once", jid, (text or "")[:200])
             time.sleep(3)
-            ok, text, _sid = run_claude(bp, fast=True, timeout_s=120)
+            ok, text, _sid = run_claude(bp, fast=True, timeout_s=180)
         if not ok:
             log.error("bot job #%s FAILED after retry: %s", jid, (text or "no-text")[:400])
         answer = (text or "").strip() if ok else \
@@ -629,6 +629,7 @@ def process(job: dict):
         try:
             requests.post(f"{BASE}/api/uri-bridge/answer", headers=H,
                           json={"id": jid, "answer": answer,
+                                "reason": "" if ok else (text or "")[:400],
                                 "status": "done" if ok else "error"}, timeout=20)
         except Exception as e:  # noqa: BLE001
             log.error("bot answer post failed #%s: %s", jid, e)

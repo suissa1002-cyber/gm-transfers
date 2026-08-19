@@ -7304,6 +7304,7 @@ class UriAnswer(BaseModel):
     id: int
     answer: str
     status: str = "done"
+    reason: str = ""     # ⛔ סיבת הכשל — לאבחון בלבד, לעולם לא ללקוח
 
 
 @app.post("/api/admin/wa/uri/ask")
@@ -7616,6 +7617,13 @@ def bridge_filter(q: str = "", max_price: int = 0, min_price: int = 0,
 def bridge_answer(body: UriAnswer, x_bridge_key: Optional[str] = Header(None)):
     _require_bridge(x_bridge_key)
     db.uri_job_answer(body.id, body.answer, body.status)
+    # ⚠️ 19/08/2026: 49% מהמשימות נכשלו ולא ידענו **למה** — רשמנו רק שנכשל.
+    # הסיבה נשמרת בנפרד מהתשובה כדי שלא תדלוף ללקוח.
+    if body.status == "error" and (body.reason or "").strip():
+        try:
+            db.sales_state_set(f"urierr:{body.id}", (body.reason or "")[:400])
+        except Exception:  # noqa: BLE001
+            pass
     # משימת בוט (source='bot') → שולחים את תשובת אורי אוטומטית ללקוח בוואטסאפ
     try:
         job = db.uri_job_get(body.id)
