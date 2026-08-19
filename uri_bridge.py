@@ -472,7 +472,12 @@ def run_claude(prompt: str, resume_sid: str = None, fast: bool = False, timeout_
         env.pop("CLAUDE_CODE_ENTRYPOINT", None)
         # launchd לא מספק PATH מלא — claude (shim של node) צריך את node
         env["PATH"] = "/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:" + env.get("PATH", "")
-        cmd = [CLAUDE, "-p", prompt, "--output-format", "json", "--dangerously-skip-permissions"]
+        # ⛔ הפרומפט עובר ב-stdin ולא כארגומנט. בלינוקס יש תקרה של 131,072 בייט
+        # לארגומנט בודד (MAX_ARG_STRLEN); הפלייבוק תפח, ועברית היא 2 בייט לתו —
+        # 81,000 תווים ≈ 150,000 בייט → "[Errno 7] Argument list too long" ו-claude
+        # לא עלה בכלל. 62% מהמשימות נכשלו (אסי, 19/08/2026). במק התקרה גבוהה
+        # יותר ולכן זה עבד בפיתוח והתפוצץ רק על Render.
+        cmd = [CLAUDE, "-p", "--output-format", "json", "--dangerously-skip-permissions"]
         if resume_sid:
             cmd += ["--resume", resume_sid]
         model = BOT_MODEL if fast else MODEL
@@ -483,7 +488,7 @@ def run_claude(prompt: str, resume_sid: str = None, fast: bool = False, timeout_
         r = subprocess.run(
             cmd,
             cwd=cwd, capture_output=True, text=True, timeout=timeout,
-            env=env,
+            env=env, input=prompt,
         )
         out = (r.stdout or "").strip()
         if r.returncode != 0 or not out:
