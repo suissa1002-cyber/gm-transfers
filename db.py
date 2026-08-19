@@ -4034,6 +4034,12 @@ def uri_job_stats(hours: int = 24) -> dict:
                           FROM uri_jobs WHERE status = 'error' AND created_at >= ?
                           ORDER BY id DESC LIMIT 12"""), (cut,))
         out["recent_errors"] = [dict(r) for r in cur.fetchall()]
+    # ⚠️ הסיבה נשמרת ב-sales_state בנפרד מהתשובה (שלא תדלוף ללקוח) — מצרפים כאן
+    for e in out["recent_errors"]:
+        try:
+            e["reason"] = sales_state_get(f"urierr:{e.get('id')}") or ""
+        except Exception:  # noqa: BLE001
+            e["reason"] = ""
     return out
 
 
