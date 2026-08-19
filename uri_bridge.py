@@ -705,6 +705,8 @@ def process(job: dict):
     try:
         requests.post(f"{BASE}/api/uri-bridge/answer", headers=H,
                       json={"id": jid, "answer": answer,
+                            # ⛔ הסיבה לאבחון בלבד — נשמרת בנפרד, לא מוצגת בפאנל
+                            "reason": "" if ok else (text or "")[:400],
                             "status": "done" if ok else "error"}, timeout=20)
         for n in notes:
             requests.post(f"{BASE}/api/uri-bridge/note", headers=H,
