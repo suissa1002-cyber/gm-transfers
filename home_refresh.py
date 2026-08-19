@@ -48,6 +48,7 @@ def _slim(p):
             "type": p.get("type", "simple"), "link": p.get("permalink"),
             "outlet": any(t.get("id") == 3709 for t in (p.get("tags") or [])),
             "gifts": any(t.get("id") == 3514 for t in (p.get("tags") or [])),
+            "preorder": any(t.get("id") == 3513 for t in (p.get("tags") or [])),
             "img": imgs[0]["src"] if imgs else ""}
 
 
@@ -70,7 +71,7 @@ def fetch_best(n=8, days=60):
         rows = []
     ids = [r.get("product_id") for r in rows
            if r.get("product_id") and r.get("product_id") not in CODE_IDS]
-    vis, gifts = {}, {}
+    vis, gifts, pre = {}, {}, {}
     if ids:
         try:
             prods = _get("wc/v3/products", include=",".join(map(str, ids)),
@@ -79,6 +80,8 @@ def fetch_best(n=8, days=60):
             # ⚠️ דוח ה-analytics לא מחזיר תגיות — מושכים אותן מאותה קריאה
             gifts = {p["id"]: any(t.get("id") == 3514 for t in (p.get("tags") or []))
                      for p in prods}
+            pre = {p["id"]: any(t.get("id") == 3513 for t in (p.get("tags") or []))
+                   for p in prods}
         except Exception:
             vis = {}
     for r in rows:
@@ -95,7 +98,8 @@ def fetch_best(n=8, days=60):
                     "price": str(info.get("price") or ""), "regular": "",
                     "type": "variable" if (info.get("variations") or []) else "simple",
                     "link": info.get("permalink"), "img": img,
-                    "gifts": gifts.get(pid, False)})
+                    "gifts": gifts.get(pid, False),
+                    "preorder": pre.get(pid, False)})
         if len(out) >= n:
             break
     if len(out) < 6:                        # נפילת דוח → נסיגה ל-popularity כללי
@@ -168,8 +172,15 @@ def _card(p, kind):
     badge = f'<div class="badges">{bh}</div>' if bh else ""
     # מתנה ברכישה (תגית 3514) — פינה **ימנית**, כדי שבאדג' הקטע (חדש/מבצע/רב-מכר)
     # יישאר בשמאל בדיוק כמו בכל שאר הכרטיסים (אסי 06/08).
+    # ⚠️ העמודה הימנית מחזיקה את באדג'י התגיות (מכירה מוקדמת / מתנה) — היא נפרדת
+    #    מבאדג' הקטע (חדש/מבצע/רב-מכר) שיושב בשמאל, ולכן שניהם נראים יחד.
+    right = ""
+    if p.get("preorder"):
+        right += '<span class="badge preorder">מכירה מוקדמת</span>'
     if p.get("gifts"):
-        badge += '<div class="badges right"><span class="badge gifts">מתנה ברכישה</span></div>'
+        right += '<span class="badge gifts">מתנה ברכישה</span>'
+    if right:
+        badge += '<div class="badges right">' + right + '</div>'
     regline = f'<s class="reg">‏₪{reg}</s>' if (kind == "sale" and reg and reg != price) else ""
     link = p.get("link") or f'{_base()}/?p={p.get("id")}'
     is_var = p.get("type") != "simple"
