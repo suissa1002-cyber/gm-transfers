@@ -4010,6 +4010,33 @@ def uri_job_get(jid: int):
         return dict(r) if r else None
 
 
+def uri_job_stats(hours: int = 24) -> dict:
+    """שיעור הכשל של אלה בחלון נתון + הכשלים האחרונים.
+
+    ⚠️ למה (אסי, 19/08/2026): "יותר מדי כאלו נתקעת" — הלקוחות קיבלו
+    "סליחה, יש לי תקלה רגעית" שוב ושוב, ולא הייתה **שום** מדידה של כמה
+    זה קורה. בלי המספר אי אפשר לדעת אם תיקון עזר.
+    """
+    from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+    cut = (_dt.now(_tz.utc).astimezone() - _td(hours=hours)).isoformat(timespec="seconds")
+    out = {"hours": hours, "by_status": {}, "total": 0, "error_rate": 0.0, "recent_errors": []}
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""SELECT status, COUNT(*) AS n FROM uri_jobs
+                          WHERE created_at >= ? AND question <> '[WARMUP]'
+                          GROUP BY status"""), (cut,))
+        for r in cur.fetchall():
+            out["by_status"][str(r["status"])] = int(r["n"])
+        out["total"] = sum(out["by_status"].values())
+        err = out["by_status"].get("error", 0)
+        out["error_rate"] = round(err * 100.0 / out["total"], 1) if out["total"] else 0.0
+        cur.execute(_q("""SELECT id, phone, question, created_at, answered_at
+                          FROM uri_jobs WHERE status = 'error' AND created_at >= ?
+                          ORDER BY id DESC LIMIT 12"""), (cut,))
+        out["recent_errors"] = [dict(r) for r in cur.fetchall()]
+    return out
+
+
 def uri_history(phone: str, limit: int = 80) -> list:
     """היסטוריית השיחה עם אורי לטלפון נתון (להמשכיות בין מכשירים).
     מחזיר את ה-jobs שכבר נענו, מהישן לחדש; מדלג על warmup ועל ריקים."""

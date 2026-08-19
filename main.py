@@ -7335,6 +7335,13 @@ def uri_history(phone: str = "", x_admin_key: Optional[str] = Header(None)):
     return JSONResponse({"jobs": rows}, headers={"Cache-Control": "no-store"})
 
 
+@app.get("/api/admin/uri/failures")
+def uri_failures(hours: int = 24, x_admin_key: Optional[str] = Header(None)):
+    """כמה פעמים אלה נכשלה בחלון נתון, ואילו שאלות נפלו. קריאה בלבד."""
+    _require_admin(x_admin_key)
+    return db.uri_job_stats(hours)
+
+
 @app.get("/api/admin/wa/uri/status")
 def uri_status(x_admin_key: Optional[str] = Header(None)):
     """האם גשר אורי (שירות uri-bridge ב-Render) חי. heartbeat נשלח גם ע"י thread נפרד
