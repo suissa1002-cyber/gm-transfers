@@ -7456,6 +7456,39 @@ def bridge_search(q: str = "", limit: int = 8, x_bridge_key: Optional[str] = Hea
             "meta": sr.get("meta") or {}}
 
 
+@app.get("/api/uri-bridge/stock/{sku}")
+def bridge_live_stock(sku: str, x_bridge_key: Optional[str] = Header(None)):
+    """מלאי **חי מהקופה** לפי מק"ט — החוליה שחסרה לאלה.
+
+    ⚠️ למה זה קיים (אסי, 19/08/2026): לקוח שאל על Galaxy S24 256GB, אלה ענתה
+    "זמין כרגע בצבע שחור ב-1,869₪", ואסי בדק מלאי חי — **לא היה במלאי**.
+    הסיבה: /search ו-/variations מחזירים `in_stock` מ-`stock_status` של
+    **האתר**, ולמסלול הבוט לא הייתה שום דרך לבדוק בקופה. הכלל "לבדוק בקופה
+    לפני שאומרים זמין" היה בפלייבוק פעמיים — ואי אפשר היה לקיים אותו.
+
+    ⛔ 0 בכל הסניפים אינו בהכרח "אזל" (ספק לפי הזמנה), ולכן לא מסיקים כאן —
+    מחזירים מספרים ומשאירים את ההחלטה לניסוח שבפרומפט.
+    """
+    _require_bridge(x_bridge_key)
+    sku = (sku or "").strip()
+    if not sku:
+        raise HTTPException(400, "חסר מק\"ט")
+    try:
+        st = poller.client().get_product_stock(sku) or {}
+    except Exception as e:  # noqa: BLE001
+        logger.warning("bridge live stock %s: %s", sku, e)
+        return {"sku": sku, "ok": False, "error": "הקופה לא זמינה כרגע"}
+    branches = [{"name": cfg.branch_name(b), "qty": int(st.get(b, 0) or 0)}
+                for b in cfg.BRANCHES]
+    total = sum(b["qty"] for b in branches if b["qty"] > 0)
+    out = {"sku": sku, "ok": True, "total": total,
+           "branches": [b for b in branches if b["qty"] > 0]}
+    if total <= 0:
+        # ⚠️ אפס בכל הסניפים יכול להיות גם מק"ט שהקופה לא מכירה — ההבחנה קריטית
+        out["unknown_product"] = bool(_pos_product_unknown(sku))
+    return out
+
+
 @app.get("/api/uri-bridge/variations/{product_id}")
 def bridge_variations(product_id: int, x_bridge_key: Optional[str] = Header(None)):
     """וריאציות מוצר לאורי (נפח/צבע/מחיר/מלאי) — לשאלות ספציפיות כמו '256GB עד 700'.
