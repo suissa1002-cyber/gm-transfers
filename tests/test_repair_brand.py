@@ -41,6 +41,17 @@ def run():
         ok = kf in (q_fam, "")
         check(f"{'עובר' if want else '⛔ נפסל'}: {key}", ok is want)
 
+    # ⚠️ הגיליון לא עקבי: "iphone 14 +" מול "iphone 16 plus" מול "iphone 6+".
+    # בלי נרמול, iphone 14 plus (שקיים!) לא נמצא — ואסי תיקן אותי על כך.
+    np = main._norm_plus
+    check("'iphone 14 +' מתנרמל", np("iphone 14 +") == "iphone 14 plus")
+    check("'iphone 6+' מתנרמל", np("iphone 6+") == "iphone 6 plus")
+    check("'iphone 16 plus' ללא שינוי", np("iphone 16 plus") == "iphone 16 plus")
+    check("⛔ שאילתה ומפתח מתלכדים", np("iphone 14 plus") == np("iphone 14 +"))
+    check("⛔ שיאומי לא מתלכד עם אפל",
+          np("note 14 pro plus 5g") != np("iphone 14 +"))
+    check("ריק בטוח", np("") == "" and np(None) == "")
+
     print(f"עברו {passed}/{passed + len(failed)}")
     for f in failed: print("  ⛔", f)
     return 0 if not failed else 1

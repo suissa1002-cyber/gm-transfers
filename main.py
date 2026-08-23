@@ -12631,6 +12631,12 @@ _REPAIR_FAMILIES = {
 }
 
 
+def _norm_plus(t) -> str:
+    """מאחד + / plus / פלוס לצורה אחת. הגיליון לא עקבי בין השורות."""
+    import re as _re
+    return _re.sub(r"\s+", " ", str(t or "").lower().replace("+", " plus ")).strip()
+
+
 def _repair_family(words) -> str:
     """משפחת המותג של רשימת מילים. ריק = לא ידוע (לא חוסם)."""
     for w in words:
@@ -12651,6 +12657,10 @@ def bot_repair_quote(query: str) -> list:
     q = (query or "").lower()
     for he, en in _REPAIR_HE.items():
         q = q.replace(he, en)
+    # ⚠️ הגיליון עצמו לא עקבי: שורה 44 = "iphone 14 +" (רווח לפני הפלוס),
+    # שורה 52 = "iphone 16 plus", ויש גם "iphone 6+" דבוק. בלי נרמול,
+    # שאילתת "iphone 14 plus" לא מצאה דגם שקיים במחירון (אסי, 19/08/2026).
+    q = _norm_plus(q)
     _stop = ("של", "תיקון", "תיקונים", "מחיר", "כמה", "עולה", "רגיל", "רגילה", "פשוט",
              "בסיסי", "basic", "standard", "דגם", "ה",
              # מילות פעולה/מילוי בניסוח טבעי ("מחיר להחלפת מסך לגלקסי A34")
@@ -12675,11 +12685,16 @@ def bot_repair_quote(query: str) -> list:
     if not qwords:
         return []
     q_norm = " ".join(qwords)
-    if q_norm in devices:                    # התאמה מדויקת = הדגם הבסיסי (לא הפרו)
-        return [devices[q_norm]]
+    # מפתחות מנורמלים → המפתח המקורי (הראשון מנצח; "iphone 6+" ו-"iphone 6 plus"
+    # מתלכדים לאותו ערך, וזה בדיוק הרצוי).
+    nkeys = {}
+    for k in devices:
+        nkeys.setdefault(_norm_plus(k), k)
+    if q_norm in nkeys:                      # התאמה מדויקת = הדגם הבסיסי (לא הפרו)
+        return [devices[nkeys[q_norm]]]
 
     def _match(words):
-        return sorted((k for k, v in devices.items() if words and all(w in k for w in words)),
+        return sorted((nk for nk in nkeys if words and all(w in nk for w in words)),
                       key=len)
     keys = _match(qwords)
     if not keys:                             # נפילה: הרבה שורות בגיליון בלי קידומת מותג
@@ -12693,7 +12708,7 @@ def bot_repair_quote(query: str) -> list:
             fam = _repair_family(qwords)
             if fam:
                 keys = [k for k in keys if _repair_family(k.split()) in (fam, "")]
-    return [devices[k] for k in keys[:9]]
+    return [devices[nkeys[k]] for k in keys[:9] if k in nkeys]
 
 
 _REPAIR_PART_SYN = {
