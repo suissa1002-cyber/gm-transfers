@@ -12588,6 +12588,25 @@ def _repair_prices():
     return _REPAIR_CACHE["data"] or {"devices": {}, "services": []}
 
 
+# ⚠️ משפחות מותג לזיהוי הצלבה שגויה במחירון התיקונים. המפתחות בגיליון לא
+# תמיד נושאים את שם המותג ("note 14"), ולכן ההתאמה מסירה אותו — אבל בלי
+# הגבלה למשפחה, שאילתת אייפון נוחתת על דגם שיאומי.
+_REPAIR_FAMILIES = {
+    "apple": ("iphone", "ipad", "apple"),
+    "xiaomi": ("xiaomi", "redmi", "poco", "pocophone", "note", "mi"),
+    "samsung": ("samsung", "galaxy"),
+}
+
+
+def _repair_family(words) -> str:
+    """משפחת המותג של רשימת מילים. ריק = לא ידוע (לא חוסם)."""
+    for w in words:
+        for fam, toks in _REPAIR_FAMILIES.items():
+            if w in toks:
+                return fam
+    return ""
+
+
 def bot_repair_quote(query: str) -> list:
     """מחיר תיקון לפי דגם. מחזיר רשימת דגמים תואמים ({display, repairs}) —
     התאמה אחת = הצג; כמה = בקש בחירה; ריק = לא נמצא."""
@@ -12634,6 +12653,13 @@ def bot_repair_quote(query: str) -> list:
         core = [w for w in qwords if w not in _REPAIR_BRAND_W]   # ("note 12" בלי "xiaomi")
         if core and core != qwords:
             keys = _match(core)
+            # ⛔ הנפילה מסירה את שם המותג, ולכן היא עלולה לחצות מותגים: השאילתה
+            # "iphone 14 plus" (שאינו במחירון) נפלה ל-["14","plus"] והחזירה
+            # "note 14 pro plus 5g" של שיאומי — לקוח אייפון קיבל מחיר של שיאומי
+            # (אלה דיווחה, 19/08/2026). מסננים דגמים ממשפחת מותג אחרת.
+            fam = _repair_family(qwords)
+            if fam:
+                keys = [k for k in keys if _repair_family(k.split()) in (fam, "")]
     return [devices[k] for k in keys[:9]]
 
 
