@@ -49,6 +49,7 @@ def _slim(p):
             "outlet": any(t.get("id") == 3709 for t in (p.get("tags") or [])),
             "gifts": any(t.get("id") == 3514 for t in (p.get("tags") or [])),
             "preorder": any(t.get("id") == 3513 for t in (p.get("tags") or [])),
+            "instock_tag": any(t.get("id") == 3515 for t in (p.get("tags") or [])),
             "img": imgs[0]["src"] if imgs else ""}
 
 
@@ -71,7 +72,7 @@ def fetch_best(n=8, days=60):
         rows = []
     ids = [r.get("product_id") for r in rows
            if r.get("product_id") and r.get("product_id") not in CODE_IDS]
-    vis, gifts, pre = {}, {}, {}
+    vis, gifts, pre, inst = {}, {}, {}, {}
     if ids:
         try:
             prods = _get("wc/v3/products", include=",".join(map(str, ids)),
@@ -82,6 +83,8 @@ def fetch_best(n=8, days=60):
                      for p in prods}
             pre = {p["id"]: any(t.get("id") == 3513 for t in (p.get("tags") or []))
                    for p in prods}
+            inst = {p["id"]: any(t.get("id") == 3515 for t in (p.get("tags") or []))
+                    for p in prods}
         except Exception:
             vis = {}
     for r in rows:
@@ -99,7 +102,8 @@ def fetch_best(n=8, days=60):
                     "type": "variable" if (info.get("variations") or []) else "simple",
                     "link": info.get("permalink"), "img": img,
                     "gifts": gifts.get(pid, False),
-                    "preorder": pre.get(pid, False)})
+                    "preorder": pre.get(pid, False),
+                    "instock_tag": inst.get(pid, False)})
         if len(out) >= n:
             break
     if len(out) < 6:                        # נפילת דוח → נסיגה ל-popularity כללי
@@ -177,6 +181,8 @@ def _card(p, kind):
     right = ""
     if p.get("preorder"):
         right += '<span class="badge preorder">מכירה מוקדמת</span>'
+    elif p.get("instock_tag"):
+        right += '<span class="badge instock">זמין במלאי</span>'
     if p.get("gifts"):
         right += '<span class="badge gifts">מתנה ברכישה</span>'
     if right:
