@@ -1530,6 +1530,25 @@ def manual_poll():
     return poller.poll_once()
 
 
+@app.post("/api/admin/pos/agent-watchdog/run")
+def pos_agent_watchdog_run(test: int = 0, x_admin_key: Optional[str] = Header(None)):
+    """הרצת השומר לפי בקשה. test=1 שולח את ההתראה גם כשהסוכן מדווח —
+    כדי לאמת שהמסלול והטלגרם עובדים, ולא רק להניח שהם עובדים."""
+    _require_admin(x_admin_key)
+    if test:
+        secs = _agent_seen_sec()
+        pend = [r for r in (db.pos_removals_list(limit=100) or [])
+                if r.get("status") in ("pending", "applying")]
+        _tg_admin("🧪 <b>בדיקת שומר סוכן ההורדות</b> — זו הודעת בדיקה, אין תקלה.\n"
+                  "כך תיראה ההתראה האמיתית כשהסוכן ישתוק מעל שעה.\n"
+                  "מצב עכשיו: דיווח לפני %s שנ׳ · %d הורדות ממתינות."
+                  % (secs if secs is not None else "?", len(pend)))
+        return {"ok": True, "sent": True, "seen_sec_ago": secs, "pending": len(pend)}
+    _pos_agent_watchdog()
+    return {"ok": True, "seen_sec_ago": _agent_seen_sec(),
+            "alerted": db.setting_get("pos_agent_alerted")}
+
+
 @app.post("/api/admin/serial-index/ops")
 def admin_serial_ops(days: int = 90, branch_id: Optional[int] = None,
                      x_admin_key: Optional[str] = Header(None)):
