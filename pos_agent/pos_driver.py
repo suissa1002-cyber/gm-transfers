@@ -10,7 +10,7 @@ import time
 
 from pywinauto import Application, Desktop, mouse
 
-DRIVER_VERSION = "2026-08-18.43"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
+DRIVER_VERSION = "2026-08-24.44"          # מודפס ע"י הסוכן — לוודא איזו גרסה רצה
 POS_TITLE_RE = ".*אורדר.*"
 FORM_TITLE = "הורדה מהמלאי"
 ITEM_TITLE = "הורדה מהמלאי - פעולה חדשה"
@@ -94,16 +94,31 @@ def _desktop_active():
     """האם יש שולחן עבודה פעיל (המסך לא נעול / הסשן לא מנותק).
 
     ⚠️ קריטי: ההזנה לקופה מבוססת על **קליק פיזי** (הכפתורים owner-drawn ואינם
-    מגיבים ללחיצה בהודעה — ניסיון כזה שבר את 'התחל פעולה' בעבר). על מסך נעול
-    כל הזזת עכבר נכשלת, ולכן עדיף לזהות מראש ולומר זאת בבירור מאשר להיכשל
-    באמצע הזנה עם הודעה באנגלית (נצפה 07/08: הסשן ננעל ושתי הרצות נפלו).
+    מגיבים ללחיצה בהודעה), ועל מסך נעול כל הזזת עכבר נכשלת.
 
-    ⚠️ SetCursorPos נכשל גם כשחסרות הרשאות מנהל — ולכן הבדיקה הזאת אינה
-    מבדילה בין השניים, וההבחנה נעשית ב-apply_removal לפי _is_elevated."""
+    ⛔ הגרסה הקודמת בדקה זאת ע"י SetCursorPos, וזה החזיר "נעול" בשלושה מצבים
+    שונים: מסך נעול, חוסר הרשאות מנהל, **ו-pywin32 שאינו מותקן**. ב-24/08/2026
+    הסוכן דיווח "מסך נעול" בזמן שאסי עמד מול הקופה. הבדיקה הנכונה היא
+    OpenInputDesktop — ה-API הייעודי לשולחן העבודה הפעיל, דרך ctypes בלבד
+    (בלי תלות בחבילה חיצונית).
+    """
+    try:
+        import ctypes
+        DESKTOP_SWITCHDESKTOP = 0x0100
+        h = ctypes.windll.user32.OpenInputDesktop(0, False, DESKTOP_SWITCHDESKTOP)
+        if h:
+            ctypes.windll.user32.CloseDesktop(h)
+            return True
+        return False
+    except Exception:                        # noqa: BLE001
+        pass
+    # מסלול גיבוי, ורק אם הספרייה קיימת
     try:
         import win32api
         x, y = win32api.GetCursorPos()
-        win32api.SetCursorPos((x, y))        # נכשל כשאין שולחן עבודה פעיל — או בלי הרשאות
+        win32api.SetCursorPos((x, y))
+        return True
+    except ImportError:                      # ⛔ חוסר ספרייה אינו "מסך נעול"
         return True
     except Exception:                        # noqa: BLE001
         return False
