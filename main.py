@@ -133,6 +133,43 @@ def _serial_ops_job():
         logger.warning("serial ops index failed: %s", e)
 
 
+def _pos_agent_watchdog():
+    """התראה כשסוכן ההורדות שותק.
+
+    ⚠️ למה זה קיים: ב-11-18/08/2026 הסוכן היה כבוי 6.7 ימים ואיש לא ידע —
+    הדרך היחידה לגלות הייתה שמישהו יבחין שהורדות לא יורדות. חותמת החיים
+    כבר קיימת (ping מהסוכן), רק אף אחד לא הסתכל עליה.
+
+    התראה אחת לכל אירוע שתיקה (לא הצפה), והודעת רגיעה כשהוא חוזר. שקט
+    כשהסוכן מושבת בכוונה — אז אין מה להתריע עליו."""
+    try:
+        if db.setting_get("pos_agent_enabled") != "1":
+            return                     # מושבת בכוונה — אין על מה להתריע
+        secs = _agent_seen_sec()
+        alerted = db.setting_get("pos_agent_alerted") == "1"
+        if secs is None or secs > POS_AGENT_SILENT_SEC:
+            if alerted:
+                return
+            pend = [r for r in (db.pos_removals_list(limit=100) or [])
+                    if r.get("status") in ("pending", "applying")]
+            mins = int((secs or 0) / 60)
+            _tg_admin(
+                "🔌 <b>סוכן ההורדות בסיטי לא מדווח</b>%s.\n"
+                "%s ממתינות בתור ולא יורדות בקופה.\n"
+                "לבדוק שהמחשב בקופה דולק ושחלון הסוכן פתוח "
+                "(המשימה GreenOS POS Agent אמורה להעלות אותו לבד)."
+                % (" כבר %d דק׳" % mins if secs else " (מעולם לא דיווח)",
+                   len(pend) if pend else "אין הורדות"))
+            db.setting_set("pos_agent_alerted", "1", "watchdog")
+            return
+        if alerted:
+            _tg_admin("✅ <b>סוכן ההורדות בסיטי חזר לדווח.</b> "
+                      "הורדות ממתינות יתבצעו עכשיו.")
+            db.setting_set("pos_agent_alerted", "0", "watchdog")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("pos agent watchdog failed: %s", e)
+
+
 def _rebalance_job():
     try:
         import rebalance_scan
@@ -656,6 +693,9 @@ def register_recurring_jobs():
     # ⚡ השלמה שעתית מתנועות המלאי — מכשיר שהגיע היום נמצא תוך שעה, ובסריקה
     # עצמה יש גם השלמה מיידית (ראה pos_lookup).
     scheduler.add_job(_serial_ops_job, "cron", minute=17, id="serial_ops", max_instances=1)
+    # שומר הסוכן: מגלה שתיקה תוך 10 דקות במקום תוך ימים
+    scheduler.add_job(_pos_agent_watchdog, "interval", minutes=10,
+                      id="pos_agent_watchdog", max_instances=1)
     if _is_stale(db.serial_index_last_sync(), hours=24):
         scheduler.add_job(_serial_sync_job, "date", id="serial_sync_initial",
                           run_date=datetime.now() + timedelta(seconds=60))
@@ -1987,6 +2027,10 @@ def _serial_branch_check(pid: str, serial: str, branch_id: int) -> dict:
     out.update(reason="ok")
     return out
 
+
+# שתיקה מעל השיעור הזה = התראה. הסוכן מדפדף כל 5 שניות, אז שעה היא
+# שקט חד-משמעי ולא רעש של נפילת רשת רגעית.
+POS_AGENT_SILENT_SEC = 3600
 
 _serial_catchup_at: dict = {}
 
