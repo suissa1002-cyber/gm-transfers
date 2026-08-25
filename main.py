@@ -7205,6 +7205,26 @@ def admin_digest(x_admin_key: Optional[str] = Header(None)):
     return {"data": _digest_data(), "url": f"/digest/{_digest_token()}"}
 
 
+def _removals_adoption(days: int = 1) -> dict:
+    """כמה מההורדות שנרשמו בקופה נעשו דרך GreenOS, וכמה מסביב למערכת.
+
+    ⚠️ למה זה נמדד: 16-24/08/2026 נרשמו בקופה 35 תעודות הורדה, מתוכן **2**
+    דרך GreenOS — כלומר הצינור עבד ואף אחד לא השתמש בו, ואיש לא ידע.
+    אימוץ שלא נמדד לא קורה, והמעקב הזה הוא מה שיגיד אם ההדרכה תפסה."""
+    from datetime import date, timedelta
+    try:
+        since = (date.today() - timedelta(days=max(0, days - 1))).isoformat()
+        rows = db.removals_list(since) or []
+        ops = {str(r.get("op_id")) for r in rows if r.get("op_id")}
+        docs = {str(x.get("pos_doc_no")) for x in (db.pos_removals_list(limit=200) or [])
+                if x.get("pos_doc_no")}
+        via = len([o for o in ops if o in docs])
+        return {"total": len(ops), "via_greenos": via, "manual": len(ops) - via}
+    except Exception as e:  # noqa: BLE001
+        logger.warning("removals adoption failed: %s", e)
+        return {}
+
+
 def _morning_digest_job():
     """דייג'סט בוקר לטלגרם — כותרות + קישור לעמוד המעוצב (09:45 שעון ישראל)."""
     try:
@@ -7219,6 +7239,11 @@ def _morning_digest_job():
                f"⚖️ איזון מלאי: {d.get('rebalance', 0)} מכשירים לאיזון",
                f"🛒 הזמנות אתר: {od.get('oos', 0)} חסר בספק · {od.get('unmatched', 0)} ללא מק\"ט",
                f"💬 וואטסאפ: {d.get('wa_unanswered', 0)} ממתינים לנציג"]
+        ad = _removals_adoption(days=1)
+        if ad.get("total"):
+            msg.append("📉 הורדות מלאי אתמול: %d בקופה · %d דרך GreenOS%s"
+                       % (ad["total"], ad["via_greenos"],
+                          (" · ⚠️ %d ידניות" % ad["manual"]) if ad.get("manual") else " ✓"))
         rems = d.get("reminders") or []
         if rems:
             msg.append(f"⏰ תזכורות להיום: {len(rems)}")
