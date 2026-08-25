@@ -2675,6 +2675,16 @@ def updates_admin_page():
     raise HTTPException(404)
 
 
+@app.get("/removals-guide")
+def removals_guide_page():
+    """דף הוראות לסניף — להדפסה ולתלייה בקופה. פתוח בכוונה (בלי מפתח):
+    הוא נועד להישלח בוואטסאפ לעובדים, ואין בו שום נתון."""
+    p = os.path.join(_static_dir, "removals-guide.html")
+    if os.path.exists(p):
+        return FileResponse(p, media_type="text/html")
+    raise HTTPException(404)
+
+
 @app.get("/removals")
 def removals_page():
     p = os.path.join(_static_dir, "removals.html")

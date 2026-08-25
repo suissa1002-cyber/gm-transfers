@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>הורדה מהמלאי — איך עושים את זה נכון</title>
+<link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{--ink:#111827;--ink2:#5c666d;--line:#e6eae8;--accent:#149c40;--soft:#e7f6ec;--warn:#e2551f}
+  *{box-sizing:border-box}
+  body{margin:0;background:#f4f6f5;color:var(--ink);font-family:Assistant,system-ui,sans-serif;
+    -webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .page{max-width:820px;margin:0 auto;background:#fff;padding:30px 34px 40px;
+    box-shadow:0 6px 30px rgba(17,20,23,.08)}
+  h1{font-size:1.7rem;font-weight:800;margin:0 0 4px}
+  .sub{color:var(--ink2);font-size:1rem;margin-bottom:22px;line-height:1.5}
+  .why{background:var(--soft);border-inline-start:5px solid var(--accent);border-radius:10px;
+    padding:14px 16px;font-size:.98rem;line-height:1.6;margin-bottom:24px}
+  ol{padding-inline-start:0;list-style:none;counter-reset:s;margin:0}
+  li{counter-increment:s;position:relative;padding:0 52px 18px 0;min-height:44px}
+  li::before{content:counter(s);position:absolute;inset-inline-start:0;top:0;width:34px;height:34px;
+    border-radius:50%;background:var(--accent);color:#fff;font-weight:800;display:flex;
+    align-items:center;justify-content:center;font-size:1rem}
+  li b{display:block;font-size:1.06rem;margin-bottom:3px}
+  li span{color:var(--ink2);font-size:.94rem;line-height:1.55;display:block}
+  .split{display:flex;gap:14px;flex-wrap:wrap;margin:26px 0 8px}
+  .box{flex:1;min-width:250px;border:1.5px solid var(--line);border-radius:13px;padding:14px 16px}
+  .box h3{margin:0 0 8px;font-size:1rem;font-weight:800;display:flex;align-items:center;gap:8px}
+  .box.no h3{color:var(--warn)}
+  .box.yes h3{color:var(--accent)}
+  .box ul{margin:0;padding-inline-start:20px;font-size:.92rem;line-height:1.7;color:var(--ink2)}
+  .foot{margin-top:26px;border-top:1px solid var(--line);padding-top:14px;color:var(--ink2);font-size:.86rem;line-height:1.6}
+  .url{display:inline-block;background:#111417;color:#fff;border-radius:8px;padding:6px 12px;
+    font-weight:800;font-size:.95rem;letter-spacing:.02em;direction:ltr}
+  svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+  @media print{body{background:#fff}.page{box-shadow:none;max-width:none;padding:0}}
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>הורדה מהמלאי — דרך GreenOS</h1>
+  <div class="sub">סניף סיטי · מסך ההורדות במקום הזנה ידנית בקופה</div>
+
+  <div class="why">
+    <b>למה זה חשוב:</b> כשמורידים ישירות בקופה, שאר הסניפים והאתר לא יודעים על זה —
+    ומוכרים מכשיר שכבר לא קיים. כשמזינים דרך GreenOS, המערכת מורידה את הפריט בקופה בעצמה,
+    מאמתת שהמלאי ירד, והכל מסונכרן תוך שניות.
+  </div>
+
+  <ol>
+    <li><b>פותחים את מסך ההורדות</b>
+      <span>בדפדפן: <span class="url">gm-transfers.onrender.com/removals</span> — כדאי לשמור במסך הבית.</span></li>
+    <li><b>סורקים את המכשיר</b>
+      <span>סורק ברקוד על שדה החיפוש: <b>סידורי (IMEI), ברקוד או מק״ט</b> — כל אחד מהם עובד.
+      המערכת מציגה כרטיס עם שם המוצר, מחיר האתר, מחיר הקופה והמלאי בכל סניף.</span></li>
+    <li><b>מוסיפים להורדה</b>
+      <span>לוחצים "הוסף להורדה". אפשר לסרוק כמה פריטים בזה אחר זה לאותה פעולה.</span></li>
+    <li><b>בוחרים עובד וממלאים סכום</b>
+      <span>מי מבצע את ההורדה, והסכום הכולל בשקלים. הערה חופשית — לא חובה, אבל עוזרת אחר כך.</span></li>
+    <li><b>שומרים — וזה הכל</b>
+      <span>לוחצים "שמור פעולת הורדה". מכאן המערכת עושה את השאר בקופה לבד,
+      ותוך פחות מדקה הפעולה מופיעה ב"הורדות היום" עם מספר תעודה.</span></li>
+  </ol>
+
+  <div class="split">
+    <div class="box yes">
+      <h3><svg viewBox="0 0 24 24"><path d="M5 12.5l4.2 4.2L19 7"/></svg> מה שכן</h3>
+      <ul>
+        <li>לסרוק סידורי — הוא המדויק ביותר</li>
+        <li>להשאיר את הקופה פתוחה ולא נעולה</li>
+        <li>לוודא ב"הורדות היום" שהופיע מספר תעודה</li>
+      </ul>
+    </div>
+    <div class="box no">
+      <h3><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg> מה שלא</h3>
+      <ul>
+        <li>לא להזין את אותה הורדה גם ידנית בקופה — היא תרד פעמיים</li>
+        <li>לא לסגור את חלון הסוכן השחור שרץ במחשב הקופה</li>
+        <li>אם משהו נראה תקוע — לא לנסות שוב ושוב, לדווח</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="foot">
+    <b>אם הפעולה לא ירדה:</b> היא נשארת בתור והמערכת ממשיכה לנסות לבד — אין צורך לחזור עליה.
+    במסך מופיע מצב "ממתין / הוזן / ינוסה שוב", ואם משהו נתקע נשלחת התראה אוטומטית.
+  </div>
+</div>
+</body>
+</html>
