@@ -7224,7 +7224,9 @@ function lsResvAttr(bo){
   if(!bo||!bo.dyn_kind) return {style:'', title:'', dot:''};
   const transit=bo.dyn_kind==='transit';
   const col=transit?'#f5a524':'#2563eb';   // כתום=בהעברה, כחול=משוריין
-  const label=(transit?'בהעברה ל':'משוריין ל')+(bo.dyn_to||'?')+(bo.dyn_n>1?` (${bo.dyn_n})`:'');
+  /* בהעברה = היחידה נספרת כאן אבל עדיין בדרך — לכן מציגים מאיפה היא מגיעה */
+  const label=(transit?('מגיע מ-'+(bo.dyn_from||'?')+' — טרם התקבל')
+                      :('משוריין ל'+(bo.dyn_to||'?')))+(bo.dyn_n>1?` (${bo.dyn_n})`:'');
   return {style:`;background:${col}22;border-radius:8px`, title:`title="${label}"`,
           dot:` <span style="color:${col};display:inline-flex;vertical-align:-2px">${ico(transit?'truck':'radio',13)}</span>`};
 }

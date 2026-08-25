@@ -1606,8 +1606,13 @@ def product_branch_status(product_id: str) -> dict:
                             AND t.status IN ('in_transit','partial')
                           GROUP BY t.from_branch_id, t.to_branch_id"""), (pid,))
         for r in cur.fetchall():
-            if r["fb"] is not None:
-                out[int(r["fb"])] = {"kind": "transit", "to_branch": r["tb"], "n": r["n"]}
+            # ⚠️ הסימון נתלה על **הסניף המקבל** ולא על השולח (אסי, 25/08/2026).
+            # בקופה ההעברה היא פעולת המעביר בלבד והמלאי עובר מיד — כלומר לשולח
+            # כבר אין את היחידה, וסימון אצלו חסר משמעות. מה שצריך לדעת הוא
+            # שהיחידה שנספרת אצל המקבל **עדיין לא הגיעה פיזית**.
+            # ⛔ 'reserved' נשאר על השולח: שם היחידה באמת עדיין נמצאת.
+            if r["tb"] is not None:
+                out[int(r["tb"])] = {"kind": "transit", "from_branch": r["fb"], "n": r["n"]}
     return out
 
 

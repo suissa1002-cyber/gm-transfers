@@ -2928,7 +2928,11 @@ def _apply_dynamic(out: dict, pid: str) -> dict:
     for b in out.get("branches", []):
         st = bstat.get(b["id"])
         b["dyn_kind"] = (st or {}).get("kind")
-        b["dyn_to"] = cfg.branch_name(st["to_branch"]) if st else ""
+        # reserved → יעד ההעברה (היחידה עדיין כאן); transit → מקור (היחידה בדרך לכאן)
+        b["dyn_to"] = (cfg.branch_name(st["to_branch"])
+                       if st and st.get("to_branch") is not None else "")
+        b["dyn_from"] = (cfg.branch_name(st["from_branch"])
+                         if st and st.get("from_branch") is not None else "")
         b["dyn_n"] = (st or {}).get("n", 0)
     if "serials" in out and out["serials"]:
         dyn = db.serial_dynamic_status([s.get("serial") for s in out["serials"]])
