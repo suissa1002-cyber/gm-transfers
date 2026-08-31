@@ -6134,8 +6134,21 @@ function waPanelHTML(){
     ${waSec('notes',ico('pencil',14)+' הערות (GreenOS)',notesBody,(c.notes||[]).length)}
     ${waSec('media',ico('image',14)+' מדיה וקבצים',`<div id="waMediaBox">${waMediaHTML()}</div>`,mediaCount)}
     <h4 style="display:flex;align-items:center;gap:5px">${ico('sliders',14)} פעולות</h4>
+    <button class="btn-ghost" onclick="waCouponOpen()" style="width:100%;display:inline-flex;align-items:center;justify-content:center;gap:7px;margin-bottom:8px">${ico('tag',14)} קופון הנחה ללקוח</button>
     <button class="btn-ghost" onclick="waExport()" style="width:100%;display:inline-flex;align-items:center;justify-content:center;gap:7px">${ico('download',15)} ייצוא שיחה לקובץ</button>`;
 }
+// ── 🎟️ קופון מתוך השיחה — ממלא שם וטלפון לבד (אסי, 25/08/2026) ──
+// ⚠️ הטלפון נשלח לתיעוד בלבד ולא נועל את הקופון: WooCommerce נועל לפי
+// מייל, ולרוב לקוחות הוואטסאפ אין לנו מייל. הנעילה זמינה ידנית במסך.
+function waCouponOpen(){
+  const c=S.waContact||{};
+  const ct=c.contact||{};
+  /* שם הלקוח: קודם מכרטיס האנשי-קשר, ואז מרשימת השיחות */
+  const conv=(S.waConvs||[]).find(x=>String(x.phone)===String(S.waPhone))||{};
+  const name=(ct.name||c.name||conv.name||'').trim();
+  couponOpen({name:name, phone:(S.waPhone||''), reason:''});
+}
+
 // ── תמונת פרופיל ידנית פר-לקוח (בחירת קובץ או הדבקה מהלוח) ──
 function waPicMenu(){ S._waPicMenu=!S._waPicMenu; const p=document.getElementById('waPanelBox'); if(p) p.innerHTML=waPanelHTML(); }
 function waPicUpload(){ const f=document.getElementById('waPicFile'); if(f) f.click(); }
