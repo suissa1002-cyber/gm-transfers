@@ -11569,6 +11569,11 @@ def admin_coupon_create(body: CouponIn, x_admin_key: Optional[str] = Header(None
         payload["minimum_amount"] = f"{float(body.min_amount):.2f}"
     if (body.email or "").strip():
         payload["email_restrictions"] = [(body.email or "").strip()]
+    # ⚠️ טלפון כ-meta ייעודי ולא רק בתיאור — הסינון "הקופונים של הלקוח הזה"
+    # חייב מפתח ודאי, לא חיפוש טקסט בתיאור חופשי.
+    ph = _il_phone((body.phone or "").strip()) if (body.phone or "").strip() else ""
+    if ph:
+        payload["meta_data"] = [{"key": "_gm_phone", "value": ph}]
     if int(body.days or 0) > 0:
         from datetime import timedelta as _td
         payload["date_expires"] = (datetime.now() + _td(days=int(body.days))).strftime("%Y-%m-%dT23:59:59")
@@ -11584,21 +11589,43 @@ def admin_coupon_create(body: CouponIn, x_admin_key: Optional[str] = Header(None
 
 
 @app.get("/api/admin/coupons")
-def admin_coupons_list(limit: int = 30, x_admin_key: Optional[str] = Header(None)):
-    """קופונים אחרונים + כמה פעמים מומשו."""
+def admin_coupons_list(limit: int = 30, phone: str = "",
+                       x_admin_key: Optional[str] = Header(None)):
+    """קופונים אחרונים + כמה פעמים מומשו. phone → רק של אותו לקוח.
+
+    ⛔ הסינון לפי meta _gm_phone ולא לפי התיאור: התיאור הוא טקסט חופשי
+    שאסי כותב, ואי אפשר לבנות עליו סינון."""
     _require_admin(x_admin_key)
     import requests as _rq
     base, k, sec = _wc_creds()
+    want = _il_phone(phone.strip()) if (phone or "").strip() else ""
+    # כשמסננים לפי לקוח מושכים רחב יותר — הקופון שלו יכול להיות ישן
+    per = 100 if want else max(1, min(int(limit or 30), 100))
     r = _rq.get(f"{base}/wp-json/wc/v3/coupons",
-                params={"per_page": max(1, min(int(limit or 30), 100)),
-                        "orderby": "date", "order": "desc"}, auth=(k, sec), timeout=45)
+                params={"per_page": per, "orderby": "date", "order": "desc"},
+                auth=(k, sec), timeout=45)
     if not r.ok:
         raise HTTPException(502, "שליפת הקופונים נכשלה")
-    return {"rows": [{"id": c.get("id"), "code": c.get("code"),
-                      "amount": c.get("amount"), "discount_type": c.get("discount_type"),
-                      "description": c.get("description"),
-                      "used": c.get("usage_count"), "limit": c.get("usage_limit"),
-                      "expires": c.get("date_expires")} for c in (r.json() or [])]}
+    rows = []
+    for c in (r.json() or []):
+        meta = {m.get("key"): m.get("value") for m in (c.get("meta_data") or [])}
+        cph = str(meta.get("_gm_phone") or "")
+        if want and cph != want:
+            continue
+        used = int(c.get("usage_count") or 0)
+        lim = c.get("usage_limit")
+        exp = str(c.get("date_expires") or "")
+        rows.append({"id": c.get("id"), "code": str(c.get("code") or "").upper(),
+                     "amount": c.get("amount"), "discount_type": c.get("discount_type"),
+                     "description": c.get("description"), "phone": cph,
+                     "used": used, "limit": lim, "expires": exp,
+                     # מצב מחושב — כדי שהמסך לא יצטרך להסיק
+                     "spent": bool(lim and used >= int(lim)),
+                     "expired": bool(exp and exp[:10] < datetime.now().strftime("%Y-%m-%d")),
+                     "created": str(c.get("date_created") or "")[:10]})
+        if not want and len(rows) >= int(limit or 30):
+            break
+    return {"rows": rows}
 
 
 @app.delete("/api/admin/coupons/{cid}")

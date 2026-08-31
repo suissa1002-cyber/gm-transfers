@@ -5291,11 +5291,56 @@ function couponOpen(pre){
     <div style="display:flex;gap:8px;margin-top:12px">
       <button class="btn" style="flex:1" onclick="couponCreate('${escW(pre.phone||'')}')">צור קופון</button>
     </div>
+    <div style="margin-top:16px;border-top:1px solid var(--line);padding-top:12px">
+      <div style="font-weight:700;font-size:13px;margin-bottom:8px">${pre.phone?'הקופונים של הלקוח':'קופונים אחרונים'}</div>
+      <div id="cpList" class="muted" style="font-size:12.5px">טוען…</div>
+    </div>
   </div>`;
   div.onclick=()=>div.remove();
   document.body.appendChild(div);
   S._cpKind='percent';
+  S._cpPhone=pre.phone||'';
+  couponRefresh();
   setTimeout(()=>{const f=document.getElementById('cpAmt');if(f)f.focus();},80);
+}
+// ── רשימת הקופונים: מה נוצר, אם מומש, ומחיקה ──
+async function couponRefresh(){
+  const box=document.getElementById('cpList'); if(!box) return;
+  try{
+    const q=S._cpPhone?('?phone='+encodeURIComponent(S._cpPhone)):'?limit=25';
+    const r=await api('/api/admin/coupons'+q,{},30000);
+    const rows=(r&&r.rows)||[];
+    if(!rows.length){ box.innerHTML=S._cpPhone?'עוד לא נשלחו קופונים ללקוח הזה':'אין קופונים'; return; }
+    box.innerHTML=rows.map(c=>couponRow(c)).join('');
+  }catch(e){ box.innerHTML='טעינת הקופונים נכשלה'; }
+}
+function couponRow(c){
+  const what=(c.discount_type==='percent')?(parseFloat(c.amount)+'%'):('₪'+parseFloat(c.amount));
+  /* מצב: מומש > פג תוקף > פעיל. המצב מחושב בשרת כדי שלא נסיק כאן. */
+  const st = c.spent ? {t:'מומש',bg:'rgba(37,99,235,.14)',fg:'var(--blue)'}
+           : c.expired ? {t:'פג תוקף',bg:'rgba(120,120,120,.16)',fg:'var(--ink2)'}
+           : {t:'פעיל',bg:'var(--accent-soft,#e7f6ec)',fg:'#0e5c2b'};
+  const uses=(c.used||0)+'/'+(c.limit||'∞');
+  return `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--line)">
+    <div style="flex:1;min-width:0">
+      <div style="display:flex;align-items:center;gap:6px">
+        <b style="direction:ltr;letter-spacing:1px">${escW(c.code)}</b>
+        <span style="font-size:11px;padding:1px 7px;border-radius:99px;background:${st.bg};color:${st.fg};font-weight:700">${st.t}</span>
+        <span class="muted" style="font-size:11.5px">${escW(what)} · ${uses}</span>
+      </div>
+      <div class="muted" style="font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(c.description||'')}</div>
+    </div>
+    <button class="btn-ghost" style="padding:3px 9px;font-size:11.5px" onclick="couponDelete(${c.id},'${escW(c.code)}')">מחק</button>
+  </div>`;
+}
+async function couponDelete(id,code){
+  if(!confirm('למחוק את הקופון '+code+'?\n⛔ מרגע זה הוא לא יעבוד ללקוח.')) return;
+  showLoading('מוחק…');
+  try{
+    await api('/api/admin/coupons/'+id,{method:'DELETE'},30000);
+    hideLoading(); toast('הקופון נמחק ✓',true); couponRefresh();
+    if(S.waPhone) waCoupLoad(S.waPhone);
+  }catch(e){ hideLoading(); toast('המחיקה נכשלה',false); }
 }
 function cpKind(k){
   S._cpKind=k;
@@ -5326,6 +5371,8 @@ async function couponCreate(phone){
         <button class="btn-ghost" onclick="navigator.clipboard.writeText('${escW(code)}');toast('הקוד הועתק ✓',true)">העתק</button>
       </div>`;
       toast('הקופון נוצר ✓',true);
+      couponRefresh();
+      if(S.waPhone) waCoupLoad(S.waPhone);
     } else toast('היצירה נכשלה',false);
   }catch(e){ hideLoading(); toast((e&&e.message)||'היצירה נכשלה',false); }
 }
@@ -6133,10 +6180,32 @@ function waPanelHTML(){
     ${waSec('tags',ico('tag',14)+' תגיות',tagsBody,(c.tags||[]).length)}
     ${waSec('notes',ico('pencil',14)+' הערות (GreenOS)',notesBody,(c.notes||[]).length)}
     ${waSec('media',ico('image',14)+' מדיה וקבצים',`<div id="waMediaBox">${waMediaHTML()}</div>`,mediaCount)}
+    ${waSec('coupons',ico('tag',14)+' קופונים ללקוח',`<div id="waCoupBox">${waCoupHTML()}</div>`,(S._waCoup||[]).length)}
     <h4 style="display:flex;align-items:center;gap:5px">${ico('sliders',14)} פעולות</h4>
     <button class="btn-ghost" onclick="waCouponOpen()" style="width:100%;display:inline-flex;align-items:center;justify-content:center;gap:7px;margin-bottom:8px">${ico('tag',14)} קופון הנחה ללקוח</button>
     <button class="btn-ghost" onclick="waExport()" style="width:100%;display:inline-flex;align-items:center;justify-content:center;gap:7px">${ico('download',15)} ייצוא שיחה לקובץ</button>`;
 }
+// ── 🎟️ קופונים של הלקוח, בתוך השיחה (אסי, 25/08/2026) ──
+// ⚠️ נטען פר-שיחה ולא מגיע עם כרטיס הלקוח: זו קריאה לוואקומרס, ואין
+// טעם לשלם עליה בכל פתיחת שיחה כשרוב הלקוחות בלי קופונים.
+function waCoupHTML(){
+  const rows=S._waCoup;
+  if(rows===null||rows===undefined) return '<div class="muted">טוען…</div>';
+  if(!rows.length) return '<div class="muted">לא נשלחו קופונים ללקוח הזה</div>';
+  return rows.map(c=>couponRow(c)).join('');
+}
+async function waCoupLoad(phone){
+  S._waCoup=null;
+  try{
+    const r=await api('/api/admin/coupons?phone='+encodeURIComponent(phone),{},30000);
+    /* ⛔ אם המשתמש עבר שיחה בינתיים — לא לדרוס בנתונים של שיחה אחרת */
+    if(String(S.waPhone)!==String(phone)) return;
+    S._waCoup=(r&&r.rows)||[];
+  }catch(e){ S._waCoup=[]; }
+  const box=document.getElementById('waCoupBox');
+  if(box) box.innerHTML=waCoupHTML();
+}
+
 // ── 🎟️ קופון מתוך השיחה — ממלא שם וטלפון לבד (אסי, 25/08/2026) ──
 // ⚠️ הטלפון נשלח לתיעוד בלבד ולא נועל את הקופון: WooCommerce נועל לפי
 // מייל, ולרוב לקוחות הוואטסאפ אין לנו מייל. הנעילה זמינה ידנית במסך.
@@ -6900,7 +6969,8 @@ async function openWaConv(phone){
     if(r){ S.waConvs=S.waConvs||[]; S.waConvs.unshift(r); }
   }
   if(S.ellaPending===undefined) waEllaPendingLoad(true);   // 🎓 באדג' על ✨ כשמשהו מחכה
-  S.waPhone=phone; S.waThread=null; S.waContact=null; S.waReplyTo=null;
+  S.waPhone=phone; S.waThread=null; S.waContact=null; S.waReplyTo=null; S._waCoup=null;
+  waCoupLoad(phone);
   // פרטי-שיחה פתוחים כברירת מחדל (העדפה נשמרת ב-tr_wa_info); לא דורסים פאנל אלה/מלאי פתוח
   if(S.waInfoPref===undefined){ try{ S.waInfoPref=localStorage.getItem('tr_wa_info')!=='0'; }catch(e){ S.waInfoPref=true; } }
   // ⚠️ מלאי חי **אינו** נשאר פתוח במעבר בין שיחות. ההחרגה נכתבה כשהחיפוש
