@@ -73,10 +73,12 @@ def fetch_best(n=8, days=60):
     ids = [r.get("product_id") for r in rows
            if r.get("product_id") and r.get("product_id") not in CODE_IDS]
     vis, gifts, pre, inst = {}, {}, {}, {}
+    vis_ok = False          # האם אימות הנראות הצליח בכלל
     if ids:
         try:
             prods = _get("wc/v3/products", include=",".join(map(str, ids)),
                          per_page=len(ids), status="publish")
+            vis_ok = True
             vis = {p["id"]: _in_catalog(p) for p in prods}
             # ⚠️ דוח ה-analytics לא מחזיר תגיות — מושכים אותן מאותה קריאה
             gifts = {p["id"]: any(t.get("id") == 3514 for t in (p.get("tags") or []))
@@ -91,7 +93,20 @@ def fetch_best(n=8, days=60):
         pid = r.get("product_id"); info = r.get("extended_info") or {}
         if pid in CODE_IDS or info.get("stock_status") != "instock":
             continue
-        if not vis.get(pid, True):
+        # ⛔ ברירת מחדל **סוגרת**: הקריאה לאימות מסוננת ל-status=publish, ולכן
+        # מוצר private פשוט **חסר** בתשובה. `vis.get(pid, True)` פירש חוסר
+        # כ"מותר", וכך "פריט קופה (GreenOS)" — מוצר עוגן טכני, private+hidden
+        # עם 10 מכירות — הופיע ברבי-המכר בעמוד הבית (אסי, 25/08/2026).
+        # אם האימות עצמו נפל, נשארים מתירניים כדי לא לרוקן את הסקשן.
+        if vis_ok and not vis.get(pid, False):
+            continue
+        if not vis_ok and not vis.get(pid, True):
+            continue
+        # מוצר בלי מחיר אינו מוצר אמיתי לתצוגה (עוגנים טכניים, טיוטות)
+        try:
+            if float(info.get("price") or 0) <= 0:
+                continue
+        except (TypeError, ValueError):
             continue
         m = re.search(r'src="([^"]+)"', info.get("image") or "")
         img = m.group(1).replace("&amp;", "&") if m else ""
