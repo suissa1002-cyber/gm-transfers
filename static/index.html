@@ -2527,6 +2527,7 @@ function renderDrawer(){
     <div class="dr-item ${act('crm')}" onclick="hubGoCrm()"><span>${ico('user',16)}</span><span>מוקד שיחות · CRM${lock}</span></div>
     <div class="dr-sec">מכירות</div>
     <div class="dr-item" onclick="toggleDrawer(false);if(ensureAdmin(payQuickOpen))payQuickOpen()"><span>${ico('receipt',16)}</span><span>קישור תשלום מהיר${lock}</span></div>
+    <div class="dr-item" onclick="toggleDrawer(false);if(ensureAdmin(couponOpen))couponOpen()"><span>${ico('tag',16)}</span><span>קופון הנחה${lock}</span></div>
     <div class="dr-item ${S.view==='admin'&&S.adminTab==='greencare'?'active':''}" onclick="toggleDrawer(false);if(ensureAdmin(()=>{hubGo('admin');setAdminTab('greencare');})){hubGo('admin');setAdminTab('greencare');}"><span>${ico('shield',16)}</span><span>Green Care${lock}</span></div>
     <div class="dr-sec">Hub</div>
     <div class="dr-item ${S.view==='tasks'?'active':''}" onclick="hubGo('tasks')"><span>${ico('list',16)}</span><span>משימות סוכנים${lock}</span></div>
@@ -5251,6 +5252,84 @@ async function waOrdDoneSend(){
     toast('השליחה נכשלה — בדוק את המספר',false);
   }
 }
+// ── 🎟️ קופון הנחה ללקוח — נוצר ישירות כקופון WooCommerce ──
+// ⚠️ אסי (25/08/2026): "פשוט צריך יצירה סופר קלה". לכן שתי שורות בלבד
+// חובה (סכום + לקוח), וכל השאר ברירות מחדל: חד-פעמי, 30 יום, לא מצטבר.
+function couponOpen(pre){
+  pre = pre || {};
+  const old=document.getElementById('coupModal'); if(old) old.remove();
+  const div=document.createElement('div');
+  div.id='coupModal'; div.className='wa-lb'; div.style.cursor='default';
+  div.innerHTML=`<div class="wa-ord" onclick="event.stopPropagation()">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <b style="font-size:15px">🎟️ קופון הנחה</b>
+      <button class="btn-ghost" onclick="document.getElementById('coupModal').remove()">✕</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <input id="cpAmt" placeholder="גובה ההנחה" inputmode="decimal" style="direction:ltr;font-size:17px;font-weight:700">
+      <div style="display:flex;gap:6px">
+        <button id="cpTP" class="btn" style="flex:1" onclick="cpKind('percent')">אחוז %</button>
+        <button id="cpTF" class="btn-ghost" style="flex:1" onclick="cpKind('fixed')">₪ סכום</button>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
+      <input id="cpWho" placeholder="שם הלקוח" value="${escW(pre.name||'')}">
+      <input id="cpWhy" placeholder="סיבה (לתיעוד)" value="${escW(pre.reason||'')}">
+    </div>
+    <details style="margin-top:10px">
+      <summary style="cursor:pointer;font-size:12.5px;color:var(--ink2)">אפשרויות נוספות</summary>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px">
+        <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer">
+          <input type="checkbox" id="cpOnce" checked style="width:16px;height:16px"> חד-פעמי
+        </label>
+        <input id="cpDays" placeholder="תוקף בימים (30)" inputmode="numeric" style="direction:ltr">
+        <input id="cpMin" placeholder="מינימום קנייה ₪" inputmode="decimal" style="direction:ltr">
+        <input id="cpMail" placeholder="נעילה למייל (לא חובה)" style="direction:ltr">
+      </div>
+    </details>
+    <div id="cpOut" style="margin-top:12px"></div>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button class="btn" style="flex:1" onclick="couponCreate('${escW(pre.phone||'')}')">צור קופון</button>
+    </div>
+  </div>`;
+  div.onclick=()=>div.remove();
+  document.body.appendChild(div);
+  S._cpKind='percent';
+  setTimeout(()=>{const f=document.getElementById('cpAmt');if(f)f.focus();},80);
+}
+function cpKind(k){
+  S._cpKind=k;
+  const p=document.getElementById('cpTP'), f=document.getElementById('cpTF');
+  if(p&&f){ p.className=(k==='percent')?'btn':'btn-ghost'; f.className=(k==='fixed')?'btn':'btn-ghost'; }
+}
+async function couponCreate(phone){
+  const g=id=>(document.getElementById(id)||{}).value||'';
+  const amt=parseFloat(g('cpAmt'));
+  if(!amt||amt<=0){ toast('צריך גובה הנחה',false); return; }
+  if(S._cpKind==='percent'&&amt>100){ toast('אחוז לא יכול לעלות על 100',false); return; }
+  const body={kind:S._cpKind||'percent',amount:amt,customer_name:g('cpWho').trim(),
+    reason:g('cpWhy').trim(),phone:phone||'',email:g('cpMail').trim(),
+    once:!!(document.getElementById('cpOnce')||{}).checked,
+    days:parseInt(g('cpDays')||'30',10)||30,
+    min_amount:parseFloat(g('cpMin')||'0')||0};
+  showLoading('יוצר קופון…');
+  try{
+    const r=await api('/api/admin/coupons',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)},40000);
+    hideLoading();
+    if(r&&r.ok&&r.code){
+      const code=String(r.code).toUpperCase();   /* WC שומר באותיות קטנות — מציגים קריא */
+      const what=(r.discount_type==='percent')?(parseFloat(r.amount)+'%'):('₪'+parseFloat(r.amount));
+      const out=document.getElementById('cpOut');
+      if(out) out.innerHTML=`<div style="background:var(--accent-soft,#e7f6ec);border:1px solid #149c40;border-radius:12px;padding:12px;text-align:center">
+        <div style="font-size:12px;color:var(--ink2)">הקוד ללקוח — הנחה ${escW(what)}</div>
+        <div style="font-size:24px;font-weight:900;letter-spacing:2px;direction:ltr;margin:6px 0">${escW(code)}</div>
+        <button class="btn-ghost" onclick="navigator.clipboard.writeText('${escW(code)}');toast('הקוד הועתק ✓',true)">העתק</button>
+      </div>`;
+      toast('הקופון נוצר ✓',true);
+    } else toast('היצירה נכשלה',false);
+  }catch(e){ hideLoading(); toast((e&&e.message)||'היצירה נכשלה',false); }
+}
+
 // ── 💵 קישור תשלום מהיר (מהמגירה): פריט כללי, בלי הזמנת WooCommerce ──
 function payQuickOpen(){
   const old=document.getElementById('payQuickModal'); if(old) old.remove();
