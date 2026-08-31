@@ -11510,6 +11510,108 @@ def admin_order_return(oid: int, close: int = 0,
         "phone": b.get("phone") or "", "address": addr, "email": b.get("email") or ""}}
 
 
+# ══ 🎟️ קופוני הנחה ═══════════════════════════════════════════════════
+# ⚠️ אסי (25/08/2026): לקוח בוואטסאפ מבקש הנחה, ואין דרך מהירה לתת לו קוד
+# שיעבוד באתר. הדרישה: אחוז או סכום, שם לקוח + סיבה, חד-פעמי או רב-פעמי,
+# הגבלה ללקוח — ו"יצירה סופר קלה". נוצר ישירות כקופון WooCommerce, כך
+# שהלקוח מזין אותו בקופה כרגיל.
+#
+# ⛔ בלי אותיות/ספרות מתבלבלות (0/O, 1/I/L) — הקוד מוקרא בטלפון ומוקלד ידנית.
+_COUPON_ALPHABET = "ACDEFGHJKMNPQRTUVWXY2346789"
+
+
+def _coupon_code(kind: str, amount: float) -> str:
+    import random as _r
+    tag = f"{int(amount)}{'P' if kind == 'percent' else 'S'}"
+    rnd = "".join(_r.choice(_COUPON_ALPHABET) for _ in range(4))
+    return f"GM{tag}-{rnd}"
+
+
+class CouponIn(BaseModel):
+    kind: str = "percent"        # percent | fixed
+    amount: float = 0
+    customer_name: str = ""
+    reason: str = ""
+    email: str = ""              # אם נמסר — הקופון ננעל למייל הזה
+    phone: str = ""              # לרישום בלבד
+    once: bool = True            # חד-פעמי
+    usage_limit: int = 0         # 0 = ללא הגבלה (רלוונטי רק כשonce=False)
+    per_user: int = 1
+    days: int = 30               # תוקף; 0 = ללא תפוגה
+    min_amount: float = 0
+
+
+@app.post("/api/admin/coupons")
+def admin_coupon_create(body: CouponIn, x_admin_key: Optional[str] = Header(None)):
+    """יוצר קופון הנחה ב-WooCommerce ומחזיר את הקוד. ⛔ סכום חייב להיות חיובי,
+    ואחוז מוגבל ל-100 — קופון שגוי הוא כסף שיוצא."""
+    _require_admin(x_admin_key)
+    import requests as _rq
+    kind = "percent" if (body.kind or "").lower().startswith("per") else "fixed_cart"
+    amt = round(float(body.amount or 0), 2)
+    if amt <= 0:
+        raise HTTPException(400, "סכום ההנחה חייב להיות גדול מאפס")
+    if kind == "percent" and amt > 100:
+        raise HTTPException(400, "אחוז הנחה לא יכול לעלות על 100")
+    who = (body.customer_name or "").strip()
+    why = (body.reason or "").strip()
+    desc = " · ".join(x for x in [who, why, (body.phone or "").strip()] if x) or "קופון ידני"
+    payload = {
+        "code": _coupon_code("percent" if kind == "percent" else "fixed", amt),
+        "discount_type": kind,
+        "amount": f"{amt:.2f}",
+        "description": desc,
+        "individual_use": True,                 # ⛔ לא מצטבר עם קופון אחר
+        "usage_limit": 1 if body.once else (int(body.usage_limit or 0) or None),
+        "usage_limit_per_user": max(1, int(body.per_user or 1)),
+    }
+    if body.min_amount and float(body.min_amount) > 0:
+        payload["minimum_amount"] = f"{float(body.min_amount):.2f}"
+    if (body.email or "").strip():
+        payload["email_restrictions"] = [(body.email or "").strip()]
+    if int(body.days or 0) > 0:
+        from datetime import timedelta as _td
+        payload["date_expires"] = (datetime.now() + _td(days=int(body.days))).strftime("%Y-%m-%dT23:59:59")
+    base, k, sec = _wc_creds()
+    r = _rq.post(f"{base}/wp-json/wc/v3/coupons", json=payload, auth=(k, sec), timeout=45)
+    if not r.ok:
+        logger.warning("coupon create failed: %s %s", r.status_code, r.text[:200])
+        raise HTTPException(502, f"יצירת הקופון נכשלה: {r.text[:120]}")
+    c = r.json()
+    return {"ok": True, "id": c.get("id"), "code": c.get("code"),
+            "amount": c.get("amount"), "discount_type": c.get("discount_type"),
+            "expires": c.get("date_expires"), "description": c.get("description")}
+
+
+@app.get("/api/admin/coupons")
+def admin_coupons_list(limit: int = 30, x_admin_key: Optional[str] = Header(None)):
+    """קופונים אחרונים + כמה פעמים מומשו."""
+    _require_admin(x_admin_key)
+    import requests as _rq
+    base, k, sec = _wc_creds()
+    r = _rq.get(f"{base}/wp-json/wc/v3/coupons",
+                params={"per_page": max(1, min(int(limit or 30), 100)),
+                        "orderby": "date", "order": "desc"}, auth=(k, sec), timeout=45)
+    if not r.ok:
+        raise HTTPException(502, "שליפת הקופונים נכשלה")
+    return {"rows": [{"id": c.get("id"), "code": c.get("code"),
+                      "amount": c.get("amount"), "discount_type": c.get("discount_type"),
+                      "description": c.get("description"),
+                      "used": c.get("usage_count"), "limit": c.get("usage_limit"),
+                      "expires": c.get("date_expires")} for c in (r.json() or [])]}
+
+
+@app.delete("/api/admin/coupons/{cid}")
+def admin_coupon_delete(cid: int, x_admin_key: Optional[str] = Header(None)):
+    """מחיקת קופון (force) — לביטול קוד שנוצר בטעות."""
+    _require_admin(x_admin_key)
+    import requests as _rq
+    base, k, sec = _wc_creds()
+    r = _rq.delete(f"{base}/wp-json/wc/v3/coupons/{cid}", params={"force": True},
+                   auth=(k, sec), timeout=45)
+    return {"ok": r.ok}
+
+
 @app.post("/api/admin/orders/{oid}/pay-link")
 def admin_order_pay_link(oid: int, payments: int = 1,
                          x_admin_key: Optional[str] = Header(None)):
