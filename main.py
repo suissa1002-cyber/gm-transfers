@@ -11622,10 +11622,35 @@ def admin_coupons_list(limit: int = 30, phone: str = "",
                      # מצב מחושב — כדי שהמסך לא יצטרך להסיק
                      "spent": bool(lim and used >= int(lim)),
                      "expired": bool(exp and exp[:10] < datetime.now().strftime("%Y-%m-%d")),
+                     # ⛔ תפוגה שקדמה ליצירה = ביטול ידני, לא קופון שפג מעצמו.
+                     # ההבחנה חשובה: "בוטל" אומר שמישהו החליט, "פג תוקף" זה זמן.
+                     "cancelled": bool(exp and str(c.get("date_created") or "")
+                                       and exp[:10] < str(c.get("date_created"))[:10]),
                      "created": str(c.get("date_created") or "")[:10]})
         if not want and len(rows) >= int(limit or 30):
             break
     return {"rows": rows}
+
+
+@app.post("/api/admin/coupons/{cid}/cancel")
+def admin_coupon_cancel(cid: int, x_admin_key: Optional[str] = Header(None)):
+    """מבטל קופון בלי למחוק אותו — מקדים את התפוגה לאתמול.
+
+    ⚠️ למה זה נפרד ממחיקה (אסי, 25/08/2026): מחיקה מוחקת גם את ההיסטוריה —
+    מי קיבל, על מה, וכמה מומש. ביטול משאיר את הרישום ורק מפסיק את התוקף,
+    וזה מה שצריך כשלקוח מנצל לרעה או כשהקופון ניתן בטעות.
+    ⛔ ל-WooCommerce אין דגל "מבוטל" לקופון — תפוגה בעבר היא הדרך הנתמכת.
+    """
+    _require_admin(x_admin_key)
+    import requests as _rq
+    from datetime import timedelta as _td
+    base, k, sec = _wc_creds()
+    past = (datetime.now() - _td(days=1)).strftime("%Y-%m-%dT23:59:59")
+    r = _rq.put(f"{base}/wp-json/wc/v3/coupons/{cid}",
+                json={"date_expires": past}, auth=(k, sec), timeout=45)
+    if not r.ok:
+        raise HTTPException(502, "ביטול הקופון נכשל")
+    return {"ok": True, "expires": (r.json() or {}).get("date_expires")}
 
 
 @app.delete("/api/admin/coupons/{cid}")

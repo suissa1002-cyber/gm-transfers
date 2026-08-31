@@ -5318,7 +5318,7 @@ function couponRow(c){
   const what=(c.discount_type==='percent')?(parseFloat(c.amount)+'%'):('₪'+parseFloat(c.amount));
   /* מצב: מומש > פג תוקף > פעיל. המצב מחושב בשרת כדי שלא נסיק כאן. */
   const st = c.spent ? {t:'מומש',bg:'rgba(37,99,235,.14)',fg:'var(--blue)'}
-           : c.expired ? {t:'פג תוקף',bg:'rgba(120,120,120,.16)',fg:'var(--ink2)'}
+           : c.expired ? {t:c.cancelled?'בוטל':'פג תוקף',bg:'rgba(120,120,120,.16)',fg:'var(--ink2)'}
            : {t:'פעיל',bg:'var(--accent-soft,#e7f6ec)',fg:'#0e5c2b'};
   const uses=(c.used||0)+'/'+(c.limit||'∞');
   return `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--line)">
@@ -5330,8 +5330,20 @@ function couponRow(c){
       </div>
       <div class="muted" style="font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(c.description||'')}</div>
     </div>
+    ${(c.spent||c.expired)?'':`<button class="btn-ghost" style="padding:3px 9px;font-size:11.5px" onclick="couponCancel(${c.id},'${escW(c.code)}')" title="מפסיק את התוקף ומשאיר את הרישום">בטל</button>`}
     <button class="btn-ghost" style="padding:3px 9px;font-size:11.5px" onclick="couponDelete(${c.id},'${escW(c.code)}')">מחק</button>
   </div>`;
+}
+// ⚠️ ביטול ≠ מחיקה: ביטול משאיר את הרישום (מי קיבל, כמה מומש) ורק מפסיק
+// את התוקף. מחיקה מוחקת גם את ההיסטוריה.
+async function couponCancel(id,code){
+  if(!confirm('לבטל את הקופון '+code+'?\nהוא יפסיק לעבוד, אבל יישאר ברשימה עם ההיסטוריה.')) return;
+  showLoading('מבטל…');
+  try{
+    await api('/api/admin/coupons/'+id+'/cancel',{method:'POST'},30000);
+    hideLoading(); toast('הקופון בוטל ✓',true); couponRefresh();
+    if(S.waPhone) waCoupLoad(S.waPhone);
+  }catch(e){ hideLoading(); toast('הביטול נכשל',false); }
 }
 async function couponDelete(id,code){
   if(!confirm('למחוק את הקופון '+code+'?\n⛔ מרגע זה הוא לא יעבוד ללקוח.')) return;
