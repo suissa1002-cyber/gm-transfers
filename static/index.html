@@ -8962,6 +8962,11 @@ function paintWcOrder(){
   _actBtns.push(oAct(ico('truck',14)+' '+(d.importer_delivery?'בטל הפצת יבואן':'הפצת יבואן→לקוח'),'#7c3aed',`wcoImporterDelivery(${d.id},${d.importer_delivery?0:1})`,'סימון הזמנה שמופצת ישירות מהיבואן לבית הלקוח (dropship — למשל כיסאות ללא מלאי)'));
   if(phoneIntl.length>10) _actBtns.push(oAct('📄 שלח חשבונית','#0d9488',`wcoSendInvoice('${d.number}','${phoneIntl}')`,'שולח ללקוח בוואטסאפ את החשבונית של ההזמנה'));
   _actBtns.push(oAct('↩️ '+(d.return_open?'סגור החזרה':'פתח החזרה'),'#7c3aed',`wcoOpenReturn(${d.id},${d.return_open?1:0})`,d.return_open?'סגירת ההחזרה':'פותח החזרה: מתעד בהזמנה + מעתיק פרטי לקוח + פותח דשבורד Cargo לאיסוף'));
+  /* ביטול שקט — לכפילויות/ניסיונות תשלום שלא הושלמו. הביטול הרגיל שולח
+     ללקוח "הזמנתך בוטלה בשל חוסר וכרטיסך זוכה", וזה מבהיל כשההזמנה
+     האמיתית שלו דווקא עברה. (אסי, 1/09/2026) */
+  if(!['cancelled','trash','refunded'].includes(d.status))
+    _actBtns.push(oAct(ico('bellOff',14)+' בטל בשקט','#6b7280',`wcoCancelSilent(${d.id})`,'מבטל בלי לשלוח ללקוח הודעת ביטול — לכפילויות'));
   if(['cancelled','failed','refunded'].includes(d.status)) _actBtns.push(oAct(ico('trash',14)+' העבר לפח','#b91c1c',`wcoTrash(${d.id})`));
   if(d.status==='trash') _actBtns.push(oAct(ico('restore',14)+' שחזר הזמנה','#15803d',`wcoRestore(${d.id})`,'מוציא מהפח וחוזר לרשימות כ״בוטל״'));
   const actions=`<div style="margin-top:18px;border-top:1px solid var(--line);padding-top:16px;display:flex;flex-direction:column;gap:11px">
@@ -9951,6 +9956,18 @@ function retCopy(key){
   const v=(S._retFields||{})[key]||'';
   if(!v) return;
   try{ navigator.clipboard.writeText(v); toast('הועתק ✓ — הדבק ב-Cargo',true); }catch(e){ toast('העתקה נכשלה',false); }
+}
+// ── ביטול בלי הודעה ללקוח (כפילות / ניסיון תשלום שלא הושלם) ──
+async function wcoCancelSilent(oid){
+  const why=prompt('ביטול ללא הודעה ללקוח.\nסיבה (נשמרת כהערה בהזמנה):','כפילות — הלקוח השלים הזמנה אחרת');
+  if(why===null) return;
+  showLoading('מבטל בשקט…');
+  try{
+    const r=await api('/api/admin/orders/'+oid+'/cancel-silent?reason='+encodeURIComponent(why||''),{method:'POST'},40000);
+    hideLoading();
+    if(r&&r.ok){ toast(r.already?'ההזמנה כבר מבוטלת':'בוטלה — ללקוח לא נשלחה הודעה ✓',true); loadWcOrders&&loadWcOrders(); openWcOrder(oid); }
+    else toast('הביטול נכשל',false);
+  }catch(e){ hideLoading(); toast((e&&e.message)||'הביטול נכשל',false); }
 }
 async function wcoTrash(oid){
   // אישור כפול — מחיקה לפח (שחזור אפשרי מתוך WC, אבל לא מכאן)

@@ -11838,6 +11838,50 @@ class OrderStatusIn(BaseModel):
     status: str
 
 
+@app.post("/api/admin/orders/{oid}/cancel-silent")
+def admin_order_cancel_silent(oid: int, reason: str = "",
+                              x_admin_key: Optional[str] = Header(None)):
+    """מבטל הזמנה **בלי לשלוח ללקוח הודעת ביטול**.
+
+    ⚠️ למה זה קיים (אסי, 1/09/2026): לקוחה ניסתה לשלם שלוש פעמים והצליחה
+    בשלישית. כדי למחוק את שתי הכושלות צריך קודם לסמן אותן "בוטל" — וזה
+    שולח לה שתי הודעות "הזמנתך בוטלה בשל חוסר במלאי וכרטיסך זוכה". היא
+    הייתה חושבת שדווקא ההזמנה המוצלחת בוטלה.
+
+    ⛔ ההשתקה נעשית ע"י סימון מפתח הדדופ **לפני** שינוי הסטטוס — אותו מפתח
+    שמונע כפילות מול ה-webhook. כך אין מסלול שליחה שני שיכול לפספס.
+    ⛔ הביטול הרגיל (עם הודעה) נשאר כפי שהוא — הוא הנכון לחוסר במלאי אמיתי.
+    """
+    _require_admin(x_admin_key)
+    import requests as _rq
+    base, k, s = _wc_creds()
+    r0 = _rq.get(f"{base}/wp-json/wc/v3/orders/{oid}", auth=(k, s), timeout=45)
+    if not r0.ok:
+        raise HTTPException(404, "ההזמנה לא נמצאה")
+    o = r0.json() or {}
+    num = str(o.get("number") or oid)
+    if o.get("status") == "cancelled":
+        return {"ok": True, "already": True, "number": num}
+    # 1) משתיקים לפני הכול — גם ה-job וגם ה-webhook קוראים את המפתח הזה
+    db.sales_state_set(f"status_sent:{num}:cancelled", "1")
+    db.sales_state_set(f"order_last_status:{num}", "cancelled")
+    # 2) הערה להזמנה — כדי שיהיה ברור בעוד חודש למה בוטלה בלי הודעה
+    note = ("בוטלה ללא הודעה ללקוח" + (f" — {reason.strip()}" if (reason or "").strip()
+                                        else " (כפילות/ניסיון תשלום שלא הושלם)"))
+    try:
+        _rq.post(f"{base}/wp-json/wc/v3/orders/{oid}/notes",
+                 json={"note": note, "customer_note": False}, auth=(k, s), timeout=30)
+    except Exception:  # noqa: BLE001
+        pass
+    r = _rq.put(f"{base}/wp-json/wc/v3/orders/{oid}",
+                json={"status": "cancelled"}, auth=(k, s), timeout=45)
+    if not r.ok:
+        raise HTTPException(502, "שינוי הסטטוס נכשל")
+    logger.info("order %s cancelled silently (%s)", num, reason or "duplicate")
+    _mark_manual_status(num, "cancelled")
+    return {"ok": True, "number": num, "status": "cancelled", "notified": False}
+
+
 @app.post("/api/admin/orders/{oid}/status")
 def admin_order_status(oid: int, body: OrderStatusIn, x_admin_key: Optional[str] = Header(None)):
     _require_admin(x_admin_key)
