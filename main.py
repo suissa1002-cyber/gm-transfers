@@ -9552,6 +9552,9 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
     if cardholder_verified and not is_digital_order:
         reasons.append("✅ 3DS: בעל הכרטיס אישר דרך OTP לטלפון הרשום אצל המנפיק "
                        "(אינדיקציית 'טלפון תואם לכרטיס')")
+    elif cardholder_verified and is_digital_order and wallet_pay:
+        reasons.append("✅ 3DS + ארנק: האימות נעשה על המכשיר של בעל הכרטיס, "
+                       "ולא בערוץ שניתן לשקף")
     elif cardholder_verified and is_digital_order:
         # ⚠️ פישינג בזמן אמת (AiTM) — 48717, 12/07: הקורבן הזין פרטי אשראי באתר מזויף
         # (למשל "פנגו · חוב חניה 12₪"), הנוכל שיקף אותם *בזמן אמת* לצ'קאאוט שלנו, וה-OTP
@@ -9582,7 +9585,13 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
             # מוצר פיזי: 3DS מגן מצ'ארג'בק והמוצר ניתן-לעיכוב → אפשר לרכך אדום→צהוב.
             # קוד דיגיטלי: ההפסד אינו צ'ארג'בק אלא הקוד הבלתי-הפיך שנמומש מיד, ו-AiTM
             # מייצר 3DS תקין על כרטיס קורבן → 3DS *אינו* מרכך את הרמה לקוד דיגיטלי.
-            if is_digital_order:
+            if is_digital_order and wallet_pay:
+                # ⛔ ההחמרה לקוד דיגיטלי נועדה נגד AiTM — שאינו אפשרי בארנק.
+                # לכן ארנק מקבל את אותו ריכוך כמו מוצר פיזי.
+                level = "yellow" if base_level == "red" else base_level
+                headline = ("ארנק (Apple/Google Pay) — אומת ביומטרית על המכשיר של בעל "
+                            "הכרטיס; AiTM אינו אפשרי כאן")
+            elif is_digital_order:
                 level = base_level
                 headline = ("אשראי+3DS — 3DS אינו שולל הונאת פישינג (AiTM) בקוד דיגיטלי; "
                             "אמת שהמזמין הוא בעל הכרטיס לפני הנפקה")
@@ -9607,6 +9616,17 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
     if wallet_pay and paid:
         reasons.append("ℹ️ שולם דרך Apple/Google Pay — 4 הספרות אצלנו הן מספר וירטואלי "
                        "(token); צילום הכרטיס הפיזי לא אמור להתאים להן")
+        # ⚠️ ארנק הוא ראיה חזקה בהרבה מהזנת כרטיס, ובמיוחד מול AiTM (אסי, 1/09/2026):
+        # 1) הוספת הכרטיס לארנק דרשה אימות מול המנפיק — שער חד-פעמי שהנוכל חייב לעבור.
+        # 2) התשלום עצמו דורש ביומטריה/קוד **על המכשיר** (Face ID / טביעה / קוד).
+        # 3) ⛔ **אי אפשר לשקף ארנק בפישינג בזמן אמת**: אין OTP להעביר — ההצפנה
+        #    נוצרת ב-secure element של המכשיר. כלומר בדיוק התרחיש שמדאיג אותנו
+        #    בקוד דיגיטלי אינו אפשרי כאן.
+        # הסיכון שנשאר צר: מכשיר גנוב פתוח / קוד נעילה ידוע (הונאה משפחתית).
+        reasons.append("✅ תשלום בארנק (Apple/Google Pay): הכרטיס אומת מול המנפיק בעת "
+                       "ההוספה, והתשלום דרש ביומטריה/קוד על המכשיר. ⛔ פישינג בזמן אמת "
+                       "(AiTM) **אינו אפשרי** בארנק — אין OTP לשקף. ראיה חזקה משמעותית "
+                       "מהזנת כרטיס ידנית")
     if not c4:
         card_check = ""
     elif wallet_pay:
