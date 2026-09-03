@@ -9548,6 +9548,10 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
 
     # אימות "הטלפון תואם לכרטיס": 3DS = המנפיק שלח OTP לטלפון/אפליקציה הרשומים של בעל
     # הכרטיס, וההוא אישר → זו האינדיקציה הלגיטימית היחידה ש"בעל הכרטיס = מי שמשלם".
+    # ⚠️ חייב להיות מוגדר **לפני** בלוקי ההחלטה למטה — הוא היה מוגדר אחריהם
+    # וגרם ל-NameError שהפיל את כל הטריאז' ל-500 (אסי תפס, 3/09/2026).
+    wallet_pay = any(w in (str(o.get("payment_method_title") or "").lower())
+                     for w in ("אפל פיי", "גוגל פיי", "apple pay", "google pay"))
     cardholder_verified = bool(s3d)
     if cardholder_verified and not is_digital_order:
         reasons.append("✅ 3DS: בעל הכרטיס אישר דרך OTP לטלפון הרשום אצל המנפיק "
@@ -9611,8 +9615,6 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
     # ⚠️ חריג Apple/Google Pay (לקח 47879): המספר שאנחנו רואים הוא DPAN — token
     # וירטואלי שהארנק מייצר; הוא *לעולם לא* יתאים לכרטיס הפיזי בצילום. שם ההשוואה
     # הנכונה: שם + אותו בנק/מנפיק, או 'מספר חשבון המכשיר' ב-Wallet.
-    wallet_pay = any(w in (str(o.get("payment_method_title") or "").lower())
-                     for w in ("אפל פיי", "גוגל פיי", "apple pay", "google pay"))
     if wallet_pay and paid:
         reasons.append("ℹ️ שולם דרך Apple/Google Pay — 4 הספרות אצלנו הן מספר וירטואלי "
                        "(token); צילום הכרטיס הפיזי לא אמור להתאים להן")
