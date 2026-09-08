@@ -12795,7 +12795,7 @@ def admin_order_status_schedule(oid: int, body: StatusScheduleIn,
 
 
 @app.get("/api/admin/diag")
-def admin_diag(x_admin_key: Optional[str] = Header(None)):
+def admin_diag(ua: str = "", x_admin_key: Optional[str] = Header(None)):
     """מדידת ביצועים **מתוך השרת** — בלי השהיית הרשת של הלקוח.
 
     ⚠️ למה זה נחוץ: כשמודדים מהמחשב של אסי, כל מספר כולל את זמן ההלוך-חזור
@@ -12837,6 +12837,26 @@ def admin_diag(x_admin_key: Optional[str] = Header(None)):
             return {"ms": round((_t.perf_counter() - t0) * 1000), "error": str(e)[:160]}
 
     out["wc_ms"] = [_wc_probe() for _ in range(3)]
+    # 8/09/2026: BitNinja חוסם. בודק אם החסימה תלויה בזיהוי הבקשה (UA)
+    # או בכתובת עצמה — זה קובע אם אפשר לעקוף בקוד או שצריך רשימה לבנה.
+    if ua == "1":
+        uas = {"requests": "python-requests/2.32.3",
+               "wordpress": f"WordPress/6.9; {base}",
+               "browser": ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                           "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36"),
+               "woo-app": "WooCommerce/9.0"}
+        res = {}
+        for nm, ua in uas.items():
+            try:
+                rr = _rq.get(f"{base}/wp-json/wc/v3/orders", auth=(k, s_),
+                             params={"per_page": 1, "_fields": "id"},
+                             headers={"User-Agent": ua}, timeout=30)
+                ct = (rr.headers.get("content-type") or "")
+                res[nm] = "✅ JSON" if ("json" in ct.lower() and rr.status_code == 200) \
+                    else f"⛔ {rr.status_code} {ct[:20]}"
+            except Exception as e:  # noqa: BLE001
+                res[nm] = f"שגיאה: {str(e)[:60]}"
+        out["ua_test"] = res
     # חסימה אחרונה שנתפסה — מי חסם, מתי, ומה הוא החזיר
     try:
         _blk = db.sales_state_get(_WC_BLOCK_KEY)
