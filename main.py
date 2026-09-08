@@ -57,26 +57,68 @@ def _wc_block_snapshot():
         t0 = _t.perf_counter()
         rr = _rq.get(f"{base}/wp-json/wc/v3/orders", auth=(k, s_),
                      params={"per_page": 1, "_fields": "id"}, timeout=30)
-        return {
+        snap = {
             "ms": round((_t.perf_counter() - t0) * 1000),
             "http": rr.status_code,
             "hdr": {k2: v[:70] for k2, v in rr.headers.items()
                     if k2.lower() not in ("set-cookie", "date", "content-length")},
             "body": (rr.text or "")[:900],
         }
+        # ⚠️ 8/09/2026: ניסיתי לבדוק ידנית אם החסימה תלויה בזיהוי הבקשה (UA)
+        # ונכשלתי — האפיזודה נגמרה לפני שהדחיפה הספיקה להיפרס. אפיזודות
+        # נמשכות ~20 דקות ומתחילות בלי התראה, אז הבדיקה חייבת לרוץ ברגע
+        # שהחסימה נתפסת. אם אחד הזיהויים עובר — יש עקיפה בקוד.
+        snap["ua_test"] = {}
+        for nm, ua in (("requests", "python-requests/2.32.3"),
+                       ("wordpress", f"WordPress/6.9; {base}"),
+                       ("browser", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                                   "AppleWebKit/537.36 (KHTML, like Gecko) "
+                                   "Chrome/140.0 Safari/537.36"),
+                       ("woo-app", "WooCommerce/9.0")):
+            try:
+                r2 = _rq.get(f"{base}/wp-json/wc/v3/orders", auth=(k, s_),
+                             params={"per_page": 1, "_fields": "id"},
+                             headers={"User-Agent": ua}, timeout=20)
+                ct2 = (r2.headers.get("content-type") or "")
+                snap["ua_test"][nm] = ("✅ עובר" if (r2.status_code == 200
+                                                    and "json" in ct2.lower())
+                                       else f"⛔ {r2.status_code} {ct2[:20]}")
+            except Exception as e2:  # noqa: BLE001
+                snap["ua_test"][nm] = f"שגיאה: {str(e2)[:50]}"
+        return snap
     except Exception as e:  # noqa: BLE001
         return {"error": str(e)[:200]}
 
 
+_WC_BLOCK_LOG_KEY = "wc_block_log"
+_wc_block_last_snap = [0.0]   # חותמת הצילום האחרון — לוויסות
+
+
 @app.exception_handler(json_mod.JSONDecodeError)
 def _wc_not_json_handler(request: Request, exc: json_mod.JSONDecodeError):
-    snap = _wc_block_snapshot()
-    try:
-        db.sales_state_set(_WC_BLOCK_KEY, json_mod.dumps(
-            {"at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-             "path": str(request.url.path), "snap": snap}, ensure_ascii=False))
-    except Exception:  # noqa: BLE001
-        pass
+    # ⚠️ ויסות: אפיזודת חסימה נמשכת ~20 דקות והפולר פונה כל 30 שניות. בלי
+    # התנאי הזה כל בקשה שנכשלת הייתה יורה עוד 5 קריאות לאתר — כלומר מציפה
+    # את BitNinja בדיוק כשהוא כבר חושד בנו. צילום אחד ל-10 דקות מספיק.
+    import time as _tm
+    now = _tm.time()
+    snap = None
+    if now - _wc_block_last_snap[0] > 600:
+        _wc_block_last_snap[0] = now
+        snap = _wc_block_snapshot()
+        at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        try:
+            db.sales_state_set(_WC_BLOCK_KEY, json_mod.dumps(
+                {"at": at, "path": str(request.url.path), "snap": snap},
+                ensure_ascii=False))
+            # יומן אפיזודות — כדי שיהיה מה להראות ללייבדיאנס אם יטענו שזה נדיר
+            hist = json_mod.loads(db.sales_state_get(_WC_BLOCK_LOG_KEY) or "[]")
+            hist.append({"at": at, "ua": (snap or {}).get("ua_test")})
+            db.sales_state_set(_WC_BLOCK_LOG_KEY,
+                               json_mod.dumps(hist[-40:], ensure_ascii=False))
+        except Exception:  # noqa: BLE001
+            pass
+    if snap is None:
+        snap = {"http": None, "hdr": {}}
     srv = (snap.get("hdr") or {}).get("server") or (snap.get("hdr") or {}).get("Server") or ""
     logger.error("WooCommerce החזיר תשובה שאינה JSON | path=%s | http=%s | server=%s",
                  request.url.path, snap.get("http"), srv)
@@ -12795,7 +12837,7 @@ def admin_order_status_schedule(oid: int, body: StatusScheduleIn,
 
 
 @app.get("/api/admin/diag")
-def admin_diag(ua: str = "", x_admin_key: Optional[str] = Header(None)):
+def admin_diag(x_admin_key: Optional[str] = Header(None)):
     """מדידת ביצועים **מתוך השרת** — בלי השהיית הרשת של הלקוח.
 
     ⚠️ למה זה נחוץ: כשמודדים מהמחשב של אסי, כל מספר כולל את זמן ההלוך-חזור
@@ -12837,31 +12879,14 @@ def admin_diag(ua: str = "", x_admin_key: Optional[str] = Header(None)):
             return {"ms": round((_t.perf_counter() - t0) * 1000), "error": str(e)[:160]}
 
     out["wc_ms"] = [_wc_probe() for _ in range(3)]
-    # 8/09/2026: BitNinja חוסם. בודק אם החסימה תלויה בזיהוי הבקשה (UA)
-    # או בכתובת עצמה — זה קובע אם אפשר לעקוף בקוד או שצריך רשימה לבנה.
-    if ua == "1":
-        uas = {"requests": "python-requests/2.32.3",
-               "wordpress": f"WordPress/6.9; {base}",
-               "browser": ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                           "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36"),
-               "woo-app": "WooCommerce/9.0"}
-        res = {}
-        for nm, ua in uas.items():
-            try:
-                rr = _rq.get(f"{base}/wp-json/wc/v3/orders", auth=(k, s_),
-                             params={"per_page": 1, "_fields": "id"},
-                             headers={"User-Agent": ua}, timeout=30)
-                ct = (rr.headers.get("content-type") or "")
-                res[nm] = "✅ JSON" if ("json" in ct.lower() and rr.status_code == 200) \
-                    else f"⛔ {rr.status_code} {ct[:20]}"
-            except Exception as e:  # noqa: BLE001
-                res[nm] = f"שגיאה: {str(e)[:60]}"
-        out["ua_test"] = res
     # חסימה אחרונה שנתפסה — מי חסם, מתי, ומה הוא החזיר
     try:
         _blk = db.sales_state_get(_WC_BLOCK_KEY)
         if _blk:
             out["wc_block"] = json_mod.loads(_blk)
+        _hist = json_mod.loads(db.sales_state_get(_WC_BLOCK_LOG_KEY) or "[]")
+        if _hist:
+            out["wc_block_log"] = _hist[-10:]
     except Exception:  # noqa: BLE001
         pass
     try:
