@@ -12761,9 +12761,26 @@ def admin_diag(x_admin_key: Optional[str] = Header(None)):
 
     out["db_ms"] = [_ms(lambda: db.sales_state_get("poll_last_run")) for _ in range(3)]
     base, k, s_ = _wc_creds()
-    out["wc_ms"] = [_ms(lambda: _rq.get(f"{base}/wp-json/wc/v3/orders", auth=(k, s_),
-                                        params={"per_page": 1, "_fields": "id"}, timeout=60))
-                    for _ in range(3)]
+    # ⚠️ 8/09/2026: _ms מדד זמן בלבד ולא בדק את קוד התשובה — 403 מהיר נספר
+    # כ"מהיר ותקין". מסך ההזמנות הציג "האתר לא מגיב" ופתיחת הזמנה החזירה 500,
+    # בזמן ש-diag דיווח 282ms כאילו הכול תקין. מודדים גם סטטוס וגוף.
+    def _wc_probe():
+        t0 = _t.perf_counter()
+        try:
+            rr = _rq.get(f"{base}/wp-json/wc/v3/orders", auth=(k, s_),
+                         params={"per_page": 1, "_fields": "id"}, timeout=60)
+            ms = round((_t.perf_counter() - t0) * 1000)
+            ct = (rr.headers.get("content-type") or "")
+            if rr.status_code == 200 and "json" in ct.lower():
+                return ms
+            return {"ms": ms, "http": rr.status_code, "ct": ct[:60],
+                    "srv": (rr.headers.get("server") or "")[:40],
+                    "cf": (rr.headers.get("cf-ray") or "")[:24],
+                    "body": (rr.text or "")[:220]}
+        except Exception as e:  # noqa: BLE001
+            return {"ms": round((_t.perf_counter() - t0) * 1000), "error": str(e)[:160]}
+
+    out["wc_ms"] = [_wc_probe() for _ in range(3)]
     try:
         import os as _os
         import resource as _res
