@@ -12773,10 +12773,10 @@ def admin_diag(x_admin_key: Optional[str] = Header(None)):
             ct = (rr.headers.get("content-type") or "")
             if rr.status_code == 200 and "json" in ct.lower():
                 return ms
-            return {"ms": ms, "http": rr.status_code, "ct": ct[:60],
-                    "srv": (rr.headers.get("server") or "")[:40],
-                    "cf": (rr.headers.get("cf-ray") or "")[:24],
-                    "body": (rr.text or "")[:220]}
+            hdr = {k2: v[:70] for k2, v in rr.headers.items()
+                   if k2.lower() not in ("set-cookie", "date", "content-length")}
+            return {"ms": ms, "http": rr.status_code, "hdr": hdr,
+                    "body": (rr.text or "")[:900]}
         except Exception as e:  # noqa: BLE001
             return {"ms": round((_t.perf_counter() - t0) * 1000), "error": str(e)[:160]}
 
