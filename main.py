@@ -98,7 +98,7 @@ _wc_block_last_snap = [0.0]   # חותמת הצילום האחרון — לוו�
 def _wc_not_json_handler(request: Request, exc: json_mod.JSONDecodeError):
     # ⚠️ ויסות: אפיזודת חסימה נמשכת ~20 דקות והפולר פונה כל 30 שניות. בלי
     # התנאי הזה כל בקשה שנכשלת הייתה יורה עוד 5 קריאות לאתר — כלומר מציפה
-    # את BitNinja בדיוק כשהוא כבר חושד בנו. צילום אחד ל-10 דקות מספיק.
+    # את Imunify360 בדיוק כשהוא כבר חושד בנו. צילום אחד ל-10 דקות מספיק.
     import time as _tm
     now = _tm.time()
     snap = None
