@@ -8765,7 +8765,7 @@ async function loadWcOrders(fresh){
        בדיוק מה רואים, כדי שלא תהיה אי-ודאות מול נתון שאינו רגעי. */
     W.age=r.cached_age_sec; W.stale=!!r.stale;
     if(r.statuses) S.wcoStatuses=r.statuses;
-  }catch(e){ W.rows=[]; toast('טעינת הזמנות נכשלה',false); }
+  }catch(e){ W.rows=[]; toast((e&&e.detail)||'טעינת הזמנות נכשלה',false); }
   W.loading=false;
   if(rb){ rb.style.animation=''; rb.style.pointerEvents=''; }
   const b2=document.getElementById('wcoList'); if(b2) b2.innerHTML=wcoListHTML();
@@ -8934,10 +8934,11 @@ async function payLinksOpen(q){
 }
 async function openWcOrder(oid){
   showLoading('טוען הזמנה…');
-  let d=null;
-  try{ d=await api('/api/admin/orders/'+oid,null,60000); }catch(e){}
+  let d=null,err=null;
+  try{ d=await api('/api/admin/orders/'+oid,null,60000); }catch(e){ err=e; }
   hideLoading();
-  if(!d){ toast('טעינת ההזמנה נכשלה',false); return; }
+  // 503 = האתר מחזיר דף חסימה במקום נתונים. להראות את הסיבה, לא "נכשל" סתמי
+  if(!d){ toast((err&&err.detail)||'טעינת ההזמנה נכשלה',false); return; }
   S._wcoD=d;
   paintWcOrder();
 }

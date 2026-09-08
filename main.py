@@ -32,6 +32,62 @@ app = FastAPI(title=cfg.APP_TITLE)
 # דחיסת תשובות גדולות (קטלוג החיפוש של מלאי-חי ~5,600 מוצרים)
 from fastapi.middleware.gzip import GZipMiddleware  # noqa: E402
 app.add_middleware(GZipMiddleware, minimum_size=1024)
+
+
+# ──────────────────────────────────────────────────────────────
+# 🛡️ כשהאתר מחזיר דף חסימה במקום JSON
+# ──────────────────────────────────────────────────────────────
+# 8/09/2026: השרת (LiteSpeed/הגנת האחסון) החזיר ל-Render דף אתגר JavaScript
+# עם קוד HTTP 200 במקום JSON. כל 106 מקומות ב-main שקוראים r.json() קרסו,
+# והמשתמש ראה "טעינת הזמנה נכשלה" בלי שום רמז למה. במקום לעטוף כל אחד
+# מהם בנפרד — מטפל חריגות אחד תופס את JSONDecodeError, מסביר מה קרה,
+# ושומר תמונת-מצב של התשובה החוסמת כדי שלא נצטרך לחפור מאפס בפעם הבאה.
+_WC_BLOCK_KEY = "wc_block_last"
+
+
+def _wc_block_snapshot():
+    """מצלם את מה שהאתר מחזיר עכשיו — כותרות + תחילת הגוף — לצורך אבחון."""
+    try:
+        import requests as _rq
+        import time as _t
+        creds = _wc_creds()
+        if not creds:
+            return {"error": "אין פרטי התחברות ל-WooCommerce"}
+        base, k, s_ = creds
+        t0 = _t.perf_counter()
+        rr = _rq.get(f"{base}/wp-json/wc/v3/orders", auth=(k, s_),
+                     params={"per_page": 1, "_fields": "id"}, timeout=30)
+        return {
+            "ms": round((_t.perf_counter() - t0) * 1000),
+            "http": rr.status_code,
+            "hdr": {k2: v[:70] for k2, v in rr.headers.items()
+                    if k2.lower() not in ("set-cookie", "date", "content-length")},
+            "body": (rr.text or "")[:900],
+        }
+    except Exception as e:  # noqa: BLE001
+        return {"error": str(e)[:200]}
+
+
+@app.exception_handler(json_mod.JSONDecodeError)
+def _wc_not_json_handler(request: Request, exc: json_mod.JSONDecodeError):
+    snap = _wc_block_snapshot()
+    try:
+        db.sales_state_set(_WC_BLOCK_KEY, json_mod.dumps(
+            {"at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+             "path": str(request.url.path), "snap": snap}, ensure_ascii=False))
+    except Exception:  # noqa: BLE001
+        pass
+    srv = (snap.get("hdr") or {}).get("server") or (snap.get("hdr") or {}).get("Server") or ""
+    logger.error("WooCommerce החזיר תשובה שאינה JSON | path=%s | http=%s | server=%s",
+                 request.url.path, snap.get("http"), srv)
+    return JSONResponse(status_code=503, content={
+        "detail": "האתר מחזיר דף חסימה במקום נתונים — לא תקלה ב-GreenOS. "
+                  "הפרטים נשמרו; אפשר לראות אותם ב-diag תחת wc_block.",
+        "wc_block": {"http": snap.get("http"),
+                     "content_type": (snap.get("hdr") or {}).get("content-type", ""),
+                     "server": srv},
+    })
+
 _here = os.path.dirname(__file__)
 _static_dir = os.path.join(_here, "static")
 
@@ -12781,6 +12837,13 @@ def admin_diag(x_admin_key: Optional[str] = Header(None)):
             return {"ms": round((_t.perf_counter() - t0) * 1000), "error": str(e)[:160]}
 
     out["wc_ms"] = [_wc_probe() for _ in range(3)]
+    # חסימה אחרונה שנתפסה — מי חסם, מתי, ומה הוא החזיר
+    try:
+        _blk = db.sales_state_get(_WC_BLOCK_KEY)
+        if _blk:
+            out["wc_block"] = json_mod.loads(_blk)
+    except Exception:  # noqa: BLE001
+        pass
     try:
         import os as _os
         import resource as _res
