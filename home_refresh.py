@@ -31,6 +31,12 @@ def _wp_auth():
 
 CODE_IDS = {20820, 42270}   # קודים דיגיטליים — לא בכרטיסי המוצרים
 
+# ⭐ נעיצה ידנית ל"חדש אצלנו" — מוצרי פרימיום שאנחנו מהראשונים בארץ שמחזיקים
+# אותם במלאי, ולכן רוצים אותם בראש הסקשן גם אם תאריך היצירה שלהם ישן יותר
+# מ-8 המוצרים האחרונים (אסי, 17/09/2026 — מהדורת Marvel's Wolverine).
+# הסדר כאן הוא הסדר שבו הם יוצגו; מוצר שאינו publish/instock מסונן אוטומטית.
+PIN_NEW = [51761, 50655]
+
 
 # ─────────────────────────── שליפת נתונים ───────────────────────────
 def _get(path, **params):
@@ -123,6 +129,27 @@ def fetch_best(n=8, days=60):
             break
     if len(out) < 6:                        # נפילת דוח → נסיגה ל-popularity כללי
         out = (out + _fetch_ordered("popularity", n))[:n]
+    return out
+
+
+def _fetch_pinned():
+    """מוצרי PIN_NEW, בסדר שהוגדר, רק אם הם מפורסמים ובמלאי ועם תמונה."""
+    if not PIN_NEW:
+        return []
+    try:
+        rows = _get("wc/v3/products", include=",".join(map(str, PIN_NEW)),
+                    per_page=len(PIN_NEW), status="publish")
+    except Exception:
+        return []
+    by_id = {p["id"]: p for p in rows}
+    out = []
+    for pid in PIN_NEW:
+        p = by_id.get(pid)
+        if not p or p.get("stock_status") != "instock":
+            continue
+        if not p.get("images") or not _in_catalog(p):
+            continue
+        out.append(_slim(p))
     return out
 
 
@@ -235,7 +262,11 @@ def refresh_home():
     if not (wp[0] and wp[1]):
         return {"ok": False, "error": "WP creds missing"}
 
-    best, sale, new = fetch_best(8, 60), fetch_sale(8), _fetch_ordered("date", 8)
+    pinned = _fetch_pinned()
+    pinned_ids = {p["id"] for p in pinned}
+    fresh = [p for p in _fetch_ordered("date", 8 + len(pinned))
+             if p["id"] not in pinned_ids]
+    best, sale, new = fetch_best(8, 60), fetch_sale(8), (pinned + fresh)[:8]
     counts = {"best": len(best), "sale": len(sale), "new": len(new)}
     if counts["best"] < 4 or counts["new"] < 4:      # שליפה חלקית — לא דורסים
         return {"ok": False, "error": "insufficient data", "counts": counts}
