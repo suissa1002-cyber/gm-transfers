@@ -9367,12 +9367,25 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
     if _relay:
         reasons.append("ℹ️ גלישה דרך iCloud Private Relay של Apple — פיצ'ר פרטיות רגיל "
                        "באייפון (לא VPN חשוד)")
-    if geo.get("proxy") and not _relay:
-        risk += 3; hard_fraud = True
-        reasons.append("ההזמנה בוצעה דרך VPN/פרוקסי")
-    # ⚠️ ip-api מסמן hosting=true גם לענן לגיטימי (גוגל/AWS). proxycheck מבחין
-    # בין דאטה-סנטר עסקי לבין VPN/TOR — בלעדיו לקוח שגלש דרך ענן נצבע אדום.
+    # ⚠️ ip-api מסמן proxy/hosting גם לספקים לגיטימיים. proxycheck מבחין בין
+    # ספק תקין לבין VPN/TOR — בלעדיו לקוח נקי נצבע אדום.
+    #
+    # ⚠️ 18/09/2026 (הזמנה 51871): החידוד הזה היה מחובר רק לענף hosting, בעוד
+    # ענף proxy הדליק hard_fraud על סמך ip-api לבדו. התוצאה: כל ספק אזורי קטן
+    # שמשתמש ב-CGNAT נצבע אדום. במקרה שנתפס — 3samnet (AS200742), ספק רשום
+    # ב-RIPE שמשרת את מזרח ירושלים: ip-api אמר proxy=true, proxycheck אמר
+    # Business/סיכון 0/מכשיר אחד על הכתובת. לקוח תקין לגמרי נחסם.
     _pxc = _proxycheck(ip) if ip else {}
+    _pxc_clean = bool(_pxc and not _pxc.get("proxy") and _pxc.get("risk", 100) <= 20)
+    if geo.get("proxy") and not _relay:
+        if _pxc_clean:
+            reasons.append(
+                f"ℹ️ ip-api סימן את ה-IP כפרוקסי, אך proxycheck מזהה ספק תקין "
+                f"({_isp or _pxc.get('operator') or '?'} · {_pxc.get('type') or '?'} · "
+                f"ציון סיכון {_pxc.get('risk')}) — לא נחשב דגל")
+        else:
+            risk += 3; hard_fraud = True
+            reasons.append("ההזמנה בוצעה דרך VPN/פרוקסי")
     if _pxc.get("type") == "TOR":
         risk += 4; hard_fraud = True
         reasons.append("גלישה דרך רשת TOR — הסתרת זהות מכוונת")
@@ -9382,7 +9395,7 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
         reasons.append(f"ההזמנה בוצעה דרך VPN{' (' + _op + ')' if _op else ''} "
                        f"— ציון סיכון {_pxc.get('risk')}")
     elif geo.get("hosting") and not _relay:
-        if _pxc and not _pxc.get("proxy") and _pxc.get("risk", 100) <= 20:
+        if _pxc_clean:
             reasons.append(f"ℹ️ IP של ספק ענן ({_isp or _pxc.get('type')}) אך אינו VPN/פרוקסי "
                            f"(ציון סיכון {_pxc.get('risk')}) — לא נחשב דגל")
         else:
