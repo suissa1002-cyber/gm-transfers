@@ -9117,6 +9117,50 @@ def _ipqs_get(kind: str, value: str) -> dict:
     return out
 
 
+_KNOWN_MAIL_DOMAINS = (
+    "gmail.com", "googlemail.com", "hotmail.com", "hotmail.co.il", "outlook.com",
+    "yahoo.com", "icloud.com", "walla.com", "walla.co.il", "protonmail.com", "proton.me",
+)
+
+
+def _edit_distance_le1(a: str, b: str) -> bool:
+    """האם a ו-b נבדלים בשגיאת הקלדה אחת: החלפה, הוספה, מחיקה, או היפוך
+    שני תווים סמוכים (gmial↔gmail) — ההיפוך הוא שגיאת ההקלדה הנפוצה ביותר
+    ובמרחק לוינשטיין רגיל הוא נספר כשתיים."""
+    if a == b:
+        return True
+    la, lb = len(a), len(b)
+    if abs(la - lb) > 1:
+        return False
+    if la == lb:
+        diff = [i for i, (x, y) in enumerate(zip(a, b)) if x != y]
+        if len(diff) == 1:                         # החלפה
+            return True
+        if len(diff) == 2 and diff[1] == diff[0] + 1:   # היפוך סמוכים
+            i, j = diff
+            return a[i] == b[j] and a[j] == b[i]
+        return False
+    if la > lb:                                    # מחיקה מ-a
+        a, b, la, lb = b, a, lb, la
+    i = 0
+    while i < la and a[i] == b[i]:
+        i += 1
+    return a[i:] == b[i + 1:]
+
+
+def _fix_domain_typo(dom: str) -> str:
+    """דומיין שנבדל בתו אחד מספק מוכר → הספק המוכר (gmail.cim → gmail.com).
+
+    ⛔ מוגבל לרשימת ספקים מוכרים בכוונה: שני דומיינים *אמיתיים* שנבדלים בתו
+    אחד קיימים, ואיחוד עיוור שלהם היה מטשטש זהויות שונות באמת."""
+    if not dom or dom in _KNOWN_MAIL_DOMAINS:
+        return dom
+    for known in _KNOWN_MAIL_DOMAINS:
+        if _edit_distance_le1(dom, known):
+            return known
+    return dom
+
+
 def _canon_email(email: str) -> str:
     """נרמול מייל לזיהוי כפילות-זהות: הסרת +תגית, ולג'ימייל גם הסרת נקודות
     (a.b+x@gmail = ab@gmail) — טריק נפוץ ליצירת 'מיילים שונים' שהם אותה תיבה."""
@@ -9125,6 +9169,11 @@ def _canon_email(email: str) -> str:
         return e
     local, dom = e.rsplit("@", 1)
     local = local.split("+", 1)[0]
+    # ⚠️ 20/09/2026 (הזמנה 51895): לקוח חוזר עם 3 הזמנות שסופקו נצבע אדום כי
+    # בהזמנה אחת הוא הקליד idocemex@gmail.cim במקום .com. הגרף ספר "2 מיילים"
+    # על אותו כרטיס והדליק hard_fraud לצמיתות. שגיאת הקלדה של תו אחד בדומיין
+    # מוכר = אותה תיבה, לא זהות שנייה.
+    dom = _fix_domain_typo(dom)
     if dom in ("gmail.com", "googlemail.com"):
         local = local.replace(".", "")
         dom = "gmail.com"
@@ -9425,7 +9474,14 @@ def _fraud_triage(o: dict, meta: dict, graph: Optional[dict] = None,
         # ⚠️ חובה _canon_email — הגרף שומר מיילים מנורמלים (ג'ימייל בלי נקודות);
         # הוספת המייל הגולמי יצרה "2 מיילים" מדומים לכל ג'ימייל עם נקודה (באג 47994/48013)
         names.add(_norm_name(billing_name)); emails_s.add(_canon_email(email))
-        if others and (len(names) >= 2 or len(emails_s) >= 2):
+        # ⚠️ 20/09/2026: קארדינג מוגדר ב*שמות* שונים על אותו כרטיס. שם זהה עם
+        # כמה מיילים הוא לרוב אותו אדם (מייל פרטי/עבודה, או שגיאת הקלדה) —
+        # לא סיבה ל-hard_fraud. ריבוי שמות ממשיך להדליק במלוא העוצמה.
+        if others and len(names) == 1 and len(emails_s) >= 2:
+            risk += 1
+            reasons.append(f"ℹ️ אותו כרטיס (****{c4}) עם {len(emails_s)} כתובות מייל "
+                           f"אך שם זהה ({next(iter(names))}) — לרוב אותו אדם, לא קארדינג")
+        elif others and (len(names) >= 2 or len(emails_s) >= 2):
             risk += 4; hard_fraud = True
             reasons.append(f"אותו כרטיס (****{c4}) שימש ליותר מזהות אחת "
                            f"({len(names)} שמות / {len(emails_s)} מיילים)")
