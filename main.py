@@ -4891,6 +4891,27 @@ def _service_flag(key: str) -> bool:
     return str(db.setting_get(key, "0")) == "1"
 
 
+@app.get("/api/public/tradein/catalog")
+def public_tradein_catalog():
+    """מחירון הטרייד-אין — ציבורי, נקרא ע"י תוסף greenmobile-core בצד השרת.
+
+    ⚠️ 22/09/2026 — למה זה קיים: המחשבון באתר טען קובץ סטטי שנארז בתוך התוסף
+    (assets/tradein-catalog.json). הסריקה השבועית של KSP כתבה לקבצים אחרים
+    לגמרי, ולכן האתר הגיש מחירים מ-9 ביולי בזמן שהסריקה רצה כל שבוע לריק —
+    והפער הצטבר ל-189 מחירים שבהם הצענו מעל KSP (7,593₪).
+    השורש היה ארכיטקטורה עם שלב ידני: עדכון מחיר דרש התקנת תוסף מחדש.
+
+    עכשיו: הסריקה → commit ל-repo של transfers → פריסה ל-Render → כאן.
+    אפס שלבים ידניים. מבנה: {brand:{model:{storage:[A,B,C,D]}}}
+    A=כמו חדש · B=תקין · C=סדוק · D=תקול
+    """
+    cat = greencare._load_secondhand()
+    return JSONResponse(
+        {"catalog": cat,
+         "brands": {b: len(m) for b, m in cat.items() if isinstance(m, dict)}},
+        headers={"Cache-Control": "public, max-age=3600"})
+
+
 @app.get("/api/public/service-flags")
 def public_service_flags():
     """דגלי הפעלת שירותים — ציבורי, נקרא ע"י תוסף greenmobile-core באתר
