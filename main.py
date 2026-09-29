@@ -14489,8 +14489,23 @@ def admin_order_cargo(oid: int, body: CargoCreateIn, x_admin_key: Optional[str] 
     """יצירת משלוח Cargo להזמנה — דרך תוסף הגשר באתר (מפעיל את תוסף Cargo הרשמי)."""
     _require_admin(x_admin_key)
     import requests as _rq
-    base, _, _ = _wc_creds()
+    base, k, s_ = _wc_creds()
     auth = _wp_app_auth()
+    # ⚠️ 29/09/2026 (הזמנה 52261, קיבוץ נאות מרדכי): הלקוח מילא רק ישוב, בלי רחוב.
+    # Cargo דחה, והמסך הציג "ודא שתוסף הגשר מותקן" — הודעה שגויה לגמרי. ביישובים
+    # קטנים וקיבוצים זה חוזר, לכן בודקים לפני הפנייה ל-Cargo ואומרים מה לתקן.
+    # איסוף מנקודה (pickup) לא דורש רחוב.
+    if not body.pickup:
+        try:
+            _o = _rq.get(f"{base}/wp-json/wc/v3/orders/{oid}",
+                         params={"_fields": "shipping,billing"}, auth=(k, s_), timeout=25).json()
+            _street = ((_o.get("shipping") or {}).get("address_1")
+                       or (_o.get("billing") or {}).get("address_1") or "").strip()
+        except Exception:  # noqa: BLE001
+            _street = "?"   # לא הצלחנו לבדוק → לא חוסמים, Cargo יחליט
+        if not _street:
+            raise HTTPException(400, "חסרה כתובת רחוב בהזמנה — Cargo לא יוצר משלוח בלי רחוב. "
+                                     "ערוך את פרטי הלקוח (אפשר לכתוב את שם הישוב/הקיבוץ גם בשדה הרחוב) ונסה שוב.")
     r = _rq.post(f"{base}/wp-json/gm-cargo/v1/create",
                  json={"order_id": oid,
                        "shipping_type": 2 if body.pickup else 1,

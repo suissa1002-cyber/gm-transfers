@@ -9850,7 +9850,7 @@ async function wcoCargoCreate(oid,pickup){
     if(r.pdf) window.open(r.pdf,'_blank');
     if(r.status==='shipping-stage') toast('ההזמנה עברה לשלב הפצה ✓',true);
     loadWcOrders(); openWcOrder(oid);
-  }catch(e){ toast('יצירת המשלוח נכשלה — ודא שתוסף הגשר מותקן',false); }
+  }catch(e){ toast((e&&e.detail)||'יצירת המשלוח נכשלה',false); }   // ⚠️ 29/09: ההודעה הקבועה "ודא שתוסף הגשר מותקן" הסתירה את הסיבה (כתובת ריקה ב-52261)
   hideLoading();
 }
 // 🔀 שינוי אופן משלוח (איסוף↔משלוח) — בורר; משנה רק את שורת המשלוח, בלי לגעת בסטטוס
