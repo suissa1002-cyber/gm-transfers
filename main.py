@@ -1340,6 +1340,18 @@ def catalog_price_changed(request: Request, product: int = 0,
     return {"ok": True, **_catalog_mark_dirty(product)}
 
 
+@app.post("/api/admin/catalog/hook-token")
+def catalog_hook_token(rotate: int = 0, x_admin_key: Optional[str] = Header(None)):
+    """הטוקן שהסניפט בוורדפרס מזדהה איתו. נוצר פעם אחת; rotate=1 מחליף אותו
+    (ואז צריך לעדכן גם את הסניפט)."""
+    _require_admin(x_admin_key)
+    tok = db.setting_get("catalog_hook_token")
+    if not tok or rotate:
+        tok = uuid.uuid4().hex
+        db.setting_set("catalog_hook_token", tok, "admin")
+    return {"token": tok}
+
+
 @app.get("/api/admin/catalog/dirty")
 def catalog_dirty(claim: int = 0, x_admin_key: Optional[str] = Header(None)):
     """המק שואל "יש מה לבנות?". claim=1 מנקה את הדגל ולוקח אחריות על הריצה.
