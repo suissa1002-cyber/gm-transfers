@@ -794,6 +794,9 @@ def register_recurring_jobs():
     # שומר הסוכן: מגלה שתיקה תוך 10 דקות במקום תוך ימים
     scheduler.add_job(_pos_agent_watchdog, "interval", minutes=10,
                       id="pos_agent_watchdog", max_instances=1)
+    # רענון קטלוג אוטומטי אחרי שינוי מחיר — בודק כל 2 דק׳, מרענן כשהשקט נמשך
+    scheduler.add_job(_catalog_auto_job, "interval", minutes=2,
+                      id="catalog_auto", max_instances=1)
     if _is_stale(db.serial_index_last_sync(), hours=24):
         scheduler.add_job(_serial_sync_job, "date", id="serial_sync_initial",
                           run_date=datetime.now() + timedelta(seconds=60))
@@ -1296,6 +1299,107 @@ def wa_backfill_start(x_admin_key: Optional[str] = Header(None)):
     scheduler.add_job(_wa_backfill_job, "date", id="wa_backfill_manual", max_instances=1,
                       replace_existing=True)
     return {"started": True}
+
+
+# ── רענון אוטומטי אחרי שינוי מחיר ────────────────────────────────────
+# ⚠️ למה זה קיים: עמודי העיצוב החדש **אפויים** ומתרעננים פעם ביום, ולכן כל
+# עדכון מחיר לא הופיע עד הריצה הבאה — אסי ביקש רענון ידני שלוש פעמים בשבוע
+# אחד (09/2026). התהליך: ווקומרס מודיע על שינוי מחיר → מסמנים "מלוכלך" →
+# ⏳ המתנה עד שהשקט נמשך CATALOG_QUIET_SEC (עריכה מרוכזת של 30 מוצרים =
+#   ריצה אחת ולא 30) → הענן מרענן דף בית + עמודי רשימה, והמק מושך את
+#   עמודי הקטגוריה (הם נבנים שם, לא כאן).
+CATALOG_QUIET_SEC = 300          # שקט נדרש לפני רענון
+CATALOG_MAX_WAIT_SEC = 1800      # לא לחכות לנצח אם מעדכנים ברצף
+
+
+def _catalog_mark_dirty(pid: int = 0) -> dict:
+    now = _dt.datetime.now().isoformat()
+    st = db.setting_get("catalog_dirty_since") or now
+    ids = [x for x in (db.setting_get("catalog_dirty_ids") or "").split(",") if x]
+    if pid and str(pid) not in ids:
+        ids = (ids + [str(pid)])[-50:]
+    db.setting_set("catalog_dirty_since", st, "wc")
+    db.setting_set("catalog_dirty_last", now, "wc")
+    db.setting_set("catalog_dirty_ids", ",".join(ids), "wc")
+    return {"since": st, "last": now, "products": len(ids)}
+
+
+@app.post("/api/admin/catalog/price-changed")
+def catalog_price_changed(request: Request, product: int = 0,
+                          x_admin_key: Optional[str] = Header(None),
+                          x_gm_token: Optional[str] = Header(None)):
+    """ווקומרס מודיע שמחיר השתנה. מסמן בלבד — הרענון עצמו מושהה (debounce).
+
+    אימות: מפתח מנהל **או** טוקן ייעודי (`catalog_hook_token`), כדי שסניפט
+    בוורדפרס לא יחזיק את סיסמת המנהל."""
+    tok = db.setting_get("catalog_hook_token")
+    ok = (cfg.ADMIN_PASSWORD and x_admin_key == cfg.ADMIN_PASSWORD) or \
+         (tok and x_gm_token == tok)
+    if not ok:
+        raise HTTPException(401, "bad token")
+    return {"ok": True, **_catalog_mark_dirty(product)}
+
+
+@app.get("/api/admin/catalog/dirty")
+def catalog_dirty(claim: int = 0, x_admin_key: Optional[str] = Header(None)):
+    """המק שואל "יש מה לבנות?". claim=1 מנקה את הדגל ולוקח אחריות על הריצה.
+
+    ⚠️ מחזיר dirty רק אחרי שהשקט נמשך — אחרת עריכה מרוכזת הייתה מפילה
+    בנייה מקומית על כל מוצר בנפרד."""
+    _require_admin(x_admin_key)
+    since = db.setting_get("catalog_dirty_since")
+    last = db.setting_get("catalog_dirty_last")
+    if not since:
+        return {"dirty": False}
+    quiet = _catalog_quiet_for(last)
+    waited = _catalog_quiet_for(since)
+    ready = quiet >= CATALOG_QUIET_SEC or waited >= CATALOG_MAX_WAIT_SEC
+    out = {"dirty": bool(ready), "pending": True, "since": since,
+           "quiet_sec": int(quiet), "products": len(
+               [x for x in (db.setting_get("catalog_dirty_ids") or "").split(",") if x])}
+    if ready and claim:
+        for k in ("catalog_dirty_since", "catalog_dirty_last", "catalog_dirty_ids"):
+            db.setting_set(k, "", "claim")
+        db.setting_set("catalog_claimed_at", _dt.datetime.now().isoformat(), "claim")
+    return out
+
+
+def _catalog_quiet_for(ts: str) -> float:
+    if not ts:
+        return 1e9
+    try:
+        return (_dt.datetime.now() - _dt.datetime.fromisoformat(ts)).total_seconds()
+    except ValueError:
+        return 1e9
+
+
+def _catalog_auto_job():
+    """מרענן בענן את מה שהענן יודע לבנות: דף הבית ועמודי הרשימה.
+    עמודי הקטגוריה נבנים במק — הוא מושך אותם דרך /catalog/dirty."""
+    try:
+        since = db.setting_get("catalog_dirty_since")
+        if not since:
+            return
+        last = db.setting_get("catalog_dirty_last")
+        if _catalog_quiet_for(last) < CATALOG_QUIET_SEC and \
+           _catalog_quiet_for(since) < CATALOG_MAX_WAIT_SEC:
+            return                       # עדיין עורכים — מחכים לשקט
+        if db.setting_get("catalog_cloud_done_for") == since:
+            return                       # כבר רוענן על אותו אירוע
+        n = len([x for x in (db.setting_get("catalog_dirty_ids") or "").split(",") if x])
+        logger.info("catalog auto-refresh: %d product(s) changed since %s", n, since)
+        try:
+            _home_refresh_job()
+        except Exception as e:           # noqa: BLE001
+            logger.warning("catalog auto: home refresh failed: %s", e)
+        try:
+            _special_refresh_job()       # עמודי רבי-מכר / מבצעים / חדש
+        except Exception as e:           # noqa: BLE001
+            logger.warning("catalog auto: special refresh failed: %s", e)
+        db.setting_set("catalog_cloud_done_for", since, "auto")
+        db.setting_set("catalog_cloud_done_at", _dt.datetime.now().isoformat(), "auto")
+    except Exception as e:               # noqa: BLE001
+        logger.warning("catalog auto job failed: %s", e)
 
 
 @app.post("/api/admin/home/refresh")
