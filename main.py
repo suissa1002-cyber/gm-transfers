@@ -1313,7 +1313,7 @@ CATALOG_MAX_WAIT_SEC = 1800      # לא לחכות לנצח אם מעדכנים 
 
 
 def _catalog_mark_dirty(pid: int = 0) -> dict:
-    now = _dt.datetime.now().isoformat()
+    now = datetime.now().isoformat()
     st = db.setting_get("catalog_dirty_since") or now
     ids = [x for x in (db.setting_get("catalog_dirty_ids") or "").split(",") if x]
     if pid and str(pid) not in ids:
@@ -1372,7 +1372,7 @@ def catalog_dirty(claim: int = 0, x_admin_key: Optional[str] = Header(None)):
     if ready and claim:
         for k in ("catalog_dirty_since", "catalog_dirty_last", "catalog_dirty_ids"):
             db.setting_set(k, "", "claim")
-        db.setting_set("catalog_claimed_at", _dt.datetime.now().isoformat(), "claim")
+        db.setting_set("catalog_claimed_at", datetime.now().isoformat(), "claim")
     return out
 
 
@@ -1380,7 +1380,7 @@ def _catalog_quiet_for(ts: str) -> float:
     if not ts:
         return 1e9
     try:
-        return (_dt.datetime.now() - _dt.datetime.fromisoformat(ts)).total_seconds()
+        return (datetime.now() - datetime.fromisoformat(ts)).total_seconds()
     except ValueError:
         return 1e9
 
@@ -1409,7 +1409,7 @@ def _catalog_auto_job():
         except Exception as e:           # noqa: BLE001
             logger.warning("catalog auto: special refresh failed: %s", e)
         db.setting_set("catalog_cloud_done_for", since, "auto")
-        db.setting_set("catalog_cloud_done_at", _dt.datetime.now().isoformat(), "auto")
+        db.setting_set("catalog_cloud_done_at", datetime.now().isoformat(), "auto")
     except Exception as e:               # noqa: BLE001
         logger.warning("catalog auto job failed: %s", e)
 
