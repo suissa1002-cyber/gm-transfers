@@ -267,7 +267,9 @@ class NewOrderClient:
         if cached is not None:
             return cached
         items = self._get(f"/api/Products/stock-items/{operation_id}")
-        if isinstance(items, list):
+        # ⚠️ 01/10/2026: רשימה ריקה **לא** נשמרת במטמון. NewOrder כותבים כותרת
+        # לפני פריטים, אז [] מוקדם הוא מצב-ביניים — שמירתו קיבעה את op 16372 כריקה.
+        if isinstance(items, list) and items:
             # תקרת מטמון פשוטה — מונעת גדילה אינסופית בתהליכים ארוכי-חיים
             if len(self._stock_items_cache) > 5000:
                 self._stock_items_cache.clear()

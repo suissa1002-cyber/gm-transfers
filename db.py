@@ -922,6 +922,74 @@ def transfer_exists(op_id: str) -> bool:
         return cur.fetchone() is not None
 
 
+def _transfer_item_rows(op: dict) -> list:
+    """שורות פריטים מפעולת העברה: פר-סריאל אם יש, אחרת פר-יחידת כמות (לפי ברקוד)."""
+    items = []
+    for idx, it in enumerate(op.get("stockItems", []) or []):
+        pid = str(it.get("id") or "")
+        name = it.get("name") or ""
+        barcode = (it.get("barcode") or "").strip() or None
+        serials = [s for s in (it.get("serials") or []) if s]
+        if serials:
+            for s in serials:
+                items.append((pid, name, str(s), barcode, idx))
+        else:
+            qty = int(abs(it.get("quantity") or 0)) or 1
+            for _ in range(qty):
+                items.append((pid, name, None, barcode, idx))
+    return items
+
+
+def transfer_is_empty_recent(op_id: str, hours: int = 24) -> bool:
+    """העברה שנקלטה **בלי פריטים** ועדיין פתוחה, ב-24 השעות האחרונות.
+
+    ⚠️ 01/10/2026 (op 16372, סטאר→אתר): NewOrder כותבים את כותרת ההעברה לפני
+    הפריטים. הפולר תפס אותה 41 שניות אחרי יצירה, ה-endpoint של הפריטים החזיר
+    [] — וההעברה נכנסה עם 0 פריטים. upsert_transfer לא נוגע בהעברה קיימת, אז
+    היא נשארה ריקה לתמיד (0/0), למרות שבקופה היה בה Xiaomi Smart Band 9 Active.
+    """
+    from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""SELECT total_units, status, first_seen FROM transfers
+                          WHERE op_id = ?"""), (str(op_id),))
+        r = cur.fetchone()
+    if not r or int(r["total_units"] or 0) != 0 or r["status"] not in ("in_transit", "partial"):
+        return False
+    try:
+        seen = _dt.fromisoformat(str(r["first_seen"]))
+        if seen.tzinfo is None:
+            seen = seen.replace(tzinfo=_tz.utc)
+        return _dt.now(_tz.utc) - seen < _td(hours=hours)
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def fill_empty_transfer(op: dict) -> int:
+    """משלים פריטים להעברה שנקלטה ריקה. מחזיר כמה יחידות נוספו (0 = לא נגענו).
+    נוגע **רק** בהעברה פתוחה עם total_units=0 — אף פעם לא דורס קליטה קיימת."""
+    op_id = str(op.get("id") or "")
+    items = _transfer_item_rows(op)
+    if not op_id or not items:
+        return 0
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""SELECT total_units, status FROM transfers WHERE op_id = ?"""), (op_id,))
+        r = cur.fetchone()
+        if not r or int(r["total_units"] or 0) != 0 or r["status"] not in ("in_transit", "partial"):
+            return 0
+        cur.execute(_q("SELECT COUNT(*) AS n FROM transfer_items WHERE op_id = ?"), (op_id,))
+        if int(cur.fetchone()["n"] or 0):
+            return 0
+        for (pid, name, serial, barcode, idx) in items:
+            cur.execute(_q("""
+                INSERT INTO transfer_items (op_id, product_id, name, serial, barcode, line_idx)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """), (op_id, pid, name, serial, barcode, idx))
+        cur.execute(_q("UPDATE transfers SET total_units = ? WHERE op_id = ?"), (len(items), op_id))
+    return len(items)
+
+
 def upsert_transfer(op: dict) -> bool:
     """
     מכניס/מעדכן פעולת העברה ואת פריטיה. מחזיר True אם זו פעולה חדשה (לראשונה ב-DB).
@@ -938,21 +1006,7 @@ def upsert_transfer(op: dict) -> bool:
         if exists:
             return False  # כבר קיים — לא נוגעים (סטטוס הקליטה מנוהל אצלנו, לא בקופה)
 
-        # בניית שורות הפריטים: פר-סריאל אם יש, אחרת פר-יחידת כמות (לפי ברקוד)
-        items = []
-        for idx, it in enumerate(op.get("stockItems", []) or []):
-            pid = str(it.get("id") or "")
-            name = it.get("name") or ""
-            barcode = (it.get("barcode") or "").strip() or None
-            serials = [s for s in (it.get("serials") or []) if s]
-            if serials:
-                for s in serials:
-                    items.append((pid, name, str(s), barcode, idx))
-            else:
-                qty = int(abs(it.get("quantity") or 0)) or 1
-                for _ in range(qty):
-                    items.append((pid, name, None, barcode, idx))
-
+        items = _transfer_item_rows(op)
         total_units = len(items)
         cur.execute(_q("""
             INSERT INTO transfers

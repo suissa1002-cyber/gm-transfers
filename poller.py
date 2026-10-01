@@ -8,6 +8,7 @@ Poller — מושך העברות בין סניפים (operationType=5) מ-NewOrd
 import os
 import sys
 import logging
+import time
 from datetime import datetime, timedelta
 
 import config as cfg
@@ -57,6 +58,9 @@ def _enrich_barcodes(op: dict):
             it["barcode"] = _barcode_for(it.get("id"))
 
 
+_HEAL_LAST: dict = {}   # op_id → זמן ניסיון-ריפוי אחרון (ויסות קריאות ל-NewOrder)
+
+
 def _needs_items(op) -> bool:
     """האם למשוך את פריטי הפעולה מה-endpoint הנפרד של NewOrder.
 
@@ -71,7 +75,19 @@ def _needs_items(op) -> bool:
     if op.get("operationType") != cfg.TRANSFER_OP_TYPE:
         return False
     try:
-        return not db.transfer_exists(op.get("id"))
+        if not db.transfer_exists(op.get("id")):
+            return True
+        # ⚠️ 01/10/2026: העברה שנקלטה ריקה (NewOrder כתבו כותרת לפני פריטים) —
+        # מנסים שוב, אבל לכל היותר פעם ב-10 דקות לפעולה ורק 24ש' מהקליטה.
+        # בלי הוויסות העברה ריקה אמיתית הייתה גורמת לקריאה בכל סבב (75ש') —
+        # בדיוק סוג ההצפה ש-NewOrder התלוננו עליו ב-21/07.
+        oid = str(op.get("id"))
+        if db.transfer_is_empty_recent(oid):
+            now = time.time()
+            if now - _HEAL_LAST.get(oid, 0) >= 600:
+                _HEAL_LAST[oid] = now
+                return True
+        return False
     except Exception:  # noqa: BLE001
         return True     # ספק → מושכים (עדיף קריאה מיותרת מפעולה בלי פריטים)
 
@@ -103,6 +119,12 @@ def poll_once() -> dict:
                 # רק עבור פעולות חדשות: משלימים ברקודים (חוסך קריאות API לפעולות מוכרות)
                 if not db.transfer_exists(o.get("id")):
                     _enrich_barcodes(o)
+                elif o.get("stockItems") and db.transfer_is_empty_recent(o.get("id")):
+                    # העברה שנקלטה ריקה וכעת יש לה פריטים בקופה → משלימים
+                    _enrich_barcodes(o)
+                    n_fill = db.fill_empty_transfer(o)
+                    if n_fill:
+                        logger.warning("healed empty transfer %s: +%d unit(s)", o.get("id"), n_fill)
                 if db.upsert_transfer(o):
                     new_ids.append(str(o.get("id")))
                     # עדכון חי של אינדקס סריאל→מוצר מפריטי ההעברה

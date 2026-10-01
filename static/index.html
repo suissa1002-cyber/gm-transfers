@@ -3676,7 +3676,9 @@ function renderScan(app){
                ${IS_MOBILE?`<button class="btn-cam" onclick="openCameraNow()">📸 סרוק מהמצלמה</button>`:''}
                <div class="count">נקלטו <b>${t.received_units}</b> / <b>${t.total_units}</b></div>
                <div class="emp">קולט: <b>${S.employee}</b> · <a onclick="changeEmployee()">החלף</a></div>
-               ${t.received_units<t.total_units
+               ${!t.total_units
+                 ? `<button class="btn-ghost finish-btn" onclick="finishReceiving()">סגור העברה ריקה</button>`
+                 : t.received_units<t.total_units
                  ? `<button class="btn-ghost finish-btn" onclick="finishReceiving()">סיים קליטה · ${t.total_units-t.received_units} חסרים</button>`
                  : `<button class="btn-primary finish-btn" onclick="backToBoard()">✓ סיום</button>`}`}
         </div>
@@ -3740,8 +3742,18 @@ async function doScan(code, method){
 function backToBoard(){ S.view=S._fromAdmin?'admin':'board'; S._fromAdmin=false; S.op=null; render(); }
 
 // סיים קליטה — אם חסרים פריטים, סגירה עם סיבה (רישום חוסר)
-function finishReceiving(){
+async function finishReceiving(){
   const t=S.op, missing=t.items.filter(i=>Number(i.received||0)===0);
+  // ⚠️ 01/10/2026 (op 16372): העברה בלי פריטים — "אין חסרים" גם כאן, ולכן "סיים" רק
+  // חזר ללוח בלי לסגור, וההעברה נתקעה 0/0 לתמיד. ריקה → סוגרים במפורש.
+  if(!t.items.length){
+    if(!confirm('בהעברה הזו אין פריטים. לסגור אותה ולהוציא מהלוח?')) return;
+    showLoading('סוגר העברה…');
+    try{ await api('/api/transfers/'+t.op_id+'/close',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({reason:'העברה ריקה — אין פריטים',by:S.employee})}); toast('ההעברה נסגרה ✓',true); }
+    catch(e){ toast((e&&e.detail)||'סגירת ההעברה נכשלה',false); }
+    hideLoading(); backToBoard(); return;
+  }
   if(!missing.length){ backToBoard(); return; }
   const root=document.getElementById('modalRoot');
   root.innerHTML=`<div class="overlay"><div class="modal" style="max-width:460px;text-align:right">
