@@ -14629,9 +14629,31 @@ def admin_order_cargo(oid: int, body: CargoCreateIn, x_admin_key: Optional[str] 
                  auth=auth, headers={"User-Agent": _PP_UA}, timeout=90)
     try:
         j = r.json()
+        not_json = False
     except Exception:  # noqa: BLE001
-        j = {}
+        j, not_json = {}, True
     if not r.ok or not j.get("ok"):
+        # ⚠️ 04/10/2026 (הזמנה 52350): "שגיאה 502" בלי שום פרט. הגשר מחזיר תמיד JSON עם
+        # הודעה, אז תשובה שאינה JSON = התהליך באתר קרס באמצע הבקשה — וזה יכול לקרות
+        # לפני הפנייה ל-Cargo או **אחריה**, לפני שמספר המשלוח נשמר. התוצאה לא ידועה,
+        # וניסיון חוזר עיוור עלול להזמין שליח כפול. לכן: לוכדים את הגוף ומזהירים.
+        # (⛔ הסטטוס "הושלם" אינו ראיה שהמשלוח נוצר — אצלנו הוא נקבע מחשבונית בקופה.)
+        if not_json:
+            ct = (r.headers.get("content-type") or "")[:40]
+            body = re.sub(r"<[^>]+>", " ", r.text or "")
+            body = re.sub(r"\s+", " ", body).strip()[:160]
+            logger.warning("cargo create NON-JSON for %s: http=%s ct=%s body=%s",
+                           oid, r.status_code, ct, (r.text or "")[:600])
+            try:
+                db.sales_state_set(f"cargo_fail:{oid}", json_mod.dumps(
+                    {"at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "http": r.status_code,
+                     "ct": ct, "body": (r.text or "")[:1500]}, ensure_ascii=False))
+            except Exception:  # noqa: BLE001
+                pass
+            raise HTTPException(502, f"יצירת המשלוח נכשלה באמצע (HTTP {r.status_code}). "
+                                     "⚠️ ייתכן שהמשלוח בכל זאת נוצר אצל Cargo — בדוק בפורטל Cargo "
+                                     "לפני ניסיון חוזר, כדי לא להזמין שליח כפול."
+                                     + (f" · {body}" if body else ""))
         msg = (j.get("message") or j.get("code") or f"שגיאה {r.status_code}")
         logger.warning("cargo create failed for %s: %s %s", oid, r.status_code, str(j)[:300])
         raise HTTPException(502, f"יצירת המשלוח נכשלה: {msg}")
