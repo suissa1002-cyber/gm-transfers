@@ -27,6 +27,16 @@ def run():
         main.scheduler.start()
     main.register_recurring_jobs()
     log.info("worker: recurring jobs registered — running")
+    # ⚠️ 05/10/2026: ה-web מדווח commit ב-diag, אבל הפולר וכל עבודות הרקע רצים כאן.
+    # בלי זה אין דרך לדעת אם ה-worker עלה לגרסה החדשה — ובמקרה של קישור
+    # הזמנה↔העברה בדקתי את ה-web, הנחתי שהכול חדש, ושום דבר לא נרשם.
+    try:
+        import os as _os
+        from datetime import datetime as _dt
+        main.db.sales_state_set("worker_commit", "%s|%s" % (
+            (_os.getenv("RENDER_GIT_COMMIT") or "")[:7], _dt.now().strftime("%Y-%m-%d %H:%M:%S")))
+    except Exception as e:  # noqa: BLE001
+        log.warning("worker: could not record commit: %s", e)
     try:
         main.poller.poll_once()   # סבב ראשוני
     except Exception as e:  # noqa: BLE001

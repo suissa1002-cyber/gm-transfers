@@ -10906,6 +10906,27 @@ def admin_stellr_block_brands(brands: str = "", x_admin_key: Optional[str] = Hea
             "note": "חל על קופה ובקשות סניף בלבד — הזמנות אתר פתוחות"}
 
 
+@app.get("/api/admin/plan-fulfilled")
+def admin_plan_fulfilled(order: str = "", x_admin_key: Optional[str] = Header(None)):
+    """אבחון קריאה-בלבד לקישור הזמנה↔העברה: מה נרשם, ומה עוד ממתין בבקשות."""
+    _require_admin(x_admin_key)
+    import re as _re4
+    out = {"order": order}
+    with db._conn() as c:
+        cur = c.cursor()
+        cur.execute(db._q("SELECT COUNT(*) AS n FROM plan_fulfilled"))
+        out["total_rows"] = int(cur.fetchone()["n"])
+        cur.execute(db._q("SELECT * FROM plan_fulfilled ORDER BY id DESC LIMIT 10"))
+        out["latest"] = [dict(r) for r in cur.fetchall()]
+    if order:
+        out["for_order"] = db.plan_fulfilled_for_order(order)
+        out["pending_requests"] = [
+            {k: ln.get(k) for k in ("id", "product_id", "from_branch", "to_branch", "qty", "serial", "bcast")}
+            for ln in db.plan_list()
+            if _re4.search(rf"הזמנת אתר #{_re4.escape(order)}(?!\d)", ln.get("created_by") or "")]
+    return out
+
+
 @app.get("/api/admin/stellr/block-brands")
 def admin_stellr_block_brands_get(x_admin_key: Optional[str] = Header(None)):
     _require_admin(x_admin_key)
@@ -13131,6 +13152,12 @@ def admin_diag(x_admin_key: Optional[str] = Header(None)):
     except Exception:  # noqa: BLE001
         pass
     out["commit"] = (os.getenv("RENDER_GIT_COMMIT") or "")[:7]
+    # הפולר רץ ב-worker נפרד — הגרסה שלו יכולה לפגר אחרי ה-web
+    try:
+        _wc = str(db.sales_state_get("worker_commit") or "")
+        out["worker_commit"], out["worker_started"] = (_wc.split("|", 1) + [""])[:2] if _wc else ("?", "")
+    except Exception:  # noqa: BLE001
+        pass
     out["region"] = os.getenv("RENDER_REGION") or os.getenv("RENDER_SERVICE_REGION") or ""
     # 🕐 גיל הריצה האחרונה של קרון וורדפרס — כשזה מזדקן, האתר מתחיל להאט
     try:
