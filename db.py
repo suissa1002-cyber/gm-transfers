@@ -228,6 +228,23 @@ _SCHEMA = [
         created_at  TEXT
     )
     """.format(pk=_PK),
+    # ── 05/10/2026: בקשת העברה להזמנה שבוצעה בפועל בקופה. שורת transfer_plan נמחקת
+    # ברגע ההתאמה, ואיתה הקשר להזמנה — אז נשמר כאן order↔op כדי שההזמנה תציג
+    # "הועבר מ-X — ממתין לקליטה" עד שהמוצר נקלט. ──
+    """
+    CREATE TABLE IF NOT EXISTS plan_fulfilled (
+        id           {pk},
+        order_number TEXT,
+        op_id        TEXT,
+        from_branch  INTEGER,
+        to_branch    INTEGER,
+        product_id   TEXT,
+        name         TEXT,
+        qty          INTEGER DEFAULT 1,
+        created_at   TEXT
+    )
+    """.format(pk=_PK),
+    "CREATE INDEX IF NOT EXISTS idx_plan_fulfilled_order ON plan_fulfilled(order_number)",
     """
     CREATE TABLE IF NOT EXISTS broadcasts (
         branch_id    INTEGER PRIMARY KEY,
@@ -2056,7 +2073,7 @@ def broadcast_branches() -> list:
         return [r["b"] for r in cur.fetchall()]
 
 
-def plan_match_transfer(from_branch, to_branch, items) -> int:
+def plan_match_transfer(from_branch, to_branch, items, op_id: str = "") -> int:
     """ניקוי אוטומטי: העברה אמיתית בקופה מ-from ל-to מוחקת שורות בקשה תואמות.
     item: {product_id, serials:[...], qty}. סריאל תואם → מחיקת השורה הסריאלית;
     מוצר לא-סריאלי → הפחתת qty משורת המוצר (מחיקה כשמגיע ל-0). מחזיר כמה שורות נוקו."""
@@ -2064,6 +2081,7 @@ def plan_match_transfer(from_branch, to_branch, items) -> int:
     fb, tb = int(from_branch or 0), int(to_branch or 0)
     if not fb or not tb:
         return 0
+    consumed = []   # שורות בקשה שההעברה סיפקה — לקישור הזמנה↔העברה
     with _conn() as c:
         cur = c.cursor()
         for it in items or []:
@@ -2071,27 +2089,60 @@ def plan_match_transfer(from_branch, to_branch, items) -> int:
             serials = [s for s in (it.get("serials") or []) if s]
             if serials:
                 for sn in serials:
-                    cur.execute(_q("""DELETE FROM transfer_plan
+                    cur.execute(_q("""SELECT id, product_id, name, created_by FROM transfer_plan
                                       WHERE from_branch = ? AND to_branch = ? AND serial = ?"""),
                                 (fb, tb, str(sn)))
-                    hit = (cur.rowcount or 0) if hasattr(cur, "rowcount") else 0
-                    if hit:
-                        cleaned += hit
+                    rows = [dict(r) for r in cur.fetchall()]
+                    for r in rows:
+                        cur.execute(_q("DELETE FROM transfer_plan WHERE id = ?"), (r["id"],))
+                        consumed.append({**r, "qty": 1})
+                    if rows:
+                        cleaned += len(rows)
                     else:
                         # אין בקשה על הסריאל הזה — יחידה שהועברה מספקת בקשה כלשהי על אותו מוצר:
                         # כמותית, **או סריאלית עם סריאל אחר** (למשל אחרי reroute / סריאל-פנטום
                         # בסניף המקור והסניף שלח סריאל אחר — אסי 30/06). מנקים שורה אחת.
-                        cleaned += _plan_satisfy_one(cur, fb, tb, pid)
+                        cleaned += _plan_satisfy_one(cur, fb, tb, pid, consumed)
             else:
                 qty = int(it.get("qty") or 0)
                 if qty > 0 and pid:
-                    cleaned += _plan_decrement(cur, fb, tb, pid, qty)
+                    cleaned += _plan_decrement(cur, fb, tb, pid, qty, consumed)
+        _plan_record_fulfilled(cur, consumed, op_id, fb, tb)
     return cleaned
 
 
-def _plan_decrement(cur, fb, tb, pid, qty) -> int:
+_ORDER_REF_RE = re.compile(r"הזמנת אתר #(\d+)")
+
+
+def _plan_record_fulfilled(cur, consumed, op_id, fb, tb):
+    """שורות בקשה שנצרכו ושייכות להזמנת אתר → plan_fulfilled (order↔op)."""
+    if not op_id:
+        return
+    for r in consumed:
+        m = _ORDER_REF_RE.search(str(r.get("created_by") or ""))
+        if not m:
+            continue
+        cur.execute(_q("""INSERT INTO plan_fulfilled
+                          (order_number, op_id, from_branch, to_branch, product_id, name, qty, created_at)
+                          VALUES (?, ?, ?, ?, ?, ?, ?, ?)"""),
+                    (m.group(1), str(op_id), fb, tb, str(r.get("product_id") or ""),
+                     r.get("name") or "", int(r.get("qty") or 1), now_iso()))
+
+
+def plan_fulfilled_for_order(order_number) -> list:
+    """העברות שבוצעו בפועל עבור הזמנה, עם מצב הקליטה העדכני מטבלת transfers."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""SELECT f.op_id, f.from_branch, f.to_branch, f.product_id, f.name, f.qty,
+                                 f.created_at, t.status, t.received_units, t.total_units, t.received_at
+                          FROM plan_fulfilled f LEFT JOIN transfers t ON t.op_id = f.op_id
+                          WHERE f.order_number = ? ORDER BY f.id"""), (str(order_number),))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def _plan_decrement(cur, fb, tb, pid, qty, consumed=None) -> int:
     """מפחית כמות משורת בקשה כמותית (ללא סריאל) של המוצר; מוחק כשמתאפסת."""
-    cur.execute(_q("""SELECT id, qty FROM transfer_plan
+    cur.execute(_q("""SELECT id, qty, product_id, name, created_by FROM transfer_plan
                       WHERE from_branch = ? AND to_branch = ? AND product_id = ?
                         AND (serial IS NULL OR serial = '') ORDER BY id"""), (fb, tb, str(pid)))
     rows = [dict(r) for r in cur.fetchall()]
@@ -2102,6 +2153,8 @@ def _plan_decrement(cur, fb, tb, pid, qty) -> int:
         take = min(qty, int(r["qty"] or 1))
         left = int(r["qty"] or 1) - take
         qty -= take
+        if consumed is not None:
+            consumed.append({**r, "qty": take})
         if left <= 0:
             cur.execute(_q("DELETE FROM transfer_plan WHERE id = ?"), (r["id"],))
             cleaned += 1
@@ -2110,19 +2163,27 @@ def _plan_decrement(cur, fb, tb, pid, qty) -> int:
     return cleaned
 
 
-def _plan_satisfy_one(cur, fb, tb, pid) -> int:
+def _plan_satisfy_one(cur, fb, tb, pid, consumed=None) -> int:
     """העברת יחידה של מוצר מ-fb→tb מספקת בקשה אחת על אותו מוצר: קודם שורת-כמות (הפחתה),
     ואם אין — מוחקת שורה **סריאלית** כלשהי של אותו מוצר (סריאל הבקשה כבר לא רלוונטי —
     reroute / סריאל-פנטום בסניף המקור)."""
-    n = _plan_decrement(cur, fb, tb, pid, 1)
-    if n:
-        return n
-    cur.execute(_q("""SELECT id FROM transfer_plan
+    # ⚠️ 05/10/2026: _plan_decrement מחזיר כמה שורות **נמחקו**, לא כמה יחידות נלקחו.
+    # בשורת-כמות של 3 → ירדה ל-2, הוחזר 0, והקוד המשיך ומחק גם שורה סריאלית —
+    # כלומר יחידה אחת סיפקה שתי בקשות. בודקים אם נלקחה יחידה, לא אם נמחקה שורה.
+    took = []
+    n = _plan_decrement(cur, fb, tb, pid, 1, took)
+    if took:
+        if consumed is not None:
+            consumed.extend(took)
+        return max(n, 1)
+    cur.execute(_q("""SELECT id, product_id, name, created_by FROM transfer_plan
                       WHERE from_branch = ? AND to_branch = ? AND product_id = ?
                       ORDER BY id LIMIT 1"""), (fb, tb, str(pid)))
     row = cur.fetchone()
     if row:
         cur.execute(_q("DELETE FROM transfer_plan WHERE id = ?"), (row["id"],))
+        if consumed is not None:
+            consumed.append({**dict(row), "qty": 1})
         return 1
     return 0
 

@@ -125,6 +125,15 @@ def poll_once() -> dict:
                     n_fill = db.fill_empty_transfer(o)
                     if n_fill:
                         logger.warning("healed empty transfer %s: +%d unit(s)", o.get("id"), n_fill)
+                        # הפריטים רק עכשיו ידועים — גם ניקוי הבקשות וקישור ההזמנה קורים עכשיו
+                        try:
+                            db.plan_match_transfer(
+                                o.get("branchId"), o.get("receivingBranchId"),
+                                [{"product_id": it.get("id"), "serials": it.get("serials") or [],
+                                  "qty": it.get("quantity") or 0} for it in (o.get("stockItems") or [])],
+                                op_id=str(o.get("id") or ""))
+                        except Exception as e:  # noqa: BLE001
+                            logger.warning("plan_match after heal failed for %s: %s", o.get("id"), e)
                 if db.upsert_transfer(o):
                     new_ids.append(str(o.get("id")))
                     # עדכון חי של אינדקס סריאל→מוצר מפריטי ההעברה
@@ -141,7 +150,8 @@ def poll_once() -> dict:
                                   "qty": it.get("quantity") or 0}
                                  for it in (o.get("stockItems") or [])]
                         n = db.plan_match_transfer(o.get("branchId"),
-                                                   o.get("receivingBranchId"), items)
+                                                   o.get("receivingBranchId"), items,
+                                                   op_id=str(o.get("id") or ""))
                         if n:
                             logger.info("plan auto-clean: %d request line(s) matched by op %s",
                                         n, o.get("id"))

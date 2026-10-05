@@ -11677,6 +11677,20 @@ def admin_order_detail(oid: int, x_admin_key: Optional[str] = Header(None)):
         bcast = _build_bcast_map(db.plan_list()).get(str(o.get("number")))
     except Exception:  # noqa: BLE001
         pass
+    # 05/10/2026: בקשת ההעברה נמחקת ברגע שהסניף מבצע אותה בקופה, ואז התג "שודרה"
+    # נעלם בלי להשאיר עקבות. כאן — ההעברות שבוצעו בפועל להזמנה ומצב הקליטה שלהן.
+    transfer_in = []
+    try:
+        for f in db.plan_fulfilled_for_order(o.get("number")):
+            transfer_in.append({
+                "op_id": f.get("op_id"), "name": f.get("name"), "qty": f.get("qty"),
+                "from": cfg.branch_name(f.get("from_branch")),
+                "to": cfg.branch_name(f.get("to_branch")),
+                "status": f.get("status") or "in_transit",
+                "received_units": f.get("received_units"), "total_units": f.get("total_units"),
+                "at": f.get("created_at"), "received_at": f.get("received_at")})
+    except Exception:  # noqa: BLE001
+        pass
     oos = False
     partial = False
     nosku = False
@@ -11742,6 +11756,7 @@ def admin_order_detail(oid: int, x_admin_key: Optional[str] = Header(None)):
         "fraud_scannable": fraud_scannable,
         "ship_tag": _ship_tag(o, meta),
         "bcast": bcast,
+        "transfer_in": transfer_in,
         "fraud": fraud,
         "oos": oos,
         "partial": partial,

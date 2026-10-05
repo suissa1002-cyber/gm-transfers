@@ -8944,6 +8944,22 @@ async function payLinksOpen(q){
     ${rows||'<div class="empty">אין תשלומים מהירים עדיין</div>'}
   </div></div>`;
 }
+// 🚚 05/10/2026: אחרי שהסניף ביצע את ההעברה בקופה, בקשת השידור נמחקת והתג "שודרה"
+// נעלם. התג הזה ממשיך את הסיפור: הועבר מ-X ← ממתין לקליטה ← נקלט (או נסגר כחוסר).
+function wcoTransferInChips(list){
+  if(!list||!list.length) return '';
+  return list.map(f=>{
+    const st=f.status||'in_transit';
+    const [col,txt]= st==='received'
+      ? ['#15803d',`נקלט ב${f.to||'אתר'} — הועבר מ${f.from}`]
+      : st==='closed'
+      ? ['#dc2626',`ההעברה מ${f.from} נסגרה כחוסר — לבדוק`]
+      : st==='partial'
+      ? ['#b45309',`הועבר מ${f.from} ל${f.to||'אתר'} — נקלט חלקית (${f.received_units||0}/${f.total_units||0})`]
+      : ['#b45309',`הועבר מ${f.from} ל${f.to||'אתר'} — ממתין לקליטה`];
+    return `<span class="ord-st" title="העברה ${escW(String(f.op_id||''))}${f.name?' · '+escW(f.name):''}" style="color:${col};border-color:${col}55;background:${col}0f;display:inline-flex;align-items:center;gap:6px">${ico('truck',14)} ${escW(txt)}</span>`;
+  }).join('');
+}
 async function openWcOrder(oid){
   showLoading('טוען הזמנה…');
   let d=null,err=null;
@@ -9006,7 +9022,7 @@ function paintWcOrder(){
       ${d.nosku?`<span class="ord-st" style="color:#d97706;border-color:#d9770655;background:#d977060f;display:inline-flex;align-items:center;gap:6px">${ico('tag',14)} פריט ללא מק״ט מחובר — הוסף מק״ט למוצר ב-WooCommerce</span>`:''}
       ${(d.partial || (d.bcast&&d.oos))
         ? `<span class="ord-st" style="color:#d97706;border-color:#d9770655;background:#d977060f;display:inline-flex;align-items:center;gap:6px">${ico('radio',14)} שודר חלקי — חלק מההזמנה שודר${d.bcast?` ל: ${escW(bcastBranches(d.bcast))}`:''}, פריט אחר חסר במלאי (להשיג מהספק)</span>`
-        : `${d.oos?`<span class="ord-st" style="color:#dc2626;border-color:#dc262655;background:#dc26260f;display:inline-flex;align-items:center;gap:6px">${ico('pkgx',14)} חסר במלאי בכל הסניפים — להשיג מהספק</span>`:''}${d.bcast?`<span class="ord-st" style="color:${d.bcast.status==='live'?'#15803d':'var(--muted)'};border-color:${d.bcast.status==='live'?'#15803d':'var(--muted)'}55;background:${d.bcast.status==='live'?'#15803d':'#6b7280'}0f;display:inline-flex;align-items:center;gap:6px">${ico('radio',14)} בקשת העברה שודרה ל: ${escW(bcastBranches(d.bcast))}${d.bcast.status==='live'?'':' — נסגרה בסניף'}</span>`:''}`}
+        : `${d.oos?`<span class="ord-st" style="color:#dc2626;border-color:#dc262655;background:#dc26260f;display:inline-flex;align-items:center;gap:6px">${ico('pkgx',14)} חסר במלאי בכל הסניפים — להשיג מהספק</span>`:''}${d.bcast?`<span class="ord-st" style="color:${d.bcast.status==='live'?'#15803d':'var(--muted)'};border-color:${d.bcast.status==='live'?'#15803d':'var(--muted)'}55;background:${d.bcast.status==='live'?'#15803d':'#6b7280'}0f;display:inline-flex;align-items:center;gap:6px">${ico('radio',14)} בקשת העברה שודרה ל: ${escW(bcastBranches(d.bcast))}${d.bcast.status==='live'?'':' — נסגרה בסניף'}</span>`:''}${wcoTransferInChips(d.transfer_in)}`}
     </div>`:''}
     ${(d.fraud&&d.fraud.reasons)?`<div id="frbScan">${fraudBanner(d.fraud,d.number)}</div>`:(d.fraud_scannable?`<div id="frbScan">${fraudScanChip(d.fraud,d.number)}</div>`:'')}
     ${d.cargo_status&&d.cargo_status.text?(function(){const cs=d.cargo_status;let col='#6b7280';const t=cs.text;
