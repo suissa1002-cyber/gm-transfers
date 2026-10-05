@@ -2137,7 +2137,31 @@ def plan_fulfilled_for_order(order_number) -> list:
                                  f.created_at, t.status, t.received_units, t.total_units, t.received_at
                           FROM plan_fulfilled f LEFT JOIN transfers t ON t.op_id = f.op_id
                           WHERE f.order_number = ? ORDER BY f.id"""), (str(order_number),))
-        return [dict(r) for r in cur.fetchall()]
+        rows = [dict(r) for r in cur.fetchall()]
+        # ⚠️ 05/10/2026 (op 16445): העברה אחת נשאה 3 פריטים של **הזמנות שונות**. מצב/מונה
+        # ברמת ההעברה ("נקלט חלקית 1/3") מטעה — ה-Pixel של 52490 יכול להיות נקלט כשהשניים
+        # האחרים לא. המצב מחושב לפי הפריטים של **המוצר הזה** בהעברה.
+        for r in rows:
+            cur.execute(_q("""SELECT COUNT(*) AS n,
+                                     SUM(CASE WHEN received IN (1,2) THEN 1 ELSE 0 END) AS got,
+                                     SUM(CASE WHEN received = 3 THEN 1 ELSE 0 END) AS short
+                              FROM transfer_items WHERE op_id = ? AND product_id = ?"""),
+                        (str(r.get("op_id")), str(r.get("product_id") or "")))
+            it = dict(cur.fetchone() or {})
+            n, got, short = int(it.get("n") or 0), int(it.get("got") or 0), int(it.get("short") or 0)
+            if not n:
+                continue   # אין פריטים מהמוצר בהעברה (עדיין) — משאירים את מצב ההעברה
+            need = min(int(r.get("qty") or 1), n)
+            r["total_units"], r["received_units"] = need, min(got, need)
+            if got >= need:
+                r["status"] = "received"
+            elif short and got + short >= need:
+                r["status"] = "closed"
+            elif got:
+                r["status"] = "partial"
+            else:
+                r["status"] = "closed" if r.get("status") == "closed" else "in_transit"
+        return rows
 
 
 def _plan_decrement(cur, fb, tb, pid, qty, consumed=None) -> int:

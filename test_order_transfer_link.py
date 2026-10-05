@@ -61,6 +61,27 @@ check("יחידה אחת סיפקה בקשה אחת בלבד (כמות 3→2, ה
 check("והקישור נרשם רק להזמנה 52600",
       len(db.plan_fulfilled_for_order("52600")) == 1 and db.plan_fulfilled_for_order("52601") == [])
 
+# ── 05/10/2026 (op 16445): מצב לפי הפריט של ההזמנה, לא לפי כל ההעברה ──
+db.plan_add([{"product_id": "520212", "name": "Pixel", "from_branch": STAR, "to_branch": SITE, "qty": 1}],
+            created_by="הזמנת אתר #52700")
+db.plan_add([{"product_id": "516822", "name": "S24U", "from_branch": STAR, "to_branch": SITE, "qty": 1}],
+            created_by="הזמנת אתר #52701")
+op3 = {"id": 16445, "branchId": STAR, "receivingBranchId": SITE, "operationType": 5,
+       "employee": "x", "createDate": "2026-10-05T13:18:00",
+       "stockItems": [{"id": "520212", "name": "Pixel", "quantity": 1, "serials": []},
+                      {"id": "516822", "name": "S24U", "quantity": 1, "serials": []},
+                      {"id": "520367", "name": "Pad", "quantity": 1, "serials": []}]}
+db.upsert_transfer(op3)
+db.plan_match_transfer(STAR, SITE, [{"product_id": i["id"], "serials": [], "qty": 1} for i in op3["stockItems"]],
+                       op_id="16445")
+pix = [i for i in db.get_transfer("16445")["items"] if i["product_id"] == "520212"][0]
+db.receive_item_manual(pix["id"], "16445", "אסי")
+a = db.plan_fulfilled_for_order("52700")[0]; b = db.plan_fulfilled_for_order("52701")[0]
+check("ה-Pixel נקלט → 52700 'received' (1/1), לא 'נקלט חלקית 1/3'",
+      a["status"] == "received" and (a["received_units"], a["total_units"]) == (1, 1))
+check("ה-S24 לא נקלט → 52701 עדיין ממתין (0/1)",
+      b["status"] == "in_transit" and (b["received_units"], b["total_units"]) == (0, 1))
+
 os.unlink(_tmp)
 assert not fails, fails
 print("\n✅ הכל עבר")
