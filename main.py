@@ -14257,18 +14257,66 @@ def _invoice_capture_job():
 def admin_order_trash(oid: int, x_admin_key: Optional[str] = Header(None)):
     """העברת הזמנה לפח (לא מחיקה סופית) — מותר רק על בוטלו/נכשל/הוחזר."""
     _require_admin(x_admin_key)
+    _order_trash_one(oid)
+    return {"ok": True}
+
+
+_TRASHABLE = ("cancelled", "failed", "refunded")
+
+
+def _order_trash_one(oid: int):
+    """העברת הזמנה אחת לפח — משותף לבודד ולקבוצתי. זורק HTTPException עם סיבה.
+
+    ⛔ DELETE **בלי** force = פח (הפיך, יש "שחזור"). ⛔ אסור להשתמש ב-orders/batch
+    {"delete": [...]} — WooCommerce מריץ שם כל מחיקה עם force=true, כלומר מחיקה
+    סופית בלי פח. לכן גם הקבוצתי רץ הזמנה-הזמנה דרך כאן."""
     import requests as _rq
     base, k, s = _wc_creds()
-    cur = _rq.get(f"{base}/wp-json/wc/v3/orders/{oid}", auth=(k, s), timeout=30)
+    cur = _rq.get(f"{base}/wp-json/wc/v3/orders/{oid}",
+                  params={"_fields": "id,status"}, auth=(k, s), timeout=30)
     if not cur.ok:
         raise HTTPException(404, "הזמנה לא נמצאה")
     st = cur.json().get("status")
-    if st not in ("cancelled", "failed", "refunded"):
-        raise HTTPException(400, f"לפח אפשר להעביר רק הזמנות שבוטלו/נכשלו (הסטטוס: {st})")
+    if st == "trash":
+        return   # כבר בפח — אידמפוטנטי
+    if st not in _TRASHABLE:
+        raise HTTPException(400, f"לפח אפשר להעביר רק הזמנות שבוטלו/נכשלו/הוחזרו (הסטטוס: {ordst_he(st)})")
     r = _rq.delete(f"{base}/wp-json/wc/v3/orders/{oid}", auth=(k, s), timeout=30)  # בלי force = פח
     if not r.ok:
         raise HTTPException(502, "ההעברה לפח נכשלה")
-    return {"ok": True}
+
+
+def ordst_he(st: str) -> str:
+    return {"pending": "ממתין לתשלום", "processing": "בטיפול", "on-hold": "בהמתנה",
+            "completed": "הושלם", "cancelled": "בוטל", "refunded": "הוחזר",
+            "failed": "נכשל", "trash": "בפח"}.get(st or "", st or "?")
+
+
+class BulkTrashIn(BaseModel):
+    ids: list[int]
+
+
+@app.post("/api/admin/orders/bulk-trash")
+def admin_orders_bulk_trash(body: BulkTrashIn, x_admin_key: Optional[str] = Header(None)):
+    """העברה מרובה לפח (בחירה מרובה במסך ההזמנות). אותו כלל כמו הבודד: רק
+    בוטל/נכשל/הוחזר. הזמנה בסטטוס אחר **מדולגת** ומדווחת — לא מפילה את השאר."""
+    _require_admin(x_admin_key)
+    ids = list(dict.fromkeys(int(i) for i in (body.ids or [])))
+    if not ids:
+        raise HTTPException(400, "לא נבחרו הזמנות")
+    if len(ids) > 100:
+        raise HTTPException(400, "עד 100 הזמנות בפעולה אחת")
+    ok, skipped, failed = [], [], []
+    for oid in ids:
+        try:
+            _order_trash_one(oid)
+            ok.append(oid)
+        except HTTPException as e:
+            (skipped if e.status_code == 400 else failed).append({"id": oid, "error": str(e.detail)[:140]})
+        except Exception as e:  # noqa: BLE001
+            logger.warning("bulk trash failed for %s: %s", oid, e)
+            failed.append({"id": oid, "error": str(e)[:140]})
+    return {"ok": True, "trashed": len(ok), "skipped": skipped, "failed": failed, "ids": ok}
 
 
 @app.post("/api/admin/orders/{oid}/restore")

@@ -8864,9 +8864,35 @@ function wcoBulkBarHTML(n){
         style="min-width:150px;padding:8px 11px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:13px">${opts}</select>
       <button class="btn-primary" style="padding:8px 16px;border-radius:10px;white-space:nowrap"
         ${n?'':'disabled'} onclick="wcoBulkStatus()">עדכן סטטוס</button>
+      <span style="width:1px;height:22px;background:var(--line);flex:none"></span>
+      <button class="btn-ghost" style="padding:8px 12px;border-radius:10px;white-space:nowrap;color:#dc2626;border-color:#dc262655;display:inline-flex;align-items:center;gap:6px"
+        ${n?'':'disabled'} onclick="wcoBulkTrash()" title="רק הזמנות שבוטלו / נכשלו / הוחזרו">${ico('trash',15)} העבר לפח</button>
       <button class="btn-ghost" style="padding:8px 12px;border-radius:10px;white-space:nowrap" onclick="wcoSelMode()">בטל</button>
     </div>
   </div>`;
+}
+// 🗑 06/10/2026 (אסי): העברה מרובה לפח. אותו כלל כמו בהזמנה בודדת — רק בוטל/נכשל/הוחזר;
+// השרת מדלג על השאר ומדווח. הפח הפיך (יש שחזור), אבל עדיין דורש אישור מפורש.
+async function wcoBulkTrash(){
+  const W=S.wco;
+  const ids=Object.keys(W.sel||{}).map(Number);
+  if(!ids.length) return;
+  const rows=(W.rows||[]).filter(o=>W.sel[o.id]);
+  const notOk=rows.filter(o=>!['cancelled','failed','refunded','trash'].includes(o.status));
+  const note=notOk.length?`\n\n⚠️ ${notOk.length} מהן לא בסטטוס בוטל/נכשל/הוחזר — הן ידולגו.`:'';
+  if(!confirm(`להעביר ${ids.length} הזמנות לפח?${note}\n\nאפשר לשחזר מהפח.`)) return;
+  showLoading(`מעביר ${ids.length} הזמנות לפח…`);
+  let r=null;
+  try{
+    r=await api('/api/admin/orders/bulk-trash',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ids})},Math.max(60000,ids.length*4000));
+  }catch(e){ toast((e&&e.detail)||'העברה לפח נכשלה',false); }
+  hideLoading();
+  if(!r) return;
+  const sk=(r.skipped||[]).length, bad=(r.failed||[]).length;
+  toast(`${r.trashed} הועברו לפח`+(sk?` · ${sk} דולגו (סטטוס לא מתאים)`:'')+(bad?` · ${bad} נכשלו`:'')+(sk||bad?'':' ✓'), !bad);
+  W.sel={}; W.selMode=false; W.selLast=null;
+  renderWcOrders(); loadWcOrders();
 }
 // ── מצב בחירה ──
 function wcoSelMode(){
