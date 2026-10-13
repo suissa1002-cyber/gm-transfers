@@ -34,6 +34,7 @@ self.addEventListener('push', (e) => {
     // tag: הזמנה → פר-מספר-הזמנה; וואטסאפ → פר-שיחה (התראות שונות לא דורסות זו את זו)
     const tag = (d.kind === 'order')
       ? ('gm-' + (d.tag || 'order'))
+      : (d.kind === 'chat') ? 'gm-chat'
       : ('gm-wa-' + (d.phone || 'all'));
     return self.registration.showNotification(d.title || 'GreenOS 💬', {
       body: d.body || '',
@@ -55,7 +56,7 @@ self.addEventListener('notificationclick', (e) => {
   e.waitUntil((async () => {
     await idbSetPending({ phone: data.phone || '', url: url, at: Date.now() });
     const list = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-    const msgType = (data.kind === 'order') ? 'open-orders' : 'open-wa';
+    const msgType = (data.kind === 'order') ? 'open-orders' : (data.kind === 'chat') ? 'open-chat' : 'open-wa';
     for (const c of list) {
       if ('focus' in c) {
         // אפליקציה פתוחה: פוקוס + הודעה פנימית → נפתח היעד בלי reload (שיחה / טאב הזמנות)

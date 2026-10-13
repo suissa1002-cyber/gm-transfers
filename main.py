@@ -45,6 +45,7 @@ import contextvars as _cv
 import perms as _perms
 _CURRENT_USER = _cv.ContextVar("gm_user", default=None)
 _SESSION_TOUCH: dict = {}
+_PRESENCE: dict = {}   # user_id → זמן הבקשה האחרונה (תהליך web יחיד; אתחול = כולם "לא מחובר" לכמה שניות)
 
 
 def _current_user():
@@ -90,6 +91,7 @@ async def _user_auth_mw(request: Request, call_next):
             return JSONResponse(status_code=403, content={
                 "detail": msg, "code": "user_perm", "need": need})
     import time as _tm
+    _PRESENCE[u["id"]] = _tm.time()   # 🟢 מחובר/לא מחובר בצ'אט הצוות
     if _tm.time() - _SESSION_TOUCH.get(tok, 0) > 300:   # לא כתיבה ל-DB בכל בקשה
         _SESSION_TOUCH[tok] = _tm.time()
         await run_in_threadpool(db.session_touch, tok)
@@ -1725,6 +1727,290 @@ def admin_users_reset_pw(uid: int, body: PwResetIn, x_admin_key: Optional[str] =
 def admin_users_logout_all(uid: int, x_admin_key: Optional[str] = Header(None)):
     _require_owner(x_admin_key)
     return {"ok": True, "sessions_closed": db.sessions_delete_for_user(uid)}
+
+
+# ── 💬 צ'אט צוות פנימי (13/10/2026) ──
+# חדר אחד לכל המשתמשים. כל הודעה = מי כתב + מתי (תיעוד מלא, מחיקה רכה בלבד).
+# תיוג (@) → push למכשירים של המתויג. קבצים/תמונות ב-wa_media_blob ('chat:<uid>'),
+# מוגשים בקישור חתום כדי ש-<img> יטען בלי כותרות. דורש כניסה אישית — הסיסמה
+# המשותפת לא מזהה מי כותב.
+_CHAT_MAX_FILE = 15 * 1024 * 1024
+
+
+def _chat_user():
+    u = _current_user()
+    if u is None:
+        raise HTTPException(401, "צ'אט הצוות דורש כניסה אישית (שם משתמש וסיסמה)")
+    return u
+
+
+def _chat_out(m: dict) -> dict:
+    import wa
+    d = {k: m.get(k) for k in ("id", "user_id", "user_name", "text", "mentions", "attach_name",
+                               "attach_mime", "attach_size", "wa_phone", "reply_to", "ts",
+                               "topic_id", "system")}
+    if m.get("deleted"):
+        d.update(text="", attach_name="", attach_mime="", attach_size=0, wa_phone="", deleted=True)
+    elif m.get("attach_key"):
+        uid = m["attach_key"].split(":", 1)[-1]
+        d["attach_url"] = f"/api/chat/file/{uid}?t={wa.media_token(m['attach_key'])}"
+    return d
+
+
+_TOPIC_KINDS = {"question": "שאלה", "request": "בקשה", "task": "משימה", "update": "עדכון"}
+
+
+def _chat_users() -> list:
+    """משתמשים פעילים + נוכחות: online = בקשה ב-90 השניות האחרונות (GreenOS פתוח)."""
+    import time as _tm
+    now = _tm.time()
+    out = []
+    for x in db.users_list():
+        if not x["active"]:
+            continue
+        seen = _PRESENCE.get(x["id"])
+        out.append({"id": x["id"], "name": x["name"], "online": bool(seen and now - seen < 90),
+                    "seen_ago": int(now - seen) if seen else None})
+    return out
+
+
+@app.get("/api/chat/messages")
+def chat_messages(topic: int = 0, after: int = 0, before: int = 0):
+    """הודעות נושא (0=כללי). after → רק חדשות (סקר חי); before → היסטוריה; אחרת 60 האחרונות."""
+    u = _chat_user()
+    t = db.topic_get(topic) if topic else None
+    if topic and not t:
+        raise HTTPException(404, "הנושא לא נמצא")
+    rows = db.chat_list(after_id=after, before_id=before, limit=200 if after else 60, topic_id=topic)
+    out = {"messages": [_chat_out(m) for m in rows], "unread": db.chat_unread(u["id"]),
+           "users": _chat_users(), "me": u["id"]}
+    if t:
+        out["topic"] = t
+    return out
+
+
+@app.get("/api/chat/topics")
+def chat_topics(status: str = "open"):
+    """רשימת נושאים/טיקטים + לא-נקראו פר-נושא + תצוגה מקדימה + נוכחות משתמשים."""
+    u = _chat_user()
+    topics = db.topic_list(status)
+    last = db.topic_last_msgs([t["id"] for t in topics])
+    unread = db.chat_unread(u["id"])
+    for t in topics:
+        lm = last.get(t["id"]) or {}
+        t["last"] = "" if lm.get("deleted") else ((lm.get("user_name") or "") + ": " +
+                                                    ((lm.get("text") or lm.get("attach_name") or "")[:80])) if lm else ""
+        t["unread"] = unread["by_topic"].get(str(t["id"]), 0)
+        t["mine"] = u["id"] in t["assignees"]
+    return {"topics": topics, "unread": unread, "users": _chat_users(), "me": u["id"],
+            "kinds": _TOPIC_KINDS}
+
+
+class TopicIn(BaseModel):
+    title: str
+    kind: str = "question"
+    assignees: list = []
+    text: str = ""
+    wa_phone: str = ""
+
+
+@app.post("/api/chat/topics")
+def chat_topic_create(body: TopicIn):
+    """נושא חדש (שאלה/בקשה/משימה/עדכון) — עם הודעה ראשונה; האחראים מתויגים ומקבלים push."""
+    u = _chat_user()
+    title = (body.title or "").strip()
+    if not title:
+        raise HTTPException(400, "חסרה כותרת")
+    kind = body.kind if body.kind in _TOPIC_KINDS else "question"
+    active = {x["id"] for x in db.users_list() if x["active"]}
+    raw = [str(x) for x in (body.assignees or [])]
+    assignees = sorted(active - {u["id"]}) if "all" in raw else \
+        sorted({int(x) for x in raw if x.isdigit() and int(x) in active})
+    phone = re.sub(r"\D", "", body.wa_phone or "")[:15]
+    t = db.topic_add(title, kind, u["id"], u["name"], assignees, phone)
+    first = (body.text or "").strip()
+    who = ", ".join(x["name"] for x in db.users_list() if x["id"] in assignees)
+    db.chat_add(u["id"], u["name"], f"פתח/ה {_TOPIC_KINDS[kind]}: {title}" + (f" · אחראי/ם: {who}" if who else ""),
+                topic_id=t["id"], system=1)
+    if first:
+        db.chat_add(u["id"], u["name"], first[:4000], [a for a in assignees if a != u["id"]],
+                    topic_id=t["id"], wa_phone=phone)
+    _chat_push([a for a in assignees if a != u["id"]], f"📌 {u['name']}: {_TOPIC_KINDS[kind]} חדשה בשבילך",
+               title, t["id"])
+    return {"ok": True, "topic": db.topic_get(t["id"])}
+
+
+class TopicPatch(BaseModel):
+    status: Optional[str] = None
+    assignees: Optional[list] = None
+
+
+@app.post("/api/chat/topics/{tid}")
+def chat_topic_update(tid: int, body: TopicPatch):
+    """סגירה/פתיחה מחדש של נושא, או שינוי אחראים — נרשם כהודעת מערכת בשרשור."""
+    u = _chat_user()
+    t = db.topic_get(tid)
+    if not t:
+        raise HTTPException(404, "הנושא לא נמצא")
+    if body.status in ("open", "done") and body.status != t["status"]:
+        db.topic_update(tid, status=body.status, closed_name=u["name"])
+        db.chat_add(u["id"], u["name"], ("✅ סימן/ה כטופל" if body.status == "done" else "↺ פתח/ה מחדש"),
+                    topic_id=tid, system=1)
+        if body.status == "done" and t["created_by"] != u["id"]:
+            _chat_push([t["created_by"]], f"✅ {u['name']} סימן/ה כטופל", t["title"], tid)
+    if body.assignees is not None:
+        active = {x["id"]: x["name"] for x in db.users_list() if x["active"]}
+        new = sorted({int(x) for x in body.assignees if str(x).isdigit() and int(x) in active})
+        if new != t["assignees"]:
+            db.topic_update(tid, assignees=new)
+            db.chat_add(u["id"], u["name"], "👤 אחראי/ם: " + (", ".join(active[i] for i in new) or "אין"),
+                        topic_id=tid, system=1)
+            _chat_push([i for i in new if i not in t["assignees"] and i != u["id"]],
+                       f"📌 {u['name']} שייך/ה אליך נושא", t["title"], tid)
+    return {"ok": True, "topic": db.topic_get(tid)}
+
+
+def _chat_push(user_ids, title, body, topic_id=0):
+    if not user_ids:
+        return
+    import threading
+    import wa_push
+    threading.Thread(target=wa_push.send_to_all, daemon=True, kwargs=dict(
+        title=title, body=(body or "")[:140], url=f"/?chat=1&topic={int(topic_id or 0)}", kind="chat",
+        tag=f"chat{int(topic_id or 0)}", user_ids=list(user_ids))).start()
+
+
+@app.get("/api/chat/unread")
+def chat_unread():
+    u = _current_user()
+    if u is None:
+        return {"count": 0, "mentions": 0, "personal": False}
+    return {**db.chat_unread(u["id"]), "personal": True}
+
+
+class ChatIn(BaseModel):
+    text: str = ""
+    mentions: list = []
+    attach_key: str = ""
+    attach_name: str = ""
+    attach_mime: str = ""
+    attach_size: int = 0
+    wa_phone: str = ""
+    reply_to: Optional[int] = None
+    topic_id: int = 0
+
+
+@app.post("/api/chat/send")
+def chat_send(body: ChatIn):
+    u = _chat_user()
+    text = (body.text or "").strip()[:4000]
+    key = (body.attach_key or "").strip()
+    if key and not re.fullmatch(r"chat:[0-9a-f]{32}", key):
+        raise HTTPException(400, "קובץ לא תקין")
+    if not text and not key:
+        raise HTTPException(400, "הודעה ריקה")
+    active = {x["id"] for x in db.users_list() if x["active"]}
+    raw = [str(x) for x in (body.mentions or [])]
+    if "all" in raw:   # @כולם
+        mentions = sorted(active - {u["id"]})
+    else:
+        mentions = sorted({int(x) for x in raw if x.isdigit() and int(x) in active and int(x) != u["id"]})
+    phone = re.sub(r"\D", "", body.wa_phone or "")[:15]
+    tid = int(body.topic_id or 0)
+    t = db.topic_get(tid) if tid else None
+    if tid and not t:
+        raise HTTPException(404, "הנושא לא נמצא")
+    m = db.chat_add(u["id"], u["name"], text, mentions, key, (body.attach_name or "")[:200],
+                    (body.attach_mime or "")[:100], body.attach_size or 0, phone, body.reply_to,
+                    topic_id=tid)
+    db.chat_read_set(u["id"], m["id"], tid)   # ההודעה שלי = נקראה אצלי
+    prev = text[:140] or ("📷 תמונה" if (body.attach_mime or "").startswith("image/") else "📎 קובץ")
+    _chat_push(mentions, f"💬 {u['name']} תייג/ה אותך" + (f" · {t['title'][:40]}" if t else ""), prev, tid)
+    if t:   # תגובה בנושא → גם האחראים ופותח הנושא (שלא תויגו כבר) מקבלים התראה
+        others = {t["created_by"], *t["assignees"]} - {u["id"]} - set(mentions)
+        _chat_push(sorted(others), f"💬 {u['name']} · {t['title'][:50]}", prev, tid)
+    return {"ok": True, "message": _chat_out(m)}
+
+
+@app.post("/api/chat/upload")
+async def chat_upload(request: Request):
+    """קובץ/תמונה לצ'אט (גם הדבקה מהלוח). תמונה גדולה מוקטנת ל-2400px. מחזיר מפתח לשליחה."""
+    _chat_user()
+    form = await request.form()
+    up = form.get("file")
+    if up is None or isinstance(up, str):
+        raise HTTPException(400, "לא נבחר קובץ")
+    data = await up.read()
+    if not data:
+        raise HTTPException(400, "קובץ ריק")
+    if len(data) > _CHAT_MAX_FILE:
+        raise HTTPException(400, "קובץ גדול מדי (עד 15MB)")
+    mime = (up.content_type or "application/octet-stream")[:100]
+    name = (up.filename or "file")[:200]
+    if mime in ("image/jpeg", "image/png", "image/webp") and len(data) > 1_500_000:
+        try:
+            import io
+            from PIL import Image, ImageOps
+            im = ImageOps.exif_transpose(Image.open(io.BytesIO(data)))
+            im.thumbnail((2400, 2400))
+            buf = io.BytesIO()
+            im.convert("RGB").save(buf, "JPEG", quality=85)
+            data, mime = buf.getvalue(), "image/jpeg"
+        except Exception as e:  # noqa: BLE001
+            logger.warning("chat image resize failed: %s", e)
+    import uuid
+    key = "chat:" + uuid.uuid4().hex
+    db.wa_media_blob_set(key, mime, data)
+    return {"ok": True, "attach_key": key, "attach_name": name, "attach_mime": mime, "attach_size": len(data)}
+
+
+@app.get("/api/chat/file/{uid}")
+def chat_file(uid: str, t: str = "", dl: int = 0):
+    import hmac
+    import wa
+    key = "chat:" + uid
+    if not re.fullmatch(r"[0-9a-f]{32}", uid) or not hmac.compare_digest(t or "", wa.media_token(key)):
+        raise HTTPException(403, "קישור לא תקין")
+    got = db.wa_media_blob_get(key)
+    if not got:
+        raise HTTPException(404, "הקובץ לא נמצא")
+    mime, data = got
+    hdr = {"Cache-Control": "private, max-age=604800"}
+    if dl:
+        hdr["Content-Disposition"] = "attachment"
+    return _Resp(content=data, media_type=mime or "application/octet-stream", headers=hdr)
+
+
+class ChatReadIn(BaseModel):
+    last_id: int
+    topic_id: int = 0
+
+
+@app.post("/api/chat/read")
+def chat_read(body: ChatReadIn):
+    u = _chat_user()
+    db.chat_read_set(u["id"], body.last_id, body.topic_id)
+    return {"ok": True, "unread": db.chat_unread(u["id"])}
+
+
+@app.post("/api/chat/{mid}/delete")
+def chat_del(mid: int):
+    u = _chat_user()
+    if not db.chat_delete(mid, u["id"]):
+        raise HTTPException(403, "אפשר למחוק רק הודעה שלך")
+    return {"ok": True}
+
+
+class ChatPushBind(BaseModel):
+    endpoint: str
+
+
+@app.post("/api/chat/push-bind")
+def chat_push_bind(body: ChatPushBind):
+    """מקשר את מנוי ההתראות של המכשיר הזה למשתמש המחובר — כדי שתיוג יגיע אליו."""
+    u = _chat_user()
+    db.wa_push_sub_set_user(body.endpoint, u["id"])
+    return {"ok": True}
 
 
 @app.get("/api/branches")

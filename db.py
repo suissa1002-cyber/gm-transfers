@@ -253,6 +253,54 @@ _SCHEMA = [
     )
     """,
     "CREATE INDEX IF NOT EXISTS idx_user_sessions_user ON user_sessions(user_id)",
+    # ── 13/10/2026: צ'אט צוות פנימי — חדר אחד, תיוג (@), קבצים/תמונות, קישור לשיחת לקוח ──
+    # הבייטים של קובץ מצורף נשמרים ב-wa_media_blob תחת 'chat:<uuid>' (אותו מנגנון הגשה).
+    """
+    CREATE TABLE IF NOT EXISTS team_chat (
+        id           {pk},
+        user_id      INTEGER,
+        user_name    TEXT,
+        text         TEXT,
+        mentions     TEXT DEFAULT '[]',
+        attach_key   TEXT,
+        attach_name  TEXT,
+        attach_mime  TEXT,
+        attach_size  INTEGER,
+        wa_phone     TEXT,
+        reply_to     INTEGER,
+        ts           BIGINT,
+        created_at   TEXT,
+        deleted      INTEGER DEFAULT 0,
+        topic_id     INTEGER DEFAULT 0,
+        system       INTEGER DEFAULT 0
+    )
+    """.format(pk=_PK),
+    "CREATE INDEX IF NOT EXISTS idx_team_chat_topic ON team_chat(topic_id, id)",
+    # נושא/טיקט (מיני-Slack): שאלה / בקשה / משימה, עם אחראים וסטטוס. topic_id=0 = ערוץ "כללי".
+    """
+    CREATE TABLE IF NOT EXISTS team_topic (
+        id           {pk},
+        title        TEXT,
+        kind         TEXT DEFAULT 'question',
+        status       TEXT DEFAULT 'open',
+        created_by   INTEGER,
+        created_name TEXT,
+        assignees    TEXT DEFAULT '[]',
+        wa_phone     TEXT,
+        created_at   TEXT,
+        last_ts      BIGINT,
+        closed_name  TEXT,
+        closed_at    TEXT
+    )
+    """.format(pk=_PK),
+    """
+    CREATE TABLE IF NOT EXISTS team_chat_read (
+        user_id  INTEGER,
+        topic_id INTEGER,
+        last_id  INTEGER,
+        PRIMARY KEY (user_id, topic_id)
+    )
+    """,
     # ── 05/10/2026: בקשת העברה להזמנה שבוצעה בפועל בקופה. שורת transfer_plan נמחקת
     # ברגע ההתאמה, ואיתה הקשר להזמנה — אז נשמר כאן order↔op כדי שההזמנה תציג
     # "הועבר מ-X — ממתין לקליטה" עד שהמוצר נקלט. ──
@@ -913,6 +961,7 @@ def _migrate():
         ("wa_msg",         "err", "TEXT"),       # סיבת כשל מסירה ממטא (code · title)
         ("wa_msg",         "sent_by", "TEXT"),   # מי ענה: שם המשתמש / בוט / אוטומטי (13/10/2026)
         ("wa_msg",         "sent_kind", "TEXT"), # user|console|bot|system|scheduled
+        ("wa_push_subs",   "user_id", "INTEGER"), # מכשיר של משתמש מחובר — לפוש תיוג בצ'אט צוות
         ("shift_roster",   "week_start", "TEXT"), # תאריך ראשון של השבוע (YYYY-MM-DD) — סידור מתוארך
         ("pbx_calls",      "route", "TEXT"),       # היעד בשיחה (סיטי/מעבדה/הזמנות...) מ-1com
         ("pbx_calls",      "order_number", "TEXT"),
@@ -4281,7 +4330,7 @@ def wa_push_sub_add(endpoint: str, sub_json: str, ua: str = ""):
 def wa_push_subs() -> list:
     with _conn() as c:
         cur = c.cursor()
-        cur.execute(_q("SELECT id, endpoint, sub, ua FROM wa_push_subs"))
+        cur.execute(_q("SELECT id, endpoint, sub, ua, user_id FROM wa_push_subs"))
         return [dict(r) for r in cur.fetchall()]
 
 
@@ -5389,3 +5438,186 @@ def sessions_for_user(uid) -> list:
         cur.execute(_q("""SELECT device_token, created_at, last_seen, expires_at FROM user_sessions
                           WHERE user_id = ? ORDER BY last_seen DESC"""), (int(uid),))
         return [dict(r) for r in cur.fetchall()]
+
+
+# ── 💬 צ'אט צוות (13/10/2026) ──
+def _chat_row(r) -> dict:
+    d = dict(r)
+    try:
+        d["mentions"] = [int(x) for x in json.loads(d.get("mentions") or "[]")]
+    except Exception:  # noqa: BLE001
+        d["mentions"] = []
+    return d
+
+
+def chat_add(user_id, user_name, text, mentions=None, attach_key="", attach_name="",
+             attach_mime="", attach_size=0, wa_phone="", reply_to=None, topic_id=0, system=0) -> dict:
+    import time as _t
+    now = int(_t.time())
+    args = (int(user_id), user_name or "", text or "", json.dumps([int(x) for x in (mentions or [])]),
+            attach_key or "", attach_name or "", attach_mime or "", int(attach_size or 0),
+            wa_phone or "", int(reply_to) if reply_to else None, now, now_iso(),
+            int(topic_id or 0), int(system or 0))
+    sql = """INSERT INTO team_chat (user_id, user_name, text, mentions, attach_key, attach_name,
+                                    attach_mime, attach_size, wa_phone, reply_to, ts, created_at,
+                                    topic_id, system)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+    with _conn() as c:
+        cur = c.cursor()
+        if _USE_PG:
+            cur.execute(_q(sql + " RETURNING id"), args)
+            mid = int(cur.fetchone()["id"])
+        else:
+            cur.execute(_q(sql), args)
+            mid = int(cur.lastrowid)
+        if topic_id:
+            cur.execute(_q("UPDATE team_topic SET last_ts = ? WHERE id = ?"), (now, int(topic_id)))
+    return chat_get(mid)
+
+
+def chat_get(mid):
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM team_chat WHERE id = ?"), (int(mid),))
+        r = cur.fetchone()
+        return _chat_row(r) if r else None
+
+
+def chat_list(after_id=0, before_id=0, limit=60, topic_id=0) -> list:
+    """הודעות של נושא (0=כללי). after_id>0 → חדשות מאז (סקר חי); אחרת האחרונות, ישן→חדש."""
+    t = int(topic_id or 0)
+    with _conn() as c:
+        cur = c.cursor()
+        if after_id:
+            cur.execute(_q("SELECT * FROM team_chat WHERE topic_id = ? AND id > ? ORDER BY id ASC LIMIT ?"),
+                        (t, int(after_id), int(limit)))
+            return [_chat_row(r) for r in cur.fetchall()]
+        if before_id:
+            cur.execute(_q("SELECT * FROM team_chat WHERE topic_id = ? AND id < ? ORDER BY id DESC LIMIT ?"),
+                        (t, int(before_id), int(limit)))
+        else:
+            cur.execute(_q("SELECT * FROM team_chat WHERE topic_id = ? ORDER BY id DESC LIMIT ?"),
+                        (t, int(limit)))
+        rows = [_chat_row(r) for r in cur.fetchall()]
+        rows.reverse()
+        return rows
+
+
+def chat_delete(mid, user_id) -> int:
+    """מחיקה רכה — רק של הודעה שלך. נשאר "ההודעה נמחקה" בתיעוד."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("UPDATE team_chat SET deleted = 1 WHERE id = ? AND user_id = ? AND system = 0"),
+                    (int(mid), int(user_id)))
+        return cur.rowcount or 0
+
+
+def chat_read_set(user_id, last_id, topic_id=0):
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""INSERT INTO team_chat_read (user_id, topic_id, last_id) VALUES (?, ?, ?)
+                          ON CONFLICT(user_id, topic_id) DO UPDATE SET last_id = excluded.last_id
+                          WHERE excluded.last_id > team_chat_read.last_id"""),
+                    (int(user_id), int(topic_id or 0), int(last_id)))
+
+
+def chat_unread(user_id) -> dict:
+    """הודעות של אחרים שטרם נקראו (30 יום אחרונים), פר-נושא + כמה מתייגות אותי."""
+    import time as _t
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""SELECT m.topic_id, m.mentions FROM team_chat m
+                          LEFT JOIN team_chat_read r ON r.user_id = ? AND r.topic_id = m.topic_id
+                          WHERE m.id > COALESCE(r.last_id, 0) AND m.user_id <> ? AND m.deleted = 0
+                            AND m.ts > ?"""),
+                    (int(user_id), int(user_id), int(_t.time()) - 30 * 86400))
+        rows = [_chat_row(r) for r in cur.fetchall()]
+    by_topic: dict = {}
+    for r in rows:
+        k = str(int(r.get("topic_id") or 0))
+        by_topic[k] = by_topic.get(k, 0) + 1
+    return {"count": len(rows), "mentions": sum(1 for r in rows if int(user_id) in r["mentions"]),
+            "by_topic": by_topic}
+
+
+def _topic_row(r) -> dict:
+    d = dict(r)
+    try:
+        d["assignees"] = [int(x) for x in json.loads(d.get("assignees") or "[]")]
+    except Exception:  # noqa: BLE001
+        d["assignees"] = []
+    return d
+
+
+def topic_add(title, kind, user_id, user_name, assignees=None, wa_phone="") -> dict:
+    import time as _t
+    args = ((title or "")[:200], kind or "question", int(user_id), user_name or "",
+            json.dumps([int(x) for x in (assignees or [])]), wa_phone or "", now_iso(), int(_t.time()))
+    sql = """INSERT INTO team_topic (title, kind, created_by, created_name, assignees, wa_phone,
+                                     created_at, last_ts) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"""
+    with _conn() as c:
+        cur = c.cursor()
+        if _USE_PG:
+            cur.execute(_q(sql + " RETURNING id"), args)
+            tid = int(cur.fetchone()["id"])
+        else:
+            cur.execute(_q(sql), args)
+            tid = int(cur.lastrowid)
+    return topic_get(tid)
+
+
+def topic_get(tid):
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM team_topic WHERE id = ?"), (int(tid),))
+        r = cur.fetchone()
+        return _topic_row(r) if r else None
+
+
+def topic_list(status="open", limit=200) -> list:
+    with _conn() as c:
+        cur = c.cursor()
+        if status in ("open", "done"):
+            cur.execute(_q("SELECT * FROM team_topic WHERE status = ? ORDER BY last_ts DESC LIMIT ?"),
+                        (status, int(limit)))
+        else:
+            cur.execute(_q("SELECT * FROM team_topic ORDER BY last_ts DESC LIMIT ?"), (int(limit),))
+        return [_topic_row(r) for r in cur.fetchall()]
+
+
+def topic_update(tid, status=None, closed_name="", assignees=None, title=None):
+    sets, args = [], []
+    if status is not None:
+        sets += ["status = ?", "closed_name = ?", "closed_at = ?"]
+        args += [status, closed_name if status == "done" else "", now_iso() if status == "done" else ""]
+    if assignees is not None:
+        sets.append("assignees = ?")
+        args.append(json.dumps([int(x) for x in assignees]))
+    if title is not None:
+        sets.append("title = ?")
+        args.append(title[:200])
+    if not sets:
+        return topic_get(tid)
+    with _conn() as c:
+        c.cursor().execute(_q("UPDATE team_topic SET " + ", ".join(sets) + " WHERE id = ?"),
+                           tuple(args) + (int(tid),))
+    return topic_get(tid)
+
+
+def topic_last_msgs(topic_ids) -> dict:
+    """ההודעה האחרונה בכל נושא — לתצוגה מקדימה ברשימה."""
+    ids = [int(x) for x in topic_ids]
+    if not ids:
+        return {}
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT topic_id, user_name, text, attach_name, deleted FROM team_chat WHERE id IN "
+                       "(SELECT MAX(id) FROM team_chat WHERE topic_id IN (" + ",".join("?" * len(ids)) +
+                       ") GROUP BY topic_id)"), tuple(ids))
+        return {int(r["topic_id"]): dict(r) for r in cur.fetchall()}
+
+
+def wa_push_sub_set_user(endpoint: str, user_id):
+    with _conn() as c:
+        c.cursor().execute(_q("UPDATE wa_push_subs SET user_id = ? WHERE endpoint = ?"),
+                           (int(user_id) if user_id else None, endpoint))

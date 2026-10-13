@@ -37,7 +37,7 @@ def subscribe(sub: dict, ua: str = ""):
 
 
 def send_to_all(title: str, body: str, url: str = "/?wa=1", phone: str = "",
-                badge: int = 0, kind: str = "wa", tag: str = "") -> int:
+                badge: int = 0, kind: str = "wa", tag: str = "", user_ids=None) -> int:
     """שולח push לכל המכשירים הרשומים; מוחק מנויים מתים (404/410).
     kind: 'wa' (וואטסאפ) או 'order' (הזמנה חדשה) — קובע יעד פתיחה ו-tag בצד הלקוח."""
     if not VAPID_PRIVATE:
@@ -52,7 +52,10 @@ def send_to_all(title: str, body: str, url: str = "/?wa=1", phone: str = "",
                           "badge": int(badge or 0), "kind": kind, "tag": tag},
                          ensure_ascii=False)
     sent = 0
+    only = {int(u) for u in user_ids} if user_ids is not None else None
     for s in db.wa_push_subs():
+        if only is not None and s.get("user_id") not in only:
+            continue   # צ'אט צוות: רק למכשירים של מי שתויג
         try:
             webpush(
                 subscription_info=json.loads(s["sub"]),

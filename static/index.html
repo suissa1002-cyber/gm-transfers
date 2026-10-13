@@ -694,6 +694,73 @@
   .dr-user{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 16px;font-size:13px;color:var(--muted)}
   .dr-user b{color:var(--txt)}
   .wa-by{font-weight:600;color:var(--muted)} .wa-by.k-user{color:#16a34a} .wa-by.k-bot{color:#7c3aed}
+  /* ── 💬 צ'אט צוות ── */
+  .tc-panel{position:fixed;top:0;bottom:0;left:0;width:420px;max-width:100vw;background:var(--card);border-inline-end:1px solid var(--line);
+    box-shadow:0 0 30px rgba(0,0,0,.18);z-index:45;display:none;flex-direction:column}
+  .tc-panel.on{display:flex}
+  .tc-head{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line)}
+  .tc-head .dr-x{margin-inline-start:auto}
+  .tc-msgs{flex:1;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:2px}
+  .tc-empty{color:var(--muted);text-align:center;padding:30px 16px;font-size:14px;line-height:1.6}
+  .tc-day{text-align:center;font-size:11.5px;color:var(--muted);margin:10px 0 4px}
+  .tc-m{max-width:88%;align-self:flex-end;margin-top:8px}
+  .tc-m.mine{align-self:flex-start}
+  .tc-m.grp{margin-top:2px}
+  .tc-who{font-size:12px;color:var(--muted);margin-bottom:2px}
+  .tc-who b{color:var(--txt)} .tc-for{color:#2563eb}
+  .tc-b{background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:7px 10px;font-size:14px;line-height:1.5;word-break:break-word}
+  .tc-m.mine .tc-b{background:rgba(31,191,107,.12);border-color:rgba(31,191,107,.3)}
+  .tc-m.forme .tc-b{border-color:#2563eb;box-shadow:0 0 0 1px #2563eb inset}
+  .tc-m.del .tc-b{color:var(--muted);font-size:12.5px;background:transparent}
+  .tc-at{color:#2563eb;font-weight:600}
+  .tc-q{border-inline-start:3px solid var(--muted);padding:2px 8px;margin-bottom:5px;font-size:12.5px;color:var(--muted)}
+  .tc-img{display:block;max-width:100%;max-height:260px;border-radius:8px;margin-bottom:4px;cursor:zoom-in}
+  .tc-file,.tc-wa{display:inline-block;margin:3px 0;padding:4px 9px;border-radius:8px;border:1px solid var(--line);font-size:13px;text-decoration:none;color:var(--txt)}
+  .tc-wa{color:#16a34a;border-color:rgba(22,163,74,.4)}
+  .tc-acts{font-size:11.5px;opacity:0;transition:opacity .15s;padding:1px 4px}
+  .tc-acts a{color:var(--muted)} .tc-m:hover .tc-acts{opacity:1}
+  .tc-comp{border-top:1px solid var(--line);padding:8px 10px;position:relative}
+  .tc-pre{font-size:12.5px;color:var(--muted);background:var(--card2);border-radius:8px;padding:4px 8px;margin-bottom:6px}
+  .tc-pre a{color:var(--muted);text-decoration:none;margin-inline-start:6px}
+  .tc-row{display:flex;gap:6px;align-items:flex-end}
+  .tc-row textarea{flex:1;min-width:0;resize:none;border:1px solid var(--line);border-radius:10px;padding:8px 10px;font:inherit;font-size:14px;
+    background:var(--card2);color:var(--txt);max-height:140px}
+  .tc-clip{cursor:pointer;font-size:19px;padding:6px 4px}
+  .tc-send{padding:8px 14px;border-radius:10px}
+  .tc-atpop{position:absolute;bottom:100%;inset-inline-start:40px;background:var(--card);border:1px solid var(--line);border-radius:10px;
+    box-shadow:0 6px 20px rgba(0,0,0,.15);flex-direction:column;min-width:140px;overflow:hidden}
+  .tc-atpop a{padding:7px 12px;text-decoration:none;color:var(--txt);font-size:14px} .tc-atpop a:hover,.tc-atpop a:first-child{background:var(--card2)}
+  .tc-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#cbd5e1;margin-inline-end:5px;vertical-align:1px}
+  .tc-dot.on{background:#22c55e;box-shadow:0 0 0 2px rgba(34,197,94,.2)}
+  .tc-people{display:flex;flex-wrap:wrap;gap:6px 12px;padding:8px 14px;border-bottom:1px solid var(--line);font-size:12.5px}
+  .tc-bar{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 14px}
+  .tc-bar .btn-primary{padding:7px 12px;border-radius:10px;font-size:13.5px}
+  .tc-seg{display:flex;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+  .tc-seg a{padding:5px 10px;font-size:12.5px;text-decoration:none;color:var(--muted)} .tc-seg a.on{background:var(--card2);color:var(--txt);font-weight:600}
+  .tc-list{flex:1;overflow-y:auto}
+  .tc-trow{padding:10px 14px;border-bottom:1px solid var(--line);cursor:pointer}
+  .tc-trow:hover{background:var(--card2)} .tc-trow.mine{border-inline-start:3px solid #2563eb} .tc-trow.unr .tc-tt span:first-child{font-weight:700}
+  .tc-tt{display:flex;justify-content:space-between;gap:8px;font-size:14px}
+  .tc-ub{background:#dc2626;color:#fff;border-radius:99px;font-size:11px;padding:0 7px;line-height:18px;height:18px}
+  .tc-tm{font-size:12px;color:var(--muted);margin-top:2px}
+  .tc-tl{font-size:12.5px;color:var(--muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .tc-back{font-size:20px;text-decoration:none;color:var(--txt);padding:0 4px}
+  .tc-ttl{flex:1;min-width:0} .tc-ttl b{display:block;font-size:14.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tc-ttl small{display:block;color:var(--muted);font-size:11.5px}
+  .tc-st{padding:5px 9px;border-radius:9px;font-size:12.5px;cursor:pointer;white-space:nowrap} .tc-st.go{color:#16a34a;border-color:rgba(22,163,74,.5)}
+  .tc-sys{align-self:center;font-size:12px;color:var(--muted);background:var(--card2);border-radius:99px;padding:3px 12px;margin:8px 0;text-align:center}
+  .tc-form{padding:14px;display:flex;flex-direction:column;gap:10px;overflow-y:auto}
+  .tc-form input:not([type]),.tc-form textarea{border:1px solid var(--line);border-radius:10px;padding:9px 11px;font:inherit;font-size:14px;background:var(--card2);color:var(--txt)}
+  .tc-kinds{display:flex;flex-wrap:wrap;gap:6px}
+  .tc-kinds label{cursor:pointer} .tc-kinds input{display:none}
+  .tc-kinds span{display:inline-block;padding:5px 11px;border:1px solid var(--line);border-radius:99px;font-size:13px}
+  .tc-kinds input:checked+span{background:var(--blue);color:#fff;border-color:var(--blue)}
+  .tc-lbl{font-size:13px;font-weight:600;color:var(--muted)}
+  .tc-assg{display:flex;flex-wrap:wrap;gap:6px} .tc-assg label{cursor:pointer} .tc-assg input{display:none}
+  .tc-assg label>span{display:inline-block;padding:5px 12px;border:1px solid var(--line);border-radius:99px;font-size:13.5px}
+  .tc-assg input:checked+span .tc-dot{box-shadow:0 0 0 2px #fff}
+  .tc-assg input:checked+span{background:#2563eb;color:#fff;border-color:#2563eb}
+  @media (max-width:700px){ .tc-panel{width:100vw} .tc-acts{opacity:1} }
   /* ── Ops Hub: תפריט בורגר + הטמעת אפליקציות ── */
   .burger{background:transparent;border:1px solid var(--line);color:var(--txt);font-size:19px;cursor:pointer;
           padding:6px 12px;border-radius:10px;line-height:1}
@@ -1301,6 +1368,7 @@
     <div class="brand">Green<span class="os">OS</span></div>
   </div>
   <div class="right" id="hdr" style="display:none">
+    <button class="btn-ghost" id="teamBtn" style="display:none;position:relative;align-items:center;gap:6px" onclick="tcToggle()" title="צ'אט צוות פנימי">👥<span class="hlbl"> צוות</span><span id="teamBadge" class="wa-badge" style="display:none"></span></button>
     <button class="btn-ghost" id="waBtn" style="display:none;position:relative;align-items:center;gap:6px" onclick="openWaTab()"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px"><path d="M21 11.5a8.38 8.38 0 0 1-8.38 8.38 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 1 1 16.1-3.8z"/></svg><span class="hlbl"> וואטסאפ</span><span id="waBadge" class="wa-badge" style="display:none"></span></button>
     <button class="btn-ghost" id="ordersBtn" style="display:none;position:relative;align-items:center;gap:6px" onclick="openOrdersTab()" title="הזמנות"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg><span class="hlbl"> הזמנות</span><span class="gm-obadge wa-badge" style="display:none"></span></button>
     <button class="btn-ghost" id="updBtn" style="display:none;position:relative;align-items:center;gap:6px" onclick="window.open('/updates','_blank')" title="ניהול עדכונים לסניפים"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span class="hlbl"> עדכונים</span></button>
@@ -1679,6 +1747,7 @@ function userLogout(silent){
   const k=S.adminKey;
   if(k&&String(k).startsWith('u:')) fetchT('/api/auth/logout',{method:'POST',headers:authH({})},8000).catch(()=>{});
   S.adminKey=null; S.user=null; localStorage.removeItem('tr_admin_key');
+  if(TC.open) tcToggle(false); TC.msgs=[]; TC.lastId=0; tcBadge({count:0,mentions:0});
   if(!silent){ toggleDrawer(false); S.view='board'; S.adminData=null; S.homeData=null; render(); }
 }
 async function userRefresh(){
@@ -1711,7 +1780,7 @@ function loginModal(done,sub){
       const j=await r.json().catch(()=>({}));
       if(!r.ok){ er.textContent=j.detail||'הכניסה נכשלה'; p.select(); return; }
       S.adminKey='u:'+j.token; S.user=j.user; localStorage.setItem('tr_admin_key',S.adminKey);
-      closeModal(); toast('שלום '+(j.user.name||''),true); if(done) done();
+      closeModal(); toast('שלום '+(j.user.name||''),true); tcPushBind(); tcPollUnread(); if(done) done();
     }catch(e){ er.textContent='אין חיבור לשרת — נסה שוב'; }
     finally{ const b=document.getElementById('lgOk'); if(b) b.disabled=false; }
   };
@@ -1866,6 +1935,288 @@ async function userToggleActive(uid){
 async function userLogoutAll(uid){
   try{ await api('/api/admin/users/'+uid+'/logout-all',{method:'POST'}); toast('נותק מכל המכשירים',true); loadUsers(); }
   catch(e){ toast(e.detail||'הפעולה נכשלה',false); }
+}
+
+// ── 💬 צ'אט צוות פנימי — מיני-Slack (13/10/2026) ──
+// ערוץ "כללי" + נושאים/טיקטים (שאלה/בקשה/משימה/עדכון) עם אחראים וסטטוס פתוח/טופל.
+// נוכחות: 🟢 מחובר (GreenOS פתוח, 90ש) / ⚪ לא מחובר. סקר כל 3ש כשהחלון פתוח.
+// הדבקת צילום מסך (Ctrl+V) / גרירה / 📎. @ → תיוג (push למתויג).
+const TC={open:false, view:'home', topic:0, topicObj:null, status:'open', msgs:[], users:[], me:null,
+          lastId:0, timer:null, att:null, reply:null, wa:'', topics:[], kinds:{},
+          unread:{count:0,mentions:0,by_topic:{}}, seenMention:0, busy:false};
+const TC_KIND_IC={question:'❓',request:'🙏',task:'✅',update:'📣'};
+function tcPersonal(){ return !!S.user; }
+function tcToggle(open){
+  TC.open=(open===undefined)?!TC.open:!!open;
+  let p=document.getElementById('tcPanel');
+  if(!TC.open){ if(p) p.classList.remove('on'); clearInterval(TC.timer); TC.timer=null; return; }
+  if(!p){ p=document.createElement('aside'); p.id='tcPanel'; p.className='tc-panel'; document.body.appendChild(p);
+    p.ondragover=e=>{ e.preventDefault(); };
+    p.ondrop=e=>{ e.preventDefault(); const f=e.dataTransfer.files[0]; if(f&&TC.view==='thread') tcUpload(f); }; }
+  p.classList.add('on');
+  if(!tcPersonal()){
+    p.innerHTML=`<div class="tc-head"><b>💬 צוות</b><button class="dr-x" onclick="tcToggle(false)">✕</button></div>
+      <div class="tc-empty">צ'אט הצוות מזהה מי כותב כל הודעה — לכן הוא דורש כניסה אישית (שם משתמש וסיסמה), לא את הסיסמה המשותפת.
+      <br><br><button class="btn-primary" onclick="tcToggle(false);userLogout(true);loginModal(()=>{render();tcToggle(true);})">כניסה אישית</button></div>`;
+    return;
+  }
+  if(TC.view==='thread') tcOpenTopic(TC.topic); else if(TC.view==='new') tcNewTopic(); else tcHome();
+  clearInterval(TC.timer); TC.timer=setInterval(()=>{ if(TC.view==='thread') tcLoad(false); else if(TC.view==='home') tcLoadTopics(); },3000);
+}
+function tcDot(u){ return `<span class="tc-dot ${u&&u.online?'on':''}" title="${u&&u.online?'מחובר':'לא מחובר'+(u&&u.seen_ago!=null?' · נראה לפני '+tcAgo(u.seen_ago):'')}"></span>`; }
+function tcAgo(sec){ if(sec<3600) return Math.max(1,Math.round(sec/60))+' דק׳'; if(sec<86400) return Math.round(sec/3600)+' שע׳'; return Math.round(sec/86400)+' ימים'; }
+function tcPeople(){
+  return `<div class="tc-people">${TC.users.map(u=>`<span class="tc-person">${tcDot(u)}${escW(u.name)}${u.id===TC.me?' (אני)':''}</span>`).join('')}</div>`;
+}
+// ── מסך הבית: נוכחות + כללי + נושאים ──
+function tcHome(){ TC.view='home'; TC.topic=0; tcPaintHome(); tcLoadTopics(); }
+async function tcLoadTopics(){
+  if(TC.busy) return; TC.busy=true;
+  try{ const r=await api('/api/chat/topics?status='+TC.status,{},15000);
+    TC.topics=r.topics||[]; TC.users=r.users||[]; TC.me=r.me; TC.kinds=r.kinds||{}; tcBadge(r.unread);
+    if(TC.view==='home') tcPaintHome(); }
+  catch(e){ const b=document.getElementById('tcList'); if(b&&!TC.topics.length) b.innerHTML=`<div class="tc-empty">${escW(e.detail||'הטעינה נכשלה')}</div>`; }
+  finally{ TC.busy=false; }
+}
+function tcPaintHome(){
+  const p=document.getElementById('tcPanel'); if(!p||TC.view!=='home') return;
+  const ub=TC.unread.by_topic||{}, gen=ub['0']||0;
+  const name=id=>(TC.users.find(u=>u.id===id)||{}).name||'';
+  const rows=TC.topics.map(t=>`<div class="tc-trow ${t.mine?'mine':''} ${t.unread?'unr':''}" onclick="tcOpenTopic(${t.id})">
+      <div class="tc-tt"><span>${TC_KIND_IC[t.kind]||'•'} ${escW(t.title)}</span>${t.unread?`<span class="tc-ub">${t.unread}</span>`:''}</div>
+      <div class="tc-tm">${escW(TC.kinds[t.kind]||'')} · ${escW(t.created_name)}${t.assignees.length?' ← '+t.assignees.map(id=>escW(name(id))).join(', '):''}${t.status==='done'?' · ✅ טופל ע״י '+escW(t.closed_name||''):''}</div>
+      ${t.last?`<div class="tc-tl">${escW(t.last)}</div>`:''}
+    </div>`).join('');
+  p.innerHTML=`<div class="tc-head"><b>💬 צוות</b><span class="muted" style="font-size:12px">${escW(S.user.name)}</span>
+      <button class="dr-x" onclick="tcToggle(false)">✕</button></div>
+    ${tcPeople()}
+    <div class="tc-bar"><button class="btn-primary" onclick="TC.wa='';tcNewTopic()">+ נושא חדש</button>
+      <div class="tc-seg"><a href="#" class="${TC.status==='open'?'on':''}" onclick="TC.status='open';tcLoadTopics();return false">פתוחים</a><a href="#" class="${TC.status==='done'?'on':''}" onclick="TC.status='done';tcLoadTopics();return false">טופלו</a></div></div>
+    <div class="tc-list" id="tcList">
+      <div class="tc-trow gen ${gen?'unr':''}" onclick="tcOpenTopic(0)"><div class="tc-tt"><span># כללי</span>${gen?`<span class="tc-ub">${gen}</span>`:''}</div>
+        <div class="tc-tm">שיחה חופשית לכל הצוות</div></div>
+      ${rows||`<div class="tc-empty" style="padding:18px">${TC.status==='open'?'אין נושאים פתוחים 🎉':'אין עדיין נושאים שטופלו'}</div>`}
+    </div>`;
+}
+// ── נושא חדש ──
+function tcNewTopic(){
+  TC.view='new';
+  const p=document.getElementById('tcPanel'); if(!p) return;
+  const kinds=Object.keys(TC.kinds).length?TC.kinds:{question:'שאלה',request:'בקשה',task:'משימה',update:'עדכון'};
+  p.innerHTML=`<div class="tc-head"><a href="#" class="tc-back" onclick="tcHome();return false">→</a><b>נושא חדש</b>
+      <button class="dr-x" onclick="tcToggle(false)">✕</button></div>
+    <div class="tc-form">
+      <div class="tc-kinds">${Object.entries(kinds).map(([k,l],i)=>`<label><input type="radio" name="tcKind" value="${k}" ${i===0?'checked':''}><span>${TC_KIND_IC[k]||''} ${escW(l)}</span></label>`).join('')}</div>
+      <input id="tcTitle" placeholder="כותרת קצרה (למשל: להזמין מדבקות למדפסת)" maxlength="200" value="${TC.wa?'שיחה עם '+escW(tcPhoneFmt(TC.wa)):''}">
+      <div class="tc-lbl">למי זה מיועד?</div>
+      <div class="tc-assg">${TC.users.filter(u=>u.id!==TC.me).map(u=>`<label><input type="checkbox" value="${u.id}"><span>${tcDot(u)}${escW(u.name)}</span></label>`).join('')||'<span class="muted">אין עדיין משתמשים נוספים</span>'}</div>
+      <textarea id="tcFirst" rows="4" placeholder="פרטים (אופציונלי)"></textarea>
+      ${TC.wa?`<div class="tc-pre">💬 מקושר לשיחת וואטסאפ עם ${escW(tcPhoneFmt(TC.wa))} <a href="#" onclick="TC.wa='';tcNewTopic();return false">✕</a></div>`:''}
+      <div class="err" id="tcErr" style="color:var(--red);font-size:13px;min-height:16px"></div>
+      <button class="btn-primary" style="width:100%" onclick="tcCreateTopic()">פתיחת נושא</button>
+    </div>`;
+  document.getElementById('tcTitle').focus();
+}
+async function tcCreateTopic(){
+  const title=document.getElementById('tcTitle').value.trim();
+  if(!title){ document.getElementById('tcErr').textContent='חסרה כותרת'; return; }
+  const body={title, kind:(document.querySelector('input[name=tcKind]:checked')||{}).value||'question',
+    assignees:[...document.querySelectorAll('.tc-assg input:checked')].map(x=>Number(x.value)),
+    text:document.getElementById('tcFirst').value, wa_phone:TC.wa||''};
+  try{ const r=await api('/api/chat/topics',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    TC.wa=''; TC.status='open'; tcOpenTopic(r.topic.id); }
+  catch(e){ document.getElementById('tcErr').textContent=e.detail||'הפתיחה נכשלה'; }
+}
+// ── שרשור (כללי או נושא) ──
+function tcOpenTopic(id){
+  TC.view='thread'; TC.topic=Number(id)||0; TC.msgs=[]; TC.lastId=0; TC.reply=null; TC.att=null;
+  TC.topicObj=TC.topics.find(t=>t.id===TC.topic)||null;
+  const p=document.getElementById('tcPanel'); if(!p) return;
+  p.innerHTML=`<div class="tc-head" id="tcTHead"></div><div class="tc-msgs" id="tcMsgs"><div class="tc-empty">טוען…</div></div>
+    <div class="tc-comp" id="tcComp"></div>`;
+  tcPaintTHead(); tcCompose(); tcLoad(true);
+}
+function tcPaintTHead(){
+  const h=document.getElementById('tcTHead'); if(!h) return;
+  const t=TC.topicObj;
+  const name=id=>(TC.users.find(u=>u.id===id)||{}).name||'';
+  h.innerHTML=`<a href="#" class="tc-back" onclick="tcHome();return false" title="חזרה לרשימה">→</a>
+    <div class="tc-ttl">${t?`<b>${TC_KIND_IC[t.kind]||''} ${escW(t.title)}</b>
+      <small>${escW(TC.kinds[t.kind]||'')} · נפתח ע״י ${escW(t.created_name)}${t.assignees.length?' · אחראי: '+t.assignees.map(id=>escW(name(id))).join(', '):''}${t.wa_phone?` · <a href="#" onclick="tcOpenWa('${escW(t.wa_phone)}');return false">💬 ${escW(tcPhoneFmt(t.wa_phone))}</a>`:''}</small>`
+      :`<b># כללי</b><small>${TC.users.filter(u=>u.online).length} מחוברים עכשיו</small>`}</div>
+    ${t?`<button class="btn-ghost tc-st ${t.status==='done'?'':'go'}" onclick="tcSetStatus('${t.status==='done'?'open':'done'}')">${t.status==='done'?'↺ פתח מחדש':'✅ טופל'}</button>`:''}
+    <button class="dr-x" onclick="tcToggle(false)">✕</button>`;
+}
+async function tcSetStatus(st){
+  try{ const r=await api('/api/chat/topics/'+TC.topic,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:st})});
+    TC.topicObj=r.topic; tcPaintTHead(); tcLoad(false); toast(st==='done'?'סומן כטופל ✅':'נפתח מחדש',true); }
+  catch(e){ toast(e.detail||'הפעולה נכשלה',false); }
+}
+async function tcLoad(first){
+  if(TC.busy&&!first) return; TC.busy=true;   // פתיחת שרשור לא מחכה לסקר הרשימה שבאוויר
+  const topic=TC.topic;
+  try{
+    const r=await api('/api/chat/messages?topic='+topic+(first||!TC.lastId?'':'&after='+TC.lastId),{},15000);
+    if(TC.view!=='thread'||TC.topic!==topic) return;
+    TC.users=r.users||TC.users; TC.me=r.me;
+    if(r.topic){ const ch=JSON.stringify(r.topic)!==JSON.stringify(TC.topicObj); TC.topicObj=r.topic; if(ch) tcPaintTHead(); }
+    const add=r.messages||[];
+    if(first||add.length){
+      const box=document.getElementById('tcMsgs'); const near=!box||(box.scrollHeight-box.scrollTop-box.clientHeight)<150;
+      TC.msgs=first?add:TC.msgs.concat(add);
+      if(TC.msgs.length) TC.lastId=TC.msgs[TC.msgs.length-1].id;
+      tcPaint(near||first);
+      if(document.visibilityState==='visible'&&TC.lastId) api('/api/chat/read',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({last_id:TC.lastId,topic_id:topic})}).then(x=>tcBadge(x.unread)).catch(()=>{});
+    }
+  }catch(e){ if(first){ const b=document.getElementById('tcMsgs'); if(b) b.innerHTML=`<div class="tc-empty">${escW(e.detail||'הטעינה נכשלה')}</div>`; } }
+  finally{ TC.busy=false; }
+}
+function tcName(id){ const u=TC.users.find(x=>x.id===id); return u?u.name:''; }
+function tcText(t){
+  let h=escW(t||'');
+  h=h.replace(/(https?:\/\/[^\s<]+)/g,'<a href="$1" target="_blank" rel="noopener">$1</a>');
+  TC.users.concat([{name:'כולם'}]).forEach(u=>{ if(!u.name) return;
+    h=h.split('@'+escW(u.name)).join(`<span class="tc-at">@${escW(u.name)}</span>`); });
+  return h.replace(/\n/g,'<br>');
+}
+function tcPhoneFmt(p){ p=String(p||''); return p.startsWith('972')?'0'+p.slice(3):p; }
+function tcMsgHTML(m,prev){
+  const mine=m.user_id===TC.me, forMe=(m.mentions||[]).includes(TC.me);
+  const d=new Date(m.ts*1000);
+  const newDay=!prev||new Date(prev.ts*1000).toDateString()!==d.toDateString();
+  const time=d.toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'});
+  const day=newDay?`<div class="tc-day">${d.toLocaleDateString('he-IL',{weekday:'long',day:'2-digit',month:'2-digit'})}</div>`:'';
+  if(m.system) return day+`<div class="tc-sys"><b>${escW(m.user_name)}</b> ${escW(m.text)} · ${time}</div>`;
+  const grouped=prev&&!prev.system&&!newDay&&prev.user_id===m.user_id&&(m.ts-prev.ts)<300&&!m.reply_to;
+  if(m.deleted) return day+`<div class="tc-m ${mine?'mine':''} del"><div class="tc-b"><i>ההודעה נמחקה</i> · ${escW(m.user_name)} · ${time}</div></div>`;
+  const rp=m.reply_to?TC.msgs.find(x=>x.id===m.reply_to):null;
+  const quote=m.reply_to?`<div class="tc-q">${rp?'<b>'+escW(rp.user_name)+'</b> '+escW((rp.text||rp.attach_name||'').slice(0,90)):'הודעה קודמת'}</div>`:'';
+  let att='';
+  if(m.attach_url){
+    if(String(m.attach_mime||'').startsWith('image/'))
+      att=`<img class="tc-img" src="${escW(m.attach_url)}" loading="lazy" onclick="waLightbox('${escW(m.attach_url)}')" onload="tcScroll()">`;
+    else att=`<a class="tc-file" href="${escW(m.attach_url)}&dl=1" target="_blank">📎 ${escW(m.attach_name||'קובץ')} <small>${m.attach_size?Math.ceil(m.attach_size/1024)+'KB':''}</small></a>`;
+  }
+  const wa=m.wa_phone?`<a class="tc-wa" href="#" onclick="tcOpenWa('${escW(m.wa_phone)}');return false">💬 שיחה עם ${escW(tcPhoneFmt(m.wa_phone))}</a>`:'';
+  const tags=(m.mentions||[]).length?`<span class="tc-for">← ${(m.mentions||[]).map(id=>escW(tcName(id)||'?')).join(', ')}</span>`:'';
+  const au=TC.users.find(u=>u.id===m.user_id);
+  return day+`<div class="tc-m ${mine?'mine':''} ${forMe?'forme':''} ${grouped?'grp':''}" data-id="${m.id}">
+    ${grouped?'':`<div class="tc-who">${tcDot(au)}<b>${escW(m.user_name)}</b> <span>${time}</span> ${tags}</div>`}
+    <div class="tc-b">${quote}${att}${tcText(m.text)}${wa}</div>
+    <div class="tc-acts"><a href="#" onclick="tcReply(${m.id});return false">השב</a>${mine?` · <a href="#" onclick="tcDel(${m.id});return false">מחק</a>`:''}</div>
+  </div>`;
+}
+function tcPaint(toBottom){
+  const box=document.getElementById('tcMsgs'); if(!box) return;
+  const top=box.scrollTop;
+  box.innerHTML=TC.msgs.length?TC.msgs.map((m,i)=>tcMsgHTML(m,TC.msgs[i-1])).join('')
+    :`<div class="tc-empty">עוד אין הודעות. הקלידו @ כדי לתייג את מי שההודעה מיועדת לו.</div>`;
+  box.scrollTop=toBottom?box.scrollHeight:top;
+}
+function tcScroll(){ const b=document.getElementById('tcMsgs'); if(b&&(b.scrollHeight-b.scrollTop-b.clientHeight)<400) b.scrollTop=b.scrollHeight; }
+function tcCompose(){
+  const c=document.getElementById('tcComp'); if(!c) return;
+  const keep=document.getElementById('tcIn'); const v=keep?keep.value:'';
+  const rp=TC.reply?TC.msgs.find(x=>x.id===TC.reply):null;
+  c.innerHTML=`
+    ${rp?`<div class="tc-pre">↩ משיב ל<b>${escW(rp.user_name)}</b>: ${escW((rp.text||rp.attach_name||'').slice(0,60))} <a href="#" onclick="TC.reply=null;tcCompose();return false">✕</a></div>`:''}
+    ${TC.att?`<div class="tc-pre">${TC.att.uploading?'⏳ מעלה '+escW(TC.att.attach_name)+'…':(String(TC.att.attach_mime).startsWith('image/')?'📷 ':'📎 ')+escW(TC.att.attach_name)} <a href="#" onclick="TC.att=null;tcCompose();return false">✕</a></div>`:''}
+    <div class="tc-row">
+      <label class="tc-clip" title="צרף קובץ או תמונה">📎<input type="file" style="display:none" onchange="if(this.files[0])tcUpload(this.files[0])"></label>
+      <textarea id="tcIn" rows="1" placeholder="הודעה… (@ לתיוג, Ctrl+V להדבקת צילום מסך)"></textarea>
+      <button class="btn-primary tc-send" onclick="tcSend()">שלח</button>
+    </div>
+    <div class="tc-atpop" id="tcAt" style="display:none"></div>`;
+  const ta=document.getElementById('tcIn'); ta.value=v;
+  ta.addEventListener('keydown',e=>{
+    const pop=document.getElementById('tcAt');
+    if(pop.style.display!=='none'&&(e.key==='Enter'||e.key==='Tab')){ const f=pop.querySelector('a'); if(f){ e.preventDefault(); f.click(); return; } }
+    if(e.key==='Escape') pop.style.display='none';
+    if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); tcSend(); }
+  });
+  ta.addEventListener('input',()=>{ ta.style.height='auto'; ta.style.height=Math.min(ta.scrollHeight,140)+'px'; tcAtSuggest(); });
+  ta.addEventListener('paste',e=>{
+    const f=[...((e.clipboardData||{}).files||[])][0];
+    if(f){ e.preventDefault(); tcUpload(f.name&&f.name!=='image.png'?f:new File([f],'צילום מסך.png',{type:f.type})); }
+  });
+  if(!IS_MOBILE) ta.focus();
+}
+function tcAtSuggest(){
+  const ta=document.getElementById('tcIn'), pop=document.getElementById('tcAt'); if(!ta||!pop) return;
+  const m=ta.value.slice(0,ta.selectionStart).match(/@([^\s@]*)$/);
+  if(!m){ pop.style.display='none'; return; }
+  const opts=TC.users.filter(u=>u.id!==TC.me).concat([{id:'all',name:'כולם'}]).filter(u=>u.name.includes(m[1]));
+  if(!opts.length){ pop.style.display='none'; return; }
+  pop.innerHTML=opts.map(u=>`<a href="#" onclick="tcAtPick('${escW(u.name)}');return false">${u.id==='all'?'':tcDot(u)}@${escW(u.name)}</a>`).join('');
+  pop.style.display='flex';
+}
+function tcAtPick(name){
+  const ta=document.getElementById('tcIn'); const pos=ta.selectionStart;
+  const before=ta.value.slice(0,pos).replace(/@([^\s@]*)$/,'@'+name+' ');
+  ta.value=before+ta.value.slice(pos); ta.focus(); ta.selectionStart=ta.selectionEnd=before.length;
+  document.getElementById('tcAt').style.display='none';
+}
+function tcMentions(text){
+  const ids=[]; if(/@כולם(\s|$)/.test(text)) ids.push('all');
+  TC.users.forEach(u=>{ if(u.id!==TC.me&&text.includes('@'+u.name)) ids.push(u.id); });
+  return ids;
+}
+async function tcUpload(file){
+  if(file.size>15*1024*1024){ toast('קובץ גדול מדי (עד 15MB)',false); return; }
+  TC.att={uploading:true, attach_name:file.name||'קובץ'}; tcCompose();
+  const fd=new FormData(); fd.append('file',file,file.name||'file');
+  try{
+    const r=await fetchT('/api/chat/upload',{method:'POST',headers:authH({}),body:fd},90000);
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(j.detail||'ההעלאה נכשלה');
+    TC.att=j; tcCompose();
+  }catch(e){ TC.att=null; tcCompose(); toast(e.message||'ההעלאה נכשלה',false); }
+}
+async function tcSend(){
+  const ta=document.getElementById('tcIn'); const text=(ta&&ta.value||'').trim();
+  if(TC.att&&TC.att.uploading){ toast('הקובץ עדיין עולה…',false); return; }
+  if(!text&&!TC.att) return;
+  const body={text, mentions:tcMentions(text), reply_to:TC.reply||null, topic_id:TC.topic};
+  if(TC.att) Object.assign(body,{attach_key:TC.att.attach_key,attach_name:TC.att.attach_name,attach_mime:TC.att.attach_mime,attach_size:TC.att.attach_size});
+  try{
+    await api('/api/chat/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    ta.value=''; TC.att=null; TC.reply=null; tcCompose(); TC.busy=false; await tcLoad(false);
+    const b=document.getElementById('tcMsgs'); if(b) b.scrollTop=b.scrollHeight;
+  }catch(e){ toast(e.detail||'השליחה נכשלה',false); }
+}
+function tcReply(id){ TC.reply=id; tcCompose(); }
+async function tcDel(id){
+  if(!confirm('למחוק את ההודעה? בתיעוד יישאר "ההודעה נמחקה".')) return;
+  try{ await api('/api/chat/'+id+'/delete',{method:'POST'}); const m=TC.msgs.find(x=>x.id===id); if(m) m.deleted=true; tcPaint(false); }
+  catch(e){ toast(e.detail||'המחיקה נכשלה',false); }
+}
+function tcOpenWa(phone){
+  if(!can('whatsapp')){ toast('אין לך הרשאה לוואטסאפ',false); return; }
+  if(window.innerWidth<900) tcToggle(false);
+  openWaTab(); waConvWhenReady(phone);
+}
+// מתוך שיחת וואטסאפ: 👥 → נושא חדש מקושר לשיחה (אופציונלי — רוב הנושאים פנימיים לגמרי)
+function tcAskAbout(phone){ TC.wa=String(phone||''); TC.view='new'; tcToggle(true); }
+function tcBadge(u){
+  if(u) TC.unread=Object.assign({by_topic:{}},u);
+  const b=document.getElementById('teamBadge'); if(!b) return;
+  const n=TC.unread.count||0;
+  b.style.display=n>0?'':'none'; b.textContent=n>99?'99+':n;
+  b.style.background=(TC.unread.mentions||0)>0?'#dc2626':'#64748b';
+}
+async function tcPollUnread(){
+  if(!S.user||TC.open) return;
+  try{ const u=await api('/api/chat/unread',{},10000); tcBadge(u);
+    if((u.mentions||0)>TC.seenMention) toast('💬 תייגו אותך בצ׳אט הצוות',true);
+    TC.seenMention=u.mentions||0;
+  }catch(e){}
+}
+// מנוי ההתראות של המכשיר → משויך למשתמש המחובר (כדי שתיוג/נושא יגיעו לטלפון שלו)
+async function tcPushBind(){
+  if(!S.user||!('serviceWorker' in navigator)) return;
+  try{ const reg=await navigator.serviceWorker.getRegistration(); const sub=reg&&await reg.pushManager.getSubscription();
+    if(sub) await api('/api/chat/push-bind',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({endpoint:sub.endpoint})});
+  }catch(e){}
 }
 
 // ── ניהול פוקוס לשדה הסריקה (סורק = מקלדת) ──
@@ -3029,6 +3380,7 @@ function render(){
   document.getElementById('adminBtn').style.display =
     (Number(S.branchId)===S.cfg.admin_branch_id)?'inline-flex':'none';
   document.getElementById('waBtn').style.display = (isAdminPC&&can('whatsapp'))?'inline-flex':'none';
+  { const tb=document.getElementById('teamBtn'); if(tb) tb.style.display=isAdminPC?'inline-flex':'none'; }
   { const ub=document.getElementById('updBtn'); if(ub) ub.style.display=(isAdminPC&&can('updates'))?'inline-flex':'none'; }
   { const ob=document.getElementById('ordersBtn'); if(ob) ob.style.display=(isAdminPC&&can('orders'))?'inline-flex':'none'; updateOrderBadge(); }
   { const sb=document.getElementById('stellrBtn');   // 🎫 הנפקת קוד — סניפי חנות בלבד (1-4)
@@ -5063,6 +5415,7 @@ function waThreadHTML(){
       <span style="margin-inline-start:auto;display:flex;gap:6px;flex-wrap:wrap">
         <button class="btn-ghost wa-ico ${conv.star?'wa-star-on':''}" onclick="waToggleStar()" title="${conv.star?'הסר מעקב':'סמן למעקב'}">${ico('star',17,conv.star)}</button>
         <button class="btn-ghost wa-ico ${S.waPanel&&S.waPanelMode==='stock'?'wa-human-on':''}" onclick="waToggleStock()" title="מלאי חי — חיפוש מוצר בלי לעזוב את השיחה">${ico('search')}</button>
+        <button class="btn-ghost wa-ico" onclick="tcAskAbout(S.waPhone)" title="שאל את הצוות על השיחה הזו (צ'אט פנימי)">👥</button>
         <button class="btn-ghost wa-ico" onclick="waTogglePanel()" title="פרטי פונה (הזמנות/תגיות/הערות)">${ico('info')}</button>
         <button class="btn-ghost wa-ico ${S.waBotHandoff?'wa-human-on':''}" onclick="waBotHandoff(${S.waBotHandoff?0:1})"
                 title="${S.waBotHandoff?'מצב אנושי — הבוט מושתק בשיחה. לחץ להחזיר את הבוט':'הבוט פעיל בשיחה. לחץ להשתלט ידנית (להשתיק את הבוט)'}">${ico(S.waBotHandoff?'user':'bot',17)}</button>
@@ -10789,6 +11142,7 @@ window.addEventListener('focus', waPingActive);
 function startNotifPoll(){ clearInterval(S.notifTimer);
   S.notifTimer=setInterval(async()=>{
     if(!S.branchId) return;
+    tcPollUnread();   // 💬 באדג' צ'אט הצוות
     waPingActive();   // כל עוד הקונסולה פתוחה ולפנים → אין push לטלפון
     // 💬 התראות וואטסאפ — רק במחשב הניהול (סניף אתר + סיסמה), גם כשלא בטאב
     const isAdminPC=S.cfg&&Number(S.branchId)===S.cfg.admin_branch_id&&(!S.cfg.admin_required||S.adminKey);
@@ -10853,6 +11207,7 @@ async function handleDeepLink(){
     if(ph) waConvWhenReady(ph);
   }
   if(q.get('orders')==='1' && S.branchId){ try{ openOrdersTab(); }catch(e){} }
+  if(q.get('chat')==='1' && S.branchId){ const t=Number(q.get('topic')||0); if(t){ TC.view='thread'; TC.topic=t; } tcToggle(true); }
 }
 // לחיצה על התראת push כשהאפליקציה כבר פתוחה — ה-SW שולח הודעה במקום reload
 function navPhoneOf(d){
@@ -10865,6 +11220,7 @@ if('serviceWorker' in navigator){
     const d=e.data||{};
     if(!S.branchId) return;
     if(d.type==='open-orders'){ try{ openOrdersTab(); }catch(e){} return; }
+    if(d.type==='open-chat'){ const t=Number((String(d.url||'').match(/topic=(\d+)/)||[])[1]||0); if(t){ TC.view='thread'; TC.topic=t; } tcToggle(true); return; }
     if(d.type!=='open-wa') return;
     openWaTab();
     const ph=navPhoneOf(d);
@@ -10896,6 +11252,7 @@ async function navPendingApply(){
   if(!p || !S.branchId || Date.now()-(p.at||0)>10*60*1000) return;
   // התראת הזמנה (url עם orders=1) → טאב ההזמנות; אחרת — שיחת וואטסאפ
   if(String(p.url||'').indexOf('orders=1')>=0){ try{ openOrdersTab(); }catch(e){} return; }
+  if(String(p.url||'').indexOf('chat=1')>=0){ const t=Number((String(p.url).match(/topic=(\d+)/)||[])[1]||0); if(t){ TC.view='thread'; TC.topic=t; } tcToggle(true); return; }
   const ph=navPhoneOf(p);
   openWaTab();
   if(ph) waConvWhenReady(ph);
@@ -12410,6 +12767,7 @@ function pbxDoTransfer(target){
 async function bootApp(){
   try{ S.branchList=await (await fetchT('/api/branches',{},15000)).json(); }catch(e){}
   await userRefresh();
+  if(S.user){ tcPollUnread(); tcPushBind(); }
   // מחשב הניהול (סניף אתר) נוחת על לוח הבית כברירת מחדל גם ברענון — לא על לוח הקליטה.
   // רק אם עדיין על ברירת המחדל ('board'); deep-link/ניווט אחר גובר (handleDeepLink רץ אחרי).
   if(S.branchId && S.view==='board' && S.cfg && Number(S.branchId)===S.cfg.admin_branch_id
