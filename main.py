@@ -5815,7 +5815,7 @@ _CK_IMG_CACHE: dict = {}   # asset_id → (bytes, ts) — צילומי צ'ק מ�
 
 
 @app.get("/api/checks/img/{asset_id}")
-def checks_img(asset_id: int, x_admin_key: Optional[str] = Header(None),
+def checks_img(asset_id: int, rot: int = 0, x_admin_key: Optional[str] = Header(None),
                x_checks_key: Optional[str] = Header(None)):
     """צילום צ'ק מוקטן להדפסה — דרך השרת.
 
@@ -5829,7 +5829,8 @@ def checks_img(asset_id: int, x_admin_key: Optional[str] = Header(None),
     if not (admin_ok or checks_ok):
         raise HTTPException(401, "checks auth required")
     import time as _t
-    hit = _CK_IMG_CACHE.get(asset_id)
+    ck = (asset_id, 1 if rot else 0)
+    hit = _CK_IMG_CACHE.get(ck)
     if hit and _t.time() - hit[1] < 6 * 3600:
         return Response(hit[0], media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"})
     import requests as _rq
@@ -5850,12 +5851,15 @@ def checks_img(asset_id: int, x_admin_key: Optional[str] = Header(None),
     im = ImageOps.exif_transpose(Image.open(_io.BytesIO(raw.content)))   # צילומי טלפון — לסובב לפי EXIF
     im = im.convert("RGB")
     im.thumbnail((1400, 1400))
+    if rot:
+        # "2 בדף": צילום לאורך מסובב לרוחב — ממלא משבצת רחבה (פי ~2 בגודל)
+        im = im.rotate(90, expand=True)
     buf = _io.BytesIO()
     im.save(buf, "JPEG", quality=82, optimize=True)
     data = buf.getvalue()
     if len(_CK_IMG_CACHE) > 300:
         _CK_IMG_CACHE.clear()
-    _CK_IMG_CACHE[asset_id] = (data, _t.time())
+    _CK_IMG_CACHE[ck] = (data, _t.time())
     return Response(data, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"})
 
 

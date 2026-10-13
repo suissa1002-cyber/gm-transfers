@@ -2208,13 +2208,13 @@
 
 
         // צילום מוקטן דרך GreenOS (~200KB במקום ~2.8MB) עם מגבלת זמן — לעולם לא נתקע.
-        async function ckImgUrl(fileUrl, timeoutMs){
+        async function ckImgUrl(fileUrl, timeoutMs, rot){
             const id = extractAssetId(fileUrl);
             if (!id) return null;
             const ctl = new AbortController();
             const tm = setTimeout(() => ctl.abort(), timeoutMs || 45000);
             try {
-                const r = await fetch(API_URL.replace(/\/gql$/, '/img/') + id, {
+                const r = await fetch(API_URL.replace(/\/gql$/, '/img/') + id + (rot ? '?rot=1' : ''), {
                     signal: ctl.signal,
                     headers: {'X-Admin-Key': localStorage.getItem('tr_admin_key')||'',
                               'X-Checks-Key': localStorage.getItem('tr_checks_key')||''}});
@@ -2290,6 +2290,8 @@
         // ── 🖨️ תור הדפסה: 4 צ'קים בדף A4 (13/10/2026, אסי) ──
         // נשמר בדפדפן — שורד חיפושים ורענון, כדי לאסוף צ'קים מכמה חיפושים שונים.
         let ckQueue = (() => { try { return JSON.parse(localStorage.getItem('ck_print_queue') || '[]'); } catch (e) { return []; } })();
+        let ckPerPage = (() => { try { return +localStorage.getItem('ck_per_page') || 4; } catch (e) { return 4; } })();
+        function ckSetPerPage(n){ ckPerPage = n; try { localStorage.setItem('ck_per_page', n); } catch (e) {} ckQueueBar(); }
         function ckQueueSave(){ try { localStorage.setItem('ck_print_queue', JSON.stringify(ckQueue)); } catch (e) {} ckQueueBar(); }
         function ckQueueHas(id){ return ckQueue.includes(String(id)); }
         function ckQueueToggle(id, btn){
@@ -2311,8 +2313,10 @@
                 bar.style.cssText = 'position:fixed;bottom:18px;left:50%;transform:translateX(-50%);z-index:9000;background:#111;color:#fff;border-radius:14px;padding:10px 14px;display:flex;gap:10px;align-items:center;box-shadow:0 10px 30px rgba(0,0,0,.3);direction:rtl;font-size:14px';
                 document.body.appendChild(bar);
             }
-            const pages = Math.ceil(ckQueue.length / 4);
-            bar.innerHTML = `🖨️ <b>${ckQueue.length}</b> צ'קים בתור · ${pages} ${pages === 1 ? 'דף' : 'דפים'}
+            const pages = Math.ceil(ckQueue.length / ckPerPage);
+            const opt = n => `<button onclick="ckSetPerPage(${n})" style="background:${ckPerPage===n?'#fff':'transparent'};color:${ckPerPage===n?'#111':'#ddd'};border:1px solid #555;border-radius:8px;padding:5px 9px;cursor:pointer;font-weight:${ckPerPage===n?700:400}">${n}</button>`;
+            bar.innerHTML = `🖨️ <b>${ckQueue.length}</b> צ'קים · ${pages} ${pages === 1 ? 'דף' : 'דפים'}
+                <span style="color:#aaa">בדף:</span> ${opt(4)}${opt(2)}${opt(1)}
                 <button onclick="ckQueuePrint()" style="background:#16a34a;color:#fff;border:0;border-radius:9px;padding:7px 14px;font-weight:700;cursor:pointer">הדפס תור</button>
                 <button onclick="ckQueueClear()" style="background:transparent;color:#ddd;border:1px solid #555;border-radius:9px;padding:7px 12px;cursor:pointer">נקה</button>`;
         }
@@ -2324,17 +2328,25 @@
             const w = document.createElement('div');
             w.id = 'ckPrint';
             const pages = [];
-            for (let i = 0; i < list.length; i += 4) pages.push(list.slice(i, i + 4));
+            const per = [1, 2, 4].includes(ckPerPage) ? ckPerPage : 4;
+            for (let i = 0; i < list.length; i += per) pages.push(list.slice(i, i + per));
+            const grid = {4: 'grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr',
+                          2: 'grid-template-columns:1fr;grid-template-rows:1fr 1fr',
+                          1: 'grid-template-columns:1fr;grid-template-rows:1fr'}[per];
+            const infoPt = {4: 9.5, 2: 11, 1: 12.5}[per];
             w.innerHTML = `
               <style>
                 #ckPrint{position:fixed;inset:0;background:#e5e7eb;z-index:10001;overflow:auto;direction:rtl;font-family:Arial,'Segoe UI',sans-serif;color:#111}
                 #ckPrint .bar{position:sticky;top:0;background:#fff;padding:12px 20px;display:flex;gap:8px;border-bottom:1px solid #ddd;z-index:2}
                 #ckPrint .bar button{padding:10px 18px;border-radius:10px;border:1px solid #ddd;background:#fff;font-size:15px;cursor:pointer}
                 #ckPrint .bar .p{background:#16a34a;color:#fff;border-color:#16a34a;font-weight:700}
-                #ckPrint .page{background:#fff;width:210mm;height:297mm;margin:16px auto;padding:10mm 12mm;box-sizing:border-box;display:flex;flex-direction:column;gap:4mm}
-                #ckPrint .slot{flex:0 0 calc((297mm - 20mm - 12mm) / 4);border:1px solid #d1d5db;border-radius:6px;padding:3mm;box-sizing:border-box;display:flex;flex-direction:column;overflow:hidden}
-                #ckPrint .info{display:flex;flex-wrap:wrap;gap:2mm 6mm;font-size:10.5pt;margin-bottom:2mm;line-height:1.3}
-                #ckPrint .info b{font-size:11.5pt}
+                /* ⚠️ 2×2 ולא 4 שורות: צילומי הצ'קים הם דף שלם לאורך (ספח + הצ'ק בתחתית,
+                   1050×1400). במשבצת רחבה בגובה 66 מ"מ הם יצאו זעירים ולא קריאים. */
+                #ckPrint .page{background:#fff;width:210mm;height:297mm;margin:16px auto;padding:10mm;box-sizing:border-box;
+                    display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:5mm}
+                #ckPrint .slot{border:1px solid #d1d5db;border-radius:6px;padding:3mm;box-sizing:border-box;display:flex;flex-direction:column;overflow:hidden;min-height:0}
+                #ckPrint .info{display:flex;flex-wrap:wrap;gap:1mm 4mm;font-size:9.5pt;margin-bottom:2mm;line-height:1.35}
+                #ckPrint .info b{font-size:10.5pt}
                 #ckPrint .im{flex:1;display:flex;align-items:center;justify-content:center;min-height:0}
                 #ckPrint .im img{max-width:100%;max-height:100%;object-fit:contain}
                 #ckPrint .im .no{color:#888;font-size:10pt}
@@ -2350,11 +2362,11 @@
               <div class="bar">
                 <button class="p" id="ckPrintGo" onclick="window.print()" disabled>⏳ טוען צילומים…</button>
                 <button onclick="document.getElementById('ckPrint').remove()">סגור</button>
-                <span style="align-self:center;color:#555;font-size:14px">${list.length} צ'קים · ${pages.length} ${pages.length === 1 ? 'דף' : 'דפים'} A4</span>
+                <span style="align-self:center;color:#555;font-size:14px">${list.length} צ'קים · ${per} בדף · ${pages.length} ${pages.length === 1 ? 'דף' : 'דפים'} A4</span>
               </div>
-              ${pages.map(pg => `<div class="page">${pg.map(c => `
+              ${pages.map(pg => `<div class="page" style="${grid}">${pg.map(c => `
                 <div class="slot">
-                  <div class="info">
+                  <div class="info" style="font-size:${infoPt}pt">
                     <b>צ'ק #${ckEsc(c.name)}</b>
                     <span>${ckEsc(c.status)}</span>
                     <b>₪${formatNumber(c.numbers__1 || 0)}</b>
@@ -2378,7 +2390,14 @@
                     if (!url) { box.innerHTML = '<span class="no" style="color:#dc2626">לא ניתן לטעון צילום</span>'; return; }
                     await new Promise(res => {
                         const img = new Image();
-                        img.onload = () => { box.innerHTML = ''; box.appendChild(img); res(); };
+                        img.onload = async () => {
+                            // ב"2 בדף" המשבצת רחבה — צילום לאורך מסתובב כדי למלא אותה
+                            if (per === 2 && img.naturalHeight > img.naturalWidth) {
+                                const ru = await ckImgUrl(c.files__1, 45000, true);
+                                if (ru) { const r2 = new Image(); r2.onload = () => { box.innerHTML = ''; box.appendChild(r2); res(); }; r2.onerror = () => { box.innerHTML = ''; box.appendChild(img); res(); }; r2.src = ru; return; }
+                            }
+                            box.innerHTML = ''; box.appendChild(img); res();
+                        };
                         img.onerror = () => { box.innerHTML = '<span class="no" style="color:#dc2626">לא ניתן לטעון צילום</span>'; res(); };
                         img.src = url;
                     });
