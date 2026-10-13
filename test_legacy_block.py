@@ -20,6 +20,15 @@ c.post("/api/admin/users", headers=SERVER, json={"username": "asi", "name": "א�
 T = {"X-User-Token": c.post("/api/auth/login", json={"username": "asi", "password": "pass123"}).json()["token"]}
 
 check("לפני החסימה — דפדפן עם סיסמה משותפת עובד", c.get("/api/admin/users", headers=BROWSER).status_code == 200)
+db.device_register("dev-branch-star-000001", "קופה סטאר", "ua", "1.2.3.4", "2", "approved")
+c.get("/api/transfers?branch_id=2", headers={**BROWSER, "X-Device-Token": "dev-branch-star-000001"})
+lk = c.get("/api/admin/legacy-key", headers=T).json()
+row = next((d for d in lk["devices"] if d["name"] == "קופה סטאר"), None)
+check("רשימת מכשירים עם סיסמה משותפת: מחשב סטאר מזוהה כסניף (לא יתבקש כניסה)", row and row["branch"] == "סטאר" and not row["admin_branch"], lk)
+c.post("/api/admin/legacy-key", headers=T, json={"blocked": True})
+r = c.get("/api/transfers?branch_id=2", headers={"X-Device-Token": "dev-branch-star-000001", "Sec-Fetch-Site": "same-origin"})
+check("אחרי חסימה: מחשב סניף בלי הסיסמה (רק אישור מכשיר) — עובד", r.status_code == 200, r.status_code)
+c.post("/api/admin/legacy-key", headers=T, json={"blocked": False})
 r = c.post("/api/admin/legacy-key", headers=SERVER, json={"blocked": True})
 check("⛔ אי אפשר לחסום עם הסיסמה המשותפת עצמה", r.status_code == 403)
 r = c.post("/api/admin/legacy-key", headers=T, json={"blocked": True})

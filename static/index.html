@@ -1762,6 +1762,10 @@ async function userRefresh(){
 let _legacyOffShown=false;
 function legacyOffFlow(){
   if(_legacyOffShown) return; _legacyOffShown=true;
+  // מחשב סניף (לא "אתר"): הסיסמה נשמרה בו פעם (החלפת סניף וכו') — מוחקים בשקט והוא
+  // ממשיך לעבוד על אישור המכשיר כרגיל. חלון כניסה רק במחשב הניהול.
+  if(String(S.branchId||'')!==String(S.cfg.admin_branch_id)){
+    S.adminKey=null; S.user=null; localStorage.removeItem('tr_admin_key'); _legacyOffShown=false; render(); return; }
   userLogout(true); render();
   loginModal(()=>{ _legacyOffShown=false; render(); },'הסיסמה המשותפת בוטלה — היכנס עם שם המשתמש והסיסמה האישיים שלך');
 }
@@ -1839,7 +1843,8 @@ async function loadUsers(){
   const app=document.getElementById('app');
   app.innerHTML='<div class="empty">טוען משתמשים…</div>';
   try{ S.usersData=await api('/api/admin/users');
-    try{ S.usersData.legacy=(await api('/api/admin/legacy-key')).blocked; }catch(e){ S.usersData.legacy=null; } }
+    try{ const lk=await api('/api/admin/legacy-key'); S.usersData.legacy=lk.blocked; S.usersData.legacyDevs=lk.devices||[]; S.usersData.legacyWatch=lk.watch_sec||0; }
+    catch(e){ S.usersData.legacy=null; } }
   catch(e){ app.innerHTML=`<div class="empty">${escW(e.detail||'אין גישה לניהול משתמשים')}</div>`; return; }
   if(S.view==='users') renderUsers();
 }
@@ -1880,6 +1885,9 @@ function renderUsers(){
       <div class="us-main"><div class="us-name">${D.legacy?'🔒 הסיסמה המשותפת חסומה בדפדפנים':'🔓 הסיסמה המשותפת עדיין פעילה'}</div>
         <div class="us-meta">${D.legacy?'כל הכניסות הן אישיות. שירותי השרת (סוכן הקופות, Stock Watcher) ממשיכים לעבוד כרגיל.'
           :'כל מי שמכיר אותה נכנס בלי שם, ועוקף את נעילת המחשב. חסימה מנתקת מיד כל דפדפן שנכנס איתה (כולל של אודי) ומחייבת כניסה אישית. שירותי השרת לא מושפעים.'}</div></div>
+      ${!D.legacy?`<div style="flex-basis:100%;font-size:13px;margin-top:4px">${(D.legacyDevs||[]).length
+        ?`<b>מכשירים שעדיין נכנסים עם הסיסמה המשותפת</b> (בשעה האחרונה):<ul style="margin:6px 0;padding-inline-start:18px">${D.legacyDevs.map(d=>`<li>${escW(d.name)} · ${escW(d.branch||'?')} · לפני ${_secAgo(d.ago)} — ${d.admin_branch?'<b style="color:var(--red)">ינותק ויתבקש להיכנס בשם משתמש</b>':'<span style="color:#16a34a">מחשב סניף — ימשיך לעבוד כרגיל</span>'}</li>`).join('')}</ul>`
+        :`<span class="muted">לא נראו מכשירים שנכנסים עם הסיסמה המשותפת ${D.legacyWatch<120?'(הרשימה מתמלאת — רענן בעוד דקה)':'ב-'+_secAgo(D.legacyWatch)+' האחרונות'}.</span>`}</div>`:''}
       <div class="us-act"><button class="${D.legacy?'btn-ghost':'btn-primary'}" style="padding:8px 14px;border-radius:10px;cursor:pointer" onclick="legacyToggle(${!D.legacy})">${D.legacy?'החזר סיסמה משותפת':'🔒 חסום עכשיו'}</button></div>
     </div>`:''}
     <div class="us-note">עובד (לא בעלים) נכנס רק ממכשיר שאושר בטלגרם — מהבית או ממחשב אישי הכניסה נחסמת גם אם יש לו את הקישור והסיסמה.</div>
@@ -1942,6 +1950,7 @@ function userResetPw(uid){
       toast('הסיסמה אופסה',true); loadUsers();
     }});
 }
+function _secAgo(s){ s=Number(s)||0; return s<90?Math.max(1,s)+' שניות':s<5400?Math.round(s/60)+' דקות':Math.round(s/3600)+' שעות'; }
 async function legacyToggle(block){
   if(!S.user||S.user.role!=='owner'){ toast('צריך להיות מחובר בכניסה אישית כבעלים',false); return; }
   if(block){

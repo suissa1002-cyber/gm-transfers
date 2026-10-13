@@ -56,6 +56,10 @@ def _current_user():
 # Stock Watcher) ממשיכים להשתמש בה — לכן נחסם רק מה שמגיע מדפדפן: דפדפנים שולחים
 # Sec-Fetch-* תמיד, ו-GreenOS שולח גם X-Device-Token; requests/curl מהשרתים — לא.
 _LEGACY_UI = {"off": False, "ts": 0.0}
+# מי עדיין שולח את הסיסמה המשותפת מדפדפן — כדי לראות לפני החסימה את מי היא תנתק.
+# בזיכרון (מתאפס בפריסה; המכשירים סוקרים כל 20ש, אז הרשימה מתמלאת תוך דקה).
+_LEGACY_SEEN: dict = {}   # device_token → {"ts", "branch"}
+_BOOT_TS = __import__("time").time()
 
 
 def _legacy_ui_blocked() -> bool:
@@ -84,6 +88,10 @@ async def _user_auth_mw(request: Request, call_next):
         actor = None
         if cfg.ADMIN_PASSWORD and akey == cfg.ADMIN_PASSWORD:
             from starlette.concurrency import run_in_threadpool as _rtp
+            if _from_browser(request):
+                import time as _tm
+                _LEGACY_SEEN[request.headers.get("x-device-token") or "?"] = {
+                    "ts": _tm.time(), "branch": request.query_params.get("branch_id") or ""}
             if _from_browser(request) and await _rtp(_legacy_ui_blocked):
                 return JSONResponse(status_code=401, content={
                     "detail": "הסיסמה המשותפת בוטלה — יש להיכנס עם שם משתמש וסיסמה אישיים",
@@ -1756,8 +1764,20 @@ def admin_users_reset_pw(uid: int, body: PwResetIn, x_admin_key: Optional[str] =
 @app.get("/api/admin/legacy-key")
 def legacy_key_state(x_admin_key: Optional[str] = Header(None)):
     _require_owner(x_admin_key)
+    import time as _tm
     _LEGACY_UI["ts"] = 0
-    return {"blocked": _legacy_ui_blocked()}
+    now = _tm.time()
+    devs = []
+    for tok, v in sorted(_LEGACY_SEEN.items(), key=lambda kv: -kv[1]["ts"]):
+        if now - v["ts"] > 3600:
+            continue
+        d = db.device_get(tok) if tok != "?" else None
+        br = (d and _device_branch(d)) or v.get("branch") or ""
+        devs.append({"name": (d or {}).get("name") or "מכשיר לא רשום",
+                     "branch": cfg.BRANCHES.get(int(br), br) if str(br).isdigit() else br,
+                     "admin_branch": str(br) == str(cfg.ADMIN_BRANCH_ID),
+                     "ago": int(now - v["ts"])})
+    return {"blocked": _legacy_ui_blocked(), "devices": devs, "watch_sec": int(now - _BOOT_TS)}
 
 
 class LegacyKeyIn(BaseModel):
