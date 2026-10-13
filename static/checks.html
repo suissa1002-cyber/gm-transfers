@@ -1689,6 +1689,7 @@
                 <strong id="visibleCount">0</strong> צ'קים מוצגים
             </div>
             <div class="sort-buttons">
+                <button class="sort-btn" onclick="openCkReport()" style="background:#16a34a;color:#fff;border-color:#16a34a;font-weight:700">📄 דוח PDF</button>
                 <button class="sort-btn" onclick="toggleSort()">
                     <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -1861,6 +1862,7 @@
 
         // State
         let allChecks = [];
+        let allChecksFull = [];   // 13/10/2026: כל הצ'קים עם תאריך — לדוחות (המסך מסנן ל-3 חודשים)
         let filteredChecks = [];
         let currentFilters = { search: '', dateFrom: '', dateTo: '', group: 'topics' };
         let sortOrder = 'asc';
@@ -1986,7 +1988,7 @@
                 } while (cursor);
                 
                 // Process items
-                allChecks = allItems
+                allChecksFull = allItems
                     .map(item => {
                         const cols = {};
                         
@@ -2012,11 +2014,10 @@
                             group: item.group.id
                         };
                     })
-                    .filter(check => {
-                        // Include: future checks OR last 3 months (completed)
-                        if (!check.date__1) return false;
-                        return check.date__1 >= dateRange.from;
-                    });
+                    .filter(check => !!check.date__1);
+                // ⚠️ המסך: עתידיים + 3 חודשים אחורה. הדוח משתמש ב-allChecksFull, אחרת
+                // דוח מ-1/1 היה מפספס בשקט את כל מה שנפרע לפני 3 חודשים.
+                allChecks = allChecksFull.filter(check => check.date__1 >= dateRange.from);
                 
                 // Update UI
                 hideLoading();
@@ -2080,6 +2081,120 @@
         }
 
         // Apply filters
+
+        // ── 📄 דוח צ'קים לפי ספק + טווח תאריך פרעון → PDF (13/10/2026, אסי) ──
+        const CK_GROUP = {topics:'לפני פרעון', group_title:'נפרע', group_mkzhynwd:'בוטל'};
+        function ckEsc(t){ return String(t==null?'':t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+        function ckD(iso){ if(!iso) return ''; const [y,m,d]=iso.split('-'); return `${d}/${m}/${y}`; }
+        function openCkReport(){
+            const src = allChecksFull.length ? allChecksFull : allChecks;
+            const sups = [...new Set(src.map(c=>(c.status||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'he'));
+            const today = new Date().toISOString().slice(0,10);
+            const y0 = today.slice(0,4)+'-01-01';
+            const box = document.createElement('div');
+            box.id = 'ckReportDlg';
+            box.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;direction:rtl';
+            box.innerHTML = `<div style="background:#fff;border-radius:16px;padding:22px;width:100%;max-width:440px;font-family:inherit;box-shadow:0 20px 60px rgba(0,0,0,.25)">
+                <h3 style="margin:0 0 14px;font-size:19px">📄 דוח צ'קים</h3>
+                <label style="font-size:13px;color:#555">ספק</label>
+                <input list="ckSupList" id="ckSup" placeholder="כל הספקים — או התחל להקליד שם" style="width:100%;padding:11px;border:1px solid #ddd;border-radius:10px;margin:4px 0 12px;font-size:15px;box-sizing:border-box">
+                <datalist id="ckSupList">${sups.map(x=>`<option value="${ckEsc(x)}">`).join('')}</datalist>
+                <div style="display:flex;gap:10px">
+                  <div style="flex:1"><label style="font-size:13px;color:#555">מתאריך פרעון</label>
+                    <input type="date" id="ckFrom" value="${y0}" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:10px;margin-top:4px;box-sizing:border-box"></div>
+                  <div style="flex:1"><label style="font-size:13px;color:#555">עד תאריך פרעון</label>
+                    <input type="date" id="ckTo" value="${today}" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:10px;margin-top:4px;box-sizing:border-box"></div>
+                </div>
+                <label style="font-size:13px;color:#555;display:block;margin-top:12px">סטטוס</label>
+                <select id="ckScope" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:10px;margin-top:4px">
+                  <option value="active">כל הצ'קים (בלי מבוטלים)</option>
+                  <option value="topics">לפני פרעון בלבד</option>
+                  <option value="group_title">נפרעו בלבד</option>
+                  <option value="all">הכל כולל מבוטלים</option>
+                </select>
+                <div style="display:flex;gap:8px;margin-top:18px">
+                  <button onclick="runCkReport()" style="flex:1;padding:12px;border:0;border-radius:10px;background:#16a34a;color:#fff;font-size:15px;font-weight:700;cursor:pointer">הפק דוח</button>
+                  <button onclick="document.getElementById('ckReportDlg').remove()" style="padding:12px 16px;border:1px solid #ddd;border-radius:10px;background:#fff;cursor:pointer">סגור</button>
+                </div>
+              </div>`;
+            document.body.appendChild(box);
+        }
+        function runCkReport(){
+            const sup = (document.getElementById('ckSup').value||'').trim();
+            const from = document.getElementById('ckFrom').value, to = document.getElementById('ckTo').value;
+            const scope = document.getElementById('ckScope').value;
+            const src = allChecksFull.length ? allChecksFull : allChecks;
+            const rows = src.filter(c => {
+                if (sup && (c.status||'').trim() !== sup) return false;
+                if (from && c.date__1 < from) return false;
+                if (to && c.date__1 > to) return false;
+                if (scope === 'active' && c.group === 'group_mkzhynwd') return false;
+                if (scope === 'topics' && c.group !== 'topics') return false;
+                if (scope === 'group_title' && c.group !== 'group_title') return false;
+                return true;
+            }).sort((a,b)=>(a.date__1||'').localeCompare(b.date__1||''));
+            const sum = list => list.reduce((s,c)=>s+(c.numbers__1||0),0);
+            const pend = rows.filter(c=>c.group==='topics'), paid = rows.filter(c=>c.group==='group_title');
+            const now = new Date();
+            const gen = `${String(now.getDate()).padStart(2,'0')}/${String(now.getMonth()+1).padStart(2,'0')}/${now.getFullYear()} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+            document.getElementById('ckReportDlg')?.remove();
+            document.getElementById('ckReport')?.remove();
+            const r = document.createElement('div');
+            r.id = 'ckReport';
+            r.innerHTML = `
+              <style>
+                #ckReport{position:fixed;inset:0;background:#fff;z-index:10000;overflow:auto;direction:rtl;font-family:Arial,'Segoe UI',sans-serif;color:#111}
+                #ckReport .wrap{max-width:900px;margin:0 auto;padding:28px 26px}
+                #ckReport .bar{display:flex;gap:8px;justify-content:flex-start;margin-bottom:18px}
+                #ckReport .bar button{padding:10px 18px;border-radius:10px;border:1px solid #ddd;background:#fff;font-size:15px;cursor:pointer}
+                #ckReport .bar .p{background:#16a34a;color:#fff;border-color:#16a34a;font-weight:700}
+                #ckReport h1{font-size:22px;margin:0 0 4px}
+                #ckReport .sub{color:#555;font-size:14px;margin-bottom:16px;line-height:1.6}
+                #ckReport .kpis{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+                #ckReport .k{flex:1;min-width:150px;border:1px solid #e5e7eb;border-radius:10px;padding:10px 12px}
+                #ckReport .k b{display:block;font-size:20px;margin-top:2px}
+                #ckReport table{width:100%;border-collapse:collapse;font-size:13.5px}
+                #ckReport th{background:#f3f4f6;text-align:right;padding:8px;border-bottom:2px solid #d1d5db}
+                #ckReport td{padding:7px 8px;border-bottom:1px solid #e5e7eb;vertical-align:top}
+                #ckReport td.n{white-space:nowrap;text-align:left;direction:ltr}
+                #ckReport tfoot td{font-weight:700;border-top:2px solid #111;background:#f9fafb}
+                #ckReport .foot{color:#888;font-size:11.5px;margin-top:14px}
+                @media print{
+                  body > *:not(#ckReport){display:none !important}
+                  #ckReport{position:static;overflow:visible}
+                  #ckReport .bar{display:none}
+                  #ckReport .wrap{padding:0}
+                  #ckReport tr{page-break-inside:avoid}
+                  @page{size:A4;margin:14mm}
+                }
+              </style>
+              <div class="wrap">
+                <div class="bar">
+                  <button class="p" onclick="window.print()">🖨️ הדפס / שמור PDF</button>
+                  <button onclick="document.getElementById('ckReport').remove()">סגור</button>
+                </div>
+                <h1>דוח צ'קים${sup?` — ${ckEsc(sup)}`:' — כל הספקים'}</h1>
+                <div class="sub">Green Mobile · תאריך פרעון ${ckD(from)||'—'} עד ${ckD(to)||'—'} ·
+                  ${{active:'כל הצ\'קים (ללא מבוטלים)',topics:'לפני פרעון בלבד',group_title:'נפרעו בלבד',all:'כולל מבוטלים'}[scope]}<br>הופק: ${gen}</div>
+                <div class="kpis">
+                  <div class="k">סה"כ צ'קים<b>${rows.length}</b></div>
+                  <div class="k">סכום כולל<b>₪${formatNumber(sum(rows))}</b></div>
+                  <div class="k">נפרעו (${paid.length})<b>₪${formatNumber(sum(paid))}</b></div>
+                  <div class="k">לפני פרעון (${pend.length})<b>₪${formatNumber(sum(pend))}</b></div>
+                </div>
+                ${rows.length ? `<table>
+                  <thead><tr><th>#</th><th>מס' צ'ק</th>${sup?'':'<th>ספק</th>'}<th>תאריך פרעון</th><th>סכום</th><th>בנק</th><th>סטטוס</th><th>הערות</th></tr></thead>
+                  <tbody>${rows.map((c,i)=>`<tr>
+                    <td>${i+1}</td><td class="n">${ckEsc(c.name)}</td>${sup?'':`<td>${ckEsc(c.status)}</td>`}
+                    <td class="n">${ckD(c.date__1)}</td><td class="n">₪${formatNumber(c.numbers__1||0)}</td>
+                    <td>${ckEsc(c.bank)}</td><td>${CK_GROUP[c.group]||''}</td><td>${ckEsc(c.notes)}</td></tr>`).join('')}</tbody>
+                  <tfoot><tr><td colspan="${sup?3:4}">סה"כ ${rows.length} צ'קים</td><td class="n">₪${formatNumber(sum(rows))}</td><td colspan="3"></td></tr></tfoot>
+                </table>` : '<p style="padding:30px;text-align:center;color:#666">לא נמצאו צ\'קים בטווח שנבחר.</p>'}
+                <div class="foot">המקור: לוח הצ'קים במאנדיי · נשלף ${gen}</div>
+              </div>`;
+            document.body.appendChild(r);
+        }
+
         function applyFilters() {
             const dateRange = getDateRange();
             
