@@ -730,6 +730,10 @@
   .tc-atpop{position:absolute;bottom:100%;inset-inline-start:40px;background:var(--card);border:1px solid var(--line);border-radius:10px;
     box-shadow:0 6px 20px rgba(0,0,0,.15);flex-direction:column;min-width:140px;overflow:hidden}
   .tc-atpop a{padding:7px 12px;text-decoration:none;color:var(--txt);font-size:14px} .tc-atpop a:hover,.tc-atpop a:first-child{background:var(--card2)}
+  .ic-i{display:inline-flex;vertical-align:-2px;margin-inline-end:4px}
+  .tc-h{display:inline-flex;align-items:center}
+  .tc-clip{display:inline-flex;align-items:center;color:var(--muted)}
+  .tc-back{display:inline-flex;align-items:center}
   .wa-tcstrip{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:7px 12px;border-bottom:1px solid var(--line);background:rgba(37,99,235,.06);font-size:13px}
   .wa-tcchip{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:99px;border:1px solid #2563eb;color:#2563eb;text-decoration:none;font-weight:600;background:var(--card)}
   .wa-tcchip.done{border-color:var(--line);color:var(--muted);font-weight:400}
@@ -1373,7 +1377,7 @@
     <div class="brand">Green<span class="os">OS</span></div>
   </div>
   <div class="right" id="hdr" style="display:none">
-    <button class="btn-ghost" id="teamBtn" style="display:none;position:relative;align-items:center;gap:6px" onclick="tcToggle()" title="צ'אט צוות פנימי">👥<span class="hlbl"> צוות</span><span id="teamBadge" class="wa-badge" style="display:none"></span></button>
+    <button class="btn-ghost" id="teamBtn" style="display:none;position:relative;align-items:center;gap:6px" onclick="tcToggle()" title="צ'אט צוות פנימי"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span class="hlbl"> צוות</span><span id="teamBadge" class="wa-badge" style="display:none"></span></button>
     <button class="btn-ghost" id="waBtn" style="display:none;position:relative;align-items:center;gap:6px" onclick="openWaTab()"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px"><path d="M21 11.5a8.38 8.38 0 0 1-8.38 8.38 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 1 1 16.1-3.8z"/></svg><span class="hlbl"> וואטסאפ</span><span id="waBadge" class="wa-badge" style="display:none"></span></button>
     <button class="btn-ghost" id="ordersBtn" style="display:none;position:relative;align-items:center;gap:6px" onclick="openOrdersTab()" title="הזמנות"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg><span class="hlbl"> הזמנות</span><span class="gm-obadge wa-badge" style="display:none"></span></button>
     <button class="btn-ghost" id="updBtn" style="display:none;position:relative;align-items:center;gap:6px" onclick="window.open('/updates','_blank')" title="ניהול עדכונים לסניפים"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span class="hlbl"> עדכונים</span></button>
@@ -1887,13 +1891,13 @@ function renderUsers(){
       <button class="btn-primary" onclick="userEditModal(0)">+ משתמש חדש</button></div>
     ${legacy?`<div class="us-note">נכנסת עם הסיסמה המשותפת. צור קודם משתמש בעלים לעצמך ולאודי, ואז התנתק והיכנס עם שם המשתמש האישי.</div>`:''}
     ${D.legacy!==null&&D.legacy!==undefined?`<div class="us-row" style="align-items:center">
-      <div class="us-main"><div class="us-name">${D.legacy?'🔒 הסיסמה המשותפת חסומה בדפדפנים':'🔓 הסיסמה המשותפת עדיין פעילה'}</div>
+      <div class="us-main"><div class="us-name">${D.legacy?icoI('lock',15)+'הסיסמה המשותפת חסומה בדפדפנים':icoI('unlock',15)+'הסיסמה המשותפת עדיין פעילה'}</div>
         <div class="us-meta">${D.legacy?'כל הכניסות הן אישיות. שירותי השרת (סוכן הקופות, Stock Watcher) ממשיכים לעבוד כרגיל.'
           :'כל מי שמכיר אותה נכנס בלי שם, ועוקף את נעילת המחשב. חסימה מנתקת מיד כל דפדפן שנכנס איתה (כולל של אודי) ומחייבת כניסה אישית. שירותי השרת לא מושפעים.'}</div></div>
       ${!D.legacy?`<div style="flex-basis:100%;font-size:13px;margin-top:4px">${(D.legacyDevs||[]).length
         ?`<b>מכשירים שעדיין נכנסים עם הסיסמה המשותפת</b> (בשעה האחרונה):<ul style="margin:6px 0;padding-inline-start:18px">${D.legacyDevs.map(d=>`<li>${escW(d.name)} · ${escW(d.branch||'?')} · לפני ${_secAgo(d.ago)} — ${d.admin_branch?'<b style="color:var(--red)">ינותק ויתבקש להיכנס בשם משתמש</b>':'<span style="color:#16a34a">מחשב סניף — ימשיך לעבוד כרגיל</span>'}</li>`).join('')}</ul>`
         :`<span class="muted">לא נראו מכשירים שנכנסים עם הסיסמה המשותפת ${D.legacyWatch<120?'(הרשימה מתמלאת — רענן בעוד דקה)':'ב-'+_secAgo(D.legacyWatch)+' האחרונות'}.</span>`}</div>`:''}
-      <div class="us-act"><button class="${D.legacy?'btn-ghost':'btn-primary'}" style="padding:8px 14px;border-radius:10px;cursor:pointer" onclick="legacyToggle(${!D.legacy})">${D.legacy?'החזר סיסמה משותפת':'🔒 חסום עכשיו'}</button></div>
+      <div class="us-act"><button class="${D.legacy?'btn-ghost':'btn-primary'}" style="padding:8px 14px;border-radius:10px;cursor:pointer" onclick="legacyToggle(${!D.legacy})">${D.legacy?'החזר סיסמה משותפת':'חסום עכשיו'}</button></div>
     </div>`:''}
     <div class="us-note">עובד (לא בעלים) נכנס רק ממכשיר שאושר בטלגרם — מהבית או ממחשב אישי הכניסה נחסמת גם אם יש לו את הקישור והסיסמה.</div>
     ${rows||'<div class="empty">אין עדיין משתמשים</div>'}
@@ -1907,7 +1911,7 @@ function userEditModal(uid){
     return `<label class="us-ck"><input type="checkbox" data-k="${f.key}" ${has(f.key)?'checked':''} onchange="_usSync()">
         <span><b>${escW(f.label)}</b><small>${escW(f.desc)}</small></span></label>
       ${sens.map(s=>`<label class="us-ck sub"><input type="checkbox" data-k="${s.key}" data-parent="${f.key}" ${has(s.key)?'checked':''}>
-        <span>⚠️ ${escW(s.label)}</span></label>`).join('')}`;
+        <span style="display:inline-flex;align-items:center">${icoI('alert',13)}${escW(s.label)}</span></label>`).join('')}`;
   }).join('');
   const root=document.getElementById('modalRoot');
   root.innerHTML=`<div class="overlay"><div class="modal us-modal">
@@ -1963,7 +1967,7 @@ async function legacyToggle(block){
     if(!confirm(`לחסום את הסיסמה המשותפת?\n\nכל דפדפן שנכנס איתה ינותק מיד ויתבקש להיכנס עם שם משתמש וסיסמה.\nבעלים פעילים: ${owners}\n\nוודא שלאודי יש את שם המשתמש והסיסמה שלו לפני שממשיכים.`)) return;
   }
   try{ await api('/api/admin/legacy-key',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({blocked:!!block})});
-    toast(block?'🔒 הסיסמה המשותפת נחסמה':'🔓 הסיסמה המשותפת הוחזרה',true); loadUsers(); }
+    toast(block?'הסיסמה המשותפת נחסמה':'הסיסמה המשותפת הוחזרה',true); loadUsers(); }
   catch(e){ toast(e.detail||'הפעולה נכשלה',false); }
 }
 async function userToggleActive(uid){
@@ -1985,7 +1989,8 @@ async function userLogoutAll(uid){
 const TC={open:false, view:'home', topic:0, topicObj:null, status:'open', msgs:[], users:[], me:null,
           lastId:0, timer:null, att:null, reply:null, wa:'', topics:[], kinds:{},
           unread:{count:0,mentions:0,by_topic:{}}, seenMention:0, busy:false};
-const TC_KIND_IC={question:'❓',request:'🙏',task:'✅',update:'📣'};
+const TC_KIND_ICO={question:'help',request:'inbox',task:'checkSquare',update:'megaphone'};
+function tcKindIc(k,sz){ return TC_KIND_ICO[k]?icoI(TC_KIND_ICO[k],sz||14):''; }
 function tcPersonal(){ return !!S.user; }
 function tcToggle(open){
   TC.open=(open===undefined)?!TC.open:!!open;
@@ -1996,7 +2001,7 @@ function tcToggle(open){
     p.ondrop=e=>{ e.preventDefault(); const f=e.dataTransfer.files[0]; if(f&&TC.view==='thread') tcUpload(f); }; }
   p.classList.add('on');
   if(!tcPersonal()){
-    p.innerHTML=`<div class="tc-head"><b>💬 צוות</b><button class="dr-x" onclick="tcToggle(false)">✕</button></div>
+    p.innerHTML=`<div class="tc-head"><b class="tc-h">${icoI('users',17)}צוות</b><button class="dr-x" onclick="tcToggle(false)">✕</button></div>
       <div class="tc-empty">צ'אט הצוות מזהה מי כותב כל הודעה — לכן הוא דורש כניסה אישית (שם משתמש וסיסמה), לא את הסיסמה המשותפת.
       <br><br><button class="btn-primary" onclick="tcToggle(false);userLogout(true);loginModal(()=>{render();tcToggle(true);})">כניסה אישית</button></div>`;
     return;
@@ -2009,10 +2014,10 @@ function tcAgo(sec){ if(sec<3600) return Math.max(1,Math.round(sec/60))+' דק׳
 function tcPeople(){
   const pd=TC.pushDevs||{};
   const mine=pd[String(TC.me)]||[];
-  return `<div class="tc-people">${TC.users.map(u=>`<span class="tc-person" title="${(pd[String(u.id)]||[]).length?'מקבל/ת התראות ב: '+escW(pd[String(u.id)].join(', ')):'אין מכשיר עם התראות'}">${tcDot(u)}${escW(u.name)}${u.id===TC.me?' (אני)':''}${TC.pushDevs&&(pd[String(u.id)]||[]).length?' 📱':''}</span>`).join('')}</div>
+  return `<div class="tc-people">${TC.users.map(u=>`<span class="tc-person" title="${(pd[String(u.id)]||[]).length?'מקבל/ת התראות ב: '+escW(pd[String(u.id)].join(', ')):'אין מכשיר עם התראות'}">${tcDot(u)}${escW(u.name)}${u.id===TC.me?' (אני)':''}${TC.pushDevs&&(pd[String(u.id)]||[]).length?icoI('mobile',12):''}</span>`).join('')}</div>
     ${TC.pushDevs?`<div class="tc-push ${mine.length?'':'warn'}">${mine.length
-      ?`🔔 התראות לטלפון פעילות אצלך (${escW(mine.join(', '))}) · <a href="#" onclick="tcPushTest();return false">שלח לי התראת בדיקה</a>`
-      :`⚠️ אין לך עדיין מכשיר עם התראות צוות. באייפון: פתח את GreenOS מהאייקון במסך הבית ← היכנס עם שם המשתמש ← ☰ ← "הפעל התראות במכשיר הזה".${('Notification' in window)?` <a href="#" onclick="waEnablePush();return false">הפעל כאן</a>`:''}`}</div>`:''}`;
+      ?`${icoI('bell',13)}התראות לטלפון פעילות אצלך (${escW(mine.join(', '))}) · <a href="#" onclick="tcPushTest();return false">שלח לי התראת בדיקה</a>`
+      :`${icoI('alert',13)}אין לך עדיין מכשיר עם התראות צוות. באייפון: פתח את GreenOS מהאייקון במסך הבית ← היכנס עם שם המשתמש ← ☰ ← "הפעל התראות במכשיר הזה".${('Notification' in window)?` <a href="#" onclick="waEnablePush();return false">הפעל כאן</a>`:''}`}</div>`:''}`;
 }
 async function tcPushInfo(){
   if(!S.user) return;
@@ -2038,11 +2043,11 @@ function tcPaintHome(){
   const ub=TC.unread.by_topic||{}, gen=ub['0']||0;
   const name=id=>(TC.users.find(u=>u.id===id)||{}).name||'';
   const rows=TC.topics.map(t=>`<div class="tc-trow ${t.mine?'mine':''} ${t.unread?'unr':''}" onclick="tcOpenTopic(${t.id})">
-      <div class="tc-tt"><span>${TC_KIND_IC[t.kind]||'•'} ${escW(t.title)}</span>${t.unread?`<span class="tc-ub">${t.unread}</span>`:''}</div>
-      <div class="tc-tm">${escW(TC.kinds[t.kind]||'')} · ${escW(t.created_name)}${t.assignees.length?' ← '+t.assignees.map(id=>escW(name(id))).join(', '):''}${t.status==='done'?' · ✅ טופל ע״י '+escW(t.closed_name||''):''}</div>
+      <div class="tc-tt"><span>${tcKindIc(t.kind)}${escW(t.title)}</span>${t.unread?`<span class="tc-ub">${t.unread}</span>`:''}</div>
+      <div class="tc-tm">${escW(TC.kinds[t.kind]||'')} · ${escW(t.created_name)}${t.assignees.length?' ← '+t.assignees.map(id=>escW(name(id))).join(', '):''}${t.status==='done'?' · טופל ע״י '+escW(t.closed_name||''):''}</div>
       ${t.last?`<div class="tc-tl">${escW(t.last)}</div>`:''}
     </div>`).join('');
-  p.innerHTML=`<div class="tc-head"><b>💬 צוות</b><span class="muted" style="font-size:12px">${escW(S.user.name)}</span>
+  p.innerHTML=`<div class="tc-head"><b class="tc-h">${icoI('users',17)}צוות</b><span class="muted" style="font-size:12px">${escW(S.user.name)}</span>
       <button class="dr-x" onclick="tcToggle(false)">✕</button></div>
     ${tcPeople()}
     <div class="tc-bar"><button class="btn-primary" onclick="TC.wa='';tcNewTopic()">+ נושא חדש</button>
@@ -2050,7 +2055,7 @@ function tcPaintHome(){
     <div class="tc-list" id="tcList">
       <div class="tc-trow gen ${gen?'unr':''}" onclick="tcOpenTopic(0)"><div class="tc-tt"><span># כללי</span>${gen?`<span class="tc-ub">${gen}</span>`:''}</div>
         <div class="tc-tm">שיחה חופשית לכל הצוות</div></div>
-      ${rows||`<div class="tc-empty" style="padding:18px">${TC.status==='open'?'אין נושאים פתוחים 🎉':'אין עדיין נושאים שטופלו'}</div>`}
+      ${rows||`<div class="tc-empty" style="padding:18px">${TC.status==='open'?'אין נושאים פתוחים':'אין עדיין נושאים שטופלו'}</div>`}
     </div>`;
 }
 // ── נושא חדש ──
@@ -2058,15 +2063,15 @@ function tcNewTopic(){
   TC.view='new';
   const p=document.getElementById('tcPanel'); if(!p) return;
   const kinds=Object.keys(TC.kinds).length?TC.kinds:{question:'שאלה',request:'בקשה',task:'משימה',update:'עדכון'};
-  p.innerHTML=`<div class="tc-head"><a href="#" class="tc-back" onclick="tcHome();return false">→</a><b>נושא חדש</b>
+  p.innerHTML=`<div class="tc-head"><a href="#" class="tc-back" onclick="tcHome();return false" title="חזרה">${ico('back',18)}</a><b>נושא חדש</b>
       <button class="dr-x" onclick="tcToggle(false)">✕</button></div>
     <div class="tc-form">
-      <div class="tc-kinds">${Object.entries(kinds).map(([k,l],i)=>`<label><input type="radio" name="tcKind" value="${k}" ${i===0?'checked':''}><span>${TC_KIND_IC[k]||''} ${escW(l)}</span></label>`).join('')}</div>
+      <div class="tc-kinds">${Object.entries(kinds).map(([k,l],i)=>`<label><input type="radio" name="tcKind" value="${k}" ${i===0?'checked':''}><span>${tcKindIc(k,13)}${escW(l)}</span></label>`).join('')}</div>
       <input id="tcTitle" placeholder="כותרת קצרה (למשל: להזמין מדבקות למדפסת)" maxlength="200" value="${TC.wa?'שיחה עם '+escW(tcPhoneFmt(TC.wa)):''}">
       <div class="tc-lbl">למי זה מיועד? <span style="font-weight:400">(בלי בחירה — לבעלים בלבד. רק מי שנבחר/תויג יראה את הנושא)</span></div>
       <div class="tc-assg">${TC.users.filter(u=>u.id!==TC.me).map(u=>`<label><input type="checkbox" value="${u.id}"><span>${tcDot(u)}${escW(u.name)}</span></label>`).join('')||'<span class="muted">אין עדיין משתמשים נוספים</span>'}</div>
       <textarea id="tcFirst" rows="4" placeholder="פרטים (אופציונלי)"></textarea>
-      ${TC.wa?`<div class="tc-pre">💬 מקושר לשיחת וואטסאפ עם ${escW(tcPhoneFmt(TC.wa))} <a href="#" onclick="TC.wa='';tcNewTopic();return false">✕</a></div>`:''}
+      ${TC.wa?`<div class="tc-pre">${icoI('chat',13)}מקושר לשיחת וואטסאפ עם ${escW(tcPhoneFmt(TC.wa))} <a href="#" onclick="TC.wa='';tcNewTopic();return false">✕</a></div>`:''}
       <div class="err" id="tcErr" style="color:var(--red);font-size:13px;min-height:16px"></div>
       <button class="btn-primary" style="width:100%" onclick="tcCreateTopic()">פתיחת נושא</button>
     </div>`;
@@ -2095,16 +2100,16 @@ function tcPaintTHead(){
   const h=document.getElementById('tcTHead'); if(!h) return;
   const t=TC.topicObj;
   const name=id=>(TC.users.find(u=>u.id===id)||{}).name||'';
-  h.innerHTML=`<a href="#" class="tc-back" onclick="tcHome();return false" title="חזרה לרשימה">→</a>
-    <div class="tc-ttl">${t?`<b>${TC_KIND_IC[t.kind]||''} ${escW(t.title)}</b>
-      <small>${escW(TC.kinds[t.kind]||'')} · נפתח ע״י ${escW(t.created_name)}${t.assignees.length?' · אחראי: '+t.assignees.map(id=>escW(name(id))).join(', '):''}${t.wa_phone?` · <a href="#" onclick="tcOpenWa('${escW(t.wa_phone)}');return false">💬 ${escW(tcPhoneFmt(t.wa_phone))}</a>`:''}</small>`
+  h.innerHTML=`<a href="#" class="tc-back" onclick="tcHome();return false" title="חזרה לרשימה">${ico('back',18)}</a>
+    <div class="tc-ttl">${t?`<b>${tcKindIc(t.kind,15)}${escW(t.title)}</b>
+      <small>${escW(TC.kinds[t.kind]||'')} · נפתח ע״י ${escW(t.created_name)}${t.assignees.length?' · אחראי: '+t.assignees.map(id=>escW(name(id))).join(', '):''}${t.wa_phone?` · <a href="#" onclick="tcOpenWa('${escW(t.wa_phone)}');return false">${icoI('chat',12)}${escW(tcPhoneFmt(t.wa_phone))}</a>`:''}</small>`
       :`<b># כללי</b><small>${TC.users.filter(u=>u.online).length} מחוברים עכשיו</small>`}</div>
-    ${t?`<button class="btn-ghost tc-st ${t.status==='done'?'':'go'}" onclick="tcSetStatus('${t.status==='done'?'open':'done'}')">${t.status==='done'?'↺ פתח מחדש':'✅ טופל'}</button>`:''}
+    ${t?`<button class="btn-ghost tc-st ${t.status==='done'?'':'go'}" onclick="tcSetStatus('${t.status==='done'?'open':'done'}')">${t.status==='done'?icoI('repeat',13)+'פתח מחדש':icoI('check',13)+'טופל'}</button>`:''}
     <button class="dr-x" onclick="tcToggle(false)">✕</button>`;
 }
 async function tcSetStatus(st){
   try{ const r=await api('/api/chat/topics/'+TC.topic,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:st})});
-    TC.topicObj=r.topic; tcPaintTHead(); tcLoad(false); tcLoadWaLinks(true); toast(st==='done'?'סומן כטופל ✅':'נפתח מחדש',true); }
+    TC.topicObj=r.topic; tcPaintTHead(); tcLoad(false); tcLoadWaLinks(true); toast(st==='done'?'סומן כטופל':'נפתח מחדש',true); }
   catch(e){ toast(e.detail||'הפעולה נכשלה',false); }
 }
 async function tcLoad(first){
@@ -2141,7 +2146,7 @@ function tcMsgHTML(m,prev){
   const newDay=!prev||new Date(prev.ts*1000).toDateString()!==d.toDateString();
   const time=d.toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'});
   const day=newDay?`<div class="tc-day">${d.toLocaleDateString('he-IL',{weekday:'long',day:'2-digit',month:'2-digit'})}</div>`:'';
-  if(m.system) return day+`<div class="tc-sys"><b>${escW(m.user_name)}</b> ${escW(m.text)} · ${time}</div>`;
+  if(m.system) return day+`<div class="tc-sys"><b>${escW(m.user_name)}</b> ${escW(String(m.text||'').replace(/^[\u2190-\u21FF\u2600-\u27BF\u2705]\uFE0F?\s*|^[\uD83C-\uDBFF][\uDC00-\uDFFF]\s*/,''))} · ${time}</div>`;
   const grouped=prev&&!prev.system&&!newDay&&prev.user_id===m.user_id&&(m.ts-prev.ts)<300&&!m.reply_to;
   if(m.deleted) return day+`<div class="tc-m ${mine?'mine':''} del"><div class="tc-b"><i>ההודעה נמחקה</i> · ${escW(m.user_name)} · ${time}</div></div>`;
   const rp=m.reply_to?TC.msgs.find(x=>x.id===m.reply_to):null;
@@ -2150,9 +2155,9 @@ function tcMsgHTML(m,prev){
   if(m.attach_url){
     if(String(m.attach_mime||'').startsWith('image/'))
       att=`<img class="tc-img" src="${escW(m.attach_url)}" loading="lazy" onclick="waLightbox('${escW(m.attach_url)}')" onload="tcScroll()">`;
-    else att=`<a class="tc-file" href="${escW(m.attach_url)}&dl=1" target="_blank">📎 ${escW(m.attach_name||'קובץ')} <small>${m.attach_size?Math.ceil(m.attach_size/1024)+'KB':''}</small></a>`;
+    else att=`<a class="tc-file" href="${escW(m.attach_url)}&dl=1" target="_blank">${icoI('clip',13)}${escW(m.attach_name||'קובץ')} <small>${m.attach_size?Math.ceil(m.attach_size/1024)+'KB':''}</small></a>`;
   }
-  const wa=m.wa_phone?`<a class="tc-wa" href="#" onclick="tcOpenWa('${escW(m.wa_phone)}');return false">💬 שיחה עם ${escW(tcPhoneFmt(m.wa_phone))}</a>`:'';
+  const wa=m.wa_phone?`<a class="tc-wa" href="#" onclick="tcOpenWa('${escW(m.wa_phone)}');return false">${icoI('chat',13)}שיחה עם ${escW(tcPhoneFmt(m.wa_phone))}</a>`:'';
   const tags=(m.mentions||[]).length?`<span class="tc-for">← ${(m.mentions||[]).map(id=>escW(tcName(id)||'?')).join(', ')}</span>`:'';
   const au=TC.users.find(u=>u.id===m.user_id);
   return day+`<div class="tc-m ${mine?'mine':''} ${forMe?'forme':''} ${grouped?'grp':''}" data-id="${m.id}">
@@ -2174,10 +2179,10 @@ function tcCompose(){
   const keep=document.getElementById('tcIn'); const v=keep?keep.value:'';
   const rp=TC.reply?TC.msgs.find(x=>x.id===TC.reply):null;
   c.innerHTML=`
-    ${rp?`<div class="tc-pre">↩ משיב ל<b>${escW(rp.user_name)}</b>: ${escW((rp.text||rp.attach_name||'').slice(0,60))} <a href="#" onclick="TC.reply=null;tcCompose();return false">✕</a></div>`:''}
-    ${TC.att?`<div class="tc-pre">${TC.att.uploading?'⏳ מעלה '+escW(TC.att.attach_name)+'…':(String(TC.att.attach_mime).startsWith('image/')?'📷 ':'📎 ')+escW(TC.att.attach_name)} <a href="#" onclick="TC.att=null;tcCompose();return false">✕</a></div>`:''}
+    ${rp?`<div class="tc-pre">${icoI('reply',13)}משיב ל<b>${escW(rp.user_name)}</b>: ${escW((rp.text||rp.attach_name||'').slice(0,60))} <a href="#" onclick="TC.reply=null;tcCompose();return false">✕</a></div>`:''}
+    ${TC.att?`<div class="tc-pre">${TC.att.uploading?icoI('clock',13)+'מעלה '+escW(TC.att.attach_name)+'…':icoI(String(TC.att.attach_mime).startsWith('image/')?'image':'clip',13)+escW(TC.att.attach_name)} <a href="#" onclick="TC.att=null;tcCompose();return false">✕</a></div>`:''}
     <div class="tc-row">
-      <label class="tc-clip" title="צרף קובץ או תמונה">📎<input type="file" style="display:none" onchange="if(this.files[0])tcUpload(this.files[0])"></label>
+      <label class="tc-clip" title="צרף קובץ או תמונה">${ico('clip',19)}<input type="file" style="display:none" onchange="if(this.files[0])tcUpload(this.files[0])"></label>
       <textarea id="tcIn" rows="1" placeholder="הודעה… (@ לתיוג, Ctrl+V להדבקת צילום מסך)"></textarea>
       <button class="btn-primary tc-send" onclick="tcSend()">שלח</button>
     </div>
@@ -2270,7 +2275,7 @@ async function tcLoadWaLinks(force){
 function tcOpenTopicFromWa(id){ TC.view='thread'; TC.topic=Number(id); tcToggle(true); }
 function tcWaStrip(ph){
   const L=tcWaLinksFor(ph); if(!L.length) return '';
-  return `<div class="wa-tcstrip"><span class="muted">👥 שיחת צוות על הלקוח:</span>${L.map(t=>`<a href="#" class="wa-tcchip ${t.status==='done'?'done':''}" onclick="tcOpenTopicFromWa(${t.id});return false">${TC_KIND_IC[t.kind]||''} ${escW(t.title)}${t.status==='done'?' · ✅ טופל':''}${t.unread?` <b class="tc-ub">${t.unread}</b>`:''}</a>`).join('')}</div>`;
+  return `<div class="wa-tcstrip"><span class="muted" style="display:inline-flex;align-items:center">${icoI('users',14)}שיחת צוות על הלקוח:</span>${L.map(t=>`<a href="#" class="wa-tcchip ${t.status==='done'?'done':''}" onclick="tcOpenTopicFromWa(${t.id});return false">${tcKindIc(t.kind,13)}${escW(t.title)}${t.status==='done'?' · טופל':''}${t.unread?` <b class="tc-ub">${t.unread}</b>`:''}</a>`).join('')}</div>`;
 }
 function tcBadge(u){
   if(u) TC.unread=Object.assign({by_topic:{}},u);
@@ -2282,7 +2287,7 @@ function tcBadge(u){
 async function tcPollUnread(){
   if(!S.user||TC.open) return;
   try{ const u=await api('/api/chat/unread',{},10000); tcBadge(u);
-    if((u.mentions||0)>TC.seenMention) toast('💬 תייגו אותך בצ׳אט הצוות',true);
+    if((u.mentions||0)>TC.seenMention) toast('תייגו אותך בצ׳אט הצוות',true);
     TC.seenMention=u.mentions||0;
   }catch(e){}
 }
@@ -5378,7 +5383,7 @@ function waConvRow(c){
       <div class="nm" style="display:flex;align-items:center;gap:5px">${c.star?`<span class="wa-star-on" style="display:inline-flex">${ico('star',13,true)}</span>`:''}<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(c.name)}</span> ${(c.handoff||c.live_chat)?`<span title="מצב אנושי — הבוט מושתק בשיחה" style="display:inline-flex;color:#16a34a">${ico('user',13)}</span>`:''}</div>
       <div class="lm">${escW(c.last_msg)||'<i>—</i>'}</div>
     </div>
-    <div class="meta muted" style="font-size:11px">${c.ts?fmtTime(new Date(c.ts*1000).toISOString()):''}${tcWaLinksFor(c.phone).some(t=>t.status==='open')?'<div title="יש שיחת צוות פתוחה על הלקוח" style="margin-top:3px;font-size:13px">👥</div>':''}</div>
+    <div class="meta muted" style="font-size:11px">${c.ts?fmtTime(new Date(c.ts*1000).toISOString()):''}${tcWaLinksFor(c.phone).some(t=>t.status==='open')?'<div title="יש שיחת צוות פתוחה על הלקוח" style="margin-top:4px;color:#2563eb;display:flex;justify-content:flex-end">'+ico('users',14)+'</div>':''}</div>
   </div>`;
 }
 // רשימת השיחות: מקומי (200 אחרונות) + תוצאות חיפוש-שרת מכל אנשי הקשר
@@ -5492,7 +5497,7 @@ function waThreadHTML(){
       <span style="margin-inline-start:auto;display:flex;gap:6px;flex-wrap:wrap">
         <button class="btn-ghost wa-ico ${conv.star?'wa-star-on':''}" onclick="waToggleStar()" title="${conv.star?'הסר מעקב':'סמן למעקב'}">${ico('star',17,conv.star)}</button>
         <button class="btn-ghost wa-ico ${S.waPanel&&S.waPanelMode==='stock'?'wa-human-on':''}" onclick="waToggleStock()" title="מלאי חי — חיפוש מוצר בלי לעזוב את השיחה">${ico('search')}</button>
-        <button class="btn-ghost wa-ico" onclick="tcAskAbout(S.waPhone)" title="פתח נושא צוות חדש על השיחה הזו (צ'אט פנימי)" style="position:relative">👥${tcWaLinksFor(S.waPhone).filter(t=>t.status==='open').length?`<span class="wa-badge" style="background:#2563eb">${tcWaLinksFor(S.waPhone).filter(t=>t.status==='open').length}</span>`:''}</button>
+        <button class="btn-ghost wa-ico" onclick="tcAskAbout(S.waPhone)" title="${tcWaLinksFor(S.waPhone).filter(t=>t.status==='open').length?'יש שיחת צוות פתוחה על הלקוח — המספר = כמה נושאים פתוחים. לחיצה פותחת נושא חדש':'פתח נושא צוות על השיחה הזו (צ\'אט פנימי)'}" style="position:relative">${ico('users')}${tcWaLinksFor(S.waPhone).filter(t=>t.status==='open').length?`<span class="wa-badge" style="background:#2563eb">${tcWaLinksFor(S.waPhone).filter(t=>t.status==='open').length}</span>`:''}</button>
         <button class="btn-ghost wa-ico" onclick="waTogglePanel()" title="פרטי פונה (הזמנות/תגיות/הערות)">${ico('info')}</button>
         <button class="btn-ghost wa-ico ${S.waBotHandoff?'wa-human-on':''}" onclick="waBotHandoff(${S.waBotHandoff?0:1})"
                 title="${S.waBotHandoff?'מצב אנושי — הבוט מושתק בשיחה. לחץ להחזיר את הבוט':'הבוט פעיל בשיחה. לחץ להשתלט ידנית (להשתיק את הבוט)'}">${ico(S.waBotHandoff?'user':'bot',17)}</button>
@@ -7177,8 +7182,8 @@ function waBubble(m){
 // מי ענה ללקוח (נשמר מ-13/10/2026; הודעות ישנות בלי תווית). בוט / שם הנציג / אוטומטי / מתוזמן.
 function waByTag(m){
   if(m.direction!=='out'||!m.by) return '';
-  const ic={bot:'🤖 ',user:'👤 ',console:'👤 ',system:'⚙️ ',scheduled:'⏰ '}[m.by_kind]||'';
-  return `<span class="wa-by k-${escW(m.by_kind||'')}">${ic}${escW(m.by)}</span> · `;
+  const ic={bot:'bot',user:'user',console:'user',system:'sliders',scheduled:'clock'}[m.by_kind];
+  return `<span class="wa-by k-${escW(m.by_kind||'')}">${ic?icoI(ic,11):''}${escW(m.by)}</span> · `;
 }
 // תרגום קוד שגיאת Meta לסיבה ידידותית בעברית (נשמר ה-raw כ-fallback).
 function humanWaErr(err){
@@ -7304,7 +7309,18 @@ const _IPATHS={
   copy:'<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
   printer:'<polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>',
   globe:'<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>',
+  // צ'אט צוות / משתמשים (13/10/2026) — אותו סגנון קווי
+  users:'<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+  help:'<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
+  megaphone:'<path d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/>',
+  lock:'<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+  unlock:'<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/>',
+  alert:'<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
+  reply:'<polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/>',
+  mobile:'<rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/>',
 };
+// אייקון בתוך שורת טקסט (ico מחזיר block)
+function icoI(name,size,fill){ return `<span class="ic-i">${ico(name,size||14,fill)}</span>`; }
 function ico(name, size, fill){
   return `<svg width="${size||17}" height="${size||17}" viewBox="0 0 24 24" fill="${fill?'currentColor':'none'}" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="display:block">${_IPATHS[name]||''}</svg>`;
 }

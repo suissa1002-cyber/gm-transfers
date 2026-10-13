@@ -1931,10 +1931,10 @@ def chat_topic_create(body: TopicIn):
         db.chat_add(u["id"], u["name"], first[:4000], [a for a in assignees if a != u["id"]],
                     topic_id=t["id"], wa_phone=phone)
     if assignees:
-        _chat_push([a for a in assignees if a != u["id"]], f"📌 {u['name']}: {_TOPIC_KINDS[kind]} חדשה בשבילך",
+        _chat_push([a for a in assignees if a != u["id"]], f"{u['name']}: {_TOPIC_KINDS[kind]} חדשה בשבילך",
                    title, t["id"])
     else:   # בלי אחראי = לבעלים (אסי ואודי)
-        _chat_push(sorted(_owner_ids() - {u["id"]}), f"📌 {u['name']}: {_TOPIC_KINDS[kind]} חדשה", title, t["id"])
+        _chat_push(sorted(_owner_ids() - {u["id"]}), f"{u['name']}: {_TOPIC_KINDS[kind]} חדשה", title, t["id"])
     return {"ok": True, "topic": db.topic_get(t["id"])}
 
 
@@ -1950,19 +1950,19 @@ def chat_topic_update(tid: int, body: TopicPatch):
     t = _chat_topic_for(u, tid)
     if body.status in ("open", "done") and body.status != t["status"]:
         db.topic_update(tid, status=body.status, closed_name=u["name"])
-        db.chat_add(u["id"], u["name"], ("✅ סימן/ה כטופל" if body.status == "done" else "↺ פתח/ה מחדש"),
+        db.chat_add(u["id"], u["name"], ("סימן/ה כטופל" if body.status == "done" else "פתח/ה מחדש"),
                     topic_id=tid, system=1)
         if body.status == "done" and t["created_by"] != u["id"]:
-            _chat_push([t["created_by"]], f"✅ {u['name']} סימן/ה כטופל", t["title"], tid)
+            _chat_push([t["created_by"]], f"{u['name']} סימן/ה כטופל", t["title"], tid)
     if body.assignees is not None:
         active = {x["id"]: x["name"] for x in db.users_list() if x["active"]}
         new = sorted({int(x) for x in body.assignees if str(x).isdigit() and int(x) in active})
         if new != t["assignees"]:
             db.topic_update(tid, assignees=new)
-            db.chat_add(u["id"], u["name"], "👤 אחראי/ם: " + (", ".join(active[i] for i in new) or "אין"),
+            db.chat_add(u["id"], u["name"], "עדכן/ה אחראי/ם: " + (", ".join(active[i] for i in new) or "אין"),
                         topic_id=tid, system=1)
             _chat_push([i for i in new if i not in t["assignees"] and i != u["id"]],
-                       f"📌 {u['name']} שייך/ה אליך נושא", t["title"], tid)
+                       f"{u['name']} שייך/ה אליך נושא", t["title"], tid)
     return {"ok": True, "topic": db.topic_get(tid)}
 
 
@@ -2018,14 +2018,14 @@ def chat_send(body: ChatIn):
                     (body.attach_mime or "")[:100], body.attach_size or 0, phone, body.reply_to,
                     topic_id=tid)
     db.chat_read_set(u["id"], m["id"], tid)   # ההודעה שלי = נקראה אצלי
-    prev = text[:140] or ("📷 תמונה" if (body.attach_mime or "").startswith("image/") else "📎 קובץ")
-    _chat_push(mentions, f"💬 {u['name']} תייג/ה אותך" + (f" · {t['title'][:40]}" if t else ""), prev, tid)
+    prev = text[:140] or ("תמונה" if (body.attach_mime or "").startswith("image/") else "קובץ מצורף")
+    _chat_push(mentions, f"{u['name']} תייג/ה אותך" + (f" · {t['title'][:40]}" if t else ""), prev, tid)
     if t:   # תגובה בנושא → כל המעורבים: פותח, אחראים, מי שכתב/תויג בו (+ הבעלים בנושא בלי אחראי)
         others = {t["created_by"], *t["assignees"]} | db.topic_participants(tid)
         if not t["assignees"]:
             others |= _owner_ids()
         others = (others & active) - {u["id"]} - set(mentions)
-        _chat_push(sorted(others), f"💬 {u['name']} · {t['title'][:50]}", prev, tid)
+        _chat_push(sorted(others), f"{u['name']} · {t['title'][:50]}", prev, tid)
     return {"ok": True, "message": _chat_out(m)}
 
 
@@ -2163,7 +2163,7 @@ def chat_push_test():
     """התראת בדיקה רק למכשירים שלי — לבדיקה עם אייפון נעול."""
     u = _chat_user()
     import wa_push
-    n = wa_push.send_to_all(title="💬 בדיקת צוות", body=f"{u['name']}, ככה תיראה התראה על תיוג או נושא חדש",
+    n = wa_push.send_to_all(title="GreenOS · בדיקת צוות", body=f"{u['name']}, ככה תיראה התראה על תיוג או נושא חדש",
                             url="/?chat=1", kind="chat", tag="chat-test", user_ids=[u["id"]])
     return {"sent": n}
 
