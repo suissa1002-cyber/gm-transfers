@@ -5811,6 +5811,54 @@ async def checks_gql(request: Request, x_admin_key: Optional[str] = Header(None)
     return JSONResponse(r.json(), status_code=r.status_code)
 
 
+_CK_IMG_CACHE: dict = {}   # asset_id → (bytes, ts) — צילומי צ'ק מוקטנים
+
+
+@app.get("/api/checks/img/{asset_id}")
+def checks_img(asset_id: int, x_admin_key: Optional[str] = Header(None),
+               x_checks_key: Optional[str] = Header(None)):
+    """צילום צ'ק מוקטן להדפסה — דרך השרת.
+
+    ⚠️ 13/10/2026: כל צילום הוא תמונת טלפון מלאה (~2.8MB). הורדה ישירה מ-S3 של
+    מאנדיי לרשת של אסי לקחה 94 שניות לצ'ק אחד, ותור של 4 צ'קים נתקע על "טוען
+    צילומים". השרת יושב בפרנקפורט ליד ה-S3 (eu-central-1), מוריד מהר, מקטין
+    ל-1400px JPEG ומחזיר ~200KB. מטמון בזיכרון — צילום צ'ק לא משתנה."""
+    checks_pw = os.getenv("CHECKS_PASSWORD", "").strip()
+    admin_ok = (not cfg.ADMIN_PASSWORD) or (x_admin_key or "") == cfg.ADMIN_PASSWORD
+    checks_ok = bool(checks_pw) and (x_checks_key or "") == checks_pw
+    if not (admin_ok or checks_ok):
+        raise HTTPException(401, "checks auth required")
+    import time as _t
+    hit = _CK_IMG_CACHE.get(asset_id)
+    if hit and _t.time() - hit[1] < 6 * 3600:
+        return Response(hit[0], media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"})
+    import requests as _rq
+    token = os.getenv("MONDAY_API_TOKEN", "")
+    if not token:
+        raise HTTPException(400, "MONDAY_API_TOKEN לא מוגדר")
+    q = {"query": "{ assets(ids: [%d]) { public_url } }" % int(asset_id)}
+    r = _rq.post("https://api.monday.com/v2", json=q,
+                 headers={"Authorization": token, "API-Version": "2024-10"}, timeout=30)
+    url = (((r.json().get("data") or {}).get("assets") or [{}])[0] or {}).get("public_url")
+    if not url:
+        raise HTTPException(404, "הצילום לא נמצא")
+    raw = _rq.get(url, timeout=60)
+    if not raw.ok:
+        raise HTTPException(502, "הורדת הצילום נכשלה")
+    from PIL import Image, ImageOps
+    import io as _io
+    im = ImageOps.exif_transpose(Image.open(_io.BytesIO(raw.content)))   # צילומי טלפון — לסובב לפי EXIF
+    im = im.convert("RGB")
+    im.thumbnail((1400, 1400))
+    buf = _io.BytesIO()
+    im.save(buf, "JPEG", quality=82, optimize=True)
+    data = buf.getvalue()
+    if len(_CK_IMG_CACHE) > 300:
+        _CK_IMG_CACHE.clear()
+    _CK_IMG_CACHE[asset_id] = (data, _t.time())
+    return Response(data, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"})
+
+
 @app.post("/api/checks/upload")
 async def checks_upload(request: Request, x_admin_key: Optional[str] = Header(None),
                         x_checks_key: Optional[str] = Header(None)):

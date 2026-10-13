@@ -2206,6 +2206,22 @@
         }
 
 
+
+        // צילום מוקטן דרך GreenOS (~200KB במקום ~2.8MB) עם מגבלת זמן — לעולם לא נתקע.
+        async function ckImgUrl(fileUrl, timeoutMs){
+            const id = extractAssetId(fileUrl);
+            if (!id) return null;
+            const ctl = new AbortController();
+            const tm = setTimeout(() => ctl.abort(), timeoutMs || 45000);
+            try {
+                const r = await fetch(API_URL.replace(/\/gql$/, '/img/') + id, {
+                    signal: ctl.signal,
+                    headers: {'X-Admin-Key': localStorage.getItem('tr_admin_key')||'',
+                              'X-Checks-Key': localStorage.getItem('tr_checks_key')||''}});
+                if (!r.ok) return null;
+                return URL.createObjectURL(await r.blob());
+            } catch (e) { return null; } finally { clearTimeout(tm); }
+        }
         // ── 🖨️ הדפסת צ'ק בודד: פרטים + צילום (13/10/2026, אסי) ──
         async function printCheck(id){
             const src = allChecksFull.length ? allChecksFull : allChecks;
@@ -2259,8 +2275,7 @@
             const ready = (label) => { go.disabled = false; go.textContent = label || '🖨️ הדפס / שמור PDF'; };
             if (!c.files__1) { ready(); return; }
             try {
-                const assetId = extractAssetId(c.files__1);
-                const url = assetId ? await getPublicUrl(assetId) : null;
+                const url = await ckImgUrl(c.files__1);
                 const box = document.getElementById('ckPrintImg');
                 if (!url) { box.innerHTML = '<span style="color:#dc2626">לא ניתן לטעון את הצילום</span>'; ready(); return; }
                 const img = new Image();
@@ -2352,12 +2367,14 @@
                 </div>`).join('')}</div>`).join('')}`;
             document.body.appendChild(w);
             // ⚠️ מדפיסים רק אחרי שכל הצילומים נטענו — אחרת ה-PDF יוצא עם משבצות ריקות
-            await Promise.all(list.map(async c => {
+            const go0 = document.getElementById('ckPrintGo'); let done = 0;
+            const tick = () => { done++; if (go0.disabled) go0.textContent = `⏳ טוען צילומים ${done}/${list.length}…`; };
+            await Promise.all(list.map(async c => { try { await ckLoadOne(c); } finally { tick(); } }));
+            async function ckLoadOne(c) {
                 const box = w.querySelector(`[data-ckimg="${c.id}"]`);
                 if (!c.files__1 || !box) return;
                 try {
-                    const id = extractAssetId(c.files__1);
-                    const url = id ? await getPublicUrl(id) : null;
+                    const url = await ckImgUrl(c.files__1);
                     if (!url) { box.innerHTML = '<span class="no" style="color:#dc2626">לא ניתן לטעון צילום</span>'; return; }
                     await new Promise(res => {
                         const img = new Image();
@@ -2366,7 +2383,7 @@
                         img.src = url;
                     });
                 } catch (e) { box.innerHTML = '<span class="no" style="color:#dc2626">לא ניתן לטעון צילום</span>'; }
-            }));
+            }
             const go = document.getElementById('ckPrintGo');
             go.disabled = false; go.textContent = '🖨️ הדפס / שמור PDF';
         }
