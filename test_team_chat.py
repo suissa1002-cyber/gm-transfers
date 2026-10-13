@@ -102,6 +102,10 @@ check("⛔ ולא לסגור אותה", c.post(f"/api/chat/topics/{priv}", heade
 check("אודי (בעלים) רואה", priv in [x["id"] for x in c.get("/api/chat/topics", headers=U).json()["topics"]])
 c.post("/api/chat/send", headers=A, json={"text": "@דנה תעזרי כאן", "topic_id": priv, "mentions": [ids["dana"]]})
 check("אחרי שתייגו אותה — היא רואה את הנושא", priv in [x["id"] for x in c.get("/api/chat/topics", headers=D).json()["topics"]])
+wt = c.post("/api/chat/topics", headers=A, json={"title": "שיחה עם 0508526256", "kind": "question", "assignees": [ids["udi"]], "wa_phone": "972508526256"}).json()["topic"]["id"]
+la = c.get("/api/chat/wa-links", headers=A).json()["links"]
+check("קישור לשיחת וואטסאפ: מופיע לפי 9 ספרות אחרונות", any(x["id"] == wt and x["status"] == "open" for x in la.get("508526256", [])), la)
+check("⛔ עובדת לא מעורבת לא רואה את הקישור", "508526256" not in c.get("/api/chat/wa-links", headers=D).json()["links"])
 own = c.post("/api/chat/topics", headers=D, json={"title": "שאלה שלי", "kind": "question", "assignees": []}).json()["topic"]["id"]
 check("נושא שהיא פתחה — מופיע אצלה", own in [x["id"] for x in c.get("/api/chat/topics", headers=D).json()["topics"]])
 pres = {x["name"]: x["online"] for x in c.get("/api/chat/topics", headers=A).json()["users"]}

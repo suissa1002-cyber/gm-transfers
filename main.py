@@ -2098,6 +2098,27 @@ def chat_del(mid: int):
     return {"ok": True}
 
 
+@app.get("/api/chat/wa-links")
+def chat_wa_links():
+    """נושאי צוות שמקושרים לשיחות וואטסאפ (שהמשתמש רשאי לראות) — לסימון בשיחה וברשימה.
+    מפתח = 9 הספרות האחרונות של הטלפון (972.../05... זהים)."""
+    u = _current_user()
+    if u is None:
+        return {"links": {}}
+    vis = _chat_visible(u)
+    unread = db.chat_unread(u["id"], vis)["by_topic"]
+    links: dict = {}
+    for t in db.topic_list("all", limit=500):
+        ph = re.sub(r"\D", "", t.get("wa_phone") or "")
+        if len(ph) < 9 or (vis is not None and t["id"] not in vis):
+            continue
+        links.setdefault(ph[-9:], []).append({"id": t["id"], "title": t["title"], "kind": t["kind"],
+                                              "status": t["status"], "unread": unread.get(str(t["id"]), 0)})
+    for v in links.values():
+        v.sort(key=lambda x: (x["status"] != "open", -x["id"]))
+    return {"links": links}
+
+
 @app.get("/api/chat/push-key")
 def chat_push_key():
     _chat_user()

@@ -730,6 +730,9 @@
   .tc-atpop{position:absolute;bottom:100%;inset-inline-start:40px;background:var(--card);border:1px solid var(--line);border-radius:10px;
     box-shadow:0 6px 20px rgba(0,0,0,.15);flex-direction:column;min-width:140px;overflow:hidden}
   .tc-atpop a{padding:7px 12px;text-decoration:none;color:var(--txt);font-size:14px} .tc-atpop a:hover,.tc-atpop a:first-child{background:var(--card2)}
+  .wa-tcstrip{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:7px 12px;border-bottom:1px solid var(--line);background:rgba(37,99,235,.06);font-size:13px}
+  .wa-tcchip{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:99px;border:1px solid #2563eb;color:#2563eb;text-decoration:none;font-weight:600;background:var(--card)}
+  .wa-tcchip.done{border-color:var(--line);color:var(--muted);font-weight:400}
   .tc-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#cbd5e1;margin-inline-end:5px;vertical-align:1px}
   .tc-dot.on{background:#22c55e;box-shadow:0 0 0 2px rgba(34,197,94,.2)}
   .tc-push{font-size:12.5px;padding:7px 14px;border-bottom:1px solid var(--line);color:var(--muted)}
@@ -2076,7 +2079,7 @@ async function tcCreateTopic(){
     assignees:[...document.querySelectorAll('.tc-assg input:checked')].map(x=>Number(x.value)),
     text:document.getElementById('tcFirst').value, wa_phone:TC.wa||''};
   try{ const r=await api('/api/chat/topics',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    TC.wa=''; TC.status='open'; tcOpenTopic(r.topic.id); }
+    TC.wa=''; TC.status='open'; tcOpenTopic(r.topic.id); tcLoadWaLinks(true); }
   catch(e){ document.getElementById('tcErr').textContent=e.detail||'הפתיחה נכשלה'; }
 }
 // ── שרשור (כללי או נושא) ──
@@ -2101,7 +2104,7 @@ function tcPaintTHead(){
 }
 async function tcSetStatus(st){
   try{ const r=await api('/api/chat/topics/'+TC.topic,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:st})});
-    TC.topicObj=r.topic; tcPaintTHead(); tcLoad(false); toast(st==='done'?'סומן כטופל ✅':'נפתח מחדש',true); }
+    TC.topicObj=r.topic; tcPaintTHead(); tcLoad(false); tcLoadWaLinks(true); toast(st==='done'?'סומן כטופל ✅':'נפתח מחדש',true); }
   catch(e){ toast(e.detail||'הפעולה נכשלה',false); }
 }
 async function tcLoad(first){
@@ -2249,6 +2252,26 @@ function tcOpenWa(phone){
 }
 // מתוך שיחת וואטסאפ: 👥 → נושא חדש מקושר לשיחה (אופציונלי — רוב הנושאים פנימיים לגמרי)
 function tcAskAbout(phone){ TC.wa=String(phone||''); TC.view='new'; tcToggle(true); }
+// ── קישור שיחת וואטסאפ ↔ נושאי צוות: סימון בשיחה וברשימה ──
+let _tcWaLinksAt=0;
+function tcWaKey(ph){ const d=String(ph||'').replace(/\D/g,''); return d.length>=9?d.slice(-9):''; }
+function tcWaLinksFor(ph){ return ((S.tcWaLinks||{})[tcWaKey(ph)])||[]; }
+async function tcLoadWaLinks(force){
+  if(!S.user||(!force&&Date.now()-_tcWaLinksAt<20000)) return;
+  _tcWaLinksAt=Date.now();
+  try{ const r=await api('/api/chat/wa-links',{},10000); const prev=JSON.stringify(S.tcWaLinks||{});
+    S.tcWaLinks=r.links||{};
+    if(prev!==JSON.stringify(S.tcWaLinks)&&S.view==='admin'&&S.adminTab==='wa'){
+      const pane=document.getElementById('waListPane'), search=document.getElementById('waSearch');
+      if(pane&&!(search&&document.activeElement===search)) pane.innerHTML=waListHTML(waFiltered());
+      if(S.waPhone) renderWaThread(); }
+  }catch(e){}
+}
+function tcOpenTopicFromWa(id){ TC.view='thread'; TC.topic=Number(id); tcToggle(true); }
+function tcWaStrip(ph){
+  const L=tcWaLinksFor(ph); if(!L.length) return '';
+  return `<div class="wa-tcstrip"><span class="muted">👥 שיחת צוות על הלקוח:</span>${L.map(t=>`<a href="#" class="wa-tcchip ${t.status==='done'?'done':''}" onclick="tcOpenTopicFromWa(${t.id});return false">${TC_KIND_IC[t.kind]||''} ${escW(t.title)}${t.status==='done'?' · ✅ טופל':''}${t.unread?` <b class="tc-ub">${t.unread}</b>`:''}</a>`).join('')}</div>`;
+}
 function tcBadge(u){
   if(u) TC.unread=Object.assign({by_topic:{}},u);
   const b=document.getElementById('teamBadge'); if(!b) return;
@@ -5330,6 +5353,7 @@ function waEnterSend(ev, fn){
 }
 async function loadWa(spinner){
   if(spinner) showLoading('טוען שיחות וואטסאפ…');
+  tcLoadWaLinks(true);
   waEllaPendingLoad(false);   // 🎓 באדג' תור השאלות של אלה בסרגל (ברקע, מרנדר אם השתנה)
   try{ const d=await api('/api/admin/wa/conversations?archived='+(S.waArchived?1:0));
        S.waConvs=d.conversations||[]; S.waErr=''; updateWaBadge(S.waConvs); }
@@ -5354,7 +5378,7 @@ function waConvRow(c){
       <div class="nm" style="display:flex;align-items:center;gap:5px">${c.star?`<span class="wa-star-on" style="display:inline-flex">${ico('star',13,true)}</span>`:''}<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(c.name)}</span> ${(c.handoff||c.live_chat)?`<span title="מצב אנושי — הבוט מושתק בשיחה" style="display:inline-flex;color:#16a34a">${ico('user',13)}</span>`:''}</div>
       <div class="lm">${escW(c.last_msg)||'<i>—</i>'}</div>
     </div>
-    <div class="meta muted" style="font-size:11px">${c.ts?fmtTime(new Date(c.ts*1000).toISOString()):''}</div>
+    <div class="meta muted" style="font-size:11px">${c.ts?fmtTime(new Date(c.ts*1000).toISOString()):''}${tcWaLinksFor(c.phone).some(t=>t.status==='open')?'<div title="יש שיחת צוות פתוחה על הלקוח" style="margin-top:3px;font-size:13px">👥</div>':''}</div>
   </div>`;
 }
 // רשימת השיחות: מקומי (200 אחרונות) + תוצאות חיפוש-שרת מכל אנשי הקשר
@@ -5468,7 +5492,7 @@ function waThreadHTML(){
       <span style="margin-inline-start:auto;display:flex;gap:6px;flex-wrap:wrap">
         <button class="btn-ghost wa-ico ${conv.star?'wa-star-on':''}" onclick="waToggleStar()" title="${conv.star?'הסר מעקב':'סמן למעקב'}">${ico('star',17,conv.star)}</button>
         <button class="btn-ghost wa-ico ${S.waPanel&&S.waPanelMode==='stock'?'wa-human-on':''}" onclick="waToggleStock()" title="מלאי חי — חיפוש מוצר בלי לעזוב את השיחה">${ico('search')}</button>
-        <button class="btn-ghost wa-ico" onclick="tcAskAbout(S.waPhone)" title="שאל את הצוות על השיחה הזו (צ'אט פנימי)">👥</button>
+        <button class="btn-ghost wa-ico" onclick="tcAskAbout(S.waPhone)" title="פתח נושא צוות חדש על השיחה הזו (צ'אט פנימי)" style="position:relative">👥${tcWaLinksFor(S.waPhone).filter(t=>t.status==='open').length?`<span class="wa-badge" style="background:#2563eb">${tcWaLinksFor(S.waPhone).filter(t=>t.status==='open').length}</span>`:''}</button>
         <button class="btn-ghost wa-ico" onclick="waTogglePanel()" title="פרטי פונה (הזמנות/תגיות/הערות)">${ico('info')}</button>
         <button class="btn-ghost wa-ico ${S.waBotHandoff?'wa-human-on':''}" onclick="waBotHandoff(${S.waBotHandoff?0:1})"
                 title="${S.waBotHandoff?'מצב אנושי — הבוט מושתק בשיחה. לחץ להחזיר את הבוט':'הבוט פעיל בשיחה. לחץ להשתלט ידנית (להשתיק את הבוט)'}">${ico(S.waBotHandoff?'user':'bot',17)}</button>
@@ -5477,6 +5501,7 @@ function waThreadHTML(){
     </div>
     <div class="wa-body">
       <div class="wa-main">
+        ${tcWaStrip(S.waPhone)}
         <div class="wa-msgs" id="waMsgs">
           ${msgs.map(waBubble).join('')||'<div class="empty">אין הודעות בשיחה</div>'}
         </div>
@@ -7819,6 +7844,7 @@ function waRefreshMsgsOnly(){
   if(nearBottom) box.scrollTop=box.scrollHeight; else box.scrollTop=prevTop+(box.scrollHeight-prevH);
 }
 async function loadWaSilent(){
+  tcLoadWaLinks(false);
   try{ const d=await api('/api/admin/wa/conversations?archived='+(S.waArchived?1:0));
        S.waConvs=d.conversations||[]; S.waErr=''; updateWaBadge(S.waConvs);
        const pane=document.getElementById('waListPane');
