@@ -36,10 +36,10 @@ FEATURES = [
     ("checks", "ניהול צ'קים", "לוח הצ'קים, דוחות והדפסה", ["/api/checks"]),
     ("schedule", "סידור עבודה", "סידור משמרות לסניפים", ["/api/schedule", "/api/admin/shift-dm-test"]),
     ("zap", "זאפ ומחירים", "השוואת מחירים ופיד זאפ", ["/api/admin/zap"]),
-    ("services", "Green Care וטרייד-אין", "פוליסות, מחשבון טרייד-אין ותוספות", [
-        "/api/admin/greencare", "/api/admin/tradein", "/api/admin/addons",
-        "/api/admin/service-flags",
+    ("services", "Green Care וטרייד-אין", "פוליסות Green Care ומחשבון טרייד-אין", [
+        "/api/admin/greencare", "/api/admin/tradein", "/api/admin/service-flags",
     ]),
+    ("addons", "מערכת תוספות (אביזרים)", "ניהול התוספות שמוצעות ללקוח בעמוד המוצר", ["/api/admin/addons"]),
     ("invoices", "חשבוניות", "חשבוניות ספקים", ["/api/admin/invoices", "/api/admin/invoices-today"]),
     ("updates", "עדכונים לסניפים", "פרסום עדכונים ושידורים לסניפים", [
         "/api/admin/branch-updates", "/api/admin/branch-update-image",
@@ -50,7 +50,8 @@ FEATURES = [
         "/api/admin/sales", "/api/admin/sales-status", "/api/admin/sales-backfill",
         "/api/admin/sales-ingest", "/api/admin/special",
     ]),
-    ("tasks", "משימות", "משימות צוות", ["/api/admin/tasks", "/api/admin/dvir-tasks"]),
+    # "משימות סוכנים" (/api/admin/tasks) — בעלים בלבד: לא ממופה בכוונה (13/10: תווית "משימות צוות"
+    # הטעתה והוענקה לעובד). משימות צוות אמיתיות = נושאים בצ'אט הצוות.
 ]
 
 # פעולות רגישות — תיבה נפרדת מעבר להרשאת הפיצ'ר. נבדקות בתוך נקודת הקצה עצמה

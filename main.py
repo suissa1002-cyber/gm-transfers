@@ -1608,7 +1608,7 @@ _LOGIN_FAILS: dict = {}   # (username|ip) → [count, first_ts] — הגנה מ�
 
 def _user_public(u: dict) -> dict:
     return {"id": u["id"], "username": u["username"], "name": u["name"], "role": u["role"],
-            "perms": u["perms"] if u["role"] != "owner" else sorted(_perms.ALL_KEYS),
+            "perms": _perms.clean_perms(u["perms"]) if u["role"] != "owner" else sorted(_perms.ALL_KEYS),
             "active": u["active"], "last_login": u.get("last_login")}
 
 
