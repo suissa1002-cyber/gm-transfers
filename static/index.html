@@ -1640,6 +1640,7 @@ async function api(path,opts,ms){
     if(r.status===401){ try{ const j=await r.clone().json();
       if(j&&j.code==='device'){ deviceBlockedFlow(); }
       else if(j&&j.code==='user_session'){ userLogout(true); toast('הכניסה פגה — היכנס מחדש',false); render(); }
+      else if(j&&j.code==='legacy_off'){ legacyOffFlow(); }
       else if(j&&j.code==='branch-locked'){ toast('המכשיר נעול לסניף אחר — החלפת סניף דורשת אישור מנהל',false); }
     }catch(e){} }
     let _det=''; try{ _det=((await r.clone().json())||{}).detail||''; }catch(_){}   // סיבת השגיאה האמיתית מהשרת
@@ -1757,6 +1758,13 @@ async function userRefresh(){
     if(r.ok){ const j=await r.json(); S.user=j.user; S.permCatalog=j.catalog; }
   }catch(e){}
 }
+// הבעלים חסם את הסיסמה המשותפת → מנתקים ומבקשים כניסה אישית (פעם אחת, גם אם כמה בקשות נכשלו יחד)
+let _legacyOffShown=false;
+function legacyOffFlow(){
+  if(_legacyOffShown) return; _legacyOffShown=true;
+  userLogout(true); render();
+  loginModal(()=>{ _legacyOffShown=false; render(); },'הסיסמה המשותפת בוטלה — היכנס עם שם המשתמש והסיסמה האישיים שלך');
+}
 function loginModal(done,sub){
   const root=document.getElementById('modalRoot');
   root.innerHTML=`<div class="overlay"><div class="modal">
@@ -1790,7 +1798,9 @@ function loginModal(done,sub){
     modal({title:'כניסת ניהול',sub:'סיסמת הניהול המשותפת (זמני, עד שכולם עוברים למשתמשים)',placeholder:'סיסמה',type:'password',
       onok:async(pw)=>{
         try{ const r=await fetchT('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({password:pw})},15000); if(!r.ok) throw 0; }
+          body:JSON.stringify({password:pw})},15000);
+          if(r.status===403){ const j=await r.json().catch(()=>({})); return j.detail||'הסיסמה המשותפת בוטלה'; }
+          if(!r.ok) throw 0; }
         catch(e){ return 'סיסמה שגויה'; }
         S.adminKey=pw; S.user=null; localStorage.setItem('tr_admin_key',pw);
         if(done) done();
@@ -1828,7 +1838,8 @@ function hubUsers(){
 async function loadUsers(){
   const app=document.getElementById('app');
   app.innerHTML='<div class="empty">טוען משתמשים…</div>';
-  try{ S.usersData=await api('/api/admin/users'); }
+  try{ S.usersData=await api('/api/admin/users');
+    try{ S.usersData.legacy=(await api('/api/admin/legacy-key')).blocked; }catch(e){ S.usersData.legacy=null; } }
   catch(e){ app.innerHTML=`<div class="empty">${escW(e.detail||'אין גישה לניהול משתמשים')}</div>`; return; }
   if(S.view==='users') renderUsers();
 }
@@ -1865,6 +1876,12 @@ function renderUsers(){
     <div class="us-head"><h2 style="margin:0">משתמשים והרשאות</h2>
       <button class="btn-primary" onclick="userEditModal(0)">+ משתמש חדש</button></div>
     ${legacy?`<div class="us-note">נכנסת עם הסיסמה המשותפת. צור קודם משתמש בעלים לעצמך ולאודי, ואז התנתק והיכנס עם שם המשתמש האישי.</div>`:''}
+    ${D.legacy!==null&&D.legacy!==undefined?`<div class="us-row" style="align-items:center">
+      <div class="us-main"><div class="us-name">${D.legacy?'🔒 הסיסמה המשותפת חסומה בדפדפנים':'🔓 הסיסמה המשותפת עדיין פעילה'}</div>
+        <div class="us-meta">${D.legacy?'כל הכניסות הן אישיות. שירותי השרת (סוכן הקופות, Stock Watcher) ממשיכים לעבוד כרגיל.'
+          :'כל מי שמכיר אותה נכנס בלי שם, ועוקף את נעילת המחשב. חסימה מנתקת מיד כל דפדפן שנכנס איתה (כולל של אודי) ומחייבת כניסה אישית. שירותי השרת לא מושפעים.'}</div></div>
+      <div class="us-act"><button class="${D.legacy?'btn-ghost':'btn-primary'}" style="padding:8px 14px;border-radius:10px;cursor:pointer" onclick="legacyToggle(${!D.legacy})">${D.legacy?'החזר סיסמה משותפת':'🔒 חסום עכשיו'}</button></div>
+    </div>`:''}
     <div class="us-note">עובד (לא בעלים) נכנס רק ממכשיר שאושר בטלגרם — מהבית או ממחשב אישי הכניסה נחסמת גם אם יש לו את הקישור והסיסמה.</div>
     ${rows||'<div class="empty">אין עדיין משתמשים</div>'}
   </div>`;
@@ -1924,6 +1941,16 @@ function userResetPw(uid){
       catch(e){ return e.detail||'האיפוס נכשל'; }
       toast('הסיסמה אופסה',true); loadUsers();
     }});
+}
+async function legacyToggle(block){
+  if(!S.user||S.user.role!=='owner'){ toast('צריך להיות מחובר בכניסה אישית כבעלים',false); return; }
+  if(block){
+    const owners=S.usersData.users.filter(u=>u.role==='owner'&&u.active).map(u=>u.name).join(', ');
+    if(!confirm(`לחסום את הסיסמה המשותפת?\n\nכל דפדפן שנכנס איתה ינותק מיד ויתבקש להיכנס עם שם משתמש וסיסמה.\nבעלים פעילים: ${owners}\n\nוודא שלאודי יש את שם המשתמש והסיסמה שלו לפני שממשיכים.`)) return;
+  }
+  try{ await api('/api/admin/legacy-key',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({blocked:!!block})});
+    toast(block?'🔒 הסיסמה המשותפת נחסמה':'🔓 הסיסמה המשותפת הוחזרה',true); loadUsers(); }
+  catch(e){ toast(e.detail||'הפעולה נכשלה',false); }
 }
 async function userToggleActive(uid){
   const u=S.usersData.users.find(x=>x.id===uid);

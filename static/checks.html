@@ -1888,6 +1888,11 @@
             if(k){ localStorage.setItem('tr_checks_key',k); localStorage.setItem('checks_owner','1');
                    u.searchParams.delete('k'); history.replaceState(null,'',u.pathname); }
         })();
+// כניסה אישית ב-GreenOS (13/10/2026): tr_admin_key = 'u:'+אסימון → X-User-Token + מכשיר; אחרת הסיסמה המשותפת
+function gmAuthH(h){ h=h||{}; const k=localStorage.getItem('tr_admin_key')||'';
+  if(k.indexOf('u:')===0){ h['X-User-Token']=k.slice(2); const d=localStorage.getItem('tr_device'); if(d) h['X-Device-Token']=d; }
+  else if(k && /^[\x00-\xFF]*$/.test(k)) h['X-Admin-Key']=k;
+  return h; }
         function gmKey(force){
             if(localStorage.getItem('tr_checks_key')&&!force) return localStorage.getItem('tr_checks_key');
             let k=localStorage.getItem('tr_admin_key');
@@ -1901,7 +1906,7 @@
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-Admin-Key': localStorage.getItem('tr_admin_key')||'',
+                    ...gmAuthH(),
                     'X-Checks-Key': localStorage.getItem('tr_checks_key')||'',
                     'API-Version': '2024-10'
                 },
@@ -2216,7 +2221,7 @@
             try {
                 const r = await fetch(API_URL.replace(/\/gql$/, '/img/') + id + (rot ? '?rot=1' : ''), {
                     signal: ctl.signal,
-                    headers: {'X-Admin-Key': localStorage.getItem('tr_admin_key')||'',
+                    headers: {...gmAuthH(),
                               'X-Checks-Key': localStorage.getItem('tr_checks_key')||''}});
                 if (!r.ok) return null;
                 return URL.createObjectURL(await r.blob());
@@ -2768,7 +2773,7 @@
                 const response = await fetch('/api/checks/upload', {
                     method: 'POST',
                     headers: {
-                        'X-Admin-Key': localStorage.getItem('tr_admin_key')||'',
+                        ...gmAuthH(),
                         'X-Checks-Key': localStorage.getItem('tr_checks_key')||''
                     },
                     body: formData

@@ -222,6 +222,11 @@ let ROWS = [];                      // [{employee, cells:{dow:{branch_id,hours}}
 const STATE = { week:null, emp:'', branch:'' };
 
 // ── auth ──
+// כניסה אישית ב-GreenOS (13/10/2026): tr_admin_key = 'u:'+אסימון → X-User-Token + מכשיר; אחרת הסיסמה המשותפת
+function gmAuthH(h){ h=h||{}; const k=localStorage.getItem('tr_admin_key')||'';
+  if(k.indexOf('u:')===0){ h['X-User-Token']=k.slice(2); const d=localStorage.getItem('tr_device'); if(d) h['X-Device-Token']=d; }
+  else if(k && /^[\x00-\xFF]*$/.test(k)) h['X-Admin-Key']=k;
+  return h; }
 function key(force){
   if(localStorage.getItem('tr_schedule_key') && !force) return localStorage.getItem('tr_schedule_key');
   let k = localStorage.getItem('tr_admin_key');
@@ -235,7 +240,7 @@ async function api(path, opts){
   opts = opts||{};
   opts.headers = Object.assign({'Content-Type':'application/json',
     'X-Schedule-Key': hdrSafe(localStorage.getItem('tr_schedule_key')),
-    'X-Admin-Key': hdrSafe(localStorage.getItem('tr_admin_key'))}, opts.headers||{});
+    ...gmAuthH()}, opts.headers||{});
   const r = await fetch(API+path, opts);
   if(r.status===401){ localStorage.removeItem('tr_schedule_key');
     document.getElementById('hint').textContent='סיסמה שגויה — נסה שוב (אפשר להדביק).'; key(true); load(); throw new Error('401'); }

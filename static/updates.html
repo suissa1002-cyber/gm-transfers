@@ -280,10 +280,16 @@ const T={deal:'מבצע',new:'מוצר חדש',note:'נוהל',info:'מידע'};
 let KEY=localStorage.getItem('gm_admin_key')||'';
 let KIND='deal', BSEL=[], PROD=null, EDIT=null;
 
-function H(){ return {'X-Admin-Key':KEY,'Content-Type':'application/json'}; }
+// כניסה אישית ב-GreenOS (13/10/2026): אם מחובר שם בשם משתמש — אותה כניסה גם כאן
+function _gmUser(){ const u=localStorage.getItem('tr_admin_key')||''; return u.indexOf('u:')===0?u.slice(2):''; }
+function H(){ const t=_gmUser();
+  if(t){ const h={'X-User-Token':t,'Content-Type':'application/json'}; const d=localStorage.getItem('tr_device'); if(d) h['X-Device-Token']=d; return h; }
+  return {'X-Admin-Key':KEY,'Content-Type':'application/json'}; }
 async function api(path,opts){
   const r=await fetch(path,Object.assign({headers:H()},opts||{}));
-  if(r.status===401){ localStorage.removeItem('gm_admin_key'); location.reload(); }
+  if(r.status===401){ localStorage.removeItem('gm_admin_key'); KEY='';
+    if(_gmUser()){ document.getElementById('gate').style.display='block'; throw 'הכניסה פגה — היכנס מחדש ל-GreenOS ורענן את הדף'; }
+    location.reload(); }
   const j=await r.json().catch(()=>({}));
   if(!r.ok){
     let d=j.detail;
@@ -528,7 +534,7 @@ async function boot(){
   renderChips(); preview(); loadPub();
   setInterval(loadPub, 60000);
 }
-if(KEY) boot(); else { document.getElementById('gate').style.display='block';
+if(KEY||_gmUser()) boot(); else { document.getElementById('gate').style.display='block';
   document.getElementById('gateKey').focus(); }
 </script>
 </body>

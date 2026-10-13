@@ -52,6 +52,28 @@ def _current_user():
     return _CURRENT_USER.get()
 
 
+# 🔒 ביטול הסיסמה המשותפת בדפדפנים (מתג במסך המשתמשים). שירותי שרת (סוכן הקופות,
+# Stock Watcher) ממשיכים להשתמש בה — לכן נחסם רק מה שמגיע מדפדפן: דפדפנים שולחים
+# Sec-Fetch-* תמיד, ו-GreenOS שולח גם X-Device-Token; requests/curl מהשרתים — לא.
+_LEGACY_UI = {"off": False, "ts": 0.0}
+
+
+def _legacy_ui_blocked() -> bool:
+    import time as _tm
+    if _tm.time() - _LEGACY_UI["ts"] > 30:
+        try:
+            _LEGACY_UI["off"] = db.setting_get("legacy_ui_blocked") == "1"
+        except Exception:  # noqa: BLE001
+            pass
+        _LEGACY_UI["ts"] = _tm.time()
+    return bool(_LEGACY_UI["off"])
+
+
+def _from_browser(request) -> bool:
+    h = request.headers
+    return bool(h.get("sec-fetch-site") or h.get("sec-fetch-mode") or h.get("x-device-token"))
+
+
 @app.middleware("http")
 async def _user_auth_mw(request: Request, call_next):
     tok = request.headers.get("x-user-token")
@@ -61,6 +83,11 @@ async def _user_auth_mw(request: Request, call_next):
         bkey = request.headers.get("x-bridge-key") or ""
         actor = None
         if cfg.ADMIN_PASSWORD and akey == cfg.ADMIN_PASSWORD:
+            from starlette.concurrency import run_in_threadpool as _rtp
+            if _from_browser(request) and await _rtp(_legacy_ui_blocked):
+                return JSONResponse(status_code=401, content={
+                    "detail": "הסיסמה המשותפת בוטלה — יש להיכנס עם שם משתמש וסיסמה אישיים",
+                    "code": "legacy_off"})
             actor = {"kind": "console", "name": "צוות"}
         elif bkey and bkey == globals().get("URI_BRIDGE_KEY"):
             actor = {"kind": "bot", "name": "אלה"}
@@ -1553,7 +1580,10 @@ class AdminLogin(BaseModel):
 
 
 @app.post("/api/admin/login")
-def admin_login(body: AdminLogin):
+def admin_login(body: AdminLogin, request: Request):
+    if cfg.ADMIN_PASSWORD and body.password == cfg.ADMIN_PASSWORD and _from_browser(request) \
+            and _legacy_ui_blocked():
+        raise HTTPException(403, "הסיסמה המשותפת בוטלה — יש להיכנס עם שם משתמש וסיסמה אישיים")
     if not cfg.ADMIN_PASSWORD or body.password == cfg.ADMIN_PASSWORD:
         return {"ok": True}
     raise HTTPException(401, "wrong password")
@@ -1721,6 +1751,34 @@ def admin_users_reset_pw(uid: int, body: PwResetIn, x_admin_key: Optional[str] =
     db.user_set_password(uid, body.password)
     n = db.sessions_delete_for_user(uid)
     return {"ok": True, "sessions_closed": n}
+
+
+@app.get("/api/admin/legacy-key")
+def legacy_key_state(x_admin_key: Optional[str] = Header(None)):
+    _require_owner(x_admin_key)
+    _LEGACY_UI["ts"] = 0
+    return {"blocked": _legacy_ui_blocked()}
+
+
+class LegacyKeyIn(BaseModel):
+    blocked: bool
+
+
+@app.post("/api/admin/legacy-key")
+def legacy_key_set(body: LegacyKeyIn):
+    """חסימה/החזרה של הסיסמה המשותפת בדפדפנים. רק בעלים בכניסה אישית — כך מי שחוסם
+    כבר הוכיח שהכניסה האישית שלו עובדת, ואי אפשר לנעול את כולם בחוץ."""
+    u = _current_user()
+    if u is None or u["role"] != "owner":
+        raise HTTPException(403, "רק בעלים בכניסה אישית יכול לשנות את זה")
+    db.setting_set("legacy_ui_blocked", "1" if body.blocked else "0", by=u["name"])
+    import time as _tm
+    _LEGACY_UI.update(off=bool(body.blocked), ts=_tm.time())
+    try:
+        _tg_admin(("🔒" if body.blocked else "🔓") + f" <b>הסיסמה המשותפת {'נחסמה' if body.blocked else 'הוחזרה'} בדפדפנים</b> — ע\"י {u['name']}")
+    except Exception:  # noqa: BLE001
+        pass
+    return {"ok": True, "blocked": bool(body.blocked)}
 
 
 @app.post("/api/admin/users/{uid}/logout-all")

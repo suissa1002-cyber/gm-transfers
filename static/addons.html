@@ -311,8 +311,13 @@
 </div>
 
 <script>
+// כניסה אישית ב-GreenOS (13/10/2026): tr_admin_key = 'u:'+אסימון → X-User-Token + מכשיר; אחרת הסיסמה המשותפת
+function gmAuthH(h){ h=h||{}; const k=localStorage.getItem('tr_admin_key')||'';
+  if(k.indexOf('u:')===0){ h['X-User-Token']=k.slice(2); const d=localStorage.getItem('tr_device'); if(d) h['X-Device-Token']=d; }
+  else if(k && /^[\x00-\xFF]*$/.test(k)) h['X-Admin-Key']=k;
+  return h; }
 const KEY = () => localStorage.getItem('tr_admin_key') || '';
-const H = () => ({ 'Content-Type': 'application/json', 'X-Admin-Key': KEY() });
+const H = () => ({ 'Content-Type': 'application/json', ...gmAuthH() });
 const $ = id => document.getElementById(id);
 
 let CHIPS = {}, CATS = [], CHIP_ROWS = [];
