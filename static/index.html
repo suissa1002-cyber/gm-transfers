@@ -2102,7 +2102,7 @@ function tcPaintTHead(){
   const name=id=>(TC.users.find(u=>u.id===id)||{}).name||'';
   h.innerHTML=`<a href="#" class="tc-back" onclick="tcHome();return false" title="חזרה לרשימה">${ico('back',18)}</a>
     <div class="tc-ttl">${t?`<b>${tcKindIc(t.kind,15)}${escW(t.title)}</b>
-      <small>${escW(TC.kinds[t.kind]||'')} · נפתח ע״י ${escW(t.created_name)}${t.assignees.length?' · אחראי: '+t.assignees.map(id=>escW(name(id))).join(', '):''}${t.wa_phone?` · <a href="#" onclick="tcOpenWa('${escW(t.wa_phone)}');return false">${icoI('chat',12)}${escW(tcPhoneFmt(t.wa_phone))}</a>`:''}</small>`
+      <small>${escW(TC.kinds[t.kind]||'')} · נפתח ע״י ${escW(t.created_name)}${t.assignees.length?' · מיועד ל'+t.assignees.map(id=>escW(name(id))).join(', '):''}${t.wa_phone?` · <a href="#" onclick="tcOpenWa('${escW(t.wa_phone)}');return false">${icoI('chat',12)}${escW(tcPhoneFmt(t.wa_phone))}</a>`:''}</small>`
       :`<b># כללי</b><small>${TC.users.filter(u=>u.online).length} מחוברים עכשיו</small>`}</div>
     ${t?`<button class="btn-ghost tc-st ${t.status==='done'?'':'go'}" onclick="tcSetStatus('${t.status==='done'?'open':'done'}')">${t.status==='done'?icoI('repeat',13)+'פתח מחדש':icoI('check',13)+'טופל'}</button>`:''}
     <button class="dr-x" onclick="tcToggle(false)">✕</button>`;
@@ -2146,7 +2146,7 @@ function tcMsgHTML(m,prev){
   const newDay=!prev||new Date(prev.ts*1000).toDateString()!==d.toDateString();
   const time=d.toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'});
   const day=newDay?`<div class="tc-day">${d.toLocaleDateString('he-IL',{weekday:'long',day:'2-digit',month:'2-digit'})}</div>`:'';
-  if(m.system) return day+`<div class="tc-sys"><b>${escW(m.user_name)}</b> ${escW(String(m.text||'').replace(/^[\u2190-\u21FF\u2600-\u27BF\u2705]\uFE0F?\s*|^[\uD83C-\uDBFF][\uDC00-\uDFFF]\s*/,''))} · ${time}</div>`;
+  if(m.system) return day+`<div class="tc-sys"><b>${escW(m.user_name)}</b> ${escW(tcSysText(m.text))} · ${time}</div>`;
   const grouped=prev&&!prev.system&&!newDay&&prev.user_id===m.user_id&&(m.ts-prev.ts)<300&&!m.reply_to;
   if(m.deleted) return day+`<div class="tc-m ${mine?'mine':''} del"><div class="tc-b"><i>ההודעה נמחקה</i> · ${escW(m.user_name)} · ${time}</div></div>`;
   const rp=m.reply_to?TC.msgs.find(x=>x.id===m.reply_to):null;
@@ -2165,6 +2165,13 @@ function tcMsgHTML(m,prev){
     <div class="tc-b">${quote}${att}${tcText(m.text)}${wa}</div>
     <div class="tc-acts"><a href="#" onclick="tcReply(${m.id});return false">השב</a>${mine?` · <a href="#" onclick="tcDel(${m.id});return false">מחק</a>`:''}</div>
   </div>`;
+}
+// הודעות מערכת ישנות: בלי אימוג'י, ו"אחראי/ם" → "מיועד ל" (המונח שונה 13/10)
+function tcSysText(t){
+  t=String(t||'').replace(/^[\u2190-\u21FF\u2600-\u27BF\u2705]\uFE0F?\s*|^[\uD83C-\uDBFF][\uDC00-\uDFFF]\s*/,'');
+  const m=t.match(/^(פתח\/ה [^:]+): (.*) · אחראי\/ם: (.+)$/);
+  if(m) return m[1]+' ל'+m[3]+': '+m[2];
+  return t.replace('עדכן/ה אחראי/ם:','עדכן/ה למי מיועד:').replace('אחראי/ם:','מיועד ל:');
 }
 function tcPaint(toBottom){
   const box=document.getElementById('tcMsgs'); if(!box) return;

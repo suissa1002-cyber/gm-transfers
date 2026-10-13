@@ -1925,7 +1925,7 @@ def chat_topic_create(body: TopicIn):
     t = db.topic_add(title, kind, u["id"], u["name"], assignees, phone)
     first = (body.text or "").strip()
     who = ", ".join(x["name"] for x in db.users_list() if x["id"] in assignees)
-    db.chat_add(u["id"], u["name"], f"פתח/ה {_TOPIC_KINDS[kind]}: {title}" + (f" · אחראי/ם: {who}" if who else ""),
+    db.chat_add(u["id"], u["name"], f"פתח/ה {_TOPIC_KINDS[kind]}" + (f" ל{who}" if who else "") + f": {title}",
                 topic_id=t["id"], system=1)
     if first:
         db.chat_add(u["id"], u["name"], first[:4000], [a for a in assignees if a != u["id"]],
@@ -1959,10 +1959,10 @@ def chat_topic_update(tid: int, body: TopicPatch):
         new = sorted({int(x) for x in body.assignees if str(x).isdigit() and int(x) in active})
         if new != t["assignees"]:
             db.topic_update(tid, assignees=new)
-            db.chat_add(u["id"], u["name"], "עדכן/ה אחראי/ם: " + (", ".join(active[i] for i in new) or "אין"),
+            db.chat_add(u["id"], u["name"], "עדכן/ה למי מיועד: " + (", ".join(active[i] for i in new) or "לבעלים"),
                         topic_id=tid, system=1)
             _chat_push([i for i in new if i not in t["assignees"] and i != u["id"]],
-                       f"{u['name']} שייך/ה אליך נושא", t["title"], tid)
+                       f"{u['name']} הוסיף/ה אותך לנושא", t["title"], tid)
     return {"ok": True, "topic": db.topic_get(tid)}
 
 
