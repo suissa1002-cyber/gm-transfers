@@ -71,9 +71,10 @@ async def _user_auth_mw(request: Request, call_next):
     need = _perms.feature_for_path(request.url.path)
     if u["role"] != "owner" and need:
         if need == "owner" or need not in (u.get("perms") or []):
-            label = next((f[1] for f in _perms.FEATURES if f[0] == need), "הפעולה הזו")
+            label = next((f[1] for f in _perms.FEATURES if f[0] == need), None)
+            msg = f"אין לך הרשאה ל{label}" if label else "המסך הזה שמור לבעלים בלבד"
             return JSONResponse(status_code=403, content={
-                "detail": f"אין לך הרשאה ל{label}", "code": "user_perm", "need": need})
+                "detail": msg, "code": "user_perm", "need": need})
     import time as _tm
     if _tm.time() - _SESSION_TOUCH.get(tok, 0) > 300:   # לא כתיבה ל-DB בכל בקשה
         _SESSION_TOUCH[tok] = _tm.time()
@@ -1151,11 +1152,17 @@ def _require_admin(x_admin_key: Optional[str] = Header(None)):
         raise HTTPException(401, "admin auth required")
 
 
+def _admin_key_ok(x_admin_key) -> bool:
+    """סיסמה משותפת נכונה, או משתמש מחובר (נבדק כבר ב-_user_auth_mw)."""
+    return (not cfg.ADMIN_PASSWORD) or (x_admin_key or "") == cfg.ADMIN_PASSWORD \
+        or _current_user() is not None
+
+
 def _require_admin_or_bridge(x_admin_key, x_bridge_key):
     """מנהל (סיסמה) **או** גשר אורי/אלה (URI_BRIDGE_KEY). אלה רצה כשירות Render נפרד
     (uri-bridge) שאין לו ADMIN_PASSWORD ב-env, אבל כן יש לו URI_BRIDGE_KEY — כך שהיא
     יכולה לתזמן מענה מבלי לקבל גישת אדמין מלאה."""
-    if not cfg.ADMIN_PASSWORD or (x_admin_key or "") == cfg.ADMIN_PASSWORD:
+    if _admin_key_ok(x_admin_key):
         return
     if URI_BRIDGE_KEY and (x_bridge_key or "") == URI_BRIDGE_KEY:
         return
@@ -1745,7 +1752,7 @@ def close_transfer(op_id: str, body: CloseIn, x_admin_key: Optional[str] = Heade
     t = db.get_transfer(op_id)
     if not t:
         raise HTTPException(404, "transfer not found")
-    is_admin = (not cfg.ADMIN_PASSWORD) or (x_admin_key or "") == cfg.ADMIN_PASSWORD
+    is_admin = _admin_key_ok(x_admin_key)
     return _enrich(db.close_transfer(op_id, body.reason or "", body.by or "", kept_allowed=is_admin))
 
 
@@ -5516,6 +5523,8 @@ async def _device_gate(request, call_next):
         tok = request.headers.get("x-device-token", "")
         if cfg.ADMIN_PASSWORD and akey == cfg.ADMIN_PASSWORD:
             pass
+        elif request.headers.get("x-user-token"):
+            pass   # משתמש: _user_auth_mw מאמת את האסימון ואוכף מכשיר מאושר לעובדים
         else:
             d = db.device_get(tok) if tok else None
             if not d or d.get("status") != "approved":
@@ -6028,7 +6037,7 @@ async def checks_gql(request: Request, x_admin_key: Optional[str] = Header(None)
     """GraphQL passthrough לבורד הצ'קים — אדמין, או מפתח צ'קים ייעודי (לבעלים,
     גישה לצ'קים בלבד בלי שום כניסה ל-GreenOS)."""
     checks_pw = os.getenv("CHECKS_PASSWORD", "").strip()
-    admin_ok = (not cfg.ADMIN_PASSWORD) or (x_admin_key or "") == cfg.ADMIN_PASSWORD
+    admin_ok = _admin_key_ok(x_admin_key)
     checks_ok = bool(checks_pw) and (x_checks_key or "") == checks_pw
     if not (admin_ok or checks_ok or _current_user() is not None):
         raise HTTPException(401, "checks auth required")
@@ -6059,7 +6068,7 @@ def checks_img(asset_id: int, rot: int = 0, x_admin_key: Optional[str] = Header(
     צילומים". השרת יושב בפרנקפורט ליד ה-S3 (eu-central-1), מוריד מהר, מקטין
     ל-1400px JPEG ומחזיר ~200KB. מטמון בזיכרון — צילום צ'ק לא משתנה."""
     checks_pw = os.getenv("CHECKS_PASSWORD", "").strip()
-    admin_ok = (not cfg.ADMIN_PASSWORD) or (x_admin_key or "") == cfg.ADMIN_PASSWORD
+    admin_ok = _admin_key_ok(x_admin_key)
     checks_ok = bool(checks_pw) and (x_checks_key or "") == checks_pw
     if not (admin_ok or checks_ok or _current_user() is not None):
         raise HTTPException(401, "checks auth required")
@@ -6105,7 +6114,7 @@ async def checks_upload(request: Request, x_admin_key: Optional[str] = Header(No
     מחליף את ההעלאה הישנה לוורקר Cloudflare שהפסיקה לעבוד אחרי המיגרציה
     (הקליינט שלח token=undefined). מקבל multipart: item_id + file."""
     checks_pw = os.getenv("CHECKS_PASSWORD", "").strip()
-    admin_ok = (not cfg.ADMIN_PASSWORD) or (x_admin_key or "") == cfg.ADMIN_PASSWORD
+    admin_ok = _admin_key_ok(x_admin_key)
     checks_ok = bool(checks_pw) and (x_checks_key or "") == checks_pw
     if not (admin_ok or checks_ok or _current_user() is not None):
         raise HTTPException(401, "checks auth required")
@@ -6163,7 +6172,7 @@ def _sched_bname(bid) -> str:
 
 def _require_schedule(x_admin_key, x_schedule_key):
     sched_pw = os.getenv("SCHEDULE_PASSWORD", "").strip()
-    admin_ok = (not cfg.ADMIN_PASSWORD) or (x_admin_key or "") == cfg.ADMIN_PASSWORD
+    admin_ok = _admin_key_ok(x_admin_key)
     sched_ok = bool(sched_pw) and (x_schedule_key or "") == sched_pw
     if not (admin_ok or sched_ok):
         raise HTTPException(401, "schedule auth required")
@@ -10961,7 +10970,7 @@ def board_stellr_issue(payload: dict, x_admin_key: Optional[str] = Header(None),
     מחזיר/שולח את הקוד הקיים — לעולם לא מנפיק חדש."""
     import re as _re
     # גייט go-live: עובד סניף לא מנפיק עד STELLR_POS_LIVE=1 (גם בעקיפת פרונט). מנהל עוקף.
-    _is_admin = (not cfg.ADMIN_PASSWORD) or (x_admin_key or "") == cfg.ADMIN_PASSWORD
+    _is_admin = _admin_key_ok(x_admin_key)
     if not _is_admin and os.environ.get("STELLR_POS_LIVE", "0") != "1":
         raise HTTPException(403, "הנפקת קודים עדיין בבנייה — פנה לאסי")
     dev = _caller_device(x_admin_key, x_device_token)
@@ -11243,7 +11252,7 @@ def board_stellr_request(payload: dict, x_admin_key: Optional[str] = Header(None
     import json as _json
     import re as _re
     # גייט go-live: עובד סניף לא יוצר בקשות הנפקה עד STELLR_POS_LIVE=1. מנהל עוקף.
-    _is_admin = (not cfg.ADMIN_PASSWORD) or (x_admin_key or "") == cfg.ADMIN_PASSWORD
+    _is_admin = _admin_key_ok(x_admin_key)
     if not _is_admin and os.environ.get("STELLR_POS_LIVE", "0") != "1":
         raise HTTPException(403, "הנפקת קודים עדיין בבנייה — פנה לאסי")
     dev = _caller_device(x_admin_key, x_device_token)

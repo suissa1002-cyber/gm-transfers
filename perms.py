@@ -29,6 +29,7 @@ FEATURES = [
         "/api/admin/rebalance-scan", "/api/admin/misroute", "/api/admin/numeric-receivers",
         "/api/admin/relabel-receiver", "/api/admin/sold-reconcile", "/api/admin/stock-watch",
         "/api/admin/catalog", "/api/admin/catalog-refresh", "/api/admin/recommendations",
+        "/api/admin/overview",
     ]),
     ("codes", "קודים דיגיטליים", "צפייה בקודים שהונפקו (Stellr)", ["/api/admin/stellr"]),
     ("coupons", "קופונים", "רשימת קופונים ומימושים", ["/api/admin/coupons"]),
@@ -45,7 +46,7 @@ FEATURES = [
         "/api/admin/broadcast", "/api/admin/broadcasts",
     ]),
     ("reports", "דשבורד ודוחות", "מסך הבית, סקירות ונתוני מכירות", [
-        "/api/admin/home", "/api/admin/overview", "/api/admin/brief", "/api/admin/digest",
+        "/api/admin/home", "/api/admin/brief", "/api/admin/digest",
         "/api/admin/sales", "/api/admin/sales-status", "/api/admin/sales-backfill",
         "/api/admin/sales-ingest", "/api/admin/special",
     ]),

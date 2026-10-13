@@ -668,6 +668,31 @@
                background:var(--card2);color:var(--txt);outline:none;margin:14px 0;text-align:center}
   .modal input:focus{border-color:var(--blue)}
   .modal .err{color:var(--red);font-size:13px;min-height:18px}
+  /* ── 👤 משתמשים והרשאות ── */
+  .us-wrap{max-width:900px;margin:0 auto;padding:16px}
+  .us-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px}
+  .us-note{background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:13px;color:var(--muted);margin-bottom:10px}
+  .us-row{display:flex;gap:12px;justify-content:space-between;align-items:flex-start;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px;flex-wrap:wrap}
+  .us-row.off{opacity:.55}
+  .us-main{flex:1;min-width:220px}
+  .us-name{font-weight:700;font-size:16px}
+  .us-meta{font-size:12.5px;color:var(--muted);margin:3px 0 8px}
+  .us-perms{display:flex;flex-wrap:wrap;gap:5px}
+  .us-chip{font-size:12px;padding:2px 8px;border-radius:99px;background:var(--card2);border:1px solid var(--line)}
+  .us-chip.sens{border-color:var(--red);color:var(--red)}
+  .us-badge{font-size:11px;padding:1px 7px;border-radius:99px;margin-inline-start:6px;font-weight:600;color:#fff}
+  .us-badge.own{background:var(--blue)} .us-badge.blk{background:var(--red)}
+  .us-act{display:flex;gap:6px;flex-wrap:wrap}
+  .us-act .btn-ghost{padding:6px 10px;font-size:13px;border-radius:10px;cursor:pointer}
+  .us-modal{max-width:460px;text-align:right;max-height:90vh;overflow:auto}
+  .us-modal input:not([type=checkbox]){text-align:right;margin:8px 0}
+  .us-sec{font-weight:700;margin:14px 0 6px;font-size:13px;color:var(--muted)}
+  .us-ck{display:flex;gap:10px;align-items:flex-start;padding:7px 4px;cursor:pointer;border-bottom:1px solid var(--line)}
+  .us-ck.sub{padding-inline-start:30px;font-size:13px;border-bottom:0}
+  .us-ck input{width:auto!important;margin:3px 0 0!important;padding:0!important;flex:none}
+  .us-ck small{display:block;color:var(--muted);font-size:12px;font-weight:400}
+  .dr-user{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 16px;font-size:13px;color:var(--muted)}
+  .dr-user b{color:var(--txt)}
   /* ── Ops Hub: תפריט בורגר + הטמעת אפליקציות ── */
   .burger{background:transparent;border:1px solid var(--line);color:var(--txt);font-size:19px;cursor:pointer;
           padding:6px 12px;border-radius:10px;line-height:1}
@@ -1539,14 +1564,13 @@ function fetchT(url,opts,ms){
   return fetch(url,{...opts,signal:ctrl.signal}).finally(()=>clearTimeout(id));
 }
 async function api(path,opts,ms){
-  opts=opts||{}; opts.headers=opts.headers||{};
-  if(S.adminKey) opts.headers['X-Admin-Key']=S.adminKey;
-  if(S.deviceToken) opts.headers['X-Device-Token']=S.deviceToken;
+  opts=opts||{}; opts.headers=authH(opts.headers||{});
   const r=await fetchT(path,opts,ms||30000);
   if(!r.ok){
     // המכשיר כבר לא מאושר (בוטל/נמחק) — חזרה למסך הבקשה
     if(r.status===401){ try{ const j=await r.clone().json();
       if(j&&j.code==='device'){ deviceBlockedFlow(); }
+      else if(j&&j.code==='user_session'){ userLogout(true); toast('הכניסה פגה — היכנס מחדש',false); render(); }
       else if(j&&j.code==='branch-locked'){ toast('המכשיר נעול לסניף אחר — החלפת סניף דורשת אישור מנהל',false); }
     }catch(e){} }
     let _det=''; try{ _det=((await r.clone().json())||{}).detail||''; }catch(_){}   // סיבת השגיאה האמיתית מהשרת
@@ -1637,6 +1661,211 @@ function modal({title,sub,placeholder,value,type,onok}){
   inp.addEventListener('keydown',e=>{ if(e.key==='Enter') submit(); });
 }
 function closeModal(){ document.getElementById('modalRoot').innerHTML=''; }
+
+// ── 👤 כניסה אישית והרשאות (13/10/2026) ──
+// S.adminKey נשאר "האישור של הקונסולה": סיסמה משותפת (ישן), או 'u:'+אסימון (כניסה אישית).
+// כך כל הבדיקות הקיימות של S.adminKey ממשיכות לעבוד, ורק הכותרות משתנות.
+function authH(h){
+  h=h||{}; const k=S.adminKey;
+  if(k){ if(String(k).startsWith('u:')) h['X-User-Token']=String(k).slice(2); else h['X-Admin-Key']=k; }
+  if(S.deviceToken) h['X-Device-Token']=S.deviceToken;
+  return h;
+}
+// הרשאה לפיצ'ר — רק להסתרה במסך. האכיפה האמיתית בשרת (perms.py).
+function can(f){ return !S.user || S.user.role==='owner' || (S.user.perms||[]).includes(f); }
+function isOwner(){ return S.user ? S.user.role==='owner' : !!S.adminKey; }
+function userLogout(silent){
+  const k=S.adminKey;
+  if(k&&String(k).startsWith('u:')) fetchT('/api/auth/logout',{method:'POST',headers:authH({})},8000).catch(()=>{});
+  S.adminKey=null; S.user=null; localStorage.removeItem('tr_admin_key');
+  if(!silent){ toggleDrawer(false); S.view='board'; S.adminData=null; S.homeData=null; render(); }
+}
+async function userRefresh(){
+  if(!S.adminKey||!String(S.adminKey).startsWith('u:')){ S.user=null; return; }
+  try{ const r=await fetchT('/api/auth/me',{headers:authH({})},15000);
+    if(r.status===401){ userLogout(true); return; }
+    if(r.ok){ const j=await r.json(); S.user=j.user; S.permCatalog=j.catalog; }
+  }catch(e){}
+}
+function loginModal(done,sub){
+  const root=document.getElementById('modalRoot');
+  root.innerHTML=`<div class="overlay"><div class="modal">
+    <h3>כניסה ל-GreenOS</h3><div class="muted">${sub||'שם משתמש וסיסמה אישיים'}</div>
+    <input id="lgUser" placeholder="שם משתמש" autocomplete="username" autocapitalize="off" spellcheck="false" style="direction:ltr;text-align:right">
+    <input id="lgPass" type="password" placeholder="סיסמה" autocomplete="current-password" style="margin-top:10px">
+    <div class="err" id="lgErr"></div>
+    <button class="btn-primary" style="width:100%" id="lgOk">כניסה</button>
+    <div style="display:flex;justify-content:space-between;gap:8px;margin-top:12px;font-size:12.5px">
+      <a href="#" id="lgLegacy" style="color:var(--txt-3)">כניסה עם סיסמת ניהול משותפת</a>
+      <a href="#" onclick="closeModal();return false" style="color:var(--txt-3)">ביטול</a></div>
+  </div></div>`;
+  const u=document.getElementById('lgUser'), p=document.getElementById('lgPass'), er=document.getElementById('lgErr');
+  u.focus();
+  const go=async()=>{
+    const un=u.value.trim(), pw=p.value; if(!un||!pw) return;
+    er.textContent=''; document.getElementById('lgOk').disabled=true;
+    try{
+      const r=await fetchT('/api/auth/login',{method:'POST',headers:authH({'Content-Type':'application/json'}),
+        body:JSON.stringify({username:un,password:pw})},20000);
+      const j=await r.json().catch(()=>({}));
+      if(!r.ok){ er.textContent=j.detail||'הכניסה נכשלה'; p.select(); return; }
+      S.adminKey='u:'+j.token; S.user=j.user; localStorage.setItem('tr_admin_key',S.adminKey);
+      closeModal(); toast('שלום '+(j.user.name||''),true); if(done) done();
+    }catch(e){ er.textContent='אין חיבור לשרת — נסה שוב'; }
+    finally{ const b=document.getElementById('lgOk'); if(b) b.disabled=false; }
+  };
+  document.getElementById('lgOk').onclick=go;
+  [u,p].forEach(x=>x.addEventListener('keydown',e=>{ if(e.key==='Enter'){ if(x===u&&!p.value) p.focus(); else go(); } }));
+  document.getElementById('lgLegacy').onclick=(e)=>{ e.preventDefault();
+    modal({title:'כניסת ניהול',sub:'סיסמת הניהול המשותפת (זמני, עד שכולם עוברים למשתמשים)',placeholder:'סיסמה',type:'password',
+      onok:async(pw)=>{
+        try{ const r=await fetchT('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({password:pw})},15000); if(!r.ok) throw 0; }
+        catch(e){ return 'סיסמה שגויה'; }
+        S.adminKey=pw; S.user=null; localStorage.setItem('tr_admin_key',pw);
+        if(done) done();
+      }}); };
+}
+function myPasswordModal(){
+  toggleDrawer(false);
+  const root=document.getElementById('modalRoot');
+  root.innerHTML=`<div class="overlay"><div class="modal">
+    <h3>שינוי הסיסמה שלי</h3><div class="muted">לפחות 6 תווים</div>
+    <input id="pwOld" type="password" placeholder="הסיסמה הנוכחית" autocomplete="current-password">
+    <input id="pwNew" type="password" placeholder="סיסמה חדשה" autocomplete="new-password" style="margin-top:10px">
+    <input id="pwNew2" type="password" placeholder="סיסמה חדשה שוב" autocomplete="new-password" style="margin-top:10px">
+    <div class="err" id="pwErr"></div>
+    <button class="btn-primary" style="width:100%" id="pwOk">שמירה</button>
+    <button class="btn-ghost" style="width:100%;margin-top:8px" onclick="closeModal()">ביטול</button>
+  </div></div>`;
+  document.getElementById('pwOld').focus();
+  document.getElementById('pwOk').onclick=async()=>{
+    const o=document.getElementById('pwOld').value, n=document.getElementById('pwNew').value, n2=document.getElementById('pwNew2').value;
+    const er=document.getElementById('pwErr');
+    if(n!==n2){ er.textContent='הסיסמאות החדשות לא זהות'; return; }
+    try{ await api('/api/auth/password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({old:o,new:n})});
+      closeModal(); toast('הסיסמה עודכנה',true); }
+    catch(e){ er.textContent=e.detail||'השמירה נכשלה'; }
+  };
+}
+
+// ── מסך ניהול משתמשים (בעלים בלבד) ──
+function hubUsers(){
+  toggleDrawer(false);
+  if(!ensureAdmin(hubUsers)) return;
+  S.view='users'; S.embedApp=null; S.usersData=null; render();
+}
+async function loadUsers(){
+  const app=document.getElementById('app');
+  app.innerHTML='<div class="empty">טוען משתמשים…</div>';
+  try{ S.usersData=await api('/api/admin/users'); }
+  catch(e){ app.innerHTML=`<div class="empty">${escW(e.detail||'אין גישה לניהול משתמשים')}</div>`; return; }
+  if(S.view==='users') renderUsers();
+}
+function _permLabel(k){
+  const c=(S.usersData&&S.usersData.catalog)||{features:[],sensitive:[]};
+  const f=c.features.find(x=>x.key===k)||c.sensitive.find(x=>x.key===k); return f?f.label:k;
+}
+function _ago(iso){
+  if(!iso) return 'עוד לא נכנס';
+  const d=new Date(iso.endsWith('Z')||iso.includes('+')?iso:iso+'Z'); if(isNaN(d)) return iso;
+  return d.toLocaleString('he-IL',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+}
+function renderUsers(){
+  const app=document.getElementById('app'); const D=S.usersData; if(!D) return loadUsers();
+  const legacy=!S.user;
+  const rows=D.users.map(u=>{
+    const own=u.role==='owner';
+    const perms=own?'<span class="muted">הכל</span>':
+      (u.perms.length?u.perms.map(k=>`<span class="us-chip${k.includes('.')?' sens':''}">${escW(_permLabel(k))}</span>`).join(''):'<span class="muted">ללא הרשאות</span>');
+    return `<div class="us-row${u.active?'':' off'}">
+      <div class="us-main">
+        <div class="us-name">${escW(u.name)} ${own?'<span class="us-badge own">בעלים</span>':''}${u.active?'':'<span class="us-badge blk">חסום</span>'}</div>
+        <div class="us-meta"><span style="direction:ltr;display:inline-block">${escW(u.username)}</span> · כניסה אחרונה: ${_ago(u.last_login)} · ${u.sessions===0?'לא מחובר':u.sessions===1?'מחובר במכשיר אחד':'מחובר ב-'+u.sessions+' מכשירים'}</div>
+        <div class="us-perms">${perms}</div>
+      </div>
+      <div class="us-act">
+        <button class="btn-ghost" onclick="userEditModal(${u.id})">עריכה</button>
+        <button class="btn-ghost" onclick="userResetPw(${u.id})">איפוס סיסמה</button>
+        <button class="btn-ghost" onclick="userToggleActive(${u.id})">${u.active?'חסימה':'שחרור'}</button>
+        ${u.sessions?`<button class="btn-ghost" onclick="userLogoutAll(${u.id})">ניתוק</button>`:''}
+      </div></div>`;
+  }).join('');
+  app.innerHTML=`<div class="us-wrap">
+    <div class="us-head"><h2 style="margin:0">משתמשים והרשאות</h2>
+      <button class="btn-primary" onclick="userEditModal(0)">+ משתמש חדש</button></div>
+    ${legacy?`<div class="us-note">נכנסת עם הסיסמה המשותפת. צור קודם משתמש בעלים לעצמך ולאודי, ואז התנתק והיכנס עם שם המשתמש האישי.</div>`:''}
+    <div class="us-note">עובד (לא בעלים) נכנס רק ממכשיר שאושר בטלגרם — מהבית או ממחשב אישי הכניסה נחסמת גם אם יש לו את הקישור והסיסמה.</div>
+    ${rows||'<div class="empty">אין עדיין משתמשים</div>'}
+  </div>`;
+}
+function userEditModal(uid){
+  const D=S.usersData; const u=uid?D.users.find(x=>x.id===uid):null; const c=D.catalog;
+  const has=k=>u&&u.perms.includes(k);
+  const feat=c.features.map(f=>{
+    const sens=c.sensitive.filter(s=>s.feature===f.key);
+    return `<label class="us-ck"><input type="checkbox" data-k="${f.key}" ${has(f.key)?'checked':''} onchange="_usSync()">
+        <span><b>${escW(f.label)}</b><small>${escW(f.desc)}</small></span></label>
+      ${sens.map(s=>`<label class="us-ck sub"><input type="checkbox" data-k="${s.key}" data-parent="${f.key}" ${has(s.key)?'checked':''}>
+        <span>⚠️ ${escW(s.label)}</span></label>`).join('')}`;
+  }).join('');
+  const root=document.getElementById('modalRoot');
+  root.innerHTML=`<div class="overlay"><div class="modal us-modal">
+    <h3>${u?'עריכת '+escW(u.name):'משתמש חדש'}</h3>
+    <input id="usName" placeholder="שם לתצוגה (למשל: דנה)" value="${u?escW(u.name):''}">
+    ${u?'':`<input id="usUser" placeholder="שם משתמש באנגלית (למשל: dana)" autocapitalize="off" spellcheck="false" style="direction:ltr;text-align:right;margin-top:10px">
+    <input id="usPass" type="password" placeholder="סיסמה ראשונית (לפחות 6 תווים)" autocomplete="new-password" style="margin-top:10px">`}
+    <label class="us-ck" style="margin-top:12px"><input type="checkbox" id="usOwner" ${u&&u.role==='owner'?'checked':''} onchange="_usSync()">
+      <span><b>בעלים — גישה מלאה</b><small>כל הפיצ'רים, ניהול משתמשים, כניסה מכל מכשיר</small></span></label>
+    <div id="usPermBox"><div class="us-sec">פיצ'רים זמינים</div>${feat}</div>
+    <div class="err" id="usErr"></div>
+    <button class="btn-primary" style="width:100%" id="usOk">${u?'שמירה':'יצירת משתמש'}</button>
+    <button class="btn-ghost" style="width:100%;margin-top:8px" onclick="closeModal()">ביטול</button>
+  </div></div>`;
+  _usSync();
+  document.getElementById('usOk').onclick=async()=>{
+    const owner=document.getElementById('usOwner').checked;
+    const perms=[...document.querySelectorAll('#usPermBox input[data-k]:checked')].map(x=>x.dataset.k);
+    const body={name:document.getElementById('usName').value.trim(), role:owner?'owner':'user', perms};
+    const er=document.getElementById('usErr');
+    try{
+      if(u) await api('/api/admin/users/'+uid,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      else { body.username=document.getElementById('usUser').value.trim(); body.password=document.getElementById('usPass').value;
+        await api('/api/admin/users',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); }
+      closeModal(); toast(u?'נשמר':'המשתמש נוצר',true); loadUsers();
+      if(u&&S.user&&S.user.id===uid) userRefresh();
+    }catch(e){ er.textContent=e.detail||'השמירה נכשלה'; }
+  };
+}
+function _usSync(){
+  const own=document.getElementById('usOwner'); const box=document.getElementById('usPermBox'); if(!own||!box) return;
+  box.style.display=own.checked?'none':'';
+  box.querySelectorAll('input[data-parent]').forEach(s=>{
+    const p=box.querySelector(`input[data-k="${s.dataset.parent}"]`);
+    s.disabled=!p.checked; if(!p.checked) s.checked=false; s.closest('label').style.opacity=p.checked?1:.45;
+  });
+}
+function userResetPw(uid){
+  const u=S.usersData.users.find(x=>x.id===uid);
+  modal({title:'איפוס סיסמה — '+u.name,sub:'הסיסמה החדשה תחליף את הישנה והמשתמש ינותק מכל המכשירים. מסור לו אותה בעל-פה.',
+    placeholder:'סיסמה חדשה (לפחות 6 תווים)',type:'password',
+    onok:async(pw)=>{
+      try{ await api('/api/admin/users/'+uid+'/password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})}); }
+      catch(e){ return e.detail||'האיפוס נכשל'; }
+      toast('הסיסמה אופסה',true); loadUsers();
+    }});
+}
+async function userToggleActive(uid){
+  const u=S.usersData.users.find(x=>x.id===uid);
+  if(u.active&&!confirm(`לחסום את ${u.name}?\nהוא ינותק מיד מכל המכשירים ולא יוכל להיכנס עד שתשחרר.`)) return;
+  try{ await api('/api/admin/users/'+uid,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({active:!u.active})});
+    toast(u.active?'נחסם':'שוחרר',true); loadUsers(); }
+  catch(e){ toast(e.detail||'הפעולה נכשלה',false); }
+}
+async function userLogoutAll(uid){
+  try{ await api('/api/admin/users/'+uid+'/logout-all',{method:'POST'}); toast('נותק מכל המכשירים',true); loadUsers(); }
+  catch(e){ toast(e.detail||'הפעולה נכשלה',false); }
+}
 
 // ── ניהול פוקוס לשדה הסריקה (סורק = מקלדת) ──
 function focusScan(force){
@@ -2507,11 +2736,11 @@ async function zapPendDone(key){
 // ── Ops Hub: תפריט בורגר + הטמעת אפליקציות הסוכנים (App-Shell) ──
 // כל אפליקציה ממשיכה לרוץ עצמאית; כאן רק מטמיעים אותה ב-iframe. לא נוגעים בכלום.
 const HUB_APPS=[
-  {key:'invoices',   icon:'receipt', title:'ניהול חשבוניות (איציק)',      url:'/embed/inv',  embed:true},
-  {key:'stockwatch', icon:'bell',    title:'תזכורות מלאי — Stock Watcher', url:'/embed/sw',   embed:true},
-  {key:'checks',     icon:'bank',    title:'ניהול צ׳קים',                  url:'/checks'},
-  {key:'schedule',   icon:'bell',    title:'סידור עבודה',                  url:'/schedule'},
-  {key:'addons',     icon:'bank',    title:'מערכת תוספות (אביזרים)',       url:'/addons'},
+  {key:'invoices', feat:'invoices',   icon:'receipt', title:'ניהול חשבוניות (איציק)',      url:'/embed/inv',  embed:true},
+  {key:'stockwatch', feat:'transfers', icon:'bell',    title:'תזכורות מלאי — Stock Watcher', url:'/embed/sw',   embed:true},
+  {key:'checks', feat:'checks',     icon:'bank',    title:'ניהול צ׳קים',                  url:'/checks'},
+  {key:'schedule', feat:'schedule',   icon:'bell',    title:'סידור עבודה',                  url:'/schedule'},
+  {key:'addons', feat:'services',     icon:'bank',    title:'מערכת תוספות (אביזרים)',       url:'/addons'},
 ];
 // (הדוח לבעלים נשאר כקישור חיצוני בלבד — בתפריט רוצים כלי עבודה, לא דוחות)
 function renderDrawer(){
@@ -2520,25 +2749,29 @@ function renderDrawer(){
   const lock=(S.cfg.admin_required&&!S.adminKey)?' 🔒':'';
   d.innerHTML=`
     <div class="dr-head"><span class="brand">Green<span class="os">OS</span></span><button class="dr-x" onclick="toggleDrawer(false)">✕</button></div>
-    <div class="dr-item ${act('home')}" onclick="hubGo('home')"><span>${ico('home',16)}</span><span>לוח בית</span></div>
+    ${S.user?`<div class="dr-user"><span>${ico('user',14)} מחובר: <b>${escW(S.user.name)}</b></span>
+      <span><a href="#" onclick="myPasswordModal();return false" style="color:var(--muted)">סיסמה</a> · <a href="#" onclick="userLogout();return false" style="color:var(--muted)">התנתקות</a></span></div>`
+     :(S.adminKey?`<div class="dr-user"><span>סיסמה משותפת</span><a href="#" onclick="userLogout();return false" style="color:var(--muted)">התנתקות</a></div>`:'')}
+    ${can('reports')?`<div class="dr-item ${act('home')}" onclick="hubGo('home')"><span>${ico('home',16)}</span><span>לוח בית</span></div>`:''}
     <div class="dr-sec">קליטת העברות</div>
     <div class="dr-item ${S.view==='board'||S.view==='scan'?'active':''}" onclick="hubGo('board')"><span>${ico('pkg',16)}</span><span>לוח קליטה</span></div>
     <div class="dr-item ${act('admin')}" onclick="hubGo('admin')"><span>${ico('wrench',16)}</span><span>קונסולת ניהול${lock}</span></div>
-    <div class="dr-item ${act('crm')}" onclick="hubGoCrm()"><span>${ico('user',16)}</span><span>מוקד שיחות · CRM${lock}</span></div>
+    ${can('crm')?`<div class="dr-item ${act('crm')}" onclick="hubGoCrm()"><span>${ico('user',16)}</span><span>מוקד שיחות · CRM${lock}</span></div>`:''}
     <div class="dr-sec">מכירות</div>
-    <div class="dr-item" onclick="toggleDrawer(false);if(ensureAdmin(payQuickOpen))payQuickOpen()"><span>${ico('receipt',16)}</span><span>קישור תשלום מהיר${lock}</span></div>
-    <div class="dr-item" onclick="toggleDrawer(false);if(ensureAdmin(couponOpen))couponOpen()"><span>${ico('tag',16)}</span><span>קופון הנחה${lock}</span></div>
-    <div class="dr-item ${S.view==='admin'&&S.adminTab==='greencare'?'active':''}" onclick="toggleDrawer(false);if(ensureAdmin(()=>{hubGo('admin');setAdminTab('greencare');})){hubGo('admin');setAdminTab('greencare');}"><span>${ico('shield',16)}</span><span>Green Care${lock}</span></div>
+    ${can('orders')?`<div class="dr-item" onclick="toggleDrawer(false);if(ensureAdmin(payQuickOpen))payQuickOpen()"><span>${ico('receipt',16)}</span><span>קישור תשלום מהיר${lock}</span></div>`:''}
+    ${can('coupons')?`<div class="dr-item" onclick="toggleDrawer(false);if(ensureAdmin(couponOpen))couponOpen()"><span>${ico('tag',16)}</span><span>קופון הנחה${lock}</span></div>`:''}
+    ${can('services')?`<div class="dr-item ${S.view==='admin'&&S.adminTab==='greencare'?'active':''}" onclick="toggleDrawer(false);if(ensureAdmin(()=>{hubGo('admin');setAdminTab('greencare');})){hubGo('admin');setAdminTab('greencare');}"><span>${ico('shield',16)}</span><span>Green Care${lock}</span></div>`:''}
     <div class="dr-sec">Hub</div>
-    <div class="dr-item ${S.view==='tasks'?'active':''}" onclick="hubGo('tasks')"><span>${ico('list',16)}</span><span>משימות סוכנים${lock}</span></div>
-    <div class="dr-item ${S.view==='stellr'?'active':''}" onclick="hubGo('stellr')"><span>${ico('card',16)}</span><span>קודים דיגיטליים${lock}</span></div>
-    <div class="dr-item ${S.view==='sentinel'?'active':''}" onclick="hubGo('sentinel')"><span>${ico('shield',16)}</span><span>סטטוס Sentinel${lock}</span></div>
+    ${can('tasks')?`<div class="dr-item ${S.view==='tasks'?'active':''}" onclick="hubGo('tasks')"><span>${ico('list',16)}</span><span>משימות סוכנים${lock}</span></div>`:''}
+    ${can('codes')?`<div class="dr-item ${S.view==='stellr'?'active':''}" onclick="hubGo('stellr')"><span>${ico('card',16)}</span><span>קודים דיגיטליים${lock}</span></div>`:''}
+    ${isOwner()||!S.adminKey?`<div class="dr-item ${S.view==='sentinel'?'active':''}" onclick="hubGo('sentinel')"><span>${ico('shield',16)}</span><span>סטטוס Sentinel${lock}</span></div>`:''}
+    ${isOwner()?`<div class="dr-item ${act('users')}" onclick="hubUsers()"><span>${ico('user',16)}</span><span>משתמשים והרשאות</span></div>`:''}
     <div class="dr-sec">אפליקציות</div>
-    ${HUB_APPS.map(a=>`
+    ${HUB_APPS.filter(a=>can(a.feat)).map(a=>`
       <div class="dr-item ${S.view==='embed'&&S.embedApp&&S.embedApp.key===a.key?'active':''}" onclick="hubOpen('${a.key}')">
         <span>${ico(a.icon,16)}</span><span>${a.title}${lock}</span>
       </div>`).join('')}
-    <div class="dr-item ${S.view==='admin'&&S.adminTab==='zap'?'active':''}" onclick="toggleDrawer(false);if(ensureAdmin(()=>{hubGo('admin');setAdminTab('zap');})){hubGo('admin');setAdminTab('zap');}"><span>${ico('zap',16)}</span><span>זאפ — מחירים וסנכרון${lock}</span></div>
+    ${can('zap')?`<div class="dr-item ${S.view==='admin'&&S.adminTab==='zap'?'active':''}" onclick="toggleDrawer(false);if(ensureAdmin(()=>{hubGo('admin');setAdminTab('zap');})){hubGo('admin');setAdminTab('zap');}"><span>${ico('zap',16)}</span><span>זאפ — מחירים וסנכרון${lock}</span></div>`:''}
     <div class="dr-sec">הגדרות כלליות</div>
     <div class="dr-item" id="drPushItem" onclick="drawerPushClick()">
       <span id="drPushIco">${ico('bell',16)}</span><span id="drPushLabel">התראות במכשיר הזה</span></div>
@@ -2546,6 +2779,8 @@ function renderDrawer(){
       <span>${ico(wpopEnabled()?'chat':'chatOff',16)}</span>
       <span>חלון וואטסאפ צף<small style="display:block;color:var(--txt-3);font-weight:400;font-size:11.5px">${wpopEnabled()?'פעיל — נפתח בפנייה שמצריכה נציג':'מושהה'}</small></span></div>
     <div class="dr-foot">Green Mobile · GreenOS</div>`;
+  // כותרת מקטע שכל הפריטים שלו הוסתרו (הרשאות) — מסירים
+  d.querySelectorAll('.dr-sec').forEach(x=>{ const n=x.nextElementSibling; if(!n||!n.classList.contains('dr-item')) x.remove(); });
   drawerPushState();
 }
 let _drPushOnClick=null;
@@ -2576,14 +2811,7 @@ function toggleDrawer(open){
 function ensureAdmin(retry){
   // אפליקציות הניהול נעולות מאחורי סיסמת הניהול הקיימת (אותה סיסמה של סניף אתר)
   if(!S.cfg.admin_required||S.adminKey) return true;
-  modal({title:'כניסת ניהול',sub:'הכלים האלה דורשים סיסמת ניהול',placeholder:'סיסמה',type:'password',
-    onok:async(pw)=>{
-      try{ const r=await fetchT('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({password:pw})},15000); if(!r.ok) throw 0; }
-      catch(e){ return 'סיסמה שגויה'; }
-      S.adminKey=pw; localStorage.setItem('tr_admin_key',pw);
-      if(retry) retry();
-    }});
+  loginModal(retry,'הכלים האלה דורשים כניסה');
   return false;
 }
 function hubGo(view){
@@ -2799,18 +3027,25 @@ function render(){
   document.getElementById('branchName').textContent=S.branchName;
   document.getElementById('adminBtn').style.display =
     (Number(S.branchId)===S.cfg.admin_branch_id)?'inline-flex':'none';
-  document.getElementById('waBtn').style.display = isAdminPC?'inline-flex':'none';
-  { const ub=document.getElementById('updBtn'); if(ub) ub.style.display=isAdminPC?'inline-flex':'none'; }
-  { const ob=document.getElementById('ordersBtn'); if(ob) ob.style.display=isAdminPC?'inline-flex':'none'; updateOrderBadge(); }
+  document.getElementById('waBtn').style.display = (isAdminPC&&can('whatsapp'))?'inline-flex':'none';
+  { const ub=document.getElementById('updBtn'); if(ub) ub.style.display=(isAdminPC&&can('updates'))?'inline-flex':'none'; }
+  { const ob=document.getElementById('ordersBtn'); if(ob) ob.style.display=(isAdminPC&&can('orders'))?'inline-flex':'none'; updateOrderBadge(); }
   { const sb=document.getElementById('stellrBtn');   // 🎫 הנפקת קוד — סניפי חנות בלבד (1-4)
     if(sb) sb.style.display=(S.branchId&&['1','2','3','4'].includes(String(S.branchId)))?'inline-flex':'none'; }
+  if(S.view==='users') return S.usersData?renderUsers():loadUsers();
+  if(S.view==='home'&&!can('reports')){ S.view='admin'; }
   if(S.view==='home') return S.homeData?renderHome():loadHome(true);
   if(S.view==='embed') return renderEmbed(app);
   if(S.view==='tasks') return S.tasksData?renderTasks():loadTasks(true);
   if(S.view==='sentinel') return S.sentinelData?renderSentinel():loadSentinel(true);
   if(S.view==='stellr') return S.stellrCodesData?renderStellrCodes():loadStellrCodes(true);
   if(S.view==='crm') return _crmStats?renderCrm():loadCrm(true);
-  if(S.view==='admin') return S.adminData?renderAdmin():loadAdmin(true);
+  if(S.view==='admin'){
+    if(!adminTabOk(S.adminTab)){ S.adminTab=adminFirstTab();
+      if(!S.adminTab) return void(app.innerHTML='<div class="empty">אין לך הרשאה לאף מסך בקונסולה. פנה לאסי או לאודי.</div>'); }
+    if(!can('transfers')&&!S.adminData) S.adminData={summary:{},transfers:[],misroutes:[]};
+    return S.adminData?renderAdmin():loadAdmin(true);
+  }
   if(S.view==='scan')  return renderScan(app);
   if(S.branchTab==='live') return S.lsCat?renderLive():loadLiveCatalog(true);
   if(S.branchTab==='blender') return renderBlender();
@@ -2991,13 +3226,7 @@ async function renderPicker(app){
 function pickBranch(id,name){
   // סניף הניהול (אתר) דורש סיסמה
   if(id===S.cfg.admin_branch_id && S.cfg.admin_required && !S.adminKey){
-    return modal({title:'כניסת ניהול',sub:'סניף אתר דורש סיסמה',placeholder:'סיסמה',type:'password',
-      onok:async(pw)=>{
-        try{ await fetch('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({password:pw})}).then(r=>{if(!r.ok)throw 0;});
-        }catch(e){ return 'סיסמה שגויה'; }
-        S.adminKey=pw; localStorage.setItem('tr_admin_key',pw);
-        finishPick(id,name); }});
+    return loginModal(()=>finishPick(id,name),'סניף אתר דורש כניסה');
   }
   // נעילת סניף: מכשיר סניפי שמחליף סניף קיים — דורש אישור מנהל בטלגרם
   // (כולל דרך "החלף סניף" שמאפס קודם — הסניף הקודם נשמר ב-prevBranchId)
@@ -3803,26 +4032,34 @@ function clearFilters(){ S.adminFilters={q:'',from:'',to:'',status:'',fromDate:'
 async function loadAdmin(spinner){
   if(spinner) showLoading('טוען נתוני ניהול…');
   try{ S.adminData=await api('/api/admin/overview?days='+adminFetchDays()); }
-  catch(e){ if(e&&e.status===401){ S.adminKey=null; localStorage.removeItem('tr_admin_key');
+  catch(e){ if(e&&e.status===403&&S.user){ if(S.view==='admin') document.getElementById('app').innerHTML='<div class="empty">'+escW(e.detail||'אין הרשאה')+'</div>'; if(spinner) hideLoading(); return; }
+    if(e&&e.status===401){ S.adminKey=null; S.user=null; localStorage.removeItem('tr_admin_key');
       if(S.view==='admin') document.getElementById('app').innerHTML='<div class="empty">נדרשת סיסמת ניהול. בחר מחדש את סניף אתר.</div>';
       if(spinner) hideLoading(); return; } }
   if(spinner) hideLoading();
   if(S.view==='admin') renderAdmin();   // אל תדרוס מסך אחר אם המשתמש ניווט בינתיים (למשל נכנס להעברה)
 }
 
+// טאב בקונסולה → הפיצ'ר שהוא דורש (perms.py)
+const ADMIN_TAB_FEAT={transfers:'transfers',live:'transfers',rebalance:'transfers',plan:'transfers',reco:'transfers',
+  order:'transfers',removals:'transfers',wa:'whatsapp',wcorders:'orders',blender:'orders',zap:'zap',greencare:'services'};
+function adminTabOk(t){ return can(ADMIN_TAB_FEAT[t||'transfers']||'transfers'); }
+function adminFirstTab(){ return ['wcorders','transfers','wa','zap','greencare'].find(adminTabOk)||null; }
 function adminTabsHTML(){
   const pc=S.planCount?` (${S.planCount})`:'';
   const oc=S.orderCount?` (${S.orderCount})`:'';
   const a=t=>S.adminTab===t?'active':'';
   const base=['rebalance','plan','reco','order','removals','live','wa','blender'].includes(S.adminTab)?'':'active';
+  const T=can('transfers'), O=can('orders');
   return `<div class="tabs">
-    <button class="${base}" onclick="setAdminTab('transfers')">${ico('pkg',15)} העברות</button>
-    <button class="${a('live')}" onclick="setAdminTab('live')">${ico('search',15)} מלאי חי</button>
-    <button class="${a('wa')}" onclick="setAdminTab('wa')">${ico('chat',15)} וואטסאפ</button>
-    <button class="${a('wcorders')}" style="position:relative" onclick="setAdminTab('wcorders')">${ico('receipt',15)} הזמנות<span class="gm-obadge" style="display:${(S.newOrdersCount||0)>0?'':'none'}">${(S.newOrdersCount||0)>99?'99+':(S.newOrdersCount||0)}</span></button>
-    <button class="${a('blender')}" onclick="setAdminTab('blender')">${ico('wallet',15)} blenderPay</button>
-    <button class="${a('zap')}" onclick="setAdminTab('zap')">${ico('zap',15)} זאפ${(S.zap&&S.zap.pendN)?` (${S.zap.pendN})`:''}</button>
-    <div class="tabgroup">
+    ${T?`<button class="${base}" onclick="setAdminTab('transfers')">${ico('pkg',15)} העברות</button>
+    <button class="${a('live')}" onclick="setAdminTab('live')">${ico('search',15)} מלאי חי</button>`:''}
+    ${can('whatsapp')?`<button class="${a('wa')}" onclick="setAdminTab('wa')">${ico('chat',15)} וואטסאפ</button>`:''}
+    ${O?`<button class="${a('wcorders')}" style="position:relative" onclick="setAdminTab('wcorders')">${ico('receipt',15)} הזמנות<span class="gm-obadge" style="display:${(S.newOrdersCount||0)>0?'':'none'}">${(S.newOrdersCount||0)>99?'99+':(S.newOrdersCount||0)}</span></button>
+    <button class="${a('blender')}" onclick="setAdminTab('blender')">${ico('wallet',15)} blenderPay</button>`:''}
+    ${can('zap')?`<button class="${a('zap')}" onclick="setAdminTab('zap')">${ico('zap',15)} זאפ${(S.zap&&S.zap.pendN)?` (${S.zap.pendN})`:''}</button>`:''}
+    ${T?`<div class="tabgroup">
+
       <button class="${a('rebalance')}" onclick="setAdminTab('rebalance')">${ico('scale',15)} איזון מלאי</button>
       <button class="${a('plan')}" onclick="setAdminTab('plan')">${ico('pencil',15)} בקשות העברה${pc}</button>
     </div>
@@ -3830,11 +4067,12 @@ function adminTabsHTML(){
       <button class="${a('reco')}" onclick="setAdminTab('reco')">${ico('cart',15)} המלצות הזמנה</button>
       <button class="${a('order')}" onclick="setAdminTab('order')">${ico('list',15)} טיוטת הזמנה${oc}</button>
     </div>
-    <button class="${a('removals')}" onclick="setAdminTab('removals')">${ico('trendDown',15)} הורדות מרלוג</button>
-    <button class="${a('greencare')}" onclick="setAdminTab('greencare')">${ico('shield',15)} Green Care</button>
+    <button class="${a('removals')}" onclick="setAdminTab('removals')">${ico('trendDown',15)} הורדות מרלוג</button>`:''}
+    ${can('services')?`<button class="${a('greencare')}" onclick="setAdminTab('greencare')">${ico('shield',15)} Green Care</button>`:''}
   </div>`;
 }
 function setAdminTab(tab){
+  if(!adminTabOk(tab)){ const f=adminFirstTab(); if(!f||f===tab){ toast('אין לך הרשאה למסך הזה',false); return; } tab=f; }
   S.adminTab=tab;
   if(tab==='wcorders'){ S.newOrdersCount=0; }   // נכנס לטאב — מאפס את ספירת ההזמנות החדשות
   if(tab!=='wa') document.body.classList.remove('wa-mode');
@@ -6005,9 +6243,7 @@ async function waStockWatchDirect(idx){
   const chat=waUriChat(); const m=chat[idx]; if(!m||!m.swatch||m._swdone) return;
   const sw=m.swatch;
   m._swbusy=true; waUriPaint();
-  const h={'Content-Type':'application/json'};
-  if(S.adminKey) h['X-Admin-Key']=S.adminKey;
-  if(S.deviceToken) h['X-Device-Token']=S.deviceToken;
+  const h=authH({'Content-Type':'application/json'});
   try{
     const r=await fetchT('/api/admin/stock-watch/add',{method:'POST',headers:h,body:JSON.stringify({
       phone:S.waPhone, sku:sw.sku||'', product_name:sw.product||'', product_url:sw.url||'',
@@ -6391,7 +6627,7 @@ async function loadWaInvoices(){
 }
 async function waInvView(id){
   showLoading('פותח חשבונית…');
-  const h={}; if(S.adminKey)h['X-Admin-Key']=S.adminKey; if(S.deviceToken)h['X-Device-Token']=S.deviceToken;
+  const h=authH({});
   try{
     const r=await fetchT('/api/admin/invoices/'+id+'/pdf',{headers:h},40000);
     if(!r.ok) throw new Error('http '+r.status);
@@ -7635,8 +7871,7 @@ async function wcConnDo(i){
 // חיבור מק"ט→מוצר. force=העברה ממוצר אחר שמחזיק את המק"ט (החלפת חיבור שגוי).
 async function _wcConnect(product_id, variation_id, sku, force){
   showLoading('מחבר…');
-  const h={'Content-Type':'application/json'};
-  if(S.adminKey) h['X-Admin-Key']=S.adminKey; if(S.deviceToken) h['X-Device-Token']=S.deviceToken;
+  const h=authH({'Content-Type':'application/json'});
   try{
     const r=await fetchT('/api/admin/wc-connect',{method:'POST',headers:h,
       body:JSON.stringify({product_id,variation_id,sku,force})},30000);
@@ -7661,8 +7896,7 @@ function wcChangeConn(pid,name){ S._wcConn={pid:String(pid),name:name||'',store:
 async function wcRemoveConn(pid){
   if(!confirm('להסיר את החיבור של מק״ט '+pid+' מהמוצר באתר?\nהפריט יסומן "לא מחובר" וניתן יהיה לחבר נכון.')) return;
   showLoading('מסיר חיבור…');
-  const h={'Content-Type':'application/json'};
-  if(S.adminKey) h['X-Admin-Key']=S.adminKey; if(S.deviceToken) h['X-Device-Token']=S.deviceToken;
+  const h=authH({'Content-Type':'application/json'});
   try{
     const r=await fetchT('/api/admin/wc-disconnect',{method:'POST',headers:h,body:JSON.stringify({sku:String(pid)})},30000);
     const j=await r.json().catch(()=>({}));
@@ -8382,9 +8616,7 @@ async function stellrPosGo(mode){
   say(recover?'⏳ מאתר את הקוד שהונפק…':'⏳ מאתר את הקבלה ומנפיק…','var(--muted)');
   let r;
   try{
-    const headers={'Content-Type':'application/json'};
-    if(S.adminKey) headers['X-Admin-Key']=S.adminKey;
-    if(S.deviceToken) headers['X-Device-Token']=S.deviceToken;
+    const headers=authH({'Content-Type':'application/json'});
     const resp=await fetchT('/api/board/stellr/issue',{method:'POST',headers,
       body:JSON.stringify({bill:bill.trim(),phone,mode:rMode,resend:recover?1:0,branch_id:String(S.branchId||'')})},90000);
     const j=await resp.json().catch(()=>({}));
@@ -8483,9 +8715,7 @@ async function stellrPosRequest(mode){
   say('⏳ שולח בקשה לאישור אסי…','var(--muted)');
   let r;
   try{
-    const headers={'Content-Type':'application/json'};
-    if(S.adminKey) headers['X-Admin-Key']=S.adminKey;
-    if(S.deviceToken) headers['X-Device-Token']=S.deviceToken;
+    const headers=authH({'Content-Type':'application/json'});
     const resp=await fetchT('/api/board/stellr/request',{method:'POST',headers,
       body:JSON.stringify({items:sel,phone,mode,employee:S.employee||'',branch_id:String(S.branchId||'')})},60000);
     const j=await resp.json().catch(()=>({}));
@@ -8502,9 +8732,7 @@ async function stellrPosPoll(rid, mode, tries){
   if(tries>225){ say('⌛ לא התקבל אישור תוך 15 דק׳ — נסו שוב או פנו לאסי','#dc2626'); return; }
   let r;
   try{
-    const headers={};
-    if(S.adminKey) headers['X-Admin-Key']=S.adminKey;
-    if(S.deviceToken) headers['X-Device-Token']=S.deviceToken;
+    const headers=authH({});
     const resp=await fetchT('/api/board/stellr/request/'+rid,{headers},20000);
     r=await resp.json().catch(()=>({}));
   }catch(e){ setTimeout(()=>stellrPosPoll(rid,mode,tries+1),4000); return; }
@@ -10557,14 +10785,14 @@ function startNotifPoll(){ clearInterval(S.notifTimer);
     waPingActive();   // כל עוד הקונסולה פתוחה ולפנים → אין push לטלפון
     // 💬 התראות וואטסאפ — רק במחשב הניהול (סניף אתר + סיסמה), גם כשלא בטאב
     const isAdminPC=S.cfg&&Number(S.branchId)===S.cfg.admin_branch_id&&(!S.cfg.admin_required||S.adminKey);
-    if(isAdminPC && !(S.view==='admin'&&S.adminTab==='wa')){   // בטאב עצמו loadWaSilent כבר מטפל
+    if(isAdminPC && can('whatsapp') && !(S.view==='admin'&&S.adminTab==='wa')){   // בטאב עצמו loadWaSilent כבר מטפל
       try{ const d=await api('/api/admin/wa/conversations');
            S.waConvs=d.conversations||[]; updateWaBadge(S.waConvs);
            wpopConsider(S.waConvs); }catch(e){}   // 💬 חלון צף: שיחה שמצריכה אנושי קופצת מכל טאב
     }
     // 🎉 הזמנות חדשות מהאתר — רק במחשב הניהול (cache-buster נגד קאש edge)
     if(isAdminPC){
-      try{ const od=await api('/api/admin/orders/latest?t='+Date.now()); detectNewOrders(od.orders||[]); }catch(e){}
+      if(can('orders')) try{ const od=await api('/api/admin/orders/latest?t='+Date.now()); detectNewOrders(od.orders||[]); }catch(e){}
     }
     let list; try{ list=await api('/api/transfers?branch_id='+S.branchId); }catch(e){ return; }
     detectNewTransfers(list);
@@ -10697,7 +10925,7 @@ function pbxNotify(){
 }
 function startPbxPoll(){ if(_pbxTimer) return; pbxPoll(); _pbxTimer=setInterval(pbxPoll,1500); }
 async function pbxPoll(){
-  if(!S.adminKey) return;
+  if(!S.adminKey||!can('calls')) return;
   let cs;
   try{ const r=await api('/api/admin/pbx/live'); cs=(r&&r.calls)||[]; }catch(e){ return; }
   if(!_pbxBooted){ cs.forEach(c=>{ _pbxKnown[c.id]=1; }); _pbxBooted=true; return; }  // בסיס — לא מציגים שיחות שכבר היו בטעינה
@@ -11901,7 +12129,7 @@ async function crmPlayRec(uid,btn,title){
   const a=document.getElementById('crmPlayerAudio'), dl=document.getElementById('crmPlayerDl');
   a.innerHTML='<span style="font-size:12px;color:var(--muted)">טוען…</span>';
   try{
-    const h={}; if(S.adminKey) h['X-Admin-Key']=S.adminKey;
+    const h=authH({});
     const r=await fetch('/api/admin/crm/recording?uid='+encodeURIComponent(uid),{headers:h});
     if(!r.ok) throw 0;
     const url=URL.createObjectURL(await r.blob());
@@ -11963,7 +12191,7 @@ async function crmRepairsLoad(phone){
 // ── ☎️ טלפון WebRTC מוטמע (JsSIP) — שלוחה 202 מול 1com. ענה/נתק/השתק בתוך הפופאפ ──
 let _pbxUA=null, _pbxSession=null, _pbxCallTimer=null, _pbxCallStart=0, _pbxSipReg=false, _pbxAnswered=false, _pbxIce=[], _pbxServer='';
 async function startPbxSip(){
-  if(_pbxUA || !S.adminKey) return;
+  if(_pbxUA || !S.adminKey || !can('calls')) return;
   let cfg; try{ cfg=await api('/api/admin/pbx/webrtc-config'); }catch(e){ return; }
   if(!cfg || !cfg.enabled || !cfg.wss) return;
   _pbxIce=(cfg.ice&&cfg.ice.length)?cfg.ice:[];   // TURN של 1com — חובה לאודיו דו-כיווני
@@ -12174,6 +12402,7 @@ function pbxDoTransfer(target){
 }
 async function bootApp(){
   try{ S.branchList=await (await fetchT('/api/branches',{},15000)).json(); }catch(e){}
+  await userRefresh();
   // מחשב הניהול (סניף אתר) נוחת על לוח הבית כברירת מחדל גם ברענון — לא על לוח הקליטה.
   // רק אם עדיין על ברירת המחדל ('board'); deep-link/ניווט אחר גובר (handleDeepLink רץ אחרי).
   if(S.branchId && S.view==='board' && S.cfg && Number(S.branchId)===S.cfg.admin_branch_id
