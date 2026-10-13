@@ -90,6 +90,20 @@ check("סגירה נרשמת בשרשור", "טופל" in c.get(f"/api/chat/mess
 check("טיקט סגור לא ברשימת הפתוחים", all(x["id"] != t["id"] for x in c.get("/api/chat/topics", headers=A).json()["topics"]))
 sysid = th["messages"][0]["id"]
 check("⛔ אי אפשר למחוק הודעת מערכת", c.post(f"/api/chat/{sysid}/delete", headers=D).status_code == 403)
+# ── נראות: עובדת רואה רק נושאים שהיא מעורבת בהם ──
+priv = c.post("/api/chat/topics", headers=A, json={"title": "אודי - נושא קריטי", "kind": "task", "assignees": []}).json()["topic"]["id"]
+c.post("/api/chat/send", headers=U, json={"text": "תגובה בדיקה", "topic_id": priv}); time.sleep(0.2)
+dl = [x["id"] for x in c.get("/api/chat/topics", headers=D).json()["topics"]]
+check("⛔ שיחה בין אסי לאודי לא מופיעה אצל דנה", priv not in dl, dl)
+check("⛔ לא נספרת במונה שלה", str(priv) not in c.get("/api/chat/unread", headers=D).json()["by_topic"])
+check("⛔ גם בכתובת ישירה — 404", c.get(f"/api/chat/messages?topic={priv}", headers=D).status_code == 404)
+check("⛔ ואי אפשר לכתוב בה", c.post("/api/chat/send", headers=D, json={"text": "x", "topic_id": priv}).status_code == 404)
+check("⛔ ולא לסגור אותה", c.post(f"/api/chat/topics/{priv}", headers=D, json={"status": "done"}).status_code == 404)
+check("אודי (בעלים) רואה", priv in [x["id"] for x in c.get("/api/chat/topics", headers=U).json()["topics"]])
+c.post("/api/chat/send", headers=A, json={"text": "@דנה תעזרי כאן", "topic_id": priv, "mentions": [ids["dana"]]})
+check("אחרי שתייגו אותה — היא רואה את הנושא", priv in [x["id"] for x in c.get("/api/chat/topics", headers=D).json()["topics"]])
+own = c.post("/api/chat/topics", headers=D, json={"title": "שאלה שלי", "kind": "question", "assignees": []}).json()["topic"]["id"]
+check("נושא שהיא פתחה — מופיע אצלה", own in [x["id"] for x in c.get("/api/chat/topics", headers=D).json()["topics"]])
 pres = {x["name"]: x["online"] for x in c.get("/api/chat/topics", headers=A).json()["users"]}
 check("נוכחות: מי שביצע בקשות — מחובר", pres["אסי"] and pres["אודי"] and pres["דנה"], pres)
 main._PRESENCE[ids["udi"]] = time.time() - 600

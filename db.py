@@ -5521,8 +5521,28 @@ def chat_read_set(user_id, last_id, topic_id=0):
                     (int(user_id), int(topic_id or 0), int(last_id)))
 
 
-def chat_unread(user_id) -> dict:
-    """הודעות של אחרים שטרם נקראו (30 יום אחרונים), פר-נושא + כמה מתייגות אותי."""
+def topics_involving(user_id) -> set:
+    """נושאים שהמשתמש מעורב בהם: פתח / אחראי / כתב / תויג. (עובד רואה רק אותם.)"""
+    uid = int(user_id)
+    out = set()
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT id, created_by, assignees FROM team_topic"))
+        for r in cur.fetchall():
+            t = _topic_row(r)
+            if t["created_by"] == uid or uid in t["assignees"]:
+                out.add(int(t["id"]))
+        cur.execute(_q("SELECT topic_id, user_id, mentions FROM team_chat WHERE topic_id > 0 AND deleted = 0"))
+        for r in cur.fetchall():
+            d = _chat_row(r)
+            if int(d["user_id"]) == uid or uid in d["mentions"]:
+                out.add(int(d["topic_id"]))
+    return out
+
+
+def chat_unread(user_id, visible=None) -> dict:
+    """הודעות של אחרים שטרם נקראו (30 יום אחרונים), פר-נושא + כמה מתייגות אותי.
+    visible = קבוצת נושאים שמותר לו לראות (None = הכל, לבעלים). "כללי" (0) תמיד."""
     import time as _t
     with _conn() as c:
         cur = c.cursor()
@@ -5532,6 +5552,8 @@ def chat_unread(user_id) -> dict:
                             AND m.ts > ?"""),
                     (int(user_id), int(user_id), int(_t.time()) - 30 * 86400))
         rows = [_chat_row(r) for r in cur.fetchall()]
+    if visible is not None:
+        rows = [r for r in rows if int(r.get("topic_id") or 0) == 0 or int(r["topic_id"]) in visible]
     by_topic: dict = {}
     for r in rows:
         k = str(int(r.get("topic_id") or 0))

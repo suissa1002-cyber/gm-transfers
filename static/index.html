@@ -2060,7 +2060,7 @@ function tcNewTopic(){
     <div class="tc-form">
       <div class="tc-kinds">${Object.entries(kinds).map(([k,l],i)=>`<label><input type="radio" name="tcKind" value="${k}" ${i===0?'checked':''}><span>${TC_KIND_IC[k]||''} ${escW(l)}</span></label>`).join('')}</div>
       <input id="tcTitle" placeholder="כותרת קצרה (למשל: להזמין מדבקות למדפסת)" maxlength="200" value="${TC.wa?'שיחה עם '+escW(tcPhoneFmt(TC.wa)):''}">
-      <div class="tc-lbl">למי זה מיועד?</div>
+      <div class="tc-lbl">למי זה מיועד? <span style="font-weight:400">(בלי בחירה — לבעלים בלבד. רק מי שנבחר/תויג יראה את הנושא)</span></div>
       <div class="tc-assg">${TC.users.filter(u=>u.id!==TC.me).map(u=>`<label><input type="checkbox" value="${u.id}"><span>${tcDot(u)}${escW(u.name)}</span></label>`).join('')||'<span class="muted">אין עדיין משתמשים נוספים</span>'}</div>
       <textarea id="tcFirst" rows="4" placeholder="פרטים (אופציונלי)"></textarea>
       ${TC.wa?`<div class="tc-pre">💬 מקושר לשיחת וואטסאפ עם ${escW(tcPhoneFmt(TC.wa))} <a href="#" onclick="TC.wa='';tcNewTopic();return false">✕</a></div>`:''}

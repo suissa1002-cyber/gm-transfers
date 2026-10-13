@@ -1838,6 +1838,24 @@ def _chat_out(m: dict) -> dict:
 _TOPIC_KINDS = {"question": "שאלה", "request": "בקשה", "task": "משימה", "update": "עדכון"}
 
 
+def _chat_visible(u):
+    """נושאים שהמשתמש רשאי לראות: בעלים — הכל (None); עובד — רק מה שהוא מעורב בו."""
+    return None if u["role"] == "owner" else db.topics_involving(u["id"])
+
+
+def _chat_topic_for(u, tid):
+    """נושא לפי מזהה, רק אם מותר למשתמש לראות אותו (אחרת 404 — לא חושפים שקיים)."""
+    t = db.topic_get(tid) if tid else None
+    vis = _chat_visible(u) if t else None
+    if tid and (not t or (vis is not None and int(tid) not in vis)):
+        raise HTTPException(404, "הנושא לא נמצא")
+    return t
+
+
+def _owner_ids() -> set:
+    return {x["id"] for x in db.users_list() if x["active"] and x["role"] == "owner"}
+
+
 def _chat_users() -> list:
     """משתמשים פעילים + נוכחות: online = בקשה ב-90 השניות האחרונות (GreenOS פתוח)."""
     import time as _tm
@@ -1856,11 +1874,9 @@ def _chat_users() -> list:
 def chat_messages(topic: int = 0, after: int = 0, before: int = 0):
     """הודעות נושא (0=כללי). after → רק חדשות (סקר חי); before → היסטוריה; אחרת 60 האחרונות."""
     u = _chat_user()
-    t = db.topic_get(topic) if topic else None
-    if topic and not t:
-        raise HTTPException(404, "הנושא לא נמצא")
+    t = _chat_topic_for(u, topic)
     rows = db.chat_list(after_id=after, before_id=before, limit=200 if after else 60, topic_id=topic)
-    out = {"messages": [_chat_out(m) for m in rows], "unread": db.chat_unread(u["id"]),
+    out = {"messages": [_chat_out(m) for m in rows], "unread": db.chat_unread(u["id"], _chat_visible(u)),
            "users": _chat_users(), "me": u["id"]}
     if t:
         out["topic"] = t
@@ -1871,9 +1887,10 @@ def chat_messages(topic: int = 0, after: int = 0, before: int = 0):
 def chat_topics(status: str = "open"):
     """רשימת נושאים/טיקטים + לא-נקראו פר-נושא + תצוגה מקדימה + נוכחות משתמשים."""
     u = _chat_user()
-    topics = db.topic_list(status)
+    vis = _chat_visible(u)
+    topics = [t for t in db.topic_list(status) if vis is None or t["id"] in vis]
     last = db.topic_last_msgs([t["id"] for t in topics])
-    unread = db.chat_unread(u["id"])
+    unread = db.chat_unread(u["id"], vis)
     for t in topics:
         lm = last.get(t["id"]) or {}
         t["last"] = "" if lm.get("deleted") else ((lm.get("user_name") or "") + ": " +
@@ -1916,8 +1933,8 @@ def chat_topic_create(body: TopicIn):
     if assignees:
         _chat_push([a for a in assignees if a != u["id"]], f"📌 {u['name']}: {_TOPIC_KINDS[kind]} חדשה בשבילך",
                    title, t["id"])
-    else:   # בלי אחראי = לכל הצוות
-        _chat_push(sorted(active - {u["id"]}), f"📌 {u['name']}: {_TOPIC_KINDS[kind]} חדשה לצוות", title, t["id"])
+    else:   # בלי אחראי = לבעלים (אסי ואודי)
+        _chat_push(sorted(_owner_ids() - {u["id"]}), f"📌 {u['name']}: {_TOPIC_KINDS[kind]} חדשה", title, t["id"])
     return {"ok": True, "topic": db.topic_get(t["id"])}
 
 
@@ -1930,9 +1947,7 @@ class TopicPatch(BaseModel):
 def chat_topic_update(tid: int, body: TopicPatch):
     """סגירה/פתיחה מחדש של נושא, או שינוי אחראים — נרשם כהודעת מערכת בשרשור."""
     u = _chat_user()
-    t = db.topic_get(tid)
-    if not t:
-        raise HTTPException(404, "הנושא לא נמצא")
+    t = _chat_topic_for(u, tid)
     if body.status in ("open", "done") and body.status != t["status"]:
         db.topic_update(tid, status=body.status, closed_name=u["name"])
         db.chat_add(u["id"], u["name"], ("✅ סימן/ה כטופל" if body.status == "done" else "↺ פתח/ה מחדש"),
@@ -1966,7 +1981,7 @@ def chat_unread():
     u = _current_user()
     if u is None:
         return {"count": 0, "mentions": 0, "personal": False}
-    return {**db.chat_unread(u["id"]), "personal": True}
+    return {**db.chat_unread(u["id"], _chat_visible(u)), "personal": True}
 
 
 class ChatIn(BaseModel):
@@ -1998,20 +2013,17 @@ def chat_send(body: ChatIn):
         mentions = sorted({int(x) for x in raw if x.isdigit() and int(x) in active and int(x) != u["id"]})
     phone = re.sub(r"\D", "", body.wa_phone or "")[:15]
     tid = int(body.topic_id or 0)
-    t = db.topic_get(tid) if tid else None
-    if tid and not t:
-        raise HTTPException(404, "הנושא לא נמצא")
+    t = _chat_topic_for(u, tid)
     m = db.chat_add(u["id"], u["name"], text, mentions, key, (body.attach_name or "")[:200],
                     (body.attach_mime or "")[:100], body.attach_size or 0, phone, body.reply_to,
                     topic_id=tid)
     db.chat_read_set(u["id"], m["id"], tid)   # ההודעה שלי = נקראה אצלי
     prev = text[:140] or ("📷 תמונה" if (body.attach_mime or "").startswith("image/") else "📎 קובץ")
     _chat_push(mentions, f"💬 {u['name']} תייג/ה אותך" + (f" · {t['title'][:40]}" if t else ""), prev, tid)
-    if t:   # תגובה בנושא → כל המעורבים: פותח, אחראים, מי שכתב/תויג בו. נושא בלי אחראי = כל הצוות.
-        if t["assignees"]:
-            others = {t["created_by"], *t["assignees"]} | db.topic_participants(tid)
-        else:
-            others = active
+    if t:   # תגובה בנושא → כל המעורבים: פותח, אחראים, מי שכתב/תויג בו (+ הבעלים בנושא בלי אחראי)
+        others = {t["created_by"], *t["assignees"]} | db.topic_participants(tid)
+        if not t["assignees"]:
+            others |= _owner_ids()
         others = (others & active) - {u["id"]} - set(mentions)
         _chat_push(sorted(others), f"💬 {u['name']} · {t['title'][:50]}", prev, tid)
     return {"ok": True, "message": _chat_out(m)}
