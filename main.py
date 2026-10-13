@@ -2007,8 +2007,12 @@ def chat_send(body: ChatIn):
     db.chat_read_set(u["id"], m["id"], tid)   # ההודעה שלי = נקראה אצלי
     prev = text[:140] or ("📷 תמונה" if (body.attach_mime or "").startswith("image/") else "📎 קובץ")
     _chat_push(mentions, f"💬 {u['name']} תייג/ה אותך" + (f" · {t['title'][:40]}" if t else ""), prev, tid)
-    if t:   # תגובה בנושא → גם האחראים ופותח הנושא (שלא תויגו כבר) מקבלים התראה
-        others = {t["created_by"], *t["assignees"]} - {u["id"]} - set(mentions)
+    if t:   # תגובה בנושא → כל המעורבים: פותח, אחראים, מי שכתב/תויג בו. נושא בלי אחראי = כל הצוות.
+        if t["assignees"]:
+            others = {t["created_by"], *t["assignees"]} | db.topic_participants(tid)
+        else:
+            others = active
+        others = (others & active) - {u["id"]} - set(mentions)
         _chat_push(sorted(others), f"💬 {u['name']} · {t['title'][:50]}", prev, tid)
     return {"ok": True, "message": _chat_out(m)}
 

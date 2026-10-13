@@ -5604,6 +5604,19 @@ def topic_update(tid, status=None, closed_name="", assignees=None, title=None):
     return topic_get(tid)
 
 
+def topic_participants(tid) -> set:
+    """מי שכתב בנושא או תויג בו — "עוקבים" שמקבלים התראה על כל תגובה."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT user_id, mentions FROM team_chat WHERE topic_id = ? AND deleted = 0"), (int(tid),))
+        out = set()
+        for r in cur.fetchall():
+            d = _chat_row(r)
+            out.add(int(d["user_id"]))
+            out.update(d["mentions"])
+        return out
+
+
 def topic_last_msgs(topic_ids) -> dict:
     """ההודעה האחרונה בכל נושא — לתצוגה מקדימה ברשימה."""
     ids = [int(x) for x in topic_ids]

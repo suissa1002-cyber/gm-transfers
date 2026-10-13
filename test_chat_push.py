@@ -48,6 +48,17 @@ c.post("/api/chat/send", headers=D, json={"text": "@אודי שאלה דחופה
 check("תיוג → רק לאייפון של אודי", eps() == ["https://push/udi-iphone"])
 c.post("/api/chat/topics", headers=A, json={"title": "מי סוגר היום?", "kind": "question", "assignees": []})
 check("נושא בלי אחראי → לכל הצוות חוץ מהכותב", eps() == ["https://push/dana-phone", "https://push/udi-iphone"])
+tid = c.get("/api/chat/topics", headers=A).json()["topics"][0]["id"]
+c.post("/api/chat/send", headers=U, json={"text": "אני סוגר", "topic_id": tid})
+check("תגובה בנושא בלי אחראי → לכל השאר", eps() == ["https://push/asi-iphone", "https://push/dana-phone"])
+c.post("/api/chat/send", headers=A, json={"text": "תודה", "topic_id": tid})
+check("פותח הנושא מגיב → אודי (שהגיב קודם) מקבל", "https://push/udi-iphone" in eps())
+t2 = c.post("/api/chat/topics", headers=A, json={"title": "להזמין מדבקות", "kind": "task", "assignees": [ids["אודי"]]}).json()["topic"]["id"]
+eps()
+c.post("/api/chat/send", headers=D, json={"text": "גם בסיטי חסר", "topic_id": t2})
+check("נושא עם אחראי: מי שלא מעורב כותב → פותח+אחראי מקבלים", eps() == ["https://push/asi-iphone", "https://push/udi-iphone"])
+c.post("/api/chat/send", headers=U, json={"text": "הזמנתי", "topic_id": t2})
+check("אחראי עונה → פותח + דנה שהשתתפה מקבלות", eps() == ["https://push/asi-iphone", "https://push/dana-phone"])
 r = c.post("/api/chat/push-test", headers=A).json()
 check("בדיקה עצמית → רק המכשיר שלי", r["sent"] == 1 and eps() == ["https://push/asi-iphone"])
 wa_push.send_to_all("לקוח כתב", "שלום", kind="wa")
