@@ -2083,7 +2083,16 @@
         // Apply filters
 
         // ── 📄 דוח צ'קים לפי ספק + טווח תאריך פרעון → PDF (13/10/2026, אסי) ──
-        const CK_GROUP = {topics:'לפני פרעון', group_title:'נפרע', group_mkzhynwd:'בוטל'};
+        // ⚠️ 13/10/2026: הסטטוס בדוח מחושב מתאריך הפרעון, לא מהקבוצה במאנדיי. הקבוצות
+        // מוזזות ידנית (85 צ'קים בבת אחת ב-4/08, ומאז כלום) — כך ש-98 צ'קים בסך 2.4 מיליון
+        // ישבו ב"לפני פרעון" אחרי שתאריכם עבר, והדוח הציג אותם כלא-נפרעו. רק "בוטל" מהקבוצה.
+        const CK_TODAY = new Date().toISOString().slice(0,10);
+        function ckState(c){
+            if (c.group === 'group_mkzhynwd') return 'cancelled';
+            if (!c.date__1) return 'pending';
+            return c.date__1 < CK_TODAY ? 'passed' : (c.date__1 === CK_TODAY ? 'today' : 'pending');
+        }
+        const CK_STATE_HE = {passed:'עבר תאריך פרעון', today:'פרעון היום', pending:'לפני פרעון', cancelled:'בוטל'};
         function ckEsc(t){ return String(t==null?'':t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
         function ckD(iso){ if(!iso) return ''; const [y,m,d]=iso.split('-'); return `${d}/${m}/${y}`; }
         function openCkReport(){
@@ -2109,7 +2118,7 @@
                 <select id="ckScope" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:10px;margin-top:4px">
                   <option value="active">כל הצ'קים (בלי מבוטלים)</option>
                   <option value="topics">לפני פרעון בלבד</option>
-                  <option value="group_title">נפרעו בלבד</option>
+                  <option value="group_title">עבר תאריך פרעון בלבד</option>
                   <option value="all">הכל כולל מבוטלים</option>
                 </select>
                 <div style="display:flex;gap:8px;margin-top:18px">
@@ -2128,13 +2137,14 @@
                 if (sup && (c.status||'').trim() !== sup) return false;
                 if (from && c.date__1 < from) return false;
                 if (to && c.date__1 > to) return false;
-                if (scope === 'active' && c.group === 'group_mkzhynwd') return false;
-                if (scope === 'topics' && c.group !== 'topics') return false;
-                if (scope === 'group_title' && c.group !== 'group_title') return false;
+                const stt = ckState(c);
+                if (scope === 'active' && stt === 'cancelled') return false;
+                if (scope === 'topics' && !(stt === 'pending' || stt === 'today')) return false;
+                if (scope === 'group_title' && stt !== 'passed') return false;
                 return true;
             }).sort((a,b)=>(a.date__1||'').localeCompare(b.date__1||''));
             const sum = list => list.reduce((s,c)=>s+(c.numbers__1||0),0);
-            const pend = rows.filter(c=>c.group==='topics'), paid = rows.filter(c=>c.group==='group_title');
+            const pend = rows.filter(c=>['pending','today'].includes(ckState(c))), paid = rows.filter(c=>ckState(c)==='passed');
             const now = new Date();
             const gen = `${String(now.getDate()).padStart(2,'0')}/${String(now.getMonth()+1).padStart(2,'0')}/${now.getFullYear()} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
             document.getElementById('ckReportDlg')?.remove();
@@ -2175,11 +2185,11 @@
                 </div>
                 <h1>דוח צ'קים${sup?` — ${ckEsc(sup)}`:' — כל הספקים'}</h1>
                 <div class="sub">Green Mobile · תאריך פרעון ${ckD(from)||'—'} עד ${ckD(to)||'—'} ·
-                  ${{active:'כל הצ\'קים (ללא מבוטלים)',topics:'לפני פרעון בלבד',group_title:'נפרעו בלבד',all:'כולל מבוטלים'}[scope]}<br>הופק: ${gen}</div>
+                  ${{active:'כל הצ\'קים (ללא מבוטלים)',topics:'לפני פרעון בלבד',group_title:'עבר תאריך פרעון בלבד',all:'כולל מבוטלים'}[scope]}<br>הופק: ${gen}</div>
                 <div class="kpis">
                   <div class="k">סה"כ צ'קים<b>${rows.length}</b></div>
                   <div class="k">סכום כולל<b>₪${formatNumber(sum(rows))}</b></div>
-                  <div class="k">נפרעו (${paid.length})<b>₪${formatNumber(sum(paid))}</b></div>
+                  <div class="k">עבר תאריך פרעון (${paid.length})<b>₪${formatNumber(sum(paid))}</b></div>
                   <div class="k">לפני פרעון (${pend.length})<b>₪${formatNumber(sum(pend))}</b></div>
                 </div>
                 ${rows.length ? `<table>
@@ -2187,7 +2197,7 @@
                   <tbody>${rows.map((c,i)=>`<tr>
                     <td>${i+1}</td><td class="n">${ckEsc(c.name)}</td>${sup?'':`<td>${ckEsc(c.status)}</td>`}
                     <td class="n">${ckD(c.date__1)}</td><td class="n">₪${formatNumber(c.numbers__1||0)}</td>
-                    <td>${ckEsc(c.bank)}</td><td>${CK_GROUP[c.group]||''}</td><td>${ckEsc(c.notes)}</td></tr>`).join('')}</tbody>
+                    <td>${ckEsc(c.bank)}</td><td>${CK_STATE_HE[ckState(c)]}</td><td>${ckEsc(c.notes)}</td></tr>`).join('')}</tbody>
                   <tfoot><tr><td colspan="${sup?3:4}">סה"כ ${rows.length} צ'קים</td><td class="n">₪${formatNumber(sum(rows))}</td><td colspan="3"></td></tr></tfoot>
                 </table>` : '<p style="padding:30px;text-align:center;color:#666">לא נמצאו צ\'קים בטווח שנבחר.</p>'}
                 <div class="foot">המקור: לוח הצ'קים במאנדיי · נשלף ${gen}</div>
