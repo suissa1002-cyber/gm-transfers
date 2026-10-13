@@ -53,9 +53,22 @@ def send_to_all(title: str, body: str, url: str = "/?wa=1", phone: str = "",
                          ensure_ascii=False)
     sent = 0
     only = {int(u) for u in user_ids} if user_ids is not None else None
+    # וואטסאפ/הזמנות לכל המכשירים — חוץ ממכשיר של עובד בלי ההרשאה (שלא יראה הודעות לקוחות).
+    # מכשיר לא משויך (נרשם לפני המשתמשים) = כמו קודם, מקבל.
+    blocked = set()
+    if only is None:
+        need = "orders" if kind == "order" else "whatsapp"
+        try:
+            for u in db.users_list():
+                if not u["active"] or (u["role"] != "owner" and need not in (u.get("perms") or [])):
+                    blocked.add(u["id"])
+        except Exception:  # noqa: BLE001
+            pass
     for s in db.wa_push_subs():
         if only is not None and s.get("user_id") not in only:
             continue   # צ'אט צוות: רק למכשירים של מי שתויג
+        if s.get("user_id") in blocked:
+            continue
         try:
             webpush(
                 subscription_info=json.loads(s["sub"]),

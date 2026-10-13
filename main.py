@@ -1913,8 +1913,11 @@ def chat_topic_create(body: TopicIn):
     if first:
         db.chat_add(u["id"], u["name"], first[:4000], [a for a in assignees if a != u["id"]],
                     topic_id=t["id"], wa_phone=phone)
-    _chat_push([a for a in assignees if a != u["id"]], f"📌 {u['name']}: {_TOPIC_KINDS[kind]} חדשה בשבילך",
-               title, t["id"])
+    if assignees:
+        _chat_push([a for a in assignees if a != u["id"]], f"📌 {u['name']}: {_TOPIC_KINDS[kind]} חדשה בשבילך",
+                   title, t["id"])
+    else:   # בלי אחראי = לכל הצוות
+        _chat_push(sorted(active - {u["id"]}), f"📌 {u['name']}: {_TOPIC_KINDS[kind]} חדשה לצוות", title, t["id"])
     return {"ok": True, "topic": db.topic_get(t["id"])}
 
 
@@ -2077,6 +2080,55 @@ def chat_del(mid: int):
     if not db.chat_delete(mid, u["id"]):
         raise HTTPException(403, "אפשר למחוק רק הודעה שלך")
     return {"ok": True}
+
+
+@app.get("/api/chat/push-key")
+def chat_push_key():
+    _chat_user()
+    import wa_push
+    return {"key": wa_push.VAPID_PUBLIC}
+
+
+class ChatPushSub(BaseModel):
+    sub: dict
+    ua: str = ""
+
+
+@app.post("/api/chat/push-subscribe")
+def chat_push_subscribe(body: ChatPushSub):
+    """הפעלת התראות למשתמש מחובר (גם בלי הרשאת וואטסאפ) — המכשיר משויך אליו."""
+    u = _chat_user()
+    import wa_push
+    out = wa_push.subscribe(body.sub, body.ua)
+    db.wa_push_sub_set_user((body.sub or {}).get("endpoint", ""), u["id"])
+    return out
+
+
+def _ua_short(ua: str) -> str:
+    ua = ua or ""
+    return ("iPhone" if "iPhone" in ua else "iPad" if "iPad" in ua else "Android" if "Android" in ua
+            else "Mac" if "Macintosh" in ua else "Windows" if "Windows" in ua else "מכשיר")
+
+
+@app.get("/api/chat/push-status")
+def chat_push_status():
+    """לכל משתמש: אילו מכשירים יקבלו ממנו התראות צוות (מכשירים משויכים)."""
+    _chat_user()
+    by: dict = {}
+    for sub in db.wa_push_subs():
+        if sub.get("user_id"):
+            by.setdefault(int(sub["user_id"]), []).append(_ua_short(sub.get("ua")))
+    return {"devices": {str(k): v for k, v in by.items()}}
+
+
+@app.post("/api/chat/push-test")
+def chat_push_test():
+    """התראת בדיקה רק למכשירים שלי — לבדיקה עם אייפון נעול."""
+    u = _chat_user()
+    import wa_push
+    n = wa_push.send_to_all(title="💬 בדיקת צוות", body=f"{u['name']}, ככה תיראה התראה על תיוג או נושא חדש",
+                            url="/?chat=1", kind="chat", tag="chat-test", user_ids=[u["id"]])
+    return {"sent": n}
 
 
 class ChatPushBind(BaseModel):
@@ -17270,7 +17322,11 @@ def wa_push_key(x_admin_key: Optional[str] = Header(None)):
 def wa_push_subscribe(body: WaPushSub, x_admin_key: Optional[str] = Header(None)):
     _require_admin(x_admin_key)
     import wa_push
-    return wa_push.subscribe(body.sub, body.ua)
+    out = wa_push.subscribe(body.sub, body.ua)
+    u = _current_user()
+    if u is not None:   # המכשיר שייך למשתמש המחובר → מקבל גם התראות צ'אט צוות
+        db.wa_push_sub_set_user((body.sub or {}).get("endpoint", ""), u["id"])
+    return out
 
 
 @app.post("/api/admin/wa/push/test")
