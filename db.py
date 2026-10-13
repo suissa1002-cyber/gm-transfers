@@ -228,6 +228,31 @@ _SCHEMA = [
         created_at  TEXT
     )
     """.format(pk=_PK),
+    # ── 13/10/2026: משתמשי GreenOS — כניסה אישית והרשאות לפי פיצ'ר (perms.py) ──
+    """
+    CREATE TABLE IF NOT EXISTS users (
+        id          {pk},
+        username    TEXT UNIQUE,
+        name        TEXT,
+        pw_hash     TEXT,
+        role        TEXT DEFAULT 'user',
+        perms       TEXT DEFAULT '[]',
+        active      INTEGER DEFAULT 1,
+        created_at  TEXT,
+        last_login  TEXT
+    )
+    """.format(pk=_PK),
+    """
+    CREATE TABLE IF NOT EXISTS user_sessions (
+        token_hash   TEXT PRIMARY KEY,
+        user_id      INTEGER,
+        device_token TEXT,
+        created_at   TEXT,
+        last_seen    TEXT,
+        expires_at   TEXT
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_user_sessions_user ON user_sessions(user_id)",
     # ── 05/10/2026: בקשת העברה להזמנה שבוצעה בפועל בקופה. שורת transfer_plan נמחקת
     # ברגע ההתאמה, ואיתה הקשר להזמנה — אז נשמר כאן order↔op כדי שההזמנה תציג
     # "הועבר מ-X — ממתין לקליטה" עד שהמוצר נקלט. ──
@@ -5190,3 +5215,171 @@ def branch_updates_stale(days=90) -> list:
         elif ends and ends < cutoff:
             out.append(u["id"])
     return out
+
+
+
+# ──────────────────────────────────────────────────────────────
+# 👤 משתמשי GreenOS (13/10/2026)
+# ──────────────────────────────────────────────────────────────
+# סיסמאות: PBKDF2-SHA256 מהספרייה הסטנדרטית (בלי תלות חדשה). אסימון סשן נשמר
+# כ-SHA256 בלבד — דליפת ה-DB לא חושפת סשנים פעילים.
+import hashlib as _hl
+import hmac as _hmac
+import json
+import secrets as _secrets
+
+_PBKDF2_ITERS = 200_000
+
+
+def pw_hash(password: str) -> str:
+    salt = _secrets.token_bytes(16)
+    h = _hl.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, _PBKDF2_ITERS)
+    return f"pbkdf2${_PBKDF2_ITERS}${salt.hex()}${h.hex()}"
+
+
+def pw_check(password: str, stored: str) -> bool:
+    try:
+        algo, iters, salt, h = (stored or "").split("$")
+        if algo != "pbkdf2":
+            return False
+        got = _hl.pbkdf2_hmac("sha256", password.encode("utf-8"), bytes.fromhex(salt), int(iters))
+        return _hmac.compare_digest(got.hex(), h)
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _user_row(r):
+    d = _row_to_dict(r)
+    if not d:
+        return None
+    try:
+        d["perms"] = json.loads(d.get("perms") or "[]")
+    except Exception:  # noqa: BLE001
+        d["perms"] = []
+    d["active"] = bool(int(d.get("active") or 0))
+    return d
+
+
+def user_create(username, name, password, role="user", perms=None) -> dict:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""INSERT INTO users (username, name, pw_hash, role, perms, active, created_at)
+                          VALUES (?, ?, ?, ?, ?, 1, ?)"""),
+                    (username.strip().lower(), name.strip(), pw_hash(password), role,
+                     json.dumps(list(perms or [])), now_iso()))
+    return user_get_by_username(username)
+
+
+def user_get(uid):
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM users WHERE id = ?"), (int(uid),))
+        return _user_row(cur.fetchone())
+
+
+def user_get_by_username(username):
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM users WHERE username = ?"), ((username or "").strip().lower(),))
+        return _user_row(cur.fetchone())
+
+
+def users_list() -> list:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM users ORDER BY role DESC, name"))
+        return [_user_row(r) for r in cur.fetchall()]
+
+
+def users_owner_count() -> int:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT COUNT(*) AS n FROM users WHERE role = 'owner' AND active = 1"))
+        return int(cur.fetchone()["n"])
+
+
+def user_update(uid, **kw):
+    allowed = {"name", "role", "perms", "active"}
+    sets, vals = [], []
+    for k, v in kw.items():
+        if k not in allowed or v is None:
+            continue
+        if k == "perms":
+            v = json.dumps(list(v))
+        if k == "active":
+            v = 1 if v else 0
+        sets.append(f"{k} = ?"); vals.append(v)
+    if not sets:
+        return user_get(uid)
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q(f"UPDATE users SET {', '.join(sets)} WHERE id = ?"), (*vals, int(uid)))
+    return user_get(uid)
+
+
+def user_set_password(uid, password):
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("UPDATE users SET pw_hash = ? WHERE id = ?"), (pw_hash(password), int(uid)))
+
+
+def _tok_hash(token: str) -> str:
+    return _hl.sha256((token or "").encode("utf-8")).hexdigest()
+
+
+def session_create(uid, device_token="", days=30) -> str:
+    from datetime import datetime as _dt, timedelta as _td
+    token = _secrets.token_urlsafe(32)
+    exp = (_dt.now() + _td(days=days)).isoformat(timespec="seconds")
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""INSERT INTO user_sessions (token_hash, user_id, device_token, created_at, last_seen, expires_at)
+                          VALUES (?, ?, ?, ?, ?, ?)"""),
+                    (_tok_hash(token), int(uid), device_token or "", now_iso(), now_iso(), exp))
+        cur.execute(_q("UPDATE users SET last_login = ? WHERE id = ?"), (now_iso(), int(uid)))
+    return token
+
+
+def session_user(token: str):
+    """(user, session) לאסימון תקף ומשתמש פעיל; אחרת (None, None)."""
+    from datetime import datetime as _dt
+    if not token:
+        return None, None
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM user_sessions WHERE token_hash = ?"), (_tok_hash(token),))
+        sess = _row_to_dict(cur.fetchone())
+    if not sess or str(sess.get("expires_at") or "") < _dt.now().isoformat(timespec="seconds"):
+        return None, None
+    u = user_get(sess["user_id"])
+    if not u or not u["active"]:
+        return None, None
+    return u, sess
+
+
+def session_touch(token: str):
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("UPDATE user_sessions SET last_seen = ? WHERE token_hash = ?"),
+                    (now_iso(), _tok_hash(token)))
+
+
+def session_delete(token: str):
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("DELETE FROM user_sessions WHERE token_hash = ?"), (_tok_hash(token),))
+
+
+def sessions_delete_for_user(uid) -> int:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("DELETE FROM user_sessions WHERE user_id = ?"), (int(uid),))
+        return cur.rowcount or 0
+
+
+def sessions_for_user(uid) -> list:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""SELECT device_token, created_at, last_seen, expires_at FROM user_sessions
+                          WHERE user_id = ? ORDER BY last_seen DESC"""), (int(uid),))
+        return [dict(r) for r in cur.fetchall()]

@@ -35,6 +35,68 @@ app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 
 # ──────────────────────────────────────────────────────────────
+# 👤 משתמשים והרשאות (13/10/2026)
+# ──────────────────────────────────────────────────────────────
+# בקשה עם X-User-Token: המשתמש מזוהה כאן, ההרשאה לנתיב נאכפת כאן (perms.py),
+# והמשתמש נשמר ב-contextvar. _require_admin ושות' מקבלים משתמש מזוהה במקום
+# הסיסמה המשותפת — כך כל 239 נקודות הקצה מכוסות בלי לגעת באף אחת מהן.
+# בקשה בלי אסימון — עוברת כמו קודם (סיסמה משותפת / מכשיר סניף / ציבורי).
+import contextvars as _cv
+import perms as _perms
+_CURRENT_USER = _cv.ContextVar("gm_user", default=None)
+_SESSION_TOUCH: dict = {}
+
+
+def _current_user():
+    return _CURRENT_USER.get()
+
+
+@app.middleware("http")
+async def _user_auth_mw(request: Request, call_next):
+    tok = request.headers.get("x-user-token")
+    if not tok:
+        return await call_next(request)
+    from starlette.concurrency import run_in_threadpool
+    u, _sess = await run_in_threadpool(db.session_user, tok)
+    if not u:
+        return JSONResponse(status_code=401, content={
+            "detail": "הכניסה פגה — יש להתחבר מחדש", "code": "user_session"})
+    if u["role"] != "owner":
+        # ⚠️ עובד רק ממכשיר מאושר — לא מהבית עם קישור ששמר (דרישת אסי)
+        dtok = request.headers.get("x-device-token") or ""
+        d = await run_in_threadpool(db.device_get, dtok) if dtok else None
+        if not d or d.get("status") != "approved":
+            return JSONResponse(status_code=403, content={
+                "detail": "המכשיר הזה לא מאושר לכניסה. פנה לאסי או לאודי.", "code": "user_device"})
+    need = _perms.feature_for_path(request.url.path)
+    if u["role"] != "owner" and need:
+        if need == "owner" or need not in (u.get("perms") or []):
+            label = next((f[1] for f in _perms.FEATURES if f[0] == need), "הפעולה הזו")
+            return JSONResponse(status_code=403, content={
+                "detail": f"אין לך הרשאה ל{label}", "code": "user_perm", "need": need})
+    import time as _tm
+    if _tm.time() - _SESSION_TOUCH.get(tok, 0) > 300:   # לא כתיבה ל-DB בכל בקשה
+        _SESSION_TOUCH[tok] = _tm.time()
+        await run_in_threadpool(db.session_touch, tok)
+    ctx = _CURRENT_USER.set(u)
+    try:
+        return await call_next(request)
+    finally:
+        _CURRENT_USER.reset(ctx)
+
+
+def _need(perm: str):
+    """פעולה רגישה (perms.SENSITIVE) — נבדקת בתוך נקודת הקצה. סיסמה משותפת/בעלים עוברים."""
+    u = _current_user()
+    if u is None or u["role"] == "owner":
+        return
+    if perm not in (u.get("perms") or []):
+        label = next((x[1] for x in _perms.SENSITIVE if x[0] == perm), perm)
+        raise HTTPException(403, f"אין לך הרשאה ל{label}")
+
+
+
+# ──────────────────────────────────────────────────────────────
 # 🛡️ כשהאתר מחזיר דף חסימה במקום JSON
 # ──────────────────────────────────────────────────────────────
 # 8/09/2026: השרת (LiteSpeed/הגנת האחסון) החזיר ל-Render דף אתגר JavaScript
@@ -1083,7 +1145,7 @@ def _shutdown():
 # ──────────────────────────────────────────────────────────────
 def _require_admin(x_admin_key: Optional[str] = Header(None)):
     """הגנת קונסולת הניהול. אם ADMIN_PASSWORD ריק — פתוח (פיתוח)."""
-    if not cfg.ADMIN_PASSWORD:
+    if not cfg.ADMIN_PASSWORD or _current_user() is not None:
         return
     if (x_admin_key or "") != cfg.ADMIN_PASSWORD:
         raise HTTPException(401, "admin auth required")
@@ -1101,7 +1163,10 @@ def _require_admin_or_bridge(x_admin_key, x_bridge_key):
 
 
 def _actor_name(x_admin_key, x_device_token) -> str:
-    """מי ביצע את הפעולה — לקונסולה או למכשיר סניף מאושר (לתיעוד בבקשות העברה)."""
+    """מי ביצע את הפעולה — משתמש מחובר, קונסולה או מכשיר סניף מאושר (לתיעוד)."""
+    u = _current_user()
+    if u is not None:   # 13/10/2026: כניסה אישית — השם האמיתי במקום "קונסולת ניהול"
+        return u.get("name") or u.get("username") or "משתמש"
     if cfg.ADMIN_PASSWORD and (x_admin_key or "") == cfg.ADMIN_PASSWORD:
         return "קונסולת ניהול"
     d = db.device_get(x_device_token or "") if x_device_token else None
@@ -1115,7 +1180,7 @@ def _actor_name(x_admin_key, x_device_token) -> str:
 def _require_admin_or_device(x_admin_key, x_device_token):
     """גישה למנהל (סיסמה) או למכשיר סניף מאושר — לפיצ'רים שפתוחים לסניפים
     (מלאי חי, בקשת משיכה). הניהול המלא נשאר בסיסמה בלבד."""
-    if not cfg.ADMIN_PASSWORD or (x_admin_key or "") == cfg.ADMIN_PASSWORD:
+    if not cfg.ADMIN_PASSWORD or (x_admin_key or "") == cfg.ADMIN_PASSWORD or _current_user() is not None:
         return
     d = db.device_get(x_device_token or "") if x_device_token else None
     if d and d.get("status") == "approved":
@@ -1125,7 +1190,7 @@ def _require_admin_or_device(x_admin_key, x_device_token):
 
 def _caller_device(x_admin_key, x_device_token):
     """כמו _require_admin_or_device, אבל מחזיר זהות: None=מנהל, dict=מכשיר סניפי."""
-    if not cfg.ADMIN_PASSWORD or (x_admin_key or "") == cfg.ADMIN_PASSWORD:
+    if not cfg.ADMIN_PASSWORD or (x_admin_key or "") == cfg.ADMIN_PASSWORD or _current_user() is not None:
         return None
     d = db.device_get(x_device_token or "") if x_device_token else None
     if d and d.get("status") == "approved":
@@ -1467,6 +1532,176 @@ def admin_login(body: AdminLogin):
     if not cfg.ADMIN_PASSWORD or body.password == cfg.ADMIN_PASSWORD:
         return {"ok": True}
     raise HTTPException(401, "wrong password")
+
+
+# ── 👤 כניסה אישית וניהול משתמשים (13/10/2026) ──
+class UserLoginIn(BaseModel):
+    username: str
+    password: str
+
+
+_LOGIN_FAILS: dict = {}   # (username|ip) → [count, first_ts] — הגנה מניחוש סיסמאות
+
+
+def _user_public(u: dict) -> dict:
+    return {"id": u["id"], "username": u["username"], "name": u["name"], "role": u["role"],
+            "perms": u["perms"] if u["role"] != "owner" else sorted(_perms.ALL_KEYS),
+            "active": u["active"], "last_login": u.get("last_login")}
+
+
+@app.post("/api/auth/login")
+def auth_login(body: UserLoginIn, request: Request):
+    """כניסה אישית. עובד (לא בעלים) — רק ממכשיר מאושר (X-Device-Token)."""
+    import time as _tm
+    ip = _client_ip(request)
+    key = f"{(body.username or '').strip().lower()}|{ip}"
+    n, t0 = _LOGIN_FAILS.get(key, [0, _tm.time()])
+    if n >= 5 and _tm.time() - t0 < 600:
+        raise HTTPException(429, "יותר מדי ניסיונות. נסה שוב בעוד 10 דקות.")
+    u = db.user_get_by_username(body.username)
+    if not u or not db.pw_check(body.password or "", u.get("pw_hash") or ""):
+        if _tm.time() - t0 >= 600:
+            n, t0 = 0, _tm.time()
+        _LOGIN_FAILS[key] = [n + 1, t0]
+        raise HTTPException(401, "שם משתמש או סיסמה שגויים")
+    if not u["active"]:
+        raise HTTPException(403, "המשתמש חסום. פנה לאסי או לאודי.")
+    dtok = request.headers.get("x-device-token") or ""
+    if u["role"] != "owner":
+        d = db.device_get(dtok) if dtok else None
+        if not d or d.get("status") != "approved":
+            raise HTTPException(403, "המכשיר הזה לא מאושר לכניסה. פנה לאסי או לאודי.")
+    _LOGIN_FAILS.pop(key, None)
+    token = db.session_create(u["id"], dtok)
+    return {"ok": True, "token": token, "user": _user_public(u)}
+
+
+@app.post("/api/auth/logout")
+def auth_logout(x_user_token: Optional[str] = Header(None)):
+    if x_user_token:
+        db.session_delete(x_user_token)
+    return {"ok": True}
+
+
+@app.get("/api/auth/me")
+def auth_me(x_user_token: Optional[str] = Header(None)):
+    u, _ = db.session_user(x_user_token or "")
+    if not u:
+        raise HTTPException(401, "לא מחובר")
+    return {"user": _user_public(u), "catalog": _perms.catalog()}
+
+
+class PwChangeIn(BaseModel):
+    old: str
+    new: str
+
+
+@app.post("/api/auth/password")
+def auth_password(body: PwChangeIn, x_user_token: Optional[str] = Header(None)):
+    u, _ = db.session_user(x_user_token or "")
+    if not u:
+        raise HTTPException(401, "לא מחובר")
+    if not db.pw_check(body.old or "", u.get("pw_hash") or ""):
+        raise HTTPException(400, "הסיסמה הנוכחית שגויה")
+    if len(body.new or "") < 6:
+        raise HTTPException(400, "סיסמה חייבת להיות לפחות 6 תווים")
+    db.user_set_password(u["id"], body.new)
+    return {"ok": True}
+
+
+def _require_owner(x_admin_key):
+    """ניהול משתמשים: בעלים מחובר, או הסיסמה המשותפת (לאתחול — יצירת המשתמש הראשון)."""
+    u = _current_user()
+    if u is not None:
+        if u["role"] != "owner":
+            raise HTTPException(403, "רק בעלים מנהלים משתמשים")
+        return
+    _require_admin(x_admin_key)
+
+
+class UserIn(BaseModel):
+    username: str
+    name: str
+    password: str
+    role: str = "user"
+    perms: list = []
+
+
+class UserPatch(BaseModel):
+    name: Optional[str] = None
+    role: Optional[str] = None
+    perms: Optional[list] = None
+    active: Optional[bool] = None
+
+
+@app.get("/api/admin/users")
+def admin_users_list(x_admin_key: Optional[str] = Header(None)):
+    _require_owner(x_admin_key)
+    out = []
+    for u in db.users_list():
+        pu = _user_public(u)
+        pu["sessions"] = len(db.sessions_for_user(u["id"]))
+        out.append(pu)
+    return {"users": out, "catalog": _perms.catalog()}
+
+
+@app.post("/api/admin/users")
+def admin_users_create(body: UserIn, x_admin_key: Optional[str] = Header(None)):
+    _require_owner(x_admin_key)
+    import re as _reu
+    un = (body.username or "").strip().lower()
+    if not _reu.fullmatch(r"[a-z0-9._-]{3,30}", un):
+        raise HTTPException(400, "שם משתמש: 3-30 תווים, אותיות באנגלית/ספרות/נקודה/קו")
+    if db.user_get_by_username(un):
+        raise HTTPException(400, "שם המשתמש תפוס")
+    if len(body.password or "") < 6:
+        raise HTTPException(400, "סיסמה חייבת להיות לפחות 6 תווים")
+    if not (body.name or "").strip():
+        raise HTTPException(400, "חסר שם")
+    role = "owner" if body.role == "owner" else "user"
+    u = db.user_create(un, body.name, body.password, role, _perms.clean_perms(body.perms))
+    return {"ok": True, "user": _user_public(u)}
+
+
+@app.put("/api/admin/users/{uid}")
+def admin_users_update(uid: int, body: UserPatch, x_admin_key: Optional[str] = Header(None)):
+    _require_owner(x_admin_key)
+    u = db.user_get(uid)
+    if not u:
+        raise HTTPException(404, "המשתמש לא נמצא")
+    role = None if body.role is None else ("owner" if body.role == "owner" else "user")
+    losing_owner = u["role"] == "owner" and u["active"] and (role == "user" or body.active is False)
+    if losing_owner and db.users_owner_count() <= 1:
+        raise HTTPException(400, "אי אפשר להסיר את הבעלים האחרון — אחרת אף אחד לא יוכל לנהל משתמשים")
+    u = db.user_update(uid, name=(body.name or None), role=role,
+                       perms=(None if body.perms is None else _perms.clean_perms(body.perms)),
+                       active=body.active)
+    if body.active is False:
+        db.sessions_delete_for_user(uid)   # חסימה = ניתוק מיידי מכל המכשירים
+    return {"ok": True, "user": _user_public(u)}
+
+
+class PwResetIn(BaseModel):
+    password: str
+
+
+@app.post("/api/admin/users/{uid}/password")
+def admin_users_reset_pw(uid: int, body: PwResetIn, x_admin_key: Optional[str] = Header(None)):
+    """שחזור סיסמה למשתמש ששכח — הבעלים קובע סיסמה חדשה. מנתק את כל הסשנים."""
+    _require_owner(x_admin_key)
+    if not db.user_get(uid):
+        raise HTTPException(404, "המשתמש לא נמצא")
+    if len(body.password or "") < 6:
+        raise HTTPException(400, "סיסמה חייבת להיות לפחות 6 תווים")
+    db.user_set_password(uid, body.password)
+    n = db.sessions_delete_for_user(uid)
+    return {"ok": True, "sessions_closed": n}
+
+
+@app.post("/api/admin/users/{uid}/logout-all")
+def admin_users_logout_all(uid: int, x_admin_key: Optional[str] = Header(None)):
+    _require_owner(x_admin_key)
+    return {"ok": True, "sessions_closed": db.sessions_delete_for_user(uid)}
 
 
 @app.get("/api/branches")
@@ -5067,7 +5302,7 @@ def admin_service_flags_set(body: ServiceFlagIn,
         raise HTTPException(400, "unknown service")
     key = f"svc_{body.service}_live"
     db.setting_set(key, "1" if body.enabled else "0", actor)
-    db.setting_set(key + "_at", now_iso(), actor)
+    db.setting_set(key + "_at", db.now_iso(), actor)   # ⚠️ היה now_iso() לא מוגדר → 500
     logger.info("service-flag %s -> %s by %s", body.service, body.enabled, actor)
     return {"ok": True, "service": body.service, "enabled": body.enabled}
 
@@ -5795,7 +6030,7 @@ async def checks_gql(request: Request, x_admin_key: Optional[str] = Header(None)
     checks_pw = os.getenv("CHECKS_PASSWORD", "").strip()
     admin_ok = (not cfg.ADMIN_PASSWORD) or (x_admin_key or "") == cfg.ADMIN_PASSWORD
     checks_ok = bool(checks_pw) and (x_checks_key or "") == checks_pw
-    if not (admin_ok or checks_ok):
+    if not (admin_ok or checks_ok or _current_user() is not None):
         raise HTTPException(401, "checks auth required")
     import monday_proxy
     if not monday_proxy.available():
@@ -5826,7 +6061,7 @@ def checks_img(asset_id: int, rot: int = 0, x_admin_key: Optional[str] = Header(
     checks_pw = os.getenv("CHECKS_PASSWORD", "").strip()
     admin_ok = (not cfg.ADMIN_PASSWORD) or (x_admin_key or "") == cfg.ADMIN_PASSWORD
     checks_ok = bool(checks_pw) and (x_checks_key or "") == checks_pw
-    if not (admin_ok or checks_ok):
+    if not (admin_ok or checks_ok or _current_user() is not None):
         raise HTTPException(401, "checks auth required")
     import time as _t
     ck = (asset_id, 1 if rot else 0)
@@ -5872,7 +6107,7 @@ async def checks_upload(request: Request, x_admin_key: Optional[str] = Header(No
     checks_pw = os.getenv("CHECKS_PASSWORD", "").strip()
     admin_ok = (not cfg.ADMIN_PASSWORD) or (x_admin_key or "") == cfg.ADMIN_PASSWORD
     checks_ok = bool(checks_pw) and (x_checks_key or "") == checks_pw
-    if not (admin_ok or checks_ok):
+    if not (admin_ok or checks_ok or _current_user() is not None):
         raise HTTPException(401, "checks auth required")
     token = os.getenv("MONDAY_API_TOKEN", "")
     if not token:
@@ -10621,6 +10856,7 @@ def admin_stellr_code_manual(payload: dict, x_admin_key: Optional[str] = Header(
     """רישום ידני של קוד שהונפק מחוץ למערכת (למשל canary מסקריפט) — לתיעוד ושחזור.
     body: {wc_name, value, pan, pin, tx_id, phone, branch, actor, status}."""
     _require_admin(x_admin_key)
+    _need("codes.issue")
     import time as _t
     cid = db.stellr_code_add(
         str(payload.get("order") or f"manual-{int(_t.time())}"),
@@ -10680,6 +10916,7 @@ def _stellr_display(pan: str, pin: str):
 def admin_stellr_issue(payload: dict, x_admin_key: Optional[str] = Header(None)):
     """הנפקה ידנית מהקונסולה. body: {order, dry: 0/1, force: 0/1}."""
     _require_admin(x_admin_key)
+    _need("codes.issue")
     num = str(payload.get("order") or "").strip().lstrip("#")
     if not num:
         raise HTTPException(400, "חסר מספר הזמנה")
@@ -11960,6 +12197,7 @@ def admin_coupon_create(body: CouponIn, x_admin_key: Optional[str] = Header(None
     """יוצר קופון הנחה ב-WooCommerce ומחזיר את הקוד. ⛔ סכום חייב להיות חיובי,
     ואחוז מוגבל ל-100 — קופון שגוי הוא כסף שיוצא."""
     _require_admin(x_admin_key)
+    _need("coupons.create")
     import requests as _rq
     kind = "percent" if (body.kind or "").lower().startswith("per") else "fixed_cart"
     amt = round(float(body.amount or 0), 2)
@@ -12056,6 +12294,7 @@ def admin_coupon_cancel(cid: int, x_admin_key: Optional[str] = Header(None)):
     ⛔ ל-WooCommerce אין דגל "מבוטל" לקופון — תפוגה בעבר היא הדרך הנתמכת.
     """
     _require_admin(x_admin_key)
+    _need("coupons.create")
     import requests as _rq
     from datetime import timedelta as _td
     base, k, sec = _wc_creds()
@@ -12071,6 +12310,7 @@ def admin_coupon_cancel(cid: int, x_admin_key: Optional[str] = Header(None)):
 def admin_coupon_delete(cid: int, x_admin_key: Optional[str] = Header(None)):
     """מחיקת קופון (force) — לביטול קוד שנוצר בטעות."""
     _require_admin(x_admin_key)
+    _need("coupons.create")
     import requests as _rq
     base, k, sec = _wc_creds()
     r = _rq.delete(f"{base}/wp-json/wc/v3/coupons/{cid}", params={"force": True},
@@ -12267,6 +12507,7 @@ def admin_order_cancel_silent(oid: int, reason: str = "",
     ⛔ הביטול הרגיל (עם הודעה) נשאר כפי שהוא — הוא הנכון לחוסר במלאי אמיתי.
     """
     _require_admin(x_admin_key)
+    _need("orders.cancel")
     import requests as _rq
     base, k, s = _wc_creds()
     r0 = _rq.get(f"{base}/wp-json/wc/v3/orders/{oid}", auth=(k, s), timeout=45)
@@ -12307,6 +12548,8 @@ def admin_order_status(oid: int, body: OrderStatusIn, x_admin_key: Optional[str]
     valid = set(_wc_statuses(base, k, s).keys()) | core
     st = (body.status or "").strip()
     st = st[3:] if st.startswith("wc-") else st   # תמיכה גם אם נשלח עם תחילית wc-
+    if st in {"cancelled", "refunded"}:
+        _need("orders.cancel")
     if st not in valid:
         raise HTTPException(400, f"סטטוס לא מוכר: {st}")
     r = _rq.put(f"{base}/wp-json/wc/v3/orders/{oid}", json={"status": st},
@@ -13057,6 +13300,8 @@ def admin_orders_bulk_status(body: BulkStatusIn, x_admin_key: Optional[str] = He
     if len(ids) > 100:
         raise HTTPException(400, "עד 100 הזמנות בפעולה אחת")
     st = _normalize_status(body.status)
+    if st in {"cancelled", "refunded"}:
+        _need("orders.cancel")
     base, k, s = _wc_creds()
     ok, failed = [], []
     for oid in ids:
@@ -13104,6 +13349,8 @@ def admin_order_status_schedule(oid: int, body: StatusScheduleIn,
     from datetime import datetime as _dt
     from zoneinfo import ZoneInfo
     st = _normalize_status(body.status)
+    if st in {"cancelled", "refunded"}:
+        _need("orders.cancel")
     tz = ZoneInfo(cfg.TZ)
     try:
         dt = _dt.fromisoformat((body.run_at or "").strip())
@@ -14309,6 +14556,7 @@ def _invoice_capture_job():
 def admin_order_trash(oid: int, x_admin_key: Optional[str] = Header(None)):
     """העברת הזמנה לפח (לא מחיקה סופית) — מותר רק על בוטלו/נכשל/הוחזר."""
     _require_admin(x_admin_key)
+    _need("orders.trash")
     _order_trash_one(oid)
     return {"ok": True}
 
@@ -14353,6 +14601,7 @@ def admin_orders_bulk_trash(body: BulkTrashIn, x_admin_key: Optional[str] = Head
     """העברה מרובה לפח (בחירה מרובה במסך ההזמנות). אותו כלל כמו הבודד: רק
     בוטל/נכשל/הוחזר. הזמנה בסטטוס אחר **מדולגת** ומדווחת — לא מפילה את השאר."""
     _require_admin(x_admin_key)
+    _need("orders.trash")
     ids = list(dict.fromkeys(int(i) for i in (body.ids or [])))
     if not ids:
         raise HTTPException(400, "לא נבחרו הזמנות")
@@ -14687,8 +14936,10 @@ def _mark_manual_status(oid, status: str):
     """מסמן ששינוי הסטטוס נעשה בידי אדם. האוטומציה מכבדת את זה למשך
     _MANUAL_HOLD_H שעות — אחרת התיקון הידני נדרס תוך דקות."""
     try:
+        # ⚠️ 13/10/2026: היה json.dumps — json לא מיובא ב-main (רק json_mod), השגיאה
+        # נבלעה ב-except, וההגנה מעולם לא נרשמה. האוטומציה דרסה תיקונים ידניים.
         db.sales_state_set(f"ord_manual:{oid}",
-                           json.dumps({"at": datetime.now().isoformat(timespec="seconds"),
+                           json_mod.dumps({"at": datetime.now().isoformat(timespec="seconds"),
                                        "status": status}, ensure_ascii=False))
     except Exception as e:  # noqa: BLE001
         logger.warning("mark manual status failed for %s: %s", oid, e)
@@ -14699,7 +14950,7 @@ def _manual_recent(oid) -> bool:
         raw = db.sales_state_get(f"ord_manual:{oid}")
         if not raw:
             return False
-        at = json.loads(raw).get("at")
+        at = json_mod.loads(raw).get("at")
         return bool(at) and (datetime.now() - datetime.fromisoformat(at)).total_seconds() \
             < _MANUAL_HOLD_H * 3600
     except Exception:  # noqa: BLE001
