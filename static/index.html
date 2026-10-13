@@ -693,6 +693,7 @@
   .us-ck small{display:block;color:var(--muted);font-size:12px;font-weight:400}
   .dr-user{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 16px;font-size:13px;color:var(--muted)}
   .dr-user b{color:var(--txt)}
+  .wa-by{font-weight:600;color:var(--muted)} .wa-by.k-user{color:#16a34a} .wa-by.k-bot{color:#7c3aed}
   /* ── Ops Hub: תפריט בורגר + הטמעת אפליקציות ── */
   .burger{background:transparent;border:1px solid var(--line);color:var(--txt);font-size:19px;cursor:pointer;
           padding:6px 12px;border-radius:10px;line-height:1}
@@ -6729,7 +6730,7 @@ function waBubble(m){
   const isChoice=m.direction==='in'&&(m.kind==='button'||m.kind==='interactive');
   const mark=m.kind==='template'?`<div class="wa-mark">📋 תבנית · <span style="direction:ltr">${escW(m.tpl||'')}</span></div>`
             :isChoice?'<div class="wa-mark" style="color:#16a34a">👆 לחץ/ה על כפתור</div>'
-            :m.kind==='interactive'?'<div class="wa-mark">🤖 בוט</div>':'';
+            :(m.kind==='interactive'&&!m.by)?'<div class="wa-mark">🤖 בוט</div>':'';
   // ציטוט (reply): הודעה שמגיבה להודעה ספציפית. בלחיצת כפתור הציטוט הוא רק הטמפלייט
   // ("הודעה קודמת" מבלבל) — אז לא מציגים אותו; הטקסט עצמו הוא שם הכפתור שנלחץ.
   const quote=(m.reply_to&&!isChoice)?`<div class="wa-quote" ${m.reply_preview?'':'style="opacity:.6"'}>${escW(m.reply_preview||'הודעה קודמת')}</div>`:'';
@@ -6740,7 +6741,13 @@ function waBubble(m){
   // הודעה יוצאת שנכשלה — מציגים את **סיבת** הכשל בגלוי (לא רק ⚠), עם תרגום ידידותי.
   const failNote=(m.direction==='out'&&m.status==='failed')
     ? `<div class="wa-fail">⚠ לא נמסר ללקוח${m.err?' · '+escW(humanWaErr(m.err)):''}</div>` : '';
-  return `<div class="wa-b ${m.direction==='in'?'wa-in':'wa-out'}"${press}>${mark}${quote}${media}${escW(txt)}${failNote}<div class="wa-t">${m.ts?fmtTime(new Date(m.ts*1000).toISOString()):''}${waTicks(m)}</div></div>`;
+  return `<div class="wa-b ${m.direction==='in'?'wa-in':'wa-out'}"${press}>${mark}${quote}${media}${escW(txt)}${failNote}<div class="wa-t">${waByTag(m)}${m.ts?fmtTime(new Date(m.ts*1000).toISOString()):''}${waTicks(m)}</div></div>`;
+}
+// מי ענה ללקוח (נשמר מ-13/10/2026; הודעות ישנות בלי תווית). בוט / שם הנציג / אוטומטי / מתוזמן.
+function waByTag(m){
+  if(m.direction!=='out'||!m.by) return '';
+  const ic={bot:'🤖 ',user:'👤 ',console:'👤 ',system:'⚙️ ',scheduled:'⏰ '}[m.by_kind]||'';
+  return `<span class="wa-by k-${escW(m.by_kind||'')}">${ic}${escW(m.by)}</span> · `;
 }
 // תרגום קוד שגיאת Meta לסיבה ידידותית בעברית (נשמר ה-raw כ-fallback).
 function humanWaErr(err){

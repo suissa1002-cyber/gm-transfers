@@ -62,6 +62,12 @@ SENSITIVE = [
     ("coupons.create", "יצירה וביטול של קופונים", "coupons"),
 ]
 
+# מי מבצע את הבקשה הנוכחית — לייחוס הודעות וואטסאפ ("מי ענה").
+# dict {"kind": user|console|bot|system|scheduled, "name": "..."}; None = לא ידוע
+# (webhook/רקע) → כל פונקציית שליחה קובעת ברירת מחדל משלה (בוט/אוטומטי).
+import contextvars as _cv
+ACTOR = _cv.ContextVar("gm_actor", default=None)
+
 FEATURE_KEYS = {f[0] for f in FEATURES}
 SENSITIVE_KEYS = {s[0] for s in SENSITIVE}
 ALL_KEYS = FEATURE_KEYS | SENSITIVE_KEYS

@@ -55,7 +55,21 @@ def _current_user():
 async def _user_auth_mw(request: Request, call_next):
     tok = request.headers.get("x-user-token")
     if not tok:
-        return await call_next(request)
+        # ייחוס וואטסאפ גם בלי כניסה אישית: סיסמה משותפת = "צוות", גשר אלה = "אלה"
+        akey = request.headers.get("x-admin-key") or ""
+        bkey = request.headers.get("x-bridge-key") or ""
+        actor = None
+        if cfg.ADMIN_PASSWORD and akey == cfg.ADMIN_PASSWORD:
+            actor = {"kind": "console", "name": "צוות"}
+        elif bkey and bkey == globals().get("URI_BRIDGE_KEY"):
+            actor = {"kind": "bot", "name": "אלה"}
+        if actor is None:
+            return await call_next(request)
+        actx = _perms.ACTOR.set(actor)
+        try:
+            return await call_next(request)
+        finally:
+            _perms.ACTOR.reset(actx)
     from starlette.concurrency import run_in_threadpool
     u, _sess = await run_in_threadpool(db.session_user, tok)
     if not u:
@@ -80,9 +94,11 @@ async def _user_auth_mw(request: Request, call_next):
         _SESSION_TOUCH[tok] = _tm.time()
         await run_in_threadpool(db.session_touch, tok)
     ctx = _CURRENT_USER.set(u)
+    actx = _perms.ACTOR.set({"kind": "user", "name": u.get("name") or u.get("username")})
     try:
         return await call_next(request)
     finally:
+        _perms.ACTOR.reset(actx)
         _CURRENT_USER.reset(ctx)
 
 
@@ -7198,7 +7214,8 @@ def wa_schedule(body: dict, x_admin_key: Optional[str] = Header(None),
     if len(phone) < 11 or not text:
         raise HTTPException(400, "חסר טלפון תקין או טקסט")
     send_at = _parse_schedule_at(body.get("at"))
-    sid = db.scheduled_send_add(phone, text, send_at, str(body.get("name") or "אלה"))
+    _u = _current_user()   # תוזמן מהקונסולה ע"י משתמש מחובר → שמו; אחרת כמו קודם (אלה)
+    sid = db.scheduled_send_add(phone, text, send_at, (_u or {}).get("name") or str(body.get("name") or "אלה"))
     from datetime import datetime as _dt3
     try:
         from zoneinfo import ZoneInfo as _ZI3
@@ -10565,6 +10582,8 @@ def _scheduled_sends_job():
     import wa
     for s in db.scheduled_sends_due(_t.time()):
         ok = False
+        actx = _perms.ACTOR.set({"kind": "scheduled",
+                                 "name": "מתוזמן · " + (s.get("created_by") or "אלה")})
         try:
             wa.send_text(s["phone"], s["text"])
             ok = True
@@ -10574,6 +10593,8 @@ def _scheduled_sends_job():
                 ok = True
             except Exception as e:  # noqa: BLE001
                 logger.warning("scheduled send %s failed: %s", s.get("id"), e)
+        finally:
+            _perms.ACTOR.reset(actx)
         db.scheduled_send_mark(s["id"], "sent" if ok else "failed")
         try:
             _tg_admin(f"⏰{'✓' if ok else '⚠️'} <b>מענה מתוזמן {'נשלח' if ok else 'נכשל'}</b>\n"
@@ -16750,6 +16771,8 @@ def _wa_scheduled_job():
         from zoneinfo import ZoneInfo
         now_iso = datetime.now(ZoneInfo(cfg.TZ)).isoformat()
         for s in db.wa_sched_due(now_iso):
+            actx = _perms.ACTOR.set({"kind": "scheduled",
+                                     "name": "מתוזמן · " + (s.get("created_by") or "צוות")})
             try:
                 res = wa_send_guaranteed(WaSendSure(
                     phone=s["phone"], text=s["text"], name=s.get("name") or "",
@@ -16762,6 +16785,8 @@ def _wa_scheduled_job():
             except Exception as e:  # noqa: BLE001
                 db.wa_sched_mark(s["id"], "failed", err=str(e))
                 logger.warning("scheduled send #%s failed: %s", s["id"], e)
+            finally:
+                _perms.ACTOR.reset(actx)
     except Exception as e:  # noqa: BLE001
         logger.warning("wa_scheduled job error: %s", e)
 

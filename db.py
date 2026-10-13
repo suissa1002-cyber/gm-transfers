@@ -911,6 +911,8 @@ def _migrate():
         ("transfer_plan",  "created_by", "TEXT"),
         ("transfer_plan",  "note", "TEXT"),     # הערה חופשית לסניף (רשמי/eSIM וכו')
         ("wa_msg",         "err", "TEXT"),       # סיבת כשל מסירה ממטא (code · title)
+        ("wa_msg",         "sent_by", "TEXT"),   # מי ענה: שם המשתמש / בוט / אוטומטי (13/10/2026)
+        ("wa_msg",         "sent_kind", "TEXT"), # user|console|bot|system|scheduled
         ("shift_roster",   "week_start", "TEXT"), # תאריך ראשון של השבוע (YYYY-MM-DD) — סידור מתוארך
         ("pbx_calls",      "route", "TEXT"),       # היעד בשיחה (סיטי/מעבדה/הזמנות...) מ-1com
         ("pbx_calls",      "order_number", "TEXT"),
@@ -2876,18 +2878,21 @@ def wa_shadow_list(phone: str, limit: int = 80) -> list:
 
 # ── WhatsApp עצמאי: חנות ההודעות (מ-webhook ישיר של מטא) ──
 def wa_msg_upsert(wamid, phone, direction, mtype, text="", media_id="", media_mime="",
-                  media_name="", media_url="", reply_to="", ts=0, status="", raw="") -> bool:
+                  media_name="", media_url="", reply_to="", ts=0, status="", raw="",
+                  sent_by="", sent_kind="") -> bool:
     """מוסיף הודעה (אידמפוטנטי לפי wamid — Meta עלול לשלוח שוב). מחזיר True אם חדשה."""
     with _conn() as c:
         cur = c.cursor()
         cur.execute(_q("""
             INSERT INTO wa_msg (wamid, phone, direction, type, text, media_id, media_mime,
-                                media_name, media_url, reply_to, ts, status, raw, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                media_name, media_url, reply_to, ts, status, raw, created_at,
+                                sent_by, sent_kind)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(wamid) DO NOTHING
         """), (wamid or "", str(phone), direction, mtype, text or "", media_id or "",
                media_mime or "", media_name or "", media_url or "", reply_to or "",
-               int(ts or 0), status or "", (raw or "")[:8000], now_iso()))
+               int(ts or 0), status or "", (raw or "")[:8000], now_iso(),
+               sent_by or "", sent_kind or ""))
         return bool(getattr(cur, "rowcount", 0))
 
 
@@ -3244,7 +3249,8 @@ def wa_msg_thread(phone: str, limit: int = 80) -> list:
     with _conn() as c:
         cur = c.cursor()
         cur.execute(_q("""SELECT wamid, phone, direction, type, text, media_id, media_mime,
-                                 media_name, media_url, reply_to, ts, status, err
+                                 media_name, media_url, reply_to, ts, status, err,
+                                 sent_by, sent_kind
                           FROM wa_msg WHERE phone = ? ORDER BY ts DESC LIMIT ?"""),
                     (str(phone), int(limit)))
         rows = [dict(r) for r in cur.fetchall()]

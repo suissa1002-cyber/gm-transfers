@@ -392,6 +392,7 @@ def get_thread_native(phone: str, limit: int = 80):
             "sent_by": "greenos" if m.get("direction") == "out" else None,
             "reply_to": m.get("reply_to") or None, "status": st,
             "err": (m.get("err") or "") if st == "failed" else "",
+            "by": m.get("sent_by") or "", "by_kind": m.get("sent_kind") or "",
         })
     by_id = {x["id"]: (x.get("text") or "") for x in slim if x.get("id")}
     for x in slim:
@@ -499,7 +500,7 @@ def send_reply(phone: str, text: str):
             logger.warning("connectop text send failed: %s", e)
     if not via:
         raise WaError("שליחה נכשלה בכל הערוצים — " + " | ".join(errs)[:300])
-    _store_outbound(phone, text, wamid=wamid, mtype="text")
+    _store_outbound(phone, text, wamid=wamid, mtype="text", by="console")
     logger.info("wa send text -> %s via %s (%d chars)", phone, via, len(text))
     # ⚠️ מחזירים את ה-wamid. הוא חושב כאן מאז ומתמיד אך לא הוחזר, ולכן
     # `{"sent": true}` היה חסר את מזהה ההודעה — וכל בדיקת הצלחה שנשענת עליו
@@ -776,7 +777,7 @@ def send_document(phone: str, pdf_bytes: bytes, filename: str = "document.pdf",
             return {"sent": False, "needs_template": True, "window": win}
         raise WaError(f"שליחת המסמך נכשלה ({r.status_code}): {r.text[:200]}")
     wamid = ((r.json().get("messages") or [{}])[0]).get("id", "")
-    _store_outbound(phone, caption or f"📄 {filename}", wamid=wamid, mtype="document")
+    _store_outbound(phone, caption or f"📄 {filename}", wamid=wamid, mtype="document", by="console")
     logger.info("wa send document -> %s (%s)", phone, filename)
     return {"sent": True, "wamid": wamid}
 
@@ -795,7 +796,7 @@ def _meta_interactive(phone: str, payload: dict, preview_text: str) -> str:
     if r.status_code not in (200, 201):
         raise WaError(f"Meta interactive failed ({r.status_code}): {r.text[:200]}")
     wamid = ((r.json().get("messages") or [{}])[0]).get("id", "")
-    _store_outbound(phone, preview_text, wamid=wamid, mtype="interactive")
+    _store_outbound(phone, preview_text, wamid=wamid, mtype="interactive", by="bot")
     return wamid
 
 
@@ -1006,13 +1007,30 @@ def send_cancel_template(phone: str, name: str, p2, template_name: str) -> str:
 def send_text(phone: str, text: str) -> str:
     """טקסט פשוט מהבוט (לא דרך send_reply שמסמן 'אנושי')."""
     wamid = _meta_send_text(phone, text)
-    _store_outbound(phone, text, wamid=wamid, mtype="text")
+    _store_outbound(phone, text, wamid=wamid, mtype="text", by="bot")
     return wamid
+
+
+_BY_DEFAULT = {"bot": "בוט", "system": "אוטומטי", "console": "צוות"}
+
+
+def _sender(default_kind: str):
+    """מי שלח: המבצע של הבקשה (משתמש מחובר/צוות/אלה/מתוזמן) — ואם אין (webhook/רקע),
+    ברירת המחדל של פונקציית השליחה (בוט לתשובות הבוט, אוטומטי לתבניות)."""
+    try:
+        import perms
+        a = perms.ACTOR.get()
+    except Exception:  # noqa: BLE001
+        a = None
+    if a and a.get("kind"):
+        return a.get("name") or _BY_DEFAULT.get(a["kind"], ""), a["kind"]
+    return _BY_DEFAULT.get(default_kind, ""), default_kind
 
 
 def _store_outbound(phone: str, text: str, wamid: str = "", mtype: str = "text",
                     media_url: str = "", reply_to: str = "", reply_preview: str = "",
-                    media_id: str = "", media_mime: str = "", media_name: str = ""):
+                    media_id: str = "", media_mime: str = "", media_name: str = "",
+                    by: str = "system"):
     """שומר הודעה יוצאת בחנות העצמאית (wa_msg) — חובה כי webhook של מטא לא מחזיר
     את ההודעות שלנו. גם wa_shadow (לתצוגה ב-get_thread בזמן מעבר).
     reply_to = wamid המצוטט (מענה reply), כדי שהציטוט יופיע גם בתצוגה הנייטיב.
@@ -1021,11 +1039,13 @@ def _store_outbound(phone: str, text: str, wamid: str = "", mtype: str = "text",
     import db
     ts = int(time.time())
     wid = wamid or f"gm-out-{ts}-{abs(hash(text)) % 100000}"
+    sent_by, sent_kind = _sender(by)
     try:
         db.wa_msg_upsert(wamid=wid, phone=str(phone), direction="out", mtype=mtype,
                          text=text or "", media_url=media_url or "", media_id=media_id or "",
                          media_mime=media_mime or "", media_name=media_name or "",
-                         reply_to=reply_to or "", ts=ts, status="sent")
+                         reply_to=reply_to or "", ts=ts, status="sent",
+                         sent_by=sent_by, sent_kind=sent_kind)
         db.wa_contact_upsert(str(phone), out_ts=ts)
     except Exception as e:  # noqa: BLE001
         logger.warning("store outbound failed: %s", e)
@@ -1159,7 +1179,7 @@ def send_media(phone: str, filename: str, content: bytes, mime: str, caption: st
         if wamid:                       # גיבוי הבייטים → הצגה בשיחה ובפאנל המדיה
             _db.wa_media_blob_set(wamid, mime or "application/octet-stream", content)
         _store_outbound(phone, caption or "", wamid=wamid, mtype=kind,
-                        media_id=wamid or "", media_mime=mime or "", media_name=safe)
+                        media_id=wamid or "", media_mime=mime or "", media_name=safe, by="console")
     except Exception as e:  # noqa: BLE001
         logger.warning("store outbound media failed: %s", e)
     logger.info("wa send %s (meta) -> %s (%s)", kind, phone, safe)
@@ -1332,7 +1352,7 @@ def send_reply_quoted(phone: str, text: str, reply_to: str, reply_preview: str =
     _auto_human(phone)
     # נשמר ב-wa_msg (התצוגה הנייטיב קוראת משם) + wa_shadow — אחרת ה-reply נעלם בריענון
     _store_outbound(phone, text, wamid=mid, mtype="text",
-                    reply_to=reply_to, reply_preview=reply_preview)
+                    reply_to=reply_to, reply_preview=reply_preview, by="console")
     logger.info("wa meta-direct reply -> %s (quoting %s)", phone, (reply_to or "")[:30])
     return {"sent": True, "via": "meta-reply", "window": win, "message_id": mid}
 
