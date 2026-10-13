@@ -2381,7 +2381,12 @@
             const ckSrc = (currentFilters.search && allChecksFull.length) ? allChecksFull : allChecks;
             filteredChecks = ckSrc.filter(check => {
                 // Group filter
-                if (currentFilters.group === 'all') {
+                // ⚠️ 13/10/2026: בחיפוש — מתעלמים מהלשונית. ברירת המחדל היא "לפני פרעון", ולכן
+                // צ'ק 5001836 (בקבוצת "לאחר תאריך פרעון") לא נמצא גם אחרי שהחיפוש עבר לכל
+                // ההיסטוריה. מי שמקליד מספר צ'ק מחפש את הצ'ק הזה, לא "צ'ק בלשונית הנוכחית".
+                if (currentFilters.search) {
+                    // בכל הקבוצות, כולל מבוטלים (הסטטוס מופיע בכרטיס)
+                } else if (currentFilters.group === 'all') {
                     // Hide cancelled in "all" view
                     if (check.group === 'group_mkzhynwd') return false;
                 } else if (currentFilters.group !== check.group) {
