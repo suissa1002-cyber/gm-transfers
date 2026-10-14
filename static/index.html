@@ -825,6 +825,7 @@
   .tc-post:hover>.tc-phead .tc-pmenu,.tc-reply:hover .tc-pmenu{opacity:1}
   .tc-pbody{padding:6px 14px 12px;font-size:14.5px;line-height:1.65}
   .tc-txt{word-break:break-word}
+  .tc-ord{display:inline-flex;align-items:center;color:#0073ea;font-weight:600;text-decoration:none;background:rgba(0,115,234,.08);border-radius:4px;padding:0 5px}
   .tc-pfoot{display:flex;align-items:center;gap:20px;padding:8px 14px;border-top:1px solid var(--line);font-size:13px}
   .tc-pfoot a{display:inline-flex;align-items:center;color:var(--muted);text-decoration:none} .tc-pfoot a.on{color:#0073ea;font-weight:600}
   .tc-seen{display:inline-flex;align-items:center;margin-inline-start:auto;color:var(--muted);font-size:12px;cursor:default}
@@ -2259,9 +2260,19 @@ async function tcLoad(first){
   finally{ TC.busy=false; }
 }
 function tcName(id){ const u=TC.users.find(x=>x.id===id); return u?u.name:''; }
+// מספר הזמנה באתר (5 ספרות 4xxxx-6xxxx, או עם #) → קישור שפותח את ההזמנה. לא נוגע במחירים
+// (₪/פסיק), טלפונים (רצף ספרות ארוך) ומספרים בתוך קישורים.
+function tcOrderLinks(h){
+  return h.replace(/(^|[^\d\w\/.,₪#])#?([4-6]\d{4})(?![\d%]|[.,]\d)/g,(m,pre,num)=>
+    `${pre}<a href="#" class="tc-ord" onclick="tcOpenOrder(${num});return false" title="פתח את הזמנה ${num}">${icoI('receipt',12)}${num}</a>`);
+}
+function tcOpenOrder(num){
+  if(!can('orders')){ toast('אין לך הרשאה להזמנות',false); return; }
+  openWcOrder(num);
+}
 function tcText(t){
   let h=escW(t||'');
-  h=h.replace(/(https?:\/\/[^\s<]+)/g,'<a href="$1" target="_blank" rel="noopener">$1</a>');
+  h=h.split(/(https?:\/\/[^\s<]+)/g).map((p,i)=>i%2?`<a href="${p}" target="_blank" rel="noopener">${p}</a>`:tcOrderLinks(p)).join('');
   TC.users.concat([{name:'כולם'}]).forEach(u=>{ if(!u.name) return;
     h=h.split('@'+escW(u.name)).join(`<span class="tc-at">@${escW(u.name)}</span>`); });
   return h.replace(/\n/g,'<br>');
