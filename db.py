@@ -962,6 +962,8 @@ def _migrate():
         ("wa_msg",         "sent_by", "TEXT"),   # מי ענה: שם המשתמש / בוט / אוטומטי (13/10/2026)
         ("wa_msg",         "sent_kind", "TEXT"), # user|console|bot|system|scheduled
         ("wa_push_subs",   "user_id", "INTEGER"), # מכשיר של משתמש מחובר — לפוש תיוג בצ'אט צוות
+        ("team_chat",      "likes", "TEXT"),       # [user_id,...] — "אהבתי" על עדכון (14/10/2026)
+        ("team_chat",      "edited_at", "TEXT"),   # נערך
         ("shift_roster",   "week_start", "TEXT"), # תאריך ראשון של השבוע (YYYY-MM-DD) — סידור מתוארך
         ("pbx_calls",      "route", "TEXT"),       # היעד בשיחה (סיטי/מעבדה/הזמנות...) מ-1com
         ("pbx_calls",      "order_number", "TEXT"),
@@ -5443,10 +5445,11 @@ def sessions_for_user(uid) -> list:
 # ── 💬 צ'אט צוות (13/10/2026) ──
 def _chat_row(r) -> dict:
     d = dict(r)
-    try:
-        d["mentions"] = [int(x) for x in json.loads(d.get("mentions") or "[]")]
-    except Exception:  # noqa: BLE001
-        d["mentions"] = []
+    for k in ("mentions", "likes"):
+        try:
+            d[k] = [int(x) for x in json.loads(d.get(k) or "[]")]
+        except Exception:  # noqa: BLE001
+            d[k] = []
     return d
 
 
@@ -5501,6 +5504,46 @@ def chat_list(after_id=0, before_id=0, limit=60, topic_id=0) -> list:
         rows = [_chat_row(r) for r in cur.fetchall()]
         rows.reverse()
         return rows
+
+
+def chat_like_toggle(mid, user_id) -> list:
+    m = chat_get(mid)
+    if not m or m.get("deleted") or m.get("system"):
+        return None
+    likes = [x for x in m["likes"] if x != int(user_id)]
+    if len(likes) == len(m["likes"]):
+        likes.append(int(user_id))
+    with _conn() as c:
+        c.cursor().execute(_q("UPDATE team_chat SET likes = ? WHERE id = ?"), (json.dumps(likes), int(mid)))
+    return likes
+
+
+def chat_edit(mid, user_id, text) -> int:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""UPDATE team_chat SET text = ?, edited_at = ?
+                          WHERE id = ? AND user_id = ? AND system = 0 AND deleted = 0"""),
+                    (text, now_iso(), int(mid), int(user_id)))
+        return cur.rowcount or 0
+
+
+def chat_reads(topic_id) -> dict:
+    """עד איזו הודעה כל משתמש קרא בנושא — ל"נצפה ע״י"."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT user_id, last_id FROM team_chat_read WHERE topic_id = ?"), (int(topic_id or 0),))
+        return {int(r["user_id"]): int(r["last_id"] or 0) for r in cur.fetchall()}
+
+
+def topic_msg_counts(topic_ids) -> dict:
+    ids = [int(x) for x in topic_ids]
+    if not ids:
+        return {}
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT topic_id, COUNT(*) AS n FROM team_chat WHERE system = 0 AND deleted = 0 AND topic_id IN (" +
+                       ",".join("?" * len(ids)) + ") GROUP BY topic_id"), tuple(ids))
+        return {int(r["topic_id"]): int(r["n"]) for r in cur.fetchall()}
 
 
 def chat_delete(mid, user_id) -> int:

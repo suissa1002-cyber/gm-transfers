@@ -1826,7 +1826,7 @@ def _chat_out(m: dict) -> dict:
     import wa
     d = {k: m.get(k) for k in ("id", "user_id", "user_name", "text", "mentions", "attach_name",
                                "attach_mime", "attach_size", "wa_phone", "reply_to", "ts",
-                               "topic_id", "system")}
+                               "topic_id", "system", "likes", "edited_at")}
     if m.get("deleted"):
         d.update(text="", attach_name="", attach_mime="", attach_size=0, wa_phone="", deleted=True)
     elif m.get("attach_key"):
@@ -1875,9 +1875,10 @@ def chat_messages(topic: int = 0, after: int = 0, before: int = 0):
     """הודעות נושא (0=כללי). after → רק חדשות (סקר חי); before → היסטוריה; אחרת 60 האחרונות."""
     u = _chat_user()
     t = _chat_topic_for(u, topic)
-    rows = db.chat_list(after_id=after, before_id=before, limit=200 if after else 60, topic_id=topic)
+    rows = db.chat_list(after_id=after, before_id=before, limit=200 if after else 300, topic_id=topic)
     out = {"messages": [_chat_out(m) for m in rows], "unread": db.chat_unread(u["id"], _chat_visible(u)),
-           "users": _chat_users(), "me": u["id"]}
+           "users": _chat_users(), "me": u["id"],
+           "reads": {str(k): v for k, v in db.chat_reads(topic).items()}}
     if t:
         out["topic"] = t
     return out
@@ -1890,12 +1891,14 @@ def chat_topics(status: str = "open"):
     vis = _chat_visible(u)
     topics = [t for t in db.topic_list(status) if vis is None or t["id"] in vis]
     last = db.topic_last_msgs([t["id"] for t in topics])
+    counts = db.topic_msg_counts([t["id"] for t in topics])
     unread = db.chat_unread(u["id"], vis)
     for t in topics:
         lm = last.get(t["id"]) or {}
         t["last"] = "" if lm.get("deleted") else ((lm.get("user_name") or "") + ": " +
                                                     ((lm.get("text") or lm.get("attach_name") or "")[:80])) if lm else ""
         t["unread"] = unread["by_topic"].get(str(t["id"]), 0)
+        t["count"] = counts.get(t["id"], 0)
         t["mine"] = u["id"] in t["assignees"]
     return {"topics": topics, "unread": unread, "users": _chat_users(), "me": u["id"],
             "kinds": _TOPIC_KINDS}
@@ -2014,9 +2017,21 @@ def chat_send(body: ChatIn):
     phone = re.sub(r"\D", "", body.wa_phone or "")[:15]
     tid = int(body.topic_id or 0)
     t = _chat_topic_for(u, tid)
+    reply_to = None
+    if body.reply_to:   # תגובה = שרשור תחת העדכון (תגובה לתגובה → לאותו עדכון ראשי)
+        p = db.chat_get(body.reply_to)
+        if not p or int(p.get("topic_id") or 0) != tid:
+            raise HTTPException(400, "העדכון לא נמצא")
+        if p.get("reply_to"):
+            root = db.chat_get(p["reply_to"])
+            p = root if root and int(root.get("topic_id") or 0) == tid else p
+        reply_to = p["id"]
     m = db.chat_add(u["id"], u["name"], text, mentions, key, (body.attach_name or "")[:200],
-                    (body.attach_mime or "")[:100], body.attach_size or 0, phone, body.reply_to,
+                    (body.attach_mime or "")[:100], body.attach_size or 0, phone, reply_to,
                     topic_id=tid)
+    if reply_to and not t:   # בכללי: תגובה מתריעה לכותב העדכון ולמי שהגיב בשרשור
+        thr = {x["user_id"] for x in db.chat_list(topic_id=0, limit=300) if x.get("reply_to") == reply_to or x["id"] == reply_to}
+        _chat_push(sorted(thr - {u["id"]} - set(mentions)), f"{u['name']} הגיב/ה לעדכון", text[:140] or "קובץ מצורף", 0)
     db.chat_read_set(u["id"], m["id"], tid)   # ההודעה שלי = נקראה אצלי
     prev = text[:140] or ("תמונה" if (body.attach_mime or "").startswith("image/") else "קובץ מצורף")
     _chat_push(mentions, f"{u['name']} תייג/ה אותך" + (f" · {t['title'][:40]}" if t else ""), prev, tid)
@@ -2088,6 +2103,40 @@ def chat_read(body: ChatReadIn):
     u = _chat_user()
     db.chat_read_set(u["id"], body.last_id, body.topic_id)
     return {"ok": True, "unread": db.chat_unread(u["id"])}
+
+
+def _chat_msg_for(u, mid):
+    m = db.chat_get(mid)
+    if not m:
+        raise HTTPException(404, "העדכון לא נמצא")
+    _chat_topic_for(u, int(m.get("topic_id") or 0))
+    return m
+
+
+@app.post("/api/chat/{mid}/like")
+def chat_like(mid: int):
+    u = _chat_user()
+    _chat_msg_for(u, mid)
+    likes = db.chat_like_toggle(mid, u["id"])
+    if likes is None:
+        raise HTTPException(400, "אי אפשר לסמן אהבתי על זה")
+    return {"ok": True, "likes": likes}
+
+
+class ChatEditIn(BaseModel):
+    text: str
+
+
+@app.post("/api/chat/{mid}/edit")
+def chat_edit_ep(mid: int, body: ChatEditIn):
+    u = _chat_user()
+    _chat_msg_for(u, mid)
+    text = (body.text or "").strip()[:4000]
+    if not text:
+        raise HTTPException(400, "עדכון ריק")
+    if not db.chat_edit(mid, u["id"], text):
+        raise HTTPException(403, "אפשר לערוך רק עדכון שלך")
+    return {"ok": True}
 
 
 @app.post("/api/chat/{mid}/delete")
