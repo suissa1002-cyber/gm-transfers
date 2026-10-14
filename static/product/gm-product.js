@@ -693,6 +693,13 @@
     if (!target) {
       Object.keys(M.avail).forEach(function (k) { if (!target && M.avail[k] === 'in') target = k; });
     }
+    /* 3) אין כלום במלאי — צירוף בהזמנה מוקדמת (צפי) עדיף על צירוף שאזל */
+    if (!target) {
+      M.cfgs.forEach(function (cfg) {
+        if (!target && M.avail[cfg + '||' + color] === 'eta') target = cfg + '||' + color;
+      });
+      Object.keys(M.avail).forEach(function (k) { if (!target && M.avail[k] === 'eta') target = k; });
+    }
     if (!target) return;
     var parts = target.split('||'), tCfg = parts[0], tColor = parts[1];
     function selCfg() {
