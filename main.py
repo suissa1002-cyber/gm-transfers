@@ -1144,6 +1144,16 @@ def _startup():
                 intro=_seed.INTRO, steps=_seed.STEPS, outro=_seed.OUTRO,
                 note="באנר 'בקרוב במלאי' → wa.me. השקה רשמית 23/10/2026.")
             logger.info("seeded preorder campaign: iphone-duo")
+        else:
+            # הוספת שאלת השם לקמפיין שכבר קיים (אסי, 14/10: "לא שאל לשמי").
+            # ⛔ לא דורסים טקסטים שנערכו ב-/preorder — רק משלימים שאלה חסרה.
+            _c = db.preorder_campaign_get("iphone-duo")
+            if not any(st.get("id") == "name" for st in (_c.get("steps") or [])):
+                import seed_preorder_iphone_duo as _seed
+                _name_step = next(st for st in _seed.STEPS if st["id"] == "name")
+                db.preorder_campaign_save("iphone-duo",
+                                          steps=[_name_step] + list(_c["steps"]))
+                logger.info("preorder: added conditional name step to iphone-duo")
     except Exception as e:  # noqa: BLE001 — זריעה לא חוסמת עלייה
         logger.warning("preorder seed skipped: %s", e)
     # ⚠️ תהליך חדש ⇒ אין סריקת זאפ רצה, בהגדרה. הדגל שנשאר מסריקה שנהרגה

@@ -29,6 +29,9 @@ db.preorder_campaign_save("iphone-duo", title="iPhone Duo", active=True,
                           keywords=seed.__dict__.get("KW", "iphone duo,אייפון דואו"),
                           intro=seed.INTRO, steps=seed.STEPS, outro=seed.OUTRO)
 PHONE = "972500000001"
+# לאסי יש שם בפרופיל WhatsApp — כך גם כאן, כדי ששאלת השם תדולג (skip_if)
+db.wa_contact_upsert(PHONE, name="לקוח בדיקה", wa_id=PHONE)
+db.wa_contact_upsert("972500000002", name="לקוח שני", wa_id="972500000002")
 fails = []
 
 def ck(name, cond, extra=""):
@@ -65,8 +68,10 @@ ck("שאלת הנפח כרשימה (4 אפשרויות)", lst is not None and le
 SENT.clear()
 wa_bot.handle(PHONE, "512GB", reply_id=lst[2][1][0])
 row = db.preorder_signup_get("iphone-duo", PHONE)
-ck("שתי התשובות נשמרו", (row or {}).get("answers") == {"color": "night", "capacity": "512"},
-   json.dumps(row.get("answers") if row else None, ensure_ascii=False))
+a = (row or {}).get("answers") or {}
+ck("שתי התשובות נשמרו", a.get("color") == "night" and a.get("capacity") == "512",
+   json.dumps(a, ensure_ascii=False))
+ck("השם מולא אוטומטית מהפרופיל", a.get("name") == "לקוח בדיקה", json.dumps(a, ensure_ascii=False))
 ck("summary בתוויות ללקוח", (row or {}).get("summary") == "Night Sky · 512GB",
    (row or {}).get("summary"))
 ck("הודעת סיום כוללת את הבחירה",
@@ -104,6 +109,35 @@ ck("CSV כולל תוויות ולא מזהים", "Night Sky" in csv.text and "5
 wa_bot.handle(PHONE, "אשמח להירשם לרשימה המוקדמת ל-iPhone Duo")
 all_rows = db.preorder_signups_list(campaign="iphone-duo", limit=100)
 ck("אין כפילות ללקוח חוזר", len(all_rows) == 2, str(len(all_rows)))
+
+# ── שאלת שם מותנית: נשאלת רק כשאין שם בפרופיל WhatsApp ──
+STEPS_N = [{"id": "name", "q_short": "שם", "q": "ואיך קוראים לך?",
+            "skip_if": "contact_name", "opts": []}] + seed.STEPS
+db.preorder_campaign_save("iphone-duo", steps=STEPS_N)
+wa_bot._PRE_CACHE["at"] = 0
+
+P3 = "972500000003"                       # יש שם בפרופיל → מדלגים
+db.wa_contact_upsert(P3, name="רועי כהן", wa_id=P3)
+SENT.clear(); wa_bot.handle(P3, "אשמח להירשם לרשימה המוקדמת ל-iPhone Duo")
+ck("עם שם בפרופיל — לא שואלים שם",
+   next((m for m in SENT if m[0] == "buttons"), None) is not None
+   and not any(k == "text" and "קוראים לך" in t for k, t in
+               [(m[0], m[1]) for m in SENT if m[0] == "text"]), str(SENT))
+ck("השם מהפרופיל נשמר",
+   (db.preorder_signup_get("iphone-duo", P3) or {}).get("name") == "רועי כהן")
+
+P4 = "972500000004"                       # אין שם בפרופיל → שואלים
+SENT.clear(); wa_bot.handle(P4, "אשמח להירשם לרשימה המוקדמת ל-iPhone Duo")
+ck("בלי שם בפרופיל — שואלים שם",
+   any(k == "text" and "קוראים לך" in t for k, t in
+       [(m[0], m[1]) for m in SENT if m[0] == "text"]), str(SENT))
+SENT.clear(); wa_bot.handle(P4, "אבי לוי")
+r4 = db.preorder_signup_get("iphone-duo", P4)
+ck("השם שהוקלד נשמר בעמודת השם", (r4 or {}).get("name") == "אבי לוי", str(r4))
+ck("אחרי השם ממשיכים לצבע",
+   next((m for m in SENT if m[0] == "buttons"), None) is not None, str(SENT))
+ck("השם לא מזהם את צירוף ההקצאה", "אבי לוי" not in ((r4 or {}).get("summary") or ""),
+   (r4 or {}).get("summary"))
 
 print("\n" + ("✅ כל הבדיקות עברו" if not fails else f"❌ נכשלו: {fails}"))
 sys.exit(1 if fails else 0)

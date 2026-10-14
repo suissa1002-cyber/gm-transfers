@@ -1147,6 +1147,8 @@ def _preorder_summary(camp, answers: dict) -> str:
     """תצוגה מוכנה לרשימת ההקצאה — תוויות, לא מזהים."""
     parts = []
     for st in _preorder_steps(camp):
+        if not st.get("opts"):          # שאלת טקסט חופשי (שם) — עמודה משלה
+            continue
         v = (answers or {}).get(st["id"])
         if v in (None, ""):
             continue
@@ -1156,12 +1158,16 @@ def _preorder_summary(camp, answers: dict) -> str:
     return " · ".join(parts)
 
 
-def _preorder_save(phone, camp, answers=None):
-    name = ""
+def _contact_name(phone) -> str:
     try:
-        name = (db.wa_contact_get(phone) or {}).get("name") or ""
+        return (db.wa_contact_get(phone) or {}).get("name") or ""
     except Exception:  # noqa: BLE001
-        pass
+        return ""
+
+
+def _preorder_save(phone, camp, answers=None):
+    # שם שהלקוח הקליד גובר על שם הפרופיל של WhatsApp (כינוי/אנגלית)
+    name = (answers or {}).get("name") or _contact_name(phone)
     row = db.preorder_signup_get(camp["slug"], phone) or {}
     merged = dict(row.get("answers") or {})
     merged.update(answers or {})
@@ -1176,8 +1182,15 @@ def _preorder_ask(phone, camp, idx):
     if idx >= len(steps):
         return _preorder_finish(phone, camp)
     st = steps[idx]
+    # שאלה שכבר יש לנו את תשובתה — לא שואלים. השם מגיע מפרופיל WhatsApp
+    # ברוב המקרים, ושאלה מיותרת היא צעד נוסף שמוריד השלמות.
+    if st.get("skip_if") == "contact_name" and _contact_name(phone):
+        _preorder_save(phone, camp, {st["id"]: _contact_name(phone)})
+        return _preorder_ask(phone, camp, idx + 1)
     db.bot_session_set(phone, "preorder", {"slug": camp["slug"], "idx": idx})
     opts = st.get("opts") or []
+    if not opts:                       # טקסט חופשי (שם) — אין כפתורים
+        return wa.send_text(phone, st.get("q") or "מה השם שלך?")
     rid_of = lambda val: f"pre:{camp['slug']}:{st['id']}:{val}"  # noqa: E731
     if len(opts) <= 3:
         wa.send_buttons(phone, st.get("q") or "בחר/י:",
@@ -1219,6 +1232,13 @@ def _preorder_answer(phone, sess, rid, text):
         if idx >= len(steps):
             return _preorder_finish(phone, camp)
         st = steps[idx]
+        if not st.get("opts"):          # שאלת טקסט — כל תשובה לא-ריקה מתקבלת
+            val = (text or "").strip()
+            if not val:
+                return _preorder_ask(phone, camp, idx)
+            merged = _preorder_save(phone, camp, {st["id"]: val})
+            nxt = next((i for i, x in enumerate(steps) if not merged.get(x["id"])), len(steps))
+            return _preorder_ask(phone, camp, nxt)
         tl = (text or "").strip().lower()
         hit = next((o for o in (st.get("opts") or [])
                     if tl and (tl == str(o[0]).lower()

@@ -5892,13 +5892,17 @@ def preorder_stats(campaign: str) -> dict:
     camp = preorder_campaign_get(campaign) or {}
     labels = {}
     for st in camp.get("steps") or []:
+        if not st.get("opts"):      # שאלת טקסט חופשי (שם) — לא קטגוריה לפילוח
+            continue
         labels[st.get("id")] = {str(o[0]): (o[1] if len(o) > 1 else o[0])
-                                for o in (st.get("opts") or [])}
+                                for o in st["opts"]}
     by_status, by_step = {}, {}
     for r in rows:
         by_status[r.get("status") or "new"] = by_status.get(r.get("status") or "new", 0) + 1
         for k, v in (r.get("answers") or {}).items():
-            lab = labels.get(k, {}).get(str(v), str(v))
+            if k not in labels:
+                continue
+            lab = labels[k].get(str(v), str(v))
             by_step.setdefault(k, {})
             by_step[k][lab] = by_step[k].get(lab, 0) + 1
     return {"total": len(rows), "by_status": by_status, "by_step": by_step,
