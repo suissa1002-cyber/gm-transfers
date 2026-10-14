@@ -2199,6 +2199,14 @@ function tcPaintHome(){
 function tcNewTopic(){
   TC.view='new';
   const p=document.getElementById('tcPanel'); if(!p) return;
+  // נפתח ישר מתוך שיחת וואטסאפ → רשימת המשתמשים עוד לא נטענה. טוענים ומציירים שוב (14/10, אסי)
+  if(!TC.users.length){
+    p.innerHTML=`<div class="tc-head"><b>נושא חדש</b><button class="dr-x" onclick="tcToggle(false)">✕</button></div><div class="tc-empty">טוען…</div>`;
+    api('/api/chat/topics?status=open',{},15000).then(r=>{ TC.users=r.users||[]; TC.me=r.me; TC.kinds=r.kinds||TC.kinds; TC.topics=r.topics||TC.topics;
+      if(TC.view==='new'&&TC.users.length) tcNewTopic(); })
+      .catch(e=>{ const x=p.querySelector('.tc-empty'); if(x) x.textContent=e.detail||'הטעינה נכשלה'; });
+    return;
+  }
   const kinds=Object.keys(TC.kinds).length?TC.kinds:{question:'שאלה',request:'בקשה',task:'משימה',update:'עדכון'};
   p.innerHTML=`<div class="tc-head"><a href="#" class="tc-back" onclick="tcHome();return false" title="חזרה">${ico('back',18)}</a><b>נושא חדש</b>
       <button class="dr-x" onclick="tcToggle(false)">✕</button></div>
