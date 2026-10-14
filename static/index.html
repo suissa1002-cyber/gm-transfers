@@ -1379,7 +1379,15 @@
     /* header קומפקטי בשורה אחת: אייקונים בלבד, בלי טקסטים */
     .hlbl{display:none}
     header .brand{font-size:19px}
-    header .right{gap:6px;flex-wrap:nowrap;font-size:13px}
+    /* 14/10 (אסי): שורת האייקונים נגללת הצידה בתוך עצמה — הדף עצמו נשאר נעול ולא זז לצדדים */
+    html,body{overflow-x:clip;max-width:100%}
+    header{gap:8px;padding:10px 12px}
+    header>*:first-child{flex:none}
+    header .right{gap:6px;flex-wrap:nowrap;font-size:13px;flex:1 1 auto;min-width:0;
+                  overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;scrollbar-width:none;
+                  overscroll-behavior-x:contain;padding:8px 2px 4px;margin:-8px 0 -4px}   /* padding לבאדג'ים שלא ייחתכו */
+    header .right::-webkit-scrollbar{display:none}
+    header .right>*{flex:none}
     header .btn-ghost{padding:7px 9px;font-size:14px}
     .burger{padding:5px 10px;font-size:17px}
     /* כותרת + טאבים: שורה אחת נגללת במקום 4 שורות */
