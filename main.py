@@ -1133,6 +1133,19 @@ def register_recurring_jobs():
 def _startup():
     db.init_db()
     logger.info("DB ready (%s)", "Postgres" if cfg.DATABASE_URL else "SQLite")
+    # קמפיין ההרשמה המוקדמת הראשון — נזרע פעם אחת אם אינו קיים. עריכה שוטפת
+    # ב-/preorder (הטקסטים חיים ב-DB, לא בקוד) — הזריעה לא דורסת שינויים.
+    try:
+        if not db.preorder_campaign_get("iphone-duo"):
+            import seed_preorder_iphone_duo as _seed
+            db.preorder_campaign_save(
+                "iphone-duo", title="iPhone Duo", active=True,
+                keywords="iphone duo,איפון דואו,אייפון דואו",
+                intro=_seed.INTRO, steps=_seed.STEPS, outro=_seed.OUTRO,
+                note="באנר 'בקרוב במלאי' → wa.me. השקה רשמית 23/10/2026.")
+            logger.info("seeded preorder campaign: iphone-duo")
+    except Exception as e:  # noqa: BLE001 — זריעה לא חוסמת עלייה
+        logger.warning("preorder seed skipped: %s", e)
     # ⚠️ תהליך חדש ⇒ אין סריקת זאפ רצה, בהגדרה. הדגל שנשאר מסריקה שנהרגה
     # באמצע (deploy) הציג "סריקה רצה" שעה שלמה והשאיר את הכפתור מושבת.
     try:
@@ -6550,6 +6563,102 @@ async def addons_post(route: str, request: Request, x_admin_key: Optional[str] =
             print(f"[addons] image clean failed: {e}")
     # תמונות base64 גדולות — טיימאאוט נדיב, ההעלאה עוברת דרכנו ל-WP
     return _wp_call("POST", f"gm-addons/v1/{route}", json_body=body, timeout=180)
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# 📋 הרשמה מוקדמת להשקה — רשימת נרשמים + ייצוא (אסי, 14/10/2026)
+# הזרימה עצמה ב-wa_bot._preorder_*; כאן הניהול: רשימה, סטטוס, פילוח, CSV.
+# ══════════════════════════════════════════════════════════════════════════
+
+def notify_preorder_signup(camp: dict, phone: str, summary: str):
+    """ליד חם שסיים את ההרשמה → טלגרם לאסי. לא מחכים לדוח היומי."""
+    name = ""
+    try:
+        name = (db.wa_contact_get(phone) or {}).get("name") or ""
+    except Exception:  # noqa: BLE001
+        pass
+    who = f"{name} ({phone})" if name else phone
+    _tg_admin(f"📋 <b>הרשמה מוקדמת · {camp.get('title') or camp.get('slug')}</b>\n"
+              f"{who}\n{summary or '—'}")
+
+
+@app.get("/preorder")
+def preorder_page():
+    p = os.path.join(_static_dir, "preorder.html")
+    if os.path.exists(p):
+        return FileResponse(p, headers={"Cache-Control": "no-cache"})
+    raise HTTPException(404)
+
+
+@app.get("/api/admin/preorder/campaigns")
+def preorder_campaigns(x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    return {"campaigns": db.preorder_campaigns_list()}
+
+
+@app.post("/api/admin/preorder/campaign")
+async def preorder_campaign_save(request: Request, x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    b = await request.json()
+    slug = (b.get("slug") or "").strip()
+    if not slug:
+        raise HTTPException(400, "slug required")
+    cid = db.preorder_campaign_save(
+        slug, title=b.get("title") or slug, active=b.get("active", True),
+        keywords=b.get("keywords") or "", intro=b.get("intro") or "",
+        steps=b.get("steps") or [], outro=b.get("outro") or "", note=b.get("note") or "")
+    return {"ok": True, "id": cid}
+
+
+@app.get("/api/admin/preorder/signups")
+def preorder_signups(campaign: str = "", status: str = "", q: str = "",
+                     x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    rows = db.preorder_signups_list(campaign=campaign, status=status, q=q)
+    return {"signups": rows,
+            "stats": db.preorder_stats(campaign) if campaign else {}}
+
+
+@app.post("/api/admin/preorder/signup/{sid}")
+async def preorder_signup_update(sid: int, request: Request,
+                                 x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    b = await request.json()
+    kw = {k: b[k] for k in ("status", "note", "name") if k in b}
+    if b.get("status") == "contacted":
+        kw["contacted_at"] = db.now_iso()
+        kw["contacted_by"] = _actor_name(x_admin_key, None)
+    db.preorder_signup_set(sid, **kw)
+    return {"ok": True}
+
+
+@app.get("/api/admin/preorder/export.csv")
+def preorder_export(campaign: str = "", status: str = "",
+                    x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)
+    camp = db.preorder_campaign_get(campaign) if campaign else None
+    steps = [st for st in ((camp or {}).get("steps") or []) if st.get("id")]
+    head = ["נרשם ב", "טלפון", "שם"] + [st.get("q_short") or st["id"] for st in steps] \
+        + ["סטטוס", "מקור", "הערה"]
+    out = ["\ufeff" + ",".join(head)]          # BOM — שאקסל בעברית לא ישבור קידוד
+
+    def esc(v):
+        v = "" if v is None else str(v)
+        return '"%s"' % v.replace('"', '""') if any(c in v for c in ',"\n') else v
+
+    for r in db.preorder_signups_list(campaign=campaign, status=status, limit=10000):
+        ans = r.get("answers") or {}
+        vals = []
+        for st in steps:
+            v = ans.get(st["id"], "")
+            vals.append(next((o[1] for o in (st.get("opts") or [])
+                              if str(o[0]) == str(v) and len(o) > 1), v))
+        out.append(",".join(esc(x) for x in (
+            [str(r.get("created_at") or "")[:16], r.get("phone"), r.get("name")]
+            + vals + [r.get("status"), r.get("source"), r.get("note")])))
+    fn = f"preorder-{campaign or 'all'}.csv"
+    return Response("\n".join(out), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="{fn}"'})
 
 
 # ── Ops Hub: דף ניהול צ'קים (מתארח אצלנו, proxy במקום טוקן חשוף) ───

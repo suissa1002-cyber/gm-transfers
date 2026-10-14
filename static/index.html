@@ -3394,6 +3394,7 @@ const HUB_APPS=[
   {key:'checks', feat:'checks',     icon:'bank',    title:'ניהול צ׳קים',                  url:'/checks'},
   {key:'schedule', feat:'schedule',   icon:'bell',    title:'סידור עבודה',                  url:'/schedule'},
   {key:'addons', feat:'addons',     icon:'bank',    title:'מערכת תוספות (אביזרים)',       url:'/addons'},
+  {key:'preorder', feat:'addons',   icon:'bell',    title:'הרשמה מוקדמת להשקה',           url:'/preorder'},
 ];
 // (הדוח לבעלים נשאר כקישור חיצוני בלבד — בתפריט רוצים כלי עבודה, לא דוחות)
 function renderDrawer(){
@@ -3502,7 +3503,7 @@ async function hubOpen(key){
   if(!ensureAdmin(()=>hubOpen(key))) return;
   toggleDrawer(false);
   // צ'קים מתארח אצלנו (אותו origin) — ניווט מלא מובנה
-  if(key==='checks'||key==='schedule'){ window.location.href=a.url; return; }
+  if(key==='checks'||key==='schedule'||key==='preorder'){ window.location.href=a.url; return; }
   // אפליקציות מוטמעות native דרך reverse-proxy — פותחים session ואז ניווט מלא
   if(a.embed){
     showLoading('פותח אפליקציה…');

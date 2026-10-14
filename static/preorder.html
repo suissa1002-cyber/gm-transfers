@@ -1,0 +1,366 @@
+<!doctype html>
+<html dir="rtl" lang="he">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>הרשמה מוקדמת · GreenOS</title>
+<style>
+/* ── טוקני העיצוב של GreenOS (זהים ל-index.html) ─────────────────────── */
+:root{
+  --bg:#0b0e13; --card:#151a22; --line:rgba(255,255,255,.08);
+  --txt:#eef2f8; --green:#2ece7d; --red:#ff5a5f; --amber:#ffb020; --blue:#4c8dff;
+  --card-2:#1c222c; --card-3:#232a35; --line-2:rgba(255,255,255,.14);
+  --txt-2:#a9b4c4; --txt-3:#6b7686;
+  --brand:#2ece7d; --brand-ink:#7ff0b4; --brand-bg:rgba(46,206,125,.12);
+  --red-ink:#ff9a9d; --red-bg:rgba(255,90,95,.11);
+  --amber-ink:#ffca6a; --amber-bg:rgba(255,176,32,.12);
+  --blue-ink:#8fb6ff; --blue-bg:rgba(76,141,255,.12);
+  --sh-1:0 1px 2px rgba(0,0,0,.28), 0 0 0 .5px rgba(255,255,255,.03);
+  --sh-2:0 2px 6px rgba(0,0,0,.30), 0 8px 24px rgba(0,0,0,.22);
+  --sh-3:0 12px 40px rgba(0,0,0,.45);
+  --r-xs:8px; --r-sm:12px; --r-md:16px; --r-lg:20px; --r-pill:999px;
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:20px; --s6:24px; --s8:32px;
+  /* aliases לשמות שה-JS של העמוד כבר משתמש בהם */
+  --surface:var(--card); --ink:var(--txt); --ink2:var(--txt-2);
+  --accent:var(--brand); --accent-soft:var(--brand-bg); --deal:var(--red); --warn:var(--amber);
+  --shadow:var(--sh-2); --r:var(--r-lg);
+}
+@media (prefers-color-scheme:light){:root{
+  --bg:#f5f7fa; --card:#ffffff; --line:rgba(16,24,40,.09);
+  --txt:#10151d; --green:#12a355; --red:#e5484d; --amber:#c07a0c; --blue:#2f6fed;
+  --card-2:#f3f6fa; --card-3:#eaeff5; --line-2:rgba(16,24,40,.16);
+  --txt-2:#55606f; --txt-3:#8a95a4;
+  --brand:#12a355; --brand-ink:#0c7d41; --brand-bg:rgba(18,163,85,.10);
+  --red-ink:#c0343a; --red-bg:rgba(229,72,77,.08);
+  --amber-ink:#9a610a; --amber-bg:rgba(192,122,12,.10);
+  --blue-ink:#1f52c0; --blue-bg:rgba(47,111,237,.09);
+  --sh-1:0 1px 2px rgba(16,24,40,.06), 0 0 0 .5px rgba(16,24,40,.03);
+  --sh-2:0 2px 8px rgba(16,24,40,.06), 0 10px 30px rgba(16,24,40,.05);
+  --sh-3:0 16px 44px rgba(16,24,40,.16);
+}}
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);line-height:1.5;font-size:15px;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Assistant","Heebo",Arial,sans-serif;
+  -webkit-font-smoothing:antialiased}
+button,input,textarea{font-family:inherit}
+.wrap{max-width:1180px;margin:0 auto;padding:0 var(--s4) 60px}
+header.top{position:sticky;top:0;z-index:30;background:color-mix(in srgb,var(--bg) 86%,transparent);
+  backdrop-filter:saturate(180%) blur(14px);border-bottom:1px solid var(--line);
+  padding:12px 0;margin-bottom:var(--s5)}
+header.top .wrap{display:flex;align-items:center;gap:var(--s3);flex-wrap:wrap}
+.logo{font-weight:900;font-size:19px;letter-spacing:-.02em}
+.logo .os{color:var(--brand)}
+h1{font-size:17px;font-weight:800;margin:0;color:var(--txt-2)}
+select,input,textarea{background:var(--card-2);color:var(--txt);border:1px solid var(--line-2);
+  border-radius:var(--r-sm);padding:9px 12px;font-size:14px;outline:none}
+select:focus,input:focus,textarea:focus{border-color:var(--brand)}
+.btn{border:0;border-radius:var(--r-pill);padding:9px 18px;font-weight:800;font-size:14px;
+  cursor:pointer;background:var(--card-2);color:var(--txt);border:1px solid var(--line-2)}
+.btn:hover{background:var(--card-3)}
+.btn.primary{background:var(--brand);color:#04140b;border-color:transparent}
+.btn.ghost{background:transparent}
+.spacer{margin-inline-start:auto}
+
+/* ── פילוח ההקצאה — זו הסיבה שהעמוד קיים: כמה להזמין מכל צירוף ── */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:var(--s3);
+  margin-bottom:var(--s5)}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:var(--r-md);
+  padding:var(--s4);box-shadow:var(--sh-1)}
+.kpi b{display:block;font-size:30px;font-weight:900;letter-spacing:-.03em;line-height:1}
+.kpi span{display:block;color:var(--txt-3);font-size:12.5px;font-weight:600;margin-top:5px}
+.kpi.brand b{color:var(--brand)}
+.break{background:var(--card);border:1px solid var(--line);border-radius:var(--r-md);
+  padding:var(--s4);box-shadow:var(--sh-1)}
+.break h3{margin:0 0 10px;font-size:13px;font-weight:800;color:var(--txt-3);
+  letter-spacing:.04em}
+.bar{display:flex;align-items:center;gap:var(--s3);margin-bottom:7px;font-size:13.5px}
+.bar i{font-style:normal;flex:none;width:106px;font-weight:700;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.bar u{flex:1;text-decoration:none;height:8px;border-radius:99px;background:var(--card-3);
+  overflow:hidden}
+.bar u s{display:block;height:100%;background:var(--brand);text-decoration:none}
+.bar em{font-style:normal;flex:none;width:34px;text-align:start;font-weight:800;
+  font-variant-numeric:tabular-nums}
+
+.toolbar{display:flex;gap:var(--s2);align-items:center;flex-wrap:wrap;margin:var(--s5) 0 var(--s3)}
+.chip{border:1px solid var(--line-2);background:var(--card-2);color:var(--txt-2);
+  border-radius:var(--r-pill);padding:7px 15px;font-size:13px;font-weight:700;cursor:pointer}
+.chip.on{background:var(--brand-bg);color:var(--brand-ink);border-color:transparent}
+
+table{width:100%;border-collapse:separate;border-spacing:0;background:var(--card);
+  border:1px solid var(--line);border-radius:var(--r-md);overflow:hidden;box-shadow:var(--sh-1)}
+th{text-align:start;font-size:11.5px;font-weight:800;color:var(--txt-3);padding:11px 14px;
+  background:var(--card-2);letter-spacing:.04em;white-space:nowrap}
+td{padding:12px 14px;border-top:1px solid var(--line);font-size:14px;vertical-align:middle}
+tr:hover td{background:var(--card-2)}
+.pick{display:inline-block;background:var(--card-3);border-radius:var(--r-xs);padding:3px 9px;
+  font-size:12.5px;font-weight:700;margin-inline-end:5px}
+.ph{direction:ltr;unicode-bidi:plaintext;font-variant-numeric:tabular-nums;font-weight:700}
+a.wa{color:var(--brand);text-decoration:none;font-weight:800}
+.st{border-radius:var(--r-pill);padding:5px 11px;font-size:12.5px;font-weight:800;border:0;
+  cursor:pointer}
+.st-new{background:var(--blue-bg);color:var(--blue-ink)}
+.st-contacted{background:var(--amber-bg);color:var(--amber-ink)}
+.st-ordered{background:var(--brand-bg);color:var(--brand-ink)}
+.st-cancelled{background:var(--red-bg);color:var(--red-ink)}
+.muted{color:var(--txt-3);font-size:13px}
+.empty{text-align:center;padding:52px 20px;color:var(--txt-3)}
+
+/* ── עורך הקמפיין ── */
+details.edit{background:var(--card);border:1px solid var(--line);border-radius:var(--r-md);
+  padding:var(--s4);margin-top:var(--s6);box-shadow:var(--sh-1)}
+details.edit summary{cursor:pointer;font-weight:800;font-size:14px;color:var(--txt-2)}
+.field{margin-top:var(--s4)}
+.field label{display:block;font-size:12px;font-weight:800;color:var(--txt-3);margin-bottom:5px}
+.field input,.field textarea{width:100%}
+.field textarea{min-height:74px;resize:vertical;line-height:1.5}
+.step{border:1px solid var(--line-2);border-radius:var(--r-sm);padding:var(--s3);
+  margin-top:var(--s3);background:var(--card-2)}
+.opt{display:flex;gap:var(--s2);margin-top:6px}
+.opt input{flex:1}
+.hint{color:var(--txt-3);font-size:12px;margin-top:4px;line-height:1.5}
+
+#gate{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;
+  justify-content:center;z-index:90}
+#gate .box{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);
+  padding:var(--s8);width:min(92vw,360px);text-align:center;box-shadow:var(--sh-3)}
+#gate input{width:100%;margin:var(--s4) 0 var(--s3)}
+#toast{position:fixed;bottom:24px;inset-inline-start:50%;transform:translateX(50%);
+  background:var(--txt);color:var(--bg);padding:12px 22px;border-radius:var(--r-pill);
+  font-weight:800;font-size:14px;opacity:0;pointer-events:none;transition:.2s;z-index:95}
+#toast.on{opacity:1}
+#toast.err{background:var(--red);color:#fff}
+@media(max-width:720px){
+  th:nth-child(1),td:nth-child(1){display:none}
+  .bar i{width:86px}
+}
+</style>
+</head>
+<body>
+
+<div id="gate"><div class="box">
+  <div class="logo">Green<span class="os">OS</span></div>
+  <div class="muted" style="margin-top:6px">הרשמה מוקדמת — הזן מפתח ניהול</div>
+  <input id="gateKey" type="password" placeholder="מפתח ניהול" autocomplete="off">
+  <button class="btn primary" style="width:100%" onclick="gateGo()">כניסה</button>
+</div></div>
+
+<header class="top"><div class="wrap">
+  <div class="logo">Green<span class="os">OS</span></div>
+  <h1>הרשמה מוקדמת</h1>
+  <select id="camp" onchange="load()" style="margin-inline-start:var(--s3)"></select>
+  <div class="spacer"></div>
+  <button class="btn" onclick="newCamp()">+ קמפיין</button>
+  <button class="btn" onclick="exportCsv()">ייצוא CSV</button>
+  <button class="btn ghost" onclick="load()">רענון</button>
+</div></header>
+
+<div class="wrap">
+  <div class="stats" id="kpis"></div>
+  <div class="stats" id="breaks"></div>
+
+  <div class="toolbar">
+    <span class="chip on" data-st="" onclick="setStatus(this)">הכל</span>
+    <span class="chip" data-st="new" onclick="setStatus(this)">חדשים</span>
+    <span class="chip" data-st="contacted" onclick="setStatus(this)">נוצר קשר</span>
+    <span class="chip" data-st="ordered" onclick="setStatus(this)">הזמינו</span>
+    <span class="chip" data-st="cancelled" onclick="setStatus(this)">בוטלו</span>
+    <input id="q" placeholder="חיפוש שם / טלפון / בחירה" oninput="debounced()"
+           style="margin-inline-start:auto;min-width:220px">
+  </div>
+
+  <div id="list"></div>
+
+  <details class="edit" id="editor">
+    <summary>⚙️ הגדרות הקמפיין</summary>
+    <div id="editBody"></div>
+  </details>
+</div>
+
+<div id="toast"></div>
+<script>
+let KEY = localStorage.getItem('gm_admin_key') || '';
+let CAMPS = [], CUR = null, STATUS = '', ROWS = [], STATS = {};
+
+function _gmUser(){ const u=localStorage.getItem('tr_admin_key')||''; return u.indexOf('u:')===0?u.slice(2):''; }
+function H(){ const t=_gmUser();
+  if(t){ const h={'X-User-Token':t,'Content-Type':'application/json'};
+         const d=localStorage.getItem('tr_device'); if(d) h['X-Device-Token']=d; return h; }
+  return {'X-Admin-Key':KEY,'Content-Type':'application/json'}; }
+async function api(path, opts){
+  opts = opts||{}; opts.headers = Object.assign(H(), opts.headers||{});
+  const r = await fetch(path, opts);
+  if(r.status===401){ localStorage.removeItem('gm_admin_key'); KEY='';
+    document.getElementById('gate').style.display='flex'; throw 'נדרשת כניסה'; }
+  const t = await r.text(); let j={}; try{ j=t?JSON.parse(t):{}; }catch(e){ j={_raw:t}; }
+  if(!r.ok) throw (j.detail || j._raw || ('שגיאה '+r.status));
+  return j;
+}
+function toast(m, err){ const el=document.getElementById('toast'); el.textContent=m;
+  el.className='on'+(err?' err':''); clearTimeout(el._t); el._t=setTimeout(()=>el.className='',2600); }
+function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function gateGo(){ const k=document.getElementById('gateKey').value.trim(); if(!k) return;
+  KEY=k; localStorage.setItem('gm_admin_key',k); boot(); }
+document.getElementById('gateKey').addEventListener('keydown',e=>{ if(e.key==='Enter') gateGo(); });
+
+let _t; function debounced(){ clearTimeout(_t); _t=setTimeout(load, 300); }
+function setStatus(el){ document.querySelectorAll('.chip').forEach(c=>c.classList.remove('on'));
+  el.classList.add('on'); STATUS = el.dataset.st; load(); }
+
+async function boot(){
+  try{ const j = await api('/api/admin/preorder/campaigns'); CAMPS = j.campaigns||[]; }
+  catch(e){ toast(e||'מפתח שגוי', true); return; }
+  document.getElementById('gate').style.display='none';
+  const sel = document.getElementById('camp');
+  sel.innerHTML = CAMPS.map(c=>`<option value="${esc(c.slug)}">${esc(c.title||c.slug)}${c.active?'':' (כבוי)'}</option>`).join('')
+    || '<option value="">אין קמפיינים</option>';
+  load();
+}
+
+async function load(){
+  const slug = document.getElementById('camp').value;
+  CUR = CAMPS.find(c=>c.slug===slug) || null;
+  const q = encodeURIComponent(document.getElementById('q').value.trim());
+  const j = await api(`/api/admin/preorder/signups?campaign=${encodeURIComponent(slug)}&status=${STATUS}&q=${q}`);
+  ROWS = j.signups||[]; STATS = j.stats||{};
+  renderStats(); renderList(); renderEditor();
+}
+
+function renderStats(){
+  const by = STATS.by_status||{};
+  const kpi = (v,l,cls)=>`<div class="kpi ${cls||''}"><b>${v||0}</b><span>${l}</span></div>`;
+  document.getElementById('kpis').innerHTML =
+    kpi(STATS.total,'סה״כ נרשמים','brand') + kpi(STATS.answered,'השלימו בחירה') +
+    kpi(by.new,'חדשים') + kpi(by.contacted,'נוצר קשר') + kpi(by.ordered,'הזמינו');
+  // פילוח לפי שאלה — המספר שלפיו מזמינים מהיבואן
+  const steps = (CUR&&CUR.steps)||[], bs = STATS.by_step||{};
+  document.getElementById('breaks').innerHTML = steps.map(st=>{
+    const d = bs[st.id]||{}, tot = Object.values(d).reduce((a,b)=>a+b,0)||1;
+    const rows = Object.entries(d).sort((a,b)=>b[1]-a[1]).map(([k,v])=>
+      `<div class="bar"><i title="${esc(k)}">${esc(k)}</i>
+         <u><s style="width:${Math.round(v/tot*100)}%"></s></u><em>${v}</em></div>`).join('')
+      || '<div class="muted">אין נתונים עדיין</div>';
+    return `<div class="break"><h3>${esc(st.q_short||st.id)}</h3>${rows}</div>`;
+  }).join('');
+}
+
+function renderList(){
+  if(!ROWS.length){ document.getElementById('list').innerHTML =
+    '<div class="empty">אין נרשמים שתואמים לסינון</div>'; return; }
+  const steps = (CUR&&CUR.steps)||[];
+  const lbl = (st,v)=>{ const o=(st.opts||[]).find(o=>String(o[0])===String(v));
+    return o? (o[1]||o[0]) : (v||''); };
+  const rows = ROWS.map(r=>{
+    const picks = steps.map(st=>{ const v=(r.answers||{})[st.id];
+      return v? `<span class="pick">${esc(lbl(st,v))}</span>` : ''; }).join('')
+      || '<span class="muted">טרם בחר</span>';
+    const wa = `https://wa.me/${esc(r.phone)}`;
+    return `<tr>
+      <td class="muted">${esc(String(r.created_at||'').slice(0,16).replace('T',' '))}</td>
+      <td>${esc(r.name||'—')}</td>
+      <td><a class="wa ph" href="${wa}" target="_blank" rel="noopener">${esc(r.phone)}</a></td>
+      <td>${picks}</td>
+      <td><select class="st st-${esc(r.status||'new')}" onchange="setRow(${r.id}, this.value, this)">
+        ${['new','contacted','ordered','cancelled'].map(s=>
+          `<option value="${s}"${r.status===s?' selected':''}>${
+            {new:'חדש',contacted:'נוצר קשר',ordered:'הזמין',cancelled:'בוטל'}[s]}</option>`).join('')}
+      </select></td>
+    </tr>`; }).join('');
+  document.getElementById('list').innerHTML =
+    `<table><thead><tr><th>נרשם</th><th>שם</th><th>טלפון</th><th>בחירה</th><th>סטטוס</th></tr></thead>
+     <tbody>${rows}</tbody></table>`;
+}
+
+async function setRow(id, status, el){
+  try{ await api('/api/admin/preorder/signup/'+id,
+       {method:'POST', body:JSON.stringify({status})});
+    el.className = 'st st-'+status; toast('עודכן'); load(); }
+  catch(e){ toast(e, true); }
+}
+
+function exportCsv(){
+  const slug = document.getElementById('camp').value;
+  const u = `/api/admin/preorder/export.csv?campaign=${encodeURIComponent(slug)}&status=${STATUS}`;
+  // ה-API דורש כותרת הרשאה, אז מורידים דרך fetch ולא בניווט ישיר
+  fetch(u, {headers:H()}).then(r=>{ if(!r.ok) throw 0; return r.blob(); }).then(b=>{
+    const a=document.createElement('a'); a.href=URL.createObjectURL(b);
+    a.download = `preorder-${slug||'all'}.csv`; a.click(); URL.revokeObjectURL(a.href);
+  }).catch(e=>toast('ייצוא נכשל', true));
+}
+
+/* השקה הבאה (Galaxy / Pixel / קונסולה) = קמפיין חדש כאן, בלי דיפלוי. */
+async function newCamp(){
+  const title = prompt('שם ההשקה (למשל: Galaxy Z Fold 8)'); if(!title) return;
+  const slug = prompt('מזהה קצר באנגלית (למשל: galaxy-fold8)',
+    title.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,''));
+  if(!slug) return;
+  const body = {slug, title, active:false, keywords:title,
+    intro:`רשמתי אותך לרשימה המוקדמת ל-${title} ✅\n\nהמחיר עדיין לא נקבע — ברגע שייסגר נחזור אליך אישית עם כל הפרטים. מי שברשימה המוקדמת מקבל קדימות בהקצאה.\n\nשתי שאלות קצרות 👇`,
+    outro:`סגרנו 🙌 אתה ברשימה המוקדמת ל-${title}, ותהיה מהראשונים שנעדכן.`,
+    steps:[{id:'color', q_short:'צבע', q:'איזה צבע מעניין אותך?', opts:[['a','צבע א'],['b','צבע ב']]},
+           {id:'capacity', q_short:'נפח', q:'ואיזה נפח אחסון?', button:'בחירת נפח',
+            title:'נפח אחסון', opts:[['256','256GB'],['512','512GB']]}]};
+  try{ await api('/api/admin/preorder/campaign', {method:'POST', body:JSON.stringify(body)});
+    const j = await api('/api/admin/preorder/campaigns'); CAMPS = j.campaigns||[];
+    const sel = document.getElementById('camp');
+    sel.innerHTML = CAMPS.map(c=>`<option value="${esc(c.slug)}">${esc(c.title||c.slug)}${c.active?'':' (כבוי)'}</option>`).join('');
+    sel.value = slug; await load();
+    document.getElementById('editor').open = true;
+    toast('נוצר — ערוך את השאלות והפעל'); }
+  catch(e){ toast(e, true); }
+}
+
+function renderEditor(){
+  if(!CUR){ document.getElementById('editBody').innerHTML=''; return; }
+  const f=(k,l,ta,h)=>`<div class="field"><label>${l}</label>${
+    ta? `<textarea id="f_${k}">${esc(CUR[k]||'')}</textarea>`
+      : `<input id="f_${k}" value="${esc(CUR[k]||'')}">`}${
+    h? `<div class="hint">${h}</div>`:''}</div>`;
+  const steps = (CUR.steps||[]).map((st,i)=>`
+    <div class="step" data-i="${i}">
+      <div class="field" style="margin-top:0"><label>שאלה ${i+1}</label>
+        <input class="s_q" value="${esc(st.q||'')}"></div>
+      <div class="field"><label>כותרת קצרה (לטבלה ול-CSV)</label>
+        <input class="s_short" value="${esc(st.q_short||st.id||'')}"></div>
+      <div class="field"><label>אפשרויות</label>
+        <div class="opts">${(st.opts||[]).map(o=>`
+          <div class="opt"><input class="o_v" value="${esc(o[0])}" placeholder="ערך">
+          <input class="o_l" value="${esc(o[1]||o[0])}" placeholder="תווית ללקוח"></div>`).join('')}</div>
+        <div class="hint">עד 3 אפשרויות נשלחות ככפתורים; 4 ומעלה — כרשימת בחירה (מגבלת WhatsApp).</div>
+      </div>
+    </div>`).join('');
+  document.getElementById('editBody').innerHTML =
+    f('title','שם הקמפיין') +
+    f('keywords','מילות זיהוי (מופרדות בפסיק)',false,
+      'ההודעה מהבאנר חייבת להכיל אחת מהן <b>וגם</b> ביטוי הרשמה ("להירשם" / "רשימה מוקדמת") — כך ששאלה תמימה על הדגם לא נרשמת בטעות.') +
+    f('intro','הודעת פתיחה',true) + f('outro','הודעת סיום',true) +
+    `<div class="field"><label>שאלות</label>${steps}</div>
+     <div class="field"><label><input type="checkbox" id="f_active"${CUR.active?' checked':''}>
+       קמפיין פעיל</label></div>
+     <button class="btn primary" onclick="saveCamp()">שמירה</button>`;
+}
+
+async function saveCamp(){
+  const steps = [...document.querySelectorAll('.step')].map((el,i)=>{
+    const src = (CUR.steps||[])[i] || {};
+    const opts = [...el.querySelectorAll('.opt')].map(o=>[
+      o.querySelector('.o_v').value.trim(), o.querySelector('.o_l').value.trim()])
+      .filter(o=>o[0]);
+    return {id: src.id || ('q'+(i+1)), q: el.querySelector('.s_q').value.trim(),
+            q_short: el.querySelector('.s_short').value.trim(), opts,
+            mode: src.mode, button: src.button, title: src.title};
+  });
+  const body = {slug: CUR.slug, title: document.getElementById('f_title').value.trim(),
+    keywords: document.getElementById('f_keywords').value.trim(),
+    intro: document.getElementById('f_intro').value, outro: document.getElementById('f_outro').value,
+    active: document.getElementById('f_active').checked, steps};
+  try{ await api('/api/admin/preorder/campaign', {method:'POST', body:JSON.stringify(body)});
+    toast('נשמר'); const j = await api('/api/admin/preorder/campaigns');
+    CAMPS = j.campaigns||[]; load(); }
+  catch(e){ toast(e, true); }
+}
+
+if(KEY||_gmUser()){ boot(); } else { document.getElementById('gateKey').focus(); }
+</script>
+</body>
+</html>

@@ -919,6 +919,43 @@ _SCHEMA = [
         answered_by TEXT
     )
     """.format(pk=_PK),
+    # ── הרשמה מוקדמת להשקה (אסי, 14/10/2026) ───────────────────────────────
+    # למה טבלת קמפיינים ולא קוד קשיח ל-iPhone Duo: כל השקה הבאה (Galaxy, Pixel,
+    # קונסולה) היא אותו תהליך בדיוק. הקמפיין נושא את השאלות שלו כ-JSON, והבוט
+    # רק הולך על הרשימה — השקה חדשה = שורה בטבלה, לא דיפלוי.
+    """
+    CREATE TABLE IF NOT EXISTS preorder_campaigns (
+        id          {pk},
+        created_at  TEXT,
+        slug        TEXT,        -- מזהה קצר (iphone-duo)
+        title       TEXT,        -- שם לתצוגה (iPhone Duo)
+        active      INTEGER DEFAULT 1,
+        keywords    TEXT,        -- CSV לזיהוי ההודעה הנכנסת מהבאנר
+        intro       TEXT,        -- הודעת האישור הראשונה (לפני השאלות)
+        steps       TEXT,        -- JSON: [{{id,q,mode:buttons|list,opts:[[val,label],...]}}]
+        outro       TEXT,        -- הודעת הסיום אחרי שכל השאלות נענו
+        note        TEXT
+    )
+    """.format(pk=_PK),
+    # ⚠️ הנרשם נשמר **לפני** השאלות (status=new). לקוח שנטש באמצע הוא עדיין ליד —
+    # איבוד שלו היה הופך את כל הזרימה לחסרת ערך.
+    """
+    CREATE TABLE IF NOT EXISTS preorder_signups (
+        id            {pk},
+        created_at    TEXT,
+        updated_at    TEXT,
+        campaign      TEXT,       -- slug מ-preorder_campaigns
+        phone         TEXT,
+        name          TEXT,
+        answers       TEXT,       -- JSON: {{step_id: value}}
+        summary       TEXT,       -- תצוגה מוכנה ("Night Sky · 512GB")
+        status        TEXT DEFAULT 'new',   -- new / contacted / ordered / cancelled
+        source        TEXT DEFAULT 'bot',   -- bot / manual
+        note          TEXT,
+        contacted_at  TEXT,
+        contacted_by  TEXT
+    )
+    """.format(pk=_PK),
     """
     CREATE TABLE IF NOT EXISTS branch_updates_reads (
         id         {pk},
@@ -5706,3 +5743,164 @@ def wa_push_sub_set_user(endpoint: str, user_id):
     with _conn() as c:
         c.cursor().execute(_q("UPDATE wa_push_subs SET user_id = ? WHERE endpoint = ?"),
                            (int(user_id) if user_id else None, endpoint))
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# הרשמה מוקדמת להשקה (אסי, 14/10/2026)
+# הבאנר שולח לוואטסאפ עם הודעה מוכנה; הבוט מזהה לפי keywords, רושם מיד,
+# ואז שואל את השאלות של הקמפיין. ראה wa_bot._preorder_* ו-/preorder.
+# ══════════════════════════════════════════════════════════════════════════
+
+def _pc_row(r) -> dict:
+    d = dict(r)
+    for k in ("steps",):
+        try:
+            d[k] = json.loads(d.get(k) or "[]")
+        except Exception:  # noqa: BLE001
+            d[k] = []
+    d["active"] = bool(d.get("active"))
+    d["keywords_list"] = [w.strip() for w in (d.get("keywords") or "").split(",") if w.strip()]
+    return d
+
+
+def _ps_row(r) -> dict:
+    d = dict(r)
+    try:
+        d["answers"] = json.loads(d.get("answers") or "{}")
+    except Exception:  # noqa: BLE001
+        d["answers"] = {}
+    return d
+
+
+def preorder_campaigns_list(active_only=False) -> list:
+    with _conn() as c:
+        cur = c.cursor()
+        q = "SELECT * FROM preorder_campaigns"
+        if active_only:
+            q += " WHERE active = 1"
+        cur.execute(_q(q + " ORDER BY id DESC"))
+        return [_pc_row(r) for r in cur.fetchall()]
+
+
+def preorder_campaign_get(slug: str):
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM preorder_campaigns WHERE slug = ?"), (str(slug),))
+        r = cur.fetchone()
+        return _pc_row(r) if r else None
+
+
+def preorder_campaign_save(slug: str, **kw) -> int:
+    """יוצר או מעדכן קמפיין לפי slug (idempotent — בטוח לקרוא מ-seed)."""
+    cols = ("title", "active", "keywords", "intro", "steps", "outro", "note")
+    if isinstance(kw.get("steps"), (list, dict)):
+        kw["steps"] = json.dumps(kw["steps"], ensure_ascii=False)
+    if "active" in kw:
+        kw["active"] = 1 if kw["active"] else 0
+    cur_row = preorder_campaign_get(slug)
+    with _conn() as c:
+        cur = c.cursor()
+        if cur_row:
+            sets = {k: kw[k] for k in cols if k in kw}
+            if sets:
+                cur.execute(_q("UPDATE preorder_campaigns SET %s WHERE slug = ?"
+                               % ", ".join("%s = ?" % k for k in sets)),
+                            list(sets.values()) + [str(slug)])
+            return int(cur_row["id"])
+        vals = [kw.get(k) for k in cols]
+        q = ("INSERT INTO preorder_campaigns (created_at, slug, %s) VALUES (%s)"
+             % (", ".join(cols), ", ".join(["?"] * (len(cols) + 2))))
+        if _USE_PG:
+            cur.execute(_q(q + " RETURNING id"), [now_iso(), str(slug)] + vals)
+            return int(cur.fetchone()["id"])
+        cur.execute(_q(q), [now_iso(), str(slug)] + vals)
+        return int(cur.lastrowid)
+
+
+def preorder_signup_get(campaign: str, phone: str):
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM preorder_signups WHERE campaign = ? AND phone = ?"),
+                    (str(campaign), str(phone)))
+        r = cur.fetchone()
+        return _ps_row(r) if r else None
+
+
+def preorder_signup_upsert(campaign: str, phone: str, name: str = "", answers: dict = None,
+                           summary: str = "", source: str = "bot", note: str = "") -> int:
+    """רישום/עדכון נרשם. **לא** דורס תשובות קיימות בריק — לקוח שחוזר ומשנה צבע
+    מעדכן רק את מה ששלח, וסטטוס 'ordered' לא חוזר ל-new."""
+    row = preorder_signup_get(campaign, phone)
+    merged = dict((row or {}).get("answers") or {})
+    merged.update({k: v for k, v in (answers or {}).items() if v not in (None, "")})
+    with _conn() as c:
+        cur = c.cursor()
+        if row:
+            cur.execute(_q("UPDATE preorder_signups SET updated_at = ?, name = ?, "
+                           "answers = ?, summary = ?, note = ? WHERE id = ?"),
+                        (now_iso(), name or row.get("name") or "",
+                         json.dumps(merged, ensure_ascii=False),
+                         summary or row.get("summary") or "",
+                         note or row.get("note") or "", int(row["id"])))
+            return int(row["id"])
+        q = ("INSERT INTO preorder_signups (created_at, updated_at, campaign, phone, name, "
+             "answers, summary, status, source, note) VALUES (?,?,?,?,?,?,?,?,?,?)")
+        args = (now_iso(), now_iso(), str(campaign), str(phone), name or "",
+                json.dumps(merged, ensure_ascii=False), summary or "", "new", source, note or "")
+        if _USE_PG:
+            cur.execute(_q(q + " RETURNING id"), args)
+            return int(cur.fetchone()["id"])
+        cur.execute(_q(q), args)
+        return int(cur.lastrowid)
+
+
+def preorder_signups_list(campaign="", status="", q="", limit=500) -> list:
+    where, args = [], []
+    if campaign:
+        where.append("campaign = ?"); args.append(str(campaign))
+    if status:
+        where.append("status = ?"); args.append(str(status))
+    if q:
+        where.append("(phone LIKE ? OR name LIKE ? OR summary LIKE ?)")
+        args += [f"%{q}%"] * 3
+    sql = "SELECT * FROM preorder_signups"
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    sql += " ORDER BY id DESC LIMIT ?"
+    args.append(int(limit))
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q(sql), args)
+        return [_ps_row(r) for r in cur.fetchall()]
+
+
+def preorder_signup_set(sid: int, **kw) -> None:
+    kw = {k: v for k, v in kw.items()
+          if k in ("status", "note", "name", "summary", "contacted_at", "contacted_by")}
+    if not kw:
+        return
+    kw["updated_at"] = now_iso()
+    with _conn() as c:
+        c.cursor().execute(_q("UPDATE preorder_signups SET %s WHERE id = ?"
+                              % ", ".join("%s = ?" % k for k in kw)),
+                           list(kw.values()) + [int(sid)])
+
+
+def preorder_stats(campaign: str) -> dict:
+    """פילוח לרשימת ההקצאה: כמה לכל סטטוס, וכמה לכל ערך בכל שאלה."""
+    rows = preorder_signups_list(campaign=campaign, limit=10000)
+    camp = preorder_campaign_get(campaign) or {}
+    labels = {}
+    for st in camp.get("steps") or []:
+        labels[st.get("id")] = {str(o[0]): (o[1] if len(o) > 1 else o[0])
+                                for o in (st.get("opts") or [])}
+    by_status, by_step = {}, {}
+    for r in rows:
+        by_status[r.get("status") or "new"] = by_status.get(r.get("status") or "new", 0) + 1
+        for k, v in (r.get("answers") or {}).items():
+            lab = labels.get(k, {}).get(str(v), str(v))
+            by_step.setdefault(k, {})
+            by_step[k][lab] = by_step[k].get(lab, 0) + 1
+    return {"total": len(rows), "by_status": by_status, "by_step": by_step,
+            "answered": sum(1 for r in rows if len(r.get("answers") or {})
+                            >= len(camp.get("steps") or []) and camp.get("steps"))}

@@ -264,6 +264,17 @@ def handle(phone: str, text: str, mtype: str = "text", reply_id: str = "", wamid
                             f"או בחר/י מהרשימה למעלה.")
         return
 
+    # ── 📋 הרשמה מוקדמת להשקה ──
+    # לפני ניתוב התפריט: ההודעה מהבאנר מכילה את שם הדגם, ובלי זה היא נופלת
+    # לחיפוש מוצר ("מצאתי 3 תוצאות ל-iPhone Duo") במקום לרשום.
+    if rid.startswith("pre:"):
+        return _preorder_answer(phone, sess, rid, text)
+    if state == "preorder" and text and not rid:
+        return _preorder_answer(phone, sess, "", text)
+    _pre_camp = _preorder_match(low) if low else None
+    if _pre_camp:
+        return _preorder_start(phone, _pre_camp)
+
     # ── ניתוב תפריט ──
     if rid == "status" or _is_order_status_intent(low):
         return _order_status_auto(phone)
@@ -1078,6 +1089,153 @@ def _register_stock_watch(phone, sku, product=None, color=None):
         wa.send_text(phone, "לא הצלחתי לרשום כרגע 🙏 מעביר אותך לנציג שיוסיף אותך ידנית.")
         return _to_agent(phone)
     wa.send_text(phone, f"מעולה! רשמתי אותך 🔔\nברגע ש*{pname}* חוזר למלאי — תקבל ממני הודעה.")
+    return _menu_tail(phone)
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# 📋 הרשמה מוקדמת להשקה (אסי, 14/10/2026)
+#
+# הבאנר באתר שולח לוואטסאפ עם הודעה מוכנה בת שורה אחת ("אשמח להירשם לרשימה
+# המוקדמת ל-iPhone Duo"). ⛔ ההודעה היוצאת **אינה טופס** — אסי פסל גרסה שדחפה
+# שדות למילוי לתוך ההודעה: הלקוח לא אמור לערוך טקסט לפני ששלח.
+# הפרטים נאספים כאן, בכפתורים/רשימה native, כך שהתשובות חוזרות כ-ID מובנה
+# ואפשר לבנות מהן רשימת הקצאה — במקום לקרוא שיחות ידנית.
+#
+# הקמפיינים יושבים ב-DB (preorder_campaigns) ולא בקוד — השקה הבאה היא שורה
+# בטבלה, לא דיפלוי. ניהול: /preorder
+# ══════════════════════════════════════════════════════════════════════════
+
+def _preorder_campaigns():
+    try:
+        return db.preorder_campaigns_list(active_only=True)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("preorder campaigns load failed: %s", e)
+        return []
+
+
+def _preorder_match(text: str):
+    """מזהה קמפיין פעיל לפי מילות המפתח שלו. דורש גם ביטוי-כוונת-הרשמה, כדי
+    ששאלה תמימה על המכשיר ('כמה עולה iPhone Duo') לא תירשם בטעות לרשימה."""
+    low = (text or "").lower()
+    if not low:
+        return None
+    intent = any(w in low for w in ("רשימה המוקדמת", "רשימה מוקדמת", "להירשם",
+                                    "הרשמה מוקדמת", "מכירה מוקדמת", "רשמו אותי"))
+    if not intent:
+        return None
+    for camp in _preorder_campaigns():
+        for kw in camp.get("keywords_list") or []:
+            if kw.lower() in low:
+                return camp
+    return None
+
+
+def _preorder_steps(camp):
+    return [st for st in (camp.get("steps") or []) if st.get("id")]
+
+
+def _preorder_summary(camp, answers: dict) -> str:
+    """תצוגה מוכנה לרשימת ההקצאה — תוויות, לא מזהים."""
+    parts = []
+    for st in _preorder_steps(camp):
+        v = (answers or {}).get(st["id"])
+        if v in (None, ""):
+            continue
+        lab = next((o[1] for o in (st.get("opts") or [])
+                    if str(o[0]) == str(v) and len(o) > 1), str(v))
+        parts.append(lab)
+    return " · ".join(parts)
+
+
+def _preorder_save(phone, camp, answers=None):
+    name = ""
+    try:
+        name = (db.wa_contact_get(phone) or {}).get("name") or ""
+    except Exception:  # noqa: BLE001
+        pass
+    row = db.preorder_signup_get(camp["slug"], phone) or {}
+    merged = dict(row.get("answers") or {})
+    merged.update(answers or {})
+    db.preorder_signup_upsert(camp["slug"], phone, name=name, answers=answers or {},
+                              summary=_preorder_summary(camp, merged), source="bot")
+    return merged
+
+
+def _preorder_ask(phone, camp, idx):
+    """שולח את שאלה idx. ≤3 אפשרויות → כפתורים; יותר → רשימה (מגבלת מטא)."""
+    steps = _preorder_steps(camp)
+    if idx >= len(steps):
+        return _preorder_finish(phone, camp)
+    st = steps[idx]
+    db.bot_session_set(phone, "preorder", {"slug": camp["slug"], "idx": idx})
+    opts = st.get("opts") or []
+    rid_of = lambda val: f"pre:{camp['slug']}:{st['id']}:{val}"  # noqa: E731
+    if len(opts) <= 3:
+        wa.send_buttons(phone, st.get("q") or "בחר/י:",
+                        [(rid_of(o[0]), (o[1] if len(o) > 1 else o[0])) for o in opts])
+    else:
+        wa.send_list(phone, st.get("q") or "בחר/י:",
+                     [(rid_of(o[0]), (o[1] if len(o) > 1 else o[0]),
+                       (o[2] if len(o) > 2 else "")) for o in opts],
+                     button_label=st.get("button") or "בחירה",
+                     section_title=st.get("title") or "אפשרויות")
+
+
+def _preorder_start(phone, camp):
+    """⚠️ רושמים **לפני** השאלות: לקוח שנוטש באמצע הוא עדיין ליד, ואיבוד שלו
+    היה הופך את כל הזרימה לחסרת ערך."""
+    try:
+        _preorder_save(phone, camp)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("preorder register failed for %s: %s", phone, e)
+        wa.send_text(phone, "לא הצלחתי לרשום כרגע 🙏 מעביר אותך לנציג שירשום אותך ידנית.")
+        return _to_agent(phone)
+    if camp.get("intro"):
+        wa.send_text(phone, camp["intro"])
+    return _preorder_ask(phone, camp, 0)
+
+
+def _preorder_answer(phone, sess, rid, text):
+    """קולט תשובה — מכפתור/רשימה (rid) או מהקלדה חופשית שתואמת תווית."""
+    d = sess.get("data") or {}
+    slug, idx = d.get("slug"), int(d.get("idx") or 0)
+    step_id = val = ""
+    if rid.startswith("pre:"):
+        _, slug, step_id, val = (rid.split(":", 3) + ["", "", ""])[:4]
+    camp = db.preorder_campaign_get(slug) if slug else None
+    if not camp:
+        return _menu(phone)
+    steps = _preorder_steps(camp)
+    if not step_id:                       # הקלדה חופשית — התאמה לתווית השאלה הנוכחית
+        if idx >= len(steps):
+            return _preorder_finish(phone, camp)
+        st = steps[idx]
+        tl = (text or "").strip().lower()
+        hit = next((o for o in (st.get("opts") or [])
+                    if tl and (tl == str(o[0]).lower()
+                               or tl in (o[1] if len(o) > 1 else "").lower())), None)
+        if not hit:
+            wa.send_text(phone, "לא זיהיתי 🤔 בחר/י מהאפשרויות למעלה.")
+            return _preorder_ask(phone, camp, idx)
+        step_id, val = st["id"], str(hit[0])
+    merged = _preorder_save(phone, camp, {step_id: val})
+    nxt = next((i for i, st in enumerate(steps) if not merged.get(st["id"])), len(steps))
+    return _preorder_ask(phone, camp, nxt)
+
+
+def _preorder_finish(phone, camp):
+    db.bot_session_clear(phone)
+    row = db.preorder_signup_get(camp["slug"], phone) or {}
+    summary = row.get("summary") or ""
+    msg = camp.get("outro") or "רשמנו אותך לרשימה המוקדמת ✅"
+    if summary:
+        msg += f"\n\n📋 *מה שמור אצלנו:* {summary}"
+    wa.send_text(phone, msg)
+    try:                                   # התראה לצוות — ליד חם, לא לחכות לדוח
+        import main as _m
+        _m.notify_preorder_signup(camp, phone, summary)
+    except Exception:  # noqa: BLE001
+        pass
     return _menu_tail(phone)
 
 
