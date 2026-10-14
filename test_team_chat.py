@@ -114,6 +114,19 @@ main._PRESENCE[ids["udi"]] = time.time() - 600
 pres = {x["name"]: x for x in c.get("/api/chat/topics", headers=A).json()["users"]}
 check("נוכחות: 10 דקות בלי פעילות — לא מחובר", not pres["אודי"]["online"] and pres["אודי"]["seen_ago"] >= 600)
 
+# ── סטטוסים: פתוח / בעבודה / ממתין לתשובה / טופל ──
+st = c.post("/api/chat/topics", headers=A, json={"title": "בדיקת סטטוסים", "kind": "task", "assignees": [ids["udi"]]}).json()["topic"]["id"]
+pushed.clear()
+c.post(f"/api/chat/topics/{st}", headers=U, json={"status": "working"})
+check("בעבודה: נשמר ועדיין ברשימת הפתוחים", any(x["id"] == st and x["status"] == "working" for x in c.get("/api/chat/topics", headers=A).json()["topics"]))
+c.post(f"/api/chat/topics/{st}", headers=U, json={"status": "waiting"}); time.sleep(0.3)
+check("ממתין לתשובה → התראה לפותח", any(p["user_ids"] == [ids["asi"]] and "ממתין" in p["title"] for p in pushed), pushed)
+log = [m["text"] for m in c.get(f"/api/chat/messages?topic={st}", headers=A).json()["messages"] if m["system"]]
+check("שינוי סטטוס נרשם ביומן", any("ממתין לתשובה" in x for x in log) and any("בעבודה" in x for x in log), log)
+check("⛔ סטטוס לא מוכר נדחה בשקט", c.post(f"/api/chat/topics/{st}", headers=U, json={"status": "bogus"}).json()["topic"]["status"] == "waiting")
+c.post(f"/api/chat/topics/{st}", headers=U, json={"status": "done"})
+check("טופל → עובר לרשימת טופלו", any(x["id"] == st for x in c.get("/api/chat/topics?status=done", headers=A).json()["topics"]))
+
 os.unlink(_tmp)
 assert not fails, fails
 print("\n✅ כל בדיקות הצ'אט עברו")

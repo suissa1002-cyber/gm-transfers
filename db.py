@@ -5646,9 +5646,12 @@ def topic_get(tid):
 def topic_list(status="open", limit=200) -> list:
     with _conn() as c:
         cur = c.cursor()
-        if status in ("open", "done"):
-            cur.execute(_q("SELECT * FROM team_topic WHERE status = ? ORDER BY last_ts DESC LIMIT ?"),
-                        (status, int(limit)))
+        if status == "open":   # כל מה שלא טופל (פתוח / בעבודה / ממתין לתשובה)
+            cur.execute(_q("SELECT * FROM team_topic WHERE status <> 'done' ORDER BY last_ts DESC LIMIT ?"),
+                        (int(limit),))
+        elif status == "done":
+            cur.execute(_q("SELECT * FROM team_topic WHERE status = 'done' ORDER BY last_ts DESC LIMIT ?"),
+                        (int(limit),))
         else:
             cur.execute(_q("SELECT * FROM team_topic ORDER BY last_ts DESC LIMIT ?"), (int(limit),))
         return [_topic_row(r) for r in cur.fetchall()]

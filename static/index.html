@@ -800,8 +800,11 @@
   .tc-ttl{flex:1;min-width:0;font-size:19px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .tc-tmeta2{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin-top:10px;font-size:12.5px}
   .tc-mi{display:inline-flex;align-items:center;gap:5px;color:var(--muted)}
-  .tc-status{display:inline-flex;align-items:center;padding:4px 14px;border-radius:4px;color:#fff;font-weight:600;font-size:12.5px;cursor:pointer}
-  .tc-status.open{background:#fdab3d} .tc-status.done{background:#00c875}
+  .tc-status{display:inline-flex;align-items:center;padding:4px 14px;border-radius:4px;color:#fff;font-weight:600;font-size:12.5px;cursor:pointer;white-space:nowrap}
+  .tc-status.sm{padding:1px 8px;font-size:11px;margin-inline-start:8px;cursor:default;font-weight:600}
+  .tc-stmenu{position:absolute;top:100%;inset-inline-start:0;z-index:20;margin-top:4px;background:var(--card);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:6px;display:flex;flex-direction:column;gap:5px;min-width:150px}
+  .tc-stmenu a{color:#fff;text-decoration:none;text-align:center;padding:7px 10px;border-radius:4px;font-weight:600;font-size:13px}
+  .tc-stmenu a:hover{filter:brightness(.92)}
   .tc-kind{display:inline-flex;align-items:center;padding:2px 9px;border-radius:99px;border:1px solid var(--c);color:var(--c);font-size:12px;font-weight:600}
   .tc-walink{color:#0073ea;text-decoration:none}
   .tc-tabs{display:flex;gap:20px;padding:0 14px;border-bottom:1px solid var(--line);background:var(--card)}
@@ -2075,8 +2078,18 @@ const TC_KIND_COL={question:'#a25ddc',request:'#fdab3d',task:'#579bfc',update:'#
 function tcKindIc(k,sz){ return TC_KIND_ICO[k]?icoI(TC_KIND_ICO[k],sz||14):''; }
 function tcKindChip(k){ const l=(TC.kinds||{})[k]||({question:'שאלה',request:'בקשה',task:'משימה',update:'עדכון'})[k]||'';
   return `<span class="tc-kind" style="--c:${TC_KIND_COL[k]||'#7e8597'}">${tcKindIc(k,12)}${escW(l)}</span>`; }
-function tcStatusPill(t,clickable){ const done=t.status==='done';
-  return `<span class="tc-status ${done?'done':'open'}" ${clickable?`onclick="tcSetStatus('${done?'open':'done'}')" title="${done?'פתח מחדש':'סמן כטופל'}"`:''}>${done?'טופל':'פתוח'}</span>`; }
+// סטטוסים בסגנון Monday: לחיצה על התגית פותחת תפריט בחירה
+const TC_STATUS=[['open','פתוח','#c4c4c4'],['working','בעבודה','#fdab3d'],['waiting','ממתין לתשובה','#a25ddc'],['done','טופל','#00c875']];
+function tcSt(k){ return TC_STATUS.find(x=>x[0]===k)||TC_STATUS[0]; }
+function tcStatusPill(t,clickable){ const [k,l,c]=tcSt(t.status);
+  return `<span class="tc-status" style="background:${c}" ${clickable?`onclick="event.stopPropagation();tcStatusMenu(this)" title="שינוי סטטוס"`:''}>${l}</span>`; }
+function tcStatusMenu(el){
+  document.querySelectorAll('.tc-stmenu').forEach(x=>x.remove());
+  const m=document.createElement('div'); m.className='tc-stmenu';
+  m.innerHTML=TC_STATUS.map(([k,l,c])=>`<a href="#" style="background:${c}" onclick="this.parentNode.remove();tcSetStatus('${k}');return false">${l}</a>`).join('');
+  el.parentNode.style.position='relative'; el.insertAdjacentElement('afterend',m);
+  setTimeout(()=>document.addEventListener('click',function h(){ m.remove(); document.removeEventListener('click',h); }),0);
+}
 function tcPersonal(){ return !!S.user; }
 function tcToggle(open){
   TC.open=(open===undefined)?!TC.open:!!open;
@@ -2138,7 +2151,7 @@ async function tcLoadTopics(){
 function tcRowHTML(t){
   return `<div class="tc-trow ${t.unread?'unr':''}" onclick="tcOpenTopic(${t.id})">
     <div class="tc-tcell tc-tmain">
-      <div class="tc-tt">${tcKindIc(t.kind,14)}<span>${escW(t.title)}</span></div>
+      <div class="tc-tt">${tcKindIc(t.kind,14)}<span>${escW(t.title)}</span>${t.status!=='open'?`<span class="tc-status sm" style="background:${tcSt(t.status)[2]}">${tcSt(t.status)[1]}</span>`:''}</div>
       ${t.last?`<div class="tc-tl">${escW(t.last)}</div>`:''}
     </div>
     <div class="tc-tcell">${tcAvStack([t.created_by].concat(t.assignees.filter(a=>a!==t.created_by)),20)}</div>
@@ -2150,8 +2163,8 @@ function tcPaintHome(){
   const keepQ=document.getElementById('tcSearch'); const qf=keepQ&&document.activeElement===keepQ;
   const q=(TC.q||'').trim();
   const T=TC.topics.filter(t=>!q||(t.title+' '+(t.last||'')).includes(q));
-  const mine=T.filter(t=>t.status==='open'&&t.assignees.includes(TC.me));
-  const open=T.filter(t=>t.status==='open'&&!t.assignees.includes(TC.me));
+  const mine=T.filter(t=>t.status!=='done'&&t.assignees.includes(TC.me));
+  const open=T.filter(t=>t.status!=='done'&&!t.assignees.includes(TC.me));
   const done=T.filter(t=>t.status==='done');
   const gen=(TC.unread.by_topic||{})['0']||0;
   const grp=(key,title,col,rows)=>!rows.length&&key!=='open'?'':`<div class="tc-grp" style="--g:${col}">
@@ -2235,9 +2248,9 @@ function tcPaintTabs(){
   el.innerHTML=tab('updates','עדכונים',posts,'home')+tab('files','קבצים',files,'file')+(TC.topic?tab('log','יומן פעילות',0,'clock'):'');
 }
 async function tcSetStatus(st){
-  if(st==='done'&&!confirm('לסמן את הנושא כטופל?')) return;
+  if(TC.topicObj&&TC.topicObj.status===st) return;
   try{ const r=await api('/api/chat/topics/'+TC.topic,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:st})});
-    TC.topicObj=r.topic; tcPaintTHead(); TC.sig=''; tcLoad(false); tcLoadWaLinks(true); toast(st==='done'?'סומן כטופל':'נפתח מחדש',true); }
+    TC.topicObj=r.topic; tcPaintTHead(); TC.sig=''; tcLoad(false); tcLoadWaLinks(true); toast('הסטטוס עודכן: '+tcSt(st)[1],true); }
   catch(e){ toast(e.detail||'הפעולה נכשלה',false); }
 }
 async function tcLoad(first){
@@ -2483,7 +2496,7 @@ async function tcLoadWaLinks(force){
 function tcOpenTopicFromWa(id){ TC.view='thread'; TC.topic=Number(id); tcToggle(true); }
 function tcWaStrip(ph){
   const L=tcWaLinksFor(ph); if(!L.length) return '';
-  return `<div class="wa-tcstrip"><span class="muted" style="display:inline-flex;align-items:center">${icoI('users',14)}שיחת צוות על הלקוח:</span>${L.map(t=>`<a href="#" class="wa-tcchip ${t.status==='done'?'done':''}" onclick="tcOpenTopicFromWa(${t.id});return false">${tcKindIc(t.kind,13)}${escW(t.title)}${t.status==='done'?' · טופל':''}${t.unread?` <b class="tc-ub">${t.unread}</b>`:''}</a>`).join('')}</div>`;
+  return `<div class="wa-tcstrip"><span class="muted" style="display:inline-flex;align-items:center">${icoI('users',14)}שיחת צוות על הלקוח:</span>${L.map(t=>`<a href="#" class="wa-tcchip ${t.status==='done'?'done':''}" onclick="tcOpenTopicFromWa(${t.id});return false">${tcKindIc(t.kind,13)}${escW(t.title)}${t.status!=='open'?' · '+tcSt(t.status)[1]:''}${t.unread?` <b class="tc-ub">${t.unread}</b>`:''}</a>`).join('')}</div>`;
 }
 function tcBadge(u){
   if(u) TC.unread=Object.assign({by_topic:{}},u);
@@ -5591,7 +5604,7 @@ function waConvRow(c){
       <div class="nm" style="display:flex;align-items:center;gap:5px">${c.star?`<span class="wa-star-on" style="display:inline-flex">${ico('star',13,true)}</span>`:''}<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escW(c.name)}</span> ${(c.handoff||c.live_chat)?`<span title="מצב אנושי — הבוט מושתק בשיחה" style="display:inline-flex;color:#16a34a">${ico('user',13)}</span>`:''}</div>
       <div class="lm">${escW(c.last_msg)||'<i>—</i>'}</div>
     </div>
-    <div class="meta muted" style="font-size:11px">${c.ts?fmtTime(new Date(c.ts*1000).toISOString()):''}${tcWaLinksFor(c.phone).some(t=>t.status==='open')?'<div title="יש שיחת צוות פתוחה על הלקוח" style="margin-top:4px;color:#2563eb;display:flex;justify-content:flex-end">'+ico('users',14)+'</div>':''}</div>
+    <div class="meta muted" style="font-size:11px">${c.ts?fmtTime(new Date(c.ts*1000).toISOString()):''}${tcWaLinksFor(c.phone).some(t=>t.status!=='done')?'<div title="יש שיחת צוות פתוחה על הלקוח" style="margin-top:4px;color:#2563eb;display:flex;justify-content:flex-end">'+ico('users',14)+'</div>':''}</div>
   </div>`;
 }
 // רשימת השיחות: מקומי (200 אחרונות) + תוצאות חיפוש-שרת מכל אנשי הקשר
@@ -5705,7 +5718,7 @@ function waThreadHTML(){
       <span style="margin-inline-start:auto;display:flex;gap:6px;flex-wrap:wrap">
         <button class="btn-ghost wa-ico ${conv.star?'wa-star-on':''}" onclick="waToggleStar()" title="${conv.star?'הסר מעקב':'סמן למעקב'}">${ico('star',17,conv.star)}</button>
 ${can('stock')?`<button class="btn-ghost wa-ico ${S.waPanel&&S.waPanelMode==='stock'?'wa-human-on':''}" onclick="waToggleStock()" title="מלאי חי — חיפוש מוצר בלי לעזוב את השיחה">${ico('search')}</button>`:''}
-        <button class="btn-ghost wa-ico" onclick="tcAskAbout(S.waPhone)" title="${tcWaLinksFor(S.waPhone).filter(t=>t.status==='open').length?'יש שיחת צוות פתוחה על הלקוח — המספר = כמה נושאים פתוחים. לחיצה פותחת נושא חדש':'פתח נושא צוות על השיחה הזו (צ\'אט פנימי)'}" style="position:relative">${ico('users')}${tcWaLinksFor(S.waPhone).filter(t=>t.status==='open').length?`<span class="wa-badge" style="background:#2563eb">${tcWaLinksFor(S.waPhone).filter(t=>t.status==='open').length}</span>`:''}</button>
+        <button class="btn-ghost wa-ico" onclick="tcAskAbout(S.waPhone)" title="${tcWaLinksFor(S.waPhone).filter(t=>t.status!=='done').length?'יש שיחת צוות פתוחה על הלקוח — המספר = כמה נושאים פתוחים. לחיצה פותחת נושא חדש':'פתח נושא צוות על השיחה הזו (צ\'אט פנימי)'}" style="position:relative">${ico('users')}${tcWaLinksFor(S.waPhone).filter(t=>t.status!=='done').length?`<span class="wa-badge" style="background:#2563eb">${tcWaLinksFor(S.waPhone).filter(t=>t.status!=='done').length}</span>`:''}</button>
         <button class="btn-ghost wa-ico" onclick="waTogglePanel()" title="פרטי פונה (הזמנות/תגיות/הערות)">${ico('info')}</button>
         <button class="btn-ghost wa-ico ${S.waBotHandoff?'wa-human-on':''}" onclick="waBotHandoff(${S.waBotHandoff?0:1})"
                 title="${S.waBotHandoff?'מצב אנושי — הבוט מושתק בשיחה. לחץ להחזיר את הבוט':'הבוט פעיל בשיחה. לחץ להשתלט ידנית (להשתיק את הבוט)'}">${ico(S.waBotHandoff?'user':'bot',17)}</button>

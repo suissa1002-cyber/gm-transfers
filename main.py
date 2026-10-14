@@ -1836,6 +1836,8 @@ def _chat_out(m: dict) -> dict:
 
 
 _TOPIC_KINDS = {"question": "שאלה", "request": "בקשה", "task": "משימה", "update": "עדכון"}
+# סטטוסים בסגנון Monday (14/10): כל מה שאינו done = פתוח לעניין רשימות/מונים
+_TOPIC_STATUS = {"open": "פתוח", "working": "בעבודה", "waiting": "ממתין לתשובה", "done": "טופל"}
 
 
 def _chat_visible(u):
@@ -1909,7 +1911,7 @@ def chat_topics(status: str = "open"):
         t["count"] = counts.get(t["id"], 0)
         t["mine"] = u["id"] in t["assignees"]
     return {"topics": topics, "unread": unread, "users": _chat_users(), "me": u["id"],
-            "kinds": _TOPIC_KINDS}
+            "kinds": _TOPIC_KINDS, "statuses": _TOPIC_STATUS}
 
 
 class TopicIn(BaseModel):
@@ -1959,12 +1961,15 @@ def chat_topic_update(tid: int, body: TopicPatch):
     """סגירה/פתיחה מחדש של נושא, או שינוי אחראים — נרשם כהודעת מערכת בשרשור."""
     u = _chat_user()
     t = _chat_topic_for(u, tid)
-    if body.status in ("open", "done") and body.status != t["status"]:
+    if body.status in _TOPIC_STATUS and body.status != t["status"]:
         db.topic_update(tid, status=body.status, closed_name=u["name"])
-        db.chat_add(u["id"], u["name"], ("סימן/ה כטופל" if body.status == "done" else "פתח/ה מחדש"),
-                    topic_id=tid, system=1)
-        if body.status == "done" and t["created_by"] != u["id"]:
-            _chat_push([t["created_by"]], f"{u['name']} סימן/ה כטופל", t["title"], tid)
+        txt = ("סימן/ה כטופל" if body.status == "done" else
+               "פתח/ה מחדש" if body.status == "open" and t["status"] == "done" else
+               f"שינה/תה סטטוס ל\"{_TOPIC_STATUS[body.status]}\"")
+        db.chat_add(u["id"], u["name"], txt, topic_id=tid, system=1)
+        # טופל / ממתין לתשובה → פותח הנושא מקבל התראה (אם לא הוא ששינה)
+        if body.status in ("done", "waiting") and t["created_by"] != u["id"]:
+            _chat_push([t["created_by"]], f"{u['name']}: {_TOPIC_STATUS[body.status]}", t["title"], tid)
     if body.assignees is not None:
         active = {x["id"]: x["name"] for x in db.users_list() if x["active"]}
         new = sorted({int(x) for x in body.assignees if str(x).isdigit() and int(x) in active})
@@ -2171,7 +2176,7 @@ def chat_wa_links():
         links.setdefault(ph[-9:], []).append({"id": t["id"], "title": t["title"], "kind": t["kind"],
                                               "status": t["status"], "unread": unread.get(str(t["id"]), 0)})
     for v in links.values():
-        v.sort(key=lambda x: (x["status"] != "open", -x["id"]))
+        v.sort(key=lambda x: (x["status"] == "done", -x["id"]))
     return {"links": links}
 
 
