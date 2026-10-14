@@ -1843,6 +1843,14 @@ def _chat_visible(u):
     return None if u["role"] == "owner" else db.topics_involving(u["id"])
 
 
+def _chat_unread(u, vis="?"):
+    """לא-נקראו: by_topic לכל מה שגלוי; המונה הכללי רק על מה שהמשתמש מעורב בו."""
+    if vis == "?":
+        vis = _chat_visible(u)
+    counted = db.topics_involving(u["id"]) if vis is None else None
+    return db.chat_unread(u["id"], vis, counted)
+
+
 def _chat_topic_for(u, tid):
     """נושא לפי מזהה, רק אם מותר למשתמש לראות אותו (אחרת 404 — לא חושפים שקיים)."""
     t = db.topic_get(tid) if tid else None
@@ -1876,7 +1884,7 @@ def chat_messages(topic: int = 0, after: int = 0, before: int = 0):
     u = _chat_user()
     t = _chat_topic_for(u, topic)
     rows = db.chat_list(after_id=after, before_id=before, limit=200 if after else 300, topic_id=topic)
-    out = {"messages": [_chat_out(m) for m in rows], "unread": db.chat_unread(u["id"], _chat_visible(u)),
+    out = {"messages": [_chat_out(m) for m in rows], "unread": _chat_unread(u),
            "users": _chat_users(), "me": u["id"],
            "reads": {str(k): v for k, v in db.chat_reads(topic).items()}}
     if t:
@@ -1892,7 +1900,7 @@ def chat_topics(status: str = "open"):
     topics = [t for t in db.topic_list(status) if vis is None or t["id"] in vis]
     last = db.topic_last_msgs([t["id"] for t in topics])
     counts = db.topic_msg_counts([t["id"] for t in topics])
-    unread = db.chat_unread(u["id"], vis)
+    unread = _chat_unread(u, vis)
     for t in topics:
         lm = last.get(t["id"]) or {}
         t["last"] = "" if lm.get("deleted") else ((lm.get("user_name") or "") + ": " +
@@ -1984,7 +1992,7 @@ def chat_unread():
     u = _current_user()
     if u is None:
         return {"count": 0, "mentions": 0, "personal": False}
-    return {**db.chat_unread(u["id"], _chat_visible(u)), "personal": True}
+    return {**_chat_unread(u), "personal": True}
 
 
 class ChatIn(BaseModel):
@@ -2035,10 +2043,9 @@ def chat_send(body: ChatIn):
     db.chat_read_set(u["id"], m["id"], tid)   # ההודעה שלי = נקראה אצלי
     prev = text[:140] or ("תמונה" if (body.attach_mime or "").startswith("image/") else "קובץ מצורף")
     _chat_push(mentions, f"{u['name']} תייג/ה אותך" + (f" · {t['title'][:40]}" if t else ""), prev, tid)
-    if t:   # תגובה בנושא → כל המעורבים: פותח, אחראים, מי שכתב/תויג בו (+ הבעלים בנושא בלי אחראי)
+    if t:   # תגובה בנושא → רק המעורבים: פותח, מיועד ל, מי שכתב/תויג בו. בעלים שלא השתתפו
+        # מקבלים push רק על פתיחת נושא בלי "מיועד ל" — לא על כל התכתבות אחריו (14/10, אסי)
         others = {t["created_by"], *t["assignees"]} | db.topic_participants(tid)
-        if not t["assignees"]:
-            others |= _owner_ids()
         others = (others & active) - {u["id"]} - set(mentions)
         _chat_push(sorted(others), f"{u['name']} · {t['title'][:50]}", prev, tid)
     return {"ok": True, "message": _chat_out(m)}
@@ -2102,7 +2109,7 @@ class ChatReadIn(BaseModel):
 def chat_read(body: ChatReadIn):
     u = _chat_user()
     db.chat_read_set(u["id"], body.last_id, body.topic_id)
-    return {"ok": True, "unread": db.chat_unread(u["id"])}
+    return {"ok": True, "unread": _chat_unread(u)}
 
 
 def _chat_msg_for(u, mid):
@@ -2155,7 +2162,7 @@ def chat_wa_links():
     if u is None:
         return {"links": {}}
     vis = _chat_visible(u)
-    unread = db.chat_unread(u["id"], vis)["by_topic"]
+    unread = _chat_unread(u, vis)["by_topic"]
     links: dict = {}
     for t in db.topic_list("all", limit=500):
         ph = re.sub(r"\D", "", t.get("wa_phone") or "")

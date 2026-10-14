@@ -5583,7 +5583,7 @@ def topics_involving(user_id) -> set:
     return out
 
 
-def chat_unread(user_id, visible=None) -> dict:
+def chat_unread(user_id, visible=None, counted=None) -> dict:
     """הודעות של אחרים שטרם נקראו (30 יום אחרונים), פר-נושא + כמה מתייגות אותי.
     visible = קבוצת נושאים שמותר לו לראות (None = הכל, לבעלים). "כללי" (0) תמיד."""
     import time as _t
@@ -5601,6 +5601,10 @@ def chat_unread(user_id, visible=None) -> dict:
     for r in rows:
         k = str(int(r.get("topic_id") or 0))
         by_topic[k] = by_topic.get(k, 0) + 1
+    # המונה הכללי (באדג' "צוות") — רק "כללי" ונושאים שאני מעורב בהם; בעלים רואים הכל ברשימה
+    # (by_topic) אבל לא נספרים להם שיחות של אחרים (14/10, אסי).
+    if counted is not None:
+        rows = [r for r in rows if int(r.get("topic_id") or 0) == 0 or int(r["topic_id"]) in counted]
     return {"count": len(rows), "mentions": sum(1 for r in rows if int(user_id) in r["mentions"]),
             "by_topic": by_topic}
 

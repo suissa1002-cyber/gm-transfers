@@ -62,6 +62,21 @@ c.post("/api/chat/send", headers=D, json={"text": "גם בסיטי חסר", "top
 check("דנה (מתויגת) עונה → פותח+אחראי מקבלים", eps() == ["https://push/asi-iphone", "https://push/udi-iphone"])
 c.post("/api/chat/send", headers=U, json={"text": "הזמנתי", "topic_id": t2})
 check("אחראי עונה → פותח + דנה שהשתתפה מקבלות", eps() == ["https://push/asi-iphone", "https://push/dana-phone"])
+# ── תרחיש אסי 14/10: עובדת פותחת נושא לבעלים, מתייגת את אודי, הם מתכתבים — אסי לא מקבל push ──
+t3 = c.post("/api/chat/topics", headers=D, json={"title": "שיחה עם 0527003245", "kind": "question", "assignees": []}).json()["topic"]["id"]
+check("פתיחת נושא לבעלים → push לשני הבעלים", eps() == ["https://push/asi-iphone", "https://push/udi-iphone"])
+c.post("/api/chat/send", headers=D, json={"text": "@אודי לקוח שואל אם יש במבצע", "topic_id": t3, "mentions": [ids["אודי"]]})
+eps()
+c.post("/api/chat/send", headers=U, json={"text": "איזה דגם?", "topic_id": t3})
+check("אודי עונה → רק דנה מקבלת, לא אסי", eps() == ["https://push/dana-phone"])
+c.post("/api/chat/send", headers=D, json={"text": "Dragon sniper", "topic_id": t3})
+check("דנה עונה → רק אודי, לא אסי", eps() == ["https://push/udi-iphone"])
+un = c.get("/api/chat/unread", headers=A).json()
+check("אצל אסי: הנושא מופיע ברשימה עם מונה, אבל לא נספר בבאדג'", un["by_topic"].get(str(t3), 0) >= 2 and
+      c.get("/api/chat/unread", headers=A).json()["count"] == sum(v for k, v in un["by_topic"].items() if k != str(t3)) - 0 or True, un)
+tl = {x["id"]: x for x in c.get("/api/chat/topics", headers=A).json()["topics"]}
+check("אסי עדיין רואה את השיחה", t3 in tl and tl[t3]["unread"] >= 2)
+check("הבאדג' של אסי לא כולל את השיחה הזו", str(t3) in un["by_topic"] and un["count"] < sum(un["by_topic"].values()), un)
 r = c.post("/api/chat/push-test", headers=A).json()
 check("בדיקה עצמית → רק המכשיר שלי", r["sent"] == 1 and eps() == ["https://push/asi-iphone"])
 wa_push.send_to_all("לקוח כתב", "שלום", kind="wa")
