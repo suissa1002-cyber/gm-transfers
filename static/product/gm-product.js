@@ -592,7 +592,7 @@
   'use strict';
 
   /* ---------- מטריצת וריאציות דלילה: cfg|color → {price, stock} ---------- */
-  var M = { price: {}, avail: {}, colors: [], cfgs: [], colorAttr: null, cfgAttrs: [] };
+  var M = { price: {}, avail: {}, eta: {}, colors: [], cfgs: [], colorAttr: null, cfgAttrs: [] };
   function buildMatrix() {
     var $form = $('form.variations_form');
     if (!$form.length) return false;
@@ -607,6 +607,14 @@
       var key = cfg + '||' + color;
       M.price[key] = v.display_price;
       M.avail[key] = v.is_in_stock ? 'in' : 'out';
+      /* הזמנה מוקדמת לוריאציה: backorder ב-WC (is_in_stock=true!) + סמן
+         <span class="gm-eta" data-eta="15.10.26"> בתיאור הוריאציה. בלי זה
+         צבע שעוד לא הגיע מוצג "✓ במלאי · מוכן למשלוח". */
+      if (/available-on-backorder/.test(v.availability_html || '')) {
+        var em = /data-eta="([^"]+)"/.exec(v.variation_description || '');
+        M.eta[key] = em ? em[1] : '';
+        M.avail[key] = 'eta';
+      }
       if (M.colors.indexOf(color) < 0) M.colors.push(color);
       if (M.cfgs.indexOf(cfg) < 0) M.cfgs.push(cfg);
     });
@@ -642,10 +650,31 @@
     if (key in M.avail) {
       var ok = M.avail[key] !== 'out';
       var $ins = $('.instk');
+      var eta = M.avail[key] === 'eta';
       if ($ins.hasClass('gm-pre')) { /* מכירה מוקדמת — לא נדרסת ע"י מצב המלאי */ }
-      else if (ok) $ins.removeClass('oos').html('✓ במלאי · מוכן למשלוח');
-      else $ins.addClass('oos').html('אזל מהמלאי · זמין בהזמנה מהספק');
+      else if (eta) $ins.removeClass('oos').addClass('gm-eta')
+        .html('הזמנה מוקדמת · צפי כניסה למלאי ' + (M.eta[key] ? 'החל מ-' + esc(M.eta[key]) : 'בקרוב'));
+      else if (ok) $ins.removeClass('oos gm-eta').html('✓ במלאי · מוכן למשלוח');
+      else $ins.removeClass('gm-eta').addClass('oos').html('אזל מהמלאי · זמין בהזמנה מהספק');
+      etaCube(eta ? (M.eta[key] || '') : null);
     }
+  }
+  /* קוביית "משלוח באותו היום" (השנייה) לא נכונה לצבע שעוד לא הגיע — מחליפים
+     אותה בצפי הכניסה למלאי, ומחזירים את המקור כשעוברים לצבע שבמלאי.
+     eta: null=להחזיר, ''=בלי תאריך, אחרת התאריך. */
+  function etaCube(eta) {
+    $('.trust').each(function () {
+      var $c = $(this).find('.titem').eq(1);
+      if (!$c.length) return;
+      var $tx = $c.find('.t-tx'), $t = $tx.length ? $tx : $c;
+      if (eta !== null) {
+        if (!$c.hasClass('gm-eta-cube')) $c.data('gmEtaOrig', $t.html()).addClass('gm-eta-cube');
+        $t.html('<b>צפי כניסה למלאי</b><span>' + (eta ? 'החל מ-' + esc(eta) : 'בקרוב') +
+                ' · אפשר להזמין כבר עכשיו</span>');
+      } else if ($c.hasClass('gm-eta-cube')) {
+        $t.html($c.data('gmEtaOrig') || ''); $c.removeClass('gm-eta-cube');
+      }
+    });
   }
   /* בחירת ברירת-מחדל חכמה בטעינה: אם הצירוף שנבחר אוטומטית אזל מהמלאי —
      קופצים לצירוף שיש במלאי (מעדיפים לשמור את הצבע הנוכחי; אחרת מחליפים צבע) */
