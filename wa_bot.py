@@ -1105,12 +1105,21 @@ def _register_stock_watch(phone, sku, product=None, color=None):
 # בטבלה, לא דיפלוי. ניהול: /preorder
 # ══════════════════════════════════════════════════════════════════════════
 
+_PRE_CACHE = {"at": 0.0, "rows": []}
+
+
 def _preorder_campaigns():
+    """הקמפיינים הפעילים, במטמון 60ש — ‎_preorder_match רץ על *כל* הודעה נכנסת,
+    ואין טעם בשאילתה לכל הודעה על טבלה שמשתנה פעם בהשקה."""
+    import time as _t
+    if _t.time() - _PRE_CACHE["at"] < 60:
+        return _PRE_CACHE["rows"]
     try:
-        return db.preorder_campaigns_list(active_only=True)
+        _PRE_CACHE["rows"] = db.preorder_campaigns_list(active_only=True)
+        _PRE_CACHE["at"] = _t.time()
     except Exception as e:  # noqa: BLE001
         logger.warning("preorder campaigns load failed: %s", e)
-        return []
+    return _PRE_CACHE["rows"]
 
 
 def _preorder_match(text: str):
