@@ -4683,10 +4683,10 @@ async function loadAdmin(spinner){
 }
 
 // טאב בקונסולה → הפיצ'ר שהוא דורש (perms.py)
-const ADMIN_TAB_FEAT={transfers:'transfers',live:'transfers',rebalance:'transfers',plan:'transfers',reco:'transfers',
+const ADMIN_TAB_FEAT={transfers:'transfers',live:'stock',rebalance:'transfers',plan:'transfers',reco:'transfers',
   order:'transfers',removals:'transfers',wa:'whatsapp',wcorders:'orders',blender:'orders',zap:'zap',greencare:'services'};
 function adminTabOk(t){ return can(ADMIN_TAB_FEAT[t||'transfers']||'transfers'); }
-function adminFirstTab(){ return ['wcorders','transfers','wa','zap','greencare'].find(adminTabOk)||null; }
+function adminFirstTab(){ return ['wcorders','transfers','wa','live','zap','greencare'].find(adminTabOk)||null; }
 function adminTabsHTML(){
   const pc=S.planCount?` (${S.planCount})`:'';
   const oc=S.orderCount?` (${S.orderCount})`:'';
@@ -4694,8 +4694,8 @@ function adminTabsHTML(){
   const base=['rebalance','plan','reco','order','removals','live','wa','blender'].includes(S.adminTab)?'':'active';
   const T=can('transfers'), O=can('orders');
   return `<div class="tabs">
-    ${T?`<button class="${base}" onclick="setAdminTab('transfers')">${ico('pkg',15)} העברות</button>
-    <button class="${a('live')}" onclick="setAdminTab('live')">${ico('search',15)} מלאי חי</button>`:''}
+    ${T?`<button class="${base}" onclick="setAdminTab('transfers')">${ico('pkg',15)} העברות</button>`:''}
+    ${can('stock')?`<button class="${a('live')}" onclick="setAdminTab('live')">${ico('search',15)} מלאי חי</button>`:''}
     ${can('whatsapp')?`<button class="${a('wa')}" onclick="setAdminTab('wa')">${ico('chat',15)} וואטסאפ</button>`:''}
     ${O?`<button class="${a('wcorders')}" style="position:relative" onclick="setAdminTab('wcorders')">${ico('receipt',15)} הזמנות<span class="gm-obadge" style="display:${(S.newOrdersCount||0)>0?'':'none'}">${(S.newOrdersCount||0)>99?'99+':(S.newOrdersCount||0)}</span></button>
     <button class="${a('blender')}" onclick="setAdminTab('blender')">${ico('wallet',15)} blenderPay</button>`:''}
@@ -5704,7 +5704,7 @@ function waThreadHTML(){
       ${winChip}
       <span style="margin-inline-start:auto;display:flex;gap:6px;flex-wrap:wrap">
         <button class="btn-ghost wa-ico ${conv.star?'wa-star-on':''}" onclick="waToggleStar()" title="${conv.star?'הסר מעקב':'סמן למעקב'}">${ico('star',17,conv.star)}</button>
-        <button class="btn-ghost wa-ico ${S.waPanel&&S.waPanelMode==='stock'?'wa-human-on':''}" onclick="waToggleStock()" title="מלאי חי — חיפוש מוצר בלי לעזוב את השיחה">${ico('search')}</button>
+${can('stock')?`<button class="btn-ghost wa-ico ${S.waPanel&&S.waPanelMode==='stock'?'wa-human-on':''}" onclick="waToggleStock()" title="מלאי חי — חיפוש מוצר בלי לעזוב את השיחה">${ico('search')}</button>`:''}
         <button class="btn-ghost wa-ico" onclick="tcAskAbout(S.waPhone)" title="${tcWaLinksFor(S.waPhone).filter(t=>t.status==='open').length?'יש שיחת צוות פתוחה על הלקוח — המספר = כמה נושאים פתוחים. לחיצה פותחת נושא חדש':'פתח נושא צוות על השיחה הזו (צ\'אט פנימי)'}" style="position:relative">${ico('users')}${tcWaLinksFor(S.waPhone).filter(t=>t.status==='open').length?`<span class="wa-badge" style="background:#2563eb">${tcWaLinksFor(S.waPhone).filter(t=>t.status==='open').length}</span>`:''}</button>
         <button class="btn-ghost wa-ico" onclick="waTogglePanel()" title="פרטי פונה (הזמנות/תגיות/הערות)">${ico('info')}</button>
         <button class="btn-ghost wa-ico ${S.waBotHandoff?'wa-human-on':''}" onclick="waBotHandoff(${S.waBotHandoff?0:1})"

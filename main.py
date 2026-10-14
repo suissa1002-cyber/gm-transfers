@@ -120,7 +120,7 @@ async def _user_auth_mw(request: Request, call_next):
                 "detail": "המכשיר הזה לא מאושר לכניסה. פנה לאסי או לאודי.", "code": "user_device"})
     need = _perms.feature_for_path(request.url.path)
     if u["role"] != "owner" and need:
-        if need == "owner" or need not in (u.get("perms") or []):
+        if need == "owner" or need not in _perms.clean_perms(u.get("perms") or []):
             label = next((f[1] for f in _perms.FEATURES if f[0] == need), None)
             msg = f"אין לך הרשאה ל{label}" if label else "המסך הזה שמור לבעלים בלבד"
             return JSONResponse(status_code=403, content={

@@ -22,14 +22,16 @@ FEATURES = [
     ("crm", "לקוחות", "כרטיסי לקוח והיסטוריה", ["/api/admin/crm"]),
     ("calls", "שיחות טלפון", "מרכזיה ותיעוד שיחות", ["/api/admin/pbx"]),
     ("transfers", "העברות ומלאי", "תוכנית העברות, מלאי חי, הורדות מלאי וקטלוג", [
-        "/api/admin/plan", "/api/admin/plan-fulfilled", "/api/admin/pos",
-        "/api/admin/live-stock", "/api/admin/live-search", "/api/admin/serial-index",
+        "/api/admin/plan", "/api/admin/plan-fulfilled", "/api/admin/pos", "/api/admin/serial-index",
         "/api/admin/serial-sync", "/api/admin/removals", "/api/admin/removals-backfill",
         "/api/admin/removals-ingest", "/api/admin/removals-status", "/api/admin/rebalance",
         "/api/admin/rebalance-scan", "/api/admin/misroute", "/api/admin/numeric-receivers",
-        "/api/admin/relabel-receiver", "/api/admin/sold-reconcile", "/api/admin/stock-watch",
+        "/api/admin/relabel-receiver", "/api/admin/sold-reconcile",
         "/api/admin/catalog", "/api/admin/catalog-refresh", "/api/admin/recommendations",
         "/api/admin/overview",
+    ]),
+    ("stock", "מלאי חי", "חיפוש מוצר ומלאי בכל הסניפים (צפייה), כולל בתוך שיחת וואטסאפ ורשימת המתנה למלאי", [
+        "/api/admin/live-stock", "/api/admin/live-search", "/api/admin/stock-watch",
     ]),
     ("codes", "קודים דיגיטליים", "צפייה בקודים שהונפקו (Stellr)", ["/api/admin/stellr"]),
     ("coupons", "קופונים", "רשימת קופונים ומימושים", ["/api/admin/coupons"]),
@@ -89,9 +91,15 @@ def feature_for_path(path: str):
     return None
 
 
+# הרשאה שכוללת אחרת (14/10: "מלאי חי" הופרד מ"העברות ומלאי" — מי שהיה לו העברות ממשיך לראות מלאי)
+IMPLIES = {"transfers": {"stock"}}
+
+
 def clean_perms(perms) -> list:
-    """רק מפתחות מוכרים; פעולה רגישה בלי הפיצ'ר שלה — נזרקת."""
+    """רק מפתחות מוכרים (+ מה שנכלל בהם); פעולה רגישה בלי הפיצ'ר שלה — נזרקת."""
     s = {str(x) for x in (perms or []) if str(x) in ALL_KEYS}
+    for k in list(s):
+        s |= IMPLIES.get(k, set())
     parent = {k: f for k, _, f in SENSITIVE}
     return sorted(k for k in s if k in FEATURE_KEYS or parent.get(k) in s)
 
