@@ -2761,12 +2761,23 @@ function gdItemPaint(){
       <div class="gd-sec">עדכונים (${(it.updates||[]).length}) <span class="muted" style="font-weight:400">— הוראות לסוכנים: קטגוריות, תכונות, אחריות</span></div>
       <div class="tc-comp focus"><textarea id="gdUpd" rows="3" placeholder="כתוב עדכון לגלי/יובל… (נשמר גם ב-Monday)"></textarea>
         <div class="tc-ctools" style="display:flex"><button class="btn-primary tc-send" onclick="gdPostUpdate('${mid}')">עדכן</button></div></div>
-      ${(it.updates||[]).map(u=>`<div class="tc-post"><div class="tc-phead">${tcAv(gdH(u.author),u.author,30)}<div class="tc-pwho"><b>${escW(u.author||'?')}</b><span class="muted">${u.created_at?new Date(u.created_at).toLocaleString('he-IL',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):''}</span></div></div>
-        <div class="tc-pbody"><div class="tc-txt">${tcText(u.body||'')}</div>
+      ${(it.updates||[]).map(u=>{ const mine=u.gd&&S.user&&u.author===S.user.name; const editing=GD.editUpd===u.monday_id;
+        const au=TC.users.find(x=>x.name===u.author);   // משתמש GreenOS → אותו צבע/נקודה כמו בצ'אט
+        return `<div class="tc-post"><div class="tc-phead">${au?tcAv(au.id,u.author,30,true):tcAv(gdH(u.author),u.author,30)}<div class="tc-pwho"><b>${escW(u.author||'?')}</b><span class="muted">${u.created_at?new Date(u.created_at).toLocaleString('he-IL',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):''}</span></div>
+          ${mine&&!editing?`<span class="tc-pmenu" style="opacity:1"><a href="#" onclick="GD.editUpd='${escW(u.monday_id)}';gdItemPaint();return false" title="עריכה">${ico('pencil',14)}</a></span>`:''}</div>
+        <div class="tc-pbody">${editing?`<textarea class="tc-edit" id="gdUpdEdit">${escW(u.body||'')}</textarea>
+          <div class="tc-editbar"><button class="btn-primary" onclick="gdSaveUpd('${mid}','${escW(u.monday_id)}')">שמירה</button><a href="#" onclick="GD.editUpd=null;gdItemPaint();return false">ביטול</a></div>`
+          :`<div class="tc-txt">${tcText(u.body||'')}</div>`}
         ${(u.assets||[]).length?`<a class="tc-file" href="${escW(GD.itemUrl||'#')}" target="_blank">${icoI('clip',13)}${u.assets.length} קבצים מצורפים — פתח ב-Monday</a>`:''}</div>
         ${(u.replies||[]).length?`<div class="tc-replies">${u.replies.map(r=>`<div class="tc-reply">${tcAv(gdH(r.author),r.author,24)}<div class="tc-rmain"><div class="tc-rhead"><b>${escW(r.author)}</b><span class="muted">${r.created_at?new Date(r.created_at).toLocaleDateString('he-IL'):''}</span></div><div class="tc-rbody">${tcText(r.body||'')}</div></div></div>`).join('')}</div>`:''}
-      </div>`).join('')||'<div class="tc-empty">אין עדכונים</div>'}
+      </div>`; }).join('')||'<div class="tc-empty">אין עדכונים</div>'}
     </div>`;
+}
+async function gdSaveUpd(mid,uid){
+  const t=(document.getElementById('gdUpdEdit')||{}).value||''; if(!t.trim()) return;
+  try{ await api('/api/greenday/products/'+mid+'/update/'+uid,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:t})},60000);
+    GD.editUpd=null; toast('העדכון נערך (גם ב-Monday)',true); gdItem(mid,true); }
+  catch(e){ toast(e.detail||'העריכה נכשלה',false); }
 }
 function gdStor(mid){ const v=[...document.querySelectorAll('#gdItem .gd-chips input:checked')].map(x=>x.value); gdSet(mid,'storages',v); }
 async function gdPostUpdate(mid){

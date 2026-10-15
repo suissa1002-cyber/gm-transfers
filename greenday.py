@@ -283,11 +283,34 @@ def item_url(monday_id: str) -> str:
             else f"https://monday.com/boards/{BOARD_ID}/pulses/{monday_id}")
 
 
+import re as _re
+_SIG = _re.compile(r"^\s*(.{1,40}?) · GreenDay\s*\n?")
+
+
+def split_author(body: str, monday_author: str):
+    """עדכון שנכתב ב-GreenDay נרשם במאנדיי בשם בעל הטוקן (אסי) — הכותב האמיתי בשורה הראשונה
+    "אודי · GreenDay". מחזיר (כותב לתצוגה, גוף בלי שורת החתימה, נכתב ב-GreenDay?)."""
+    m = _SIG.match(body or "")
+    if m:
+        rest = (body or "")[m.end():]
+        return m.group(1).strip(), _re.sub(r"\n{3,}", "\n\n", rest).strip(), True
+    return monday_author or "", _re.sub(r"\n{3,}", "\n\n", body or "").strip(), False
+
+
+def _update_body(author: str, text: str) -> str:
+    import html as _h
+    return (f'<div dir="rtl"><b>{_h.escape(author)} · GreenDay</b><br>'
+            + _h.escape(text).replace("\n", "<br>") + "</div>")
+
+
+def edit_update(update_id: str, author: str, text: str):
+    gql("mutation ($i: ID!, $b: String!) { edit_update(id: $i, body: $b) { id } }",
+        {"i": str(update_id), "b": _update_body(author, text)})
+
+
 def create_update(monday_id: str, author: str, text: str) -> str:
     """עדכון (הוראות לסוכנים) — נרשם במאנדיי בשם בעל הטוקן, לכן מוסיפים מי כתב בפועל."""
-    import html as _h
-    body = (f'<div dir="rtl"><b>{_h.escape(author)} · GreenDay</b><br>'
-            + _h.escape(text).replace("\n", "<br>") + "</div>")
+    body = _update_body(author, text)
     d = gql("mutation ($i: ID!, $b: String!) { create_update(item_id: $i, body: $b) { id created_at } }",
             {"i": str(monday_id), "b": body})
     return str(d["create_update"]["id"])

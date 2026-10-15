@@ -15,7 +15,7 @@ def fake_gql(q, v=None, timeout=90):
     calls.append((q.split("(")[0].split("{")[0].strip() + " " + q[q.find("{")+1:q.find("(", q.find("{")+1)].strip(), v))
     if "create_item" in q: return {"create_item": {"id": "222"}}
     if "create_update" in q: return {"create_update": {"id": "u1", "created_at": "x"}}
-    if "items(ids" in q and "updates" in q: return {"items": [{"id": i, "updates": [{"id": "u1", "text_body": "הוראות", "created_at": "2026-10-15T10:00:00Z", "creator": {"name": "Asi"}, "assets": [], "replies": []}]} for i in v["ids"]]}
+    if "items(ids" in q and "updates" in q: return {"items": [{"id": i, "updates": [{"id": "u1", "text_body": "asi · GreenDay\nהוראות\n\n\n\nגיימינג", "created_at": "2026-10-15T10:00:00Z", "creator": {"name": "Asi"}, "assets": [], "replies": []}]} for i in v["ids"]]}
     if "items(ids" in q: return {"items": [dict(ITEM, id=v["ids"][0])]}
     if "groups(ids" in q: return {"boards": [{"groups": [{"items_page": {"cursor": None, "items": [ITEM]}}]}]}
     return {"x": {"id": "1"}}
@@ -26,7 +26,7 @@ def check(label, cond, extra=""):
     print(f"{'✅' if cond else '❌'} {label}" + (f"  [{extra}]" if not cond else "")); cond or fails.append(label)
 ADM = {"X-Admin-Key": "legacy-secret"}
 db.device_register("dev-b-0000000000000001", "קופה", "ua", "1.2.3.4", "1", "approved")
-for un, role, pr in [("asi", "owner", []), ("dana", "user", ["orders", "transfers"])]:
+for un, role, pr in [("asi", "owner", []), ("udi", "owner", []), ("dana", "user", ["orders", "transfers"])]:
     c.post("/api/admin/users", headers=ADM, json={"username": un, "name": un, "password": "pass123", "role": role, "perms": pr})
 def login(un):
     t = c.post("/api/auth/login", json={"username": un, "password": "pass123"}, headers={"X-Device-Token": "dev-b-0000000000000001"}).json()["token"]
@@ -75,6 +75,17 @@ r = c.post("/api/greenday/bulk", headers=A, json={"ids": ["111", "112"], "action
 check("שינוי סטטוס קבוצתי", r["done"] == 2 and sum(1 for x in calls if x[1] and "v" in x[1] and json.loads(x[1]["v"]) == {"label": "הושלם"}) == 2, r)
 check("⛔ קבוצתי: סטטוס לא מוכר נדחה", c.post("/api/greenday/bulk", headers=A, json={"ids": ["111"], "action": "status", "value": "x"}).status_code == 400)
 check("⛔ קבוצתי: עובדת נחסמת", c.post("/api/greenday/bulk", headers=D, json={"ids": ["111"], "action": "grp", "value": "topics"}).status_code == 403)
+
+# ── כותב אמיתי + עריכת עדכון ──
+pr = c.get("/api/greenday/products/111", headers=A).json()["product"]
+u0 = pr["updates"][0]
+check("עדכון מ-GreenDay מוצג בשם הכותב (לא בעל הטוקן) ובלי שורת החתימה", u0["author"] == "asi" and u0["gd"] and u0["body"] == "הוראות\n\nגיימינג", u0)
+U = login("udi")
+check("⛔ אודי לא יכול לערוך עדכון של אסי", c.post("/api/greenday/products/111/update/u1", headers=U, json={"text": "x"}).status_code == 403)
+calls.clear()
+r = c.post("/api/greenday/products/111/update/u1", headers=A, json={"text": "תיקון: גיימינג › עכברים"})
+eb = next((x[1]["b"] for x in calls if x[1] and "b" in x[1] and "i" in x[1]), "")
+check("אסי עורך את העדכון שלו → edit_update עם החתימה", r.status_code == 200 and "asi · GreenDay" in eb and "עכברים" in eb, eb)
 
 os.unlink(_tmp)
 assert not fails, fails

@@ -2313,6 +2313,10 @@ def gd_product(mid: str):
     if not p:
         raise HTTPException(404, "המוצר לא נמצא")
     import greenday as gd
+    for u in p.get("updates") or []:   # כותב אמיתי (אודי) במקום בעל הטוקן (Asi)
+        u["author"], u["body"], u["gd"] = gd.split_author(u.get("body") or "", u.get("author") or "")
+        for r in u.get("replies") or []:
+            r["author"], r["body"], _x = gd.split_author(r.get("body") or "", r.get("author") or "")
     return {"product": p, "monday_url": gd.item_url(mid)}
 
 
@@ -2432,6 +2436,29 @@ def gd_bulk(body: GdBulk):
     except Exception as e:  # noqa: BLE001
         logger.warning("greenday bulk refresh failed: %s", e)
     return {"ok": not failed, "done": len(done), "failed": failed}
+
+
+@app.post("/api/greenday/products/{mid}/update/{uid}")
+def gd_product_update_edit(mid: str, uid: str, body: GdUpdateIn):
+    """עריכת עדכון — רק עדכון שנכתב ב-GreenDay ע"י אותו משתמש. נשמר גם ב-Monday (edit_update)."""
+    u = _gd_owner()
+    import greenday as gd
+    text = (body.text or "").strip()
+    if not text:
+        raise HTTPException(400, "עדכון ריק")
+    p = db.gd_product_get(mid)
+    up = next((x for x in (p or {}).get("updates") or [] if str(x["monday_id"]) == str(uid)), None)
+    if not up:
+        raise HTTPException(404, "העדכון לא נמצא")
+    author, _b, via_gd = gd.split_author(up.get("body") or "", up.get("author") or "")
+    if not via_gd or author != u["name"]:
+        raise HTTPException(403, "אפשר לערוך רק עדכון שכתבת ב-GreenDay")
+    try:
+        gd.edit_update(uid, u["name"], text[:8000])
+        gd.refresh_item(mid)
+    except RuntimeError as e:
+        raise HTTPException(502, f"Monday: {e}")
+    return {"ok": True}
 
 
 @app.post("/api/greenday/sync")
