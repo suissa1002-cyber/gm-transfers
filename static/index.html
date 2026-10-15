@@ -882,6 +882,12 @@
   .gd-more{display:block;text-align:center;padding:9px;color:#0073ea;text-decoration:none;font-size:13px}
   .gd-pill{display:inline-block;min-width:118px;padding:6px 10px;color:#fff;font-weight:600;font-size:12.5px;border-radius:4px;cursor:pointer;text-align:center}
   .gd-pill.sm{min-width:110px;padding:5px 8px;font-size:12px}
+  .gd-c-ck{width:34px;min-width:34px;padding:0 4px!important} .gd-c-ck input{width:16px;height:16px;cursor:pointer;accent-color:#0073ea}
+  .gd-table tr.sel td{background:rgba(0,115,234,.08)}
+  .gd-bulk{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);z-index:40;display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+    background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.2);padding:10px 14px;max-width:calc(100vw - 24px)}
+  .gd-bulk b{color:#0073ea} .gd-bulk a{color:var(--muted);font-size:13px}
+  .gd-arch{display:inline-flex;align-items:center;padding:6px 10px;border-radius:8px;cursor:pointer;font-size:13px}
   .gd-item{width:620px;z-index:46}
   .gd-iname{flex:1;min-width:0;font-size:18px;font-weight:700;border:1px solid transparent;border-radius:6px;padding:4px 6px;background:transparent;color:var(--txt);font-family:inherit}
   .gd-iname:hover,.gd-iname:focus{border-color:var(--line);outline:0;background:var(--card)}
@@ -2610,7 +2616,7 @@ async function tcPushBind(){
 
 // ── 🟩 GreenDay · לוח מוצרים (בעלים בלבד) — 15/10/2026 ──
 // שלב 1: חלון ל-Monday. כל עריכה נכתבת מיד ל-Monday (שם גלי/יובל/QA עדיין עובדים) ונמשכת חזרה.
-const GD={data:null, q:'', st:'', open:{topics:true,group_mm3y9b6z:true}, more:{}, item:null, busy:false};
+const GD={data:null, q:'', st:'', open:{topics:true,group_mm3y9b6z:true}, more:{}, item:null, busy:false, sel:new Set()};
 function gdOpen(){ toggleDrawer(false); if(TC.open) tcToggle(false);
   if(!S.user||S.user.role!=='owner'){ toast('לוח המוצרים פתוח לבעלים בלבד',false); return; }
   S.view='greenday'; render(); }
@@ -2643,9 +2649,11 @@ function gdRender(){
       <div class="gd-ghead" onclick="GD.open['${g.id}']=!GD.open['${g.id}'];gdRender()">
         <span class="tc-gcar ${open?'op':''}">${ico('back',13)}</span><b>${escW(g.title)}</b><span class="muted">${rows.length} מוצרים</span></div>
       ${open?`<div class="gd-tablewrap"><table class="gd-table"><thead><tr>
+          <th class="gd-c-ck"><input type="checkbox" ${rows.length&&rows.slice(0,lim).every(p=>GD.sel.has(p.monday_id))?'checked':''} onclick="event.stopPropagation();gdSelAll(this.checked,'${g.id}')" title="בחר את כל הקבוצה"></th>
           <th class="gd-c-name">מוצר</th><th>סטטוס</th><th>מחיר</th><th>מק״ט קופה</th><th>צבעים</th><th>נפחים</th>
           <th>ליסט ID</th><th>תמונה</th><th class="gd-c-notes">הערות</th><th>עדכונים</th><th>נוצר</th></tr></thead><tbody>
-        ${rows.slice(0,lim).map(p=>`<tr onclick="gdItem('${escW(p.monday_id)}')">
+        ${rows.slice(0,lim).map(p=>`<tr class="${GD.sel.has(p.monday_id)?'sel':''}" onclick="gdItem('${escW(p.monday_id)}')">
+          <td class="gd-c-ck" onclick="event.stopPropagation()"><input type="checkbox" ${GD.sel.has(p.monday_id)?'checked':''} onchange="gdSel('${escW(p.monday_id)}',this.checked)"></td>
           <td class="gd-c-name"><span>${escW(p.name)}</span>${p.n_subs?`<span class="gd-subs">${p.n_subs} תת-פריטים</span>`:''}</td>
           <td>${gdPill(p,true)}</td>
           <td>${p.price!=null&&p.price!==''?'₪'+Number(p.price).toLocaleString('he-IL'):''}</td>
@@ -2657,7 +2665,7 @@ function gdRender(){
           <td class="gd-c-notes">${escW((p.notes||'').slice(0,80))}</td>
           <td>${p.n_updates?`<span class="tc-cnt">${ico('chat',13)}${p.n_updates}</span>`:''}</td>
           <td class="muted">${p.monday_created?new Date(p.monday_created).toLocaleDateString('he-IL'):''}</td>
-        </tr>`).join('')||`<tr><td colspan="11" class="muted" style="text-align:center;padding:14px">אין מוצרים</td></tr>`}
+        </tr>`).join('')||`<tr><td colspan="12" class="muted" style="text-align:center;padding:14px">אין מוצרים</td></tr>`}
         </tbody></table>${rows.length>lim?`<a href="#" class="gd-more" onclick="GD.more['${g.id}']=${lim+100};gdRender();return false">הצג עוד (${rows.length-lim})</a>`:''}</div>`:''}
     </section>`;
   }).join('');
@@ -2671,8 +2679,37 @@ function gdRender(){
     </div>
     <div class="gd-note">${icoI('info',14)}שלב 1: כל שינוי כאן נכתב מיד גם ל-Monday — גלי, יובל ו-QA ממשיכים לעבוד משם כרגיל.</div>
     ${groups}
-  </div>`;
+  </div>${gdBulkBar()}`;
   if(qf){ const i=document.getElementById('gdSearch'); i.focus(); i.selectionStart=i.selectionEnd=i.value.length; }
+}
+// ── בחירה מרובה + פעולות קבוצתיות ──
+function gdSel(mid,on){ if(on) GD.sel.add(mid); else GD.sel.delete(mid); gdRender(); }
+function gdSelAll(on,gid){
+  const q=GD.q.trim().toLowerCase();
+  const match=p=>(!GD.st||p.status===GD.st)&&(!q||[p.name,p.pos_sku,p.wc_id,p.colors,p.notes].join(' ').toLowerCase().includes(q));
+  GD.data.products.filter(p=>p.grp===gid&&match(p)).slice(0,GD.more[gid]||50).forEach(p=>on?GD.sel.add(p.monday_id):GD.sel.delete(p.monday_id));
+  gdRender();
+}
+function gdBulkBar(){
+  if(!GD.sel.size) return '';
+  const D=GD.data, arch='group_mkzqzksn';
+  return `<div class="gd-bulk">
+    <b>נבחרו ${GD.sel.size}</b>
+    <select class="gd-sel" onchange="if(this.value)gdBulk('grp',this.value);this.value=''"><option value="">העבר לקבוצה…</option>${D.groups.map(g=>`<option value="${g.id}">${escW(g.title)}</option>`).join('')}</select>
+    <select class="gd-sel" onchange="if(this.value)gdBulk('status',this.value);this.value=''"><option value="">שנה סטטוס…</option>${D.statuses.map(s=>`<option>${escW(s.label)}</option>`).join('')}</select>
+    <button class="btn-ghost gd-arch" onclick="gdBulk('grp','${arch}')">${icoI('archive',14)}העבר לארכיון</button>
+    <a href="#" onclick="GD.sel.clear();gdRender();return false">נקה בחירה</a>
+  </div>`;
+}
+async function gdBulk(action,value){
+  const ids=[...GD.sel]; const D=GD.data;
+  const lbl=action==='grp'?'להעביר ל"'+((D.groups.find(g=>g.id===value)||{}).title||'')+'"':'לשנות סטטוס ל"'+value+'"';
+  if(!confirm(`${lbl} — ${ids.length} מוצרים?\nהשינוי נכתב גם ב-Monday.`)) return;
+  showLoading(`מעדכן ${ids.length} מוצרים (גם ב-Monday)…`);
+  try{ const r=await api('/api/greenday/bulk',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids,action,value})},300000);
+    hideLoading(); GD.sel.clear(); await gdLoad();
+    toast(r.failed&&r.failed.length?`עודכנו ${r.done}, נכשלו ${r.failed.length}`:`עודכנו ${r.done} מוצרים`, !(r.failed&&r.failed.length));
+  }catch(e){ hideLoading(); toast(e.detail||'הפעולה נכשלה',false); }
 }
 async function gdSyncNow(){
   toast('מסנכרן מ-Monday…',true);

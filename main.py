@@ -2397,6 +2397,43 @@ def gd_product_update(mid: str, body: GdUpdateIn):
     return {"ok": True, "product": db.gd_product_get(mid)}
 
 
+class GdBulk(BaseModel):
+    ids: list
+    action: str          # grp | status
+    value: str
+
+
+@app.post("/api/greenday/bulk")
+def gd_bulk(body: GdBulk):
+    """פעולה על כמה מוצרים (העברת קבוצה / ארכיון / סטטוס) — כל אחד נכתב ל-Monday."""
+    _gd_owner()
+    import greenday as gd
+    ids = [str(x) for x in (body.ids or [])][:200]
+    if not ids:
+        raise HTTPException(400, "לא נבחרו מוצרים")
+    if body.action == "grp" and body.value not in gd.GROUP_IDS:
+        raise HTTPException(400, "קבוצה לא מוכרת")
+    if body.action == "status" and body.value not in gd.STATUS_LABELS:
+        raise HTTPException(400, "סטטוס לא מוכר")
+    if body.action not in ("grp", "status"):
+        raise HTTPException(400, "פעולה לא מוכרת")
+    done, failed = [], []
+    for mid in ids:
+        try:
+            if body.action == "grp":
+                gd.move_group(mid, body.value)
+            else:
+                gd.set_field(mid, "status", body.value)
+            done.append(mid)
+        except Exception as e:  # noqa: BLE001
+            failed.append({"id": mid, "error": str(e)[:150]})
+    try:
+        gd.refresh_items(done)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("greenday bulk refresh failed: %s", e)
+    return {"ok": not failed, "done": len(done), "failed": failed}
+
+
 @app.post("/api/greenday/sync")
 def gd_sync_now(full: int = 0):
     _gd_owner()

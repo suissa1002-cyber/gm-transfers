@@ -293,6 +293,15 @@ def create_update(monday_id: str, author: str, text: str) -> str:
     return str(d["create_update"]["id"])
 
 
+def refresh_items(monday_ids: list):
+    """רענון כמה פריטים בקריאה אחת (בלי עדכונים) — אחרי פעולה קבוצתית."""
+    ids = [str(x) for x in monday_ids]
+    for i in range(0, len(ids), 50):
+        d = gql("query ($ids: [ID!]) { items(ids: $ids) { %s } }" % _ITEM_FIELDS, {"ids": ids[i:i + 50]})
+        for it in d["items"]:
+            db.gd_product_upsert(_parse_item(it))
+
+
 def refresh_item(monday_id: str):
     """אחרי כתיבה — מושכים את הפריט מחדש מ-Monday כדי שה-DB ישקף בדיוק את מה שנשמר שם."""
     d = gql("query ($ids: [ID!]) { items(ids: $ids) { %s } }" % _ITEM_FIELDS, {"ids": [str(monday_id)]})

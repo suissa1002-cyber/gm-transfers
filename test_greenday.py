@@ -65,6 +65,17 @@ calls.clear()
 r = c.post("/api/greenday/products/111/update", headers=A, json={"text": "<script>x</script> שורה\nשנייה"})
 body = next((x[1]["b"] for x in calls if x[1] and "b" in x[1]), "")
 check("עדכון: HTML מנוטרל + שורות", "&lt;script&gt;" in body and "<br>" in body, body)
+# ── פעולות קבוצתיות ──
+calls.clear()
+r = c.post("/api/greenday/bulk", headers=A, json={"ids": ["111", "112", "113"], "action": "grp", "value": "group_mkzqzksn"}).json()
+moves = [x for x in calls if x[1] and x[1].get("g") == "group_mkzqzksn"]
+check("העברה קבוצתית לארכיון → move לכל אחד", r["done"] == 3 and len(moves) == 3, r)
+calls.clear()
+r = c.post("/api/greenday/bulk", headers=A, json={"ids": ["111", "112"], "action": "status", "value": "הושלם"}).json()
+check("שינוי סטטוס קבוצתי", r["done"] == 2 and sum(1 for x in calls if x[1] and "v" in x[1] and json.loads(x[1]["v"]) == {"label": "הושלם"}) == 2, r)
+check("⛔ קבוצתי: סטטוס לא מוכר נדחה", c.post("/api/greenday/bulk", headers=A, json={"ids": ["111"], "action": "status", "value": "x"}).status_code == 400)
+check("⛔ קבוצתי: עובדת נחסמת", c.post("/api/greenday/bulk", headers=D, json={"ids": ["111"], "action": "grp", "value": "topics"}).status_code == 403)
+
 os.unlink(_tmp)
 assert not fails, fails
 print("\n✅ כל בדיקות GreenDay עברו")
