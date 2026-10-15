@@ -2634,6 +2634,9 @@ function gdStatusMenu(el,mid){
   el.parentNode.style.position='relative'; el.insertAdjacentElement('afterend',m);
   setTimeout(()=>document.addEventListener('click',function h(){ m.remove(); document.removeEventListener('click',h); }),0);
 }
+// תמונות האתר נחסמות ב-Cloudflare כשנפתחות מדומיין אחר (hotlink, Error 1011) → דרך Photon (i0.wp.com), כמו בשאר המערכת
+function gdImg(u,w){ u=String(u||''); const m=u.match(/^https?:\/\/(?:www\.)?greenmobile\.co\.il\/(.+)$/i);
+  return m?('https://i0.wp.com/greenmobile.co.il/'+m[1]+(w?'?w='+w:'')):u; }
 function gdH(n){ let h=0; for(const ch of String(n||'')) h=(h*31+ch.charCodeAt(0))%997; return h+1000; }
 function gdAgo(ts){ if(!ts) return 'עוד לא'; return tcRel(ts); }
 function gdRender(){
@@ -2661,7 +2664,7 @@ function gdRender(){
           <td>${escW(p.colors||'')}</td>
           <td>${escW((p.storages||[]).join(', '))}</td>
           <td>${p.wc_id&&/^\d+$/.test(p.wc_id)?`<a href="https://greenmobile.co.il/wp-admin/post.php?post=${escW(p.wc_id)}&action=edit" target="_blank" onclick="event.stopPropagation()">${escW(p.wc_id)}</a>`:escW(p.wc_id||'')}</td>
-          <td>${p.image_link?`<a href="${escW(p.image_link)}" target="_blank" onclick="event.stopPropagation()" title="התמונה המאוחדת">${ico('image',15)}</a>`:''}</td>
+          <td>${p.image_link?`<a href="${escW(gdImg(p.image_link))}" target="_blank" rel="noreferrer" onclick="event.stopPropagation()" title="התמונה המאוחדת">${ico('image',15)}</a>`:''}</td>
           <td class="gd-c-notes">${escW((p.notes||'').slice(0,80))}</td>
           <td>${p.n_updates?`<span class="tc-cnt">${ico('chat',13)}${p.n_updates}</span>`:''}</td>
           <td class="muted">${p.monday_created?new Date(p.monday_created).toLocaleDateString('he-IL'):''}</td>
@@ -2753,7 +2756,7 @@ function gdItemPaint(){
         ${gdField('ליסט ID (מוצר באתר)',inp('wc_id',it.wc_id,'ltr'))}
         ${gdField('נפחים זמינים',`<div class="gd-chips">${D.storages.map(s=>`<label><input type="checkbox" ${(it.storages||[]).includes(s)?'checked':''} onchange="gdStor('${mid}')" value="${s}"><span>${s}</span></label>`).join('')}</div>`,1)}
         ${gdField('סוג ליסט',`<select class="gd-sel" onchange="gdSet('${mid}','list_type',this.value)"><option value="">—</option>${D.list_types.map(l=>`<option ${it.list_type===l?'selected':''}>${escW(l)}</option>`).join('')}</select>`)}
-        ${gdField('קישור מומלץ לתמונה (התמונה המאוחדת של יובל)',inp('image_link',it.image_link,'ltr')+(it.image_link?`<a href="${escW(it.image_link)}" target="_blank"><img class="gd-thumb" src="${escW(it.image_link)}" loading="lazy"></a>`:''),1)}
+        ${gdField('קישור מומלץ לתמונה (התמונה המאוחדת של יובל)',inp('image_link',it.image_link,'ltr')+(it.image_link?`<a href="${escW(gdImg(it.image_link))}" target="_blank" rel="noreferrer"><img class="gd-thumb" src="${escW(gdImg(it.image_link,600))}" loading="lazy" referrerpolicy="no-referrer"></a>`:''),1)}
         ${gdField('הערות',`<textarea rows="3" onchange="gdSet('${mid}','notes',this.value)">${escW(it.notes||'')}</textarea>`,1)}
       </div>
       ${(it.subs||[]).length?`<div class="gd-sec">תתי-פריטים (${it.subs.length})</div><div class="gd-tablewrap"><table class="gd-table"><thead><tr><th>שם</th><th>צבעים</th><th>מחיר</th><th>אחריות</th><th>סטטוס</th><th>הערות</th></tr></thead><tbody>
