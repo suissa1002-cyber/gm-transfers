@@ -2675,9 +2675,9 @@ function gdRender(){
       <label class="tc-search gd-search">${ico('search',14)}<input id="gdSearch" placeholder="חיפוש: שם, מק״ט, ליסט ID, הערות" value="${escW(GD.q)}" oninput="GD.q=this.value;gdRender()"></label>
       <select class="gd-sel" onchange="GD.st=this.value;gdRender()"><option value="">כל הסטטוסים</option>${D.statuses.map(s=>`<option ${GD.st===s.label?'selected':''}>${escW(s.label)}</option>`).join('')}</select>
       <button class="btn-primary gd-new" onclick="gdNewModal()">+ מוצר חדש</button>
-      <span class="gd-sync muted">סונכרן ${gdAgo(D.synced_at)} <a href="#" onclick="gdSyncNow();return false" title="סנכרון עכשיו מ-Monday">${ico('refresh',14)}</a></span>
+      ${D.mode==='primary'?`<span class="gd-sync muted"><a href="#" onclick="gdLoad();return false" title="רענון">${ico('refresh',14)}</a></span>`:`<span class="gd-sync muted">סונכרן ${gdAgo(D.synced_at)} <a href="#" onclick="gdSyncNow();return false" title="סנכרון עכשיו מ-Monday">${ico('refresh',14)}</a></span>`}
     </div>
-    <div class="gd-note">${icoI('info',14)}שלב 1: כל שינוי כאן נכתב מיד גם ל-Monday — גלי, יובל ו-QA ממשיכים לעבוד משם כרגיל.</div>
+    <div class="gd-note">${icoI('info',14)}${D.mode==='primary'?'GreenDay הוא המקור: גלי, יובל ו-QA קוראים וכותבים ישירות מכאן. Monday מוקפא כגיבוי.':'שלב 1: כל שינוי כאן נכתב מיד גם ל-Monday — גלי, יובל ו-QA ממשיכים לעבוד משם כרגיל.'}</div>
     ${groups}
   </div>${gdBulkBar()}`;
   if(qf){ const i=document.getElementById('gdSearch'); i.focus(); i.selectionStart=i.selectionEnd=i.value.length; }
@@ -2718,7 +2718,7 @@ async function gdSyncNow(){
 }
 async function gdSet(mid,field,value,silent){
   try{ await api('/api/greenday/products/'+mid,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({field,value})},60000);
-    if(!silent) toast('נשמר (גם ב-Monday)',true);
+    if(!silent) toast(GD.data&&GD.data.mode==='primary'?'נשמר':'נשמר (גם ב-Monday)',true);
     await gdLoad(); if(GD.item&&GD.item.monday_id===mid) gdItem(mid,true);
   }catch(e){ toast(e.detail||'השמירה נכשלה',false); }
 }
@@ -2743,7 +2743,7 @@ function gdItemPaint(){
         <button class="dr-x" onclick="gdItemClose()">✕</button></div>
       <div class="tc-tmeta2">${gdPill(it)}
         <select class="gd-sel" onchange="gdSet('${mid}','grp',this.value)">${D.groups.map(g=>`<option value="${g.id}" ${g.id===it.grp?'selected':''}>${escW(g.title)}</option>`).join('')}</select>
-        <a class="tc-mi tc-walink" href="${escW(GD.itemUrl||'#')}" target="_blank">${icoI('extern',13)}פתח ב-Monday</a></div>
+        ${GD.itemUrl?`<a class="tc-mi tc-walink" href="${escW(GD.itemUrl)}" target="_blank" title="${GD.data&&GD.data.mode==='primary'?'הגרסה המוקפאת (גיבוי)':''}">${icoI('extern',13)}${GD.data&&GD.data.mode==='primary'?'גיבוי ב-Monday':'פתח ב-Monday'}</a>`:''}</div>
     </div>
     <div class="tc-msgs gd-ibody">
       <div class="gd-fields">
@@ -2759,7 +2759,7 @@ function gdItemPaint(){
       ${(it.subs||[]).length?`<div class="gd-sec">תתי-פריטים (${it.subs.length})</div><div class="gd-tablewrap"><table class="gd-table"><thead><tr><th>שם</th><th>צבעים</th><th>מחיר</th><th>אחריות</th><th>סטטוס</th><th>הערות</th></tr></thead><tbody>
         ${it.subs.map(s=>`<tr class="nohover"><td>${escW(s.name)}</td><td>${escW(s.colors)}</td><td>${escW(s.price)}</td><td>${escW(s.warranty)}</td><td>${escW(s.status)}</td><td>${escW(s.notes)}</td></tr>`).join('')}</tbody></table></div>`:''}
       <div class="gd-sec">עדכונים (${(it.updates||[]).length}) <span class="muted" style="font-weight:400">— הוראות לסוכנים: קטגוריות, תכונות, אחריות</span></div>
-      <div class="tc-comp focus"><textarea id="gdUpd" rows="3" placeholder="כתוב עדכון לגלי/יובל… (נשמר גם ב-Monday)"></textarea>
+      <div class="tc-comp focus"><textarea id="gdUpd" rows="3" placeholder="כתוב עדכון לגלי/יובל…"></textarea>
         <div class="tc-ctools" style="display:flex"><button class="btn-primary tc-send" onclick="gdPostUpdate('${mid}')">עדכן</button></div></div>
       ${(it.updates||[]).map(u=>{ const mine=u.gd&&S.user&&u.author===S.user.name; const editing=GD.editUpd===u.monday_id;
         const au=TC.users.find(x=>x.name===u.author);   // משתמש GreenOS → אותו צבע/נקודה כמו בצ'אט
@@ -2776,21 +2776,21 @@ function gdItemPaint(){
 async function gdSaveUpd(mid,uid){
   const t=(document.getElementById('gdUpdEdit')||{}).value||''; if(!t.trim()) return;
   try{ await api('/api/greenday/products/'+mid+'/update/'+uid,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:t})},60000);
-    GD.editUpd=null; toast('העדכון נערך (גם ב-Monday)',true); gdItem(mid,true); }
+    GD.editUpd=null; toast('העדכון נערך',true); gdItem(mid,true); }
   catch(e){ toast(e.detail||'העריכה נכשלה',false); }
 }
 function gdStor(mid){ const v=[...document.querySelectorAll('#gdItem .gd-chips input:checked')].map(x=>x.value); gdSet(mid,'storages',v); }
 async function gdPostUpdate(mid){
   const t=(document.getElementById('gdUpd')||{}).value||''; if(!t.trim()) return;
   try{ await api('/api/greenday/products/'+mid+'/update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:t})},60000);
-    toast('העדכון נשמר (גם ב-Monday)',true); gdItem(mid,true); gdLoad(); }
+    toast('העדכון נשמר',true); gdItem(mid,true); gdLoad(); }
   catch(e){ toast(e.detail||'השמירה נכשלה',false); }
 }
 // ── מוצר חדש ──
 function gdNewModal(){
   const D=GD.data;
   document.getElementById('modalRoot').innerHTML=`<div class="overlay"><div class="modal us-modal" style="max-width:560px">
-    <h3>מוצר חדש</h3><div class="muted" style="margin-bottom:6px">נוצר גם ב-Monday בקבוצה שבחרת, בסטטוס "ממתין" — יובל וגלי יאספו אותו בסבב הבא.</div>
+    <h3>מוצר חדש</h3><div class="muted" style="margin-bottom:6px">${D.mode==='primary'?'נוצר':'נוצר גם ב-Monday'} בקבוצה שבחרת, בסטטוס "ממתין" — יובל וגלי יאספו אותו בסבב הבא.</div>
     <input id="gdnName" placeholder="שם המוצר (כמו שאודי כותב, למשל: Samsung Galaxy Watch 9)">
     <select id="gdnGrp" class="gd-sel" style="width:100%;margin:8px 0">${D.groups.slice(0,2).map(g=>`<option value="${g.id}">${escW(g.title)}</option>`).join('')}</select>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
@@ -2814,7 +2814,7 @@ async function gdCreate(){
     storages:[...document.querySelectorAll('#gdnStor input:checked')].map(x=>x.value)};
   try{ const r=await api('/api/greenday/products',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({name, grp:v('gdnGrp'), values, update:v('gdnUpd')})},90000);
-    closeModal(); toast('המוצר נוצר (גם ב-Monday)',true); await gdLoad(); gdItem(r.monday_id); }
+    closeModal(); toast('המוצר נוצר',true); await gdLoad(); gdItem(r.monday_id); }
   catch(e){ document.getElementById('gdnErr').textContent=e.detail||'היצירה נכשלה'; }
 }
 

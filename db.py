@@ -6104,3 +6104,49 @@ def gd_product_get(monday_id: str):
             ups.append(u)
         p["updates"] = ups
         return p
+
+
+# ── GreenDay כמקור (מצב primary, 15/10/2026) — כתיבה מקומית בלי Monday ──
+def gd_set_field(mid, field, value):
+    if field not in _GD_COLS:
+        raise ValueError("שדה לא מוכר")
+    if field == "storages":
+        value = json.dumps(list(value or []), ensure_ascii=False)
+    elif field == "list_type" and isinstance(value, list):
+        value = value[0] if value else ""
+    elif field == "price":
+        value = None if value in (None, "") else float(value)
+    with _conn() as c:
+        c.cursor().execute(_q(f"UPDATE gd_product SET {field} = ?, monday_updated = ? WHERE monday_id = ?"),
+                           (value, now_iso(), str(mid)))
+
+
+def gd_create_local(name, grp, values) -> str:
+    import uuid
+    mid = "gd" + uuid.uuid4().hex[:10]
+    p = {"monday_id": mid, "name": name, "grp": grp, "created_at": now_iso(), "monday_updated": now_iso(), "subs": []}
+    for k in _GD_COLS:
+        if k in (values or {}) and k not in ("name", "grp"):
+            p[k] = values[k]
+    if isinstance(p.get("list_type"), list):
+        p["list_type"] = (p["list_type"] or [""])[0]
+    if p.get("price") in ("",):
+        p["price"] = None
+    gd_product_upsert(p)
+    return mid
+
+
+def gd_update_add(product_mid, author, body) -> str:
+    import uuid
+    uid = "gdu" + uuid.uuid4().hex[:10]
+    with _conn() as c:
+        c.cursor().execute(_q("""INSERT INTO gd_product_update (monday_id, product_mid, author, body, created_at, assets, replies)
+                                 VALUES (?, ?, ?, ?, ?, '[]', '[]')"""),
+                           (uid, str(product_mid), author or "", body or "", datetime.now(timezone.utc).isoformat()))
+        c.cursor().execute(_q("UPDATE gd_product SET monday_updated = ? WHERE monday_id = ?"), (now_iso(), str(product_mid)))
+    return uid
+
+
+def gd_update_edit(uid, body):
+    with _conn() as c:
+        c.cursor().execute(_q("UPDATE gd_product_update SET body = ? WHERE monday_id = ?"), (body or "", str(uid)))

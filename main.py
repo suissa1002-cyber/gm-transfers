@@ -88,6 +88,7 @@ async def _user_auth_mw(request: Request, call_next):
         actor = None
         if cfg.ADMIN_PASSWORD and akey == cfg.ADMIN_PASSWORD:
             from starlette.concurrency import run_in_threadpool as _rtp
+            _agent = request.headers.get("x-agent") or ""
             if _from_browser(request):
                 import time as _tm
                 _LEGACY_SEEN[request.headers.get("x-device-token") or "?"] = {
@@ -97,6 +98,9 @@ async def _user_auth_mw(request: Request, call_next):
                     "detail": "הסיסמה המשותפת בוטלה — יש להיכנס עם שם משתמש וסיסמה אישיים",
                     "code": "legacy_off"})
             actor = {"kind": "console", "name": "צוות"}
+            if _agent and not _from_browser(request):   # סוכן מקומי (גלי/יובל/QA) → GreenDay בשמו
+                from urllib.parse import unquote as _uq
+                actor = {"kind": "console", "name": _uq(_agent)[:40], "agent": True}
         elif bkey and bkey == globals().get("URI_BRIDGE_KEY"):
             actor = {"kind": "bot", "name": "אלה"}
         if actor is None:
@@ -2282,8 +2286,14 @@ def chat_push_test():
 
 # ── 🟩 GreenDay · לוח מוצרים (בעלים בלבד; שלב 1 = חלון ל-Monday, כתיבה ישירה אליו) ──
 def _gd_owner():
+    """בעלים מחוברים, או סוכן מקומי (מפתח ניהול + X-Agent, לא מדפדפן) — בשם הסוכן."""
     u = _current_user()
-    if u is None or u["role"] != "owner":
+    if u is None:
+        a = _perms.ACTOR.get()
+        if a and a.get("agent"):
+            return {"id": 0, "name": a["name"], "role": "agent"}
+        raise HTTPException(403, "לוח המוצרים פתוח לבעלים בלבד")
+    if u["role"] != "owner":
         raise HTTPException(403, "לוח המוצרים פתוח לבעלים בלבד")
     return u
 
@@ -2302,6 +2312,7 @@ def gd_board():
             "statuses": [{"label": l, "color": c} for l, c in gd.STATUSES],
             "storages": gd.STORAGES, "list_types": gd.LIST_TYPES,
             "products": [_gd_light(p) for p in db.gd_products_list()],
+            "mode": "primary" if gd.is_primary() else "mirror",
             "synced_at": int(db.setting_get("greenday_synced_at") or 0),
             "full_synced_at": int(db.setting_get("greenday_full_synced_at") or 0)}
 
@@ -2315,9 +2326,11 @@ def gd_product(mid: str):
     import greenday as gd
     for u in p.get("updates") or []:   # כותב אמיתי (אודי) במקום בעל הטוקן (Asi)
         u["author"], u["body"], u["gd"] = gd.split_author(u.get("body") or "", u.get("author") or "")
+        u["gd"] = u["gd"] or str(u.get("monday_id") or "").startswith("gdu")
         for r in u.get("replies") or []:
             r["author"], r["body"], _x = gd.split_author(r.get("body") or "", r.get("author") or "")
-    return {"product": p, "monday_url": gd.item_url(mid)}
+    return {"product": p, "monday_url": "" if str(mid).startswith("gd") else gd.item_url(mid),
+            "mode": "primary" if gd.is_primary() else "mirror"}
 
 
 class GdPatch(BaseModel):
@@ -2451,6 +2464,7 @@ def gd_product_update_edit(mid: str, uid: str, body: GdUpdateIn):
     if not up:
         raise HTTPException(404, "העדכון לא נמצא")
     author, _b, via_gd = gd.split_author(up.get("body") or "", up.get("author") or "")
+    via_gd = via_gd or str(uid).startswith("gdu")   # עדכון שנכתב ב-GreenDay במצב מקור
     if not via_gd or author != u["name"]:
         raise HTTPException(403, "אפשר לערוך רק עדכון שכתבת ב-GreenDay")
     try:
@@ -2459,6 +2473,61 @@ def gd_product_update_edit(mid: str, uid: str, body: GdUpdateIn):
     except RuntimeError as e:
         raise HTTPException(502, f"Monday: {e}")
     return {"ok": True}
+
+
+@app.get("/api/greenday/agent/items")
+def gd_agent_items(groups: str = "topics"):
+    """לסוכנים (גלי/יובל/QA/בריאות): פריטים מלאים כולל עדכונים — במקום Monday."""
+    _gd_owner()
+    import greenday as gd
+    gs = [g for g in groups.split(",") if g in gd.GROUP_IDS]
+    out = []
+    for lp in db.gd_products_list():
+        if lp["grp"] in gs:
+            out.append(_gd_agent_item(lp["monday_id"]))
+    return {"items": [x for x in out if x], "mode": "primary" if gd.is_primary() else "mirror"}
+
+
+def _gd_agent_item(mid):
+    import greenday as gd
+    p = db.gd_product_get(mid)
+    if not p:
+        return None
+    for u in p.get("updates") or []:
+        u["author"], u["body"], _x = gd.split_author(u.get("body") or "", u.get("author") or "")
+    p["updates"] = [{"author": u["author"], "body": u["body"], "created_at": u.get("created_at")} for u in p.get("updates") or []]
+    return p
+
+
+@app.get("/api/greenday/agent/items/{mid}")
+def gd_agent_item(mid: str):
+    _gd_owner()
+    p = _gd_agent_item(mid)
+    if not p:
+        raise HTTPException(404, "הפריט לא נמצא")
+    return {"item": p}
+
+
+class GdMode(BaseModel):
+    mode: str   # mirror | primary
+
+
+@app.post("/api/greenday/mode")
+def gd_set_mode(body: GdMode, x_admin_key: Optional[str] = Header(None)):
+    """מעבר: primary = GreenDay מקור האמת (Monday מוקפא). mirror = חזרה לשלב 1. בעלים בלבד (או מפתח מהשרת)."""
+    u = _current_user()
+    if u is None:
+        _require_admin(x_admin_key)
+    elif u["role"] != "owner":
+        raise HTTPException(403, "בעלים בלבד")
+    if body.mode not in ("mirror", "primary"):
+        raise HTTPException(400, "mode לא מוכר")
+    db.setting_set("greenday_mode", body.mode, by=(u or {}).get("name", "server"))
+    try:
+        _tg_admin(f"🟩 GreenDay mode → <b>{body.mode}</b>")
+    except Exception:  # noqa: BLE001
+        pass
+    return {"ok": True, "mode": body.mode}
 
 
 @app.post("/api/greenday/sync")

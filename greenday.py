@@ -55,6 +55,11 @@ SUB_COLS = {"text_mks5k2w8": "notes", "text_mks799n7": "colors", "numeric_mks7y7
             "text_mks5h1wt": "warranty", "status": "status", "text_mksevzkk": "link"}
 
 
+def is_primary() -> bool:
+    """שלב 2 (מעבר): GreenDay = מקור האמת. אין סנכרון מ-Monday ואין כתיבה אליו — Monday מוקפא כגיבוי."""
+    return (db.setting_get("greenday_mode") or "") == "primary"
+
+
 def _token() -> str:
     return os.getenv("MONDAY_API_TOKEN", "").strip()
 
@@ -175,6 +180,8 @@ def sync(full: bool = False, full_updates: bool = False) -> dict:
     ⚠️ מכסת API יומית של Monday משותפת עם הסוכנים — לכן ברירת המחדל היא **הקבוצות הפעילות
     בלבד** (~1 קריאה). סנכרון מלא של 801 הפריטים: כל 6 שעות או ידנית. פריט שיצא מקבוצה פעילה
     (הועבר לארכיון/נמחק) נמשך בנפרד לפי id כדי שהקבוצה שלו תתעדכן מיד."""
+    if is_primary():
+        return {"mode": "primary", "skipped": True}
     t0 = time.time()
     if full:
         items = _fetch_all_items()
@@ -233,6 +240,11 @@ def _col_value(field: str, value):
 def set_field(monday_id: str, field: str, value):
     if field not in FIELDS:
         raise ValueError("שדה לא מוכר")
+    if field == "status" and value not in STATUS_LABELS:
+        raise ValueError("סטטוס לא מוכר")
+    if is_primary():
+        db.gd_set_field(monday_id, field, value)
+        return
     col, val, simple = _col_value(field, value)
     if simple:
         gql("mutation ($b: ID!, $i: ID!, $c: String!, $v: String) { change_simple_column_value("
@@ -247,11 +259,16 @@ def set_field(monday_id: str, field: str, value):
 def move_group(monday_id: str, grp: str):
     if grp not in GROUP_IDS:
         raise ValueError("קבוצה לא מוכרת")
+    if is_primary():
+        db.gd_set_field(monday_id, "grp", grp)
+        return
     gql("mutation ($i: ID!, $g: String!) { move_item_to_group(item_id: $i, group_id: $g) { id } }",
         {"i": str(monday_id), "g": grp})
 
 
 def create_item(name: str, grp: str, values: dict) -> str:
+    if is_primary():
+        return db.gd_create_local(name, grp, values)
     cols = {}
     for f, v in (values or {}).items():
         if f in FIELDS and f != "name" and v not in (None, "", []):
@@ -304,12 +321,17 @@ def _update_body(author: str, text: str) -> str:
 
 
 def edit_update(update_id: str, author: str, text: str):
+    if is_primary() or str(update_id).startswith("gdu"):
+        db.gd_update_edit(update_id, text)
+        return
     gql("mutation ($i: ID!, $b: String!) { edit_update(id: $i, body: $b) { id } }",
         {"i": str(update_id), "b": _update_body(author, text)})
 
 
 def create_update(monday_id: str, author: str, text: str) -> str:
     """עדכון (הוראות לסוכנים) — נרשם במאנדיי בשם בעל הטוקן, לכן מוסיפים מי כתב בפועל."""
+    if is_primary():
+        return db.gd_update_add(monday_id, author, text)
     body = _update_body(author, text)
     d = gql("mutation ($i: ID!, $b: String!) { create_update(item_id: $i, body: $b) { id created_at } }",
             {"i": str(monday_id), "b": body})
@@ -318,6 +340,8 @@ def create_update(monday_id: str, author: str, text: str) -> str:
 
 def refresh_items(monday_ids: list):
     """רענון כמה פריטים בקריאה אחת (בלי עדכונים) — אחרי פעולה קבוצתית."""
+    if is_primary():
+        return
     ids = [str(x) for x in monday_ids]
     for i in range(0, len(ids), 50):
         d = gql("query ($ids: [ID!]) { items(ids: $ids) { %s } }" % _ITEM_FIELDS, {"ids": ids[i:i + 50]})
@@ -327,6 +351,8 @@ def refresh_items(monday_ids: list):
 
 def refresh_item(monday_id: str):
     """אחרי כתיבה — מושכים את הפריט מחדש מ-Monday כדי שה-DB ישקף בדיוק את מה שנשמר שם."""
+    if is_primary():
+        return
     d = gql("query ($ids: [ID!]) { items(ids: $ids) { %s } }" % _ITEM_FIELDS, {"ids": [str(monday_id)]})
     if d["items"]:
         db.gd_product_upsert(_parse_item(d["items"][0]))

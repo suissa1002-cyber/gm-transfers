@@ -87,6 +87,33 @@ r = c.post("/api/greenday/products/111/update/u1", headers=A, json={"text": "ת�
 eb = next((x[1]["b"] for x in calls if x[1] and "b" in x[1] and "i" in x[1]), "")
 check("אסי עורך את העדכון שלו → edit_update עם החתימה", r.status_code == 200 and "asi · GreenDay" in eb and "עכברים" in eb, eb)
 
+# ── מצב מקור (primary): סוכנים מול GreenDay, בלי Monday ──
+from urllib.parse import quote
+GALI = {"X-Admin-Key": "legacy-secret", "X-Agent": quote("גלי")}
+check("⛔ מפתח ניהול בלי X-Agent לא נכנס ללוח", c.get("/api/greenday/agent/items", headers=ADM).status_code == 403)
+check("⛔ החלפת מצב ע\"י עובדת", c.post("/api/greenday/mode", headers=D, json={"mode": "primary"}).status_code == 403)
+check("בעלים מעביר למצב מקור", c.post("/api/greenday/mode", headers=A, json={"mode": "primary"}).json()["mode"] == "primary")
+calls.clear()
+check("סנכרון מ-Monday מושבת במצב מקור", greenday.sync().get("skipped") is True)
+r = c.post("/api/greenday/products", headers=A, json={"name": "Galaxy Buds 4", "grp": "topics", "values": {"price": "699"}, "update": "קטגוריות: אוזניות"})
+nid = r.json()["monday_id"]
+check("מוצר חדש נוצר מקומית (לא ב-Monday)", nid.startswith("gd") and not calls, (nid, calls[:1]))
+it = c.get("/api/greenday/agent/items?groups=topics", headers=GALI).json()["items"]
+mine = next(x for x in it if x["monday_id"] == nid)
+check("גלי רואה את המוצר עם המחיר וההוראות של אסי", mine["price"] == 699 and mine["updates"][0]["author"] == "asi" and "אוזניות" in mine["updates"][0]["body"], mine)
+c.post(f"/api/greenday/products/{nid}", headers=GALI, json={"field": "status", "value": "בעבודה"})
+c.post(f"/api/greenday/products/{nid}", headers=GALI, json={"field": "wc_id", "value": "53001"})
+c.post(f"/api/greenday/products/{nid}/update", headers=GALI, json={"text": "הועלה כטיוטה"})
+pr = c.get(f"/api/greenday/products/{nid}", headers=A).json()
+check("שינויי גלי נשמרו מקומית + עדכון בשמה", pr["product"]["status"] == "בעבודה" and pr["product"]["wc_id"] == "53001"
+      and pr["product"]["updates"][0]["author"] == "גלי" and not calls and pr["monday_url"] == "", (pr["product"]["updates"][:1], calls[:1]))
+upd = next(u for u in pr["product"]["updates"] if u["author"] == "asi")
+check("אסי עורך עדכון מקומי שלו", c.post(f"/api/greenday/products/{nid}/update/{upd['monday_id']}", headers=A, json={"text": "קטגוריות: אוזניות › TWS"}).status_code == 200)
+check("⛔ סטטוס לא מוכר נדחה גם במצב מקור", c.post(f"/api/greenday/products/{nid}", headers=GALI, json={"field": "status", "value": "בלגן"}).status_code == 400)
+c.post("/api/greenday/bulk", headers=A, json={"ids": [nid], "action": "grp", "value": "group_mkzqzksn"})
+check("העברה לארכיון מקומית", db.gd_product_get(nid)["grp"] == "group_mkzqzksn" and not calls)
+check("חזרה למצב מראה (מתג חזרה)", c.post("/api/greenday/mode", headers=A, json={"mode": "mirror"}).json()["mode"] == "mirror")
+
 os.unlink(_tmp)
 assert not fails, fails
 print("\n✅ כל בדיקות GreenDay עברו")
