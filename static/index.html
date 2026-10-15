@@ -884,6 +884,12 @@
   .gd-pill.sm{min-width:110px;padding:5px 8px;font-size:12px}
   .gd-c-ck{width:34px;min-width:34px;padding:0 4px!important} .gd-c-ck input{width:16px;height:16px;cursor:pointer;accent-color:#0073ea}
   .gd-table tr.sel td{background:rgba(0,115,234,.08)}
+  .gd-agents{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;font-size:13px;margin-bottom:8px;padding:6px 2px}
+  .gd-ag{display:inline-flex;align-items:center;gap:2px} .gd-ag.on{font-weight:700;color:#16a34a}
+  .gd-mac{color:var(--muted);font-size:12.5px} .gd-mac.off{color:var(--red);font-weight:600;display:inline-flex;align-items:center}
+  .gd-req{display:inline-flex;align-items:center;font-size:12.5px;padding:2px 8px;border-radius:99px}
+  .gd-req.wait{background:rgba(253,171,61,.18);color:#b45309} .gd-req.ok{background:rgba(0,200,117,.15);color:#047857}
+  .gd-run{display:inline-flex;align-items:center;padding:7px 12px;border-radius:8px;cursor:pointer;font-weight:600}
   .gd-bulk{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);z-index:40;display:flex;align-items:center;gap:10px;flex-wrap:wrap;
     background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.2);padding:10px 14px;max-width:calc(100vw - 24px)}
   .gd-bulk b{color:#0073ea} .gd-bulk a{color:var(--muted);font-size:13px}
@@ -2641,6 +2647,7 @@ function gdH(n){ let h=0; for(const ch of String(n||'')) h=(h*31+ch.charCodeAt(0
 function gdAgo(ts){ if(!ts) return 'עוד לא'; return tcRel(ts); }
 function gdRender(){
   const app=document.getElementById('app'); if(!app) return;
+  if(!_gdAgT){ gdAgentsLoad(); _gdAgT=setInterval(()=>{ if(S.view!=='greenday'){ clearInterval(_gdAgT); _gdAgT=null; return; } gdAgentsLoad(); },15000); }
   if(!GD.data){ app.innerHTML='<div class="empty">טוען את לוח המוצרים…</div>'; gdLoad(); return; }
   const D=GD.data, q=GD.q.trim().toLowerCase();
   const match=p=>(!GD.st||p.status===GD.st)&&(!q||[p.name,p.pos_sku,p.wc_id,p.colors,p.notes].join(' ').toLowerCase().includes(q));
@@ -2678,8 +2685,10 @@ function gdRender(){
       <label class="tc-search gd-search">${ico('search',14)}<input id="gdSearch" placeholder="חיפוש: שם, מק״ט, ליסט ID, הערות" value="${escW(GD.q)}" oninput="GD.q=this.value;gdRender()"></label>
       <select class="gd-sel" onchange="GD.st=this.value;gdRender()"><option value="">כל הסטטוסים</option>${D.statuses.map(s=>`<option ${GD.st===s.label?'selected':''}>${escW(s.label)}</option>`).join('')}</select>
       <button class="btn-primary gd-new" onclick="gdNewModal()">+ מוצר חדש</button>
+      ${D.mode==='primary'?`<button class="btn-ghost gd-run" onclick="gdRunAgents()" title="מפעיל את גלי/יובל/QA עכשיו — גם בשישי/שבת/אחרי השעות (3 שעות)">${icoI('zap',14)}הרץ סוכנים</button>`:''}
       ${D.mode==='primary'?`<span class="gd-sync muted"><a href="#" onclick="gdLoad();return false" title="רענון">${ico('refresh',14)}</a></span>`:`<span class="gd-sync muted">סונכרן ${gdAgo(D.synced_at)} <a href="#" onclick="gdSyncNow();return false" title="סנכרון עכשיו מ-Monday">${ico('refresh',14)}</a></span>`}
     </div>
+    ${D.mode==='primary'?`<div class="gd-agents" id="gdAgents">${gdAgentsHTML()}</div>`:''}
     <div class="gd-note">${icoI('info',14)}${D.mode==='primary'?'GreenDay הוא המקור: גלי, יובל ו-QA קוראים וכותבים ישירות מכאן. Monday מוקפא כגיבוי.':'שלב 1: כל שינוי כאן נכתב מיד גם ל-Monday — גלי, יובל ו-QA ממשיכים לעבוד משם כרגיל.'}</div>
     ${groups}
   </div>${gdBulkBar()}`;
@@ -2713,6 +2722,28 @@ async function gdBulk(action,value){
     hideLoading(); GD.sel.clear(); await gdLoad();
     toast(r.failed&&r.failed.length?`עודכנו ${r.done}, נכשלו ${r.failed.length}`:`עודכנו ${r.done} מוצרים`, !(r.failed&&r.failed.length));
   }catch(e){ hideLoading(); toast(e.detail||'הפעולה נכשלה',false); }
+}
+// ── מצב הסוכנים (רצים על המק של אסי) + הרצה ידנית ──
+let _gdAgT=null;
+async function gdAgentsLoad(){
+  try{ GD.agents=await api('/api/greenday/agents',{},15000); const el=document.getElementById('gdAgents'); if(el) el.innerHTML=gdAgentsHTML(); }catch(e){}
+}
+function gdAgentsHTML(){
+  const A=GD.agents; if(!A) return '<span class="muted">טוען מצב סוכנים…</span>';
+  const hb=A.heartbeat||{}, run=hb.running||{}, q=hb.queue||{}, req=A.request||{};
+  const off=A.mac_seen_ago==null||A.mac_seen_ago>180;
+  const ag=(k,n)=>`<span class="gd-ag ${run[k]?'on':''}" title="${run[k]?'רץ עכשיו':'פנוי'}">${tcDot({online:!!run[k]})}${n}${q[k]?` <b>${q[k]}</b>`:''}</span>`;
+  let reqTxt='';
+  if(req.ts&&req.ts>(A.ack_ts||0)) reqTxt=`<span class="gd-req wait">${icoI('clock',13)}בקשת הרצה נשלחה — ממתין למק…</span>`;
+  else if((hb.manual_until||0)>A.now) reqTxt=`<span class="gd-req ok">${icoI('check',13)}הרצה ידנית פעילה עד ${new Date(hb.manual_until*1000).toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'})}</span>`;
+  return `<span class="muted">סוכנים:</span>${ag('yuval','יובל')}${ag('gali','גלי')}${ag('qa','QA')}
+    <span class="gd-mac ${off?'off':''}">${off?icoI('alert',13)+'המק לא מגיב (כבוי / שינה?) — הסוכנים לא ירוצו':'המק מחובר · '+tcAgo(Math.max(60,A.mac_seen_ago))}</span>${reqTxt}`;
+}
+async function gdRunAgents(){
+  if(!confirm('להריץ עכשיו את גלי, יובל ו-QA?\nהם יטפלו בכל מה שממתין, גם מחוץ לשעות, ב-3 השעות הקרובות.\nהמק צריך להיות דלוק.')) return;
+  try{ GD.agents=await api('/api/greenday/run',{method:'POST'},20000); const el=document.getElementById('gdAgents'); if(el) el.innerHTML=gdAgentsHTML();
+    toast('הבקשה נשלחה — המק יקלוט אותה תוך דקה',true); }
+  catch(e){ toast(e.detail||'השליחה נכשלה',false); }
 }
 async function gdSyncNow(){
   toast('מסנכרן מ-Monday…',true);

@@ -2530,6 +2530,55 @@ def gd_set_mode(body: GdMode, x_admin_key: Optional[str] = Header(None)):
     return {"ok": True, "mode": body.mode}
 
 
+# ── 🟩 הרצת סוכנים ידנית + מצב הסוכנים (הם רצים על המק של אסי — השרת רק מתווך) ──
+def _gd_agents_state() -> dict:
+    import time as _t
+    def _j(k):
+        try:
+            return json_mod.loads(db.setting_get(k) or "{}")
+        except Exception:  # noqa: BLE001
+            return {}
+    hb, req = _j("greenday_agents_hb"), _j("greenday_run_request")
+    now = int(_t.time())
+    return {"request": req, "ack_ts": int(db.setting_get("greenday_run_ack") or 0),
+            "heartbeat": hb, "mac_seen_ago": (now - int(hb.get("ts") or 0)) if hb.get("ts") else None, "now": now}
+
+
+@app.get("/api/greenday/agents")
+def gd_agents():
+    _gd_owner()
+    return _gd_agents_state()
+
+
+@app.post("/api/greenday/run")
+def gd_run_agents():
+    """בקשת הרצה מיידית (גם בשישי/שבת/אחרי השעות) — המק קולט תוך דקה ופותח חלון של 3 שעות."""
+    u = _gd_owner()
+    import time as _t
+    db.setting_set("greenday_run_request", json_mod.dumps({"ts": int(_t.time()), "by": u["name"]}, ensure_ascii=False), by=u["name"])
+    return _gd_agents_state()
+
+
+class GdHeartbeat(BaseModel):
+    running: dict = {}
+    queue: dict = {}
+    manual_until: int = 0
+    handled_request_ts: int = 0
+
+
+@app.post("/api/greenday/agents/heartbeat")
+def gd_agents_heartbeat(body: GdHeartbeat):
+    """שולח המשימות במק מדווח כל דקה: מי רץ, כמה בתור, ואם קלט בקשה ידנית."""
+    _gd_owner()
+    import time as _t
+    db.setting_set("greenday_agents_hb", json_mod.dumps({"ts": int(_t.time()), "running": body.running,
+                                                    "queue": body.queue, "manual_until": body.manual_until},
+                                                   ensure_ascii=False), by="dispatcher")
+    if body.handled_request_ts:
+        db.setting_set("greenday_run_ack", str(int(body.handled_request_ts)), by="dispatcher")
+    return {"ok": True, "request": _gd_agents_state()["request"]}
+
+
 @app.post("/api/greenday/sync")
 def gd_sync_now(full: int = 0):
     _gd_owner()

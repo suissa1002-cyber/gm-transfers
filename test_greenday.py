@@ -114,6 +114,19 @@ c.post("/api/greenday/bulk", headers=A, json={"ids": [nid], "action": "grp", "va
 check("העברה לארכיון מקומית", db.gd_product_get(nid)["grp"] == "group_mkzqzksn" and not calls)
 check("חזרה למצב מראה (מתג חזרה)", c.post("/api/greenday/mode", headers=A, json={"mode": "mirror"}).json()["mode"] == "mirror")
 
+# ── הרצת סוכנים ידנית + דופק מהמק ──
+MAC = {"X-Admin-Key": "legacy-secret", "X-Agent": quote("שולח משימות")}
+st = c.get("/api/greenday/agents", headers=A).json()
+check("לפני דופק — המק לא ידוע", st["mac_seen_ago"] is None)
+r = c.post("/api/greenday/run", headers=A).json()
+check("לחיצה על 'הרץ סוכנים' שומרת בקשה בשם אסי", r["request"]["by"] == "asi" and r["request"]["ts"] > r["ack_ts"])
+check("⛔ עובדת לא יכולה להריץ סוכנים", c.post("/api/greenday/run", headers=D).status_code == 403)
+hb = c.post("/api/greenday/agents/heartbeat", headers=MAC, json={"running": {"yuval": True}, "queue": {"yuval": 5}, "manual_until": 0, "handled_request_ts": 0}).json()
+check("הדופק מחזיר למק את הבקשה הפתוחה", hb["request"]["ts"] == r["request"]["ts"])
+c.post("/api/greenday/agents/heartbeat", headers=MAC, json={"running": {"yuval": True}, "queue": {"yuval": 5}, "manual_until": 9999999999, "handled_request_ts": hb["request"]["ts"]})
+st = c.get("/api/greenday/agents", headers=A).json()
+check("אחרי שהמק קלט: ack = הבקשה, יובל רץ, 5 בתור", st["ack_ts"] == r["request"]["ts"] and st["heartbeat"]["running"]["yuval"] and st["heartbeat"]["queue"]["yuval"] == 5 and st["mac_seen_ago"] < 5, st)
+
 os.unlink(_tmp)
 assert not fails, fails
 print("\n✅ כל בדיקות GreenDay עברו")
