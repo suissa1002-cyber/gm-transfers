@@ -6642,6 +6642,21 @@ async def preorder_signup_update(sid: int, request: Request,
     return {"ok": True}
 
 
+@app.delete("/api/admin/preorder/signup/{sid}")
+def preorder_signup_delete(sid: int, x_admin_key: Optional[str] = Header(None)):
+    """מחיקת נרשם (שורת בדיקה/ספאם). מתעד מי מחק ומה היה בשורה."""
+    _require_admin(x_admin_key)
+    rows = [r for r in db.preorder_signups_list(limit=10000) if int(r["id"]) == int(sid)]
+    if not rows:
+        raise HTTPException(404, "signup not found")
+    r = rows[0]
+    ok = db.preorder_signup_delete(sid)
+    logger.info("preorder signup deleted by %s: id=%s phone=%s %s",
+                _actor_name(x_admin_key, None), sid, r.get("phone"), r.get("summary"))
+    return {"ok": ok, "deleted": {"id": sid, "phone": r.get("phone"),
+                                  "name": r.get("name"), "summary": r.get("summary")}}
+
+
 @app.get("/api/admin/preorder/export.csv")
 def preorder_export(campaign: str = "", status: str = "",
                     x_admin_key: Optional[str] = Header(None)):

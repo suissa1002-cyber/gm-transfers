@@ -5886,6 +5886,15 @@ def preorder_signup_set(sid: int, **kw) -> None:
                            list(kw.values()) + [int(sid)])
 
 
+def preorder_signup_delete(sid: int) -> bool:
+    """מחיקת נרשם — לשורות בדיקה/ספאם. ⚠️ בלתי הפיכה; אין כאן soft-delete
+    בכוונה, כדי שספירת ההקצאה תישאר המספר האמיתי בלי סינונים נסתרים."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("DELETE FROM preorder_signups WHERE id = ?"), (int(sid),))
+        return (cur.rowcount or 0) > 0
+
+
 def preorder_stats(campaign: str) -> dict:
     """פילוח לרשימת ההקצאה: כמה לכל סטטוס, וכמה לכל ערך בכל שאלה."""
     rows = preorder_signups_list(campaign=campaign, limit=10000)

@@ -139,5 +139,17 @@ ck("אחרי השם ממשיכים לצבע",
 ck("השם לא מזהם את צירוף ההקצאה", "אבי לוי" not in ((r4 or {}).get("summary") or ""),
    (r4 or {}).get("summary"))
 
+# ── מחיקת נרשם (שורת בדיקה/ספאם) — בלתי הפיכה, דורשת אדמין ──
+_before = len(db.preorder_signups_list(campaign="iphone-duo", limit=100))
+_id = db.preorder_signup_upsert("iphone-duo", "972509999999", name="ספאם", answers={})
+ck("מחיקה בלי מפתח נחסמת",
+   c.request("DELETE", f"/api/admin/preorder/signup/{_id}").status_code == 401)
+_r = c.request("DELETE", f"/api/admin/preorder/signup/{_id}", headers=h)
+ck("מחיקה עם מפתח מצליחה", _r.status_code == 200 and _r.json().get("ok"), _r.text[:120])
+ck("השורה ירדה מהספירה",
+   len(db.preorder_signups_list(campaign="iphone-duo", limit=100)) == _before, "")
+ck("מחיקת id לא קיים מחזירה 404",
+   c.request("DELETE", "/api/admin/preorder/signup/999999", headers=h).status_code == 404)
+
 print("\n" + ("✅ כל הבדיקות עברו" if not fails else f"❌ נכשלו: {fails}"))
 sys.exit(1 if fails else 0)

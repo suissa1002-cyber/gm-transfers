@@ -103,6 +103,9 @@ a.wa{color:var(--brand);text-decoration:none;font-weight:800}
 .st-contacted{background:var(--amber-bg);color:var(--amber-ink)}
 .st-ordered{background:var(--brand-bg);color:var(--brand-ink)}
 .st-cancelled{background:var(--red-bg);color:var(--red-ink)}
+.del{background:transparent;border:1px solid var(--line-2);color:var(--txt-3);border-radius:99px;
+  width:30px;height:30px;display:grid;place-items:center;cursor:pointer}
+.del:hover{background:var(--red-bg);color:var(--red-ink);border-color:transparent}
 .muted{color:var(--txt-3);font-size:13px}
 .empty{text-align:center;padding:52px 20px;color:var(--txt-3)}
 
@@ -179,6 +182,9 @@ details.edit summary{cursor:pointer;font-weight:800;font-size:14px;color:var(--t
 
 <div id="toast"></div>
 <script>
+const IC_TRASH = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" '
+  + 'stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2"/>'
+  + '<path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>';
 let KEY = localStorage.getItem('gm_admin_key') || '';
 let CAMPS = [], CUR = null, STATUS = '', ROWS = [], STATS = {};
 
@@ -265,9 +271,11 @@ function renderList(){
           `<option value="${s}"${r.status===s?' selected':''}>${
             {new:'חדש',contacted:'נוצר קשר',ordered:'הזמין',cancelled:'בוטל'}[s]}</option>`).join('')}
       </select></td>
+      <td><button class="del" title="מחיקת הרשמה"
+        onclick="delRow(${r.id}, '${esc((r.name||r.phone)).replace(/'/g,'')}')">${IC_TRASH}</button></td>
     </tr>`; }).join('');
   document.getElementById('list').innerHTML =
-    `<table><thead><tr><th>נרשם</th><th>שם</th><th>טלפון</th><th>בחירה</th><th>סטטוס</th></tr></thead>
+    `<table><thead><tr><th>נרשם</th><th>שם</th><th>טלפון</th><th>בחירה</th><th>סטטוס</th><th></th></tr></thead>
      <tbody>${rows}</tbody></table>`;
 }
 
@@ -275,6 +283,14 @@ async function setRow(id, status, el){
   try{ await api('/api/admin/preorder/signup/'+id,
        {method:'POST', body:JSON.stringify({status})});
     el.className = 'st st-'+status; toast('עודכן'); load(); }
+  catch(e){ toast(e, true); }
+}
+
+/* ⚠️ מחיקה בלתי הפיכה — לשורות בדיקה/ספאם. תמיד מאשרים עם שם/טלפון מפורש. */
+async function delRow(id, who){
+  if(!confirm(`למחוק את ההרשמה של ${who}?\n\nהפעולה בלתי הפיכה והשורה תרד גם מספירת ההקצאה.`)) return;
+  try{ await api('/api/admin/preorder/signup/'+id, {method:'DELETE'});
+    toast('נמחק'); load(); }
   catch(e){ toast(e, true); }
 }
 
