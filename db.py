@@ -5708,6 +5708,13 @@ def chat_unread(user_id, visible=None, counted=None) -> dict:
     # (by_topic) אבל לא נספרים להם שיחות של אחרים (14/10, אסי).
     if counted is not None:
         rows = [r for r in rows if int(r.get("topic_id") or 0) == 0 or int(r["topic_id"]) in counted]
+    # נושא שסומן "טופל" לא נספר בבאדג' — לא דורש כלום (14/10, אסי: "3 בבאדג' ואין כלום פתוח")
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT id FROM team_topic WHERE status = 'done'"))
+        done = {int(r["id"]) for r in cur.fetchall()}
+    if done:
+        rows = [r for r in rows if int(r.get("topic_id") or 0) not in done]
     return {"count": len(rows), "mentions": sum(1 for r in rows if int(user_id) in r["mentions"]),
             "by_topic": by_topic}
 

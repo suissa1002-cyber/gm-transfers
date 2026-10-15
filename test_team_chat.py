@@ -138,6 +138,14 @@ c.post("/api/chat/read", headers=U, json={"last_id": mm["id"], "topic_id": rt})
 r1 = c.get(f"/api/chat/messages?topic={rt}", headers=A).json()["reads"]
 check("אחרי שאודי פתח — נקרא", int(r1.get(str(ids["udi"]), 0)) >= mm["id"], r1)
 
+# ── באדג': נושא שטופל לא נספר ──
+bt = c.post("/api/chat/topics", headers=A, json={"title": "בדיקת באדג'", "kind": "question", "assignees": [ids["udi"]]}).json()["topic"]["id"]
+before = c.get("/api/chat/unread", headers=U).json()
+check("נושא פתוח עם הודעה חדשה — נספר לאודי", before["by_topic"].get(str(bt), 0) >= 1)
+c.post(f"/api/chat/topics/{bt}", headers=A, json={"status": "done"})
+after = c.get("/api/chat/unread", headers=U).json()
+check("אחרי 'טופל' — לא נספר בבאדג' (אבל עדיין מסומן ברשימה)", after["count"] < before["count"] and after["by_topic"].get(str(bt), 0) >= 1, (before, after))
+
 os.unlink(_tmp)
 assert not fails, fails
 print("\n✅ כל בדיקות הצ'אט עברו")
