@@ -856,6 +856,48 @@
   .tc-kinds span{display:inline-flex;align-items:center} .tc-kinds input:checked+span{background:var(--c,#2563eb);border-color:var(--c,#2563eb);color:#fff}
   .tc-assg label>span{display:inline-flex;align-items:center;gap:6px}
   @media (max-width:700px){ .tc-panel{width:100vw} .tc-acts{opacity:1} .tc-pmenu{opacity:1} }
+  /* ── 🟩 GreenDay · לוח מוצרים ── */
+  .gd-wrap{max-width:1500px;margin:0 auto;padding:14px 16px 40px}
+  .gd-top{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:10px}
+  .gd-title{display:flex;align-items:center;font-size:21px;font-weight:800;margin-inline-end:auto}
+  .gd-title span{font-weight:500;color:var(--muted);font-size:16px;margin-inline-start:6px}
+  .gd-search{max-width:320px;flex:1 1 220px}
+  .gd-sel{border:1px solid var(--line);border-radius:8px;padding:6px 8px;background:var(--card);color:var(--txt);font:inherit;font-size:13.5px}
+  .gd-new{padding:8px 14px;border-radius:8px}
+  .gd-sync{display:inline-flex;align-items:center;gap:6px;font-size:12.5px} .gd-sync a{color:var(--muted);display:inline-flex}
+  .gd-note{font-size:12.5px;color:var(--muted);background:rgba(0,115,234,.06);border:1px solid rgba(0,115,234,.18);border-radius:8px;padding:7px 10px;margin-bottom:12px;display:flex;align-items:center}
+  .gd-grp{margin-bottom:16px}
+  .gd-ghead{display:flex;align-items:center;gap:8px;color:var(--g);cursor:pointer;padding:6px 2px;user-select:none} .gd-ghead b{font-size:16px}
+  .gd-ghead .muted{font-size:12.5px}
+  .gd-tablewrap{overflow-x:auto;border-inline-start:5px solid var(--g,#0073ea);border-radius:8px;background:var(--card);box-shadow:0 0 0 1px var(--line)}
+  .gd-table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:1050px}
+  .gd-ibody .gd-table{min-width:560px}
+  .gd-table th{font-weight:600;color:var(--muted);font-size:12px;text-align:center;padding:8px;border-bottom:1px solid var(--line);white-space:nowrap;background:var(--card2)}
+  .gd-table td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:center;vertical-align:middle;white-space:nowrap;max-width:220px;overflow:hidden;text-overflow:ellipsis}
+  .gd-table tr:not(.nohover){cursor:pointer} .gd-table tbody tr:not(.nohover):hover td{background:var(--card2)}
+  .gd-table .gd-c-name{text-align:start;min-width:260px;max-width:380px;white-space:normal;font-weight:600}
+  .gd-table .gd-c-notes{text-align:start;max-width:240px;color:var(--muted)}
+  .gd-subs{display:block;font-weight:400;font-size:11.5px;color:var(--muted)}
+  .gd-table a{color:#0073ea;text-decoration:none}
+  .gd-more{display:block;text-align:center;padding:9px;color:#0073ea;text-decoration:none;font-size:13px}
+  .gd-pill{display:inline-block;min-width:118px;padding:6px 10px;color:#fff;font-weight:600;font-size:12.5px;border-radius:4px;cursor:pointer;text-align:center}
+  .gd-pill.sm{min-width:110px;padding:5px 8px;font-size:12px}
+  .gd-item{width:620px;z-index:46}
+  .gd-iname{flex:1;min-width:0;font-size:18px;font-weight:700;border:1px solid transparent;border-radius:6px;padding:4px 6px;background:transparent;color:var(--txt);font-family:inherit}
+  .gd-iname:hover,.gd-iname:focus{border-color:var(--line);outline:0;background:var(--card)}
+  .gd-fields{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px;flex:none}
+  .gd-f{display:flex;flex-direction:column;gap:4px;min-width:0} .gd-f label{font-size:12px;color:var(--muted);font-weight:600}
+  .gd-f input,.gd-f textarea,.gd-f select{border:1px solid var(--line);border-radius:6px;padding:7px 9px;font:inherit;font-size:14px;background:var(--card2);color:var(--txt);min-width:0}
+  .gd-f.wide{grid-column:1 / -1}
+  .gd-thumb{max-width:100%;max-height:160px;border-radius:6px;border:1px solid var(--line);display:block}
+  .gd-chips{display:flex;flex-wrap:wrap;gap:6px} .gd-chips input{display:none}
+  .gd-chips span{display:inline-block;padding:4px 10px;border:1px solid var(--line);border-radius:99px;font-size:12.5px;cursor:pointer;direction:ltr}
+  .gd-chips input:checked+span{background:#0073ea;border-color:#0073ea;color:#fff}
+  .gd-sec{font-weight:700;font-size:14px;margin:6px 2px 0;flex:none}
+  .gd-ibody>*{flex-shrink:0}   /* בלי זה טבלת תתי-הפריטים מתכווצת לגובה 0 בתוך עמודת ה-flex */
+  .gd-boardbtn{display:inline-flex;align-items:center;padding:7px 10px;border-radius:10px;font-size:13px;cursor:pointer}
+  .ltr{direction:ltr}
+  @media (max-width:700px){ .gd-item{width:100vw} .gd-fields{grid-template-columns:1fr} .gd-title{font-size:18px} }
   /* ── Ops Hub: תפריט בורגר + הטמעת אפליקציות ── */
   .burger{background:transparent;border:1px solid var(--line);color:var(--txt);font-size:19px;cursor:pointer;
           padding:6px 12px;border-radius:10px;line-height:1}
@@ -1471,7 +1513,7 @@
     <div class="brand">Green<span class="os">OS</span></div>
   </div>
   <div class="right" id="hdr" style="display:none">
-    <button class="btn-ghost" id="teamBtn" style="display:none;position:relative;align-items:center;gap:6px" onclick="tcToggle()" title="צ'אט צוות פנימי"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span class="hlbl"> צוות</span><span id="teamBadge" class="wa-badge" style="display:none"></span></button>
+    <button class="btn-ghost" id="teamBtn" style="display:none;position:relative;align-items:center;gap:6px" onclick="tcToggle()" title="GreenDay — צ'אט פנימי, נושאים ולוח מוצרים"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span class="hlbl"> GreenDay</span><span id="teamBadge" class="wa-badge" style="display:none"></span></button>
     <button class="btn-ghost" id="waBtn" style="display:none;position:relative;align-items:center;gap:6px" onclick="openWaTab()"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px"><path d="M21 11.5a8.38 8.38 0 0 1-8.38 8.38 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 1 1 16.1-3.8z"/></svg><span class="hlbl"> וואטסאפ</span><span id="waBadge" class="wa-badge" style="display:none"></span></button>
     <button class="btn-ghost" id="ordersBtn" style="display:none;position:relative;align-items:center;gap:6px" onclick="openOrdersTab()" title="הזמנות"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg><span class="hlbl"> הזמנות</span><span class="gm-obadge wa-badge" style="display:none"></span></button>
     <button class="btn-ghost" id="updBtn" style="display:none;position:relative;align-items:center;gap:6px" onclick="window.open('/updates','_blank')" title="ניהול עדכונים לסניפים"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span class="hlbl"> עדכונים</span></button>
@@ -2110,7 +2152,7 @@ function tcToggle(open){
     p.ondrop=e=>{ e.preventDefault(); const f=e.dataTransfer.files[0]; if(f&&TC.view==='thread') tcUpload('post',f); }; }
   p.classList.add('on');
   if(!tcPersonal()){
-    p.innerHTML=`<div class="tc-head"><b class="tc-h">${icoI('users',17)}צוות</b><button class="dr-x" onclick="tcToggle(false)">✕</button></div>
+    p.innerHTML=`<div class="tc-head"><b class="tc-h">${icoI('users',17)}GreenDay</b><button class="dr-x" onclick="tcToggle(false)">✕</button></div>
       <div class="tc-empty">צ'אט הצוות מזהה מי כותב כל עדכון — לכן הוא דורש כניסה אישית (שם משתמש וסיסמה), לא את הסיסמה המשותפת.
       <br><br><button class="btn-primary" onclick="tcToggle(false);userLogout(true);loginModal(()=>{render();tcToggle(true);})">כניסה אישית</button></div>`;
     return;
@@ -2182,10 +2224,11 @@ function tcPaintHome(){
         <span class="tc-gcar ${TC.collapsed[key]?'':'op'}">${ico('back',13)}</span><b>${title}</b><span class="muted">${rows.length}</span></div>
       ${TC.collapsed[key]?'':(rows.map(tcRowHTML).join('')||'<div class="tc-gempty">אין נושאים פתוחים</div>')}
     </div>`;
-  p.innerHTML=`<div class="tc-head"><b class="tc-h">${icoI('users',17)}צוות</b><span class="muted" style="font-size:12px">${escW(S.user.name)}</span>
+  p.innerHTML=`<div class="tc-head"><b class="tc-h">${icoI('users',17)}GreenDay</b><span class="muted" style="font-size:12px">${escW(S.user.name)}</span>
       <button class="dr-x" onclick="tcToggle(false)">✕</button></div>
     ${tcPeople()}
     <div class="tc-bar"><button class="btn-primary" onclick="TC.wa='';tcNewTopic()">+ נושא חדש</button>
+      ${S.user&&S.user.role==='owner'?`<button class="btn-ghost gd-boardbtn" onclick="gdOpen()" title="לוח המוצרים (במקום Monday)">${icoI('list',14)}מוצרים</button>`:''}
       <label class="tc-search">${ico('search',14)}<input id="tcSearch" placeholder="חיפוש בנושאים" value="${escW(TC.q)}" oninput="TC.q=this.value;tcPaintHome()"></label></div>
     <div class="tc-list" id="tcList">
       <div class="tc-trow tc-gen ${gen?'unr':''}" onclick="tcOpenTopic(0)">
@@ -2553,7 +2596,7 @@ function tcBadge(u){
 async function tcPollUnread(){
   if(!S.user||TC.open) return;
   try{ const u=await api('/api/chat/unread',{},10000); tcBadge(u);
-    if((u.mentions||0)>TC.seenMention) toast('תייגו אותך בצ׳אט הצוות',true);
+    if((u.mentions||0)>TC.seenMention) toast('תייגו אותך ב-GreenDay',true);
     TC.seenMention=u.mentions||0;
   }catch(e){}
 }
@@ -2563,6 +2606,168 @@ async function tcPushBind(){
   try{ const reg=await navigator.serviceWorker.getRegistration(); const sub=reg&&await reg.pushManager.getSubscription();
     if(sub) await api('/api/chat/push-bind',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({endpoint:sub.endpoint})});
   }catch(e){}
+}
+
+// ── 🟩 GreenDay · לוח מוצרים (בעלים בלבד) — 15/10/2026 ──
+// שלב 1: חלון ל-Monday. כל עריכה נכתבת מיד ל-Monday (שם גלי/יובל/QA עדיין עובדים) ונמשכת חזרה.
+const GD={data:null, q:'', st:'', open:{topics:true,group_mm3y9b6z:true}, more:{}, item:null, busy:false};
+function gdOpen(){ toggleDrawer(false); if(TC.open) tcToggle(false);
+  if(!S.user||S.user.role!=='owner'){ toast('לוח המוצרים פתוח לבעלים בלבד',false); return; }
+  S.view='greenday'; render(); }
+async function gdLoad(){
+  try{ GD.data=await api('/api/greenday/board',{},60000); if(S.view==='greenday') gdRender(); }
+  catch(e){ const a=document.getElementById('app'); if(a&&S.view==='greenday') a.innerHTML=`<div class="empty">${escW(e.detail||'הטעינה נכשלה')}</div>`; }
+}
+function gdStColor(l){ const s=((GD.data||{}).statuses||[]).find(x=>x.label===l); return s?s.color:'#c4c4c4'; }
+function gdPill(p,small){ const l=p.status||'—';
+  return `<span class="gd-pill ${small?'sm':''}" style="background:${gdStColor(p.status)}" onclick="event.stopPropagation();gdStatusMenu(this,'${escW(p.monday_id)}')" title="שינוי סטטוס">${escW(l)}</span>`; }
+function gdStatusMenu(el,mid){
+  document.querySelectorAll('.tc-stmenu').forEach(x=>x.remove());
+  const m=document.createElement('div'); m.className='tc-stmenu';
+  m.innerHTML=GD.data.statuses.map(s=>`<a href="#" style="background:${s.color}" onclick="this.parentNode.remove();gdSet('${mid}','status','${escW(s.label)}');return false">${escW(s.label)}</a>`).join('');
+  el.parentNode.style.position='relative'; el.insertAdjacentElement('afterend',m);
+  setTimeout(()=>document.addEventListener('click',function h(){ m.remove(); document.removeEventListener('click',h); }),0);
+}
+function gdH(n){ let h=0; for(const ch of String(n||'')) h=(h*31+ch.charCodeAt(0))%997; return h+1000; }
+function gdAgo(ts){ if(!ts) return 'עוד לא'; return tcRel(ts); }
+function gdRender(){
+  const app=document.getElementById('app'); if(!app) return;
+  if(!GD.data){ app.innerHTML='<div class="empty">טוען את לוח המוצרים…</div>'; gdLoad(); return; }
+  const D=GD.data, q=GD.q.trim().toLowerCase();
+  const match=p=>(!GD.st||p.status===GD.st)&&(!q||[p.name,p.pos_sku,p.wc_id,p.colors,p.notes].join(' ').toLowerCase().includes(q));
+  const keepQ=document.getElementById('gdSearch'); const qf=keepQ&&document.activeElement===keepQ;
+  const groups=D.groups.map(g=>{
+    const rows=D.products.filter(p=>p.grp===g.id&&match(p));
+    const open=GD.open[g.id]||!!q||!!GD.st; const lim=GD.more[g.id]||50;
+    return `<section class="gd-grp" style="--g:${g.color}">
+      <div class="gd-ghead" onclick="GD.open['${g.id}']=!GD.open['${g.id}'];gdRender()">
+        <span class="tc-gcar ${open?'op':''}">${ico('back',13)}</span><b>${escW(g.title)}</b><span class="muted">${rows.length} מוצרים</span></div>
+      ${open?`<div class="gd-tablewrap"><table class="gd-table"><thead><tr>
+          <th class="gd-c-name">מוצר</th><th>סטטוס</th><th>מחיר</th><th>מק״ט קופה</th><th>צבעים</th><th>נפחים</th>
+          <th>ליסט ID</th><th>תמונה</th><th class="gd-c-notes">הערות</th><th>עדכונים</th><th>נוצר</th></tr></thead><tbody>
+        ${rows.slice(0,lim).map(p=>`<tr onclick="gdItem('${escW(p.monday_id)}')">
+          <td class="gd-c-name"><span>${escW(p.name)}</span>${p.n_subs?`<span class="gd-subs">${p.n_subs} תת-פריטים</span>`:''}</td>
+          <td>${gdPill(p,true)}</td>
+          <td>${p.price!=null&&p.price!==''?'₪'+Number(p.price).toLocaleString('he-IL'):''}</td>
+          <td class="ltr">${escW(p.pos_sku||'')}</td>
+          <td>${escW(p.colors||'')}</td>
+          <td>${escW((p.storages||[]).join(', '))}</td>
+          <td>${p.wc_id&&/^\d+$/.test(p.wc_id)?`<a href="https://greenmobile.co.il/wp-admin/post.php?post=${escW(p.wc_id)}&action=edit" target="_blank" onclick="event.stopPropagation()">${escW(p.wc_id)}</a>`:escW(p.wc_id||'')}</td>
+          <td>${p.image_link?`<a href="${escW(p.image_link)}" target="_blank" onclick="event.stopPropagation()" title="התמונה המאוחדת">${ico('image',15)}</a>`:''}</td>
+          <td class="gd-c-notes">${escW((p.notes||'').slice(0,80))}</td>
+          <td>${p.n_updates?`<span class="tc-cnt">${ico('chat',13)}${p.n_updates}</span>`:''}</td>
+          <td class="muted">${p.monday_created?new Date(p.monday_created).toLocaleDateString('he-IL'):''}</td>
+        </tr>`).join('')||`<tr><td colspan="11" class="muted" style="text-align:center;padding:14px">אין מוצרים</td></tr>`}
+        </tbody></table>${rows.length>lim?`<a href="#" class="gd-more" onclick="GD.more['${g.id}']=${lim+100};gdRender();return false">הצג עוד (${rows.length-lim})</a>`:''}</div>`:''}
+    </section>`;
+  }).join('');
+  app.innerHTML=`<div class="gd-wrap">
+    <div class="gd-top">
+      <div class="gd-title">${icoI('users',20)}GreenDay <span>· ניהול מוצרים</span></div>
+      <label class="tc-search gd-search">${ico('search',14)}<input id="gdSearch" placeholder="חיפוש: שם, מק״ט, ליסט ID, הערות" value="${escW(GD.q)}" oninput="GD.q=this.value;gdRender()"></label>
+      <select class="gd-sel" onchange="GD.st=this.value;gdRender()"><option value="">כל הסטטוסים</option>${D.statuses.map(s=>`<option ${GD.st===s.label?'selected':''}>${escW(s.label)}</option>`).join('')}</select>
+      <button class="btn-primary gd-new" onclick="gdNewModal()">+ מוצר חדש</button>
+      <span class="gd-sync muted">סונכרן ${gdAgo(D.synced_at)} <a href="#" onclick="gdSyncNow();return false" title="סנכרון עכשיו מ-Monday">${ico('refresh',14)}</a></span>
+    </div>
+    <div class="gd-note">${icoI('info',14)}שלב 1: כל שינוי כאן נכתב מיד גם ל-Monday — גלי, יובל ו-QA ממשיכים לעבוד משם כרגיל.</div>
+    ${groups}
+  </div>`;
+  if(qf){ const i=document.getElementById('gdSearch'); i.focus(); i.selectionStart=i.selectionEnd=i.value.length; }
+}
+async function gdSyncNow(){
+  toast('מסנכרן מ-Monday…',true);
+  try{ const r=await api('/api/greenday/sync',{method:'POST'},120000); await gdLoad(); toast(`סונכרן · ${r.items} מוצרים`,true); }
+  catch(e){ toast(e.detail||'הסנכרון נכשל',false); }
+}
+async function gdSet(mid,field,value,silent){
+  try{ await api('/api/greenday/products/'+mid,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({field,value})},60000);
+    if(!silent) toast('נשמר (גם ב-Monday)',true);
+    await gdLoad(); if(GD.item&&GD.item.monday_id===mid) gdItem(mid,true);
+  }catch(e){ toast(e.detail||'השמירה נכשלה',false); }
+}
+// ── חלון מוצר ──
+async function gdItem(mid,keepTab){
+  let p=document.getElementById('gdItem');
+  if(!p){ p=document.createElement('aside'); p.id='gdItem'; p.className='tc-panel gd-item'; document.body.appendChild(p); }
+  p.classList.add('on');
+  if(!keepTab) p.innerHTML='<div class="tc-empty">טוען…</div>';
+  try{ const r=await api('/api/greenday/products/'+mid,{},30000); GD.item=r.product; GD.itemUrl=r.monday_url; gdItemPaint(); }
+  catch(e){ p.innerHTML=`<div class="tc-empty">${escW(e.detail||'הטעינה נכשלה')}</div>`; }
+}
+function gdItemClose(){ const p=document.getElementById('gdItem'); if(p) p.classList.remove('on'); GD.item=null; }
+function gdField(label,html,wide){ return `<div class="gd-f ${wide?'wide':''}"><label>${label}</label>${html}</div>`; }
+function gdItemPaint(){
+  const p=document.getElementById('gdItem'), it=GD.item, D=GD.data; if(!p||!it) return;
+  const mid=escW(it.monday_id);
+  const inp=(f,v,cls)=>`<input class="${cls||''}" value="${escW(v==null?'':v)}" onchange="gdSet('${mid}','${f}',this.value)">`;
+  p.innerHTML=`<div class="tc-thead">
+      <div class="tc-trow1"><a href="#" class="tc-back" onclick="gdItemClose();return false" title="סגירה">${ico('back',18)}</a>
+        <input class="gd-iname" value="${escW(it.name)}" onchange="gdSet('${mid}','name',this.value)">
+        <button class="dr-x" onclick="gdItemClose()">✕</button></div>
+      <div class="tc-tmeta2">${gdPill(it)}
+        <select class="gd-sel" onchange="gdSet('${mid}','grp',this.value)">${D.groups.map(g=>`<option value="${g.id}" ${g.id===it.grp?'selected':''}>${escW(g.title)}</option>`).join('')}</select>
+        <a class="tc-mi tc-walink" href="${escW(GD.itemUrl||'#')}" target="_blank">${icoI('extern',13)}פתח ב-Monday</a></div>
+    </div>
+    <div class="tc-msgs gd-ibody">
+      <div class="gd-fields">
+        ${gdField('מחיר באתר (₪)',inp('price',it.price,'ltr'))}
+        ${gdField('מק״ט קופה',inp('pos_sku',it.pos_sku,'ltr'))}
+        ${gdField('צבעים זמינים',inp('colors',it.colors))}
+        ${gdField('ליסט ID (מוצר באתר)',inp('wc_id',it.wc_id,'ltr'))}
+        ${gdField('נפחים זמינים',`<div class="gd-chips">${D.storages.map(s=>`<label><input type="checkbox" ${(it.storages||[]).includes(s)?'checked':''} onchange="gdStor('${mid}')" value="${s}"><span>${s}</span></label>`).join('')}</div>`,1)}
+        ${gdField('סוג ליסט',`<select class="gd-sel" onchange="gdSet('${mid}','list_type',this.value)"><option value="">—</option>${D.list_types.map(l=>`<option ${it.list_type===l?'selected':''}>${escW(l)}</option>`).join('')}</select>`)}
+        ${gdField('קישור מומלץ לתמונה (התמונה המאוחדת של יובל)',inp('image_link',it.image_link,'ltr')+(it.image_link?`<a href="${escW(it.image_link)}" target="_blank"><img class="gd-thumb" src="${escW(it.image_link)}" loading="lazy"></a>`:''),1)}
+        ${gdField('הערות',`<textarea rows="3" onchange="gdSet('${mid}','notes',this.value)">${escW(it.notes||'')}</textarea>`,1)}
+      </div>
+      ${(it.subs||[]).length?`<div class="gd-sec">תתי-פריטים (${it.subs.length})</div><div class="gd-tablewrap"><table class="gd-table"><thead><tr><th>שם</th><th>צבעים</th><th>מחיר</th><th>אחריות</th><th>סטטוס</th><th>הערות</th></tr></thead><tbody>
+        ${it.subs.map(s=>`<tr class="nohover"><td>${escW(s.name)}</td><td>${escW(s.colors)}</td><td>${escW(s.price)}</td><td>${escW(s.warranty)}</td><td>${escW(s.status)}</td><td>${escW(s.notes)}</td></tr>`).join('')}</tbody></table></div>`:''}
+      <div class="gd-sec">עדכונים (${(it.updates||[]).length}) <span class="muted" style="font-weight:400">— הוראות לסוכנים: קטגוריות, תכונות, אחריות</span></div>
+      <div class="tc-comp focus"><textarea id="gdUpd" rows="3" placeholder="כתוב עדכון לגלי/יובל… (נשמר גם ב-Monday)"></textarea>
+        <div class="tc-ctools" style="display:flex"><button class="btn-primary tc-send" onclick="gdPostUpdate('${mid}')">עדכן</button></div></div>
+      ${(it.updates||[]).map(u=>`<div class="tc-post"><div class="tc-phead">${tcAv(gdH(u.author),u.author,30)}<div class="tc-pwho"><b>${escW(u.author||'?')}</b><span class="muted">${u.created_at?new Date(u.created_at).toLocaleString('he-IL',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):''}</span></div></div>
+        <div class="tc-pbody"><div class="tc-txt">${tcText(u.body||'')}</div>
+        ${(u.assets||[]).length?`<a class="tc-file" href="${escW(GD.itemUrl||'#')}" target="_blank">${icoI('clip',13)}${u.assets.length} קבצים מצורפים — פתח ב-Monday</a>`:''}</div>
+        ${(u.replies||[]).length?`<div class="tc-replies">${u.replies.map(r=>`<div class="tc-reply">${tcAv(gdH(r.author),r.author,24)}<div class="tc-rmain"><div class="tc-rhead"><b>${escW(r.author)}</b><span class="muted">${r.created_at?new Date(r.created_at).toLocaleDateString('he-IL'):''}</span></div><div class="tc-rbody">${tcText(r.body||'')}</div></div></div>`).join('')}</div>`:''}
+      </div>`).join('')||'<div class="tc-empty">אין עדכונים</div>'}
+    </div>`;
+}
+function gdStor(mid){ const v=[...document.querySelectorAll('#gdItem .gd-chips input:checked')].map(x=>x.value); gdSet(mid,'storages',v); }
+async function gdPostUpdate(mid){
+  const t=(document.getElementById('gdUpd')||{}).value||''; if(!t.trim()) return;
+  try{ await api('/api/greenday/products/'+mid+'/update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:t})},60000);
+    toast('העדכון נשמר (גם ב-Monday)',true); gdItem(mid,true); gdLoad(); }
+  catch(e){ toast(e.detail||'השמירה נכשלה',false); }
+}
+// ── מוצר חדש ──
+function gdNewModal(){
+  const D=GD.data;
+  document.getElementById('modalRoot').innerHTML=`<div class="overlay"><div class="modal us-modal" style="max-width:560px">
+    <h3>מוצר חדש</h3><div class="muted" style="margin-bottom:6px">נוצר גם ב-Monday בקבוצה שבחרת, בסטטוס "ממתין" — יובל וגלי יאספו אותו בסבב הבא.</div>
+    <input id="gdnName" placeholder="שם המוצר (כמו שאודי כותב, למשל: Samsung Galaxy Watch 9)">
+    <select id="gdnGrp" class="gd-sel" style="width:100%;margin:8px 0">${D.groups.slice(0,2).map(g=>`<option value="${g.id}">${escW(g.title)}</option>`).join('')}</select>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <input id="gdnPrice" placeholder="מחיר באתר ₪" inputmode="decimal">
+      <input id="gdnSku" placeholder="מק״ט קופה" inputmode="numeric">
+    </div>
+    <input id="gdnColors" placeholder="צבעים זמינים (למשל: שחור, לבן)">
+    <div class="gd-chips" id="gdnStor">${D.storages.map(s=>`<label><input type="checkbox" value="${s}"><span>${s}</span></label>`).join('')}</div>
+    <textarea id="gdnNotes" rows="2" placeholder="הערות (אחריות וכו')" style="width:100%;margin-top:8px"></textarea>
+    <textarea id="gdnUpd" rows="4" placeholder="הוראות לסוכנים — קטגוריות, תכונות… (נכתב כעדכון)" style="width:100%;margin-top:8px"></textarea>
+    <div class="err" id="gdnErr"></div>
+    <button class="btn-primary" style="width:100%" onclick="gdCreate()">יצירת מוצר</button>
+    <button class="btn-ghost" style="width:100%;margin-top:8px" onclick="closeModal()">ביטול</button>
+  </div></div>`;
+  document.getElementById('gdnName').focus();
+}
+async function gdCreate(){
+  const v=id=>(document.getElementById(id)||{}).value||'';
+  const name=v('gdnName').trim(); if(!name){ document.getElementById('gdnErr').textContent='חסר שם מוצר'; return; }
+  const values={price:v('gdnPrice').trim(), pos_sku:v('gdnSku').trim(), colors:v('gdnColors').trim(), notes:v('gdnNotes').trim(),
+    storages:[...document.querySelectorAll('#gdnStor input:checked')].map(x=>x.value)};
+  try{ const r=await api('/api/greenday/products',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({name, grp:v('gdnGrp'), values, update:v('gdnUpd')})},90000);
+    closeModal(); toast('המוצר נוצר (גם ב-Monday)',true); await gdLoad(); gdItem(r.monday_id); }
+  catch(e){ document.getElementById('gdnErr').textContent=e.detail||'היצירה נכשלה'; }
 }
 
 // ── ניהול פוקוס לשדה הסריקה (סורק = מקלדת) ──
@@ -3464,6 +3669,7 @@ function renderDrawer(){
     ${isOwner()?`<div class="dr-item ${S.view==='tasks'?'active':''}" onclick="hubGo('tasks')"><span>${ico('list',16)}</span><span>משימות סוכנים${lock}</span></div>`:''}
     ${can('codes')?`<div class="dr-item ${S.view==='stellr'?'active':''}" onclick="hubGo('stellr')"><span>${ico('card',16)}</span><span>קודים דיגיטליים${lock}</span></div>`:''}
     ${isOwner()||!S.adminKey?`<div class="dr-item ${S.view==='sentinel'?'active':''}" onclick="hubGo('sentinel')"><span>${ico('shield',16)}</span><span>סטטוס Sentinel${lock}</span></div>`:''}
+    ${S.user&&S.user.role==='owner'?`<div class="dr-item ${act('greenday')}" onclick="gdOpen()"><span>${ico('list',16)}</span><span>GreenDay · לוח מוצרים</span></div>`:''}
     ${isOwner()?`<div class="dr-item ${act('users')}" onclick="hubUsers()"><span>${ico('user',16)}</span><span>משתמשים והרשאות</span></div>`:''}
     <div class="dr-sec">אפליקציות</div>
     ${HUB_APPS.filter(a=>can(a.feat)).map(a=>`
@@ -3734,6 +3940,7 @@ function render(){
   { const sb=document.getElementById('stellrBtn');   // 🎫 הנפקת קוד — סניפי חנות בלבד (1-4)
     if(sb) sb.style.display=(S.branchId&&['1','2','3','4'].includes(String(S.branchId)))?'inline-flex':'none'; }
   if(S.view==='users') return S.usersData?renderUsers():loadUsers();
+  if(S.view==='greenday') return gdRender();
   if(S.view==='home'&&!can('reports')){ S.view='admin'; }
   if(S.view==='home') return S.homeData?renderHome():loadHome(true);
   if(S.view==='embed') return renderEmbed(app);

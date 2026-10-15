@@ -735,6 +735,22 @@ def _removals_backfill_job(days: int = 90):
         logger.warning("removals_backfill failed: %s", e)
 
 
+def _greenday_sync_job():
+    try:
+        import greenday
+        greenday.sync()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("greenday sync failed: %s", e)
+
+
+def _greenday_full_job():
+    try:
+        import greenday
+        greenday.sync(full=True)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("greenday full sync failed: %s", e)
+
+
 def _token_watch_job():
     try:
         import token_watch
@@ -886,6 +902,12 @@ def register_recurring_jobs():
     scheduler.add_job(_poll_watchdog_job, "interval", minutes=5,
                       id="poll_watchdog", max_instances=1)
     scheduler.add_job(_alerts_job, "interval", minutes=15, id="alerts", max_instances=1)
+    # 🟩 GreenDay · לוח מוצרים ← Monday: קבוצות פעילות כל 5 דק', הלוח המלא כל 6 שעות (מכסת API!)
+    scheduler.add_job(_greenday_sync_job, "interval", minutes=5, id="greenday_sync",
+                      max_instances=1, coalesce=True)
+    scheduler.add_job(_greenday_full_job, "interval", hours=6, id="greenday_full",
+                      next_run_time=datetime.now() if not db.setting_get("greenday_full_synced_at") else None,
+                      max_instances=1, coalesce=True)
     # ניקוי עדכונים ישנים לסניפים — 03:30 יומי (ראה _branch_updates_cleanup_job)
     scheduler.add_job(_branch_updates_cleanup_job, "cron", id="upd_cleanup",
                       hour=3, minute=30, max_instances=1)
@@ -2256,6 +2278,133 @@ def chat_push_test():
     n = wa_push.send_to_all(title="GreenOS · בדיקת צוות", body=f"{u['name']}, ככה תיראה התראה על תיוג או נושא חדש",
                             url="/?chat=1", kind="chat", tag="chat-test", user_ids=[u["id"]])
     return {"sent": n}
+
+
+# ── 🟩 GreenDay · לוח מוצרים (בעלים בלבד; שלב 1 = חלון ל-Monday, כתיבה ישירה אליו) ──
+def _gd_owner():
+    u = _current_user()
+    if u is None or u["role"] != "owner":
+        raise HTTPException(403, "לוח המוצרים פתוח לבעלים בלבד")
+    return u
+
+
+def _gd_light(p: dict) -> dict:
+    return {k: p.get(k) for k in ("monday_id", "name", "grp", "status", "price", "pos_sku", "colors", "storages",
+                                  "notes", "image_link", "wc_id", "list_type", "mdate", "monday_created",
+                                  "monday_updated", "n_updates", "n_subs")}
+
+
+@app.get("/api/greenday/board")
+def gd_board():
+    _gd_owner()
+    import greenday as gd
+    return {"groups": [{"id": g, "title": t, "color": c} for g, t, c in gd.GROUPS],
+            "statuses": [{"label": l, "color": c} for l, c in gd.STATUSES],
+            "storages": gd.STORAGES, "list_types": gd.LIST_TYPES,
+            "products": [_gd_light(p) for p in db.gd_products_list()],
+            "synced_at": int(db.setting_get("greenday_synced_at") or 0),
+            "full_synced_at": int(db.setting_get("greenday_full_synced_at") or 0)}
+
+
+@app.get("/api/greenday/products/{mid}")
+def gd_product(mid: str):
+    _gd_owner()
+    p = db.gd_product_get(mid)
+    if not p:
+        raise HTTPException(404, "המוצר לא נמצא")
+    import greenday as gd
+    return {"product": p, "monday_url": gd.item_url(mid)}
+
+
+class GdPatch(BaseModel):
+    field: str
+    value: Optional[object] = None
+
+
+@app.post("/api/greenday/products/{mid}")
+def gd_product_patch(mid: str, body: GdPatch):
+    """עריכת שדה → נכתב מיד ל-Monday (שם הסוכנים קוראים) → מושכים חזרה ל-DB."""
+    _gd_owner()
+    import greenday as gd
+    if not db.gd_product_get(mid):
+        raise HTTPException(404, "המוצר לא נמצא")
+    try:
+        if body.field == "grp":
+            gd.move_group(mid, str(body.value or ""))
+        else:
+            v = body.value
+            if body.field == "storages":
+                v = [x for x in (v or []) if x in gd.STORAGES]
+            elif body.field == "list_type":
+                v = [x for x in ([v] if isinstance(v, str) else (v or [])) if x in gd.LIST_TYPES]
+            elif body.field == "name" and not str(v or "").strip():
+                raise ValueError("חסר שם")
+            gd.set_field(mid, body.field, v)
+        gd.refresh_item(mid)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except RuntimeError as e:
+        raise HTTPException(502, f"Monday: {e}")
+    return {"ok": True, "product": _gd_light(next((p for p in db.gd_products_list() if p["monday_id"] == mid), {}))}
+
+
+class GdCreate(BaseModel):
+    name: str
+    grp: str = "topics"
+    values: dict = {}
+    update: str = ""
+
+
+@app.post("/api/greenday/products")
+def gd_product_create(body: GdCreate):
+    """מוצר חדש — נוצר ב-Monday (בקבוצה שבחרו, ברירת מחדל: מוצרים חדשים) כך שהסוכנים יאספו אותו."""
+    u = _gd_owner()
+    import greenday as gd
+    name = (body.name or "").strip()
+    if not name:
+        raise HTTPException(400, "חסר שם מוצר")
+    if body.grp not in gd.GROUP_IDS:
+        raise HTTPException(400, "קבוצה לא מוכרת")
+    vals = dict(body.values or {})
+    vals.setdefault("status", "ממתין")
+    try:
+        mid = gd.create_item(name, body.grp, vals)
+        if (body.update or "").strip():
+            gd.create_update(mid, u["name"], body.update.strip())
+        gd.refresh_item(mid)
+    except RuntimeError as e:
+        raise HTTPException(502, f"Monday: {e}")
+    return {"ok": True, "monday_id": mid}
+
+
+class GdUpdateIn(BaseModel):
+    text: str
+
+
+@app.post("/api/greenday/products/{mid}/update")
+def gd_product_update(mid: str, body: GdUpdateIn):
+    """עדכון (הוראות לסוכנים — קטגוריות, תכונות, אחריות) → נכתב ל-Monday בשם הכותב."""
+    u = _gd_owner()
+    import greenday as gd
+    text = (body.text or "").strip()
+    if not text:
+        raise HTTPException(400, "עדכון ריק")
+    try:
+        gd.create_update(mid, u["name"], text[:8000])
+        gd.refresh_item(mid)
+    except RuntimeError as e:
+        raise HTTPException(502, f"Monday: {e}")
+    return {"ok": True, "product": db.gd_product_get(mid)}
+
+
+@app.post("/api/greenday/sync")
+def gd_sync_now(full: int = 0):
+    _gd_owner()
+    import greenday as gd
+    try:
+        return gd.sync(full=bool(full))
+    except RuntimeError as e:
+        raise HTTPException(502, f"Monday: {e}")
 
 
 class ChatPushBind(BaseModel):
@@ -14139,6 +14288,9 @@ def admin_diag(x_admin_key: Optional[str] = Header(None)):
     try:
         _wc = str(db.sales_state_get("worker_commit") or "")
         out["worker_commit"], out["worker_started"] = (_wc.split("|", 1) + [""])[:2] if _wc else ("?", "")
+        out["greenday_synced_at"] = int(db.setting_get("greenday_synced_at") or 0)
+        out["greenday_full_synced_at"] = int(db.setting_get("greenday_full_synced_at") or 0)
+        out["greenday_products"] = len(db.gd_products_list())
     except Exception:  # noqa: BLE001
         pass
     out["region"] = os.getenv("RENDER_REGION") or os.getenv("RENDER_SERVICE_REGION") or ""

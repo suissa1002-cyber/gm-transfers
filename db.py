@@ -276,6 +276,57 @@ _SCHEMA = [
     )
     """.format(pk=_PK),
     "CREATE INDEX IF NOT EXISTS idx_team_chat_topic ON team_chat(topic_id, id)",
+    # ── GreenDay · לוח מוצרים (15/10/2026) — מראה של Monday 2014994464, שלב 1 (ראה greenday.py) ──
+    """
+    CREATE TABLE IF NOT EXISTS gd_product (
+        id             {pk},
+        monday_id      TEXT UNIQUE,
+        name           TEXT,
+        grp            TEXT,
+        status         TEXT,
+        price          REAL,
+        pos_sku        TEXT,
+        colors         TEXT,
+        storages       TEXT DEFAULT '[]',
+        notes          TEXT,
+        image_link     TEXT,
+        wc_id          TEXT,
+        list_type      TEXT,
+        mdate          TEXT,
+        monday_created TEXT,
+        monday_updated TEXT,
+        synced_at      TEXT,
+        deleted        INTEGER DEFAULT 0
+    )
+    """.format(pk=_PK),
+    "CREATE INDEX IF NOT EXISTS idx_gd_product_grp ON gd_product(grp)",
+    """
+    CREATE TABLE IF NOT EXISTS gd_product_sub (
+        monday_id    TEXT PRIMARY KEY,
+        product_mid  TEXT,
+        pos          INTEGER,
+        name         TEXT,
+        notes        TEXT,
+        colors       TEXT,
+        price        TEXT,
+        warranty     TEXT,
+        link         TEXT,
+        status       TEXT
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_gd_sub_product ON gd_product_sub(product_mid)",
+    """
+    CREATE TABLE IF NOT EXISTS gd_product_update (
+        monday_id    TEXT PRIMARY KEY,
+        product_mid  TEXT,
+        author       TEXT,
+        body         TEXT,
+        created_at   TEXT,
+        assets       TEXT DEFAULT '[]',
+        replies      TEXT DEFAULT '[]'
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_gd_upd_product ON gd_product_update(product_mid)",
     # נושא/טיקט (מיני-Slack): שאלה / בקשה / משימה, עם אחראים וסטטוס. topic_id=0 = ערוץ "כללי".
     """
     CREATE TABLE IF NOT EXISTS team_topic (
@@ -5932,3 +5983,124 @@ def preorder_stats(campaign: str) -> dict:
     return {"total": len(rows), "by_status": by_status, "by_step": by_step,
             "answered": sum(1 for r in rows if len(r.get("answers") or {})
                             >= len(camp.get("steps") or []) and camp.get("steps"))}
+
+
+# ── GreenDay · לוח מוצרים (15/10/2026) ──
+_GD_COLS = ("name", "grp", "status", "price", "pos_sku", "colors", "storages", "notes", "image_link",
+            "wc_id", "list_type", "mdate")
+
+
+def gd_monday_versions() -> dict:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT monday_id, monday_updated FROM gd_product WHERE deleted = 0"))
+        return {r["monday_id"]: r["monday_updated"] for r in cur.fetchall()}
+
+
+def gd_product_upsert(p: dict):
+    vals = [p.get(k) for k in _GD_COLS]
+    vals[_GD_COLS.index("storages")] = json.dumps(p.get("storages") or [], ensure_ascii=False)
+    sets = ", ".join(f"{k} = excluded.{k}" for k in _GD_COLS)
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q(f"""INSERT INTO gd_product (monday_id, {", ".join(_GD_COLS)}, monday_created, monday_updated,
+                                                  synced_at, deleted)
+                          VALUES (?, {", ".join("?" * len(_GD_COLS))}, ?, ?, ?, 0)
+                          ON CONFLICT(monday_id) DO UPDATE SET {sets}, monday_updated = excluded.monday_updated,
+                              synced_at = excluded.synced_at, deleted = 0"""),
+                    tuple([p["monday_id"]] + vals + [p.get("created_at") or "", p.get("monday_updated") or "", now_iso()]))
+        cur.execute(_q("DELETE FROM gd_product_sub WHERE product_mid = ?"), (p["monday_id"],))
+        for i, sb in enumerate(p.get("subs") or []):
+            cur.execute(_q("""INSERT INTO gd_product_sub (monday_id, product_mid, pos, name, notes, colors, price,
+                                                          warranty, link, status)
+                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                              ON CONFLICT(monday_id) DO UPDATE SET product_mid = excluded.product_mid,
+                                  pos = excluded.pos, name = excluded.name, notes = excluded.notes,
+                                  colors = excluded.colors, price = excluded.price, warranty = excluded.warranty,
+                                  link = excluded.link, status = excluded.status"""),
+                        (sb["monday_id"], p["monday_id"], i, sb.get("name") or "", sb.get("notes") or "",
+                         sb.get("colors") or "", sb.get("price") or "", sb.get("warranty") or "",
+                         sb.get("link") or "", sb.get("status") or ""))
+
+
+def gd_updates_replace(product_mid: str, ups: list):
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("DELETE FROM gd_product_update WHERE product_mid = ?"), (str(product_mid),))
+        for u in ups:
+            cur.execute(_q("""INSERT INTO gd_product_update (monday_id, product_mid, author, body, created_at, assets, replies)
+                              VALUES (?, ?, ?, ?, ?, ?, ?)
+                              ON CONFLICT(monday_id) DO UPDATE SET product_mid = excluded.product_mid,
+                                  author = excluded.author, body = excluded.body, created_at = excluded.created_at,
+                                  assets = excluded.assets, replies = excluded.replies"""),
+                        (u["monday_id"], str(product_mid), u.get("author") or "", u.get("body") or "",
+                         u.get("created_at") or "", json.dumps(u.get("assets") or [], ensure_ascii=False),
+                         json.dumps(u.get("replies") or [], ensure_ascii=False)))
+
+
+def gd_mark_deleted(seen_ids) -> int:
+    """פריט שנמחק/הועבר מהלוח במאנדיי — מסומן כמחוק (לא נמחק מה-DB)."""
+    seen = {str(x) for x in seen_ids}
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT monday_id FROM gd_product WHERE deleted = 0"))
+        gone = [r["monday_id"] for r in cur.fetchall() if r["monday_id"] not in seen]
+        for mid in gone:
+            cur.execute(_q("UPDATE gd_product SET deleted = 1 WHERE monday_id = ?"), (mid,))
+        return len(gone)
+
+
+def gd_active_ids(groups) -> list:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT monday_id, grp FROM gd_product WHERE deleted = 0"))
+        return [r["monday_id"] for r in cur.fetchall() if r["grp"] in set(groups)]
+
+
+def gd_mark_deleted_ids(ids):
+    with _conn() as c:
+        cur = c.cursor()
+        for mid in ids:
+            cur.execute(_q("UPDATE gd_product SET deleted = 1 WHERE monday_id = ?"), (str(mid),))
+
+
+def _gd_row(r) -> dict:
+    d = dict(r)
+    try:
+        d["storages"] = json.loads(d.get("storages") or "[]")
+    except Exception:  # noqa: BLE001
+        d["storages"] = []
+    return d
+
+
+def gd_products_list() -> list:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""SELECT p.*, (SELECT COUNT(*) FROM gd_product_update u WHERE u.product_mid = p.monday_id) AS n_updates,
+                                 (SELECT COUNT(*) FROM gd_product_sub s WHERE s.product_mid = p.monday_id) AS n_subs
+                          FROM gd_product p WHERE p.deleted = 0 ORDER BY p.monday_created DESC"""))
+        return [_gd_row(r) for r in cur.fetchall()]
+
+
+def gd_product_get(monday_id: str):
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM gd_product WHERE monday_id = ? AND deleted = 0"), (str(monday_id),))
+        r = cur.fetchone()
+        if not r:
+            return None
+        p = _gd_row(r)
+        cur.execute(_q("SELECT * FROM gd_product_sub WHERE product_mid = ? ORDER BY pos"), (str(monday_id),))
+        p["subs"] = [dict(x) for x in cur.fetchall()]
+        cur.execute(_q("SELECT * FROM gd_product_update WHERE product_mid = ? ORDER BY created_at DESC"), (str(monday_id),))
+        ups = []
+        for x in cur.fetchall():
+            u = dict(x)
+            for k in ("assets", "replies"):
+                try:
+                    u[k] = json.loads(u.get(k) or "[]")
+                except Exception:  # noqa: BLE001
+                    u[k] = []
+            ups.append(u)
+        p["updates"] = ups
+        return p

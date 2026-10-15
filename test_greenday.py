@@ -1,0 +1,70 @@
+"""GreenDay · לוח מוצרים: בעלים בלבד, כתיבה ל-Monday בפורמט הנכון, יצירה+עדכון+העברת קבוצה (Monday מדומה)."""
+import sys, os, tempfile, json
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+_tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False).name
+os.environ.update(TRANSFERS_DB_PATH=_tmp, DATABASE_URL="", ADMIN_PASSWORD="legacy-secret", MONDAY_API_TOKEN="x")
+from fastapi.testclient import TestClient
+import main, db, greenday
+db.init_db(); main.cfg.ADMIN_PASSWORD = "legacy-secret"
+calls = []
+ITEM = {"id": "111", "name": "Galaxy Watch 9", "updated_at": "2026-10-15T10:00:00Z", "created_at": "2026-10-15T09:00:00Z",
+        "group": {"id": "topics"}, "subitems": [],
+        "column_values": [{"id": "status", "text": "ממתין", "value": None}, {"id": "numeric_mks5nhn6", "text": "1249", "value": None},
+                          {"id": "dropdown_mks5ymd", "text": "128GB, 256GB", "value": None}]}
+def fake_gql(q, v=None, timeout=90):
+    calls.append((q.split("(")[0].split("{")[0].strip() + " " + q[q.find("{")+1:q.find("(", q.find("{")+1)].strip(), v))
+    if "create_item" in q: return {"create_item": {"id": "222"}}
+    if "create_update" in q: return {"create_update": {"id": "u1", "created_at": "x"}}
+    if "items(ids" in q and "updates" in q: return {"items": [{"id": i, "updates": [{"id": "u1", "text_body": "הוראות", "created_at": "2026-10-15T10:00:00Z", "creator": {"name": "Asi"}, "assets": [], "replies": []}]} for i in v["ids"]]}
+    if "items(ids" in q: return {"items": [dict(ITEM, id=v["ids"][0])]}
+    if "groups(ids" in q: return {"boards": [{"groups": [{"items_page": {"cursor": None, "items": [ITEM]}}]}]}
+    return {"x": {"id": "1"}}
+greenday.gql = fake_gql
+c = TestClient(main.app)
+fails = []
+def check(label, cond, extra=""):
+    print(f"{'✅' if cond else '❌'} {label}" + (f"  [{extra}]" if not cond else "")); cond or fails.append(label)
+ADM = {"X-Admin-Key": "legacy-secret"}
+db.device_register("dev-b-0000000000000001", "קופה", "ua", "1.2.3.4", "1", "approved")
+for un, role, pr in [("asi", "owner", []), ("dana", "user", ["orders", "transfers"])]:
+    c.post("/api/admin/users", headers=ADM, json={"username": un, "name": un, "password": "pass123", "role": role, "perms": pr})
+def login(un):
+    t = c.post("/api/auth/login", json={"username": un, "password": "pass123"}, headers={"X-Device-Token": "dev-b-0000000000000001"}).json()["token"]
+    return {"X-User-Token": t, "X-Device-Token": "dev-b-0000000000000001"}
+A, D = login("asi"), login("dana")
+
+print(greenday.sync())
+check("סנכרון קבוצות פעילות → מוצר ב-DB", db.gd_product_get("111")["price"] == 1249 and db.gd_product_get("111")["storages"] == ["128GB", "256GB"])
+check("⛔ עובדת (גם עם הרשאות) לא רואה את הלוח", c.get("/api/greenday/board", headers=D).status_code == 403)
+check("⛔ סיסמה משותפת לא נכנסת ללוח", c.get("/api/greenday/board", headers=ADM).status_code == 403)
+b = c.get("/api/greenday/board", headers=A).json()
+check("בעלים רואה לוח עם 5 קבוצות ו-6 סטטוסים", len(b["groups"]) == 5 and len(b["statuses"]) == 6 and len(b["products"]) == 1)
+
+calls.clear()
+r = c.post("/api/greenday/products/111", headers=A, json={"field": "status", "value": "בעבודה"})
+mut = [x for x in calls if "change_column_value" in x[0] or "change_column_value" in json.dumps(x)]
+check("סטטוס → change_column_value עם {label}", r.status_code == 200 and any(json.loads(x[1]["v"]) == {"label": "בעבודה"} for x in calls if x[1] and "v" in x[1]), calls[:2])
+calls.clear()
+c.post("/api/greenday/products/111", headers=A, json={"field": "storages", "value": ["256GB", "bogus"]})
+check("נפחים → {labels} מסונן לערכים חוקיים", any(x[1] and "v" in x[1] and json.loads(x[1]["v"]) == {"labels": ["256GB"]} for x in calls), calls[:2])
+calls.clear()
+c.post("/api/greenday/products/111", headers=A, json={"field": "price", "value": "1299"})
+check("מחיר → change_simple_column_value '1299'", any(x[1] and x[1].get("v") == "1299" for x in calls), calls[:2])
+check("⛔ סטטוס לא מוכר נדחה", c.post("/api/greenday/products/111", headers=A, json={"field": "status", "value": "בלגן"}).status_code == 400)
+calls.clear()
+c.post("/api/greenday/products/111", headers=A, json={"field": "grp", "value": "group_mkzqzksn"})
+check("העברה לארכיון → move_item_to_group", any(x[1] and x[1].get("g") == "group_mkzqzksn" for x in calls))
+check("⛔ קבוצה לא מוכרת נדחית", c.post("/api/greenday/products/111", headers=A, json={"field": "grp", "value": "zzz"}).status_code == 400)
+calls.clear()
+r = c.post("/api/greenday/products", headers=A, json={"name": "Pixel 12", "grp": "topics", "values": {"price": "3999", "storages": ["256GB"]}, "update": "קטגוריות: סמארטפונים"})
+cv = next((json.loads(x[1]["v"]) for x in calls if x[1] and "n" in x[1]), {})
+check("יצירת מוצר: create_item בקבוצת חדשים, סטטוס ממתין כברירת מחדל", r.json().get("monday_id") == "222" and cv.get("status") == {"label": "ממתין"} and cv.get("numeric_mks5nhn6") == "3999", cv)
+body = next((x[1]["b"] for x in calls if x[1] and "b" in x[1] and "i" in x[1]), "")
+check("עדכון ראשון נכתב בשם הכותב (asi · GreenDay)", "asi · GreenDay" in body and "קטגוריות" in body, body[:80])
+calls.clear()
+r = c.post("/api/greenday/products/111/update", headers=A, json={"text": "<script>x</script> שורה\nשנייה"})
+body = next((x[1]["b"] for x in calls if x[1] and "b" in x[1]), "")
+check("עדכון: HTML מנוטרל + שורות", "&lt;script&gt;" in body and "<br>" in body, body)
+os.unlink(_tmp)
+assert not fails, fails
+print("\n✅ כל בדיקות GreenDay עברו")
