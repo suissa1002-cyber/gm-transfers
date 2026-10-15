@@ -5471,6 +5471,21 @@ def sessions_delete_for_user(uid) -> int:
         return cur.rowcount or 0
 
 
+def users_last_seen() -> dict:
+    """user_id → epoch של הפעילות האחרונה (last_seen של הסשן; מתעדכן כל ~5 דק') — ל"נמסר"."""
+    from datetime import datetime
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT user_id, MAX(last_seen) AS ls FROM user_sessions GROUP BY user_id"))
+        out = {}
+        for r in cur.fetchall():
+            try:
+                out[int(r["user_id"])] = datetime.fromisoformat(str(r["ls"])).timestamp()
+            except Exception:  # noqa: BLE001
+                pass
+        return out
+
+
 def sessions_for_user(uid) -> list:
     with _conn() as c:
         cur = c.cursor()

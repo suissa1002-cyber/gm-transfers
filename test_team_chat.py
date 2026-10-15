@@ -112,7 +112,7 @@ pres = {x["name"]: x["online"] for x in c.get("/api/chat/topics", headers=A).jso
 check("נוכחות: מי שביצע בקשות — מחובר", pres["אסי"] and pres["אודי"] and pres["דנה"], pres)
 main._PRESENCE[ids["udi"]] = time.time() - 600
 pres = {x["name"]: x for x in c.get("/api/chat/topics", headers=A).json()["users"]}
-check("נוכחות: 10 דקות בלי פעילות — לא מחובר", not pres["אודי"]["online"] and pres["אודי"]["seen_ago"] >= 600)
+check("נוכחות: 10 דקות בלי פעילות — לא מחובר", not pres["אודי"]["online"])
 
 # ── סטטוסים: פתוח / בעבודה / ממתין לתשובה / טופל ──
 st = c.post("/api/chat/topics", headers=A, json={"title": "בדיקת סטטוסים", "kind": "task", "assignees": [ids["udi"]]}).json()["topic"]["id"]
@@ -126,6 +126,17 @@ check("שינוי סטטוס נרשם ביומן", any("ממתין לתשובה"
 check("⛔ סטטוס לא מוכר נדחה בשקט", c.post(f"/api/chat/topics/{st}", headers=U, json={"status": "bogus"}).json()["topic"]["status"] == "waiting")
 c.post(f"/api/chat/topics/{st}", headers=U, json={"status": "done"})
 check("טופל → עובר לרשימת טופלו", any(x["id"] == st for x in c.get("/api/chat/topics?status=done", headers=A).json()["topics"]))
+
+# ── נמסר/נקרא: נתוני בסיס ──
+us = {x["name"]: x for x in c.get("/api/chat/topics", headers=A).json()["users"]}
+check("active_ts לכל משתמש פעיל (לחיווי נמסר)", all(us[n]["active_ts"] > 0 for n in ("אסי", "אודי", "דנה")), us)
+rt = c.post("/api/chat/topics", headers=A, json={"title": "בדיקת נקרא", "kind": "question", "assignees": [ids["udi"]]}).json()["topic"]["id"]
+mm = c.post("/api/chat/send", headers=A, json={"text": "@אודי ראית?", "topic_id": rt, "mentions": [ids["udi"]]}).json()["message"]
+r0 = c.get(f"/api/chat/messages?topic={rt}", headers=A).json()["reads"]
+check("לפני שאודי פתח — אין לו קריאה", int(r0.get(str(ids["udi"]), 0)) < mm["id"], r0)
+c.post("/api/chat/read", headers=U, json={"last_id": mm["id"], "topic_id": rt})
+r1 = c.get(f"/api/chat/messages?topic={rt}", headers=A).json()["reads"]
+check("אחרי שאודי פתח — נקרא", int(r1.get(str(ids["udi"]), 0)) >= mm["id"], r1)
 
 os.unlink(_tmp)
 assert not fails, fails

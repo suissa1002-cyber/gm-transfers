@@ -831,6 +831,8 @@
   .tc-ord{display:inline-flex;align-items:center;color:#0073ea;font-weight:600;text-decoration:none;background:rgba(0,115,234,.08);border-radius:4px;padding:0 5px}
   .tc-pfoot{display:flex;align-items:center;gap:20px;padding:8px 14px;border-top:1px solid var(--line);font-size:13px}
   .tc-pfoot a{display:inline-flex;align-items:center;color:var(--muted);text-decoration:none} .tc-pfoot a.on{color:#0073ea;font-weight:600}
+  .tc-rcpt{display:inline-flex;align-items:center;gap:3px;align-self:center;cursor:help}
+  .tc-rcpt-n{font-size:11px;color:var(--muted)}
   .tc-seen{display:inline-flex;align-items:center;margin-inline-start:auto;color:var(--muted);font-size:12px;cursor:default}
   .tc-replies{background:var(--card2);border-top:1px solid var(--line);padding:6px 14px 10px;border-radius:0 0 8px 8px}
   .tc-reply{display:flex;gap:8px;padding:6px 0}
@@ -2277,7 +2279,7 @@ async function tcLoad(first){
     if(TC.view!=='thread'||TC.topic!==topic) return;
     TC.users=r.users||TC.users; TC.me=r.me; tcBadge(r.unread);
     if(r.topic){ const ch=JSON.stringify(r.topic)!==JSON.stringify(TC.topicObj); TC.topicObj=r.topic; if(ch) tcPaintTHead(); }
-    const sig=JSON.stringify([r.messages,r.reads]);
+    const sig=JSON.stringify([r.messages,r.reads,(r.users||[]).map(u=>Math.floor((u.active_ts||0)/60))]);   // נמסר מתעדכן בלי רענון
     if(sig!==TC.sig){
       TC.sig=sig; TC.msgs=r.messages||[]; TC.reads=r.reads||{};
       if(TC.msgs.length) TC.lastId=TC.msgs[TC.msgs.length-1].id;
@@ -2320,6 +2322,34 @@ function tcAttHTML(m,small){
     return `<img class="tc-img ${small?'sm':''}" src="${escW(m.attach_url)}" loading="lazy" onclick="waLightbox('${escW(m.attach_url)}')">`;
   return `<a class="tc-file" href="${escW(m.attach_url)}&dl=1" target="_blank">${icoI('clip',13)}${escW(m.attach_name||'קובץ')} <small>${m.attach_size?Math.ceil(m.attach_size/1024)+'KB':''}</small></a>`;
 }
+// ── נשלח / נמסר / נקרא (בסגנון וואטסאפ) ──
+// נמענים = מי שתויג; בלי תיוג — כל המעורבים בנושא (בכללי: כל הצוות). נקרא = פתח את הנושא אחרי
+// ההודעה (reads); נמסר = היה פעיל ב-GreenOS אחרי שנכתבה (active_ts).
+function tcRecipients(m){
+  let ids;
+  if((m.mentions||[]).length) ids=m.mentions.slice();
+  else if(TC.topicObj){ const t=TC.topicObj, st=new Set([t.created_by,...t.assignees]);
+    TC.msgs.forEach(x=>{ if(!x.system&&!x.deleted){ st.add(x.user_id); (x.mentions||[]).forEach(i=>st.add(i)); } }); ids=[...st]; }
+  else ids=TC.users.map(u=>u.id);
+  return [...new Set(ids)].filter(i=>i!==m.user_id&&TC.users.some(u=>u.id===i));
+}
+function tcReceipt(m){
+  if(m.deleted||m.system) return '';
+  const R=tcRecipients(m); if(!R.length) return '';
+  const act=id=>((TC.users.find(u=>u.id===id)||{}).active_ts||0);
+  const read=R.filter(id=>Number((TC.reads||{})[String(id)]||0)>=m.id);
+  const deliv=R.filter(id=>!read.includes(id)&&act(id)>=m.ts);
+  const none=R.filter(id=>!read.includes(id)&&!deliv.includes(id));
+  const st=read.length===R.length?'read':(none.length===0?'deliv':'sent');
+  const nm=a=>a.map(tcName).filter(Boolean).join(', ');
+  const tip=[read.length?'נקרא: '+nm(read):'',deliv.length?'נמסר: '+nm(deliv):'',none.length?'טרם נמסר: '+nm(none):''].filter(Boolean).join(' · ');
+  const col=st==='read'?'#34b7f1':'var(--muted)';
+  const a='M1 6 L4 9 L9.6 2.6', b='M6 6 L9 9 L16.6 1.8';
+  const path=`<path d="${a}" fill="none" stroke="${col}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>`+
+    (st==='sent'?'':`<path d="${b}" fill="none" stroke="${col}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>`);
+  const part=(R.length>1&&read.length&&read.length<R.length)?`<span class="tc-rcpt-n">${read.length}/${R.length}</span>`:'';
+  return `<span class="tc-rcpt" title="${escW(tip)}"><svg viewBox="0 0 18 12" width="16" height="11">${path}</svg>${part}</span>`;
+}
 function tcSeen(m){
   const ids=Object.entries(TC.reads||{}).filter(([u,l])=>Number(u)!==m.user_id&&Number(l)>=m.id).map(([u])=>Number(u));
   if(!ids.length) return '';
@@ -2337,7 +2367,7 @@ function tcPostHTML(m,replies){
   const liked=(m.likes||[]).includes(TC.me);
   return `<div class="tc-post ${forMe?'forme':''}" data-id="${m.id}">
     <div class="tc-phead">${tcAv(m.user_id,m.user_name,34,true)}
-      <div class="tc-pwho"><b>${escW(m.user_name)}</b><span class="muted">${tcRel(m.ts)}${m.edited_at?' · נערך':''}</span>
+      <div class="tc-pwho"><b>${escW(m.user_name)}</b><span class="muted">${tcRel(m.ts)}${m.edited_at?' · נערך':''}</span>${tcReceipt(m)}
         ${(m.mentions||[]).length?`<span class="tc-for">${icoI('user',11)}${(m.mentions||[]).map(id=>escW(tcName(id)||'?')).join(', ')}</span>`:''}</div>
       ${mine&&!m.deleted?`<span class="tc-pmenu"><a href="#" onclick="TC.editing=${m.id};tcPaint(false);return false" title="עריכה">${ico('pencil',14)}</a><a href="#" onclick="tcDel(${m.id});return false" title="מחיקה">${ico('trash',14)}</a></span>`:''}
     </div>
@@ -2345,7 +2375,6 @@ function tcPostHTML(m,replies){
     <div class="tc-pfoot">
       <a href="#" class="${liked?'on':''}" onclick="tcLike(${m.id});return false">${icoI('thumb',14)}אהבתי${(m.likes||[]).length?` · ${(m.likes||[]).length}`:''}</a>
       <a href="#" onclick="tcFocusReply(${m.id});return false">${icoI('reply',14)}השב</a>
-      ${tcSeen(m)}
     </div>
     <div class="tc-replies">
       ${replies.map(r=>tcReplyHTML(r)).join('')}
@@ -2357,7 +2386,7 @@ function tcReplyHTML(r){
   const mine=r.user_id===TC.me, liked=(r.likes||[]).includes(TC.me);
   if(r.deleted) return `<div class="tc-reply del"><i class="muted">${escW(r.user_name)} מחק/ה תגובה</i></div>`;
   return `<div class="tc-reply ${(r.mentions||[]).includes(TC.me)?'forme':''}">${tcAv(r.user_id,r.user_name,26)}
-    <div class="tc-rmain"><div class="tc-rhead"><b>${escW(r.user_name)}</b><span class="muted">${tcRel(r.ts)}${r.edited_at?' · נערך':''}</span>
+    <div class="tc-rmain"><div class="tc-rhead"><b>${escW(r.user_name)}</b><span class="muted">${tcRel(r.ts)}${r.edited_at?' · נערך':''}</span>${tcReceipt(r)}
       ${mine?`<span class="tc-pmenu"><a href="#" onclick="TC.editing=${r.id};tcPaint(false);return false">${ico('pencil',12)}</a><a href="#" onclick="tcDel(${r.id});return false">${ico('trash',12)}</a></span>`:''}</div>
       <div class="tc-rbody">${tcBodyHTML(r)}</div>
       <div class="tc-rfoot"><a href="#" class="${liked?'on':''}" onclick="tcLike(${r.id});return false">${icoI('thumb',12)}${(r.likes||[]).length||'אהבתי'}</a></div></div>

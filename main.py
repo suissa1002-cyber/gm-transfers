@@ -1894,12 +1894,18 @@ def _chat_users() -> list:
     import time as _tm
     now = _tm.time()
     out = []
+    try:
+        last = db.users_last_seen()   # שורד אתחול שרת (בניגוד ל-_PRESENCE שבזיכרון)
+    except Exception:  # noqa: BLE001
+        last = {}
     for x in db.users_list():
         if not x["active"]:
             continue
         seen = _PRESENCE.get(x["id"])
+        act = max(seen or 0, last.get(x["id"], 0))
         out.append({"id": x["id"], "name": x["name"], "online": bool(seen and now - seen < 90),
-                    "seen_ago": int(now - seen) if seen else None})
+                    "seen_ago": int(now - act) if act else None,
+                    "active_ts": int(act) if act else 0})   # ל"נמסר": היה פעיל אחרי שההודעה נכתבה
     return out
 
 
