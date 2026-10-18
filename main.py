@@ -909,6 +909,8 @@ def register_recurring_jobs():
     # 🟩 GreenDay · לוח מוצרים ← Monday: קבוצות פעילות כל 5 דק', הלוח המלא כל 6 שעות (מכסת API!)
     scheduler.add_job(_greenday_sync_job, "interval", minutes=5, id="greenday_sync",
                       max_instances=1, coalesce=True)
+    scheduler.add_job(_greenday_reminders_job, "interval", minutes=15, id="greenday_reminders",
+                      max_instances=1, coalesce=True)
     scheduler.add_job(_greenday_full_job, "interval", hours=6, id="greenday_full",
                       next_run_time=datetime.now() if not db.setting_get("greenday_full_synced_at") else None,
                       max_instances=1, coalesce=True)
@@ -2312,6 +2314,7 @@ def gd_board():
             "statuses": [{"label": l, "color": c} for l, c in gd.STATUSES],
             "storages": gd.STORAGES, "list_types": gd.LIST_TYPES,
             "products": [_gd_light(p) for p in db.gd_products_list()],
+            "reminders": db.gd_reminders_open(), "today": _gd_today(),
             "mode": "primary" if gd.is_primary() else "mirror",
             "synced_at": int(db.setting_get("greenday_synced_at") or 0),
             "full_synced_at": int(db.setting_get("greenday_full_synced_at") or 0)}
@@ -2329,8 +2332,97 @@ def gd_product(mid: str):
         u["gd"] = u["gd"] or str(u.get("monday_id") or "").startswith("gdu")
         for r in u.get("replies") or []:
             r["author"], r["body"], _x = gd.split_author(r.get("body") or "", r.get("author") or "")
+    p["reminders"] = db.gd_reminders_for(mid)
     return {"product": p, "monday_url": "" if str(mid).startswith("gd") else gd.item_url(mid),
             "mode": "primary" if gd.is_primary() else "mirror"}
+
+
+# ── תזכורות פנימיות על מוצר (18/10/2026, אסי) — לא תלויות בקבוצה: קופצות גם כשהמוצר בארכיון ──
+def _gd_today() -> str:
+    from zoneinfo import ZoneInfo as _ZIr
+    return datetime.now(_ZIr("Asia/Jerusalem")).strftime("%Y-%m-%d")
+
+
+class GdReminderIn(BaseModel):
+    due: str
+    text: str
+
+
+def _gd_due_ok(due: str) -> str:
+    try:
+        return datetime.strptime((due or "").strip()[:10], "%Y-%m-%d").strftime("%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(400, "תאריך לא תקין")
+
+
+@app.post("/api/greenday/products/{mid}/reminders")
+def gd_reminder_create(mid: str, body: GdReminderIn):
+    u = _gd_owner()
+    if not db.gd_product_get(mid):
+        raise HTTPException(404, "המוצר לא נמצא")
+    due, text = _gd_due_ok(body.due), (body.text or "").strip()[:500]
+    if not text:
+        raise HTTPException(400, "חסר טקסט לתזכורת")
+    rid = db.gd_reminder_add(mid, due, text, u["name"])
+    db.gd_update_add(mid, u["name"], f"נקבעה תזכורת ל-{datetime.strptime(due, '%Y-%m-%d').strftime('%d/%m/%y')}: {text}")
+    return {"ok": True, "id": rid, "reminders": db.gd_reminders_for(mid)}
+
+
+class GdReminderAct(BaseModel):
+    action: str                 # done | undo | delete | edit
+    due: str = ""
+    text: str = ""
+
+
+@app.post("/api/greenday/reminders/{rid}")
+def gd_reminder_act(rid: int, body: GdReminderAct):
+    u = _gd_owner()
+    r = db.gd_reminder_get(rid)
+    if not r:
+        raise HTTPException(404, "התזכורת לא נמצאה")
+    if body.action == "done":
+        db.gd_reminder_done(rid, u["name"])
+        db.gd_update_add(r["product_mid"], u["name"], f"תזכורת טופלה: {r['text']}")
+    elif body.action == "undo":
+        db.gd_reminder_done(rid, u["name"], undo=True)
+    elif body.action == "delete":
+        db.gd_reminder_delete(rid)
+    elif body.action == "edit":
+        due = _gd_due_ok(body.due or r["due_date"])
+        db.gd_reminder_set(rid, due, (body.text or r["text"]).strip()[:500])
+        if due != r["due_date"]:
+            db.gd_update_add(r["product_mid"], u["name"],
+                             f"התזכורת נדחתה ל-{datetime.strptime(due, '%Y-%m-%d').strftime('%d/%m/%y')}: {body.text or r['text']}")
+    else:
+        raise HTTPException(400, "פעולה לא מוכרת")
+    return {"ok": True, "reminders": db.gd_reminders_for(r["product_mid"])}
+
+
+def _greenday_reminders_job():
+    """כל 15 דק': תזכורות שהגיע יומן (שעון ישראל, מ-09:00) → push לבעלים + עדכון במוצר, פעם אחת."""
+    try:
+        from zoneinfo import ZoneInfo as _ZIr
+        now = datetime.now(_ZIr("Asia/Jerusalem"))
+        if now.hour < 9:
+            return
+        due = db.gd_reminders_due(now.strftime("%Y-%m-%d"))
+        if not due:
+            return
+        owners = [x["id"] for x in db.users_list() if x.get("role") == "owner" and x.get("active")]
+        import wa_push
+        for r in due:
+            name = r.get("product_name") or ""
+            try:
+                wa_push.send_to_all(title="תזכורת GreenDay", body=f"{name}: {r['text']}"[:180],
+                                    url=f"/?gd={r['product_mid']}", kind="greenday",
+                                    tag=f"gdr{r['id']}", user_ids=owners)
+            except Exception as e:  # noqa: BLE001
+                logger.warning("gd reminder push failed: %s", e)
+            db.gd_update_add(r["product_mid"], "תזכורת", f"תזכורת להיום: {r['text']}")
+            db.gd_reminder_notified(r["id"])
+            logger.info("gd reminder fired: %s (%s)", r["id"], name)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("gd reminders job failed: %s", e)
 
 
 class GdPatch(BaseModel):

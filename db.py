@@ -327,6 +327,21 @@ _SCHEMA = [
     )
     """,
     "CREATE INDEX IF NOT EXISTS idx_gd_upd_product ON gd_product_update(product_mid)",
+    # תזכורות פנימיות על מוצר (18/10/2026) — "המבצע מסתיים היום, להאריך?" · לא מפעילות סוכנים
+    """
+    CREATE TABLE IF NOT EXISTS gd_reminder (
+        id           {pk},
+        product_mid  TEXT,
+        due_date     TEXT,
+        text         TEXT,
+        created_by   TEXT,
+        created_at   TEXT,
+        done_at      TEXT,
+        done_by      TEXT,
+        notified_at  TEXT
+    )
+    """.format(pk=_PK),
+    "CREATE INDEX IF NOT EXISTS idx_gd_rem_due ON gd_reminder(done_at, due_date)",
     # נושא/טיקט (מיני-Slack): שאלה / בקשה / משימה, עם אחראים וסטטוס. topic_id=0 = ערוץ "כללי".
     """
     CREATE TABLE IF NOT EXISTS team_topic (
@@ -6152,6 +6167,76 @@ def gd_update_add(product_mid, author, body) -> str:
                            (uid, str(product_mid), author or "", body or "", datetime.now(timezone.utc).isoformat()))
         c.cursor().execute(_q("UPDATE gd_product SET monday_updated = ? WHERE monday_id = ?"), (now_iso(), str(product_mid)))
     return uid
+
+
+def gd_reminder_add(product_mid, due_date, text, by) -> int:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""INSERT INTO gd_reminder (product_mid, due_date, text, created_by, created_at)
+                          VALUES (?, ?, ?, ?, ?)"""), (str(product_mid), due_date, text or "", by or "", now_iso()))
+        cur.execute(_q("SELECT MAX(id) AS id FROM gd_reminder WHERE product_mid = ?"), (str(product_mid),))
+        return int(cur.fetchone()["id"])
+
+
+def gd_reminders_for(product_mid) -> list:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM gd_reminder WHERE product_mid = ? ORDER BY (done_at IS NOT NULL), due_date"),
+                    (str(product_mid),))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def gd_reminders_open() -> list:
+    """תזכורות פתוחות (לא בוצעו) של מוצרים קיימים, עם שם המוצר — לפס ולעמודה בלוח."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""SELECT r.*, p.name AS product_name, p.grp AS grp FROM gd_reminder r
+                          JOIN gd_product p ON p.monday_id = r.product_mid AND p.deleted = 0
+                          WHERE r.done_at IS NULL ORDER BY r.due_date"""))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def gd_reminder_get(rid):
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM gd_reminder WHERE id = ?"), (int(rid),))
+        r = cur.fetchone()
+        return dict(r) if r else None
+
+
+def gd_reminder_done(rid, by, undo=False):
+    with _conn() as c:
+        if undo:
+            c.cursor().execute(_q("UPDATE gd_reminder SET done_at = NULL, done_by = NULL WHERE id = ?"), (int(rid),))
+        else:
+            c.cursor().execute(_q("UPDATE gd_reminder SET done_at = ?, done_by = ? WHERE id = ?"),
+                               (now_iso(), by or "", int(rid)))
+
+
+def gd_reminder_delete(rid):
+    with _conn() as c:
+        c.cursor().execute(_q("DELETE FROM gd_reminder WHERE id = ?"), (int(rid),))
+
+
+def gd_reminder_set(rid, due_date, text):
+    """עריכה/דחייה — תאריך חדש מאפס את סימון "נשלחה התראה" כדי שתצא שוב ביום החדש."""
+    with _conn() as c:
+        c.cursor().execute(_q("UPDATE gd_reminder SET due_date = ?, text = ?, notified_at = NULL WHERE id = ?"),
+                           (due_date, text or "", int(rid)))
+
+
+def gd_reminders_due(today: str) -> list:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""SELECT r.*, p.name AS product_name FROM gd_reminder r
+                          JOIN gd_product p ON p.monday_id = r.product_mid AND p.deleted = 0
+                          WHERE r.done_at IS NULL AND r.notified_at IS NULL AND r.due_date <= ?"""), (today,))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def gd_reminder_notified(rid):
+    with _conn() as c:
+        c.cursor().execute(_q("UPDATE gd_reminder SET notified_at = ? WHERE id = ?"), (now_iso(), int(rid)))
 
 
 def gd_update_edit(uid, body):

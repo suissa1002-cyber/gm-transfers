@@ -878,6 +878,20 @@
   .gd-table .gd-c-name{text-align:start;min-width:260px;max-width:380px;white-space:normal;font-weight:600}
   .gd-table .gd-c-notes{text-align:start;max-width:240px;color:var(--muted)}
   .gd-subs{display:block;font-weight:400;font-size:11.5px;color:var(--muted)}
+  .gd-rem{display:inline-flex;align-items:center;gap:4px;font-size:12px;padding:2px 8px;border-radius:999px;background:rgba(100,116,139,.12);color:var(--text);white-space:nowrap}
+  .gd-rem.soon{background:rgba(245,158,11,.16);color:#b45309}
+  .gd-rem.due{background:rgba(220,38,38,.13);color:#b91c1c;font-weight:700}
+  .gd-rems{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:12px;padding:8px 10px;border:1px solid var(--border);border-radius:10px;background:var(--card)}
+  .gd-rems .gd-rem{cursor:pointer;font-size:12.5px;padding:4px 10px;white-space:normal}
+  .gd-rems .gd-rem:hover{filter:brightness(.95)}
+  .gd-remlist{display:flex;flex-direction:column;gap:6px;margin:4px 0 10px}
+  .gd-remrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:7px 9px;border:1px solid var(--border);border-radius:9px}
+  .gd-remrow.done{opacity:.55}.gd-remrow.done .gd-remtxt{text-decoration:line-through}
+  .gd-remtxt{flex:1;min-width:160px}
+  .gd-remrow input[type=date]{width:auto;padding:3px 6px;font-size:12px}
+  .gd-remrow a{font-size:12.5px;display:inline-flex;align-items:center;gap:3px}
+  .gd-remform{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+  .gd-remform input[type=date]{width:auto}.gd-remform input[type=text]{flex:1;min-width:180px}
   .gd-table a{color:#0073ea;text-decoration:none}
   .gd-more{display:block;text-align:center;padding:9px;color:#0073ea;text-decoration:none;font-size:13px}
   .gd-pill{display:inline-block;min-width:118px;padding:6px 10px;color:#fff;font-weight:600;font-size:12.5px;border-radius:4px;cursor:pointer;text-align:center}
@@ -2645,6 +2659,54 @@ function gdImg(u,w){ u=String(u||''); const m=u.match(/^https?:\/\/(?:www\.)?gre
   return m?('https://i0.wp.com/greenmobile.co.il/'+m[1]+(w?'?w='+w:'')):u; }
 function gdH(n){ let h=0; for(const ch of String(n||'')) h=(h*31+ch.charCodeAt(0))%997; return h+1000; }
 function gdAgo(ts){ if(!ts) return 'עוד לא'; return tcRel(ts); }
+// ── תזכורות פנימיות (18/10/2026) — לפי מוצר, לא לפי קבוצה: מופיעות גם כשהמוצר בארכיון ──
+function gdDays(d){ const t=(GD.data&&GD.data.today)||new Date().toISOString().slice(0,10); return Math.round((new Date(d+'T00:00:00')-new Date(t+'T00:00:00'))/864e5); }
+function gdRemCls(d){ const n=gdDays(d); return n<=0?'due':n<=3?'soon':''; }
+function gdDmy(d){ const a=String(d||'').split('-'); return a.length===3?`${a[2]}/${a[1]}/${a[0].slice(2)}`:d; }
+function gdRemWhen(d){ const n=gdDays(d); return n<0?`באיחור ${-n} ימים`:n===0?'היום':n===1?'מחר':`בעוד ${n} ימים`; }
+function gdRemByProduct(){ const m={}; ((GD.data||{}).reminders||[]).forEach(r=>{ if(!m[r.product_mid]) m[r.product_mid]=r; }); return m; }
+function gdRemStrip(){
+  const R=((GD.data||{}).reminders||[]); if(!R.length) return '';
+  const near=R.filter(r=>gdDays(r.due_date)<=14), later=R.length-near.length;
+  return `<div class="gd-rems"><span class="muted" style="display:inline-flex;align-items:center;gap:4px">${icoI('bell',14)}תזכורות:</span>
+    ${near.map(r=>`<span class="gd-rem ${gdRemCls(r.due_date)}" onclick="gdItem('${escW(r.product_mid)}')" title="${escW(r.text)}">${gdDmy(r.due_date)} · ${escW((r.product_name||'').slice(0,40))} — ${escW(r.text.slice(0,60))}</span>`).join('')}
+    ${!near.length?`<span class="muted">אין תזכורות בשבועיים הקרובים</span>`:''}${later?`<span class="muted">ועוד ${later} בהמשך</span>`:''}</div>`;
+}
+function gdOpenItem(mid,tries){
+  tries=tries||0;
+  if(!S.user||S.user.role!=='owner') return;
+  if(S.view!=='greenday') gdOpen();
+  if(!GD.data&&tries<40){ setTimeout(()=>gdOpenItem(mid,tries+1),300); return; }
+  gdItem(mid);
+}
+async function gdRemAdd(mid){
+  const due=(document.getElementById('gdRemDue')||{}).value||'', text=((document.getElementById('gdRemTxt')||{}).value||'').trim();
+  if(!due||!text){ toast('צריך תאריך וטקסט לתזכורת',false); return; }
+  try{ const r=await api('/api/greenday/products/'+mid+'/reminders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({due,text})},30000);
+    toast('התזכורת נשמרה',true); gdItem(mid,true); gdLoad(); }
+  catch(e){ toast(e.detail||'השמירה נכשלה',false); }
+}
+async function gdRemAct(mid,id,action,due){
+  if(action==='delete'&&!confirm('למחוק את התזכורת?')) return;
+  try{ await api('/api/greenday/reminders/'+id,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,due:due||''})},30000);
+    toast(action==='done'?'סומן כטופל':action==='edit'?'התאריך עודכן':action==='undo'?'נפתח מחדש':'נמחק',true); gdItem(mid,true); gdLoad(); }
+  catch(e){ toast(e.detail||'הפעולה נכשלה',false); }
+}
+function gdRemSection(it){
+  const mid=escW(it.monday_id), R=it.reminders||[];
+  const tomorrow=new Date(Date.now()+864e5).toISOString().slice(0,10);
+  return `<div class="gd-sec">${icoI('bell',14)}תזכורות <span class="muted" style="font-weight:400">— לכם בלבד (לא מפעיל סוכנים). ביום היעד מגיעה התראה, גם אם המוצר בארכיון</span></div>
+    <div class="gd-remlist">${R.map(r=>`<div class="gd-remrow ${r.done_at?'done':''}">
+        <span class="gd-rem ${r.done_at?'':gdRemCls(r.due_date)}">${icoI('clock',12)}${gdDmy(r.due_date)}${r.done_at?'':' · '+gdRemWhen(r.due_date)}</span>
+        <span class="gd-remtxt">${escW(r.text)}<span class="muted" style="font-size:11.5px"> · ${escW(r.created_by||'')}${r.done_at?' · טופל ע״י '+escW(r.done_by||''):''}</span></span>
+        ${r.done_at?`<a href="#" onclick="gdRemAct('${mid}',${r.id},'undo');return false">${ico('restore',13)}פתח מחדש</a>`
+          :`<a href="#" onclick="gdRemAct('${mid}',${r.id},'done');return false">${ico('check',13)}טופל</a>
+            <label class="muted" style="font-size:12px;display:inline-flex;align-items:center;gap:4px">דחה ל-<input type="date" value="${escW(r.due_date)}" onchange="gdRemAct('${mid}',${r.id},'edit',this.value)"></label>`}
+        <a href="#" class="muted" onclick="gdRemAct('${mid}',${r.id},'delete');return false" title="מחיקה">${ico('trash',13)}</a>
+      </div>`).join('')}</div>
+    <div class="gd-remform"><input type="date" id="gdRemDue" value="${tomorrow}"><input type="text" id="gdRemTxt" placeholder="למשל: המבצע מסתיים — לבדוק אם להאריך או להוריד">
+      <button class="btn-primary" onclick="gdRemAdd('${mid}')">הוסף תזכורת</button></div>`;
+}
 function gdRender(){
   const app=document.getElementById('app'); if(!app) return;
   if(!_gdAgT){ gdAgentsLoad(); _gdAgT=setInterval(()=>{ if(S.view!=='greenday'){ clearInterval(_gdAgT); _gdAgT=null; return; } gdAgentsLoad(); },15000); }
@@ -2652,6 +2714,7 @@ function gdRender(){
   const D=GD.data, q=GD.q.trim().toLowerCase();
   const match=p=>(!GD.st||p.status===GD.st)&&(!q||[p.name,p.pos_sku,p.wc_id,p.colors,p.notes].join(' ').toLowerCase().includes(q));
   const keepQ=document.getElementById('gdSearch'); const qf=keepQ&&document.activeElement===keepQ;
+  const REM=gdRemByProduct();
   const groups=D.groups.map(g=>{
     const rows=D.products.filter(p=>p.grp===g.id&&match(p));
     const open=GD.open[g.id]||!!q||!!GD.st; const lim=GD.more[g.id]||50;
@@ -2661,7 +2724,7 @@ function gdRender(){
       ${open?`<div class="gd-tablewrap"><table class="gd-table"><thead><tr>
           <th class="gd-c-ck"><input type="checkbox" ${rows.length&&rows.slice(0,lim).every(p=>GD.sel.has(p.monday_id))?'checked':''} onclick="event.stopPropagation();gdSelAll(this.checked,'${g.id}')" title="בחר את כל הקבוצה"></th>
           <th class="gd-c-name">מוצר</th><th>סטטוס</th><th>מחיר</th><th>מק״ט קופה</th><th>צבעים</th><th>נפחים</th>
-          <th>ליסט ID</th><th>תמונה</th><th class="gd-c-notes">הערות</th><th>עדכונים</th><th>נוצר</th></tr></thead><tbody>
+          <th>ליסט ID</th><th>תמונה</th><th class="gd-c-notes">הערות</th><th>עדכונים</th><th>תזכורת</th><th>נוצר</th></tr></thead><tbody>
         ${rows.slice(0,lim).map(p=>`<tr class="${GD.sel.has(p.monday_id)?'sel':''}" onclick="gdItem('${escW(p.monday_id)}')">
           <td class="gd-c-ck" onclick="event.stopPropagation()"><input type="checkbox" ${GD.sel.has(p.monday_id)?'checked':''} onchange="gdSel('${escW(p.monday_id)}',this.checked)"></td>
           <td class="gd-c-name"><span>${escW(p.name)}</span>${p.n_subs?`<span class="gd-subs">${p.n_subs} תת-פריטים</span>`:''}</td>
@@ -2674,8 +2737,9 @@ function gdRender(){
           <td>${p.image_link?`<a href="${escW(gdImg(p.image_link))}" target="_blank" rel="noreferrer" onclick="event.stopPropagation()" title="התמונה המאוחדת">${ico('image',15)}</a>`:''}</td>
           <td class="gd-c-notes">${escW((p.notes||'').slice(0,80))}</td>
           <td>${p.n_updates?`<span class="tc-cnt">${ico('chat',13)}${p.n_updates}</span>`:''}</td>
+          <td>${REM[p.monday_id]?`<span class="gd-rem ${gdRemCls(REM[p.monday_id].due_date)}" title="${escW(REM[p.monday_id].text)}">${icoI('bell',12)}${gdDmy(REM[p.monday_id].due_date)}</span>`:''}</td>
           <td class="muted">${p.monday_created?new Date(p.monday_created).toLocaleDateString('he-IL'):''}</td>
-        </tr>`).join('')||`<tr><td colspan="12" class="muted" style="text-align:center;padding:14px">אין מוצרים</td></tr>`}
+        </tr>`).join('')||`<tr><td colspan="13" class="muted" style="text-align:center;padding:14px">אין מוצרים</td></tr>`}
         </tbody></table>${rows.length>lim?`<a href="#" class="gd-more" onclick="GD.more['${g.id}']=${lim+100};gdRender();return false">הצג עוד (${rows.length-lim})</a>`:''}</div>`:''}
     </section>`;
   }).join('');
@@ -2690,6 +2754,7 @@ function gdRender(){
     </div>
     ${D.mode==='primary'?`<div class="gd-agents" id="gdAgents">${gdAgentsHTML()}</div>`:''}
     <div class="gd-note">${icoI('info',14)}${D.mode==='primary'?'GreenDay הוא המקור: גלי, יובל ו-QA קוראים וכותבים ישירות מכאן. Monday מוקפא כגיבוי.':'שלב 1: כל שינוי כאן נכתב מיד גם ל-Monday — גלי, יובל ו-QA ממשיכים לעבוד משם כרגיל.'}</div>
+    ${gdRemStrip()}
     ${groups}
   </div>${gdBulkBar()}`;
   if(qf){ const i=document.getElementById('gdSearch'); i.focus(); i.selectionStart=i.selectionEnd=i.value.length; }
@@ -2790,6 +2855,7 @@ function gdItemPaint(){
         ${gdField('קישור מומלץ לתמונה (התמונה המאוחדת של יובל)',inp('image_link',it.image_link,'ltr')+(it.image_link?`<a href="${escW(gdImg(it.image_link))}" target="_blank" rel="noreferrer"><img class="gd-thumb" src="${escW(gdImg(it.image_link,600))}" loading="lazy" referrerpolicy="no-referrer"></a>`:''),1)}
         ${gdField('הערות',`<textarea rows="3" onchange="gdSet('${mid}','notes',this.value)">${escW(it.notes||'')}</textarea>`,1)}
       </div>
+      ${gdRemSection(it)}
       ${(it.subs||[]).length?`<div class="gd-sec">תתי-פריטים (${it.subs.length})</div><div class="gd-tablewrap"><table class="gd-table"><thead><tr><th>שם</th><th>צבעים</th><th>מחיר</th><th>אחריות</th><th>סטטוס</th><th>הערות</th></tr></thead><tbody>
         ${it.subs.map(s=>`<tr class="nohover"><td>${escW(s.name)}</td><td>${escW(s.colors)}</td><td>${escW(s.price)}</td><td>${escW(s.warranty)}</td><td>${escW(s.status)}</td><td>${escW(s.notes)}</td></tr>`).join('')}</tbody></table></div>`:''}
       <div class="gd-sec">עדכונים (${(it.updates||[]).length}) <span class="muted" style="font-weight:400">— הוראות לסוכנים: קטגוריות, תכונות, אחריות</span></div>
@@ -11864,6 +11930,7 @@ async function handleDeepLink(){
   }
   if(q.get('orders')==='1' && S.branchId){ try{ openOrdersTab(); }catch(e){} }
   if(q.get('chat')==='1' && S.branchId){ const t=Number(q.get('topic')||0); if(t){ TC.view='thread'; TC.topic=t; } tcToggle(true); }
+  if(q.get('gd') && S.branchId){ gdOpenItem(q.get('gd')); }
 }
 // לחיצה על התראת push כשהאפליקציה כבר פתוחה — ה-SW שולח הודעה במקום reload
 function navPhoneOf(d){
@@ -11877,6 +11944,7 @@ if('serviceWorker' in navigator){
     if(!S.branchId) return;
     if(d.type==='open-orders'){ try{ openOrdersTab(); }catch(e){} return; }
     if(d.type==='open-chat'){ const t=Number((String(d.url||'').match(/topic=(\d+)/)||[])[1]||0); if(t){ TC.view='thread'; TC.topic=t; } tcToggle(true); return; }
+    if(d.type==='open-gd'){ const g=(String(d.url||'').match(/gd=([A-Za-z0-9]+)/)||[])[1]; if(g) gdOpenItem(g); return; }
     if(d.type!=='open-wa') return;
     openWaTab();
     const ph=navPhoneOf(d);
@@ -11908,6 +11976,7 @@ async function navPendingApply(){
   if(!p || !S.branchId || Date.now()-(p.at||0)>10*60*1000) return;
   // התראת הזמנה (url עם orders=1) → טאב ההזמנות; אחרת — שיחת וואטסאפ
   if(String(p.url||'').indexOf('orders=1')>=0){ try{ openOrdersTab(); }catch(e){} return; }
+  if(String(p.url||'').indexOf('gd=')>=0){ const g=(String(p.url).match(/gd=([A-Za-z0-9]+)/)||[])[1]; if(g) gdOpenItem(g); return; }
   if(String(p.url||'').indexOf('chat=1')>=0){ const t=Number((String(p.url).match(/topic=(\d+)/)||[])[1]||0); if(t){ TC.view='thread'; TC.topic=t; } tcToggle(true); return; }
   const ph=navPhoneOf(p);
   openWaTab();
