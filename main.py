@@ -16298,6 +16298,17 @@ def _resolve_product_id(url: str = "", name: str = "") -> Optional[int]:
     return None
 
 
+_COLOR_ALIASES = {
+    "בורדו": "אדום", "יין": "אדום", "דובדבן": "אדום", "צ'רי": "אדום", "צ׳רי": "אדום", "red": "אדום",
+    "cherry": "אדום", "burgundy": "אדום", "wine": "אדום", "crimson": "אדום",
+    "black": "שחור", "obsidian": "שחור", "graphite": "שחור", "midnight": "שחור",
+    "white": "לבן", "cream": "לבן", "blue": "כחול", "navy": "כחול", "תכלת": "כחול", "green": "ירוק",
+    "mint": "ירוק", "silver": "כסוף", "כסף": "כסוף", "gray": "אפור", "grey": "אפור", "gold": "זהב",
+    "purple": "סגול", "lavender": "סגול", "violet": "סגול", "pink": "ורוד", "orange": "כתום",
+    "yellow": "צהוב", "titanium": "טיטניום",
+}
+
+
 def _match_oos_variation(product_id: int, color: str = "", size: str = "",
                          name: str = "") -> Optional[dict]:
     """בוחר את הוריאציה שאזלה (stock!=instock) הכי-תואמת לרמזים. הרמזים נאספים מצבע/מידה
@@ -16313,7 +16324,9 @@ def _match_oos_variation(product_id: int, color: str = "", size: str = "",
     if len(oos) == 1:
         return oos[0]
     hint = " ".join([color or "", size or "", name or ""]).lower()
-    toks = {t for t in _re3.split(r"[\s,/|\-]+", hint) if len(t) >= 2}
+    toks = {t for t in _re3.split(r"[\s,/|\-—.:]+", hint) if len(t) >= 2}
+    # שמות צבע שהלקוח/אלה כותבים ≠ שם הצבע באתר (POCO F9 Ultra 18/10: "בורדו" מול "אדום")
+    toks |= {_COLOR_ALIASES[t] for t in toks if t in _COLOR_ALIASES}
 
     def _blob(v):
         b = " ".join([str(v.get("color") or ""), str(v.get("storage") or ""),
@@ -16321,15 +16334,17 @@ def _match_oos_variation(product_id: int, color: str = "", size: str = "",
                       " ".join(str(x) for x in (v.get("attrs") or {}).values())]).lower()
         return b, b.replace(" ", "")
 
-    best, best_score = None, 0
+    best, best_score, tie = None, 0, False
     for v in oos:
         b, bns = _blob(v)
         score = sum(1 for t in toks if t in b or t.replace(" ", "") in bns)
-        if score > best_score:           # מקס' ראשון מנצח (tie → הראשון, סביר לסטוק-וואצ')
-            best, best_score = v, score
-    if best and best_score > 0:
+        if score > best_score:
+            best, best_score, tie = v, score, False
+        elif score == best_score and score > 0:
+            tie = True                   # שתי וריאציות תואמות באותה מידה — לא מנחשים
+    if best and best_score > 0 and not tie:
         return best
-    return None                          # שום רמז לא תאם — עמום מדי, להיכשל בבירור
+    return None                          # שום רמז לא תאם / תיקו — עמום מדי, להיכשל בבירור
 
 
 def _stock_watch_add(body: StockWatchAddIn):
@@ -16348,16 +16363,21 @@ def _stock_watch_add(body: StockWatchAddIn):
         pid = _resolve_product_id((body.product_url or "").strip(), pname)
         if not pid:
             raise HTTPException(404, "לא מצאתי את המוצר באתר (בדוק שם/קישור)")
-        v = _match_oos_variation(pid, (body.color or "").strip(), (body.size or "").strip(), pname)
+        v = _match_oos_variation(pid, (body.color or "").strip(), (body.size or "").strip(),
+                                 f"{pname} {body.notes or ''}")
         if not v:
-            raise HTTPException(409, "לא הצלחתי לזהות חד-משמעית איזו וריאציה אזלה — ציין צבע/מידה")
+            oos_names = [" · ".join(str(x) for x in (o.get("attrs_disp") or {}).values())
+                         for o in (bot_get_variations(pid) or []) if o.get("stock") != "instock"]
+            raise HTTPException(409, "לא הצלחתי לזהות חד-משמעית איזו וריאציה אזלה — ציין צבע/מידה"
+                                + (f" (אזלו: {', '.join(oos_names)})" if oos_names else ""))
         sku = str(v.get("sku") or "").strip()
+        vname = " · ".join(str(x) for x in (v.get("attrs_disp") or {}).values())
         if not pname:
             pname = (body.product_name or "").strip()
         logger.info("stock-watch resolved variant: pid=%s color=%s size=%s -> sku=%s",
                     pid, body.color, body.size, sku)
         if not sku:
-            raise HTTPException(422, "הוריאציה שאזלה ללא מק\"ט באתר — צריך לחבר מק\"ט")
+            raise HTTPException(422, f"הוריאציה \"{vname}\" ללא מק\"ט באתר — צריך לחבר לה מק\"ט קופה")
     if not no_id:
         if not sku:
             raise HTTPException(400, "צריך SKU או neworder_id")

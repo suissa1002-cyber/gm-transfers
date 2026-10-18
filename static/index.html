@@ -7240,7 +7240,7 @@ async function waStockWatchDirect(idx){
   try{
     const r=await fetchT('/api/admin/stock-watch/add',{method:'POST',headers:h,body:JSON.stringify({
       phone:S.waPhone, sku:sw.sku||'', product_name:sw.product||'', product_url:sw.url||'',
-      color:sw.color||'', size:sw.size||'', notify:true
+      color:sw.color||'', size:sw.size||'', notes:(m.text||'').slice(0,300), notify:true
     })},45000);
     const j=await r.json().catch(()=>({}));
     if(r.ok && j && j.ok){
