@@ -16347,6 +16347,35 @@ def _match_oos_variation(product_id: int, color: str = "", size: str = "",
     return None                          # שום רמז לא תאם / תיקו — עמום מדי, להיכשל בבירור
 
 
+def _no_sku_by_model_color(names: list, v: dict) -> str:
+    """וריאציה בלי מק"ט באתר (WC לא מרשה אותו מק"ט על רשמי+מקביל, ובקופה יש מק"ט אחד לצבע —
+    היבואן מפורט ברמת הסידורי). מחפשים בקופה לפי הדגם (מילים לטיניות מהשם) ומסננים לפי הצבע
+    (כולל כינויים: אדום↔Cherry/Red/Burgundy). מחזיר מק"ט רק אם יש התאמה יחידה."""
+    import re as _re4
+    color = str(v.get("color") or "").strip().lower()
+    disp = " ".join(str(x) for x in (v.get("attrs_disp") or {}).values()).lower()
+    col_words = {color} | {k for k, val in _COLOR_ALIASES.items() if val == color} if color else set()
+    storage = _re4.sub(r"\s", "", str(v.get("storage") or "")).lower()
+    for nm in names:
+        words = [w for w in _re4.findall(r"[A-Za-z0-9+]+", nm or "") if w.lower() not in ("5g", "4g", "lte")]
+        for n in range(len(words), 1, -1):
+            q = " ".join(words[:n])
+            try:
+                prods = poller.client().get_products(search=q) or []
+            except Exception:  # noqa: BLE001
+                prods = []
+            hits = [p for p in prods
+                    if (not col_words or any(cw and cw in (p.get("name") or "").lower() for cw in col_words))
+                    and (not storage or storage in _re4.sub(r"\s", "", (p.get("name") or "")).lower())]
+            if len(hits) == 1:
+                logger.info("stock-watch: no WC sku for %s (%s) -> NewOrder %s by '%s'",
+                            v.get("id"), disp, hits[0].get("id"), q)
+                return str(hits[0].get("id"))
+            if hits:
+                return ""        # כמה כרטיסים תואמים — לא מנחשים
+    return ""
+
+
 def _stock_watch_add(body: StockWatchAddIn):
     """לוגיקת ההרשמה ל-Stock Watcher (משותפת לאדמין/בריג'/בוט): מזהה מוצר
     (SKU→neworder_id דרך NewOrder) → רושם ב-watcher → שולח אישור ללקוח.
@@ -16377,7 +16406,17 @@ def _stock_watch_add(body: StockWatchAddIn):
         logger.info("stock-watch resolved variant: pid=%s color=%s size=%s -> sku=%s",
                     pid, body.color, body.size, sku)
         if not sku:
-            raise HTTPException(422, f"הוריאציה \"{vname}\" ללא מק\"ט באתר — צריך לחבר לה מק\"ט קופה")
+            wc_name = ""
+            try:
+                _b, _k, _s = _wc_creds()
+                _r = _rq.get(f"{_b}/wp-json/wc/v3/products/{int(pid)}", params={"_fields": "name"},
+                             auth=(_k, _s), timeout=15)
+                wc_name = (_r.json() or {}).get("name") or "" if _r.ok else ""
+            except Exception:  # noqa: BLE001
+                pass
+            sku = _no_sku_by_model_color([pname, wc_name], v)
+        if not sku:
+            raise HTTPException(422, f"הוריאציה \"{vname}\" ללא מק\"ט באתר ולא נמצא כרטיס יחיד בקופה לדגם+צבע — צריך לחבר מק\"ט")
     if not no_id:
         if not sku:
             raise HTTPException(400, "צריך SKU או neworder_id")
