@@ -1569,6 +1569,9 @@
    הציג "משלוח באותו היום"). התג נקרא מה-Store API הציבורי כדי לא לגעת בתבנית ה-PHP. ═══ */
 (function ($) {
   var BEIT_TAG = 3630;
+  /* זמן אספקה מהספק לוריאציה (דוח מלאי שבועי — "ניתן לעדכן 21 ימי עסקים"):
+     סמן <span class="gm-lead" data-days="21"> בתיאור הוריאציה. */
+  var LEAD = null;
   var m = (document.body.className || '').match(/postid-(\d+)/);
   if (!m) return;
   function cube($c, t, s) {
@@ -1576,15 +1579,19 @@
     $t.html('<b>' + t + '</b><span>' + s + '</span>');
   }
   function apply() {
+    var days = LEAD ? LEAD + ' ימי עסקים' : '1–6 ימי עסקים';
     $('.trust').each(function () {
+      var $c = $(this).find('.titem').eq(1);
+      if ($c.length) cube($c, LEAD ? 'זמן אספקה' : 'משלוח עד הבית',
+                         LEAD ? 'עד ' + days + ' · הפצה ישירה מהיבואן' : 'הפצה ישירה מהיבואן · ' + days);
       $(this).find('.titem').each(function () {
-        var txt = $(this).text();
-        if (/באותו היום|איסוף/.test(txt)) cube($(this), 'משלוח עד הבית', 'הפצה ישירה מהיבואן · 1–6 ימי עסקים');
+        if (/באותו היום|איסוף/.test($(this).text())) cube($(this), 'משלוח עד הבית', 'הפצה ישירה מהיבואן · 1–6 ימי עסקים');
       });
     });
     var $i = $('.instk');
     if ($i.length && !$i.hasClass('oos') && !$i.hasClass('gm-pre') && !$i.hasClass('gm-eta')) {
-      $i.addClass('gm-beit').html('✓ זמין להזמנה · משלוח עד הבית תוך 1–6 ימי עסקים');
+      $i.addClass('gm-beit').html(LEAD ? '✓ זמין להזמנה · זמן אספקה עד ' + days
+                                       : '✓ זמין להזמנה · משלוח עד הבית תוך ' + days);
     }
   }
   fetch('/wp-json/wc/store/v1/products/' + m[1], { credentials: 'same-origin' })
@@ -1595,7 +1602,12 @@
       document.body.classList.add('gm-beit');
       apply();
       setTimeout(apply, 900);   /* אחרי buildTrust/refreshSmart של הטעינה */
-      $(document).on('found_variation reset_data', 'form.variations_form', function () { setTimeout(apply, 250); });
+      $(document).on('found_variation', 'form.variations_form', function (e, v) {
+        var lm = /gm-lead[^>]*data-days="(\d+)"/.exec((v && v.variation_description) || '');
+        LEAD = lm ? lm[1] : null;
+        setTimeout(apply, 250);
+      });
+      $(document).on('reset_data', 'form.variations_form', function () { LEAD = null; setTimeout(apply, 250); });
       $(document).on('click', '.gm-atc .variable-item', function () { setTimeout(apply, 300); });
     })
     .catch(function () {});
