@@ -16572,6 +16572,21 @@ def _stock_watch_add(body: StockWatchAddIn):
             "product_name": pname, "confirmation_sent": sent}
 
 
+@app.post("/api/admin/stock-watch/{watch_id}/close")
+def stock_watch_close(watch_id: int):
+    """סגירת רישום ברשימת ההמתנה (הלקוח כבר עודכן ידנית / לא רלוונטי) — כדי שלא תצא לו
+    הודעת "חזר למלאי" כפולה כשהמלאי ייקלט בקופה. (19/10/2026: אורן, POCO F9 Ultra)"""
+    import requests as _rq
+    tok = os.getenv("STOCK_WATCHER_TOKEN", "").strip()
+    swurl = os.getenv("STOCK_WATCHER_URL", "https://uri-stock-watcher.onrender.com").rstrip("/")
+    if not tok:
+        raise HTTPException(502, "STOCK_WATCHER_TOKEN לא מוגדר")
+    r = _rq.delete(f"{swurl}/watches/{int(watch_id)}", headers={"Authorization": f"Bearer {tok}"}, timeout=30)
+    if not r.ok:
+        raise HTTPException(502, f"Stock Watcher: {r.status_code} {r.text[:150]}")
+    return r.json()
+
+
 @app.post("/api/admin/stock-watch/add")
 def admin_stock_watch_add(body: StockWatchAddIn, x_admin_key: Optional[str] = Header(None)):
     """הרשמת לקוח ל-Stock Watcher מהקונסולה (admin-key)."""
