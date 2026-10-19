@@ -390,3 +390,18 @@ def test_seed_and_endpoints():
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main([__file__, "-q"]))
+
+
+def test_open_managed_unit_disables_manage_stock():
+    """פתיחת וריאציה עם manage_stock=true (qty 0) חייבת לכבות ניהול מלאי — אחרת WC מתעלם."""
+    import supplier_stock as ss
+    rows = [{"group": "open", "status_change": True, "lead_change": "", "unit_kind": "variation",
+             "vid": 46414, "pid": 46373, "barcode": "7290114432368", "new_status": "instock",
+             "new_lead": None, "manage_stock": True},
+            {"group": "close", "status_change": True, "lead_change": "", "unit_kind": "variation",
+             "vid": 46415, "pid": 46373, "barcode": "x", "new_status": "outofstock",
+             "new_lead": None, "manage_stock": True}]
+    pl = ss.build_payloads(rows)
+    items = {u["id"]: u for _, u in pl[0]["items"]}
+    assert items[46414]["manage_stock"] is False and items[46414]["stock_status"] == "instock"
+    assert "manage_stock" not in items[46415]

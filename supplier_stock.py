@@ -487,7 +487,7 @@ def build_plan(config: dict, rows: list, maps: dict, products: dict, has_prev: b
             pr.update(wc_name=prod["name"], permalink=prod["permalink"], pstatus=prod["status"])
         if unit:
             pr.update(sku=unit["sku"], wc_label=unit["label"] or pr["wc_label"], cur_status=unit["stock_status"],
-                      cur_lead=unit["lead"], unit_kind=unit["kind"])
+                      cur_lead=unit["lead"], unit_kind=unit["kind"], manage_stock=bool(unit.get("manage_stock")))
         if m.get("ignored"):
             pr["group"], pr["msg"] = "ignored", "סומן 'לא נמכר אצלנו'"
         elif not m.get("wc_product_id"):
@@ -645,6 +645,10 @@ def build_payloads(rows: list) -> list:
             u = {"id": int(p["vid"])}
             if p["status_change"]:
                 u["stock_status"] = p["new_status"]
+                # ⚠️ עם manage_stock=true ו-qty 0, WC מתעלם מ-stock_status=instock (מחשב מהכמות).
+                # פתיחה למלאי של ספק "בית לקוח" = ניהול לפי סטטוס, לא כמות.
+                if p["new_status"] == "instock" and p.get("manage_stock"):
+                    u["manage_stock"] = False
             if p["lead_change"]:
                 u["description"] = lead_apply(p.get("_desc", ""), p["new_lead"])
             per_prod.setdefault(int(p["pid"]), []).append((p["barcode"], u))
@@ -652,6 +656,10 @@ def build_payloads(rows: list) -> list:
             u = {"id": int(p["pid"])}
             if p["status_change"]:
                 u["stock_status"] = p["new_status"]
+                # ⚠️ עם manage_stock=true ו-qty 0, WC מתעלם מ-stock_status=instock (מחשב מהכמות).
+                # פתיחה למלאי של ספק "בית לקוח" = ניהול לפי סטטוס, לא כמות.
+                if p["new_status"] == "instock" and p.get("manage_stock"):
+                    u["manage_stock"] = False
             if p["lead_change"]:
                 u["meta_data"] = [{"key": LEAD_META, "value": str(p["new_lead"]) if p["new_lead"] else ""}]
             simples.append((p["barcode"], u))
