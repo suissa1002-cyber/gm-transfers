@@ -9,3 +9,5 @@ python-multipart==0.0.20
 PyMuPDF==1.24.10
 # עיבוד תמונות תוספות (הסרת רקע + מסגור חכם) — /api/admin/addons/save
 Pillow==11.0.0
+# סנכרון מלאי ספקים — קריאת דוחות xlsx של יבואנים (GreenDay)
+openpyxl==3.1.2

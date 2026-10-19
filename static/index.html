@@ -908,6 +908,53 @@
     background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.2);padding:10px 14px;max-width:calc(100vw - 24px)}
   .gd-bulk b{color:#0073ea} .gd-bulk a{color:var(--muted);font-size:13px}
   .gd-arch{display:inline-flex;align-items:center;padding:6px 10px;border-radius:8px;cursor:pointer;font-size:13px}
+  /* ── 📦 GreenDay · סנכרון מלאי ספקים ── */
+  .ss-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:12px}
+  .ss-last{font-size:12.5px;color:var(--muted);display:inline-flex;align-items:center;gap:4px;margin-inline-end:auto}
+  .ss-last.stale{color:#b45309;font-weight:600;background:rgba(245,158,11,.14);padding:3px 9px;border-radius:999px}
+  .ss-up{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:8px;cursor:pointer}
+  .ss-rep{font-size:12.5px;margin:4px 0 8px} .ss-rep a{color:#0073ea;display:inline-flex;align-items:center;gap:3px}
+  .ss-sum{border:1px solid var(--line);border-radius:12px;background:var(--card);padding:12px;margin-bottom:12px}
+  .ss-sumh{font-weight:800;font-size:15px;margin-bottom:10px} .ss-sumh .muted{font-weight:400;font-size:12.5px}
+  .ss-cnts{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+  .ss-cnt{border:1px solid var(--line);border-radius:10px;padding:8px 10px;display:flex;flex-direction:column;gap:2px;background:var(--card2)}
+  .ss-cnt[onclick]{cursor:pointer} .ss-cnt[onclick]:hover{filter:brightness(.97)} .ss-cnt.on{outline:2px solid #0073ea}
+  .ss-cnt b{font-size:24px;line-height:1.1} .ss-cnt span{font-size:12px;color:var(--muted);display:inline-flex;align-items:center;gap:3px}
+  .ss-cnt.ok b{color:#16a34a} .ss-cnt.bad b{color:#dc2626} .ss-cnt.warn b{color:#b45309}
+  .ss-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+  .ss-chip{display:inline-flex;align-items:center;font-size:12.5px;padding:3px 10px;border-radius:999px;background:rgba(100,116,139,.12)}
+  .ss-chip.sm{font-size:10.5px;padding:1px 6px} .ss-chip.ok{background:rgba(22,163,74,.13);color:#15803d}
+  .ss-chip.bad{background:rgba(220,38,38,.12);color:#b91c1c;font-weight:600} .ss-chip.warn{background:rgba(245,158,11,.16);color:#b45309}
+  .ss-diff{margin-top:10px;font-size:13px;display:flex;align-items:center;gap:4px;flex-wrap:wrap} .ss-diff span[title]{text-decoration:underline dotted;cursor:help}
+  .ss-flt{margin-top:12px} .ss-flth{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px} .ss-flth a{color:#0073ea;font-size:13px}
+  .ss-act{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:14px}
+  .ss-act .btn-primary[disabled]{opacity:.45;cursor:not-allowed}
+  .ss-block{flex:1 1 320px;display:flex;align-items:center;gap:4px;color:#b91c1c;background:rgba(220,38,38,.08);border:1px solid rgba(220,38,38,.25);border-radius:8px;padding:8px 10px;font-size:13px}
+  .ss-ready{flex:1 1 320px;display:flex;align-items:center;gap:4px;color:#15803d;background:rgba(22,163,74,.08);border:1px solid rgba(22,163,74,.25);border-radius:8px;padding:8px 10px;font-size:13px}
+  .ss-table td{white-space:normal} .ss-table .ltr{direction:ltr;unicode-bidi:isolate;font-size:12.5px}
+  .ss-st{display:inline-block;font-size:12px;padding:2px 8px;border-radius:999px;background:rgba(100,116,139,.12)}
+  .ss-st.instock{background:rgba(22,163,74,.14);color:#15803d} .ss-st.outofstock{background:rgba(220,38,38,.12);color:#b91c1c}
+  .ss-st.onbackorder{background:rgba(245,158,11,.16);color:#b45309}
+  .ss-av{font-size:12.5px;font-weight:600} .ss-av.ok{color:#15803d} .ss-av.bad{color:#b91c1c}
+  .ss-lead{display:inline-flex;align-items:center;gap:3px;font-size:12px;color:#b45309}
+  .ss-err{color:#b91c1c;font-size:12px;display:flex;align-items:center;gap:3px} .ss-ok{color:#15803d;font-size:12px;display:flex;align-items:center;gap:3px}
+  .ss-acts{white-space:nowrap} .ss-acts a{display:inline-flex;align-items:center;gap:3px;margin-inline-end:8px;font-size:12.5px}
+  .ss-g-blocked .gd-ghead,.ss-g-missing_wc .gd-ghead{color:#b91c1c} .ss-g-close .gd-ghead{color:#dc2626} .ss-g-open .gd-ghead{color:#16a34a}
+  .ss-g-lead .gd-ghead,.ss-g-unknown .gd-ghead{color:#b45309} .ss-g-protected .gd-ghead{color:#0073ea}
+  .ss-g-unchanged .gd-ghead,.ss-g-ignored .gd-ghead,.ss-g-untagged .gd-ghead{color:var(--muted)}
+  .ss-run{border:1px solid var(--line);border-radius:12px;background:var(--card);padding:12px;margin-bottom:12px} .ss-run.err{border-color:rgba(220,38,38,.35)}
+  .ss-runh{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px} .ss-runh a{margin-inline-start:auto;color:#0073ea;font-size:13px}
+  .ss-prog{height:10px;border-radius:999px;background:var(--card2);overflow:hidden;box-shadow:inset 0 0 0 1px var(--line)}
+  .ss-prog>div{height:100%;background:#0073ea;transition:width .4s}
+  .ss-phase{font-size:13px;margin:8px 0;display:flex;align-items:center;gap:4px;font-weight:600}
+  .ss-run .ss-sum{border:0;padding:0;margin:6px 0 0}
+  .ss-res{max-height:55vh;overflow:auto;margin-top:10px;display:flex;flex-direction:column;gap:8px}
+  .ss-cand{border:1px solid var(--line);border-radius:10px;padding:8px 10px} .ss-vars{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+  .ss-vars .btn-ghost{font-size:12.5px;padding:5px 9px;display:inline-flex;align-items:center;gap:5px}
+  .ss-cols{display:grid;grid-template-columns:repeat(3,1fr);gap:6px} .ss-cols label{font-size:12px;color:var(--muted)}
+  .ss-lbl{display:block;font-size:12px;color:var(--muted);margin-top:8px} .ss-chk{display:flex;align-items:center;gap:6px;font-size:13px;margin-top:10px}
+  .ss-chk input[type=checkbox]{width:16px;height:16px}
+  @media (max-width:700px){ .ss-cnts{grid-template-columns:repeat(2,1fr)} .ss-last{margin-inline-end:0} }
   .gd-item{width:620px;z-index:46}
   .gd-iname{flex:1;min-width:0;font-size:18px;font-weight:700;border:1px solid transparent;border-radius:6px;padding:4px 6px;background:transparent;color:var(--txt);font-family:inherit}
   .gd-iname:hover,.gd-iname:focus{border-color:var(--line);outline:0;background:var(--card)}
@@ -2634,6 +2681,291 @@ async function tcPushBind(){
   }catch(e){}
 }
 
+// ── 📦 GreenDay · סנכרון מלאי ספקים (19/10/2026, אסי) — בעלים בלבד ──
+// דוח זמינות שבועי מהיבואן → תצוגה מקדימה (dry-run) → "אשר וסנכרן" עם התקדמות חיה וסיכום חכם.
+// ⛔ הסנכרון חסום עד שכל שורה מותאמת+מאושרת או מסומנת "לא נמכר אצלנו".
+const SS={sups:null, sid:null, plan:null, open:{blocked:true,missing_wc:true,close:true,open:true,lead:true,unknown:true,protected:false},
+  run:null, runs:[], poll:null, flt:null, view:'preview', loading:false};
+const SS_ST={instock:'במלאי', outofstock:'אזל', onbackorder:'הזמנה מוקדמת'};
+function ssOpen(){ toggleDrawer(false); if(TC.open) tcToggle(false);
+  if(!S.user||S.user.role!=='owner'){ toast('סנכרון המלאי פתוח לבעלים בלבד',false); return; }
+  S.view='gdstock'; render(); }
+function ssOpenRun(id,tries){ tries=tries||0;
+  if(!S.user||S.user.role!=='owner') return;
+  if(S.view!=='gdstock') ssOpen();
+  if(!SS.sups&&tries<40){ setTimeout(()=>ssOpenRun(id,tries+1),300); return; }
+  ssShowRun(Number(id)); }
+async function ssLoad(){
+  try{ const r=await api('/api/greenday/stock/suppliers',{},30000); SS.sups=r.suppliers; SS.defaults=r.defaults; SS.wc=r.wc;
+    if(!SS.sid||!SS.sups.find(s=>s.id===SS.sid)) SS.sid=(SS.sups[0]||{}).id||null;
+    await ssLoadSup(); }
+  catch(e){ const a=document.getElementById('app'); if(a&&S.view==='gdstock') a.innerHTML=`<div class="empty">${escW(e.detail||'הטעינה נכשלה')}</div>`; }
+}
+async function ssLoadSup(){
+  if(!SS.sid){ ssRender(); return; }
+  SS.loading=true; ssRender();
+  try{ SS.runs=(await api('/api/greenday/stock/suppliers/'+SS.sid+'/runs',{},20000)).runs||[]; }catch(e){ SS.runs=[]; }
+  try{ const p=await api('/api/greenday/stock/suppliers/'+SS.sid+'/last-preview',{},120000); SS.plan=p.empty?null:p; }
+  catch(e){ SS.plan=null; toast(e.detail||'טעינת התצוגה המקדימה נכשלה',false); }
+  SS.loading=false;
+  const act=SS.runs.find(r=>r.status==='running'); if(act) ssPollRun(act.id);
+  ssRender();
+}
+function ssHasChanges(P){ const c=(P.summary||{}).counts||{}; return !!((c.back||0)+(c.down||0)+(c.lead_any||0)); }
+function ssN(x){ return x==null?'':x; }
+function ssSup(){ return (SS.sups||[]).find(s=>s.id===SS.sid)||null; }
+function ssStatus(s){ return s?`<span class="ss-st ${escW(s)}">${escW(SS_ST[s]||s)}</span>`:'<span class="muted">—</span>'; }
+function ssLead(n){ return n?`<span class="ss-lead">${icoI('clock',11)}${n} ימי עסקים</span>`:''; }
+function ssDate(iso){ if(!iso) return ''; try{ return new Date(iso).toLocaleDateString('he-IL',{day:'2-digit',month:'2-digit',year:'2-digit'}); }catch(e){ return iso; } }
+function ssRender(){
+  const app=document.getElementById('app'); if(!app||S.view!=='gdstock') return;
+  if(!SS.sups){ app.innerHTML='<div class="empty">טוען סנכרון מלאי ספקים…</div>'; ssLoad(); return; }
+  const sup=ssSup();
+  const last=sup&&sup.last_report;
+  const stale=sup&&sup.stale;
+  app.innerHTML=`<div class="gd-wrap ss-wrap">
+    <div class="gd-top">
+      <div class="gd-title">${icoI('pkg',20)}GreenDay <span>· סנכרון מלאי ספקים</span></div>
+      <button class="btn-ghost gd-run" onclick="gdOpen()">${icoI('list',14)}לוח מוצרים</button>
+    </div>
+    <div class="ss-bar">
+      <select class="gd-sel" onchange="SS.sid=Number(this.value);SS.plan=null;SS.run=null;SS.flt=null;ssLoadSup()">
+        ${(SS.sups||[]).map(s=>`<option value="${s.id}" ${s.id===SS.sid?'selected':''}>${escW(s.name)}</option>`).join('')}</select>
+      ${sup?`<button class="btn-ghost gd-arch" onclick="ssCfgModal(${sup.id})">${icoI('sliders',14)}הגדרות ספק</button>`:''}
+      <button class="btn-ghost gd-arch" onclick="ssCfgModal(0)">+ ספק חדש</button>
+      ${sup?`<span class="ss-last ${stale?'stale':''}">${last?`דוח אחרון: ${ssDate(last.uploaded_at)} · ${escW(last.file_name||'')}${stale?` · ${icoI('alert',13)}ישן מ-8 ימים — לבקש דוח חדש`:''}`:`${icoI('alert',13)}עוד לא הועלה דוח`}</span>`:''}
+      ${sup?`<label class="btn-primary ss-up">${icoI('download',14)}העלאת דוח (xlsx / csv)<input type="file" accept=".xlsx,.xlsm,.csv" style="display:none" onchange="ssUpload(this)"></label>`:''}
+    </div>
+    ${!SS.wc?`<div class="gd-note">${icoI('alert',14)}אין חיבור לאתר (WC_* חסרים בשרת) — אפשר לפרסר, אבל לא להתאים או לסנכרן.</div>`:''}
+    ${SS.run?ssRunCard(SS.run):''}
+    ${SS.loading?'<div class="empty">טוען תצוגה מקדימה מול האתר…</div>':SS.plan?ssPreviewHTML(SS.plan):(sup?'<div class="empty">העלו את דוח הזמינות של הספק כדי לראות תצוגה מקדימה.</div>':'')}
+    ${ssHistoryHTML()}
+  </div>`;
+}
+// ── הסיכום החכם: אותם מונים בתצוגה מקדימה ("צפוי") ואחרי סנכרון ──
+const SS_CNT=[
+  ['in_report','נמצאו בדוח','file',''],['matched','הותאמו לאתר','check',''],['unmatched','לא נמצאו / לא הותאמו','alert','warn'],
+  ['ignored','"לא נמכר אצלנו"','eyeOff',''],['back','חזרו למלאי','check','ok'],['down','ירדו מהמלאי (אזל)','pkgx','bad'],
+  ['lead_set','זמן אספקה נוסף/עודכן','clock',''],['lead_removed','זמן אספקה הוסר','clock',''],['unchanged','ללא שינוי','swap',''],
+  ['protected','מוגנים (מלאי פיזי בסניף)','shield',''],['unknown','הערה לא מוכרת (לא שונה)','alert','warn'],
+  ['untagged','ללא תג בית לקוח (מדולג)','tag',''],['errors','שגיאות עדכון','x','bad'],['new','חדש בדוח','star','warn']];
+function ssSummaryHTML(sum,diff,done,rows){
+  if(!sum) return '';
+  const c=sum.counts||{}, li=sum.listings||{};
+  const cells=SS_CNT.filter(([k])=>k==='in_report'||k==='matched'||c[k]||(['back','down','unchanged'].includes(k))||(done&&k==='errors'))
+    .map(([k,l,ic,cls])=>`<div class="ss-cnt ${cls} ${SS.flt&&SS.flt.key===k&&!!SS.flt.done===!!done?'on':''}" ${k!=='in_report'&&c[k]?`onclick="ssFilter('${k}',${done?1:0})"`:''}>
+      <b>${c[k]||0}</b><span>${icoI(ic,13)}${l}</span></div>`).join('');
+  const whole=[...(li.whole_oos||[]).map(w=>`<span class="ss-chip bad">ליסט שלם אזל: ${escW(w.name)}${w.status!=='publish'?' (טיוטה)':''}</span>`),
+               ...(li.whole_back||[]).map(w=>`<span class="ss-chip ok">ליסט שלם חזר: ${escW(w.name)}${w.status!=='publish'?' (טיוטה)':''}</span>`)].join('');
+  return `<div class="ss-sum"><div class="ss-sumh">${done?'תוצאות הסנכרון':'צפוי בסנכרון'}
+      <span class="muted">· ${li.live||0} ליסטים חיים יושפעו · ${li.draft||0} טיוטות${done&&sum.purged!=null?` · ${sum.purged} עמודים נוקו מהמטמון`:''}</span></div>
+    <div class="ss-cnts">${cells}</div>${whole?`<div class="ss-chips">${whole}</div>`:''}${ssDiffHTML(diff)}
+    ${SS.flt&&!!SS.flt.done===!!done?ssFilteredHTML(rows):''}</div>`;
+}
+function ssDiffHTML(d){
+  if(!d) return '';
+  const n=k=>(d[k]||[]).length;
+  const tip=k=>escW((d[k]||[]).slice(0,30).map(x=>(x.model||'')+' '+(x.desc||'')).join('\n'));
+  return `<div class="ss-diff">${icoI('repeat',13)}לעומת הדוח הקודם (${ssDate(d.prev_date)}):
+    <span title="${tip('back')}">${n('back')} חזרו</span> · <span title="${tip('down')}">${n('down')} ירדו</span> ·
+    <span title="${tip('new')}">${n('new')} חדשים בדוח</span> · <span title="${tip('gone')}">${n('gone')} נעלמו מהדוח</span></div>`;
+}
+function ssFilter(k,done){ SS.flt=(SS.flt&&SS.flt.key===k&&!!SS.flt.done===!!done)?null:{key:k,done:!!done}; ssRender(); }
+function ssFilteredHTML(rows){
+  const src=SS.flt.done?(SS.run||{}):SS.plan;
+  const sum=SS.flt.done?(src.summary||{}):(src.summary||{});
+  const keys=new Set(SS.flt.key==='in_report'?(rows||[]).map(r=>r.barcode):((sum.lists||{})[SS.flt.key]||[]));
+  const lab=(SS_CNT.find(x=>x[0]===SS.flt.key)||[])[1]||'';
+  const R=(rows||[]).filter(r=>keys.has(r.barcode));
+  const errs=sum.errors||{};
+  return `<div class="ss-flt"><div class="ss-flth"><b>${escW(lab)} (${R.length})</b><a href="#" onclick="SS.flt=null;ssRender();return false">סגור</a></div>
+    ${ssTable(R,{done:SS.flt.done,errs})}</div>`;
+}
+function ssPreviewHTML(P){
+  const sup=ssSup();
+  const rows=P.rows||[];
+  const byG={}; rows.forEach(r=>(byG[r.group]=byG[r.group]||[]).push(r));
+  const certain=rows.filter(r=>['blocked','missing_wc'].includes(r.group)&&r.pid&&!r.map_confirmed&&!r.map_ignored&&['sku','seed'].includes(r.map_source)).length;
+  const running=SS.run&&SS.run.status==='running';
+  const groups=(P.groups||[]).filter(g=>(byG[g.id]||[]).length).map(g=>{
+    const R=byG[g.id], open=!!SS.open[g.id];
+    return `<section class="gd-grp ss-g-${g.id}">
+      <div class="gd-ghead" onclick="SS.open['${g.id}']=!SS.open['${g.id}'];ssRender()"><span class="tc-gcar ${open?'op':''}">${ico('back',13)}</span>
+        <b>${escW(g.title)}</b><span class="muted">${R.length}</span></div>
+      ${open?ssTable(R,{actions:true}):''}</section>`; }).join('');
+  return `<div class="ss-rep muted">דוח: ${escW(P.report.file_name||'')} · הועלה ${ssDate(P.report.uploaded_at)} ע״י ${escW(P.report.uploaded_by||'')} · ${P.report.n_rows} שורות
+      · <a href="#" onclick="ssRefresh();return false">${icoI('refresh',12)}רענון מול האתר</a></div>
+    ${ssSummaryHTML(P.summary,P.diff,false,rows)}
+    <div class="ss-act">
+      ${P.blocked?`<div class="ss-block">${icoI('lock',14)}הסנכרון חסום: ${P.n_blocked} שורות לא מותאמות או לא מאושרות. אשרו / שנו / סמנו "לא נמכר אצלנו".</div>`:`<div class="ss-ready">${icoI('check',14)}כל השורות מותאמות — אפשר לסנכרן.</div>`}
+      ${certain?`<button class="btn-ghost gd-arch" onclick="ssConfirmCertain()">${icoI('checkSquare',14)}אשר את כל ההתאמות הוודאיות (${certain})</button>`:''}
+      <button class="btn-primary" ${P.blocked||running||!SS.wc||!ssHasChanges(P)?'disabled':''} title="${!P.blocked&&!ssHasChanges(P)?'אין מה לשנות באתר':''}" onclick="ssApply(${P.report.id})">${icoI('zap',14)}אשר וסנכרן</button>
+    </div>
+    ${groups}`;
+}
+function ssTable(R,o){
+  o=o||{};
+  return `<div class="gd-tablewrap"><table class="gd-table ss-table"><thead><tr>
+    <th>דגם</th><th class="gd-c-name">תיאור בדוח</th><th>ברקוד</th><th>בדוח</th><th class="gd-c-name">באתר</th><th>סטטוס באתר</th><th>זמן אספקה</th><th class="gd-c-notes">הערה</th>${o.actions?'<th></th>':''}</tr></thead><tbody>
+    ${R.map(r=>{
+      const link=r.permalink?`<a href="${escW(r.permalink)}" target="_blank" rel="noreferrer">${ico('extern',12)}</a>`:'';
+      const adm=r.pid?`<a href="https://greenmobile.co.il/wp-admin/post.php?post=${encodeURIComponent(r.pid)}&action=edit" target="_blank" rel="noreferrer" title="עריכה באתר">#${escW(r.pid)}${r.vid?'/'+escW(r.vid):''}</a>`:'';
+      const chg=r.cur_status&&r.new_status&&r.cur_status!==r.new_status;
+      const err=(o.errs||{})[r.barcode]||r.error;
+      return `<tr class="nohover">
+      <td class="ltr">${escW(r.model||'')}${r.is_new?' <span class="ss-chip warn sm">חדש בדוח</span>':''}</td>
+      <td class="gd-c-name" style="font-weight:400">${escW(r.desc||'')}</td>
+      <td class="ltr muted">${escW(r.barcode)}</td>
+      <td><span class="ss-av ${r.avail==='יש מלאי'?'ok':'bad'}">${escW(r.avail||'')}</span>${r.note?`<span class="gd-subs">${escW(r.note)}</span>`:''}</td>
+      <td class="gd-c-name">${r.wc_name?`${escW(r.wc_name)}${r.wc_label?` <span class="gd-subs">${escW(r.wc_label)}</span>`:''}<span class="gd-subs">${adm} ${link}${r.pstatus&&r.pstatus!=='publish'?' · טיוטה':''}</span>`:(r.wc_label?escW(r.wc_label):'<span class="muted">—</span>')}</td>
+      <td>${ssStatus(r.cur_status)}${chg?` ${ico('arrowLeft',12)} ${ssStatus(r.new_status)}`:''}</td>
+      <td>${r.lead_change?`${ssLead(r.cur_lead)||'—'} ${ico('arrowLeft',12)} ${ssLead(r.new_lead)||'<span class="muted">הוסר</span>'}`:ssLead(r.cur_lead)}</td>
+      <td class="gd-c-notes" style="white-space:normal">${escW(r.msg||'')}${err?`<div class="ss-err">${icoI('x',12)}${escW(err)}</div>`:''}${o.done&&r.ok?`<div class="ss-ok">${icoI('check',12)}עודכן</div>`:''}</td>
+      ${o.actions?`<td class="ss-acts">${ssRowActs(r)}</td>`:''}</tr>`; }).join('')||'<tr class="nohover"><td colspan="9" class="muted">אין שורות</td></tr>'}
+    </tbody></table></div>`;
+}
+function ssRowActs(r){
+  const b=escW(r.barcode);
+  if(r.group==='ignored') return `<a href="#" onclick="ssMap('${b}','unignore');return false">בטל סימון</a>`;
+  const a=[];
+  if(r.group==='blocked'&&r.pid) a.push(`<a href="#" onclick="ssMap('${b}','confirm');return false">${icoI('check',12)}אשר</a>`);
+  a.push(`<a href="#" onclick="ssPick('${b}');return false">${icoI('search',12)}${r.pid?'שנה':'חפש באתר'}</a>`);
+  if(['blocked','missing_wc','untagged'].includes(r.group)||!r.map_confirmed) a.push(`<a href="#" class="muted" onclick="ssMap('${b}','ignore');return false">לא נמכר אצלנו</a>`);
+  return a.join('');
+}
+function ssHistoryHTML(){
+  if(!(SS.runs||[]).length) return '';
+  return `<div class="gd-sec" style="margin-top:18px">${icoI('clock',14)}היסטוריית סנכרונים (20 אחרונים)</div>
+    <div class="gd-tablewrap"><table class="gd-table"><thead><tr><th>מתי</th><th>קובץ</th><th>ע״י</th><th>סטטוס</th><th>חזרו</th><th>ירדו</th><th>זמן אספקה</th><th>ללא שינוי</th><th>שגיאות</th></tr></thead><tbody>
+    ${SS.runs.map(r=>{ const c=(r.summary||{}).counts||{};
+      return `<tr onclick="ssShowRun(${r.id})"><td>${r.started_at?new Date(r.started_at).toLocaleString('he-IL',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):''}</td>
+        <td>${escW(r.file_name||'')}</td><td>${escW(r.started_by||'')}</td>
+        <td>${r.status==='done'?'<span class="ss-st instock">הושלם</span>':r.status==='running'?'<span class="ss-st onbackorder">רץ…</span>':`<span class="ss-st outofstock" title="${escW(r.error||'')}">נכשל</span>`}</td>
+        <td>${ssN(c.back)}</td><td>${ssN(c.down)}</td><td>${ssN(c.lead_any)}</td><td>${ssN(c.unchanged)}</td><td>${c.errors?`<b style="color:var(--red)">${c.errors}</b>`:ssN(c.errors)}</td></tr>`; }).join('')}
+    </tbody></table></div>`;
+}
+function ssRunCard(r){
+  const pct=r.total?Math.round(100*(r.done||0)/r.total):(r.status==='running'?3:100);
+  const head=`<div class="ss-runh"><b>סנכרון #${r.id}</b><span class="muted">${escW(r.file_name||'')} · ${escW(r.started_by||'')} · ${r.started_at?new Date(r.started_at).toLocaleString('he-IL'):''}</span>
+    <a href="#" onclick="SS.run=null;if(SS.flt&&SS.flt.done)SS.flt=null;ssRender();return false">סגור</a></div>`;
+  if(r.status==='running') return `<div class="ss-run">${head}<div class="ss-prog"><div style="width:${pct}%"></div></div><div class="ss-phase">${escW(r.phase||'מסנכרן…')}</div></div>`;
+  if(r.status==='error') return `<div class="ss-run err">${head}<div class="ss-block">${icoI('x',14)}${escW(r.error||'הסנכרון נכשל')}</div></div>`;
+  return `<div class="ss-run">${head}<div class="ss-phase">${icoI('check',14)}${escW(r.phase||'הסתיים')}</div>${ssSummaryHTML(r.summary,r.diff,true,r.results||[])}</div>`;
+}
+async function ssShowRun(id){
+  try{ SS.run=await api('/api/greenday/stock/runs/'+id,{},20000); SS.flt=null; ssRender(); window.scrollTo({top:0,behavior:'smooth'});
+    if(SS.run.status==='running') ssPollRun(id); }
+  catch(e){ toast(e.detail||'טעינת הריצה נכשלה',false); }
+}
+function ssPollRun(id){
+  if(SS.poll) clearInterval(SS.poll);
+  SS.poll=setInterval(async()=>{
+    if(S.view!=='gdstock'){ clearInterval(SS.poll); SS.poll=null; return; }
+    try{ const r=await api('/api/greenday/stock/runs/'+id,{},15000); SS.run=r;
+      if(r.status!=='running'){ clearInterval(SS.poll); SS.poll=null;
+        toast(r.status==='done'?'הסנכרון הסתיים':'הסנכרון נכשל',r.status==='done');
+        await ssLoad(); return; }
+      const el=document.querySelector('.ss-run'); if(el) el.outerHTML=ssRunCard(r); else ssRender();
+    }catch(e){}
+  },1000);
+}
+async function ssUpload(inp){
+  const f=inp.files&&inp.files[0]; inp.value=''; if(!f) return;
+  if(f.size>15*1024*1024){ toast('הקובץ גדול מדי',false); return; }
+  showLoading('קורא את הדוח ומתאים מול האתר…');
+  try{
+    const b64=await new Promise((res,rej)=>{ const fr=new FileReader(); fr.onload=()=>res(String(fr.result).split(',')[1]||''); fr.onerror=rej; fr.readAsDataURL(f); });
+    const p=await api('/api/greenday/stock/suppliers/'+SS.sid+'/upload',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({file_name:f.name,content_b64:b64})},180000);
+    hideLoading(); SS.plan=p; SS.run=null; SS.flt=null;
+    const s=p.suggest||{}; toast(`נקראו ${p.report.n_rows} שורות${s.by_sku||s.by_model?` · הוצעו ${(s.by_sku||0)+(s.by_model||0)} התאמות`:''}`,true);
+    await ssLoad();
+  }catch(e){ hideLoading(); toast(e.detail||'ההעלאה נכשלה',false); }
+}
+async function ssRefresh(){
+  if(!SS.plan) return; showLoading('קורא את המצב החי באתר…');
+  try{ SS.plan=await api('/api/greenday/stock/reports/'+SS.plan.report.id+'/preview?fresh=1',{},120000); hideLoading(); ssRender(); }
+  catch(e){ hideLoading(); toast(e.detail||'הרענון נכשל',false); }
+}
+async function ssReloadPlan(){
+  try{ SS.plan=await api('/api/greenday/stock/reports/'+SS.plan.report.id+'/preview',{},120000); ssRender(); }
+  catch(e){ toast(e.detail||'הטעינה נכשלה',false); }
+}
+async function ssMap(barcode,action,pid,vid,label){
+  try{ await api('/api/greenday/stock/suppliers/'+SS.sid+'/mapping',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({barcode,action,wc_product_id:pid||null,wc_variation_id:vid||null,label:label||''})},60000);
+    toast({confirm:'ההתאמה אושרה',ignore:'סומן "לא נמכר אצלנו" — ייזכר בדוחות הבאים',unignore:'הסימון בוטל',set:'ההתאמה נשמרה ואושרה'}[action]||'נשמר',true);
+    closeModal(); await ssReloadPlan(); }
+  catch(e){ toast(e.detail||'השמירה נכשלה',false); }
+}
+async function ssConfirmCertain(){
+  const P=SS.plan; if(!P) return;
+  if(!confirm('לאשר את כל ההתאמות הוודאיות?\n(SKU באתר זהה לברקוד הספק, והתאמות ידניות שהוגדרו מראש. הצעות לפי קוד דגם נשארות לאישור פרטני.)')) return;
+  try{ const r=await api('/api/greenday/stock/suppliers/'+SS.sid+'/mapping/confirm-certain',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({report_id:P.report.id})},60000);
+    toast(`אושרו ${r.confirmed} התאמות`,true); await ssReloadPlan(); }
+  catch(e){ toast(e.detail||'האישור נכשל',false); }
+}
+async function ssApply(rid){
+  const c=(SS.plan.summary||{}).counts||{};
+  if(!confirm(`לסנכרן את האתר לפי הדוח?\n\nייסגרו (אזל): ${c.down||0}\nייפתחו (במלאי): ${c.back||0}\nזמן אספקה: ${(c.lead_set||0)+(c.lead_removed||0)}\n\nרק סטטוס מלאי וזמן אספקה משתנים — לא מחירים ולא פרסום.`)) return;
+  try{ const r=await api('/api/greenday/stock/reports/'+rid+'/apply',{method:'POST'},120000);
+    SS.run={id:r.run_id,status:'running',phase:'מתחיל…',total:0,done:0,file_name:SS.plan.report.file_name,started_by:S.user.name};
+    SS.flt=null; ssRender(); ssPollRun(r.run_id); }
+  catch(e){ toast(e.detail||'הסנכרון לא התחיל',false); }
+}
+// ── בחירת מוצר ידנית (חיפוש באתר) ──
+function ssPick(barcode){
+  const r=((SS.plan||{}).rows||[]).find(x=>x.barcode===barcode)||{};
+  document.getElementById('modalRoot').innerHTML=`<div class="overlay"><div class="modal us-modal" style="max-width:640px">
+    <h3>התאמה לאתר</h3><div class="muted" style="margin-bottom:8px"><span class="ltr">${escW(r.model||'')}</span> · ${escW(r.desc||'')} · <span class="ltr">${escW(barcode)}</span></div>
+    <div style="display:flex;gap:8px"><input id="ssQ" placeholder="חיפוש מוצר באתר לפי שם (למשל: Dragon Cyber)" value="${escW((r.desc||'').split(' ').slice(0,2).join(' '))}" onkeydown="if(event.key==='Enter')ssSearch('${escW(barcode)}')">
+      <button class="btn-primary" onclick="ssSearch('${escW(barcode)}')">${icoI('search',14)}חפש</button></div>
+    <div id="ssRes" class="ss-res"></div>
+    <button class="btn-ghost" style="width:100%;margin-top:8px" onclick="closeModal()">ביטול</button></div></div>`;
+  const i=document.getElementById('ssQ'); i.focus(); i.select();
+}
+async function ssSearch(barcode){
+  const q=(document.getElementById('ssQ')||{}).value||''; const box=document.getElementById('ssRes'); if(!box) return;
+  box.innerHTML='<div class="muted">מחפש…</div>';
+  try{ const r=await api('/api/greenday/stock/wc-search?q='+encodeURIComponent(q.trim()),{},60000); SS.found=r.items||[];
+    box.innerHTML=SS.found.map((p,i)=>`<div class="ss-cand"><div><b>${escW(p.name)}</b> <span class="muted">#${p.id} · ${p.status==='publish'?'חי':'טיוטה'}${p.tags&&p.tags.length?' · '+escW(p.tags.join(', ')):''}</span></div>
+      ${p.type==='variable'?`<div class="ss-vars">${p.variations.map((v,j)=>`<button class="btn-ghost" onclick="ssMap('${escW(barcode)}','set',${p.id},${v.id},SS.found[${i}].name+' · '+SS.found[${i}].variations[${j}].label)">${escW(v.label||('#'+v.id))} <span class="muted ltr">${escW(v.sku||'')}</span> ${ssStatus(v.stock_status)}</button>`).join('')||'<span class="muted">אין וריאציות</span>'}</div>`
+        :`<div class="ss-vars"><button class="btn-ghost" onclick="ssMap('${escW(barcode)}','set',${p.id},null,SS.found[${i}].name)">בחר (מוצר פשוט) ${ssStatus(p.stock_status)}</button></div>`}</div>`).join('')||'<div class="muted">לא נמצאו מוצרים</div>';
+  }catch(e){ box.innerHTML=`<div class="err">${escW(e.detail||'החיפוש נכשל')}</div>`; }
+}
+// ── הגדרות ספק (חדש / עריכה) ──
+function ssCfgModal(id){
+  const s=id?(SS.sups||[]).find(x=>x.id===id):null;
+  const C=Object.assign({},SS.defaults||{},s?s.config:{}); const col=Object.assign({},(SS.defaults||{}).columns||{},C.columns||{});
+  const L=[['barcode','ברקוד'],['model','דגם'],['desc','תיאור'],['avail','זמינות'],['note','הערה'],['price','מחיר']];
+  document.getElementById('modalRoot').innerHTML=`<div class="overlay"><div class="modal us-modal" style="max-width:560px">
+    <h3>${s?'הגדרות ספק':'ספק חדש'}</h3>
+    <input id="sscName" placeholder="שם הספק" value="${escW(s?s.name:'')}">
+    <div class="muted" style="margin:8px 0 4px">עמודות בקובץ (אות: A, B, C…). שורות כותרת/קבוצה מזוהות אוטומטית — שורת נתונים = יש ברקוד + זמינות מוכרת.</div>
+    <div class="ss-cols">${L.map(([k,l])=>`<label>${l}<input id="sscCol_${k}" value="${escW(col[k]||'')}" maxlength="3" class="ltr"></label>`).join('')}</div>
+    <label class="ss-lbl">ערכי "במלאי" (מופרד בפסיק)<input id="sscIn" value="${escW((C.in_values||[]).join(', '))}"></label>
+    <label class="ss-lbl">ערכי "אזל" (מופרד בפסיק)<input id="sscOut" value="${escW((C.out_values||[]).join(', '))}"></label>
+    <label class="ss-lbl">הערה שמכילה → ממשיכים למכור (מופרד בפסיק)<input id="sscKeep" value="${escW((C.note_keep||[]).join(', '))}"></label>
+    <label class="ss-lbl">הערה תואמת → במלאי + זמן אספקה (regex, קבוצה 1 = ימים)<input id="sscLead" class="ltr" value="${escW(C.note_lead_regex||'')}"></label>
+    <label class="ss-chk"><input type="checkbox" id="sscTag" ${C.require_tag!==false?'checked':''}> רק מוצרים עם תג "בית לקוח" (id <input id="sscTagId" value="${escW(C.tag_id||3630)}" style="width:70px" class="ltr">)</label>
+    <div class="muted" style="font-size:12px;margin-top:6px">"אין מלאי" בלי הערה → אזל. הערה אחרת → מסומן "הערה לא מוכרת" ולא משתנה אוטומטית.</div>
+    <div class="err" id="sscErr"></div>
+    <button class="btn-primary" style="width:100%" onclick="ssCfgSave(${id||0})">שמירה</button>
+    <button class="btn-ghost" style="width:100%;margin-top:8px" onclick="closeModal()">ביטול</button></div></div>`;
+}
+async function ssCfgSave(id){
+  const v=k=>((document.getElementById(k)||{}).value||'').trim(); const list=k=>v(k).split(',').map(x=>x.trim()).filter(Boolean);
+  const columns={}; ['barcode','model','desc','avail','note','price'].forEach(k=>columns[k]=v('sscCol_'+k).toUpperCase());
+  const config={columns,in_values:list('sscIn'),out_values:list('sscOut'),note_keep:list('sscKeep'),note_lead_regex:v('sscLead'),
+    require_tag:!!(document.getElementById('sscTag')||{}).checked,tag_id:Number(v('sscTagId'))||3630};
+  if(!v('sscName')){ document.getElementById('sscErr').textContent='חסר שם ספק'; return; }
+  if(!columns.barcode||!columns.avail){ document.getElementById('sscErr').textContent='חובה עמודת ברקוד ועמודת זמינות'; return; }
+  try{ const r=await api('/api/greenday/stock/suppliers',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({id:id||null,name:v('sscName'),config})},30000);
+    closeModal(); toast('הספק נשמר',true); SS.sid=r.id; SS.plan=null; await ssLoad(); }
+  catch(e){ document.getElementById('sscErr').textContent=e.detail||'השמירה נכשלה'; }
+}
 // ── 🟩 GreenDay · לוח מוצרים (בעלים בלבד) — 15/10/2026 ──
 // שלב 1: חלון ל-Monday. כל עריכה נכתבת מיד ל-Monday (שם גלי/יובל/QA עדיין עובדים) ונמשכת חזרה.
 const GD={data:null, q:'', st:'', open:{topics:true,group_mm3y9b6z:true}, more:{}, item:null, busy:false, sel:new Set()};
@@ -2749,6 +3081,7 @@ function gdRender(){
       <label class="tc-search gd-search">${ico('search',14)}<input id="gdSearch" placeholder="חיפוש: שם, מק״ט, ליסט ID, הערות" value="${escW(GD.q)}" oninput="GD.q=this.value;gdRender()"></label>
       <select class="gd-sel" onchange="GD.st=this.value;gdRender()"><option value="">כל הסטטוסים</option>${D.statuses.map(s=>`<option ${GD.st===s.label?'selected':''}>${escW(s.label)}</option>`).join('')}</select>
       <button class="btn-primary gd-new" onclick="gdNewModal()">+ מוצר חדש</button>
+      <button class="btn-ghost gd-run" onclick="ssOpen()" title="דוח זמינות שבועי מהספק → סטטוס מלאי באתר">${icoI('pkg',14)}סנכרון מלאי ספקים</button>
       ${D.mode==='primary'?`<button class="btn-ghost gd-run" onclick="gdRunAgents()" title="מפעיל את גלי/יובל/QA עכשיו — גם בשישי/שבת/אחרי השעות (3 שעות)">${icoI('zap',14)}הרץ סוכנים</button>`:''}
       ${D.mode==='primary'?`<span class="gd-sync muted"><a href="#" onclick="gdLoad();return false" title="רענון">${ico('refresh',14)}</a></span>`:`<span class="gd-sync muted">סונכרן ${gdAgo(D.synced_at)} <a href="#" onclick="gdSyncNow();return false" title="סנכרון עכשיו מ-Monday">${ico('refresh',14)}</a></span>`}
     </div>
@@ -3818,6 +4151,7 @@ function renderDrawer(){
     ${can('codes')?`<div class="dr-item ${S.view==='stellr'?'active':''}" onclick="hubGo('stellr')"><span>${ico('card',16)}</span><span>קודים דיגיטליים${lock}</span></div>`:''}
     ${isOwner()||!S.adminKey?`<div class="dr-item ${S.view==='sentinel'?'active':''}" onclick="hubGo('sentinel')"><span>${ico('shield',16)}</span><span>סטטוס Sentinel${lock}</span></div>`:''}
     ${S.user&&S.user.role==='owner'?`<div class="dr-item ${act('greenday')}" onclick="gdOpen()"><span>${ico('list',16)}</span><span>GreenDay · לוח מוצרים</span></div>`:''}
+    ${S.user&&S.user.role==='owner'?`<div class="dr-item ${act('gdstock')}" onclick="ssOpen()"><span>${ico('pkg',16)}</span><span>GreenDay · סנכרון מלאי ספקים</span></div>`:''}
     ${isOwner()?`<div class="dr-item ${act('users')}" onclick="hubUsers()"><span>${ico('user',16)}</span><span>משתמשים והרשאות</span></div>`:''}
     <div class="dr-sec">אפליקציות</div>
     ${HUB_APPS.filter(a=>can(a.feat)).map(a=>`
@@ -4089,6 +4423,7 @@ function render(){
     if(sb) sb.style.display=(S.branchId&&['1','2','3','4'].includes(String(S.branchId)))?'inline-flex':'none'; }
   if(S.view==='users') return S.usersData?renderUsers():loadUsers();
   if(S.view==='greenday') return gdRender();
+  if(S.view==='gdstock') return ssRender();
   if(S.view==='home'&&!can('reports')){ S.view='admin'; }
   if(S.view==='home') return S.homeData?renderHome():loadHome(true);
   if(S.view==='embed') return renderEmbed(app);
@@ -11931,6 +12266,7 @@ async function handleDeepLink(){
   if(q.get('orders')==='1' && S.branchId){ try{ openOrdersTab(); }catch(e){} }
   if(q.get('chat')==='1' && S.branchId){ const t=Number(q.get('topic')||0); if(t){ TC.view='thread'; TC.topic=t; } tcToggle(true); }
   if(q.get('gd') && S.branchId){ gdOpenItem(q.get('gd')); }
+  if(q.get('gdstock') && S.branchId){ ssOpenRun(q.get('gdstock')); }
 }
 // לחיצה על התראת push כשהאפליקציה כבר פתוחה — ה-SW שולח הודעה במקום reload
 function navPhoneOf(d){
