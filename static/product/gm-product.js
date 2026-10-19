@@ -1594,17 +1594,34 @@
                                        : '✓ זמין להזמנה · משלוח עד הבית תוך ' + days);
     }
   }
-  fetch('/wp-json/wc/store/v1/products/' + m[1], { credentials: 'same-origin' })
-    .then(function (r) { return r.ok ? r.json() : null; })
+  /* זמן האספקה של הוריאציה שכבר נבחרה בטעינה (found_variation של הטעינה קורה לפני שהמאזין נרשם) */
+  function leadOf(v) {
+    var lm = /gm-lead[^>]*data-days="(\d+)"/.exec((v && v.variation_description) || '');
+    return lm ? lm[1] : null;
+  }
+  function currentLead() {
+    var $f = $('form.variations_form');
+    var vid = parseInt($f.find('input.variation_id, input[name="variation_id"]').val(), 10);
+    var vs = $f.data('product_variations') || [];
+    for (var i = 0; i < vs.length; i++) if (vs[i].variation_id === vid) return leadOf(vs[i]);
+    return null;
+  }
+  /* זיהוי "בית לקוח": (1) מהתיאור הקצר — עובד גם בטיוטה/תצוגה מקדימה, שה-Store API מחזיר להן 404
+     (אסי 19/10: שולחן Z בטיוטה הציג "משלוח באותו היום"); (2) תג 3630 מה-Store API. */
+  var rawShort = $('#gm-shortdesc-raw').text() || '';
+  var byText = /לבית לקוח/.test(rawShort);
+  (byText ? Promise.resolve({ tags: [{ id: BEIT_TAG }] })
+          : fetch('/wp-json/wc/store/v1/products/' + m[1], { credentials: 'same-origin' })
+              .then(function (r) { return r.ok ? r.json() : null; }))
     .then(function (p) {
       if (!p || !(p.tags || []).some(function (t) { return t.id === BEIT_TAG || t.name === 'בית לקוח'; })) return;
       window.GM_BEIT = true;
+      LEAD = currentLead();
       document.body.classList.add('gm-beit');
       apply();
       setTimeout(apply, 900);   /* אחרי buildTrust/refreshSmart של הטעינה */
       $(document).on('found_variation', 'form.variations_form', function (e, v) {
-        var lm = /gm-lead[^>]*data-days="(\d+)"/.exec((v && v.variation_description) || '');
-        LEAD = lm ? lm[1] : null;
+        LEAD = leadOf(v);
         setTimeout(apply, 250);
       });
       $(document).on('reset_data', 'form.variations_form', function () { LEAD = null; setTimeout(apply, 250); });
