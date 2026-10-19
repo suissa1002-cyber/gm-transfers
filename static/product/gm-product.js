@@ -1608,13 +1608,29 @@
   }
   /* זיהוי "בית לקוח": (1) מהתיאור הקצר — עובד גם בטיוטה/תצוגה מקדימה, שה-Store API מחזיר להן 404
      (אסי 19/10: שולחן Z בטיוטה הציג "משלוח באותו היום"); (2) תג 3630 מה-Store API. */
+  /* (3) מחלקת משלוח heavy-products מהתבנית: בקופה אקספרס מוסר לכל מוצר כבד (סניפט 46399),
+     ולכן "משלוח באותו היום" שגוי לכל כבד. בטיוטה (Store API=404) כבד ⇒ מטופל כבית לקוח. */
+  var HEAVY = ($('.gm-pdp-wrap').attr('data-shipclass') || '').trim() === 'heavy-products';
   var rawShort = $('#gm-shortdesc-raw').text() || '';
   var byText = /לבית לקוח/.test(rawShort);
   (byText ? Promise.resolve({ tags: [{ id: BEIT_TAG }] })
           : fetch('/wp-json/wc/store/v1/products/' + m[1], { credentials: 'same-origin' })
-              .then(function (r) { return r.ok ? r.json() : null; }))
+              .then(function (r) { return r.ok ? r.json() : (HEAVY ? { tags: [{ id: BEIT_TAG }] } : null); })
+              .catch(function () { return HEAVY ? { tags: [{ id: BEIT_TAG }] } : null; }))
     .then(function (p) {
-      if (!p || !(p.tags || []).some(function (t) { return t.id === BEIT_TAG || t.name === 'בית לקוח'; })) return;
+      var beit = !!p && (p.tags || []).some(function (t) { return t.id === BEIT_TAG || t.name === 'בית לקוח'; });
+      if (!beit && HEAVY) {
+        /* כבד שיש במלאי שלנו (בלי התג): אין אקספרס, יש משלוח כבד + איסוף — רק מחליפים את קוביית האקספרס */
+        var heavyCube = function () {
+          $('.trust .titem').each(function () {
+            if (/באותו היום/.test($(this).text())) cube($(this), 'משלוח כבד עד הבית', '1–6 ימי עסקים · או איסוף מסניף');
+          });
+        };
+        heavyCube(); setTimeout(heavyCube, 900);
+        $(document).on('found_variation reset_data', 'form.variations_form', function () { setTimeout(heavyCube, 250); });
+        return;
+      }
+      if (!beit) return;
       window.GM_BEIT = true;
       LEAD = currentLead();
       document.body.classList.add('gm-beit');
