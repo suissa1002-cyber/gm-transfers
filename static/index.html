@@ -878,14 +878,19 @@
   .gd-table .gd-c-name{text-align:start;min-width:260px;max-width:380px;white-space:normal;font-weight:600}
   .gd-table .gd-c-notes{text-align:start;max-width:240px;color:var(--muted)}
   .gd-subs{display:block;font-weight:400;font-size:11.5px;color:var(--muted)}
-  .gd-rem{display:inline-flex;align-items:center;gap:4px;font-size:12px;padding:2px 8px;border-radius:999px;background:rgba(100,116,139,.12);color:var(--text);white-space:nowrap}
+  .gdu-res{max-height:300px;overflow:auto;margin-top:8px;display:flex;flex-direction:column;gap:6px}
+  .gdu-row{display:flex;align-items:center;gap:10px;padding:7px 9px;border:1px solid var(--line);border-radius:10px;cursor:pointer;text-align:right}
+  .gdu-row:hover{background:var(--card2)}.gdu-row.sel{cursor:default;border-color:#0073ea;background:rgba(0,115,234,.06)}
+  .gdu-row img,.gdu-noimg{width:44px;height:44px;object-fit:contain;border-radius:8px;background:#fff;flex-shrink:0}
+  .gdu-main{flex:1;display:flex;flex-direction:column;min-width:0}.gdu-main b{font-size:13.5px;line-height:1.35}.gdu-main .muted{font-size:12px}
+  .gd-rem{display:inline-flex;align-items:center;gap:4px;font-size:12px;padding:2px 8px;border-radius:999px;background:rgba(100,116,139,.12);color:var(--txt);white-space:nowrap}
   .gd-rem.soon{background:rgba(245,158,11,.16);color:#b45309}
   .gd-rem.due{background:rgba(220,38,38,.13);color:#b91c1c;font-weight:700}
-  .gd-rems{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:12px;padding:8px 10px;border:1px solid var(--border);border-radius:10px;background:var(--card)}
+  .gd-rems{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:12px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--card)}
   .gd-rems .gd-rem{cursor:pointer;font-size:12.5px;padding:4px 10px;white-space:normal}
   .gd-rems .gd-rem:hover{filter:brightness(.95)}
   .gd-remlist{display:flex;flex-direction:column;gap:6px;margin:4px 0 10px}
-  .gd-remrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:7px 9px;border:1px solid var(--border);border-radius:9px}
+  .gd-remrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:7px 9px;border:1px solid var(--line);border-radius:9px}
   .gd-remrow.done{opacity:.55}.gd-remrow.done .gd-remtxt{text-decoration:line-through}
   .gd-remtxt{flex:1;min-width:160px}
   .gd-remrow input[type=date]{width:auto;padding:3px 6px;font-size:12px}
@@ -3081,6 +3086,7 @@ function gdRender(){
       <label class="tc-search gd-search">${ico('search',14)}<input id="gdSearch" placeholder="חיפוש: שם, מק״ט, ליסט ID, הערות" value="${escW(GD.q)}" oninput="GD.q=this.value;gdRender()"></label>
       <select class="gd-sel" onchange="GD.st=this.value;gdRender()"><option value="">כל הסטטוסים</option>${D.statuses.map(s=>`<option ${GD.st===s.label?'selected':''}>${escW(s.label)}</option>`).join('')}</select>
       <button class="btn-primary gd-new" onclick="gdNewModal()">+ מוצר חדש</button>
+      <button class="btn-ghost gd-new" onclick="gdUpdModal()" title="בקשה לגלי לשנות מוצר שכבר באתר: נפח, צבע, חיבור מק״ט, מחיר…">${ico('pencil',14)} עדכון למוצר קיים</button>
       <button class="btn-ghost gd-run" onclick="ssOpen()" title="דוח זמינות שבועי מהספק → סטטוס מלאי באתר">${icoI('pkg',14)}סנכרון מלאי ספקים</button>
       ${D.mode==='primary'?`<button class="btn-ghost gd-run" onclick="gdRunAgents()" title="מפעיל את גלי/יובל/QA עכשיו — גם בשישי/שבת/אחרי השעות (3 שעות)">${icoI('zap',14)}הרץ סוכנים</button>`:''}
       ${D.mode==='primary'?`<span class="gd-sync muted"><a href="#" onclick="gdLoad();return false" title="רענון">${ico('refresh',14)}</a></span>`:`<span class="gd-sync muted">סונכרן ${gdAgo(D.synced_at)} <a href="#" onclick="gdSyncNow();return false" title="סנכרון עכשיו מ-Monday">${ico('refresh',14)}</a></span>`}
@@ -3249,6 +3255,70 @@ async function gdCreate(){
       body:JSON.stringify({name, grp:v('gdnGrp'), values, update:v('gdnUpd')})},90000);
     closeModal(); toast('המוצר נוצר',true); await gdLoad(); gdItem(r.monday_id); }
   catch(e){ document.getElementById('gdnErr').textContent=e.detail||'היצירה נכשלה'; }
+}
+
+// ── עדכון למוצר קיים (19/10/2026, אסי): בוחרים מוצר מהאתר + מה לשנות → "מוצרים קיימים — עדכונים", ממתין → גלי ──
+const GD_EXISTING='group_mm3y9b6z';
+function gdUpdModal(){
+  const D=GD.data; GD.upd={pick:null,res:[]};
+  document.getElementById('modalRoot').innerHTML=`<div class="overlay"><div class="modal us-modal" style="max-width:600px">
+    <h3>עדכון למוצר קיים</h3><div class="muted" style="margin-bottom:8px">נכנס ל"מוצרים קיימים — עדכונים" בסטטוס "ממתין" — גלי תבצע בסבב הבא.</div>
+    <label class="tc-search" style="width:100%">${ico('search',14)}<input id="gduQ" placeholder="שם המוצר באתר, מספר מוצר (ID) או קישור" oninput="gdUpdSearch(this.value)"></label>
+    <div id="gduRes" class="gdu-res"></div>
+    <div id="gduForm" style="display:none">
+      <input id="gduName" placeholder="כותרת הבקשה" style="margin-top:8px">
+      <textarea id="gduUpd" rows="4" placeholder="מה לעדכן? למשל: להוסיף צבע כחול · להוסיף נפח 512GB במחיר 3,999 · לחבר מק״ט קופה 520818 לווריאציה אדום" style="width:100%;margin-top:8px"></textarea>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+        <input id="gduSku" placeholder="מק״ט קופה (אם רלוונטי)" inputmode="numeric">
+        <input id="gduPrice" placeholder="מחיר חדש ₪ (אם רלוונטי)" inputmode="decimal">
+      </div>
+      <input id="gduColors" placeholder="צבעים (אם רלוונטי)" style="margin-top:8px">
+      <div class="gd-chips" id="gduStor">${D.storages.map(s=>`<label><input type="checkbox" value="${s}"><span>${s}</span></label>`).join('')}</div>
+    </div>
+    <div class="err" id="gduErr"></div>
+    <button class="btn-primary" style="width:100%" onclick="gdUpdCreate()">שליחת בקשת עדכון</button>
+    <button class="btn-ghost" style="width:100%;margin-top:8px" onclick="closeModal()">ביטול</button>
+  </div></div>`;
+  document.getElementById('gduQ').focus();
+}
+let _gduT=null;
+function gdUpdSearch(q){
+  clearTimeout(_gduT); q=(q||'').trim();
+  const box=document.getElementById('gduRes'); if(!box) return;
+  if(q.length<2){ box.innerHTML=''; return; }
+  box.innerHTML='<div class="muted" style="padding:8px">מחפש באתר…</div>';
+  _gduT=setTimeout(async()=>{
+    try{ const r=await api('/api/greenday/wc-find?q='+encodeURIComponent(q),{},30000); GD.upd.res=r.results||[]; gdUpdPaint(); }
+    catch(e){ box.innerHTML=`<div class="err">${escW(e.detail||'החיפוש נכשל')}</div>`; }
+  },400);
+}
+function gdUpdPaint(){
+  const box=document.getElementById('gduRes'); if(!box) return; const U=GD.upd;
+  const stLbl={publish:'באוויר',draft:'טיוטה',pending:'ממתין',private:'פרטי'};
+  const row=(p,i,sel)=>`<div class="gdu-row ${sel?'sel':''}" ${sel?'':`onclick="gdUpdPick(${i})"`}>
+      ${p.image?`<img src="${escW(gdImg(p.image,80))}" loading="lazy" referrerpolicy="no-referrer">`:'<span class="gdu-noimg"></span>'}
+      <div class="gdu-main"><b>${escW(p.name)}</b><span class="muted">#${p.id} · ${stLbl[p.status]||escW(p.status||'')}${p.colors&&p.colors.length?' · '+escW(p.colors.join(', ')):''}${p.price?' · ₪'+escW(p.price):''}</span></div>
+      ${sel?`<a href="#" onclick="GD.upd.pick=null;gdUpdPaint();return false">החלפה</a>`:''}</div>`;
+  if(U.pick){ box.innerHTML=row(U.pick,0,true); document.getElementById('gduForm').style.display=''; return; }
+  document.getElementById('gduForm').style.display='none';
+  box.innerHTML=U.res.length?U.res.map((p,i)=>row(p,i,false)).join(''):'<div class="muted" style="padding:8px">לא נמצא מוצר — נסה שם אחר או מספר מוצר</div>';
+}
+function gdUpdPick(i){
+  const p=GD.upd.res[i]; if(!p) return; GD.upd.pick=p; gdUpdPaint();
+  const n=document.getElementById('gduName'); if(n&&!n.value) n.value=p.name.replace(/^(טלפון סלולרי|סמארטפון|אוזניות אלחוטיות|שעון חכם)\s+/,'').slice(0,70)+' — עדכון';
+  const u=document.getElementById('gduUpd'); if(u) u.focus();
+}
+async function gdUpdCreate(){
+  const v=id=>((document.getElementById(id)||{}).value||'').trim(), err=document.getElementById('gduErr'), p=GD.upd&&GD.upd.pick;
+  if(!p){ err.textContent='בחר קודם את המוצר מהאתר'; return; }
+  if(!v('gduUpd')){ err.textContent='כתוב מה לעדכן'; return; }
+  const values={status:'ממתין', wc_id:String(p.id), pos_sku:v('gduSku'), price:v('gduPrice'), colors:v('gduColors'),
+    storages:[...document.querySelectorAll('#gduStor input:checked')].map(x=>x.value)};
+  const upd=`עדכון למוצר קיים באתר: ${p.name} (WC ${p.id}${p.permalink?' · '+p.permalink:''})\n\n${v('gduUpd')}`;
+  try{ const r=await api('/api/greenday/products',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({name:v('gduName')||p.name, grp:GD_EXISTING, values, update:upd})},90000);
+    closeModal(); toast('בקשת העדכון נשלחה — גלי תטפל בסבב הבא',true); GD.open[GD_EXISTING]=true; await gdLoad(); gdItem(r.monday_id); }
+  catch(e){ err.textContent=e.detail||'השליחה נכשלה'; }
 }
 
 // ── ניהול פוקוס לשדה הסריקה (סורק = מקלדת) ──

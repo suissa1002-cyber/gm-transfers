@@ -2486,6 +2486,41 @@ def gd_product_create(body: GdCreate):
     return {"ok": True, "monday_id": mid}
 
 
+@app.get("/api/greenday/wc-find")
+def gd_wc_find(q: str = ""):
+    """בחירת מוצר קיים באתר לבקשת "עדכון למוצר קיים" — לפי מספר מוצר (ID) או שם. רמה של מוצר
+    (לא וריאציות), כולל טיוטות, עם תמונה/צבעים לזיהוי מהיר."""
+    _gd_owner()
+    creds = _wc_creds()
+    q = (q or "").strip()
+    if not creds or len(q) < 2:
+        return {"results": []}
+    base, k, s = creds
+    import requests as _rq
+    import re as _re
+    try:
+        m = _re.search(r"(?:post=|^)(\d{3,7})$", q) or _re.search(r"[?&]p=(\d+)", q)
+        if m:
+            r = _rq.get(f"{base}/wp-json/wc/v3/products/{int(m.group(1))}", auth=(k, s), timeout=15)
+            prods = [r.json()] if r.ok else []
+        else:
+            slug = q.rstrip("/").split("/product/")[-1].split("/")[0] if "/product/" in q else ""
+            params = {"slug": slug} if slug else {"search": q, "per_page": 12, "status": "any"}
+            r = _rq.get(f"{base}/wp-json/wc/v3/products", params=params, auth=(k, s), timeout=20)
+            prods = r.json() if r.ok and isinstance(r.json(), list) else []
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f"חיפוש באתר נכשל: {e}")
+    out = []
+    for p in prods:
+        if not isinstance(p, dict) or p.get("status") == "trash":
+            continue
+        colors = next((a.get("options") or [] for a in (p.get("attributes") or []) if "צבע" in (a.get("name") or "")), [])
+        out.append({"id": p.get("id"), "name": p.get("name") or "", "status": p.get("status"), "type": p.get("type"),
+                    "sku": p.get("sku") or "", "price": p.get("price") or "", "permalink": p.get("permalink") or "",
+                    "image": ((p.get("images") or [{}])[0] or {}).get("src", ""), "colors": colors[:8]})
+    return {"results": out}
+
+
 class GdUpdateIn(BaseModel):
     text: str
 
