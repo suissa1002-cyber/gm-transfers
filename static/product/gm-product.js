@@ -1562,3 +1562,41 @@
     applyCombo(combo, attr);
   }, true);
 })(jQuery);
+
+/* ═══ בית לקוח (תג 3630): הפצה ישירה מהיבואן — אין "משלוח באותו היום", אין איסוף מסניף,
+   ואין "במלאי · מוכן למשלוח" (אין מלאי פיזי בסניפים). הקופה כבר מסתירה אקספרס/איסוף
+   (סניפט 46381) — אבל קוביות האמון בעמוד המוצר הבטיחו אותם (אסי, 19/10/2026: כיסא Dragon
+   הציג "משלוח באותו היום"). התג נקרא מה-Store API הציבורי כדי לא לגעת בתבנית ה-PHP. ═══ */
+(function ($) {
+  var BEIT_TAG = 3630;
+  var m = (document.body.className || '').match(/postid-(\d+)/);
+  if (!m) return;
+  function cube($c, t, s) {
+    var $tx = $c.find('.t-tx'), $t = $tx.length ? $tx : $c;
+    $t.html('<b>' + t + '</b><span>' + s + '</span>');
+  }
+  function apply() {
+    $('.trust').each(function () {
+      $(this).find('.titem').each(function () {
+        var txt = $(this).text();
+        if (/באותו היום|איסוף/.test(txt)) cube($(this), 'משלוח עד הבית', 'הפצה ישירה מהיבואן · 1–6 ימי עסקים');
+      });
+    });
+    var $i = $('.instk');
+    if ($i.length && !$i.hasClass('oos') && !$i.hasClass('gm-pre') && !$i.hasClass('gm-eta')) {
+      $i.addClass('gm-beit').html('✓ זמין להזמנה · משלוח עד הבית תוך 1–6 ימי עסקים');
+    }
+  }
+  fetch('/wp-json/wc/store/v1/products/' + m[1], { credentials: 'same-origin' })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (p) {
+      if (!p || !(p.tags || []).some(function (t) { return t.id === BEIT_TAG || t.name === 'בית לקוח'; })) return;
+      window.GM_BEIT = true;
+      document.body.classList.add('gm-beit');
+      apply();
+      setTimeout(apply, 900);   /* אחרי buildTrust/refreshSmart של הטעינה */
+      $(document).on('found_variation reset_data', 'form.variations_form', function () { setTimeout(apply, 250); });
+      $(document).on('click', '.gm-atc .variable-item', function () { setTimeout(apply, 300); });
+    })
+    .catch(function () {});
+})(jQuery);
