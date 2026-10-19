@@ -1032,6 +1032,71 @@ _SCHEMA = [
         acked      INTEGER DEFAULT 0
     )
     """.format(pk=_PK),
+    # ── 📦 GreenDay · סנכרון מלאי ספקים (19/10/2026) — ראה supplier_stock.py ──
+    # ספק = קונפיג פרסור+כללים (JSON). מיפוי = ברקוד ספק → יחידה באתר, מאושר ידנית לפני סנכרון.
+    """
+    CREATE TABLE IF NOT EXISTS ss_supplier (
+        id          {pk},
+        skey        TEXT UNIQUE,
+        name        TEXT,
+        config      TEXT DEFAULT '{{}}',
+        active      INTEGER DEFAULT 1,
+        created_at  TEXT,
+        updated_at  TEXT
+    )
+    """.format(pk=_PK),
+    """
+    CREATE TABLE IF NOT EXISTS ss_map (
+        supplier_id       INTEGER NOT NULL,
+        barcode           TEXT NOT NULL,
+        model             TEXT,
+        description       TEXT,
+        wc_product_id     BIGINT,
+        wc_variation_id   BIGINT,
+        label             TEXT,
+        confirmed         INTEGER DEFAULT 0,
+        ignored           INTEGER DEFAULT 0,
+        source            TEXT,       -- sku / model / seed / manual
+        note              TEXT,
+        confirmed_by      TEXT,
+        confirmed_at      TEXT,
+        first_seen_report INTEGER,
+        updated_at        TEXT,
+        PRIMARY KEY (supplier_id, barcode)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS ss_report (
+        id           {pk},
+        supplier_id  INTEGER,
+        file_name    TEXT,
+        uploaded_by  TEXT,
+        uploaded_at  TEXT,
+        n_rows       INTEGER,
+        rows         TEXT DEFAULT '[]'
+    )
+    """.format(pk=_PK),
+    "CREATE INDEX IF NOT EXISTS idx_ss_report_sup ON ss_report(supplier_id, id)",
+    """
+    CREATE TABLE IF NOT EXISTS ss_run (
+        id           {pk},
+        supplier_id  INTEGER,
+        report_id    INTEGER,
+        file_name    TEXT,
+        started_by   TEXT,
+        started_at   TEXT,
+        finished_at  TEXT,
+        status       TEXT DEFAULT 'running',   -- running / done / error
+        phase        TEXT,
+        total        INTEGER DEFAULT 0,
+        done         INTEGER DEFAULT 0,
+        summary      TEXT,
+        diff         TEXT,
+        results      TEXT,
+        error        TEXT
+    )
+    """.format(pk=_PK),
+    "CREATE INDEX IF NOT EXISTS idx_ss_run_sup ON ss_run(supplier_id, id)",
 ]
 
 
@@ -6242,3 +6307,203 @@ def gd_reminder_notified(rid):
 def gd_update_edit(uid, body):
     with _conn() as c:
         c.cursor().execute(_q("UPDATE gd_product_update SET body = ? WHERE monday_id = ?"), (body or "", str(uid)))
+
+
+# ──────────────────────────────────────────────────────────────
+# 📦 GreenDay · סנכרון מלאי ספקים (19/10/2026) — הלוגיקה ב-supplier_stock.py
+# ──────────────────────────────────────────────────────────────
+import json as _json_ss
+
+
+def _ss_insert(cur, sql: str, args) -> int:
+    """INSERT שמחזיר id בשני המנועים (PG: RETURNING, SQLite: lastrowid)."""
+    if _USE_PG:
+        cur.execute(_q(sql + " RETURNING id"), args)
+        row = cur.fetchone()
+        return int(row["id"] if row else 0)
+    cur.execute(_q(sql), args)
+    return int(cur.lastrowid or 0)
+
+
+def _ss_sup_row(r) -> dict:
+    d = dict(r)
+    try:
+        d["config"] = _json_ss.loads(d.get("config") or "{}")
+    except Exception:  # noqa: BLE001
+        d["config"] = {}
+    return d
+
+
+def ss_suppliers() -> list:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM ss_supplier WHERE active = 1 ORDER BY id"))
+        return [_ss_sup_row(r) for r in cur.fetchall()]
+
+
+def ss_supplier_get(sid) -> dict:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM ss_supplier WHERE id = ?"), (int(sid),))
+        r = cur.fetchone()
+        return _ss_sup_row(r) if r else None
+
+
+def ss_supplier_by_key(skey) -> dict:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM ss_supplier WHERE skey = ?"), (str(skey),))
+        r = cur.fetchone()
+        return _ss_sup_row(r) if r else None
+
+
+def ss_supplier_save(name, config: dict, sid=None, skey=None) -> int:
+    cj = _json_ss.dumps(config or {}, ensure_ascii=False)
+    with _conn() as c:
+        cur = c.cursor()
+        if sid:
+            cur.execute(_q("UPDATE ss_supplier SET name = ?, config = ?, updated_at = ? WHERE id = ?"),
+                        (name, cj, now_iso(), int(sid)))
+            return int(sid)
+        import uuid
+        return _ss_insert(cur, "INSERT INTO ss_supplier (skey, name, config, active, created_at, updated_at) "
+                               "VALUES (?, ?, ?, 1, ?, ?)",
+                          (skey or ("sup-" + uuid.uuid4().hex[:8]), name, cj, now_iso(), now_iso()))
+
+
+def ss_map_all(sid) -> dict:
+    """{barcode: row} לכל המיפויים של הספק."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM ss_map WHERE supplier_id = ?"), (int(sid),))
+        return {r["barcode"]: dict(r) for r in cur.fetchall()}
+
+
+def ss_map_upsert(sid, barcode, **f):
+    """יצירה/עדכון שורת מיפוי. f = עמודות לעדכון (רק מה שנשלח)."""
+    allowed = ("model", "description", "wc_product_id", "wc_variation_id", "label", "confirmed", "ignored",
+               "source", "note", "confirmed_by", "confirmed_at", "first_seen_report")
+    f = {k: v for k, v in f.items() if k in allowed}
+    f["updated_at"] = now_iso()
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT 1 FROM ss_map WHERE supplier_id = ? AND barcode = ?"), (int(sid), str(barcode)))
+        if cur.fetchone():
+            sets = ", ".join(f"{k} = ?" for k in f)
+            cur.execute(_q(f"UPDATE ss_map SET {sets} WHERE supplier_id = ? AND barcode = ?"),
+                        (*f.values(), int(sid), str(barcode)))
+        else:
+            cols = ["supplier_id", "barcode", *f.keys()]
+            cur.execute(_q(f"INSERT INTO ss_map ({', '.join(cols)}) VALUES ({', '.join('?' for _ in cols)})"),
+                        (int(sid), str(barcode), *f.values()))
+
+
+def ss_report_add(sid, file_name, by, rows: list) -> int:
+    with _conn() as c:
+        cur = c.cursor()
+        return _ss_insert(cur, "INSERT INTO ss_report (supplier_id, file_name, uploaded_by, uploaded_at, n_rows, rows) "
+                               "VALUES (?, ?, ?, ?, ?, ?)",
+                          (int(sid), file_name or "", by or "", now_iso(), len(rows),
+                           _json_ss.dumps(rows, ensure_ascii=False)))
+
+
+def _ss_report_row(r) -> dict:
+    d = dict(r)
+    try:
+        d["rows"] = _json_ss.loads(d.get("rows") or "[]")
+    except Exception:  # noqa: BLE001
+        d["rows"] = []
+    return d
+
+
+def ss_report_get(rid) -> dict:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM ss_report WHERE id = ?"), (int(rid),))
+        r = cur.fetchone()
+        return _ss_report_row(r) if r else None
+
+
+def ss_report_prev(sid, rid) -> dict:
+    """הדוח הקודם של אותו ספק — עדיפות לדוח שסונכרן בפועל, אחרת כל דוח קודם."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""SELECT r.* FROM ss_report r WHERE r.supplier_id = ? AND r.id < ?
+                          AND EXISTS (SELECT 1 FROM ss_run u WHERE u.report_id = r.id AND u.status = 'done')
+                          ORDER BY r.id DESC LIMIT 1"""), (int(sid), int(rid)))
+        r = cur.fetchone()
+        if not r:
+            cur.execute(_q("SELECT * FROM ss_report WHERE supplier_id = ? AND id < ? ORDER BY id DESC LIMIT 1"),
+                        (int(sid), int(rid)))
+            r = cur.fetchone()
+        return _ss_report_row(r) if r else None
+
+
+def ss_report_last(sid) -> dict:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT id, supplier_id, file_name, uploaded_by, uploaded_at, n_rows FROM ss_report "
+                       "WHERE supplier_id = ? ORDER BY id DESC LIMIT 1"), (int(sid),))
+        r = cur.fetchone()
+        return dict(r) if r else None
+
+
+def ss_run_add(sid, rid, file_name, by) -> int:
+    with _conn() as c:
+        cur = c.cursor()
+        return _ss_insert(cur, "INSERT INTO ss_run (supplier_id, report_id, file_name, started_by, started_at, status, "
+                               "phase, total, done) VALUES (?, ?, ?, ?, ?, 'running', ?, 0, 0)",
+                          (int(sid), int(rid), file_name or "", by or "", now_iso(), "מתחיל…"))
+
+
+def ss_run_update(run_id, **f):
+    """עדכון התקדמות/סיום. summary/diff/results — dict/list ⇒ JSON."""
+    allowed = ("status", "phase", "total", "done", "summary", "diff", "results", "error", "finished_at")
+    f = {k: (_json_ss.dumps(v, ensure_ascii=False) if k in ("summary", "diff", "results") and v is not None else v)
+         for k, v in f.items() if k in allowed}
+    if not f:
+        return
+    with _conn() as c:
+        sets = ", ".join(f"{k} = ?" for k in f)
+        c.cursor().execute(_q(f"UPDATE ss_run SET {sets} WHERE id = ?"), (*f.values(), int(run_id)))
+
+
+def _ss_run_row(r, full=True) -> dict:
+    d = dict(r)
+    for k in ("summary", "diff", "results"):
+        if not full and k == "results":
+            d.pop(k, None)
+            continue
+        try:
+            d[k] = _json_ss.loads(d.get(k)) if d.get(k) else None
+        except Exception:  # noqa: BLE001
+            d[k] = None
+    return d
+
+
+def ss_run_get(run_id) -> dict:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM ss_run WHERE id = ?"), (int(run_id),))
+        r = cur.fetchone()
+        return _ss_run_row(r) if r else None
+
+
+def ss_runs(sid=None, limit=20) -> list:
+    """היסטוריית ריצות (בלי results המלאים — כבדים)."""
+    with _conn() as c:
+        cur = c.cursor()
+        if sid:
+            cur.execute(_q("SELECT * FROM ss_run WHERE supplier_id = ? ORDER BY id DESC LIMIT ?"), (int(sid), int(limit)))
+        else:
+            cur.execute(_q("SELECT * FROM ss_run ORDER BY id DESC LIMIT ?"), (int(limit),))
+        return [_ss_run_row(r, full=False) for r in cur.fetchall()]
+
+
+def ss_run_active(sid) -> dict:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT id FROM ss_run WHERE supplier_id = ? AND status = 'running' ORDER BY id DESC LIMIT 1"),
+                    (int(sid),))
+        r = cur.fetchone()
+        return dict(r) if r else None

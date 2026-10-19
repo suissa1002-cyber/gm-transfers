@@ -2681,6 +2681,265 @@ def gd_sync_now(full: int = 0):
         raise HTTPException(502, f"Monday: {e}")
 
 
+# ── 📦 GreenDay · סנכרון מלאי ספקים (19/10/2026, אסי) — בעלים בלבד; הלוגיקה ב-supplier_stock.py ──
+# דוח זמינות שבועי מהיבואן → תצוגה מקדימה (dry-run) → "אשר וסנכרן" (thread + התקדמות חיה).
+# ⛔ סנכרון חסום עד שכל שורה בדוח מותאמת+מאושרת או מסומנת "לא נמכר אצלנו".
+def _ss_wc():
+    import supplier_stock as ss
+    return ss.WC.from_env()
+
+
+def _ss_sup(sid: int) -> dict:
+    s = db.ss_supplier_get(sid)
+    if not s or not s.get("active"):
+        raise HTTPException(404, "הספק לא נמצא")
+    return s
+
+
+def _ss_plan_out(plan: dict) -> dict:
+    plan = dict(plan)
+    plan.pop("_products", None)
+    for p in plan.get("rows") or []:
+        p.pop("_desc", None)
+    import supplier_stock as ss
+    plan["groups"] = [{"id": g, "title": t} for g, t in ss.GROUPS]
+    return plan
+
+
+@app.get("/api/greenday/stock/suppliers")
+def ss_suppliers_list():
+    _gd_owner()
+    import supplier_stock as ss
+    ss.ensure_seed()
+    out = []
+    for s in db.ss_suppliers():
+        last = db.ss_report_last(s["id"])
+        runs = db.ss_runs(s["id"], limit=1)
+        maps = db.ss_map_all(s["id"])
+        age = ss.report_age_days(last["uploaded_at"]) if last else None
+        out.append({"id": s["id"], "name": s["name"], "config": s["config"], "last_report": last,
+                    "report_age_days": round(age, 1) if age is not None else None,
+                    "stale": age is None or age > ss.STALE_DAYS,
+                    "last_run": runs[0] if runs else None,
+                    "map_stats": {"total": len(maps), "confirmed": sum(1 for m in maps.values() if m.get("confirmed")),
+                                  "ignored": sum(1 for m in maps.values() if m.get("ignored"))}})
+    return {"suppliers": out, "defaults": ss.DEFAULT_CONFIG, "wc": bool(_ss_wc())}
+
+
+class SsSupplierIn(BaseModel):
+    id: Optional[int] = None
+    name: str
+    config: dict = {}
+
+
+@app.post("/api/greenday/stock/suppliers")
+def ss_supplier_save(body: SsSupplierIn):
+    _gd_owner()
+    import supplier_stock as ss
+    name = (body.name or "").strip()
+    if not name:
+        raise HTTPException(400, "חסר שם ספק")
+    cfg_ = {**ss.DEFAULT_CONFIG, **(body.config or {})}
+    try:
+        for k, v in (cfg_.get("columns") or {}).items():
+            if v not in (None, ""):
+                ss.col_idx(v)
+        if cfg_.get("note_lead_regex"):
+            re.compile(cfg_["note_lead_regex"])
+    except (ValueError, re.error) as e:
+        raise HTTPException(400, f"הגדרה לא חוקית: {e}")
+    for k in ("in_values", "out_values", "note_keep"):
+        cfg_[k] = [str(x).strip() for x in (cfg_.get(k) or []) if str(x).strip()]
+    if not cfg_["in_values"] or not cfg_["out_values"]:
+        raise HTTPException(400, "צריך לפחות ערך אחד ל'במלאי' ואחד ל'אזל'")
+    if body.id:
+        _ss_sup(body.id)
+    sid = db.ss_supplier_save(name, cfg_, sid=body.id)
+    return {"id": sid}
+
+
+class SsUploadIn(BaseModel):
+    file_name: str
+    content_b64: str
+
+
+@app.post("/api/greenday/stock/suppliers/{sid}/upload")
+def ss_upload(sid: int, body: SsUploadIn):
+    """העלאת דוח → פרסור → שמירה → הצעות התאמה → תצוגה מקדימה."""
+    u = _gd_owner()
+    import supplier_stock as ss
+    sup = _ss_sup(sid)
+    fn = (body.file_name or "").strip()
+    if not fn.lower().endswith((".xlsx", ".xlsm", ".csv", ".txt")):
+        raise HTTPException(400, "קובץ xlsx או csv בלבד")
+    try:
+        content = ss.decode_upload(body.content_b64)
+    except Exception:  # noqa: BLE001
+        raise HTTPException(400, "הקובץ לא נקרא")
+    if len(content) > 15 * 1024 * 1024:
+        raise HTTPException(400, "הקובץ גדול מדי")
+    try:
+        rows = ss.parse_report(content, fn, sup["config"])
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(400, f"פרסור הקובץ נכשל: {e}")
+    if not rows:
+        raise HTTPException(400, "לא נמצאו שורות נתונים (ברקוד + זמינות מוכרת) — בדקו את מיפוי העמודות בהגדרות הספק")
+    rid = db.ss_report_add(sid, fn, u["name"], rows)
+    wc = _ss_wc()
+    try:
+        stats = ss.suggest_mappings(sid, rows, wc, report_id=rid)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("supplier stock suggest failed: %s", e)
+        stats = {"error": str(e)[:200]}
+    try:
+        plan = ss.plan_for_report(sid, rid, wc)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f"קריאת האתר נכשלה: {e}")
+    out = _ss_plan_out(plan)
+    out["suggest"] = stats
+    return out
+
+
+@app.get("/api/greenday/stock/reports/{rid}/preview")
+def ss_preview(rid: int, fresh: int = 0):
+    _gd_owner()
+    import supplier_stock as ss
+    rep = db.ss_report_get(rid)
+    if not rep:
+        raise HTTPException(404, "הדוח לא נמצא")
+    try:
+        plan = ss.plan_for_report(rep["supplier_id"], rid, _ss_wc(), fresh=bool(fresh))
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f"קריאת האתר נכשלה: {e}")
+    return _ss_plan_out(plan)
+
+
+@app.get("/api/greenday/stock/suppliers/{sid}/last-preview")
+def ss_last_preview(sid: int):
+    """התצוגה המקדימה של הדוח האחרון (פתיחה חוזרת של הטאב)."""
+    _gd_owner()
+    last = db.ss_report_last(sid)
+    if not last:
+        return {"empty": True}
+    return ss_preview(last["id"])
+
+
+class SsMapIn(BaseModel):
+    barcode: str
+    action: str                      # confirm | ignore | unignore | set | clear
+    wc_product_id: Optional[int] = None
+    wc_variation_id: Optional[int] = None
+    label: str = ""
+
+
+@app.post("/api/greenday/stock/suppliers/{sid}/mapping")
+def ss_mapping(sid: int, body: SsMapIn):
+    u = _gd_owner()
+    import supplier_stock as ss
+    _ss_sup(sid)
+    if body.action == "set" and body.wc_product_id:
+        # אימות מול האתר שהיחידה קיימת (ושאם המוצר משתנה — נבחרה וריאציה)
+        wc = _ss_wc()
+        if wc:
+            prods = ss.fetch_products(wc, [body.wc_product_id], fresh=True)
+            unit, prod = ss.resolve_unit(prods, body.wc_product_id, body.wc_variation_id)
+            if not unit:
+                raise HTTPException(400, "היחידה לא נמצאה באתר" if not prod else "מוצר משתנה — צריך לבחור וריאציה")
+    try:
+        m = ss.map_action(sid, body.barcode, body.action, u["name"], pid=body.wc_product_id,
+                          vid=body.wc_variation_id, label=body.label)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True, "map": m}
+
+
+class SsConfirmIn(BaseModel):
+    report_id: Optional[int] = None
+
+
+@app.post("/api/greenday/stock/suppliers/{sid}/mapping/confirm-certain")
+def ss_mapping_confirm_certain(sid: int, body: SsConfirmIn):
+    """"אשר את כל ההתאמות הוודאיות" — SKU זהה לברקוד + זרעים ידניים. הצעות לפי דגם נשארות לאישור פרטני."""
+    u = _gd_owner()
+    import supplier_stock as ss
+    _ss_sup(sid)
+    bcs = None
+    if body.report_id:
+        rep = db.ss_report_get(body.report_id)
+        bcs = {r["barcode"] for r in (rep or {}).get("rows") or []}
+    return {"confirmed": ss.confirm_certain(sid, u["name"], bcs)}
+
+
+@app.get("/api/greenday/stock/wc-search")
+def ss_wc_search(q: str = ""):
+    _gd_owner()
+    import supplier_stock as ss
+    q = (q or "").strip()
+    if len(q) < 2:
+        return {"items": []}
+    wc = _ss_wc()
+    if not wc:
+        raise HTTPException(503, "אין חיבור לאתר (WC_* חסרים)")
+    try:
+        return {"items": ss.wc_search(wc, q)}
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f"החיפוש באתר נכשל: {e}")
+
+
+def _ss_notify(text: str):
+    import alerts as _al
+    chat = os.getenv("TELEGRAM_TASKS_CHAT_ID") or os.getenv("TELEGRAM_ADMIN_CHAT", "448181407")
+    _al._send(chat, text)
+
+
+@app.post("/api/greenday/stock/reports/{rid}/apply")
+def ss_apply(rid: int):
+    """"אשר וסנכרן" — בודק חסימה, פותח רשומת ריצה ומריץ ברקע. ה-UI מושך /runs/{id} כל שנייה."""
+    u = _gd_owner()
+    import supplier_stock as ss
+    rep = db.ss_report_get(rid)
+    if not rep:
+        raise HTTPException(404, "הדוח לא נמצא")
+    sid = int(rep["supplier_id"])
+    _ss_sup(sid)
+    act = db.ss_run_active(sid)
+    if act and not ss.run_is_stale(db.ss_run_get(act["id"])):
+        raise HTTPException(409, "סנכרון של הספק הזה כבר רץ")
+    wc = _ss_wc()
+    if not wc:
+        raise HTTPException(503, "אין חיבור לאתר (WC_* חסרים)")
+    try:
+        plan = ss.plan_for_report(sid, rid, wc)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f"קריאת האתר נכשלה: {e}")
+    if plan["blocked"]:
+        raise HTTPException(409, f"הסנכרון חסום: {plan['n_blocked']} שורות לא מותאמות או לא מאושרות")
+    run_id = db.ss_run_add(sid, rid, rep.get("file_name"), u["name"])
+    base = (cfg.APP_BASE_URL or "https://gm-transfers.onrender.com").rstrip("/")
+    import threading as _th
+    _th.Thread(target=ss.run_apply, args=(run_id, sid, rid, wc),
+               kwargs={"notify": _ss_notify, "link": f"{base}/?gdstock={run_id}"},
+               name=f"ss-run-{run_id}", daemon=True).start()
+    return {"run_id": run_id}
+
+
+@app.get("/api/greenday/stock/runs/{run_id}")
+def ss_run_get(run_id: int):
+    _gd_owner()
+    r = db.ss_run_get(run_id)
+    if not r:
+        raise HTTPException(404, "הריצה לא נמצאה")
+    return r
+
+
+@app.get("/api/greenday/stock/suppliers/{sid}/runs")
+def ss_runs_list(sid: int):
+    _gd_owner()
+    return {"runs": db.ss_runs(sid, limit=20)}
+
+
 class ChatPushBind(BaseModel):
     endpoint: str
 
