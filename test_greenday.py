@@ -38,7 +38,7 @@ check("סנכרון קבוצות פעילות → מוצר ב-DB", db.gd_product
 check("⛔ עובדת (גם עם הרשאות) לא רואה את הלוח", c.get("/api/greenday/board", headers=D).status_code == 403)
 check("⛔ סיסמה משותפת לא נכנסת ללוח", c.get("/api/greenday/board", headers=ADM).status_code == 403)
 b = c.get("/api/greenday/board", headers=A).json()
-check("בעלים רואה לוח עם 5 קבוצות ו-6 סטטוסים", len(b["groups"]) == 5 and len(b["statuses"]) == 6 and len(b["products"]) == 1)
+check("בעלים רואה לוח עם כל הקבוצות והסטטוסים", len(b["groups"]) == len(greenday.GROUPS) and len(b["statuses"]) == len(greenday.STATUSES) and len(b["products"]) == 1)
 
 calls.clear()
 r = c.post("/api/greenday/products/111", headers=A, json={"field": "status", "value": "בעבודה"})

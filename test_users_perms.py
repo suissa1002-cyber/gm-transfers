@@ -104,6 +104,10 @@ for _ in range(5):
 r = c.post("/api/auth/login", json={"username": "asi", "password": "owner123"})
 check("⛔ אחרי 5 ניסיונות שגויים — נעילה 10 דקות", r.status_code == 429)
 
+import perms as _pm
+check("שידור בקשת העברה (שלב 2 של 'העבר' ממלאי חי) = הרשאת העברות, לא 'עדכונים לסניפים'",
+      _pm.feature_for_path("/api/admin/broadcast") == "transfers" and _pm.feature_for_path("/api/admin/plan") == "transfers")
+
 os.unlink(_tmp)
 assert not fails, fails
 print(f"\n✅ כל {passed[0]} הבדיקות עברו")

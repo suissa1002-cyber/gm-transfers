@@ -23,6 +23,9 @@ FEATURES = [
     ("calls", "שיחות טלפון", "מרכזיה ותיעוד שיחות", ["/api/admin/pbx"]),
     ("transfers", "העברות ומלאי", "תוכנית העברות, מלאי חי, הורדות מלאי וקטלוג", [
         "/api/admin/plan", "/api/admin/plan-fulfilled", "/api/admin/pos", "/api/admin/serial-index",
+        # שידור בקשת העברה לסניף המחזיק (שלב 2 של "העבר" ממלאי חי). עד 19/10 שויך בטעות ל"עדכונים
+        # לסניפים" — עובד עם הרשאת העברות יצר בקשה (משאית) אבל השידור נחסם ב-403 ("שגיאה בשליחת הבקשה")
+        "/api/admin/broadcast", "/api/admin/broadcasts",
         "/api/admin/serial-sync", "/api/admin/removals", "/api/admin/removals-backfill",
         "/api/admin/removals-ingest", "/api/admin/removals-status", "/api/admin/rebalance",
         "/api/admin/rebalance-scan", "/api/admin/misroute", "/api/admin/numeric-receivers",
@@ -45,7 +48,6 @@ FEATURES = [
     ("invoices", "חשבוניות", "חשבוניות ספקים", ["/api/admin/invoices", "/api/admin/invoices-today"]),
     ("updates", "עדכונים לסניפים", "פרסום עדכונים ושידורים לסניפים", [
         "/api/admin/branch-updates", "/api/admin/branch-update-image",
-        "/api/admin/broadcast", "/api/admin/broadcasts",
     ]),
     ("reports", "דשבורד ודוחות", "מסך הבית, סקירות ונתוני מכירות", [
         "/api/admin/home", "/api/admin/brief", "/api/admin/digest",
