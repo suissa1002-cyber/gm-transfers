@@ -1606,17 +1606,16 @@
     for (var i = 0; i < vs.length; i++) if (vs[i].variation_id === vid) return leadOf(vs[i]);
     return null;
   }
-  /* זיהוי "בית לקוח": (1) מהתיאור הקצר — עובד גם בטיוטה/תצוגה מקדימה, שה-Store API מחזיר להן 404
-     (אסי 19/10: שולחן Z בטיוטה הציג "משלוח באותו היום"); (2) תג 3630 מה-Store API. */
+  /* זיהוי "בית לקוח": תג 3630 מה-Store API. בטיוטה/תצוגה מקדימה ה-API מחזיר 404 (אסי 19/10: שולחן Z
+     בטיוטה הציג "משלוח באותו היום") → מוצר כבד בטיוטה מטופל כבית לקוח. */
   /* (3) מחלקת משלוח heavy-products מהתבנית: בקופה אקספרס מוסר לכל מוצר כבד (סניפט 46399),
      ולכן "משלוח באותו היום" שגוי לכל כבד. בטיוטה (Store API=404) כבד ⇒ מטופל כבית לקוח. */
   var HEAVY = ($('.gm-pdp-wrap').attr('data-shipclass') || '').trim() === 'heavy-products';
-  var rawShort = $('#gm-shortdesc-raw').text() || '';
-  var byText = /לבית לקוח/.test(rawShort);
-  (byText ? Promise.resolve({ tags: [{ id: BEIT_TAG }] })
-          : fetch('/wp-json/wc/store/v1/products/' + m[1], { credentials: 'same-origin' })
-              .then(function (r) { return r.ok ? r.json() : (HEAVY ? { tags: [{ id: BEIT_TAG }] } : null); })
-              .catch(function () { return HEAVY ? { tags: [{ id: BEIT_TAG }] } : null; }))
+  /* ⛔ לא לזהות לפי הטקסט "משלוח לבית לקוח" בתיאור הקצר — הוא נשאר גם אחרי שהמוצר חזר למלאי
+     והתג הוסר (Corsair TC-100, 19/10). מקור האמת = התג. */
+  fetch('/wp-json/wc/store/v1/products/' + m[1], { credentials: 'same-origin' })
+    .then(function (r) { return r.ok ? r.json() : (HEAVY ? { tags: [{ id: BEIT_TAG }] } : null); })
+    .catch(function () { return HEAVY ? { tags: [{ id: BEIT_TAG }] } : null; })
     .then(function (p) {
       var beit = !!p && (p.tags || []).some(function (t) { return t.id === BEIT_TAG || t.name === 'בית לקוח'; });
       if (!beit && HEAVY) {
