@@ -1292,6 +1292,7 @@
         .scan-status{margin-top:8px;font-size:14px;line-height:1.5}
         .scan-status.ok{color:#047857}.scan-status.err{color:#b91c1c}.scan-status.busy{color:#1d4ed8}
         .scan-warn{color:#b45309;margin-top:4px;font-size:13px}
+        .scan-pick{display:inline-block;padding:1px 8px;margin:0 2px;border-radius:6px;background:#fef3c7;border:1px solid #f59e0b;color:#92400e;font-weight:700;text-decoration:none}
         .scan-qr{margin-top:10px;gap:12px;align-items:center;font-size:14px}
         .scan-qrimg svg{width:170px;height:170px;background:#fff;border-radius:8px}
         .scan-filled{background:#fef9c3!important;border-color:#eab308!important}
@@ -2614,7 +2615,7 @@ function gmAuthH(h){ h=h||{}; const k=localStorage.getItem('tr_admin_key')||'';
             document.getElementById('supplierHint').className = 'supplier-hint';
             document.getElementById('supplierHint').textContent = '';
             document.querySelectorAll('.scan-filled').forEach(el=>el.classList.remove('scan-filled'));
-            scanSetStatus(''); scanQrStop();
+            scanSetStatus(''); scanQrStop(); _lastScan=null;
             try{ document.getElementById('addCheckImage').value=''; }catch(e){}
             
             // Populate suppliers list from existing checks
@@ -2695,6 +2696,7 @@ function gmAuthH(h){ h=h||{}; const k=localStorage.getItem('tr_admin_key')||'';
             scanSetImage(file);
             scanSetStatus('⏳ מפענח את הצ\'ק…','busy');
             const fd=new FormData(); fd.append('file',file,file.name||'check.jpg'); fd.append('suppliers',JSON.stringify(existingSuppliers||[]));
+            fd.append('expected_number', (typeof nextCheckNumber==='function'?nextCheckNumber():'')||'');
             try{ const r=await fetch('/api/checks/scan',{method:'POST',headers:{...gmAuthH(),'X-Checks-Key':localStorage.getItem('tr_checks_key')||''},body:fd});
                  const j=await r.json().catch(()=>({})); if(!r.ok) throw new Error(j.detail||('HTTP '+r.status)); scanFill(j.check); }
             catch(e){ scanSetStatus('❌ הפענוח נכשל: '+e.message+' — אפשר למלא ידנית','err'); }
@@ -2703,11 +2705,15 @@ function gmAuthH(h){ h=h||{}; const k=localStorage.getItem('tr_admin_key')||'';
             scanSetStatus('⏳ התמונה הגיעה מהטלפון — מפענח…','busy');
             try{ const b=await (await fetch(f.url)).blob(); scanSetImage(new File([b],'check-phone.jpg',{type:b.type||'image/jpeg'})); }catch(e){}
             try{ const r=await fetch('/api/checks/scan',{method:'POST',headers:{...gmAuthH(),'X-Checks-Key':localStorage.getItem('tr_checks_key')||'','Content-Type':'application/json'},
-                   body:JSON.stringify({attach_key:f.attach_key,suppliers:existingSuppliers||[]})});
+                   body:JSON.stringify({attach_key:f.attach_key,suppliers:existingSuppliers||[],expected_number:(typeof nextCheckNumber==='function'?nextCheckNumber():'')||''})});
                  const j=await r.json().catch(()=>({})); if(!r.ok) throw new Error(j.detail||('HTTP '+r.status)); scanFill(j.check); }
             catch(e){ scanSetStatus('❌ הפענוח נכשל: '+e.message+' — אפשר למלא ידנית','err'); }
         }
+        let _lastScan=null;
+        const SCAN_FIELD={check_number:['addCheckNumber','מספר צ\'ק'],amount:['addCheckAmount','סכום'],date:['addCheckDueDate','תאריך פרעון'],supplier_match:['addCheckSupplier','ספק']};
+        function scanPick(k,v){ const f=SCAN_FIELD[k]; if(!f) return; const el=document.getElementById(f[0]); el.value=v; el.classList.add('scan-filled'); if(k==='supplier_match') checkSupplierExists(); }
         function scanFill(c){
+            _lastScan=c;
             if(!c||!c.readable){ scanSetStatus('⚠️ לא הצלחתי לקרוא את הצ\'ק — צלמו שוב מלמעלה, באור טוב'+(c&&c.notes?' ('+c.notes+')':''),'err'); return; }
             const set=(id,v)=>{ const el=document.getElementById(id); if(!el||v===''||v==null) return false; el.value=v; el.classList.add('scan-filled'); return true; };
             const filled=[];
@@ -2717,6 +2723,10 @@ function gmAuthH(h){ h=h||{}; const k=localStorage.getItem('tr_admin_key')||'';
             if(/^\d{4}-\d{2}-\d{2}$/.test(c.date||'')&&set('addCheckDueDate',c.date)) filled.push('תאריך פרעון');
             if(c.bank_option&&set('addCheckBank',c.bank_option)) filled.push('בנק');
             const warn=[];
+            Object.entries(c.conflicts||{}).forEach(([k,[a,b]])=>{ const f=SCAN_FIELD[k]; if(!f) return;
+                const btn=v=>`<a href="#" class="scan-pick" onclick="scanPick('${k}','${String(v).replace(/'/g,"\\'")}');return false">${v}</a>`;
+                warn.push(`<b>${f[1]}</b> — שתי קריאות שונות, בחרו: ${btn(a)} / ${btn(b)}`); });
+            if(c.alias_used) warn.push('הספק זוהה לפי שם שנלמד מצ\'קים קודמים');
             if(c.payee&&!c.supplier_match) warn.push('"'+c.payee+'" לא נמצא ברשימת הספקים — לבדוק את השם');
             if(c.amounts_agree===false) warn.push('הסכום במילים ('+c.amount_words+') לא תואם לספרות — לבדוק!');
             if(c.notes) warn.push(c.notes);
@@ -2828,6 +2838,12 @@ function gmAuthH(h){ h=h||{}; const k=localStorage.getItem('tr_admin_key')||'';
                     }
                 }
 
+                // לימוד: השם שנכתב על הצ'ק → הספק שנשמר בפועל (לסריקות הבאות)
+                if(_lastScan && _lastScan.payee){
+                    try{ fetch('/api/checks/scan-learn',{method:'POST',headers:{...gmAuthH(),'X-Checks-Key':localStorage.getItem('tr_checks_key')||'','Content-Type':'application/json'},
+                        body:JSON.stringify({payee:_lastScan.payee,supplier:supplier})}); }catch(e){}
+                    _lastScan=null;
+                }
                 // זוכרים את המספר שהוזן כדי להציע את הבא בפעם הבאה
                 try { localStorage.setItem('checks_last_number', checkNumber); } catch(e) {}
 

@@ -97,14 +97,14 @@ def _client():
     return anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY") or None, timeout=180.0, max_retries=2)
 
 
-def _ask(content, schema) -> dict:
+def _ask(content, schema, effort="medium") -> dict:
     """קריאה אחת ל-Claude עם פלט JSON מובנה. refusal / תשובה ריקה → RuntimeError."""
     c = _client()
     r = c.beta.messages.create(
         model=MODEL, max_tokens=8000,
         betas=["server-side-fallback-2026-07-01"],
         extra_body={"fallbacks": "default"},
-        output_config={"effort": "medium", "format": {"type": "json_schema", "schema": schema}},
+        output_config={"effort": effort, "format": {"type": "json_schema", "schema": schema}},
         messages=[{"role": "user", "content": content}],
     )
     if r.stop_reason == "refusal":

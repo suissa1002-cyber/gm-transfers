@@ -13,7 +13,7 @@ def check(label, cond, extra=""):
     print(f"{'✅' if cond else '❌'} {label}" + (f"  [{extra}]" if not cond else "")); cond or fails.append(label)
 def jpg():
     b = io.BytesIO(); Image.new("RGB", (900, 400), "white").save(b, "JPEG"); return b.getvalue()
-SI._ask = lambda content, schema: {"readable": True, "check_number": "3004571", "payee": "המילטון חשמל", "supplier_match": "המילטון",
+SI._ask = lambda content, schema, effort="medium": {"readable": True, "check_number": "3004571", "payee": "המילטון חשמל", "supplier_match": "המילטון",
                                    "amount": 8500, "amount_words": "שמונת אלפים חמש מאות", "amounts_agree": True, "date": "2026-11-15",
                                    "bank": "בנק הפועלים בע\"מ", "confidence": "high", "notes": ""}
 K = {"X-Checks-Key": "chk-secret"}
@@ -34,6 +34,22 @@ check("הצילום מהטלפון הגיע", st["state"] == "done" and st["file
 r = c.post("/api/checks/scan", headers={**K, "Content-Type": "application/json"}, json={"attach_key": st["files"][0]["attach_key"], "suppliers": ["המילטון"]}).json()
 check("פענוח של צילום מהטלפון לפי מפתח", r.get("check", {}).get("amount") == 8500, r)
 check("⛔ טוקן QR של צ'קים לא נגיש בלי הרשאה", c.get(f"/api/checks/handoff/{h['token']}").status_code == 401)
+# ── שתי קריאות: אי-הסכמה → conflicts + ביטחון נמוך; כינוי שנלמד גובר ──
+reads = iter([
+    {"readable": True, "check_number": "3004572", "payee": "המילטון חשמל ואלקטרוניקה בע\"מ", "supplier_match": "", "amount": 1250,
+     "amount_words": "", "amounts_agree": True, "date": "2026-12-03", "bank": "לאומי", "confidence": "high", "notes": ""},
+    {"readable": True, "check_number": "3004572", "payee": "המילטון חשמל ואלקטרוניקה בע\"מ", "supplier_match": "", "amount": 7250,
+     "amount_words": "", "amounts_agree": True, "date": "2026-12-03", "bank": "לאומי", "confidence": "high", "notes": "1 או 7?"}])
+SI._ask = lambda content, schema, effort="medium": next(reads)
+r = c.post("/api/checks/scan", headers=K, files={"file": ("c.jpg", jpg(), "image/jpeg")}, data={"suppliers": '["המילטון"]'}).json()["check"]
+check("קריאות שונות בסכום → conflicts עם שתי האפשרויות + ביטחון נמוך", r["conflicts"].get("amount") == [1250, 7250] and r["confidence"] == "low"
+      and r["bank_option"] == "בנק לאומי" and r["supplier_match"] == "", r)
+check("לימוד: שם רשמי → ספק במערכת", c.post("/api/checks/scan-learn", headers=K, json={"payee": "המילטון חשמל ואלקטרוניקה בע\"מ", "supplier": "המילטון"}).json()["ok"])
+SI._ask = lambda content, schema, effort="medium": {"readable": True, "check_number": "1", "payee": "המילטון חשמל ואלקטרוניקה בעמ", "supplier_match": "",
+    "amount": 100, "amount_words": "", "amounts_agree": True, "date": "2026-12-03", "bank": "", "confidence": "high", "notes": ""}
+r = c.post("/api/checks/scan", headers=K, files={"file": ("c.jpg", jpg(), "image/jpeg")}, data={"suppliers": '["המילטון"]'}).json()["check"]
+check("סריקה הבאה: הכינוי שנלמד מזהה את הספק (גם עם איות אחר של בע\"מ)", r["supplier_match"] == "המילטון" and r.get("alias_used"), r)
+check("⛔ לימוד בלי הרשאה", c.post("/api/checks/scan-learn", json={"payee": "x", "supplier": "y"}).status_code == 401)
 os.unlink(_tmp)
 print("\n" + ("✅ כל בדיקות סריקת הצ'ק עברו" if not fails else f"❌ נכשלו {len(fails)}: {fails}"))
 sys.exit(1 if fails else 0)

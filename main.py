@@ -8292,18 +8292,107 @@ _CHECK_PROMPT = """זה צילום של צ'ק ישראלי שחברת Green Mobi
 _CHECK_BANKS = {"פועלים": "בנק פועלים", "לאומי": "בנק לאומי", "מזרחי": "בנק מזרחי", "בינלאומי": "הבנק הבינלאומי"}
 
 
-def _check_scan(data: bytes, mime: str, suppliers) -> dict:
-    import base64, supplier_invoice as SI
+def _check_enhance(data: bytes) -> bytes:
+    """גרסה שנייה לקריאה: גווני אפור, ניגודיות אוטומטית, חידוד, הגדלה — עוזר בכתב יד חלש/דהוי."""
+    import io
+    from PIL import Image, ImageOps, ImageFilter
+    im = ImageOps.exif_transpose(Image.open(io.BytesIO(data))).convert("L")
+    if max(im.size) < 2000:
+        k = 2000 / max(im.size)
+        im = im.resize((int(im.width * k), int(im.height * k)), Image.LANCZOS)
+    im = ImageOps.autocontrast(im, cutoff=1).filter(ImageFilter.UnsharpMask(radius=2, percent=160, threshold=2))
+    buf = io.BytesIO()
+    im.save(buf, "JPEG", quality=92)
+    return buf.getvalue()
+
+
+def _norm_payee(s: str) -> str:
+    s = re.sub(r'["\'״׳`.,()\-–]', " ", (s or "").lower())
+    s = re.sub(r"\b(בע\s?מ|בעמ|ltd|limited|inc|חברת|בע״מ)\b", " ", s)
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def _payee_aliases() -> dict:
+    try:
+        return json_mod.loads(db.setting_get("check_payee_alias") or "{}")
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _check_scan(data: bytes, mime: str, suppliers, expected_number: str = "") -> dict:
+    """פענוח חזק (22/10, אסי: "יש שכותבים לא קריא, ושמות שונים מהרשמי"):
+    שתי קריאות בלתי תלויות (מקור + משופרת) במקביל, effort גבוה; אי-הסכמה בשדה מהותי → conflicts + ביטחון נמוך.
+    שם בצ'ק → ספק במערכת: כינויים שנלמדו מצ'קים קודמים קודמים למודל."""
+    import base64, concurrent.futures as cf, supplier_invoice as SI
     data, mime = SI._sniff(data, mime)
     if mime == "application/pdf":
         raise HTTPException(400, "צריך תמונה של הצ'ק")
-    block = {"type": "image", "source": {"type": "base64", "media_type": mime, "data": base64.standard_b64encode(data).decode()}}
-    sup = "\n".join(f"- {x}" for x in (suppliers or [])[:300]) or "(אין)"
-    r = SI._ask([block, {"type": "text", "text": _CHECK_PROMPT.replace("{suppliers}", sup)}], _CHECK_SCHEMA)
-    r["bank_option"] = next((v for k, v in _CHECK_BANKS.items() if k in (r.get("bank") or "")), "")
+    aliases = _payee_aliases()
+    sup = "\n".join(f"- {x}" for x in (suppliers or [])[:400]) or "(אין)"
+    learned = "\n".join(f"- \"{k}\" → {v}" for k, v in list(aliases.items())[:200])
+    prompt = _CHECK_PROMPT.replace("{suppliers}", sup) + (
+        f"\n\nשמות שכבר נלמדו (כפי שנכתבו על צ'קים קודמים → הספק במערכת):\n{learned}" if learned else "") + (
+        f"\n\nמספר הצ'ק הצפוי ברצף (האחרון שהוזן + 1): {expected_number} — רק לעזרה בקריאה; אם כתוב אחר, החזר את מה שכתוב." if expected_number else "") + (
+        "\n\nהיגיון: השנה בתאריך היא כנראה השנה הנוכחית או הבאה; אם כתב היד של ספרה מסוים לא ברור — העדף את הקריאה שמתאימה לסכום במילים.")
+    imgs = [(mime, data)]
+    try:
+        imgs.append(("image/jpeg", _check_enhance(data)))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("check enhance failed: %s", e)
+
+    def read(img):
+        blk = {"type": "image", "source": {"type": "base64", "media_type": img[0], "data": base64.standard_b64encode(img[1]).decode()}}
+        return SI._ask([blk, {"type": "text", "text": prompt}], _CHECK_SCHEMA, effort="high")
+    with cf.ThreadPoolExecutor(2) as ex:
+        reads = [f.result() for f in [ex.submit(read, i) for i in imgs]]
+    r = dict(reads[0])
+    conflicts = {}
+    if len(reads) > 1:
+        b = reads[1]
+        def norm(k, v):
+            return re.sub(r"\D", "", str(v or "")) if k == "check_number" else (round(float(v or 0), 2) if k == "amount" else str(v or "").strip())
+        for k in ("check_number", "amount", "date", "supplier_match"):
+            va, vb = norm(k, r.get(k)), norm(k, b.get(k))
+            if va and vb and va != vb:
+                conflicts[k] = [r.get(k), b.get(k)]
+            elif not va and vb:
+                r[k] = b.get(k)   # קריאה אחת הצליחה במקום שהשנייה לא
+        if not r.get("payee") and b.get("payee"):
+            r["payee"] = b["payee"]
+        if not b.get("amounts_agree", True):
+            r["amounts_agree"] = False
+        if conflicts and b.get("notes"):
+            r["notes"] = " · ".join(dict.fromkeys(x for x in [r.get("notes"), b.get("notes")] if x))[:400]
+    al = aliases.get(_norm_payee(r.get("payee")))
+    if al and al in (suppliers or []):
+        r["supplier_match"], r["alias_used"] = al, True
+        conflicts.pop("supplier_match", None)
     if r.get("supplier_match") and r["supplier_match"] not in (suppliers or []):
         r["supplier_match"] = ""
+    r["bank_option"] = next((v for k, v in _CHECK_BANKS.items() if k in (r.get("bank") or "")), "")
+    r["conflicts"] = conflicts
+    if conflicts.keys() & {"amount", "date", "supplier_match"} or r.get("amounts_agree") is False:
+        r["confidence"] = "low"
     return r
+
+
+class CheckLearnIn(BaseModel):
+    payee: str
+    supplier: str
+
+
+@app.post("/api/checks/scan-learn")
+def checks_scan_learn(body: CheckLearnIn, x_admin_key: Optional[str] = Header(None), x_checks_key: Optional[str] = Header(None)):
+    """אחרי שמירת צ'ק שנסרק: "השם שנכתב על הצ'ק" → "הספק שנבחר בפועל" — לסריקות הבאות."""
+    _checks_auth(x_admin_key, x_checks_key)
+    k, v = _norm_payee(body.payee), (body.supplier or "").strip()
+    if not k or not v or len(k) > 80 or len(v) > 80:
+        return {"ok": False}
+    al = _payee_aliases()
+    if al.get(k) != v:
+        al[k] = v
+        db.setting_set("check_payee_alias", json_mod.dumps(al, ensure_ascii=False), "checks")
+    return {"ok": True, "aliases": len(al)}
 
 
 @app.post("/api/checks/scan")
@@ -8319,7 +8408,7 @@ async def checks_scan(request: Request, x_admin_key: Optional[str] = Header(None
         got = db.wa_media_blob_get(key)
         if not got:
             raise HTTPException(404, "הקובץ לא נמצא")
-        mime, data, sups = got[0], got[1], j.get("suppliers") or []
+        mime, data, sups, expn = got[0], got[1], j.get("suppliers") or [], str(j.get("expected_number") or "")
     else:
         form = await request.form()
         up = form.get("file")
@@ -8330,10 +8419,11 @@ async def checks_scan(request: Request, x_admin_key: Optional[str] = Header(None
             sups = json_mod.loads(form.get("suppliers") or "[]")
         except Exception:  # noqa: BLE001
             sups = []
+        expn = str(form.get("expected_number") or "")
     if not data or len(data) > _CHAT_MAX_FILE:
         raise HTTPException(400, "קובץ ריק או גדול מדי")
     try:
-        return {"ok": True, "check": await run_in_threadpool(_check_scan, data, mime, [str(x) for x in sups])}
+        return {"ok": True, "check": await run_in_threadpool(_check_scan, data, mime, [str(x) for x in sups], re.sub(r"\D", "", expn)[:12])}
     except HTTPException:
         raise
     except Exception as e:  # noqa: BLE001
