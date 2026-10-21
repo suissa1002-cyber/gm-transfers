@@ -21,12 +21,14 @@ def run(st):
 
 
 r = run({1: 0.0, 2: 3.0, 3: 2.0, 4: 1.0, 5: 0.0})
-names = [b["name"] for b in r["branches"]]
+names = r["branches"]
 assert r["in_stock"] and names == ["סטאר", "סיטי", "עד הלום"], r
 assert "מרלוג" not in json.dumps(r, ensure_ascii=False) and "qty" not in json.dumps(r) and "total" not in r, r
-assert [b["last_unit"] for b in r["branches"]] == [False, False, True] and not r["last_unit_overall"], r
+assert not r["last_unit"], r
+r = run({2: 1.0, 3: 1.0})
+assert not r["last_unit"] and r["branches"] == ["סטאר", "סיטי"], r   # 1+1 ≠ אחרונה
 r = run({3: 1.0})
-assert r["in_stock"] and r["last_unit_overall"] and r["branches"] == [{"name": "סיטי", "last_unit": True}], r
+assert r["in_stock"] and r["last_unit"] and r["branches"] == ["סיטי"], r
 main._pos_product_unknown = lambda sku: False
 r = run({})
 assert not r["in_stock"] and r["branches"] == [] and r["unknown_product"] is False, r

@@ -10513,9 +10513,9 @@ def bridge_live_stock(sku: str, x_bridge_key: Optional[str] = Header(None)):
     # אחרונה" כשנשארה אחת (המספר עצמו לא נמסר לאלה בכלל, כדי שלא תצטט אותו).
     qtys = {b: int(st.get(b, 0) or 0) for b in cfg.BRANCHES}
     total = sum(q for q in qtys.values() if q > 0)
-    out = {"sku": sku, "ok": True, "in_stock": total > 0, "last_unit_overall": total == 1,
-           "branches": [{"name": _BRIDGE_BRANCH_LABEL.get(b, cfg.branch_name(b)), "last_unit": q == 1}
-                        for b, q in qtys.items() if q > 0]}
+    # "יחידה אחרונה" = אחרונה **בכל המלאי** (1 בסטאר + 1 בסיטי ≠ אחרונה)
+    out = {"sku": sku, "ok": True, "in_stock": total > 0, "last_unit": total == 1,
+           "branches": [_BRIDGE_BRANCH_LABEL.get(b, cfg.branch_name(b)) for b, q in qtys.items() if q > 0]}
     if total <= 0:
         # ⚠️ אפס בכל הסניפים יכול להיות גם מק"ט שהקופה לא מכירה — ההבחנה קריטית
         out["unknown_product"] = bool(_pos_product_unknown(sku))
