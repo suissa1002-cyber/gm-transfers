@@ -100,6 +100,22 @@ check("חיפוש מוצר", c.get("/api/chat/invoices?q=note 17", headers=A).js
 check("סינון ספק + תאריך + סטטוס", c.get("/api/chat/invoices?supplier=המילטון&frm=2026-10-01&to=2026-10-31&status=mismatch", headers=A).json()["total"] >= 1 and c.get("/api/chat/invoices?status=ok", headers=A).json()["total"] == 0
       and c.get("/api/chat/invoices?frm=2026-11-01", headers=A).json()["total"] == 0)
 
+# ── הוספת עמודים אחרי העלאה + מחיקת נושא ──
+k3 = c.post("/api/chat/upload?hq=1", headers=A, files={"file": ("p3.jpg", jpg(), "image/jpeg")}).json()["attach_key"]
+check("⛔ עובד לא מוסיף עמודים לחשבונית של אחר", c.post(f"/api/chat/topics/{t2}/invoice/pages", headers=Y, json={"attach_keys": [k3]}).status_code in (403, 404))
+r = c.post(f"/api/chat/topics/{t2}/invoice/pages", headers=A, json={"attach_keys": [k3]})
+time.sleep(0.6)
+si2 = db.si_for_topic(t2)
+import fitz
+got = db.wa_media_blob_get(si2["attach_key"])
+check("עמוד נוסף → PDF של 3 עמודים + הודעה בנושא + קריאה מחדש", r.status_code == 200 and fitz.open(stream=got[1], filetype="pdf").page_count == 3
+      and any("הוסיף/ה 1 עמודים" in (m["text"] or "") for m in c.get(f"/api/chat/messages?topic={t2}", headers=A).json()["messages"]), r.text)
+check("⛔ עובד לא מוחק נושא שלא פתח", c.delete(f"/api/chat/topics/{t2}", headers=Y).status_code in (403, 404))
+old_key = si2["attach_key"]
+check("בעלים מוחק נושא חשבונית — הכל נמחק", c.delete(f"/api/chat/topics/{t2}", headers=A).status_code == 200
+      and db.topic_get(t2) is None and db.si_for_topic(t2) is None and db.wa_media_blob_get(old_key) is None)
+check("העובד מוחק נושא שהוא פתח", c.delete(f"/api/chat/topics/{tid}", headers=Y).status_code == 200)
+
 os.unlink(_tmp)
 print("\n" + ("✅ כל בדיקות חשבונית הספק עברו" if not fails else f"❌ נכשלו {len(fails)}: {fails}"))
 sys.exit(1 if fails else 0)

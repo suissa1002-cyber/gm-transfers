@@ -6381,6 +6381,26 @@ def si_list(limit=2000) -> list:
         return [_si_row(r) for r in cur.fetchall()]
 
 
+def topic_delete(tid) -> list:
+    """מחיקת נושא מלא (הודעות, קריאות, חשבונית ספק). מחזיר את מפתחות הקבצים כדי למחוק גם אותם."""
+    tid = int(tid)
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT attach_key FROM team_chat WHERE topic_id = ? AND attach_key IS NOT NULL AND attach_key <> ''"), (tid,))
+        keys = [r["attach_key"] for r in cur.fetchall()]
+        cur.execute(_q("SELECT attach_key FROM supplier_invoice WHERE topic_id = ?"), (tid,))
+        keys += [r["attach_key"] for r in cur.fetchall() if r["attach_key"]]
+        for sql in ("DELETE FROM team_chat WHERE topic_id = ?", "DELETE FROM team_chat_read WHERE topic_id = ?",
+                    "DELETE FROM supplier_invoice WHERE topic_id = ?", "DELETE FROM team_topic WHERE id = ?"):
+            cur.execute(_q(sql), (tid,))
+    return sorted(set(keys))
+
+
+def si_set_attach(sid, key, mime):
+    with _conn() as c:
+        c.cursor().execute(_q("UPDATE supplier_invoice SET attach_key = ?, mime = ? WHERE id = ?"), (key, mime, int(sid)))
+
+
 def si_waiting() -> list:
     with _conn() as c:
         cur = c.cursor()

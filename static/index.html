@@ -783,6 +783,7 @@
   .tc-invlock{margin-inline-start:auto;font-size:11.5px;display:inline-flex;align-items:center;gap:3px}
   .tc-invops{font-size:12.5px;line-height:1.6}
   .tc-invsum{font-size:14px;font-weight:600;line-height:1.5}
+  .tc-del{color:#dc2626!important}
   .si-table .si-row{cursor:pointer}
   .si-det td{background:var(--card2);padding:10px 12px}
   .si-act a{display:inline-flex;padding:4px;margin-inline-end:4px}
@@ -2431,6 +2432,11 @@ async function siLoad(){
   try{ SI.data=await api('/api/chat/invoices'+(qs?'?'+qs:''),{},30000); if(S.view==='supinv') siRender(); }
   catch(e){ const a=document.getElementById('app'); if(a&&S.view==='supinv') a.innerHTML=`<div class="empty">${escW(e.detail||'הטעינה נכשלה')}</div>`; }
 }
+async function siDel(tid){
+  if(!confirm('למחוק את החשבונית והנושא שלה ב-GreenDay?\nהקבצים והבדיקה יימחקו לצמיתות.')) return;
+  try{ await api('/api/chat/topics/'+tid,{method:'DELETE'},30000); toast('נמחק',true); siLoad(); }
+  catch(e){ toast(e.detail||'המחיקה נכשלה',false); }
+}
 function siSet(k,v,now){ SI.f[k]=v; clearTimeout(SI.t); SI.t=setTimeout(siLoad,now?0:350); }
 function siRender(){
   const app=document.getElementById('app'); if(!app) return;
@@ -2448,7 +2454,8 @@ function siRender(){
         <td>${escW(x.uploaded_name||'')}<div class="muted" style="font-size:11.5px">${x.created_at?new Date(x.created_at).toLocaleString('he-IL',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):''}</div></td>
         <td onclick="event.stopPropagation()" class="si-act">
           ${x.url?(isImg?`<a href="#" onclick="waLightbox('${escW(x.url)}');return false" title="פתיחת החשבונית">${ico('image',16)}</a>`:`<a href="${escW(x.url)}" target="_blank" title="פתיחת החשבונית">${ico('file',16)}</a>`):''}
-          <a href="#" onclick="tcOpenTopicFromWa(${x.topic_id});return false" title="פתיחת הנושא ב-GreenDay">${ico('chat',16)}</a></td></tr>
+          <a href="#" onclick="tcOpenTopicFromWa(${x.topic_id});return false" title="פתיחת הנושא ב-GreenDay">${ico('chat',16)}</a>
+          <a href="#" onclick="siDel(${x.topic_id});return false" title="מחיקת החשבונית והנושא" style="color:#dc2626">${ico('trash',16)}</a></td></tr>
       ${op?`<tr class="si-det"><td colspan="7">
         ${(x.lines||[]).length?`<table class="tc-invtbl"><thead><tr><th>שורה בחשבונית</th><th>בחשבונית</th><th>נכנס לקופה</th><th></th></tr></thead><tbody>
           ${x.lines.map(l=>{ const [ic,lb,c]=TC_LINE_ST[l.status]||['','','']; return `<tr><td>${escW(l.description)}${(l.matched||[]).length?`<div class="muted tc-invm">${l.matched.map(m=>escW(m.name)).join(' · ')}</div>`:''}</td><td class="ltr">${n(l.qty)}</td><td class="ltr">${n(l.got)}</td><td><span style="color:${c};font-weight:700">${ic} ${lb}</span></td></tr>`; }).join('')}
@@ -2701,6 +2708,34 @@ function tcInvSummary(I){
   else if(I.status==='error') t='הבדיקה נכשלה — אפשר ללחוץ "קרא את החשבונית מחדש".';
   return t?`<div class="tc-invsum">${t}</div>`:'';
 }
+// עמודים נוספים לחשבונית שכבר הועלתה → מאוחדים בשרת ונקראים מחדש
+function tcInvAddPages(){
+  TC.atts.invPages=[];
+  const o=document.createElement('div'); o.className='overlay'; o.id='tcAddPg';
+  o.innerHTML=`<div class="modal us-modal" style="max-width:560px"><h3>${icoI('file',18)}הוספת עמודים לחשבונית</h3>
+    <div class="muted" style="margin-bottom:8px">העמודים יתווספו אחרי העמודים הקיימים, והחשבונית תיקרא ותיבדק מחדש מול הקופה.</div>
+    <div id="tcInvZone"></div><div class="err" id="tcAddErr"></div>
+    <button class="btn-primary" style="width:100%;margin-top:10px" onclick="tcInvAddSend()">הוספה</button>
+    <button class="btn-ghost" style="width:100%;margin-top:8px" onclick="document.getElementById('tcAddPg').remove();delete TC.atts.invPages">ביטול</button></div>`;
+  o.onpaste=e=>{ const f=[...((e.clipboardData||{}).files||[])][0]; if(f){ e.preventDefault(); tcInvUpload(f.name&&f.name!=='image.png'?f:new File([f],'עמוד.png',{type:f.type})); } };
+  document.body.appendChild(o); tcInvPaint();
+}
+async function tcInvAddSend(){
+  const P=tcInvPages(), err=document.getElementById('tcAddErr');
+  if(!P.length){ err.textContent='לא נוספו עמודים'; return; }
+  if(P.some(a=>a.uploading)){ err.textContent='עמוד עדיין עולה…'; return; }
+  try{ await api('/api/chat/topics/'+TC.topic+'/invoice/pages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({attach_keys:P.map(a=>a.attach_key)})},120000);
+    document.getElementById('tcAddPg').remove(); delete TC.atts.invPages; TC.inv=null; TC.sig='';
+    toast('העמודים נוספו — החשבונית נקראת מחדש',true); tcLoad(false); }
+  catch(e){ err.textContent=e.detail||'ההוספה נכשלה'; }
+}
+async function tcTopicDelete(){
+  const t=TC.topicObj; if(!t) return;
+  if(!confirm(`למחוק את "${t.title}"?\nכל העדכונים, הקבצים${t.kind==='invoice'?' והחשבונית עם הבדיקה':''} יימחקו לצמיתות.`)) return;
+  try{ await api('/api/chat/topics/'+t.id,{method:'DELETE'},30000);
+    toast('הנושא נמחק',true); if(S.view==='supinv') siLoad(); tcHome(); }
+  catch(e){ toast(e.detail||'המחיקה נכשלה',false); }
+}
 async function tcInvRecheck(reread){
   try{ await api('/api/chat/topics/'+TC.topic+'/invoice/recheck?reread='+(reread?1:0),{method:'POST'},15000);
     toast(reread?'קורא את החשבונית מחדש…':'בודק מול הקופה…',true); setTimeout(tcInvLoad,1500); setTimeout(tcInvLoad,15000); setTimeout(tcInvLoad,40000); }
@@ -2726,6 +2761,8 @@ function tcPaintTHead(){
       <span class="tc-mi">נפתח ע״י ${tcAv(t.created_by,t.created_name,20)}${escW(t.created_name)}</span>
       ${t.assignees.length?`<span class="tc-mi">מיועד ל ${tcAvStack(t.assignees,20)}${escW(t.assignees.map(tcName).join(', '))}</span>`:'<span class="tc-mi muted">מיועד לבעלים</span>'}
       ${t.wa_phone?`<a href="#" class="tc-mi tc-walink" onclick="tcOpenWa('${escW(t.wa_phone)}');return false">${icoI('chat',13)}${escW(tcPhoneFmt(t.wa_phone))}</a>`:''}
+      ${t.kind==='invoice'&&(isOwner()||t.created_by===TC.me)?`<a href="#" class="tc-mi tc-walink" onclick="tcInvAddPages();return false">${icoI('file',13)}הוספת עמודים</a>`:''}
+      ${isOwner()||t.created_by===TC.me?`<a href="#" class="tc-mi tc-del" onclick="tcTopicDelete();return false" title="מחיקת הנושא">${icoI('trash',13)}מחיקה</a>`:''}
     </div>`:`<div class="tc-tmeta2"><span class="tc-mi muted">עדכונים לכל הצוות · ${TC.users.filter(u=>u.online).length} מחוברים עכשיו</span></div>`}`;
 }
 function tcPaintTabs(){

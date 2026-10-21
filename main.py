@@ -2182,6 +2182,52 @@ def chat_invoices(q: str = "", supplier: str = "", frm: str = "", to: str = "", 
             "suppliers": sorted(suppliers, key=lambda k: (-suppliers[k], k))}
 
 
+class InvPagesIn(BaseModel):
+    attach_keys: list
+
+
+@app.post("/api/chat/topics/{tid}/invoice/pages")
+def chat_topic_invoice_pages(tid: int, body: InvPagesIn):
+    """עמודים נוספים לחשבונית שכבר הועלתה (22/10, אסי: "העליתי דף אחד ויש 3") — מאוחדים עם הקיים
+    ל-PDF אחד, נשלחים בנושא, והחשבונית נקראת ונבדקת מחדש. מי שהעלה או בעלים."""
+    u = _chat_user()
+    t = _chat_topic_for(u, tid)
+    si = db.si_for_topic(tid)
+    if not t or not si:
+        raise HTTPException(404, "אין חשבונית בנושא הזה")
+    if u["role"] != "owner" and si.get("uploaded_by") != u["id"]:
+        raise HTTPException(403, "רק מי שהעלה את החשבונית או בעלים")
+    new = [str(k) for k in (body.attach_keys or []) if re.fullmatch(r"chat:[0-9a-f]{32}", str(k))]
+    if not new:
+        raise HTTPException(400, "לא נבחרו עמודים")
+    m = _merge_pages([si["attach_key"]] + new[:_SNAP_MAX_PAGES])
+    db.si_set_attach(si["id"], m["attach_key"], m["attach_mime"])
+    db.chat_add(u["id"], u["name"], f"הוסיף/ה {len(new)} עמודים לחשבונית — עכשיו {m['attach_name'].split('(')[-1].rstrip(').pdf')}",
+                [], m["attach_key"], m["attach_name"], m["attach_mime"], m["attach_size"], topic_id=tid)
+    db.si_set(si["id"], status="reading", notified="", extracted=None, result=None)
+    import threading
+    threading.Thread(target=_invoice_run, args=(si["id"],), kwargs={"reextract": True}, daemon=True).start()
+    return {"ok": True, "pages_file": m["attach_name"]}
+
+
+@app.delete("/api/chat/topics/{tid}")
+def chat_topic_delete(tid: int):
+    """מחיקת נושא לגמרי (כולל קבצים וחשבונית) — בעלים, או מי שפתח אותו. לא ניתן לשחזר."""
+    u = _chat_user()
+    t = _chat_topic_for(u, tid)
+    if not t:
+        raise HTTPException(404, "הנושא לא נמצא")
+    if u["role"] != "owner" and t["created_by"] != u["id"]:
+        raise HTTPException(403, "רק מי שפתח את הנושא או בעלים יכולים למחוק")
+    for k in db.topic_delete(tid):
+        try:
+            db.wa_media_blob_del(k)
+        except Exception:  # noqa: BLE001
+            pass
+    logger.info("topic %s deleted by %s (%s)", tid, u["name"], t.get("title"))
+    return {"ok": True}
+
+
 class TopicPatch(BaseModel):
     status: Optional[str] = None
     assignees: Optional[list] = None
