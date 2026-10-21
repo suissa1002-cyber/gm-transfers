@@ -375,9 +375,11 @@ def build_bot_prompt(phone: str, question: str) -> str:
 לפני **כל** אמירה על זמינות:
 1. `/variations/<id>` → קחי את ה-`sku` של הצבע/הנפח המבוקש.
 2. `curl -s "{BASE}/api/uri-bridge/stock/<sku>" -H "X-Bridge-Key: {KEY}"`
-   → `{{total, branches:[{{name,qty}}]}}`.
-3. `total>0` → מותר לומר שיש, ולציין באילו סניפים.
-   `total=0` או `unknown_product=true` או אין מק"ט → **אסור לומר "יש במלאי"**.
+   → `{{in_stock, last_unit_overall, branches:[{{name,last_unit}}]}}`.
+3. `in_stock=true` → מותר לומר שיש, ולציין **את כל** הסניפים שברשימה (כולל **סיטי**).
+   ⛔ **אל תציינו כמויות** ("2 יחידות", "יש כמה") — רק באיזה סניף יש.
+   רק כש-`last_unit=true` בסניף (או `last_unit_overall=true`) מותר לומר "נשארה יחידה אחרונה".
+   `in_stock=false` או `unknown_product=true` או אין מק"ט → **אסור לומר "יש במלאי"**.
    נסחי: "רשום אצלנו באתר, אני מוודאת מול הסניפים" + [HANDOFF].
 
 ⛔ **אסור לקבוע מצב מוצר.** לעולם אל תגידי "חדש לגמרי", "באריזה סגורה",

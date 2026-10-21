@@ -10483,6 +10483,9 @@ def bridge_search(q: str = "", limit: int = 8, x_bridge_key: Optional[str] = Hea
             "meta": sr.get("meta") or {}}
 
 
+_BRIDGE_BRANCH_LABEL = {1: "גן העיר", 2: "סטאר", 3: "סיטי", 4: "עד הלום", 5: "מלאי אונליין (למשלוח / איסוף בהזמנה)"}
+
+
 @app.get("/api/uri-bridge/stock/{sku}")
 def bridge_live_stock(sku: str, x_bridge_key: Optional[str] = Header(None)):
     """מלאי **חי מהקופה** לפי מק"ט — החוליה שחסרה לאלה.
@@ -10505,11 +10508,14 @@ def bridge_live_stock(sku: str, x_bridge_key: Optional[str] = Header(None)):
     except Exception as e:  # noqa: BLE001
         logger.warning("bridge live stock %s: %s", sku, e)
         return {"sku": sku, "ok": False, "error": "הקופה לא זמינה כרגע"}
-    branches = [{"name": cfg.branch_name(b), "qty": int(st.get(b, 0) or 0)}
-                for b in cfg.BRANCHES]
-    total = sum(b["qty"] for b in branches if b["qty"] > 0)
-    out = {"sku": sku, "ok": True, "total": total,
-           "branches": [b for b in branches if b["qty"] > 0]}
+    # ⚠️ (אודי, 21/10) שמות ללקוח — לא שמות הקופה: סניף 3 רשום בקופה "מחסן\מרלוג" והוא בפועל
+    # חנות **סיטי**; אלה לא הזכירה אותו כי השם נראה כמו מחסן. בלי כמויות ללקוח — רק "יחידה
+    # אחרונה" כשנשארה אחת (המספר עצמו לא נמסר לאלה בכלל, כדי שלא תצטט אותו).
+    qtys = {b: int(st.get(b, 0) or 0) for b in cfg.BRANCHES}
+    total = sum(q for q in qtys.values() if q > 0)
+    out = {"sku": sku, "ok": True, "in_stock": total > 0, "last_unit_overall": total == 1,
+           "branches": [{"name": _BRIDGE_BRANCH_LABEL.get(b, cfg.branch_name(b)), "last_unit": q == 1}
+                        for b, q in qtys.items() if q > 0]}
     if total <= 0:
         # ⚠️ אפס בכל הסניפים יכול להיות גם מק"ט שהקופה לא מכירה — ההבחנה קריטית
         out["unknown_product"] = bool(_pos_product_unknown(sku))
