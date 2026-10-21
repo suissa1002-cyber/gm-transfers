@@ -10483,7 +10483,7 @@ def bridge_search(q: str = "", limit: int = 8, x_bridge_key: Optional[str] = Hea
             "meta": sr.get("meta") or {}}
 
 
-_BRIDGE_BRANCH_LABEL = {1: "גן העיר", 2: "סטאר", 3: "סיטי", 4: "עד הלום", 5: "מלאי אונליין (למשלוח / איסוף בהזמנה)"}
+_BRIDGE_BRANCH_LABEL = {1: "גן העיר", 2: "סטאר", 3: "סיטי", 4: "עד הלום"}
 
 
 @app.get("/api/uri-bridge/stock/{sku}")
@@ -10511,7 +10511,8 @@ def bridge_live_stock(sku: str, site: Optional[str] = None, x_bridge_key: Option
     # ⚠️ (אודי, 21/10) שמות ללקוח — לא שמות הקופה: סניף 3 רשום בקופה "מחסן\מרלוג" והוא בפועל
     # חנות **סיטי**; אלה לא הזכירה אותו כי השם נראה כמו מחסן. בלי כמויות ללקוח — רק "יחידה
     # אחרונה" כשנשארה אחת (המספר עצמו לא נמסר לאלה בכלל, כדי שלא תצטט אותו).
-    qtys = {b: int(st.get(b, 0) or 0) for b in cfg.BRANCHES}
+    # ⛔ סניף 5 "אתר" אינו סניף: יחידה שם כבר הועברה לטובת הזמנה (משוריינת) — לא מלאי פנוי (אסי, 21/10)
+    qtys = {b: int(st.get(b, 0) or 0) for b in cfg.BRANCHES if int(b) != 5}
     total = sum(q for q in qtys.values() if q > 0)
     # "יחידה אחרונה" = אחרונה **בכל המלאי** (1 בסטאר + 1 בסיטי ≠ אחרונה)
     out = {"sku": sku, "ok": True, "in_stock": total > 0, "last_unit": total == 1,

@@ -32,6 +32,10 @@ assert r["in_stock"] and r["last_unit"] and r["branches"] == ["סיטי"], r
 main._pos_product_unknown = lambda sku: False
 r = run({})
 assert not r["in_stock"] and r["branches"] == [] and r["unknown_product"] is False, r
+r = run({5: 2.0})   # רק ב"אתר" = משוריין להזמנות → לא זמין
+assert not r["in_stock"] and r["branches"] == [] and r["verdict"] == "unavailable", r
+r = run({5: 3.0, 1: 1.0})
+assert r["last_unit"] and r["branches"] == ["גן העיר"], r
 # verdict: קופה × אתר (אודי 21/10)
 main.poller.client = lambda: _NO({2: 3.0})
 v = lambda q: c.get("/api/uri-bridge/stock/519547" + q, headers=H).json()["verdict"]
