@@ -6180,6 +6180,17 @@ def _gd_row(r) -> dict:
     return d
 
 
+def gd_instruction_examples(authors, must="קטגורי", limit=400) -> list:
+    """הוראות העלאה שכתבו בעבר (אודי) — לדוגמאות סגנון לפאבל. [{name, body, price}]"""
+    ph = ",".join("?" * len(authors))
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q(f"""SELECT p.name, p.price, u.body FROM gd_product_update u JOIN gd_product p ON p.monday_id = u.product_mid
+                           WHERE u.author IN ({ph}) AND u.body LIKE ? ORDER BY u.created_at DESC LIMIT ?"""),
+                    (*authors, f"%{must}%", int(limit)))
+        return [dict(r) for r in cur.fetchall()]
+
+
 def gd_products_list() -> list:
     with _conn() as c:
         cur = c.cursor()

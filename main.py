@@ -2222,16 +2222,57 @@ def _inv_owner_si(tid):
     return u, si
 
 
+def _wc_get(path, params=None):
+    creds = _wc_creds()
+    if not creds:
+        return None
+    base, k, sec = creds
+    import requests as _rq
+    try:
+        r = _rq.get(f"{base}/wp-json/wc/v3{path}", params=params or {}, auth=(k, sec), timeout=20)
+        return r.json() if r.ok else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _inv_enrich(groups):
+    """לכל וריאציה: מחיר מכירה מהקופה (פעם אחת) + האם המק״ט כבר מחובר באתר (בכל פתיחה — טרי).
+    group.site: new (אין באתר) / partial (חלק מהווריאציות כבר במוצר קיים → הוספת וריאציות) / all (הכל קיים)."""
+    for g in groups:
+        parents = []
+        for v in g["variants"]:
+            sku = v.get("sku") or ""
+            if sku and "price" not in v:
+                try:
+                    v["price"] = float((poller.client().get_product(sku) or {}).get("price") or 0) or None
+                except Exception:  # noqa: BLE001
+                    v["price"] = None
+            v["wc"] = None
+            if sku:
+                arr = _wc_get("/products", {"sku": sku, "status": "any"}) or []
+                arr = [x for x in arr if x.get("status") != "trash"]
+                if arr:
+                    x = arr[0]
+                    pid = x.get("parent_id") or x.get("id")
+                    v["wc"] = {"id": x.get("id"), "parent": pid, "name": x.get("name") or "", "status": x.get("status")}
+                    parents.append(pid)
+        have = sum(1 for v in g["variants"] if v.get("wc"))
+        g["site"] = "new" if not have else ("all" if have == len(g["variants"]) else "partial")
+        g["wc_parent"] = max(set(parents), key=parents.count) if parents else None
+    return groups
+
+
 @app.post("/api/chat/topics/{tid}/invoice/products")
 def chat_invoice_products(tid: int, refresh: int = 0):
-    """קיבוץ שורות החשבונית למוצרים + וריאציות (לפי השמות בקופה). נשמר בבדיקה — לא מחושב שוב בכל פתיחה."""
+    """קיבוץ שורות החשבונית למוצרים + וריאציות (לפי השמות בקופה), מחיר מהקופה ומה כבר קיים באתר."""
     u, si = _inv_owner_si(tid)
     res = si["result"]
     if refresh or not res.get("groups"):
         import supplier_invoice as SI
         res["groups"] = SI.group_products(res["lines"])
         res["sent"] = {}
-        db.si_set(si["id"], result=res)
+    _inv_enrich(res["groups"])
+    db.si_set(si["id"], result=res)
     existing = {}
     for p in db.gd_products_list():   # כבר יש ב-GreenDay פריט עם אותו מק"ט קופה?
         for sku in re.findall(r"\d{5,}", p.get("pos_sku") or ""):
@@ -2247,10 +2288,50 @@ class InvSendIn(BaseModel):
     name: str = ""
 
 
+def _pavel_notes_run(mid, group, ex, tid, existing_wc, by_name):
+    """פאבל כותב את הוראות ההעלאה (במקום אודי) → עדכון בפריט + מחיר → "ממתין" (הסוכנים מתחילים).
+    ביטחון נמוך / כשל → הפריט נשאר בהמתנה ואודי מתויג עם הספקות."""
+    import greenday as gd
+    import product_notes as PN
+    ok, doubts = False, ""
+    try:
+        exs = PN.examples_for(group["name"], group.get("brand"), db.gd_instruction_examples(PN.UDI))
+        if existing_wc:
+            ref = _wc_get(f"/products/{int(existing_wc)}")
+        else:
+            ref = PN.ref_product(group["name"], group.get("brand"), _wc_get, group)
+        r = PN.write_note(group, ex.get("supplier"), exs, PN.ref_summary(ref)
+                          + (f"\n⚠ זה המוצר הקיים עצמו — להוסיף לו את הווריאציות החדשות בלבד (לא ליצור מוצר חדש)." if existing_wc else ""))
+        gd.create_update(mid, "פאבל (QA)", r["note"] + (f"\n\nלאימות: {r['doubts']}" if r.get("doubts") else ""))
+        prices = [v["price"] for v in group["variants"] if v.get("price")]
+        if prices:
+            gd.set_field(mid, "price", min(prices))
+        doubts = r.get("doubts") or ""
+        ok = r.get("confidence") != "low"
+        if ok:
+            gd.set_field(mid, "status", "ממתין")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("pavel notes failed for %s: %s", mid, e)
+        doubts = f"כתיבת ההוראות נכשלה: {e}"
+    others = sorted(_owner_ids())
+    if ok:
+        db.chat_add(0, "פאבל (QA)", f"✓ כתבתי הוראות העלאה ל-{group['name']} והעברתי ל\"ממתין\" — גלי ויובל מתחילים."
+                    + (f" לאימות: {doubts}" if doubts else ""), [], topic_id=tid)
+    else:
+        udi = [x["id"] for x in db.users_list() if x["id"] in others and x["name"] != by_name]
+        names = ", ".join("@" + x["name"] for x in db.users_list() if x["id"] in udi)
+        db.chat_add(0, "פאבל (QA)", f"⏸ {group['name']} נשאר ב'טיוטה – ממתין להערות' — לא היה לי מספיק בסיס לכתוב הוראות בביטחון. "
+                    f"{names} נא להשלים ולהעביר ל\"ממתין\". {doubts}", udi, topic_id=tid)
+        import wa_push
+        wa_push.send_to_all(title="מוצר חדש ממתין להערות שלך", body=f"{group['name']} — {doubts}"[:140],
+                            url=f"/?gd={mid}", kind="greenday", tag=f"gdnew{mid}", user_ids=udi)
+
+
 @app.post("/api/chat/topics/{tid}/invoice/products/send")
 def chat_invoice_product_send(tid: int, body: InvSendIn):
-    """מוצר אחד (עם כל הווריאציות) → פריט ב"מוצרים חדשים" בסטטוס המתנה להערות (הסוכנים לא נוגעים),
-    ותיוג + התראה לשאר הבעלים (אודי) להשלים הערות ולהעביר ל"ממתין"."""
+    """מוצר אחד (עם הווריאציות שעוד לא באתר) → GreenDay. חדש לגמרי → "מוצרים חדשים";
+    חלק מהווריאציות כבר במוצר קיים → "מוצרים קיימים — עדכונים" עם ה-WC של המוצר (הוספת וריאציות).
+    נוצר בהמתנה, ופאבל כותב את ההוראות ומעביר ל"ממתין" — בלי הערות של אודי."""
     u, si = _inv_owner_si(tid)
     res = si["result"]
     groups = res.get("groups") or []
@@ -2259,29 +2340,35 @@ def chat_invoice_product_send(tid: int, body: InvSendIn):
     sent = res.setdefault("sent", {})
     if str(body.index) in sent:
         raise HTTPException(409, "המוצר הזה כבר שודר ל-GreenDay")
-    g = groups[body.index]
+    g = dict(groups[body.index])
+    _inv_enrich([g])
+    if g["site"] == "all":
+        raise HTTPException(409, "כל הווריאציות כבר קיימות באתר — אין מה להעלות")
     import greenday as gd
     ex = si.get("extracted") or {}
-    vs = g["variants"]
+    vs = [v for v in g["variants"] if not v.get("wc")]
+    g["variants"] = vs
+    partial = g["site"] == "partial"
     colors = list(dict.fromkeys(v["color"] for v in vs if v.get("color")))
     stor = [x for x in dict.fromkeys(v["storage"] for v in vs if v.get("storage")) if x in gd.STORAGES]
     skus = [v["sku"] for v in vs if v.get("sku")]
-    name = (body.name or g["name"]).strip()[:200]
+    name = (body.name or g["name"]).strip()[:200] + (" — הוספת וריאציות" if partial else "")
     vals = {"status": gd.STATUS_HOLD, "colors": ", ".join(colors), "storages": stor, "pos_sku": ", ".join(skus),
-            "list_type": "ליסט וריאציות" if len(vs) > 1 else "ליסט רגיל.עד 1 וריאציה",
+            "list_type": "ליסט וריאציות" if len(vs) > 1 or partial else "ליסט רגיל.עד 1 וריאציה",
             "notes": f"מחשבונית ספק: {ex.get('supplier') or ''} {ex.get('doc_number') or ''}".strip()}
+    if partial:
+        vals["wc_id"] = str(g["wc_parent"])
     lines = []
     for v in vs:
         spec = " · ".join(x for x in [v.get("ram") and v["ram"] + " RAM", v.get("storage"), v.get("color")] if x)
         lines.append(f"• {spec or v.get('desc')} — " + (f"מק״ט קופה {v['sku']} ({v['pos_name']})" if v.get("sku") else "⚠ לא נמצא בקופה")
-                     + f" · {float(v.get('qty') or 0):g} יח׳")
-    upd = (f"נוצר מחשבונית ספק ({ex.get('supplier') or ''} · {ex.get('doc_type') or 'מסמך'} {ex.get('doc_number') or ''}) "
-           f"ע״י {u['name']}.\n{'מוצר עם ' + str(len(vs)) + ' וריאציות' if len(vs) > 1 else 'מוצר בודד'} — לחבר כל וריאציה למק״ט הקופה שלה:\n"
-           + "\n".join(lines) +
-           "\n\n⏸ הסוכנים לא מתחילים לפני שמוזנות הערות: קטגוריות, תכונות, אחריות, מחיר לכל וריאציה. "
-           "אחרי ההזנה — להעביר את הסטטוס ל\"ממתין\".")
+                     + (f" · ₪{v['price']:g}" if v.get("price") else "") + f" · {float(v.get('qty') or 0):g} יח׳")
+    upd = (f"נוצר מחשבונית ספק ({ex.get('supplier') or ''} · {ex.get('doc_type') or 'מסמך'} {ex.get('doc_number') or ''}) ע״י {u['name']}.\n"
+           + (f"⚠ המוצר כבר קיים באתר (WC {g['wc_parent']}) — להוסיף לו רק את הווריאציות האלה:\n" if partial else
+              f"{'מוצר עם ' + str(len(vs)) + ' וריאציות' if len(vs) > 1 else 'מוצר בודד'} — לחבר כל וריאציה למק״ט הקופה שלה:\n")
+           + "\n".join(lines) + "\n\nפאבל כותב עכשיו את הוראות ההעלאה (קטגוריות, תכונות, אחריות, מחיר).")
     try:
-        mid = gd.create_item(name, "topics", vals)
+        mid = gd.create_item(name, gd.GROUPS[1][0] if partial else "topics", vals)
         gd.create_update(mid, u["name"], upd)
         try:
             gd.refresh_item(mid)
@@ -2291,14 +2378,11 @@ def chat_invoice_product_send(tid: int, body: InvSendIn):
         raise HTTPException(502, f"יצירה ב-GreenDay נכשלה: {e}")
     sent[str(body.index)] = {"monday_id": mid, "name": name}
     db.si_set(si["id"], result=res)
-    others = sorted(_owner_ids() - {u["id"]})
-    names = ", ".join("@" + x["name"] for x in db.users_list() if x["id"] in others)
-    db.chat_add(u["id"], u["name"], f"שודר ל-GreenDay · מוצרים חדשים: {name} ({len(vs)} וריאציות). {names} נא להזין הערות ולהעביר ל\"ממתין\".",
-                others, topic_id=tid)
-    import threading, wa_push
-    threading.Thread(target=wa_push.send_to_all, daemon=True, kwargs=dict(
-        title=f"{u['name']}: מוצר חדש ממתין להערות שלך", body=f"{name} — {len(vs)} וריאציות מחשבונית {ex.get('supplier') or ''}"[:140],
-        url=f"/?gd={mid}", kind="greenday", tag=f"gdnew{mid}", user_ids=others)).start()
+    db.chat_add(u["id"], u["name"], f"שודר ל-GreenDay · {'מוצרים קיימים (הוספת וריאציות)' if partial else 'מוצרים חדשים'}: {name} "
+                f"({len(vs)} וריאציות). פאבל כותב הוראות העלאה.", [], topic_id=tid)
+    import threading
+    threading.Thread(target=_pavel_notes_run, args=(mid, g, ex, tid, g["wc_parent"] if partial else None, u["name"]),
+                     daemon=True).start()
     return {"ok": True, "monday_id": mid, "sent": sent}
 
 

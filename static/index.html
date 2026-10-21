@@ -783,6 +783,37 @@
   .tc-invlock{margin-inline-start:auto;font-size:11.5px;display:inline-flex;align-items:center;gap:3px}
   .tc-invops{font-size:12.5px;line-height:1.6}
   .tc-invsum{font-size:14px;font-weight:600;line-height:1.5}
+  .iv-card{border:1px solid var(--line);border-radius:16px;background:var(--card);margin:0 0 14px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+  .iv-head{padding:14px 16px 8px}
+  .iv-sup{font-size:18px;font-weight:800;line-height:1.3}
+  .iv-meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;align-items:center}
+  .iv-chip{display:inline-flex;align-items:center;gap:4px;background:var(--card2);border-radius:99px;padding:3px 10px;font-size:12.5px}
+  .iv-lock{margin-inline-start:auto;font-size:11px;color:var(--muted);display:inline-flex;align-items:center;gap:3px}
+  .iv-banner{margin:4px 12px 10px;padding:10px 12px;border-radius:12px;background:color-mix(in srgb,var(--c) 12%,transparent);border-inline-start:4px solid var(--c);display:flex;gap:10px;align-items:flex-start;font-size:13.5px;line-height:1.5}
+  .iv-banner b{color:var(--c);font-size:14.5px}
+  .iv-spin{width:16px;height:16px;border-radius:50%;border:2px solid var(--c);border-top-color:transparent;animation:ivspin .8s linear infinite;flex-shrink:0;margin-top:2px}
+  @keyframes ivspin{to{transform:rotate(360deg)}}
+  .iv-kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:0 12px 10px}
+  .iv-kpi{background:var(--card2);border-radius:12px;padding:10px 8px;text-align:center}
+  .iv-kpi b{display:block;font-size:22px;font-weight:800;line-height:1.1}
+  .iv-kpi span{font-size:11.5px;color:var(--muted)}
+  .iv-kpi.ok b{color:#00a884}.iv-kpi.bad b{color:#e8833a}
+  .iv-op{display:flex;align-items:center;gap:6px;margin:0 12px 10px;font-size:12.5px;color:var(--muted)}
+  .iv-warn{margin:0 12px 10px;font-size:12.5px;color:#b45309}
+  .iv-lines{display:flex;flex-direction:column;gap:6px;padding:0 12px 12px}
+  .iv-line{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:12px;padding:9px 10px;background:var(--card)}
+  .iv-ic{width:28px;height:28px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;background:var(--c)}
+  .iv-main{flex:1;min-width:0}
+  .iv-name{font-weight:700;font-size:13.5px;line-height:1.35;direction:ltr;text-align:right}
+  .iv-sub{font-size:12px;color:var(--muted);line-height:1.4;margin-top:1px}
+  .iv-skus{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+  .iv-sku{font-size:11px;background:var(--card2);border-radius:6px;padding:1px 7px;direction:ltr}
+  .iv-qty{text-align:center;min-width:62px;display:flex;flex-direction:column;line-height:1.15}
+  .iv-qty b{font-size:19px;color:var(--c)}.iv-qty span{font-size:11px;color:var(--muted)}.iv-qty em{font-style:normal;font-size:11px;font-weight:700;color:var(--c)}
+  .iv-note{margin:0 12px 10px;font-size:12.5px;color:var(--muted);background:var(--card2);border-radius:10px;padding:7px 10px}
+  .iv-note summary{cursor:pointer;display:inline-flex;align-items:center;gap:4px;font-weight:600}
+  .iv-actions{display:flex;flex-wrap:wrap;gap:8px;padding:10px 12px;border-top:1px solid var(--line);background:var(--card2)}
+  .iv-btn{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;font-size:13px}
   .tc-del{color:#dc2626!important}
   .tc-sku{background:var(--card2);border-radius:5px;padding:0 5px;font-size:11px;color:var(--txt)}
   .tc-bcast{color:#0073ea;display:inline-flex;padding:3px}
@@ -792,6 +823,8 @@
   .tc-prodh{display:flex;align-items:center;gap:10px}.tc-prodh input{flex:1;font-weight:700}
   .tc-prodf{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
   .tc-prodfoot{display:flex;justify-content:space-between;align-items:center}
+  .tc-site{font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:99px}
+  .tc-site.new{background:rgba(0,115,234,.12);color:#0060c4}.tc-site.part{background:rgba(232,131,58,.15);color:#b45309}.tc-site.all{background:rgba(0,168,132,.14);color:#00805f}
   .si-table .si-row{cursor:pointer}
   .si-det td{background:var(--card2);padding:10px 12px}
   .si-act a{display:inline-flex;padding:4px;margin-inline-end:4px}
@@ -2465,10 +2498,7 @@ function siRender(){
           <a href="#" onclick="tcOpenTopicFromWa(${x.topic_id});return false" title="פתיחת הנושא ב-GreenDay">${ico('chat',16)}</a>
           <a href="#" onclick="siDel(${x.topic_id});return false" title="מחיקת החשבונית והנושא" style="color:#dc2626">${ico('trash',16)}</a></td></tr>
       ${op?`<tr class="si-det"><td colspan="7">
-        ${(x.lines||[]).length?`<table class="tc-invtbl"><thead><tr><th>שורה בחשבונית</th><th>בחשבונית</th><th>נכנס לקופה</th><th></th></tr></thead><tbody>
-          ${x.lines.map(l=>{ const [ic,lb,c]=TC_LINE_ST[l.status]||['','','']; return `<tr><td>${escW(l.description)}${(l.matched||[]).length?`<div class="muted tc-invm">${l.matched.map(m=>escW(m.name)+` <span class="tc-sku ltr">מק״ט ${escW(m.id)}</span>`).join(' · ')}</div>`:''}</td><td class="ltr">${n(l.qty)}</td><td class="ltr">${n(l.got)}</td><td><span style="color:${c};font-weight:700">${ic} ${lb}</span></td></tr>`; }).join('')}
-          </tbody></table>`:`<div class="muted">${(x.items||[]).map(i=>escW(i.description)+' ×'+n(i.qty)+(i.code?' ('+escW(i.code)+')':'')).join(' · ')||'אין שורות'}</div>`}
-        ${(x.extras||[]).length?`<div class="tc-invextra"><b>נכנס לקופה ולא בחשבונית:</b> ${x.extras.map(e=>escW(e.name)+' ×'+n(e.qty)).join(' · ')}</div>`:''}
+        ${(x.lines||[]).length?tcInvLinesHTML(x):`<div class="muted">${(x.items||[]).map(i=>escW(i.description)+' ×'+n(i.qty)+(i.code?' ('+escW(i.code)+')':'')).join(' · ')||'אין שורות'}</div>`}
         ${(x.ops||[]).length?`<div class="muted" style="font-size:12.5px;margin-top:6px">${x.ops.map(o=>`כניסה #${escW(o.id)} · ${o.date?new Date(o.date).toLocaleDateString('he-IL'):''} · ${escW(o.employee||'')} · ${n(o.qty)} יח׳`).join('<br>')}</div>`:''}
       </td></tr>`:''}`; }).join('');
   app.innerHTML=`<div class="gd-wrap">
@@ -2675,31 +2705,49 @@ async function tcInvLoad(){
     const ch=JSON.stringify(r.invoice)!==JSON.stringify(TC.inv); TC.inv=r.invoice; if(ch){ const b=document.getElementById('tcInvBox'); if(b) b.innerHTML=tcInvCardHTML(); } }
   catch(e){}
 }
-function tcInvCardHTML(){
-  const I=TC.inv; if(!I) return '<div class="tc-invcard"><span class="muted">טוען את בדיקת החשבונית…</span></div>';
-  const [sl,sc]=TC_INV_ST[I.status]||[I.status,'#94a3b8'], ex=I.extracted||{}, R=I.result||{};
+// שורות ההשוואה ככרטיסים (גם בכרטיס הנושא וגם במודול)
+function tcInvLinesHTML(R){
   const n=v=>Number(v||0).toLocaleString('he-IL',{maximumFractionDigits:2});
-  const ops=(R.ops||[]).map(o=>`כניסה #${escW(o.id)} · ${o.date?new Date(o.date).toLocaleString('he-IL',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):''} · ${escW(o.employee||'')} · ${n(o.qty)} יח׳${o.doc?' · מסמך '+escW(o.doc):''}`).join('<br>');
-  return `<div class="tc-invcard" style="--c:${sc}">
-    <div class="tc-invhead"><span class="tc-status" style="background:${sc}">${sl}</span>
-      <b>${escW(ex.supplier||'')}</b>${ex.doc_number?` <span class="muted">${escW(ex.doc_type||'מסמך')} ${escW(ex.doc_number)}</span>`:''}${ex.doc_date?` <span class="muted">· ${escW(ex.doc_date.split('-').reverse().join('/'))}</span>`:''}
-      <span class="tc-invlock muted">${icoI('lock',12)}גלוי לבעלים בלבד</span></div>
-    ${tcInvSummary(I)}
-    ${ops?`<div class="tc-invops muted">${ops}${R.how==='supplier'?'<br><span style="color:#e8833a">אותרה לפי ספק ותאריך — מספר המסמך בקופה חסר או שונה</span>':''}</div>`:''}
-    ${I.status==='waiting_stock'?`<div class="muted" style="font-size:12.5px">עוד לא נמצאה בקופה כניסה למלאי למסמך הזה. בודק שוב כל שעה, עד 3 ימים מההעלאה.</div>`:''}
-    ${I.status==='error'?`<div class="muted" style="font-size:12.5px">${escW(I.error||'')}</div>`:''}
-    ${(R.lines||[]).length?`<table class="tc-invtbl"><thead><tr><th>שורה בחשבונית</th><th>בחשבונית</th><th>נכנס לקופה</th><th></th><th></th></tr></thead><tbody>
-      ${R.lines.map(l=>{ const [ic,lb,c]=TC_LINE_ST[l.status]||['','',''];
-        return `<tr><td>${escW(l.description)}${(l.matched||[]).length?`<div class="muted tc-invm">${l.matched.map(m=>escW(m.name)+` <span class="tc-sku ltr">מק״ט ${escW(m.id)}</span>`).join(' · ')}</div>`:''}</td>
-          <td class="ltr">${n(l.qty)}</td><td class="ltr">${n(l.got)}</td><td><span style="color:${c};font-weight:700" title="${lb}">${ic} ${lb}</span></td>
-          <td><a href="#" class="tc-bcast" onclick="tcInvProducts();return false" title="שידור למוצרים חדשים ב-GreenDay (עם כל הווריאציות)">${icoI('megaphone',14)}</a></td></tr>`; }).join('')}
-      </tbody></table>`:(ex.items&&ex.items.length&&I.status!=='ok'?`<div class="muted" style="font-size:12.5px">נקראו ${ex.items.length} שורות: ${ex.items.map(i=>escW(i.description)+' ×'+n(i.qty)).join(' · ')}</div>`:'')}
-    ${(R.extras||[]).length?`<div class="tc-invextra"><b>נכנס לקופה ולא מופיע בחשבונית:</b> ${R.extras.map(x=>escW(x.name)+' ×'+n(x.qty)).join(' · ')}</div>`:''}
-    ${ex.notes?`<div class="muted" style="font-size:12.5px">הערת הקריאה: ${escW(ex.notes)}</div>`:''}
-    <div class="tc-invfoot">${R.lines?`<span class="muted">סה״כ בחשבונית ${n(R.inv_qty)} · בכניסה ${n(R.stock_qty)}</span>`:''}
-      <a href="#" onclick="tcInvRecheck(0);return false">${icoI('refresh',13)}בדוק שוב מול הקופה</a>
-      <a href="#" onclick="tcInvRecheck(1);return false">${icoI('eye',13)}קרא את החשבונית מחדש</a>
-      ${(R.lines||[]).length?`<a href="#" onclick="tcInvProducts();return false" style="font-weight:700">${icoI('megaphone',13)}שידור למוצרים חדשים ב-GreenDay</a>`:''}</div>
+  const L=R.lines||[];
+  const rows=L.map(l=>{ const [ic,lb,c]=TC_LINE_ST[l.status]||['?','',''], m=l.matched||[];
+    const title=m.length?m.map(x=>escW(x.name)).join(' + '):escW(l.description);
+    return `<div class="iv-line" style="--c:${c}">
+      <div class="iv-ic">${ic}</div>
+      <div class="iv-main"><div class="iv-name">${title}</div>
+        <div class="iv-sub">${m.length?`בחשבונית: ${escW(l.description)}`:'<span style="color:#dc2626">לא נמצא בכניסה לקופה</span>'}</div>
+        ${m.length?`<div class="iv-skus">${m.map(x=>`<span class="iv-sku">מק״ט ${escW(x.id)}</span>`).join('')}</div>`:''}</div>
+      <div class="iv-qty"><b>${n(l.got)}</b><span>מתוך ${n(l.qty)}</span><em>${lb}</em></div></div>`; }).join('');
+  const extra=(R.extras||[]).map(x=>`<div class="iv-line" style="--c:#b45309"><div class="iv-ic">+</div>
+      <div class="iv-main"><div class="iv-name">${escW(x.name)}</div><div class="iv-sub">נכנס לקופה — לא מופיע בחשבונית</div><div class="iv-skus"><span class="iv-sku">מק״ט ${escW(x.id)}</span></div></div>
+      <div class="iv-qty"><b>${n(x.qty)}</b><span>בקופה</span><em>עודף</em></div></div>`).join('');
+  return `<div class="iv-lines">${rows}${extra}</div>`;
+}
+function tcInvCardHTML(){
+  const I=TC.inv; if(!I) return '<div class="iv-card"><span class="muted">טוען את בדיקת החשבונית…</span></div>';
+  const [sl,sc]=TC_INV_ST[I.status]||[I.status,'#94a3b8'], ex=I.extracted||{}, R=I.result||{}, L=R.lines||[];
+  const n=v=>Number(v||0).toLocaleString('he-IL',{maximumFractionDigits:2});
+  const okN=L.filter(l=>l.status==='ok').length, busy=['pending','reading','searching'].includes(I.status);
+  const op=(R.ops||[])[0];
+  return `<div class="iv-card" style="--c:${sc}">
+    <div class="iv-head">
+      <div class="iv-sup">${escW(ex.supplier||'חשבונית ספק')}</div>
+      <div class="iv-meta">${ex.doc_number?`<span class="iv-chip">${escW(ex.doc_type||'מסמך')} ${escW(ex.doc_number)}</span>`:''}${ex.doc_date?`<span class="iv-chip">${icoI('calendar',12)}${escW(ex.doc_date.split('-').reverse().join('/'))}</span>`:''}
+        <span class="iv-lock">${icoI('lock',11)}לבעלים בלבד</span></div>
+    </div>
+    <div class="iv-banner">${busy?`<span class="iv-spin"></span>`:''}<div><b>${sl}</b>${tcInvSummary(I).replace(/<[^>]+>/g,'')?`<div>${tcInvSummary(I).replace(/<[^>]+>/g,'').replace(/^[✓⚠]\s*/,'')}</div>`:''}</div></div>
+    ${L.length?`<div class="iv-kpis">
+      <div class="iv-kpi"><b>${n(R.inv_qty)}</b><span>יח׳ בחשבונית</span></div>
+      <div class="iv-kpi"><b>${n(R.stock_qty)}</b><span>יח׳ נכנסו לקופה</span></div>
+      <div class="iv-kpi ${okN===L.length?'ok':'bad'}"><b>${okN}/${L.length}</b><span>שורות תואמות</span></div></div>`:''}
+    ${op?`<div class="iv-op">${icoI('pkg',14)}<span>כניסה למלאי <b>#${escW(op.id)}</b> · ${op.date?new Date(op.date).toLocaleString('he-IL',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):''} · ${escW(op.employee||'')}${op.doc?` · מסמך ${escW(op.doc)}`:''}</span></div>
+      ${R.how==='supplier'?'<div class="iv-warn">אותרה לפי ספק ותאריך — מספר המסמך בקופה חסר או שונה</div>':''}`:''}
+    ${L.length?tcInvLinesHTML(R):(ex.items&&ex.items.length&&!busy?`<div class="iv-sub" style="padding:4px 2px">נקראו ${ex.items.length} שורות: ${ex.items.map(i=>escW(i.description)+' ×'+n(i.qty)).join(' · ')}</div>`:'')}
+    ${ex.notes?`<details class="iv-note"><summary>${icoI('info',13)}הערת הקריאה</summary>${escW(ex.notes)}</details>`:''}
+    ${I.status==='error'?`<div class="iv-warn">${escW(I.error||'')}</div>`:''}
+    <div class="iv-actions">
+      ${L.length?`<button class="btn-primary iv-btn" onclick="tcInvProducts()">${icoI('megaphone',14)}שידור למוצרים חדשים</button>`:''}
+      <button class="btn-ghost iv-btn" onclick="tcInvRecheck(0)">${icoI('refresh',14)}בדוק שוב מול הקופה</button>
+      <button class="btn-ghost iv-btn" onclick="tcInvRecheck(1)">${icoI('eye',14)}קרא מחדש</button></div>
   </div>`;
 }
 // משפט אחד בשפה פשוטה — מה התוצאה ומה לעשות
@@ -2758,18 +2806,21 @@ function tcProdPaint(){
   const o=document.getElementById('tcProds'); if(!o||!TC.prods) return; const G=TC.prods.groups||[], SNT=TC.prods.sent||{};
   const n=v=>Number(v||0).toLocaleString('he-IL',{maximumFractionDigits:2});
   o.innerHTML=`<div class="modal us-modal tc-prodm"><h3>${icoI('megaphone',18)}שידור למוצרים חדשים ב-GreenDay</h3>
-    <div class="muted" style="font-size:13px">כל מוצר נוצר ב"מוצרים חדשים" עם כל הווריאציות ומק״ט הקופה של כל אחת, בסטטוס <b>טיוטה – ממתין להערות</b> — הסוכנים לא מתחילים עד שאודי מזין הערות ומעביר ל"ממתין". אודי מקבל תיוג והתראה.</div>
+    <div class="muted" style="font-size:13px">מוצר חדש → "מוצרים חדשים"; מוצר שחלק מהווריאציות שלו כבר באתר → "מוצרים קיימים" (הוספת הווריאציות החסרות בלבד). מחיר ומק״ט לכל וריאציה מהקופה. פאבל כותב את הוראות ההעלאה בסגנון של אודי ומעביר ל"ממתין" — גלי ויובל מתחילים. אם פאבל לא בטוח, אודי מקבל תיוג.</div>
     ${G.map((g,i)=>{ const s=SNT[i], ex=g.variants.filter(v=>v.exists);
       return `<div class="tc-prod ${s?'sent':''}">
         <div class="tc-prodh">${s?`<b>${escW(s.name)}</b>`:`<input id="tcPN${i}" value="${escW(g.name)}" title="שם המוצר — אפשר לערוך">`}
-          <span class="muted">${g.variants.length>1?g.variants.length+' וריאציות':'מוצר בודד'}</span></div>
-        <table class="tc-invtbl"><thead><tr><th>צבע</th><th>RAM</th><th>נפח</th><th>מק״ט קופה</th><th>כמות</th></tr></thead><tbody>
+          <span class="muted">${g.variants.length>1?g.variants.length+' וריאציות':'מוצר בודד'}</span>
+          ${g.site==='all'?`<span class="tc-site all">קיים באתר</span>`:g.site==='partial'?`<span class="tc-site part">חלקית באתר — יתווספו הווריאציות החסרות</span>`:`<span class="tc-site new">חדש — לא באתר</span>`}</div>
+        <table class="tc-invtbl"><thead><tr><th>צבע</th><th>RAM</th><th>נפח</th><th>מק״ט קופה</th><th>מחיר בקופה</th><th>כמות</th><th>באתר</th></tr></thead><tbody>
           ${g.variants.map(v=>`<tr><td>${escW(v.color||'—')}</td><td>${escW(v.ram||'—')}</td><td>${escW(v.storage||'—')}</td>
             <td>${v.sku?`<span class="ltr">${escW(v.sku)}</span><div class="muted tc-invm">${escW(v.pos_name)}</div>`:'<span style="color:#dc2626">לא בקופה</span>'}
               ${v.exists?`<div class="tc-invextra">כבר ב-GreenDay: <a href="#" onclick="document.getElementById('tcProds').remove();gdOpenItem('${escW(v.exists.monday_id)}');return false">${escW(v.exists.name)}</a> (${escW(v.exists.status||'')})</div>`:''}</td>
-            <td class="ltr">${n(v.qty)}</td></tr>`).join('')}</tbody></table>
+            <td class="ltr">${v.price?'₪'+n(v.price):'—'}</td><td class="ltr">${n(v.qty)}</td>
+            <td>${v.wc?`<a href="https://greenmobile.co.il/wp-admin/post.php?post=${escW(v.wc.parent)}&action=edit" target="_blank" style="color:#00a884">✓ קיים</a>`:'<span class="muted">חסר</span>'}</td></tr>`).join('')}</tbody></table>
         <div class="tc-prodf">${s?`<span style="color:#00a884;font-weight:700">${icoI('check',14)}שודר</span> <a href="#" onclick="document.getElementById('tcProds').remove();gdOpenItem('${escW(s.monday_id)}');return false">פתיחה בלוח המוצרים</a>`
-          :`<button class="btn-primary" onclick="tcProdSend(${i},this)">${icoI('megaphone',14)}שידור ל-GreenDay</button>${ex.length?`<span class="tc-invextra">שימו לב: ${ex.length} וריאציות כבר קיימות בלוח</span>`:''}`}</div>
+          :g.site==='all'?`<span class="muted">כל הווריאציות כבר באתר — אין מה להעלות</span>`
+          :`<button class="btn-primary" onclick="tcProdSend(${i},this)">${icoI('megaphone',14)}${g.site==='partial'?'שידור — הוספת וריאציות':'שידור ל-GreenDay'}</button>${ex.length?`<span class="tc-invextra">שימו לב: ${ex.length} וריאציות כבר קיימות בלוח</span>`:''}`}</div>
       </div>`; }).join('')||'<div class="tc-empty">אין מוצרים</div>'}
     <div class="tc-prodfoot"><a href="#" onclick="tcInvProducts(1);return false">${icoI('refresh',13)}קבץ מחדש</a>
       <button class="btn-ghost" onclick="document.getElementById('tcProds').remove()">סגירה</button></div></div>`;
@@ -2778,7 +2829,7 @@ async function tcProdSend(i,btn){
   const nm=(document.getElementById('tcPN'+i)||{}).value||'';
   btn.disabled=true; btn.textContent='משדר…';
   try{ const r=await api('/api/chat/topics/'+TC.topic+'/invoice/products/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({index:i,name:nm})},60000);
-    TC.prods.sent=r.sent; tcProdPaint(); toast('נוצר ב-GreenDay · מוצרים חדשים — אודי קיבל התראה',true); TC.sig=''; tcLoad(false); }
+    TC.prods.sent=r.sent; tcProdPaint(); toast('נוצר ב-GreenDay — פאבל כותב הוראות העלאה',true); TC.sig=''; tcLoad(false); }
   catch(e){ btn.disabled=false; btn.textContent='שידור ל-GreenDay'; toast(e.detail||'השידור נכשל',false); }
 }
 async function tcInvRecheck(reread){
