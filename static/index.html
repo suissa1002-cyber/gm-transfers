@@ -783,6 +783,11 @@
   .tc-invlock{margin-inline-start:auto;font-size:11.5px;display:inline-flex;align-items:center;gap:3px}
   .tc-invops{font-size:12.5px;line-height:1.6}
   .tc-invsum{font-size:14px;font-weight:600;line-height:1.5}
+  .si-table .si-row{cursor:pointer}
+  .si-det td{background:var(--card2);padding:10px 12px}
+  .si-act a{display:inline-flex;padding:4px;margin-inline-end:4px}
+  .si-date{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
+  .si-date input{width:auto;padding:5px 8px}
   .tc-invtbl{width:100%;border-collapse:collapse;font-size:13px}
   .tc-invtbl th{text-align:right;font-weight:600;color:var(--muted);font-size:12px;padding:4px 6px;border-bottom:1px solid var(--line)}
   .tc-invtbl td{padding:6px;border-bottom:1px solid var(--line);vertical-align:top}
@@ -2416,6 +2421,59 @@ async function tcCreateTopic(){
     TC.wa=''; delete TC.atts.invPages; tcOpenTopic(r.topic.id); tcLoadWaLinks(true); }
   catch(e){ document.getElementById('tcErr').textContent=e.detail||'הפתיחה נכשלה'; }
 }
+// ── 🧾 מודול חשבוניות ספק (21/10/2026, אסי): כל הסריקות מ-GreenDay — רשימה, סינון, פתיחת המסמך, שורות ואימות ──
+const SI={data:null, f:{q:'',supplier:'',frm:'',to:'',status:''}, open:{}, t:null};
+function siOpen(){ toggleDrawer(false); if(TC.open) tcToggle(false);
+  if(!S.user||S.user.role!=='owner'){ toast('בעלים בלבד',false); return; }
+  S.view='supinv'; SI.data=null; render(); }
+async function siLoad(){
+  const f=SI.f, qs=new URLSearchParams(Object.entries(f).filter(([k,v])=>v)).toString();
+  try{ SI.data=await api('/api/chat/invoices'+(qs?'?'+qs:''),{},30000); if(S.view==='supinv') siRender(); }
+  catch(e){ const a=document.getElementById('app'); if(a&&S.view==='supinv') a.innerHTML=`<div class="empty">${escW(e.detail||'הטעינה נכשלה')}</div>`; }
+}
+function siSet(k,v,now){ SI.f[k]=v; clearTimeout(SI.t); SI.t=setTimeout(siLoad,now?0:350); }
+function siRender(){
+  const app=document.getElementById('app'); if(!app) return;
+  if(!SI.data){ app.innerHTML='<div class="empty">טוען חשבוניות…</div>'; siLoad(); return; }
+  const D=SI.data, f=SI.f, n=v=>Number(v||0).toLocaleString('he-IL',{maximumFractionDigits:2});
+  const qEl=document.getElementById('siQ'), qf=qEl&&document.activeElement===qEl;
+  const dmy=s=>s?String(s).slice(0,10).split('-').reverse().join('/'):'';
+  const rows=(D.invoices||[]).map(x=>{ const [sl,sc]=TC_INV_ST[x.status]||[x.status,'#94a3b8'], op=SI.open[x.id];
+    const qty=(x.items||[]).reduce((a,i)=>a+Number(i.qty||0),0), isImg=String(x.mime).startsWith('image/');
+    return `<tr class="si-row" onclick="SI.open[${x.id}]=!SI.open[${x.id}];siRender()">
+        <td class="ltr">${dmy(x.day)}</td><td><b>${escW(x.supplier||'—')}</b></td>
+        <td>${escW(x.doc_type||'')} <span class="ltr">${escW(x.doc_number||'')}</span></td>
+        <td>${(x.items||[]).length} שורות · ${n(qty)} יח׳</td>
+        <td><span class="tc-status" style="background:${sc}">${sl}</span></td>
+        <td>${escW(x.uploaded_name||'')}<div class="muted" style="font-size:11.5px">${x.created_at?new Date(x.created_at).toLocaleString('he-IL',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):''}</div></td>
+        <td onclick="event.stopPropagation()" class="si-act">
+          ${x.url?(isImg?`<a href="#" onclick="waLightbox('${escW(x.url)}');return false" title="פתיחת החשבונית">${ico('image',16)}</a>`:`<a href="${escW(x.url)}" target="_blank" title="פתיחת החשבונית">${ico('file',16)}</a>`):''}
+          <a href="#" onclick="tcOpenTopicFromWa(${x.topic_id});return false" title="פתיחת הנושא ב-GreenDay">${ico('chat',16)}</a></td></tr>
+      ${op?`<tr class="si-det"><td colspan="7">
+        ${(x.lines||[]).length?`<table class="tc-invtbl"><thead><tr><th>שורה בחשבונית</th><th>בחשבונית</th><th>נכנס לקופה</th><th></th></tr></thead><tbody>
+          ${x.lines.map(l=>{ const [ic,lb,c]=TC_LINE_ST[l.status]||['','','']; return `<tr><td>${escW(l.description)}${(l.matched||[]).length?`<div class="muted tc-invm">${l.matched.map(m=>escW(m.name)).join(' · ')}</div>`:''}</td><td class="ltr">${n(l.qty)}</td><td class="ltr">${n(l.got)}</td><td><span style="color:${c};font-weight:700">${ic} ${lb}</span></td></tr>`; }).join('')}
+          </tbody></table>`:`<div class="muted">${(x.items||[]).map(i=>escW(i.description)+' ×'+n(i.qty)+(i.code?' ('+escW(i.code)+')':'')).join(' · ')||'אין שורות'}</div>`}
+        ${(x.extras||[]).length?`<div class="tc-invextra"><b>נכנס לקופה ולא בחשבונית:</b> ${x.extras.map(e=>escW(e.name)+' ×'+n(e.qty)).join(' · ')}</div>`:''}
+        ${(x.ops||[]).length?`<div class="muted" style="font-size:12.5px;margin-top:6px">${x.ops.map(o=>`כניסה #${escW(o.id)} · ${o.date?new Date(o.date).toLocaleDateString('he-IL'):''} · ${escW(o.employee||'')} · ${n(o.qty)} יח׳`).join('<br>')}</div>`:''}
+      </td></tr>`:''}`; }).join('');
+  app.innerHTML=`<div class="gd-wrap">
+    <div class="gd-top"><div class="gd-title">${icoI('receipt',20)}GreenDay <span>· חשבוניות ספק</span></div>
+      <label class="tc-search gd-search">${ico('search',14)}<input id="siQ" placeholder="חיפוש: ספק, מספר מסמך, מוצר, מי העלה" value="${escW(f.q)}" oninput="siSet('q',this.value)"></label>
+      <select class="gd-sel" onchange="siSet('supplier',this.value,1)"><option value="">כל הספקים</option>${(D.suppliers||[]).map(s=>`<option ${f.supplier===s?'selected':''}>${escW(s)}</option>`).join('')}</select>
+      <label class="si-date">מתאריך <input type="date" value="${escW(f.frm)}" onchange="siSet('frm',this.value,1)"></label>
+      <label class="si-date">עד <input type="date" value="${escW(f.to)}" onchange="siSet('to',this.value,1)"></label>
+      <select class="gd-sel" onchange="siSet('status',this.value,1)"><option value="">כל הסטטוסים</option>${Object.entries(TC_INV_ST).map(([k,[l]])=>`<option value="${k}" ${f.status===k?'selected':''}>${l}</option>`).join('')}</select>
+      ${Object.values(f).some(Boolean)?`<a href="#" onclick="SI.f={q:'',supplier:'',frm:'',to:'',status:''};siLoad();return false">ניקוי</a>`:''}
+      <button class="btn-primary gd-new" onclick="tcToggle(true);tcNewTopic();setTimeout(()=>{const r=document.querySelector('input[name=tcKind][value=invoice]');if(r){r.checked=true;tcKindChanged();}},50)">+ חשבונית חדשה</button>
+    </div>
+    <div class="gd-note">${icoI('info',14)}כל החשבוניות ותעודות המשלוח שהועלו ב-GreenDay, עם הפענוח והבדיקה מול הכניסה למלאי בקופה. לחיצה על שורה פותחת את הפירוט.</div>
+    <div class="muted" style="margin:6px 2px">${D.total} מסמכים${D.total>500?' (מוצגים 500 האחרונים)':''}</div>
+    <div class="gd-tablewrap"><table class="gd-table si-table"><thead><tr><th>תאריך</th><th>ספק</th><th>מסמך</th><th>שורות</th><th>אימות מול הקופה</th><th>הועלה ע״י</th><th></th></tr></thead>
+      <tbody>${rows||'<tr><td colspan="7" class="muted" style="text-align:center;padding:16px">אין חשבוניות</td></tr>'}</tbody></table></div>
+  </div>`;
+  if(qf){ const i=document.getElementById('siQ'); i.focus(); i.selectionStart=i.selectionEnd=i.value.length; }
+}
+
 // ── 🧾 חשבונית ספק (21/10/2026): העלאה מקובץ / הדבקה / מצלמה + דוח אימות מול הקופה (בעלים בלבד) ──
 function tcKindSel(){ return (document.querySelector('input[name=tcKind]:checked')||{}).value||'question'; }
 function tcKindChanged(){
@@ -4514,6 +4572,7 @@ function renderDrawer(){
     ${can('codes')?`<div class="dr-item ${S.view==='stellr'?'active':''}" onclick="hubGo('stellr')"><span>${ico('card',16)}</span><span>קודים דיגיטליים${lock}</span></div>`:''}
     ${isOwner()||!S.adminKey?`<div class="dr-item ${S.view==='sentinel'?'active':''}" onclick="hubGo('sentinel')"><span>${ico('shield',16)}</span><span>סטטוס Sentinel${lock}</span></div>`:''}
     ${S.user&&S.user.role==='owner'?`<div class="dr-item ${act('greenday')}" onclick="gdOpen()"><span>${ico('list',16)}</span><span>GreenDay · לוח מוצרים</span></div>`:''}
+    ${S.user&&S.user.role==='owner'?`<div class="dr-item ${act('supinv')}" onclick="siOpen()"><span>${ico('receipt',16)}</span><span>GreenDay · חשבוניות ספק</span></div>`:''}
     ${S.user&&S.user.role==='owner'?`<div class="dr-item ${act('gdstock')}" onclick="ssOpen()"><span>${ico('pkg',16)}</span><span>GreenDay · סנכרון מלאי ספקים</span></div>`:''}
     ${isOwner()?`<div class="dr-item ${act('users')}" onclick="hubUsers()"><span>${ico('user',16)}</span><span>משתמשים והרשאות</span></div>`:''}
     <div class="dr-sec">אפליקציות</div>
@@ -4787,6 +4846,7 @@ function render(){
   if(S.view==='users') return S.usersData?renderUsers():loadUsers();
   if(S.view==='greenday') return gdRender();
   if(S.view==='gdstock') return ssRender();
+  if(S.view==='supinv') return siRender();
   if(S.view==='home'&&!can('reports')){ S.view='admin'; }
   if(S.view==='home') return S.homeData?renderHome():loadHome(true);
   if(S.view==='embed') return renderEmbed(app);

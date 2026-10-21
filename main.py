@@ -2137,6 +2137,51 @@ def chat_topic_invoice_recheck(tid: int, reread: int = 0):
     return {"ok": True}
 
 
+@app.get("/api/chat/invoices")
+def chat_invoices(q: str = "", supplier: str = "", frm: str = "", to: str = "", status: str = ""):
+    """מודול "חשבוניות ספק" (בעלים): כל המסמכים שנסרקו ב-GreenDay + הפענוח והאימות מול הקופה.
+    סינון: חיפוש חופשי (ספק / מספר מסמך / מוצר / מי העלה / כותרת), ספק, טווח תאריכים (תאריך המסמך,
+    ואם חסר — תאריך ההעלאה), סטטוס."""
+    u = _chat_user()
+    if u["role"] != "owner":
+        raise HTTPException(403, "בעלים בלבד")
+    import wa
+    ql = (q or "").strip().lower()
+    out, suppliers = [], {}
+    for si in db.si_list():
+        ex = si.get("extracted") or {}
+        res = si.get("result") or {}
+        sup = (ex.get("supplier") or "").strip()
+        if sup:
+            suppliers[sup] = suppliers.get(sup, 0) + 1
+        day = (ex.get("doc_date") or "")[:10] or (si.get("created_at") or "")[:10]
+        items = ex.get("items") or []
+        hay = " ".join([sup, ex.get("doc_number") or "", si.get("uploaded_name") or "", si.get("topic_title") or "",
+                        " ".join((i.get("description") or "") + " " + (i.get("code") or "") for i in items),
+                        " ".join(m.get("name") or "" for ln in res.get("lines") or [] for m in ln.get("matched") or [])]).lower()
+        if ql and ql not in hay:
+            continue
+        if supplier and sup != supplier:
+            continue
+        if frm and day < frm[:10]:
+            continue
+        if to and day > to[:10]:
+            continue
+        if status and si.get("status") != status:
+            continue
+        key = si.get("attach_key") or ""
+        url = f"/api/chat/file/{key.split(':', 1)[1]}?t={wa.media_token(key)}" if key.startswith("chat:") else ""
+        out.append({"id": si["id"], "topic_id": si["topic_id"], "topic_title": si.get("topic_title") or "",
+                    "status": si.get("status"), "supplier": sup, "doc_type": ex.get("doc_type") or "",
+                    "doc_number": ex.get("doc_number") or "", "doc_date": ex.get("doc_date") or "", "day": day,
+                    "uploaded_name": si.get("uploaded_name") or "", "created_at": si.get("created_at") or "",
+                    "mime": si.get("mime") or "", "url": url, "items": items,
+                    "lines": res.get("lines") or [], "extras": res.get("extras") or [], "ops": res.get("ops") or [],
+                    "inv_qty": res.get("inv_qty"), "stock_qty": res.get("stock_qty")})
+    return {"invoices": out[:500], "total": len(out),
+            "suppliers": sorted(suppliers, key=lambda k: (-suppliers[k], k))}
+
+
 class TopicPatch(BaseModel):
     status: Optional[str] = None
     assignees: Optional[list] = None

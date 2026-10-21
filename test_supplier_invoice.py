@@ -91,6 +91,15 @@ t2 = r.json()["topic"]["id"]
 m = [x for x in c.get(f"/api/chat/messages?topic={t2}", headers=A).json()["messages"] if x.get("attach_url")]
 check("כמה עמודים → PDF אחד בנושא", r.status_code == 200 and m and m[0]["attach_mime"] == "application/pdf" and "2 עמודים" in m[0]["attach_name"], m)
 
+# ── מודול חשבוניות ספק ──
+check("⛔ עובד לא רואה את מודול החשבוניות", c.get("/api/chat/invoices", headers=Y).status_code == 403)
+L = c.get("/api/chat/invoices", headers=A).json()
+check("כל החשבוניות ברשימה + רשימת ספקים", L["total"] >= 2 and "המילטון" in L["suppliers"] and L["invoices"][0]["url"], L["total"])
+check("חיפוש מוצר", c.get("/api/chat/invoices?q=note 17", headers=A).json()["total"] >= 1
+      and c.get("/api/chat/invoices?q=iphone", headers=A).json()["total"] == 0)
+check("סינון ספק + תאריך + סטטוס", c.get("/api/chat/invoices?supplier=המילטון&frm=2026-10-01&to=2026-10-31&status=mismatch", headers=A).json()["total"] >= 1 and c.get("/api/chat/invoices?status=ok", headers=A).json()["total"] == 0
+      and c.get("/api/chat/invoices?frm=2026-11-01", headers=A).json()["total"] == 0)
+
 os.unlink(_tmp)
 print("\n" + ("✅ כל בדיקות חשבונית הספק עברו" if not fails else f"❌ נכשלו {len(fails)}: {fails}"))
 sys.exit(1 if fails else 0)

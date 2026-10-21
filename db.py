@@ -6372,6 +6372,15 @@ def si_set(sid, **kw):
                            (*kw.values(), int(sid)))
 
 
+def si_list(limit=2000) -> list:
+    """מודול חשבוניות ספק: כל הסריקות + כותרת הנושא, מהחדש לישן (הסינון בצד השרת ב-main)."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""SELECT s.*, t.title AS topic_title, t.status AS topic_status FROM supplier_invoice s
+                          LEFT JOIN team_topic t ON t.id = s.topic_id ORDER BY s.id DESC LIMIT ?"""), (int(limit),))
+        return [_si_row(r) for r in cur.fetchall()]
+
+
 def si_waiting() -> list:
     with _conn() as c:
         cur = c.cursor()
