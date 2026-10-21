@@ -788,6 +788,11 @@
   .tc-camframe{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);height:92%;aspect-ratio:1/1.414;max-width:92%;border:2px solid #fff;border-radius:6px;box-shadow:0 0 0 9999px rgba(0,0,0,.45)}
   .tc-camhint{color:#e5e7eb;font-size:14px}
   .tc-camres{font-size:13px;text-align:center;max-width:720px;line-height:1.5}
+  .tc-camstate{color:#fff;font-size:16px;font-weight:700;min-height:22px}
+  .tc-camframe{transition:border-color .2s}
+  .tc-camframe.ok{border-color:#22c55e;border-width:3px}
+  .tc-camframe[data-cd]:not([data-cd=""])::after{content:attr(data-cd);position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:120px;font-weight:800;color:rgba(34,197,94,.85);text-shadow:0 2px 12px rgba(0,0,0,.6)}
+  .tc-camauto{color:#e5e7eb;font-size:13.5px;display:inline-flex;align-items:center;gap:6px;cursor:pointer}
   .tc-cambar{display:flex;gap:10px}
   .tc-kinds label{cursor:pointer} .tc-kinds input{display:none}
   .tc-kinds span{display:inline-block;padding:5px 11px;border:1px solid var(--line);border-radius:99px;font-size:13px}
@@ -1472,6 +1477,12 @@
          align-items:center;justify-content:center;cursor:zoom-out}
   .wa-lb img{max-width:94vw;max-height:94vh;border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,.5)}
   .wa-lb-x{position:fixed;top:16px;inset-inline-end:20px;color:#fff;font-size:26px;cursor:pointer;opacity:.8}
+  .wa-lbz{touch-action:none;overflow:hidden}
+  .wa-lbz img{transform-origin:center center;will-change:transform;user-select:none;-webkit-user-select:none;cursor:zoom-in;transition:none}
+  .wa-lbz.zoomed img{cursor:grab;border-radius:0}
+  .wa-lbbar{position:fixed;bottom:calc(18px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);display:flex;gap:6px;background:rgba(0,0,0,.55);padding:6px;border-radius:12px;z-index:2}
+  .wa-lbbar a{color:#fff;text-decoration:none;min-width:38px;height:38px;display:inline-flex;align-items:center;justify-content:center;border-radius:9px;font-size:18px;font-weight:700}
+  .wa-lbbar a:hover{background:rgba(255,255,255,.15)}
   .wa-panel-uri{display:flex;flex-direction:column;min-height:0}
   /* קופסת הצ'אט של אלה: ממוסגרת, מעוגנת לתחתית הפאנל, גלילה פנימית */
   .wa-uri-box{margin-top:auto;display:flex;flex-direction:column;min-height:480px;max-height:74vh;
@@ -2454,14 +2465,51 @@ async function tcCamOpen(){
   const o=document.createElement('div'); o.id='tcCam'; o.className='tc-cam';
   o.innerHTML=`<div class="tc-camwrap"><video autoplay playsinline muted></video><div class="tc-camframe"></div></div>
     <div class="tc-camhint">החזיקו את החשבונית קרוב, ממלאת את המסגרת, ישרה ובלי תזוזה · אור טוב בלי השתקפויות</div>
+    <div class="tc-camstate" id="tcCamState">מקמו את החשבונית בתוך המסגרת</div>
     <div class="tc-camres" id="tcCamRes"></div>
-    <div class="tc-cambar"><button class="btn-primary" onclick="tcCamShot()">${icoI('camera',16)}צלם</button><button class="btn-ghost" onclick="tcCamClose()">ביטול</button></div>`;
+    <div class="tc-cambar"><button class="btn-primary" onclick="tcCamShot()">${icoI('camera',16)}צלם עכשיו</button>
+      <label class="tc-camauto"><input type="checkbox" id="tcCamAuto" checked onchange="_tcAuto.n=0">צילום אוטומטי כשהמסמך יציב</label>
+      <button class="btn-ghost" onclick="tcCamClose()">ביטול</button></div>
+    <div class="tc-camhint" style="font-size:12.5px;opacity:.8">אפשר גם ללחוץ על מקש הרווח</div>`;
   document.body.appendChild(o); const v=o.querySelector('video'); v.srcObject=_tcCam;
+  document.addEventListener('keydown',tcCamKey);
+  _tcAuto={prev:null,n:0,maxS:0,shooting:false}; clearInterval(_tcAutoT); _tcAutoT=setInterval(tcCamAutoTick,150);
   v.onloadedmetadata=()=>{ const r=document.getElementById('tcCamRes'); if(!r) return; const w=v.videoWidth,h=v.videoHeight;
     r.innerHTML=w<2500?`<span style="color:#fbbf24">${icoI('alert',13)}מצלמת המחשב ברזולוציה נמוכה (${w}×${h}) — טובה לזיהוי האוטומטי, אבל קשה לקרוא בה מחירים בעין. לתיעוד חד: צלמו בטלפון מתוך GreenOS, או סרקו ו"בחירת קובץ".</span>`
       :`<span class="muted">רזולוציה ${w}×${h}</span>`; };
 }
-function tcCamClose(){ if(_tcCam) _tcCam.getTracks().forEach(t=>t.stop()); _tcCam=null; const o=document.getElementById('tcCam'); if(o) o.remove(); }
+function tcCamClose(){ clearInterval(_tcAutoT); _tcAutoT=null; document.removeEventListener('keydown',tcCamKey);
+  if(_tcCam) _tcCam.getTracks().forEach(t=>t.stop()); _tcCam=null; const o=document.getElementById('tcCam'); if(o) o.remove(); }
+function tcCamKey(e){ if(e.code==='Space'||e.key===' '){ e.preventDefault(); tcCamShot(); } else if(e.key==='Escape') tcCamClose(); }
+// צילום אוטומטי (21/10, אסי: "קשה להחזיק את המסמך יציב וגם ללחוץ"): בודקים 6–7 פעמים בשנייה את אזור המסגרת —
+// יש בו מסמך (ניגודיות + חדות), והוא לא זז ~1ש׳ → ספירה 3-2-1 (עוד ~1.5ש׳ יציבות) → צילום. תזוזה = איפוס.
+let _tcAuto={prev:null,n:0,maxS:0,shooting:false}, _tcAutoT=null;
+function tcCamAutoTick(){
+  const o=document.getElementById('tcCam'); if(!o||_tcAuto.shooting){ return; }
+  const v=o.querySelector('video'), fr=o.querySelector('.tc-camframe'), ind=o.querySelector('.tc-camframe'), cb=document.getElementById('tcCamAuto');
+  if(!v.videoWidth) return;
+  const vr=v.getBoundingClientRect(), fb=fr.getBoundingClientRect(), vw=v.videoWidth, vh=v.videoHeight;
+  const sc=Math.min(vr.width/vw, vr.height/vh), ox=vr.left+(vr.width-vw*sc)/2, oy=vr.top+(vr.height-vh*sc)/2;
+  const sx=Math.max(0,(fb.left-ox)/sc), sy=Math.max(0,(fb.top-oy)/sc), sw=Math.min(vw-sx,fb.width/sc), sh=Math.min(vh-sy,fb.height/sc);
+  const W=120, H=Math.round(sh*W/sw), c=document.createElement('canvas'); c.width=W; c.height=H;
+  const x=c.getContext('2d'); x.drawImage(v,sx,sy,sw,sh,0,0,W,H); const d=x.getImageData(0,0,W,H).data;
+  const g=new Float32Array(W*H); let sum=0; for(let i=0;i<W*H;i++){ g[i]=(d[i*4]+d[i*4+1]+d[i*4+2])/3; sum+=g[i]; }
+  const mean=sum/(W*H); let vs=0, sharp=0, diff=0;
+  for(let i=0;i<W*H;i++){ vs+=(g[i]-mean)**2; if(i%W&&i>=W){ const gx=g[i]-g[i-1], gy=g[i]-g[i-W]; sharp+=gx*gx+gy*gy; } }
+  const std=Math.sqrt(vs/(W*H)); sharp/=W*H;
+  if(_tcAuto.prev){ for(let i=0;i<W*H;i++) diff+=Math.abs(g[i]-_tcAuto.prev[i]); diff/=W*H; } else diff=99;
+  _tcAuto.prev=g; _tcAuto.maxS=Math.max(_tcAuto.maxS*0.995,sharp);
+  const doc=mean>90&&std>22&&sharp>40, stable=diff<3.2, crisp=sharp>=_tcAuto.maxS*0.7;
+  const auto=!cb||cb.checked;
+  _tcAuto.n=(auto&&doc&&stable&&crisp)?_tcAuto.n+1:0;
+  const N=17;   // ~2.5ש׳ יציבות סה״כ (150ms לטיק)
+  const left=Math.ceil((N-_tcAuto.n)*0.15);
+  ind.dataset.cd=_tcAuto.n>=7&&_tcAuto.n<N?String(Math.min(3,left)):'';
+  ind.classList.toggle('ok',auto&&doc&&stable);
+  const r=document.getElementById('tcCamState');
+  if(r) r.textContent=!auto?'':!doc?'מקמו את החשבונית בתוך המסגרת':!stable?'החזיקו יציב…':!crisp?'מתמקד…':'';
+  if(_tcAuto.n>=N){ _tcAuto.n=0; tcCamShot(); }
+}
 // חדות פריים: אנרגיית גרדיאנט על דגימה מוקטנת בגווני אפור
 function tcSharpness(cv){
   const s=document.createElement('canvas'), w=320, h=Math.round(cv.height*320/cv.width); s.width=w; s.height=h;
@@ -2479,7 +2527,7 @@ function tcSharpen(cv){
   x.putImageData(out,0,0);
 }
 async function tcCamShot(){
-  const o=document.getElementById('tcCam'); if(!o) return;
+  const o=document.getElementById('tcCam'); if(!o||_tcAuto.shooting) return; _tcAuto.shooting=true;
   const v=o.querySelector('video'), fr=o.querySelector('.tc-camframe');
   const vw=v.videoWidth, vh=v.videoHeight; if(!vw){ toast('המצלמה עוד נטענת…',false); return; }
   const btn=o.querySelector('.tc-cambar .btn-primary'); if(btn){ btn.disabled=true; btn.textContent='מצלם…'; }
@@ -8375,12 +8423,52 @@ function waExport(){
   a.download=`whatsapp_${S.waPhone}_${new Date().toISOString().slice(0,10)}.txt`;
   a.click(); URL.revokeObjectURL(a.href);
 }
+// תצוגת תמונה עם זום משלה (21/10, אסי): ב-PWA באייפון ה-viewport נעול (user-scalable=no) ולכן צביטה
+// לא עבדה. כאן: צביטה/גרירה במגע, הקשה כפולה ×2.5, גלגלת/טרקפד במחשב, ‏+/− ופתיחת המקור בטאב.
 function waLightbox(url){
-  const d=document.createElement('div'); d.className='wa-lb';
-  d.onclick=()=>d.remove();
-  d.innerHTML=`<img src="${escW(url)}"><span class="wa-lb-x">✕</span>`;
-  const esc=e=>{ if(e.key==='Escape'){ d.remove(); document.removeEventListener('keydown',esc); } };
+  const d=document.createElement('div'); d.className='wa-lb wa-lbz';
+  d.innerHTML=`<img src="${escW(url)}" draggable="false">
+    <div class="wa-lbbar"><a href="#" data-z="1.6" title="הגדלה">＋</a><a href="#" data-z="0.625" title="הקטנה">−</a><a href="#" data-z="0" title="איפוס">1:1</a>
+      <a href="${escW(url)}" target="_blank" rel="noreferrer" title="פתיחת המקור בטאב חדש">${icoI('extern',16)}</a></div>
+    <span class="wa-lb-x">✕</span>`;
+  const img=d.querySelector('img'); let s=1, tx=0, ty=0;
+  const apply=()=>{ img.style.transform=`translate(${tx}px,${ty}px) scale(${s})`; d.classList.toggle('zoomed',s>1.01); };
+  const clamp=()=>{ s=Math.min(8,Math.max(1,s)); if(s<=1.01){ s=1; tx=0; ty=0; } };
+  const zoomAt=(f,cx,cy)=>{ const r=img.getBoundingClientRect(), ox=cx-(r.left+r.width/2), oy=cy-(r.top+r.height/2);
+    const ns=Math.min(8,Math.max(1,s*f)), k=ns/s; tx-=ox*(k-1); ty-=oy*(k-1); s=ns; clamp(); apply(); };
+  const close=()=>{ d.remove(); document.removeEventListener('keydown',esc); };
+  const esc=e=>{ if(e.key==='Escape') close(); };
   document.addEventListener('keydown',esc);
+  d.querySelector('.wa-lb-x').onclick=e=>{ e.stopPropagation(); close(); };
+  d.querySelectorAll('.wa-lbbar a[data-z]').forEach(a=>a.onclick=e=>{ e.preventDefault(); e.stopPropagation();
+    const z=Number(a.dataset.z); if(!z){ s=1; tx=0; ty=0; apply(); } else zoomAt(z,innerWidth/2,innerHeight/2); });
+  d.querySelector('.wa-lbbar a[target]').onclick=e=>e.stopPropagation();
+  d.onclick=e=>{ if(e.target===d&&s<=1.01) close(); };
+  d.addEventListener('wheel',e=>{ e.preventDefault(); zoomAt(Math.exp(-e.deltaY*(e.ctrlKey?0.01:0.0025)),e.clientX,e.clientY); },{passive:false});
+  // מגע: צביטה, גרירה, הקשה כפולה
+  let pts={}, start=null, lastTap=0, moved=false;
+  const snap=()=>{ const v=Object.values(pts); if(v.length>=2){ const [a,b]=v; return {d:Math.hypot(a.x-b.x,a.y-b.y), cx:(a.x+b.x)/2, cy:(a.y+b.y)/2}; }
+    return v.length?{x:v[0].x,y:v[0].y}:null; };
+  d.addEventListener('touchstart',e=>{ for(const t of e.changedTouches) pts[t.identifier]={x:t.clientX,y:t.clientY};
+    start={s,tx,ty,...snap()}; moved=false; },{passive:true});
+  d.addEventListener('touchmove',e=>{ e.preventDefault(); for(const t of e.changedTouches) if(pts[t.identifier]) pts[t.identifier]={x:t.clientX,y:t.clientY};
+    const now=snap(); if(!start||!now) return; moved=true;
+    if(now.d&&start.d){ const f=now.d/start.d; s=start.s; tx=start.tx; ty=start.ty; zoomAt(f,start.cx,start.cy); tx+=now.cx-start.cx; ty+=now.cy-start.cy; apply(); }
+    else if(now.x!=null&&start.x!=null&&s>1.01){ tx=start.tx+(now.x-start.x); ty=start.ty+(now.y-start.y); apply(); }
+  },{passive:false});
+  d.addEventListener('touchend',e=>{ for(const t of e.changedTouches) delete pts[t.identifier];
+    if(!Object.keys(pts).length){ clamp(); apply();
+      if(!moved&&e.changedTouches.length===1){ const nowT=Date.now(), t=e.changedTouches[0];
+        if(nowT-lastTap<300){ if(s>1.01){ s=1; tx=0; ty=0; apply(); } else zoomAt(2.5,t.clientX,t.clientY); lastTap=0; e.preventDefault(); }
+        else lastTap=nowT; } }
+    start={s,tx,ty,...(snap()||{})}; });
+  // עכבר: גרירה כשמוגדל
+  let drag=null;
+  img.addEventListener('mousedown',e=>{ if(s>1.01){ e.preventDefault(); drag={x:e.clientX,y:e.clientY,tx,ty}; } });
+  window.addEventListener('mousemove',e=>{ if(drag){ tx=drag.tx+e.clientX-drag.x; ty=drag.ty+e.clientY-drag.y; apply(); } });
+  window.addEventListener('mouseup',()=>{ drag=null; });
+  img.addEventListener('dblclick',e=>{ e.stopPropagation(); if(s>1.01){ s=1; tx=0; ty=0; apply(); } else zoomAt(2.5,e.clientX,e.clientY); });
+  img.onclick=e=>e.stopPropagation();
   document.body.appendChild(d);
 }
 function waBubble(m){
