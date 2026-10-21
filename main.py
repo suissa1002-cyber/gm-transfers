@@ -2670,6 +2670,44 @@ def chat_send(body: ChatIn):
     return {"ok": True, "message": _chat_out(m)}
 
 
+class AdminChatPostIn(BaseModel):
+    text: str
+    topic_id: int = 0
+    mentions: list = []
+    reply_to: Optional[int] = None
+    author: str = "Claude (פיתוח)"
+
+
+@app.post("/api/admin/chat/post")
+def admin_chat_post(body: AdminChatPostIn, x_admin_key: Optional[str] = Header(None)):
+    """עדכון לצוות מסוכן פיתוח (בלי כניסה אישית — מפתח אדמין בלבד), כמו ההודעות של פאבל:
+    כותב בשם הסוכן, מתייג ושולח push. (21/10, אסי: "תעדכן את אודי בגרין דיי")"""
+    _require_admin(x_admin_key)
+    text = (body.text or "").strip()[:4000]
+    if not text:
+        raise HTTPException(400, "הודעה ריקה")
+    active = {x["id"] for x in db.users_list() if x["active"]}
+    mentions = sorted({int(x) for x in body.mentions if str(x).isdigit() and int(x) in active})
+    reply_to = None
+    if body.reply_to:
+        p = db.chat_get(body.reply_to)
+        if not p or int(p.get("topic_id") or 0) != int(body.topic_id or 0):
+            raise HTTPException(400, "העדכון לא נמצא")
+        reply_to = p.get("reply_to") or p["id"]
+    m = db.chat_add(0, (body.author or "Claude (פיתוח)")[:40], text, mentions, "", "", "", 0, "", reply_to,
+                    topic_id=int(body.topic_id or 0))
+    _chat_push(mentions, f"{m['user_name']} תייג/ה אותך", text[:140], int(body.topic_id or 0))
+    return {"ok": True, "id": m["id"]}
+
+
+@app.get("/api/admin/chat/find")
+def admin_chat_find(q: str, topic_id: int = 0, x_admin_key: Optional[str] = Header(None)):
+    """איתור הודעה בצ'אט (לתגובה בשרשור הנכון) — קריאה בלבד."""
+    _require_admin(x_admin_key)
+    rows = [r for r in db.chat_list(topic_id=topic_id, limit=300) if q in (r.get("text") or "")]
+    return {"messages": [{k: r.get(k) for k in ("id", "user_name", "text", "ts", "reply_to")} for r in rows[-10:]]}
+
+
 @app.post("/api/chat/upload")
 async def chat_upload(request: Request, hq: int = 0):
     """קובץ/תמונה לצ'אט (גם הדבקה מהלוח). תמונה גדולה מוקטנת ל-2400px. מחזיר מפתח לשליחה.
