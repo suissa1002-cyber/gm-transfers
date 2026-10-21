@@ -39,11 +39,21 @@ reads = iter([
     {"readable": True, "check_number": "3004572", "payee": "המילטון חשמל ואלקטרוניקה בע\"מ", "supplier_match": "", "amount": 1250,
      "amount_words": "", "amounts_agree": True, "date": "2026-12-03", "bank": "לאומי", "confidence": "high", "notes": ""},
     {"readable": True, "check_number": "3004572", "payee": "המילטון חשמל ואלקטרוניקה בע\"מ", "supplier_match": "", "amount": 7250,
-     "amount_words": "", "amounts_agree": True, "date": "2026-12-03", "bank": "לאומי", "confidence": "high", "notes": "1 או 7?"}])
+     "amount_words": "", "amounts_agree": True, "date": "2026-12-03", "bank": "לאומי", "confidence": "high", "notes": "1 או 7?"},
+    {"readable": True, "check_number": "3004572", "payee": "", "supplier_match": "", "amount": 0,   # מכריע שלא הצליח
+     "amount_words": "", "amounts_agree": True, "date": "", "bank": "", "confidence": "low", "notes": ""}])
 SI._ask = lambda content, schema, effort="medium": next(reads)
 r = c.post("/api/checks/scan", headers=K, files={"file": ("c.jpg", jpg(), "image/jpeg")}, data={"suppliers": '["המילטון"]'}).json()["check"]
+r0 = {"readable": True, "check_number": "652", "payee": "המילטון", "supplier_match": "המילטון", "amount": 0, "amount_words": "",
+      "amounts_agree": True, "date": "2026-12-23", "bank": "הבינלאומי", "confidence": "medium", "notes": "x"}
 check("קריאות שונות בסכום → conflicts עם שתי האפשרויות + ביטחון נמוך", r["conflicts"].get("amount") == [1250, 7250] and r["confidence"] == "low"
       and r["bank_option"] == "בנק לאומי" and r["supplier_match"] == "", r)
+reads = iter([dict(r0, amount=5272), dict(r0, amount=47272), dict(r0, amount=5272, notes="")])
+SI._ask = lambda content, schema, effort="medium": next(reads)
+r = c.post("/api/checks/scan", headers=K, files={"file": ("c.jpg", jpg(), "image/jpeg")}, data={"suppliers": '["המילטון"]'}).json()["check"]
+check("קריאה מכריעה מסכימה עם אחת → ההתנגשות נפתרת", r["amount"] == 5272 and not r["conflicts"] and r.get("resolved") == ["amount"], r)
+check("בנק: 'הבינלאומי' → הבנק הבינלאומי (לא לאומי)", main._check_bank_option("הבנק הבינלאומי הראשון") == "הבנק הבינלאומי"
+      and main._check_bank_option("בנק לאומי") == "בנק לאומי" and main._check_bank_option("First International Bank") == "הבנק הבינלאומי")
 check("לימוד: שם רשמי → ספק במערכת", c.post("/api/checks/scan-learn", headers=K, json={"payee": "המילטון חשמל ואלקטרוניקה בע\"מ", "supplier": "המילטון"}).json()["ok"])
 SI._ask = lambda content, schema, effort="medium": {"readable": True, "check_number": "1", "payee": "המילטון חשמל ואלקטרוניקה בעמ", "supplier_match": "",
     "amount": 100, "amount_words": "", "amounts_agree": True, "date": "2026-12-03", "bank": "", "confidence": "high", "notes": ""}

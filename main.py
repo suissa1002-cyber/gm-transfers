@@ -8280,8 +8280,11 @@ _CHECK_PROMPT = """זה צילום של צ'ק ישראלי שחברת Green Mobi
 - supplier_match: הספק מהרשימה למטה שמתאים ל-payee (שם זהה או קרוב/קיצור/איות אחר). אם אין התאמה סבירה — "".
 - amount: הסכום בספרות (מספר, בלי ₪ ופסיקים). amount_words: הסכום במילים כפי שכתוב (אם יש).
   amounts_agree: האם הסכום במילים תואם לספרות (true אם אין מילים).
-- date: התאריך שעל הצ'ק (תאריך הפירעון) בפורמט YYYY-MM-DD. תאריכים בישראל נכתבים יום/חודש/שנה.
-- bank: שם הבנק המודפס (בנק הפועלים / לאומי / מזרחי טפחות / הבינלאומי / אחר).
+- date: התאריך שעל הצ'ק עצמו (ליד "תאריך / DATE" בצ'ק — תאריך הפירעון) בפורמט YYYY-MM-DD. תאריכים בישראל נכתבים יום/חודש/שנה.
+  ⚠️ בצילום יש לפעמים גם את הספח (החלק העליון עם "לכבוד", "פרטים", "סה"כ") — התאריך שבספח הוא יום הכתיבה, לא הפירעון; אל תשתמש בו.
+  הסכום ב"סה"כ" של הספח כן עוזר לאמת את הסכום בצ'ק.
+- bank: הבנק לפי הלוגו/השם המודפס ולפי קוד הבנק בשורת המספרים התחתונה (2 הספרות הראשונות במספר הסניף):
+  31 = הבנק הבינלאומי, 10 = בנק לאומי, 12 = בנק הפועלים, 20 = מזרחי טפחות, 11 = דיסקונט. ⚠️ "הבינלאומי" ≠ "לאומי".
 - confidence: low אם כתב היד לא ברור באחד השדות החשובים (סכום / תאריך / לפקודת).
 - notes: הערה קצרה בעברית על מה שלא ודאי. readable=false אם זה לא צ'ק או שאי אפשר לקרוא.
 אל תנחש — שדה שלא נקרא השאר ריק (מספר 0).
@@ -8289,20 +8292,24 @@ _CHECK_PROMPT = """זה צילום של צ'ק ישראלי שחברת Green Mobi
 ספקים קיימים:
 {suppliers}"""
 
-_CHECK_BANKS = {"פועלים": "בנק פועלים", "לאומי": "בנק לאומי", "מזרחי": "בנק מזרחי", "בינלאומי": "הבנק הבינלאומי"}
+# הסדר חשוב: "בינלאומי" לפני "לאומי" (22/10: "הבינלאומי" זוהה כלאומי כי "לאומי" מוכל בו)
+_CHECK_BANKS = [("בינלאומי", "הבנק הבינלאומי"), ("international", "הבנק הבינלאומי"), ("פועלים", "בנק פועלים"),
+                ("hapoalim", "בנק פועלים"), ("מזרחי", "בנק מזרחי"), ("mizrahi", "בנק מזרחי"), ("לאומי", "בנק לאומי"), ("leumi", "בנק לאומי")]
 
 
-def _check_enhance(data: bytes) -> bytes:
-    """גרסה שנייה לקריאה: גווני אפור, ניגודיות אוטומטית, חידוד, הגדלה — עוזר בכתב יד חלש/דהוי."""
+def _check_bank_option(bank: str) -> str:
+    b = (bank or "").lower()
+    return next((v for k, v in _CHECK_BANKS if k in b), "")
+
+
+def _check_prep(data: bytes) -> bytes:
+    """צילום טלפון 4032×3024 (2.4MB) → 1600px JPEG: אותו דיוק (נבדק על 5 צ'קים אמיתיים 22/10), פי 3 מהר יותר."""
     import io
-    from PIL import Image, ImageOps, ImageFilter
-    im = ImageOps.exif_transpose(Image.open(io.BytesIO(data))).convert("L")
-    if max(im.size) < 2000:
-        k = 2000 / max(im.size)
-        im = im.resize((int(im.width * k), int(im.height * k)), Image.LANCZOS)
-    im = ImageOps.autocontrast(im, cutoff=1).filter(ImageFilter.UnsharpMask(radius=2, percent=160, threshold=2))
+    from PIL import Image, ImageOps
+    im = ImageOps.exif_transpose(Image.open(io.BytesIO(data))).convert("RGB")
+    im.thumbnail((1600, 1600), Image.LANCZOS)
     buf = io.BytesIO()
-    im.save(buf, "JPEG", quality=92)
+    im.save(buf, "JPEG", quality=88)
     return buf.getvalue()
 
 
@@ -8321,9 +8328,9 @@ def _payee_aliases() -> dict:
 
 def _check_scan(data: bytes, mime: str, suppliers, expected_number: str = "") -> dict:
     """פענוח חזק (22/10, אסי: "יש שכותבים לא קריא, ושמות שונים מהרשמי"):
-    שתי קריאות בלתי תלויות (מקור + משופרת) במקביל, effort גבוה; אי-הסכמה בשדה מהותי → conflicts + ביטחון נמוך.
+    שתי קריאות בלתי תלויות במקביל (1600px, effort נמוך — מהיר); אי-הסכמה → קריאה מכריעה מעמיקה; מה שלא הוכרע → conflicts + ביטחון נמוך.
     שם בצ'ק → ספק במערכת: כינויים שנלמדו מצ'קים קודמים קודמים למודל."""
-    import base64, concurrent.futures as cf, supplier_invoice as SI
+    import base64, time, concurrent.futures as cf, supplier_invoice as SI
     data, mime = SI._sniff(data, mime)
     if mime == "application/pdf":
         raise HTTPException(400, "צריך תמונה של הצ'ק")
@@ -8334,42 +8341,78 @@ def _check_scan(data: bytes, mime: str, suppliers, expected_number: str = "") ->
         f"\n\nשמות שכבר נלמדו (כפי שנכתבו על צ'קים קודמים → הספק במערכת):\n{learned}" if learned else "") + (
         f"\n\nמספר הצ'ק הצפוי ברצף (האחרון שהוזן + 1): {expected_number} — רק לעזרה בקריאה; אם כתוב אחר, החזר את מה שכתוב." if expected_number else "") + (
         "\n\nהיגיון: השנה בתאריך היא כנראה השנה הנוכחית או הבאה; אם כתב היד של ספרה מסוים לא ברור — העדף את הקריאה שמתאימה לסכום במילים.")
-    imgs = [(mime, data)]
     try:
-        imgs.append(("image/jpeg", _check_enhance(data)))
+        img = ("image/jpeg", _check_prep(data))
     except Exception as e:  # noqa: BLE001
-        logger.warning("check enhance failed: %s", e)
+        logger.warning("check prep failed: %s", e)
+        img = (mime, data)
+    blk = {"type": "image", "source": {"type": "base64", "media_type": img[0], "data": base64.standard_b64encode(img[1]).decode()}}
 
-    def read(img):
-        blk = {"type": "image", "source": {"type": "base64", "media_type": img[0], "data": base64.standard_b64encode(img[1]).decode()}}
-        return SI._ask([blk, {"type": "text", "text": prompt}], _CHECK_SCHEMA, effort="high")
-    with cf.ThreadPoolExecutor(2) as ex:
-        reads = [f.result() for f in [ex.submit(read, i) for i in imgs]]
-    r = dict(reads[0])
-    conflicts = {}
-    if len(reads) > 1:
-        b = reads[1]
-        def norm(k, v):
-            return re.sub(r"\D", "", str(v or "")) if k == "check_number" else (round(float(v or 0), 2) if k == "amount" else str(v or "").strip())
-        for k in ("check_number", "amount", "date", "supplier_match"):
-            va, vb = norm(k, r.get(k)), norm(k, b.get(k))
-            if va and vb and va != vb:
-                conflicts[k] = [r.get(k), b.get(k)]
-            elif not va and vb:
-                r[k] = b.get(k)   # קריאה אחת הצליחה במקום שהשנייה לא
-        if not r.get("payee") and b.get("payee"):
-            r["payee"] = b["payee"]
-        if not b.get("amounts_agree", True):
-            r["amounts_agree"] = False
-        if conflicts and b.get("notes"):
-            r["notes"] = " · ".join(dict.fromkeys(x for x in [r.get("notes"), b.get("notes")] if x))[:400]
+    def read(effort, extra=""):
+        return SI._ask([blk, {"type": "text", "text": prompt + extra}], _CHECK_SCHEMA, effort=effort)
+
+    def norm(k, v):
+        return re.sub(r"\D", "", str(v or "")) if k == "check_number" else (round(float(v or 0), 2) if k == "amount" else str(v or "").strip())
+    t0 = time.time()
+    ex = cf.ThreadPoolExecutor(3)
+    try:
+        # שתי קריאות בלתי תלויות במקביל (effort נמוך = 5-7 שניות; גבוה היה 13-100)
+        futs = [ex.submit(read, "low") for _ in range(2)]
+        done, _ = cf.wait(futs, timeout=20)
+        if not done:
+            done, _ = cf.wait(futs, return_when=cf.FIRST_COMPLETED)
+        reads = []
+        for f in futs:
+            if f in done:
+                try:
+                    reads.append(f.result())
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("check read failed: %s", e)
+        if not reads:
+            raise RuntimeError("שתי הקריאות נכשלו")
+        r = dict(reads[0])
+        conflicts = {}
+        if len(reads) > 1:
+            b = reads[1]
+            for k in ("check_number", "amount", "date", "supplier_match"):
+                va, vb = norm(k, r.get(k)), norm(k, b.get(k))
+                if va and vb and va != vb:
+                    conflicts[k] = [r.get(k), b.get(k)]
+                elif not va and vb:
+                    r[k] = b.get(k)   # קריאה אחת הצליחה במקום שהשנייה לא
+            if not r.get("payee") and b.get("payee"):
+                r["payee"] = b["payee"]
+            if not r.get("bank") and b.get("bank"):
+                r["bank"] = b["bank"]
+            if not b.get("amounts_agree", True):
+                r["amounts_agree"] = False
+            if conflicts and b.get("notes"):
+                r["notes"] = " · ".join(dict.fromkeys(x for x in [r.get("notes"), b.get("notes")] if x))[:400]
+        if conflicts:
+            # מכריע: קריאה שלישית מעמיקה רק כשיש אי-הסכמה (עד 25 שניות; אחרת — בחירה למשתמש)
+            hint = "\n\nשתי קריאות קודמות לא הסכימו: " + "; ".join(f"{k}: {a} או {b}" for k, (a, b) in conflicts.items()) + \
+                   ". בדוק בזהירות במיוחד את השדות האלה (גם מול הסכום במילים ו'סה\"כ' בספח)."
+            tf = ex.submit(read, "medium", hint)
+            try:
+                c = tf.result(timeout=25)
+                for k in list(conflicts):
+                    vc = norm(k, c.get(k))
+                    if vc and vc in (norm(k, conflicts[k][0]), norm(k, conflicts[k][1])):
+                        r[k] = c.get(k)
+                        r.setdefault("resolved", []).append(k)
+                        del conflicts[k]
+            except Exception as e:  # noqa: BLE001
+                logger.info("check tie-break skipped: %s", e)
+    finally:
+        ex.shutdown(wait=False, cancel_futures=True)
+    logger.info("check scan %.1fs reads=%d conflicts=%s", time.time() - t0, len(reads), list(conflicts))
     al = aliases.get(_norm_payee(r.get("payee")))
     if al and al in (suppliers or []):
         r["supplier_match"], r["alias_used"] = al, True
         conflicts.pop("supplier_match", None)
     if r.get("supplier_match") and r["supplier_match"] not in (suppliers or []):
         r["supplier_match"] = ""
-    r["bank_option"] = next((v for k, v in _CHECK_BANKS.items() if k in (r.get("bank") or "")), "")
+    r["bank_option"] = _check_bank_option(r.get("bank"))
     r["conflicts"] = conflicts
     if conflicts.keys() & {"amount", "date", "supplier_match"} or r.get("amounts_agree") is False:
         r["confidence"] = "low"
