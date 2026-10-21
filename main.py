@@ -10487,7 +10487,7 @@ _BRIDGE_BRANCH_LABEL = {1: "גן העיר", 2: "סטאר", 3: "סיטי", 4: "ע
 
 
 @app.get("/api/uri-bridge/stock/{sku}")
-def bridge_live_stock(sku: str, x_bridge_key: Optional[str] = Header(None)):
+def bridge_live_stock(sku: str, site: Optional[str] = None, x_bridge_key: Optional[str] = Header(None)):
     """מלאי **חי מהקופה** לפי מק"ט — החוליה שחסרה לאלה.
 
     ⚠️ למה זה קיים (אסי, 19/08/2026): לקוח שאל על Galaxy S24 256GB, אלה ענתה
@@ -10507,7 +10507,7 @@ def bridge_live_stock(sku: str, x_bridge_key: Optional[str] = Header(None)):
         st = poller.client().get_product_stock(sku) or {}
     except Exception as e:  # noqa: BLE001
         logger.warning("bridge live stock %s: %s", sku, e)
-        return {"sku": sku, "ok": False, "error": "הקופה לא זמינה כרגע"}
+        return {"sku": sku, "ok": False, "error": "הקופה לא זמינה כרגע", "verdict": _stock_verdict(None, site)}
     # ⚠️ (אודי, 21/10) שמות ללקוח — לא שמות הקופה: סניף 3 רשום בקופה "מחסן\מרלוג" והוא בפועל
     # חנות **סיטי**; אלה לא הזכירה אותו כי השם נראה כמו מחסן. בלי כמויות ללקוח — רק "יחידה
     # אחרונה" כשנשארה אחת (המספר עצמו לא נמסר לאלה בכלל, כדי שלא תצטט אותו).
@@ -10519,7 +10519,19 @@ def bridge_live_stock(sku: str, x_bridge_key: Optional[str] = Header(None)):
     if total <= 0:
         # ⚠️ אפס בכל הסניפים יכול להיות גם מק"ט שהקופה לא מכירה — ההבחנה קריטית
         out["unknown_product"] = bool(_pos_product_unknown(sku))
+    out["verdict"] = _stock_verdict(total, site)
     return out
+
+
+def _stock_verdict(pos_total, site) -> str:
+    """מה אלה עונה ללקוח (אודי, 21/10) — קופה × אתר:
+    קופה+אתר → available · קופה בלבד → available_handoff (נציג יוודא) ·
+    אתר בלבד / קופה לא זמינה או לא מחוברת → site_only_handoff · אף אחד → unavailable.
+    site לא נמסר → מכריעה הקופה בלבד."""
+    site_in = None if site in (None, "") else str(site).strip().lower() in ("1", "true", "yes", "instock")
+    if pos_total and pos_total > 0:
+        return "available_handoff" if site_in is False else "available"
+    return "site_only_handoff" if site_in else "unavailable"
 
 
 @app.get("/api/uri-bridge/variations/{product_id}")

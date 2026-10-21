@@ -32,6 +32,16 @@ assert r["in_stock"] and r["last_unit"] and r["branches"] == ["סיטי"], r
 main._pos_product_unknown = lambda sku: False
 r = run({})
 assert not r["in_stock"] and r["branches"] == [] and r["unknown_product"] is False, r
+# verdict: קופה × אתר (אודי 21/10)
+main.poller.client = lambda: _NO({2: 3.0})
+v = lambda q: c.get("/api/uri-bridge/stock/519547" + q, headers=H).json()["verdict"]
+assert v("?site=1") == "available" and v("?site=0") == "available_handoff" and v("") == "available"
+main.poller.client = lambda: _NO({})
+assert v("?site=1") == "site_only_handoff" and v("?site=0") == "unavailable" and v("") == "unavailable"
+class _Down:
+    def get_product_stock(self, sku): raise RuntimeError("429")
+main.poller.client = lambda: _Down()
+assert v("?site=1") == "site_only_handoff" and v("?site=0") == "unavailable"
 assert c.get("/api/uri-bridge/stock/1").status_code == 401
 os.unlink(_tmp)
 print("✅ מלאי לאלה: סיטי בשמו, בלי כמויות, יחידה אחרונה מסומנת")
