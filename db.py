@@ -5749,12 +5749,12 @@ def topic_msg_counts(topic_ids) -> dict:
         return {int(r["topic_id"]): int(r["n"]) for r in cur.fetchall()}
 
 
-def chat_delete(mid, user_id) -> int:
-    """מחיקה רכה — רק של הודעה שלך. נשאר "ההודעה נמחקה" בתיעוד."""
+def chat_delete(mid, user_id, agent_too=False) -> int:
+    """מחיקה רכה — רק של הודעה שלך (בעלים: גם הודעות סוכנים, user_id=0). נשאר "ההודעה נמחקה" בתיעוד."""
     with _conn() as c:
         cur = c.cursor()
-        cur.execute(_q("UPDATE team_chat SET deleted = 1 WHERE id = ? AND user_id = ? AND system = 0"),
-                    (int(mid), int(user_id)))
+        cur.execute(_q("UPDATE team_chat SET deleted = 1 WHERE id = ? AND (user_id = ? OR (? = 1 AND user_id = 0)) AND system = 0"),
+                    (int(mid), int(user_id), 1 if agent_too else 0))
         return cur.rowcount or 0
 
 

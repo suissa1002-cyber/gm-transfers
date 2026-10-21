@@ -2988,7 +2988,8 @@ function tcPostHTML(m,replies){
     <div class="tc-phead">${tcAv(m.user_id,m.user_name,34,true)}
       <div class="tc-pwho"><b>${escW(m.user_name)}</b><span class="muted">${tcRel(m.ts)}${m.edited_at?' · נערך':''}</span>${tcReceipt(m)}
         ${(m.mentions||[]).length?`<span class="tc-for">${icoI('user',11)}${(m.mentions||[]).map(id=>escW(tcName(id)||'?')).join(', ')}</span>`:''}</div>
-      ${mine&&!m.deleted?`<span class="tc-pmenu"><a href="#" onclick="TC.editing=${m.id};tcPaint(false);return false" title="עריכה">${ico('pencil',14)}</a><a href="#" onclick="tcDel(${m.id});return false" title="מחיקה">${ico('trash',14)}</a></span>`:''}
+      ${mine&&!m.deleted?`<span class="tc-pmenu"><a href="#" onclick="TC.editing=${m.id};tcPaint(false);return false" title="עריכה">${ico('pencil',14)}</a><a href="#" onclick="tcDel(${m.id});return false" title="מחיקה">${ico('trash',14)}</a></span>`
+        :(!m.user_id&&!m.system&&!m.deleted&&isOwner()?`<span class="tc-pmenu"><a href="#" onclick="tcDel(${m.id});return false" title="מחיקה">${ico('trash',14)}</a></span>`:'')}
     </div>
     <div class="tc-pbody">${m.deleted?'<i class="muted">העדכון נמחק</i>':tcBodyHTML(m)}</div>
     <div class="tc-pfoot">

@@ -2968,7 +2968,8 @@ def chat_edit_ep(mid: int, body: ChatEditIn):
 @app.post("/api/chat/{mid}/delete")
 def chat_del(mid: int):
     u = _chat_user()
-    if not db.chat_delete(mid, u["id"]):
+    # בעלים מוחקים גם הודעות של סוכנים (פאבל / Claude) — אין להן "כותב" שיכול למחוק (21/10)
+    if not db.chat_delete(mid, u["id"], agent_too=u["role"] == "owner"):
         raise HTTPException(403, "אפשר למחוק רק הודעה שלך")
     return {"ok": True}
 
