@@ -264,7 +264,10 @@ if (!window.toggleNav) { window.toggleNav = function () {
     }).join(''); }
     var subEl=document.getElementById('cartSubtotal'); if(subEl) subEl.textContent=money(+c.totals.total_items,minor);
     setCount(count);
-    var sub=(+c.totals.total_items)/Math.pow(10,minor), TH=500, ship=document.getElementById('cartShip');
+    /* סף המשלוח החינם. ⚠️ 21/10/2026: היה 500 כאן בעוד כל שאר האתר אמר 499,
+       ובוורדפרס הכלל היה 500+ — לקוח ב-499 ראה 'משלוח חינם' ושילם 29.
+       אסי הוריד את הכלל ב-WooCommerce ל-499, וכאן מיושר אליו. */
+    var sub=(+c.totals.total_items)/Math.pow(10,minor), TH=499, ship=document.getElementById('cartShip');
     if(ship){
       if(sub>=TH) ship.innerHTML='<b>קיבלת משלוח חינם!</b><div class="bar"><div class="fill" style="width:100%"></div></div>';
       else ship.innerHTML='עוד <b>‏₪'+(TH-sub).toLocaleString('en-US')+'</b> ותיהנו ממשלוח חינם<div class="bar"><div class="fill" style="width:'+Math.min(100,Math.round(sub/TH*100))+'%"></div></div>';
