@@ -297,3 +297,80 @@ def op_summary(ops) -> list:
     return [{"id": o.get("id"), "date": o.get("createDate"), "doc": o.get("documentNumber") or "",
              "employee": o.get("employee") or "", "supplier": (o.get("supplier") or {}).get("name") or "",
              "qty": float(o.get("totalQuantity") or 0)} for o in ops]
+
+
+# ── שידור למוצרים חדשים ב-GreenDay (22/10/2026, אסי) ──
+# שורות החשבונית/הקופה מקובצות למוצרים: אותו דגם בצבעים/נפחים/RAM שונים = מוצר אחד עם וריאציות
+# (כמו ליסט וריאציות באתר). הפיצול לווריאציות לפי השם בקופה — זה מה שגלי מחברת לאתר.
+_GROUP_SCHEMA = {
+    "type": "object",
+    "properties": {"products": {"type": "array", "items": {
+        "type": "object",
+        "properties": {
+            "name": {"type": "string"},
+            "brand": {"type": "string"},
+            "variants": {"type": "array", "items": {
+                "type": "object",
+                "properties": {
+                    "ref": {"type": "string"},
+                    "color": {"type": "string"},
+                    "ram": {"type": "string"},
+                    "storage": {"type": "string"},
+                },
+                "required": ["ref", "color", "ram", "storage"],
+                "additionalProperties": False,
+            }},
+        },
+        "required": ["name", "brand", "variants"],
+        "additionalProperties": False,
+    }}},
+    "required": ["products"],
+    "additionalProperties": False,
+}
+
+_GROUP_PROMPT = """קבץ את הפריטים הבאים (מחשבונית ספק של חנות סלולר) למוצרים לאתר.
+כלל: אותו דגם בדיוק שנבדל רק בצבע / נפח אחסון / זיכרון RAM = מוצר אחד עם כמה וריאציות.
+דגם אחר (Pro / Max / 5G מול 4G / דור אחר / שנה אחרת בשם) = מוצר נפרד.
+- name: שם המוצר באנגלית בלי צבע/נפח/RAM, כולל מותג (למשל "Xiaomi Redmi 10").
+- brand: המותג באנגלית.
+- לכל וריאציה: ref (בדיוק כפי שמופיע ברשימה), color בעברית (שחור/לבן/כחול/אפור/ירוק/סגול/ורוד/זהב/כסוף/כתום/אדום/תכלת — או "" אם אין),
+  ram כמו "4GB" (או ""), storage כמו "128GB" (או "").
+- כל ref מופיע פעם אחת בדיוק. פריטים שאינם מכשירים/מוצרים לאתר (משלוח, הנחה) — דלג.
+
+הפריטים (ref · שם):
+{items}"""
+
+
+def group_products(lines) -> list:
+    """lines: שורות ההשוואה (compare). מחזיר [{name, brand, variants:[{ref, color, ram, storage, sku, pos_name, qty, desc}]}]."""
+    refs, ent = [], {}
+    for i, ln in enumerate(lines):
+        m = ln.get("matched") or []
+        if m:
+            for x in m:
+                r = f"S{x['id']}"
+                if r not in ent:
+                    ent[r] = {"sku": x["id"], "pos_name": x["name"], "qty": 0.0, "desc": ln["description"]}
+                    refs.append((r, x["name"]))
+                ent[r]["qty"] += float(x.get("qty") or 0)
+        else:
+            r = f"L{i + 1}"
+            ent[r] = {"sku": "", "pos_name": "", "qty": float(ln.get("qty") or 0), "desc": ln["description"]}
+            refs.append((r, ln["description"]))
+    if not refs:
+        return []
+    res = _ask(_GROUP_PROMPT.format(items="\n".join(f"{r} · {n}" for r, n in refs)), _GROUP_SCHEMA)
+    out, used = [], set()
+    for p in res.get("products") or []:
+        vs = []
+        for v in p.get("variants") or []:
+            r = v.get("ref")
+            if r in ent and r not in used:
+                used.add(r)
+                vs.append({**v, **ent[r]})
+        if vs:
+            out.append({"name": p.get("name") or vs[0]["desc"], "brand": p.get("brand") or "", "variants": vs})
+    for r, n in refs:   # מה שהמודל השמיט — לא נעלם
+        if r not in used:
+            out.append({"name": n, "brand": "", "variants": [{"ref": r, "color": "", "ram": "", "storage": "", **ent[r]}]})
+    return out

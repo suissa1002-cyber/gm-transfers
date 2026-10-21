@@ -784,6 +784,14 @@
   .tc-invops{font-size:12.5px;line-height:1.6}
   .tc-invsum{font-size:14px;font-weight:600;line-height:1.5}
   .tc-del{color:#dc2626!important}
+  .tc-sku{background:var(--card2);border-radius:5px;padding:0 5px;font-size:11px;color:var(--txt)}
+  .tc-bcast{color:#0073ea;display:inline-flex;padding:3px}
+  .tc-prodm{max-width:760px;max-height:88vh;overflow:auto;display:flex;flex-direction:column;gap:10px}
+  .tc-prod{border:1px solid var(--line);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:8px}
+  .tc-prod.sent{border-color:#00a884;background:rgba(0,168,132,.05)}
+  .tc-prodh{display:flex;align-items:center;gap:10px}.tc-prodh input{flex:1;font-weight:700}
+  .tc-prodf{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .tc-prodfoot{display:flex;justify-content:space-between;align-items:center}
   .si-table .si-row{cursor:pointer}
   .si-det td{background:var(--card2);padding:10px 12px}
   .si-act a{display:inline-flex;padding:4px;margin-inline-end:4px}
@@ -2458,7 +2466,7 @@ function siRender(){
           <a href="#" onclick="siDel(${x.topic_id});return false" title="מחיקת החשבונית והנושא" style="color:#dc2626">${ico('trash',16)}</a></td></tr>
       ${op?`<tr class="si-det"><td colspan="7">
         ${(x.lines||[]).length?`<table class="tc-invtbl"><thead><tr><th>שורה בחשבונית</th><th>בחשבונית</th><th>נכנס לקופה</th><th></th></tr></thead><tbody>
-          ${x.lines.map(l=>{ const [ic,lb,c]=TC_LINE_ST[l.status]||['','','']; return `<tr><td>${escW(l.description)}${(l.matched||[]).length?`<div class="muted tc-invm">${l.matched.map(m=>escW(m.name)).join(' · ')}</div>`:''}</td><td class="ltr">${n(l.qty)}</td><td class="ltr">${n(l.got)}</td><td><span style="color:${c};font-weight:700">${ic} ${lb}</span></td></tr>`; }).join('')}
+          ${x.lines.map(l=>{ const [ic,lb,c]=TC_LINE_ST[l.status]||['','','']; return `<tr><td>${escW(l.description)}${(l.matched||[]).length?`<div class="muted tc-invm">${l.matched.map(m=>escW(m.name)+` <span class="tc-sku ltr">מק״ט ${escW(m.id)}</span>`).join(' · ')}</div>`:''}</td><td class="ltr">${n(l.qty)}</td><td class="ltr">${n(l.got)}</td><td><span style="color:${c};font-weight:700">${ic} ${lb}</span></td></tr>`; }).join('')}
           </tbody></table>`:`<div class="muted">${(x.items||[]).map(i=>escW(i.description)+' ×'+n(i.qty)+(i.code?' ('+escW(i.code)+')':'')).join(' · ')||'אין שורות'}</div>`}
         ${(x.extras||[]).length?`<div class="tc-invextra"><b>נכנס לקופה ולא בחשבונית:</b> ${x.extras.map(e=>escW(e.name)+' ×'+n(e.qty)).join(' · ')}</div>`:''}
         ${(x.ops||[]).length?`<div class="muted" style="font-size:12.5px;margin-top:6px">${x.ops.map(o=>`כניסה #${escW(o.id)} · ${o.date?new Date(o.date).toLocaleDateString('he-IL'):''} · ${escW(o.employee||'')} · ${n(o.qty)} יח׳`).join('<br>')}</div>`:''}
@@ -2680,16 +2688,18 @@ function tcInvCardHTML(){
     ${ops?`<div class="tc-invops muted">${ops}${R.how==='supplier'?'<br><span style="color:#e8833a">אותרה לפי ספק ותאריך — מספר המסמך בקופה חסר או שונה</span>':''}</div>`:''}
     ${I.status==='waiting_stock'?`<div class="muted" style="font-size:12.5px">עוד לא נמצאה בקופה כניסה למלאי למסמך הזה. בודק שוב כל שעה, עד 3 ימים מההעלאה.</div>`:''}
     ${I.status==='error'?`<div class="muted" style="font-size:12.5px">${escW(I.error||'')}</div>`:''}
-    ${(R.lines||[]).length?`<table class="tc-invtbl"><thead><tr><th>שורה בחשבונית</th><th>בחשבונית</th><th>נכנס לקופה</th><th></th></tr></thead><tbody>
+    ${(R.lines||[]).length?`<table class="tc-invtbl"><thead><tr><th>שורה בחשבונית</th><th>בחשבונית</th><th>נכנס לקופה</th><th></th><th></th></tr></thead><tbody>
       ${R.lines.map(l=>{ const [ic,lb,c]=TC_LINE_ST[l.status]||['','',''];
-        return `<tr><td>${escW(l.description)}${(l.matched||[]).length?`<div class="muted tc-invm">${l.matched.map(m=>escW(m.name)).join(' · ')}</div>`:''}</td>
-          <td class="ltr">${n(l.qty)}</td><td class="ltr">${n(l.got)}</td><td><span style="color:${c};font-weight:700" title="${lb}">${ic} ${lb}</span></td></tr>`; }).join('')}
+        return `<tr><td>${escW(l.description)}${(l.matched||[]).length?`<div class="muted tc-invm">${l.matched.map(m=>escW(m.name)+` <span class="tc-sku ltr">מק״ט ${escW(m.id)}</span>`).join(' · ')}</div>`:''}</td>
+          <td class="ltr">${n(l.qty)}</td><td class="ltr">${n(l.got)}</td><td><span style="color:${c};font-weight:700" title="${lb}">${ic} ${lb}</span></td>
+          <td><a href="#" class="tc-bcast" onclick="tcInvProducts();return false" title="שידור למוצרים חדשים ב-GreenDay (עם כל הווריאציות)">${icoI('megaphone',14)}</a></td></tr>`; }).join('')}
       </tbody></table>`:(ex.items&&ex.items.length&&I.status!=='ok'?`<div class="muted" style="font-size:12.5px">נקראו ${ex.items.length} שורות: ${ex.items.map(i=>escW(i.description)+' ×'+n(i.qty)).join(' · ')}</div>`:'')}
     ${(R.extras||[]).length?`<div class="tc-invextra"><b>נכנס לקופה ולא מופיע בחשבונית:</b> ${R.extras.map(x=>escW(x.name)+' ×'+n(x.qty)).join(' · ')}</div>`:''}
     ${ex.notes?`<div class="muted" style="font-size:12.5px">הערת הקריאה: ${escW(ex.notes)}</div>`:''}
     <div class="tc-invfoot">${R.lines?`<span class="muted">סה״כ בחשבונית ${n(R.inv_qty)} · בכניסה ${n(R.stock_qty)}</span>`:''}
       <a href="#" onclick="tcInvRecheck(0);return false">${icoI('refresh',13)}בדוק שוב מול הקופה</a>
-      <a href="#" onclick="tcInvRecheck(1);return false">${icoI('eye',13)}קרא את החשבונית מחדש</a></div>
+      <a href="#" onclick="tcInvRecheck(1);return false">${icoI('eye',13)}קרא את החשבונית מחדש</a>
+      ${(R.lines||[]).length?`<a href="#" onclick="tcInvProducts();return false" style="font-weight:700">${icoI('megaphone',13)}שידור למוצרים חדשים ב-GreenDay</a>`:''}</div>
   </div>`;
 }
 // משפט אחד בשפה פשוטה — מה התוצאה ומה לעשות
@@ -2735,6 +2745,41 @@ async function tcTopicDelete(){
   try{ await api('/api/chat/topics/'+t.id,{method:'DELETE'},30000);
     toast('הנושא נמחק',true); if(S.view==='supinv') siLoad(); tcHome(); }
   catch(e){ toast(e.detail||'המחיקה נכשלה',false); }
+}
+// ── שידור למוצרים חדשים: קיבוץ לפי דגם (וריאציות צבע/RAM/נפח לפי הקופה), כפתור לכל מוצר ──
+async function tcInvProducts(refresh){
+  let o=document.getElementById('tcProds');
+  if(!o){ o=document.createElement('div'); o.className='overlay'; o.id='tcProds'; document.body.appendChild(o); }
+  o.innerHTML=`<div class="modal us-modal tc-prodm"><h3>${icoI('megaphone',18)}שידור למוצרים חדשים ב-GreenDay</h3><div class="tc-empty">${refresh?'מקבץ מחדש…':'מקבץ את שורות החשבונית למוצרים ווריאציות…'}</div></div>`;
+  try{ const r=await api('/api/chat/topics/'+TC.topic+'/invoice/products'+(refresh?'?refresh=1':''),{method:'POST'},120000); TC.prods=r; tcProdPaint(); }
+  catch(e){ o.innerHTML=`<div class="modal us-modal"><div class="err">${escW(e.detail||'הקיבוץ נכשל')}</div><button class="btn-ghost" style="width:100%" onclick="document.getElementById('tcProds').remove()">סגירה</button></div>`; }
+}
+function tcProdPaint(){
+  const o=document.getElementById('tcProds'); if(!o||!TC.prods) return; const G=TC.prods.groups||[], SNT=TC.prods.sent||{};
+  const n=v=>Number(v||0).toLocaleString('he-IL',{maximumFractionDigits:2});
+  o.innerHTML=`<div class="modal us-modal tc-prodm"><h3>${icoI('megaphone',18)}שידור למוצרים חדשים ב-GreenDay</h3>
+    <div class="muted" style="font-size:13px">כל מוצר נוצר ב"מוצרים חדשים" עם כל הווריאציות ומק״ט הקופה של כל אחת, בסטטוס <b>טיוטה – ממתין להערות</b> — הסוכנים לא מתחילים עד שאודי מזין הערות ומעביר ל"ממתין". אודי מקבל תיוג והתראה.</div>
+    ${G.map((g,i)=>{ const s=SNT[i], ex=g.variants.filter(v=>v.exists);
+      return `<div class="tc-prod ${s?'sent':''}">
+        <div class="tc-prodh">${s?`<b>${escW(s.name)}</b>`:`<input id="tcPN${i}" value="${escW(g.name)}" title="שם המוצר — אפשר לערוך">`}
+          <span class="muted">${g.variants.length>1?g.variants.length+' וריאציות':'מוצר בודד'}</span></div>
+        <table class="tc-invtbl"><thead><tr><th>צבע</th><th>RAM</th><th>נפח</th><th>מק״ט קופה</th><th>כמות</th></tr></thead><tbody>
+          ${g.variants.map(v=>`<tr><td>${escW(v.color||'—')}</td><td>${escW(v.ram||'—')}</td><td>${escW(v.storage||'—')}</td>
+            <td>${v.sku?`<span class="ltr">${escW(v.sku)}</span><div class="muted tc-invm">${escW(v.pos_name)}</div>`:'<span style="color:#dc2626">לא בקופה</span>'}
+              ${v.exists?`<div class="tc-invextra">כבר ב-GreenDay: <a href="#" onclick="document.getElementById('tcProds').remove();gdOpenItem('${escW(v.exists.monday_id)}');return false">${escW(v.exists.name)}</a> (${escW(v.exists.status||'')})</div>`:''}</td>
+            <td class="ltr">${n(v.qty)}</td></tr>`).join('')}</tbody></table>
+        <div class="tc-prodf">${s?`<span style="color:#00a884;font-weight:700">${icoI('check',14)}שודר</span> <a href="#" onclick="document.getElementById('tcProds').remove();gdOpenItem('${escW(s.monday_id)}');return false">פתיחה בלוח המוצרים</a>`
+          :`<button class="btn-primary" onclick="tcProdSend(${i},this)">${icoI('megaphone',14)}שידור ל-GreenDay</button>${ex.length?`<span class="tc-invextra">שימו לב: ${ex.length} וריאציות כבר קיימות בלוח</span>`:''}`}</div>
+      </div>`; }).join('')||'<div class="tc-empty">אין מוצרים</div>'}
+    <div class="tc-prodfoot"><a href="#" onclick="tcInvProducts(1);return false">${icoI('refresh',13)}קבץ מחדש</a>
+      <button class="btn-ghost" onclick="document.getElementById('tcProds').remove()">סגירה</button></div></div>`;
+}
+async function tcProdSend(i,btn){
+  const nm=(document.getElementById('tcPN'+i)||{}).value||'';
+  btn.disabled=true; btn.textContent='משדר…';
+  try{ const r=await api('/api/chat/topics/'+TC.topic+'/invoice/products/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({index:i,name:nm})},60000);
+    TC.prods.sent=r.sent; tcProdPaint(); toast('נוצר ב-GreenDay · מוצרים חדשים — אודי קיבל התראה',true); TC.sig=''; tcLoad(false); }
+  catch(e){ btn.disabled=false; btn.textContent='שידור ל-GreenDay'; toast(e.detail||'השידור נכשל',false); }
 }
 async function tcInvRecheck(reread){
   try{ await api('/api/chat/topics/'+TC.topic+'/invoice/recheck?reread='+(reread?1:0),{method:'POST'},15000);

@@ -2210,6 +2210,98 @@ def chat_topic_invoice_pages(tid: int, body: InvPagesIn):
     return {"ok": True, "pages_file": m["attach_name"]}
 
 
+# ── שידור שורות החשבונית למוצרים חדשים ב-GreenDay (22/10, אסי) ──
+def _inv_owner_si(tid):
+    u = _chat_user()
+    if u["role"] != "owner":
+        raise HTTPException(403, "בעלים בלבד")
+    _chat_topic_for(u, tid)
+    si = db.si_for_topic(tid)
+    if not si or not (si.get("result") or {}).get("lines"):
+        raise HTTPException(400, "אין עדיין בדיקה עם שורות לחשבונית הזו")
+    return u, si
+
+
+@app.post("/api/chat/topics/{tid}/invoice/products")
+def chat_invoice_products(tid: int, refresh: int = 0):
+    """קיבוץ שורות החשבונית למוצרים + וריאציות (לפי השמות בקופה). נשמר בבדיקה — לא מחושב שוב בכל פתיחה."""
+    u, si = _inv_owner_si(tid)
+    res = si["result"]
+    if refresh or not res.get("groups"):
+        import supplier_invoice as SI
+        res["groups"] = SI.group_products(res["lines"])
+        res["sent"] = {}
+        db.si_set(si["id"], result=res)
+    existing = {}
+    for p in db.gd_products_list():   # כבר יש ב-GreenDay פריט עם אותו מק"ט קופה?
+        for sku in re.findall(r"\d{5,}", p.get("pos_sku") or ""):
+            existing.setdefault(sku, {"monday_id": p["monday_id"], "name": p["name"], "status": p.get("status")})
+    for g in res["groups"]:
+        for v in g["variants"]:
+            v["exists"] = existing.get(v.get("sku") or "")
+    return {"groups": res["groups"], "sent": res.get("sent") or {}}
+
+
+class InvSendIn(BaseModel):
+    index: int
+    name: str = ""
+
+
+@app.post("/api/chat/topics/{tid}/invoice/products/send")
+def chat_invoice_product_send(tid: int, body: InvSendIn):
+    """מוצר אחד (עם כל הווריאציות) → פריט ב"מוצרים חדשים" בסטטוס המתנה להערות (הסוכנים לא נוגעים),
+    ותיוג + התראה לשאר הבעלים (אודי) להשלים הערות ולהעביר ל"ממתין"."""
+    u, si = _inv_owner_si(tid)
+    res = si["result"]
+    groups = res.get("groups") or []
+    if not (0 <= body.index < len(groups)):
+        raise HTTPException(400, "מוצר לא נמצא — פתחו מחדש")
+    sent = res.setdefault("sent", {})
+    if str(body.index) in sent:
+        raise HTTPException(409, "המוצר הזה כבר שודר ל-GreenDay")
+    g = groups[body.index]
+    import greenday as gd
+    ex = si.get("extracted") or {}
+    vs = g["variants"]
+    colors = list(dict.fromkeys(v["color"] for v in vs if v.get("color")))
+    stor = [x for x in dict.fromkeys(v["storage"] for v in vs if v.get("storage")) if x in gd.STORAGES]
+    skus = [v["sku"] for v in vs if v.get("sku")]
+    name = (body.name or g["name"]).strip()[:200]
+    vals = {"status": gd.STATUS_HOLD, "colors": ", ".join(colors), "storages": stor, "pos_sku": ", ".join(skus),
+            "list_type": "ליסט וריאציות" if len(vs) > 1 else "ליסט רגיל.עד 1 וריאציה",
+            "notes": f"מחשבונית ספק: {ex.get('supplier') or ''} {ex.get('doc_number') or ''}".strip()}
+    lines = []
+    for v in vs:
+        spec = " · ".join(x for x in [v.get("ram") and v["ram"] + " RAM", v.get("storage"), v.get("color")] if x)
+        lines.append(f"• {spec or v.get('desc')} — " + (f"מק״ט קופה {v['sku']} ({v['pos_name']})" if v.get("sku") else "⚠ לא נמצא בקופה")
+                     + f" · {float(v.get('qty') or 0):g} יח׳")
+    upd = (f"נוצר מחשבונית ספק ({ex.get('supplier') or ''} · {ex.get('doc_type') or 'מסמך'} {ex.get('doc_number') or ''}) "
+           f"ע״י {u['name']}.\n{'מוצר עם ' + str(len(vs)) + ' וריאציות' if len(vs) > 1 else 'מוצר בודד'} — לחבר כל וריאציה למק״ט הקופה שלה:\n"
+           + "\n".join(lines) +
+           "\n\n⏸ הסוכנים לא מתחילים לפני שמוזנות הערות: קטגוריות, תכונות, אחריות, מחיר לכל וריאציה. "
+           "אחרי ההזנה — להעביר את הסטטוס ל\"ממתין\".")
+    try:
+        mid = gd.create_item(name, "topics", vals)
+        gd.create_update(mid, u["name"], upd)
+        try:
+            gd.refresh_item(mid)
+        except Exception:  # noqa: BLE001
+            pass
+    except RuntimeError as e:
+        raise HTTPException(502, f"יצירה ב-GreenDay נכשלה: {e}")
+    sent[str(body.index)] = {"monday_id": mid, "name": name}
+    db.si_set(si["id"], result=res)
+    others = sorted(_owner_ids() - {u["id"]})
+    names = ", ".join("@" + x["name"] for x in db.users_list() if x["id"] in others)
+    db.chat_add(u["id"], u["name"], f"שודר ל-GreenDay · מוצרים חדשים: {name} ({len(vs)} וריאציות). {names} נא להזין הערות ולהעביר ל\"ממתין\".",
+                others, topic_id=tid)
+    import threading, wa_push
+    threading.Thread(target=wa_push.send_to_all, daemon=True, kwargs=dict(
+        title=f"{u['name']}: מוצר חדש ממתין להערות שלך", body=f"{name} — {len(vs)} וריאציות מחשבונית {ex.get('supplier') or ''}"[:140],
+        url=f"/?gd={mid}", kind="greenday", tag=f"gdnew{mid}", user_ids=others)).start()
+    return {"ok": True, "monday_id": mid, "sent": sent}
+
+
 @app.delete("/api/chat/topics/{tid}")
 def chat_topic_delete(tid: int):
     """מחיקת נושא לגמרי (כולל קבצים וחשבונית) — בעלים, או מי שפתח אותו. לא ניתן לשחזר."""

@@ -116,6 +116,41 @@ check("בעלים מוחק נושא חשבונית — הכל נמחק", c.delet
       and db.topic_get(t2) is None and db.si_for_topic(t2) is None and db.wa_media_blob_get(old_key) is None)
 check("העובד מוחק נושא שהוא פתח", c.delete(f"/api/chat/topics/{tid}", headers=Y).status_code == 200)
 
+# ── שידור למוצרים חדשים ב-GreenDay ──
+import greenday
+db.setting_set("greenday_mode", "primary", "test")
+up3 = c.post("/api/chat/upload?hq=1", headers=A, files={"file": ("p.jpg", jpg(), "image/jpeg")}).json()
+t3 = c.post("/api/chat/topics", headers=A, json={"kind": "invoice", **{k: up3[k] for k in ("attach_key", "attach_name", "attach_mime", "attach_size")}}).json()["topic"]["id"]
+time.sleep(0.6)
+SI.group_products = lambda lines: [{"name": "Xiaomi Redmi 10", "brand": "Xiaomi", "variants": [
+    {"ref": "SA", "color": "שחור", "ram": "4GB", "storage": "128GB", "sku": "520900", "pos_name": "Redmi 10 4+128 Black", "qty": 2, "desc": "x"},
+    {"ref": "SB", "color": "כחול", "ram": "6GB", "storage": "128GB", "sku": "520903", "pos_name": "Redmi 10 6+128 Blue", "qty": 1, "desc": "y"}]}]
+check("⛔ עובד לא משדר", c.post(f"/api/chat/topics/{t3}/invoice/products", headers=Y).status_code in (403, 404))
+g = c.post(f"/api/chat/topics/{t3}/invoice/products", headers=A).json()
+check("קיבוץ: מוצר אחד עם 2 וריאציות", len(g["groups"]) == 1 and len(g["groups"][0]["variants"]) == 2, g)
+pushes.clear()
+import wa_push
+wpush = []
+wa_push.send_to_all = lambda **kw: wpush.append(kw) or 1
+r = c.post(f"/api/chat/topics/{t3}/invoice/products/send", headers=A, json={"index": 0, "name": "Xiaomi Redmi 10"})
+mid = r.json().get("monday_id")
+gp = db.gd_product_get(mid) if mid else None
+check("נוצר ב'מוצרים חדשים' בסטטוס המתנה עם מק״טים, צבעים, נפח וליסט וריאציות",
+      gp and gp["grp"] == "topics" and gp["status"] == greenday.STATUS_HOLD and gp["pos_sku"] == "520900, 520903"
+      and gp["colors"] == "שחור, כחול" and gp["storages"] == ["128GB"] and gp["list_type"] == "ליסט וריאציות", gp)
+check("עדכון עם הווריאציות ומק״טים", gp and any("520903" in (x["body"] or "") for x in gp["updates"]))
+udi = [x["id"] for x in db.users_list() if x["name"] == "udi"]
+time.sleep(0.3)
+check("אודי מתויג בנושא ומקבל התראה עם קישור למוצר", any(set(udi) <= set(m.get("mentions") or []) for m in db.chat_list(topic_id=t3, limit=50))
+      and wpush and wpush[-1]["user_ids"] == udi and wpush[-1]["url"] == f"/?gd={mid}", wpush)
+check("⛔ שידור כפול נחסם", c.post(f"/api/chat/topics/{t3}/invoice/products/send", headers=A, json={"index": 0}).status_code == 409)
+g2 = c.post(f"/api/chat/topics/{t3}/invoice/products", headers=A).json()
+check("בפתיחה הבאה: מסומן כשודר + 'כבר ב-GreenDay' לכל וריאציה", g2["sent"].get("0", {}).get("monday_id") == mid
+      and all(v["exists"] and v["exists"]["monday_id"] == mid for v in g2["groups"][0]["variants"]))
+import sys as _s; _s.path.insert(0, "../shared")
+import greenday_dispatch as _gdd
+check("הסוכנים לא נוגעים בסטטוס ההמתנה", _gdd.plan([{"name": "Xiaomi Redmi 10", "status": greenday.STATUS_HOLD, "grp": "topics", "image_link": "", "list_id": "", "created": "2026-01-01T00:00:00Z", "updates": []}]) == {"yuval": [], "gali": [], "qa": []})
+
 os.unlink(_tmp)
 print("\n" + ("✅ כל בדיקות חשבונית הספק עברו" if not fails else f"❌ נכשלו {len(fails)}: {fails}"))
 sys.exit(1 if fails else 0)
