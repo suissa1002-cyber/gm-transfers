@@ -2057,6 +2057,7 @@ def _invoice_run(sid, reextract=False):
                 raise RuntimeError("הקובץ לא נמצא")
             ex = SI.extract(got[1], got[0] or si.get("mime") or "")
             db.si_set(sid, extracted=ex)
+        db.si_set(sid, status="searching")   # החיפוש בקופה איטי (מכסת NewOrder) — שיראו שהקריאה הסתיימה
         if not ex.get("readable") or not ex.get("items"):
             status = "unreadable"
         else:

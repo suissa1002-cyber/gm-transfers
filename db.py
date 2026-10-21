@@ -6375,7 +6375,7 @@ def si_set(sid, **kw):
 def si_waiting() -> list:
     with _conn() as c:
         cur = c.cursor()
-        cur.execute(_q("SELECT * FROM supplier_invoice WHERE status IN ('waiting_stock', 'pending', 'reading')"))
+        cur.execute(_q("SELECT * FROM supplier_invoice WHERE status IN ('waiting_stock', 'pending', 'reading', 'searching')"))
         return [_si_row(r) for r in cur.fetchall()]
 
 

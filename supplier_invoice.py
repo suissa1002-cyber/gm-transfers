@@ -115,14 +115,43 @@ def _ask(content, schema) -> dict:
     return json.loads(txt)
 
 
+def _sniff(data: bytes, mime: str):
+    """סוג הקובץ לפי התוכן, לא לפי מה שהדפדפן הצהיר (21/10: צילום הגיע כ-octet-stream/HEIC
+    ונדחה). פורמט שהמודל לא מקבל → המרה ל-JPEG דרך Pillow (+pillow-heif לתמונות אייפון)."""
+    if data[:5] == b"%PDF-":
+        return data, "application/pdf"
+    if data[:3] == b"\xff\xd8\xff":
+        return data, "image/jpeg"
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return data, "image/png"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return data, "image/webp"
+    if data[:6] in (b"GIF87a", b"GIF89a"):
+        return data, "image/gif"
+    try:
+        import io
+        from PIL import Image, ImageOps
+        try:
+            import pillow_heif
+            pillow_heif.register_heif_opener()
+        except Exception:  # noqa: BLE001
+            pass
+        im = ImageOps.exif_transpose(Image.open(io.BytesIO(data)))
+        im.thumbnail((3600, 3600))
+        buf = io.BytesIO()
+        im.convert("RGB").save(buf, "JPEG", quality=92)
+        return buf.getvalue(), "image/jpeg"
+    except Exception:  # noqa: BLE001
+        raise ValueError(f"סוג קובץ לא נתמך ({mime or 'לא ידוע'}) — צריך תמונה או PDF")
+
+
 def extract(data: bytes, mime: str) -> dict:
+    data, mime = _sniff(data, mime)
     b64 = base64.standard_b64encode(data).decode()
     if mime == "application/pdf":
         block = {"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": b64}}
-    elif mime in ("image/jpeg", "image/png", "image/webp", "image/gif"):
-        block = {"type": "image", "source": {"type": "base64", "media_type": mime, "data": b64}}
     else:
-        raise ValueError("סוג קובץ לא נתמך — צריך תמונה או PDF")
+        block = {"type": "image", "source": {"type": "base64", "media_type": mime, "data": b64}}
     out = _ask([block, {"type": "text", "text": _EXTRACT_PROMPT}], _EXTRACT_SCHEMA)
     out["items"] = [i for i in out.get("items") or [] if (i.get("qty") or 0) > 0]
     return out

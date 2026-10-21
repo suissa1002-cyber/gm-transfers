@@ -774,6 +774,7 @@
   .tc-invhead{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
   .tc-invlock{margin-inline-start:auto;font-size:11.5px;display:inline-flex;align-items:center;gap:3px}
   .tc-invops{font-size:12.5px;line-height:1.6}
+  .tc-invsum{font-size:14px;font-weight:600;line-height:1.5}
   .tc-invtbl{width:100%;border-collapse:collapse;font-size:13px}
   .tc-invtbl th{text-align:right;font-weight:600;color:var(--muted);font-size:12px;padding:4px 6px;border-bottom:1px solid var(--line)}
   .tc-invtbl td{padding:6px;border-bottom:1px solid var(--line);vertical-align:top}
@@ -2462,7 +2463,7 @@ function tcCamShot(){
   c.toBlob(b=>{ tcCamClose(); if(b) tcInvUpload(new File([b],'חשבונית-צילום.jpg',{type:'image/jpeg'})); },'image/jpeg',0.93);
 }
 // דוח האימות (בעלים בלבד) — מוצג מעל העדכונים בנושא חשבונית
-const TC_INV_ST={pending:['ממתין לבדיקה','#94a3b8'],reading:['קורא את החשבונית…','#579bfc'],waiting_stock:['ממתין לכניסה בקופה','#94a3b8'],
+const TC_INV_ST={pending:['ממתין לבדיקה','#94a3b8'],reading:['קורא את החשבונית…','#579bfc'],searching:['מחפש את הכניסה בקופה…','#579bfc'],waiting_stock:['ממתין לכניסה בקופה','#94a3b8'],
   ok:['תואם למלאי','#00a884'],mismatch:['לא תואם למלאי','#e8833a'],unreadable:['לא קריא — צריך צילום חדש','#dc2626'],
   not_found:['לא נמצאה כניסה בקופה','#dc2626'],error:['הבדיקה נכשלה','#dc2626']};
 const TC_LINE_ST={ok:['✓','נכנס','#00a884'],partial:['◐','חלקי','#e8833a'],missing:['✗','לא נכנס','#dc2626'],unsure:['?','לבדיקה','#a25ddc']};
@@ -2482,6 +2483,7 @@ function tcInvCardHTML(){
     <div class="tc-invhead"><span class="tc-status" style="background:${sc}">${sl}</span>
       <b>${escW(ex.supplier||'')}</b>${ex.doc_number?` <span class="muted">${escW(ex.doc_type||'מסמך')} ${escW(ex.doc_number)}</span>`:''}${ex.doc_date?` <span class="muted">· ${escW(ex.doc_date.split('-').reverse().join('/'))}</span>`:''}
       <span class="tc-invlock muted">${icoI('lock',12)}גלוי לבעלים בלבד</span></div>
+    ${tcInvSummary(I)}
     ${ops?`<div class="tc-invops muted">${ops}${R.how==='supplier'?'<br><span style="color:#e8833a">אותרה לפי ספק ותאריך — מספר המסמך בקופה חסר או שונה</span>':''}</div>`:''}
     ${I.status==='waiting_stock'?`<div class="muted" style="font-size:12.5px">עוד לא נמצאה בקופה כניסה למלאי למסמך הזה. בודק שוב כל שעה, עד 3 ימים מההעלאה.</div>`:''}
     ${I.status==='error'?`<div class="muted" style="font-size:12.5px">${escW(I.error||'')}</div>`:''}
@@ -2496,6 +2498,22 @@ function tcInvCardHTML(){
       <a href="#" onclick="tcInvRecheck(0);return false">${icoI('refresh',13)}בדוק שוב מול הקופה</a>
       <a href="#" onclick="tcInvRecheck(1);return false">${icoI('eye',13)}קרא את החשבונית מחדש</a></div>
   </div>`;
+}
+// משפט אחד בשפה פשוטה — מה התוצאה ומה לעשות
+function tcInvSummary(I){
+  const R=I.result||{}, L=R.lines||[], n=v=>Number(v||0).toLocaleString('he-IL',{maximumFractionDigits:2});
+  let t='';
+  if(I.status==='reading') t='קורא את החשבונית — כמה שניות.';
+  else if(I.status==='searching') t='החשבונית נקראה. מחפש בקופה את הכניסה למלאי המתאימה — עד כדקה.';
+  else if(I.status==='ok') t=`✓ כל ${L.length} השורות בחשבונית (${n(R.inv_qty)} יחידות) נכנסו למלאי בקופה בכמות המלאה. אין מה לעשות.`;
+  else if(I.status==='mismatch'){
+    const bad=L.filter(l=>l.status!=='ok'), miss=L.reduce((a,l)=>a+Math.max(0,l.qty-l.got),0);
+    t=`⚠ ${bad.length} מתוך ${L.length} שורות לא תואמות${miss?` — חסרות בקופה ${n(miss)} יחידות לעומת החשבונית`:''}${(R.extras||[]).length?' · יש בכניסה מוצרים שלא בחשבונית':''}. כדאי לבדוק את השורות המסומנות.`;
+  }
+  else if(I.status==='unreadable') t='לא הצלחתי לקרוא את שורות המוצרים. צלמו שוב — ישר, באור טוב, כל הדף בתוך המסגרת.';
+  else if(I.status==='not_found') t='לא נמצאה בקופה כניסה למלאי לחשבונית הזו גם אחרי 3 ימים. אולי הסחורה לא הוכנסה, או שמספר המסמך/הספק בקופה שונה.';
+  else if(I.status==='error') t='הבדיקה נכשלה — אפשר ללחוץ "קרא את החשבונית מחדש".';
+  return t?`<div class="tc-invsum">${t}</div>`:'';
 }
 async function tcInvRecheck(reread){
   try{ await api('/api/chat/topics/'+TC.topic+'/invoice/recheck?reread='+(reread?1:0),{method:'POST'},15000);
@@ -2545,7 +2563,7 @@ async function tcLoad(first){
     if(TC.view!=='thread'||TC.topic!==topic) return;
     TC.users=r.users||TC.users; TC.me=r.me; tcBadge(r.unread);
     if(r.topic){ const ch=JSON.stringify(r.topic)!==JSON.stringify(TC.topicObj); TC.topicObj=r.topic; if(ch) tcPaintTHead(); }
-    if(r.topic&&r.topic.kind==='invoice'&&(!TC.inv||(!['ok','mismatch','unreadable','not_found','error'].includes(TC.inv.status)&&Date.now()-TC.invAt>8000))) tcInvLoad();
+    if(r.topic&&r.topic.kind==='invoice'&&(!TC.inv||(!['ok','mismatch','unreadable','not_found','error'].includes(TC.inv.status)&&Date.now()-TC.invAt>5000))) tcInvLoad();
     const sig=JSON.stringify([r.messages,r.reads,(r.users||[]).map(u=>Math.floor((u.active_ts||0)/60))]);   // נמסר מתעדכן בלי רענון
     if(sig!==TC.sig){
       TC.sig=sig; TC.msgs=r.messages||[]; TC.reads=r.reads||{};
