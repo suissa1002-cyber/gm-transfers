@@ -14,3 +14,5 @@ openpyxl==3.1.2
 # חשבונית ספק → Claude קורא את המסמך ומשווה לכניסה למלאי ב-NewOrder (GreenDay)
 anthropic>=0.105.2
 pillow-heif>=0.18.0
+# QR למעבר צילום מהמחשב לטלפון (חשבונית ספק)
+segno>=1.6.1

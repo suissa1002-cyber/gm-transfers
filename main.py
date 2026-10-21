@@ -12,7 +12,7 @@ from typing import Optional
 from datetime import datetime, timedelta
 
 from fastapi import FastAPI, HTTPException, Header, Request, BackgroundTasks
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -1983,6 +1983,7 @@ class TopicIn(BaseModel):
     attach_name: str = ""
     attach_mime: str = ""
     attach_size: int = 0
+    attach_keys: list = []      # חשבונית של כמה עמודים — מאוחדים ל-PDF אחד
 
 
 @app.post("/api/chat/topics")
@@ -1992,6 +1993,16 @@ def chat_topic_create(body: TopicIn):
     title = (body.title or "").strip()
     kind = body.kind if body.kind in _TOPIC_KINDS else "question"
     key = (body.attach_key or "").strip()
+    pages = [str(k) for k in (body.attach_keys or []) if re.fullmatch(r"chat:[0-9a-f]{32}", str(k))]
+    if kind == "invoice" and len(pages) > 1:
+        m = _merge_pages(pages[:_SNAP_MAX_PAGES])
+        key, body.attach_name, body.attach_mime, body.attach_size = m["attach_key"], m["attach_name"], m["attach_mime"], m["attach_size"]
+    elif kind == "invoice" and pages and not key:
+        key = pages[0]
+        got = db.wa_media_blob_get(key)
+        body.attach_mime = (got[0] if got else "") or body.attach_mime
+        body.attach_size = len(got[1]) if got else 0
+        body.attach_name = body.attach_name or "חשבונית"
     if kind == "invoice":
         if not re.fullmatch(r"chat:[0-9a-f]{32}", key):
             raise HTTPException(400, "צריך לצרף את החשבונית (תמונה או PDF)")
@@ -2245,8 +2256,16 @@ async def chat_upload(request: Request, hq: int = 0):
         raise HTTPException(400, "קובץ ריק")
     if len(data) > _CHAT_MAX_FILE:
         raise HTTPException(400, "קובץ גדול מדי (עד 15MB)")
-    mime = (up.content_type or "application/octet-stream")[:100]
-    name = (up.filename or "file")[:200]
+    return _chat_blob_store(data, (up.content_type or "application/octet-stream")[:100], (up.filename or "file")[:200], hq)
+
+
+def _chat_blob_store(data: bytes, mime: str, name: str, hq: int = 0) -> dict:
+    if hq and not (mime == "application/pdf" or mime in ("image/jpeg", "image/png", "image/webp")):
+        try:   # HEIC מאייפון / סוג לא מוצהר → JPEG (שיוצג גם בדפדפן וגם יקרא ע"י Claude)
+            import supplier_invoice as _SI
+            data, mime = _SI._sniff(data, mime)
+        except Exception:  # noqa: BLE001
+            pass
     if mime in ("image/jpeg", "image/png", "image/webp") and len(data) > (4_000_000 if hq else 1_500_000):
         try:
             import io
@@ -2262,6 +2281,142 @@ async def chat_upload(request: Request, hq: int = 0):
     key = "chat:" + uuid.uuid4().hex
     db.wa_media_blob_set(key, mime, data)
     return {"ok": True, "attach_key": key, "attach_name": name, "attach_mime": mime, "attach_size": len(data)}
+
+
+# ── צילום בטלפון דרך QR (21/10/2026, אסי): מהמחשב פותחים קוד, סורקים בטלפון → מצלמה → הקובץ חוזר לטופס ──
+_SNAP_TTL = 15 * 60
+_SNAP_MAX_PAGES = 12
+
+
+def _merge_pages(keys) -> dict:
+    """חשבונית של כמה עמודים → PDF אחד (תמונות + PDF-ים לפי הסדר). נפתח בדפדפן עם זום מלא
+    ו-Claude קורא את כל העמודים בבת אחת."""
+    import fitz
+    out = fitz.open()
+    for k in keys:
+        got = db.wa_media_blob_get(k)
+        if not got:
+            continue
+        mime, data = got
+        if mime == "application/pdf" or data[:5] == b"%PDF-":
+            with fitz.open(stream=data, filetype="pdf") as src:
+                out.insert_pdf(src)
+        else:
+            with fitz.open(stream=data, filetype=(mime or "image/jpeg").split("/")[-1]) as im:
+                rect = im[0].rect
+                pg = out.new_page(width=rect.width, height=rect.height)
+                pg.insert_image(rect, stream=data)
+    if not out.page_count:
+        raise HTTPException(400, "העמודים לא נמצאו — העלו שוב")
+    data = out.tobytes(garbage=3, deflate=True)
+    return _chat_blob_store(data, "application/pdf", f"חשבונית ({out.page_count} עמודים).pdf", 0)
+
+
+def _snap_get(tok: str):
+    if not re.fullmatch(r"[0-9a-f]{32}", tok or ""):
+        return None
+    raw = db.setting_get("snap:" + tok)
+    try:
+        d = json_mod.loads(raw) if raw else None
+    except Exception:  # noqa: BLE001
+        return None
+    import time as _t
+    return d if d and _t.time() - d.get("ts", 0) < _SNAP_TTL else None
+
+
+@app.post("/api/chat/handoff")
+def chat_handoff_create(request: Request):
+    """קוד חד-פעמי (15 דק') — הטלפון מעלה אליו קובץ בלי להתחבר; המחשב שואל עד שמגיע."""
+    u = _chat_user()
+    import secrets, time as _t, io, segno
+    tok = secrets.token_hex(16)
+    db.setting_set("snap:" + tok, json_mod.dumps({"ts": _t.time(), "uid": u["id"], "by": u["name"], "files": []}), u["name"])
+    base = (os.getenv("APP_BASE_URL") or str(request.base_url)).rstrip("/")
+    url = f"{base}/snap/{tok}"
+    buf = io.BytesIO()
+    segno.make(url, error="m").save(buf, kind="svg", scale=6, border=2, dark="#111")
+    return {"token": tok, "url": url, "qr_svg": buf.getvalue().decode(), "ttl": _SNAP_TTL}
+
+
+@app.get("/api/chat/handoff/{tok}")
+def chat_handoff_status(tok: str):
+    u = _chat_user()
+    d = _snap_get(tok)
+    if not d or d.get("uid") != u["id"]:
+        return {"state": "expired"}
+    import wa
+    files = [{**f, "url": f"/api/chat/file/{f['attach_key'].split(':', 1)[1]}?t={wa.media_token(f['attach_key'])}"}
+             for f in d.get("files") or []]
+    return {"state": "done" if files else "waiting", "files": files}
+
+
+@app.get("/snap/{tok}")
+def snap_page(tok: str):
+    d = _snap_get(tok)
+    if not d:
+        return HTMLResponse(_SNAP_HTML.replace("{{BODY}}", '<h1>הקישור פג</h1><p>פתחו קוד חדש מהמחשב ב-GreenOS.</p>'), status_code=410)
+    import html as _html
+    return HTMLResponse(_SNAP_HTML.replace("{{BODY}}", _SNAP_FORM.replace("{{TOK}}", tok).replace("{{BY}}", _html.escape(d.get("by") or ""))))
+
+
+@app.post("/snap/{tok}/upload")
+async def snap_upload(tok: str, request: Request):
+    d = _snap_get(tok)
+    if not d:
+        raise HTTPException(410, "הקישור פג — פתחו קוד חדש מהמחשב")
+    if len(d.get("files") or []) >= _SNAP_MAX_PAGES:
+        raise HTTPException(409, f"עד {_SNAP_MAX_PAGES} עמודים בקישור אחד")
+    form = await request.form()
+    up = form.get("file")
+    if up is None or isinstance(up, str):
+        raise HTTPException(400, "לא נבחר קובץ")
+    data = await up.read()
+    if not data or len(data) > _CHAT_MAX_FILE:
+        raise HTTPException(400, "קובץ ריק או גדול מדי (עד 15MB)")
+    from starlette.concurrency import run_in_threadpool
+    f = await run_in_threadpool(_chat_blob_store, data, (up.content_type or "application/octet-stream")[:100],
+                                (up.filename or "חשבונית-טלפון.jpg")[:200], 1)
+    if not ((f["attach_mime"] or "").startswith("image/") or f["attach_mime"] == "application/pdf"):
+        raise HTTPException(400, "צריך תמונה או PDF")
+    d = _snap_get(tok) or d   # קריאה טרייה — שני עמודים ברצף מהר
+    d.setdefault("files", []).append({k: f[k] for k in ("attach_key", "attach_name", "attach_mime", "attach_size")})
+    db.setting_set("snap:" + tok, json_mod.dumps(d), "snap")
+    return {"ok": True, "pages": len(d["files"])}
+
+
+_SNAP_HTML = """<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>צילום חשבונית · GreenOS</title>
+<style>*{box-sizing:border-box}body{margin:0;font-family:-apple-system,system-ui,"Heebo",Arial,sans-serif;background:#f4f6f8;color:#16181d;
+min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+.c{background:#fff;border-radius:20px;padding:26px 22px;max-width:420px;width:100%;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.08)}
+h1{font-size:22px;margin:6px 0 8px}p{color:#5b6170;font-size:15px;line-height:1.6;margin:0 0 18px}
+.b{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:16px;border-radius:14px;font-size:18px;font-weight:700;
+border:0;margin-bottom:10px;cursor:pointer}.p{background:#00a884;color:#fff}.g{background:#eef1f4;color:#16181d;font-size:15px;padding:12px}
+input{display:none}.ok{font-size:64px;color:#00a884}#st{font-size:15px;min-height:22px;margin-top:6px}
+img{max-width:100%;border-radius:12px;margin:8px 0 14px;max-height:45vh}.brand{font-weight:800;color:#00a884;font-size:15px}</style></head>
+<body><div class="c"><div class="brand">GreenOS</div>{{BODY}}</div></body></html>"""
+
+_SNAP_FORM = """<h1>צילום חשבונית</h1><p>צלמו את החשבונית או תעודת המשלוח — ישר, באור טוב, כל הדף בתמונה. היא תופיע אצל {{BY}} במחשב. כמה עמודים? צלמו אחד אחרי השני.</p>
+<img id="pv" style="display:none">
+<label class="b p" id="cam">📷 צלם חשבונית<input type="file" accept="image/*" capture="environment" onchange="go(this.files[0])"></label>
+<label class="b g">בחירה מהגלריה / קובץ PDF<input type="file" accept="image/*,application/pdf" onchange="go(this.files[0])"></label>
+<div id="st"></div>
+<button class="b g" id="done" style="display:none;margin-top:10px" onclick="fin()">סיימתי</button>
+<script>
+async function go(f){ if(!f) return; const st=document.getElementById('st');
+  if(f.type.startsWith('image/')){ const pv=document.getElementById('pv'); pv.src=URL.createObjectURL(f); pv.style.display='block'; }
+  st.textContent='שולח…'; st.style.color='#5b6170';
+  const fd=new FormData(); fd.append('file',f,f.name||'invoice.jpg');
+  try{ const r=await fetch('/snap/{{TOK}}/upload',{method:'POST',body:fd}); const j=await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(j.detail||'השליחה נכשלה');
+    document.getElementById('pv').style.display='none';
+    document.getElementById('cam').firstChild.textContent='📷 צלם עמוד נוסף';
+    document.getElementById('done').style.display='flex';
+    st.innerHTML='<b style="color:#00a884">✓ עמוד '+j.pages+' נשלח למחשב.</b><br>לחשבונית יש עוד עמוד? צלמו אותו. אם לא — סיימתם.';
+    st.style.color='#16181d';
+  }catch(e){ st.textContent=e.message+' — נסו שוב'; st.style.color='#dc2626'; } }
+function fin(){ document.querySelector('.c').innerHTML='<div class="brand">GreenOS</div><div class="ok">✓</div><h1>נשלח למחשב</h1><p>כל העמודים מופיעים בטופס במחשב. אפשר לסגור את הדף.</p>'; }
+</script>"""
 
 
 @app.get("/api/chat/file/{uid}")

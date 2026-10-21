@@ -70,6 +70,27 @@ check("סטטוס סופי — לא נבדק ולא מתריע שוב", len([p f
 check("⛔ עובד לא מפעיל בדיקה חוזרת", c.post(f"/api/chat/topics/{tid}/invoice/recheck", headers=Y).status_code == 403)
 check("⛔ צירוף קובץ לנושא רגיל נדחה", c.post("/api/chat/topics", headers=Y, json={"title": "x", "kind": "question", "attach_key": up["attach_key"]}).status_code == 400)
 
+# ── צילום בטלפון (QR) + חשבונית של כמה עמודים ──
+import io
+from PIL import Image
+def jpg():
+    b = io.BytesIO(); Image.new("RGB", (600, 800), "white").save(b, "JPEG"); return b.getvalue()
+h = c.post("/api/chat/handoff", headers=A).json()
+check("QR נוצר עם קישור ו-SVG", h["url"].endswith("/snap/" + h["token"]) and "<svg" in h["qr_svg"])
+check("דף הטלפון נפתח בלי כניסה", c.get(f"/snap/{h['token']}").status_code == 200)
+check("⛔ טוקן מזויף", c.get("/snap/" + "0" * 32).status_code == 410 and c.post("/snap/" + "0" * 32 + "/upload", files={"file": ("a.jpg", jpg(), "image/jpeg")}).status_code == 410)
+check("⛔ עובד אחר לא רואה את ה-QR שלי", c.get(f"/api/chat/handoff/{h['token']}", headers=Y).json()["state"] == "expired")
+r1 = c.post(f"/snap/{h['token']}/upload", files={"file": ("p1.jpg", jpg(), "image/jpeg")}).json()
+r2 = c.post(f"/snap/{h['token']}/upload", files={"file": ("p2.jpg", jpg(), "application/octet-stream")}).json()
+st = c.get(f"/api/chat/handoff/{h['token']}", headers=A).json()
+check("שני עמודים מהטלפון הגיעו למחשב (גם בלי סוג מוצהר)", r2.get("pages") == 2 and st["state"] == "done" and len(st["files"]) == 2
+      and all(f["attach_mime"] == "image/jpeg" for f in st["files"]), st)
+keys = [f["attach_key"] for f in st["files"]]
+r = c.post("/api/chat/topics", headers=A, json={"kind": "invoice", "attach_keys": keys})
+t2 = r.json()["topic"]["id"]
+m = [x for x in c.get(f"/api/chat/messages?topic={t2}", headers=A).json()["messages"] if x.get("attach_url")]
+check("כמה עמודים → PDF אחד בנושא", r.status_code == 200 and m and m[0]["attach_mime"] == "application/pdf" and "2 עמודים" in m[0]["attach_name"], m)
+
 os.unlink(_tmp)
 print("\n" + ("✅ כל בדיקות חשבונית הספק עברו" if not fails else f"❌ נכשלו {len(fails)}: {fails}"))
 sys.exit(1 if fails else 0)

@@ -765,6 +765,14 @@
   .tc-invbtn{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border:1px solid var(--line);border-radius:10px;cursor:pointer;font-size:13.5px;color:var(--txt);text-decoration:none;background:var(--card)}
   .tc-invbtn:hover{border-color:#00a884}
   .tc-invhint{width:100%;text-align:center;font-size:12px}
+  .tc-invpgs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px}
+  .tc-invpg{position:relative;width:86px;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:11.5px}
+  .tc-invpg img,.tc-invpg .tc-invdoc,.tc-invpg>span.muted{width:86px;height:110px;object-fit:cover;border-radius:8px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;cursor:zoom-in;background:var(--card2)}
+  .tc-invpg>a{position:absolute;top:3px;left:3px;background:rgba(0,0,0,.6);color:#fff;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center}
+  .tc-qrm{max-width:380px;text-align:center;display:flex;flex-direction:column;gap:8px;align-items:center}
+  .tc-qrm h3{display:flex;align-items:center;gap:6px}
+  .tc-qrimg svg{width:240px;height:240px}
+  .tc-qrst{font-size:14px;display:flex;align-items:center;gap:6px;justify-content:center;min-height:22px}
   .tc-invprev{display:flex;align-items:center;gap:10px;padding:8px;border:1px solid var(--line);border-radius:12px}
   .tc-invprev img{width:72px;height:72px;object-fit:cover;border-radius:8px;cursor:zoom-in}
   .tc-invdoc{width:72px;height:72px;display:flex;align-items:center;justify-content:center;background:var(--card2);border-radius:8px}
@@ -2393,17 +2401,19 @@ function tcNewTopic(){
   document.getElementById('tcTitle').focus();
 }
 async function tcCreateTopic(){
-  const title=document.getElementById('tcTitle').value.trim(), kind=tcKindSel(), inv=TC.atts.inv, err=document.getElementById('tcErr');
+  const title=document.getElementById('tcTitle').value.trim(), kind=tcKindSel(), err=document.getElementById('tcErr');
+  const P=tcInvPages();
   if(kind==='invoice'){
-    if(!inv){ err.textContent='צרף את החשבונית — קובץ, הדבקה או צילום'; return; }
-    if(inv.uploading){ err.textContent='החשבונית עדיין עולה…'; return; }
+    if(!P.length){ err.textContent='צרף את החשבונית — קובץ, הדבקה או צילום'; return; }
+    if(P.some(a=>a.uploading)){ err.textContent='החשבונית עדיין עולה…'; return; }
   } else if(!title){ err.textContent='חסרה כותרת'; return; }
   const body={title, kind,
     assignees:[...document.querySelectorAll('.tc-assg input:checked')].map(x=>Number(x.value)),
     text:document.getElementById('tcFirst').value, wa_phone:TC.wa||''};
-  if(kind==='invoice') Object.assign(body,{attach_key:inv.attach_key,attach_name:inv.attach_name,attach_mime:inv.attach_mime,attach_size:inv.attach_size});
+  if(kind==='invoice'){ if(P.length===1) Object.assign(body,{attach_key:P[0].attach_key,attach_name:P[0].attach_name,attach_mime:P[0].attach_mime,attach_size:P[0].attach_size});
+    else body.attach_keys=P.map(a=>a.attach_key); }
   try{ const r=await api('/api/chat/topics',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    TC.wa=''; delete TC.atts.inv; tcOpenTopic(r.topic.id); tcLoadWaLinks(true); }
+    TC.wa=''; delete TC.atts.invPages; tcOpenTopic(r.topic.id); tcLoadWaLinks(true); }
   catch(e){ document.getElementById('tcErr').textContent=e.detail||'הפתיחה נכשלה'; }
 }
 // ── 🧾 חשבונית ספק (21/10/2026): העלאה מקובץ / הדבקה / מצלמה + דוח אימות מול הקופה (בעלים בלבד) ──
@@ -2416,19 +2426,21 @@ function tcKindChanged(){
   const f=document.getElementById('tcFirst'); if(f) f.placeholder=inv?'הערה / שאלה על החשבונית (אופציונלי) — למשל: חסר מכשיר אחד בקרטון':'תיאור, מה צריך, עד מתי… (אופציונלי)';
   if(inv) tcInvPaint();
 }
+// עמודי החשבונית (כמה עמודים → מאוחדים בשרת ל-PDF אחד)
+function tcInvPages(){ return TC.atts.invPages=TC.atts.invPages||[]; }
 function tcInvPaint(){
-  const z=document.getElementById('tcInvZone'); if(!z) return; const a=TC.atts.inv;
-  if(a){ const img=String(a.attach_mime||'').startsWith('image/')&&a.url;
-    z.innerHTML=`<div class="tc-invprev">${a.uploading?`<span class="muted">${icoI('clock',14)}מעלה ${escW(a.attach_name)}…</span>`
-      :`${img?`<img src="${a.url}" onclick="waLightbox('${a.url}')">`:`<span class="tc-invdoc">${ico('file',26)}</span>`}<span class="tc-invname">${escW(a.attach_name)}</span>
-        <a href="#" onclick="delete TC.atts.inv;tcInvPaint();return false">${ico('trash',14)} הסרה</a>`}</div>`;
-    return; }
-  z.innerHTML=`<div class="tc-invdrop" ondragover="event.preventDefault()" ondrop="event.preventDefault();const f=event.dataTransfer.files[0];if(f)tcInvUpload(f)">
-    <label class="tc-invbtn">${icoI('file',18)}בחירת קובץ<input type="file" accept="image/*,application/pdf" style="display:none" onchange="if(this.files[0])tcInvUpload(this.files[0])"></label>
+  const z=document.getElementById('tcInvZone'); if(!z) return; const P=tcInvPages();
+  const thumbs=P.map((a,i)=>`<div class="tc-invpg">${a.uploading?`<span class="muted">${icoI('clock',14)}</span>`
+      :String(a.attach_mime||'').startsWith('image/')&&a.url?`<img src="${a.url}" onclick="waLightbox('${a.url}')">`:`<span class="tc-invdoc">${ico('file',22)}</span>`}
+      <span class="tc-invpgn">עמוד ${i+1}</span>${a.uploading?'':`<a href="#" title="הסרה" onclick="TC.atts.invPages.splice(${i},1);tcInvPaint();return false">${ico('x',12)}</a>`}</div>`).join('');
+  z.innerHTML=`${P.length?`<div class="tc-invpgs">${thumbs}</div>`:''}
+    <div class="tc-invdrop" ondragover="event.preventDefault()" ondrop="event.preventDefault();[...event.dataTransfer.files].forEach(tcInvUpload)">
+    <a href="#" class="tc-invbtn" onclick="tcQrOpen();return false">${icoI('mobile',18)}צילום בטלפון (QR)</a>
+    <label class="tc-invbtn">${icoI('file',18)}בחירת קובץ<input type="file" multiple accept="image/*,application/pdf" style="display:none" onchange="[...this.files].forEach(tcInvUpload)"></label>
     <a href="#" class="tc-invbtn" onclick="tcInvPasteBtn();return false">${icoI('copy',18)}הדבקה</a>
     ${IS_MOBILE?`<label class="tc-invbtn">${icoI('camera',18)}צילום<input type="file" accept="image/*" capture="environment" style="display:none" onchange="if(this.files[0])tcInvUpload(this.files[0])"></label>`
-      :`<a href="#" class="tc-invbtn" onclick="tcCamOpen();return false">${icoI('camera',18)}צילום במצלמה</a>`}
-    <div class="muted tc-invhint">תמונה או PDF · אפשר גם לגרור לכאן או להדביק (Cmd+V)</div></div>`;
+      :`<a href="#" class="tc-invbtn" onclick="tcCamOpen();return false">${icoI('camera',18)}מצלמת המחשב</a>`}
+    <div class="muted tc-invhint">${P.length?'לחשבונית יש עוד עמוד? הוסיפו אותו — כל העמודים יאוחדו לקובץ אחד':'תמונה או PDF · אפשר גם לגרור לכאן או להדביק (Cmd+V) · כמה עמודים — מוסיפים אחד אחרי השני'}</div></div>`;
 }
 async function tcInvPasteBtn(){
   try{ const items=await navigator.clipboard.read();
@@ -2438,15 +2450,43 @@ async function tcInvPasteBtn(){
   }catch(e){ toast('הדפדפן לא מאפשר קריאה מהלוח — לחץ Cmd+V בתוך הטופס',false); }
 }
 async function tcInvUpload(file){
-  if(!(String(file.type).startsWith('image/')||file.type==='application/pdf')){ toast('צריך תמונה או PDF',false); return; }
+  if(!file) return;
+  if(!(String(file.type).startsWith('image/')||file.type==='application/pdf'||/\.(heic|heif)$/i.test(file.name||''))){ toast('צריך תמונה או PDF',false); return; }
   if(file.size>15*1024*1024){ toast('קובץ גדול מדי (עד 15MB)',false); return; }
-  const url=String(file.type).startsWith('image/')?URL.createObjectURL(file):'';
-  TC.atts.inv={uploading:true, attach_name:file.name||'חשבונית'}; tcInvPaint();
+  const P=tcInvPages(); if(P.length>=12){ toast('עד 12 עמודים',false); return; }
+  const slot={uploading:true, attach_name:file.name||'חשבונית'}; P.push(slot); tcInvPaint();
   const fd=new FormData(); fd.append('file',file,file.name||'invoice');
   try{ const r=await fetchT('/api/chat/upload?hq=1',{method:'POST',headers:authH({}),body:fd},120000);
     const j=await r.json().catch(()=>({})); if(!r.ok) throw new Error(j.detail||'ההעלאה נכשלה');
-    TC.atts.inv=Object.assign(j,{url}); tcInvPaint();
-  }catch(e){ delete TC.atts.inv; tcInvPaint(); toast(e.message||'ההעלאה נכשלה',false); }
+    Object.assign(slot,j,{uploading:false, url:String(j.attach_mime||'').startsWith('image/')?URL.createObjectURL(file):''}); tcInvPaint();
+  }catch(e){ const i=P.indexOf(slot); if(i>=0) P.splice(i,1); tcInvPaint(); toast(e.message||'ההעלאה נכשלה',false); }
+}
+// ── צילום בטלפון דרך QR: קוד חד-פעמי (15 דק'), כל עמוד שמצולם בטלפון נוסף כאן אוטומטית ──
+let _tcQr=null;
+async function tcQrOpen(){
+  try{ const r=await api('/api/chat/handoff',{method:'POST'},20000);
+    _tcQr={tok:r.token, seen:0, t:null};
+    const o=document.createElement('div'); o.className='overlay'; o.id='tcQr';
+    o.innerHTML=`<div class="modal us-modal tc-qrm"><h3>${icoI('mobile',18)}צילום בטלפון</h3>
+      <div class="tc-qrimg">${r.qr_svg}</div>
+      <div>סרקו במצלמת הטלפון → נפתחת המצלמה → מצלמים. כל עמוד מופיע כאן מיד.</div>
+      <div class="tc-qrst" id="tcQrSt">${icoI('clock',14)}ממתין לצילום מהטלפון…</div>
+      <div class="muted" style="font-size:12px">הקוד תקף ל-15 דקות · לא צריך להתחבר בטלפון</div>
+      <button class="btn-primary" style="width:100%;margin-top:10px" onclick="tcQrClose()">סיום</button></div>`;
+    document.body.appendChild(o);
+    _tcQr.t=setInterval(tcQrPoll,2000);
+  }catch(e){ toast(e.detail||'לא הצלחתי ליצור קוד',false); }
+}
+function tcQrClose(){ if(_tcQr) clearInterval(_tcQr.t); _tcQr=null; const o=document.getElementById('tcQr'); if(o) o.remove(); }
+async function tcQrPoll(){
+  if(!_tcQr) return;
+  try{ const r=await api('/api/chat/handoff/'+_tcQr.tok,{},10000);
+    const st=document.getElementById('tcQrSt');
+    if(r.state==='expired'){ if(st) st.innerHTML=icoI('alert',14)+'הקוד פג — סגרו ופתחו קוד חדש'; clearInterval(_tcQr.t); return; }
+    const F=r.files||[];
+    for(const f of F.slice(_tcQr.seen)){ tcInvPages().push({...f, uploading:false}); }
+    if(F.length>_tcQr.seen){ _tcQr.seen=F.length; tcInvPaint(); if(st) st.innerHTML=`<b style="color:#00a884">${icoI('check',14)}התקבלו ${F.length} עמודים</b> — אפשר לצלם עוד עמוד או ללחוץ סיום`; }
+  }catch(e){}
 }
 // מצלמת המחשב: הרזולוציה הגבוהה ביותר, מסגרת יישור, חיתוך למסגרת + חידוד ניגודיות
 let _tcCam=null;
