@@ -1471,7 +1471,7 @@
    משדרגים את ה-URL ל-200×200 לפני הטעינה (הן lazy-loaded, אז אין fetch כפול). */
 (function ($) {
   'use strict';
-  var TARGET = 200;
+  var TARGET = 300;   // 76px × DPR 3 (אייפון) ≈ 230px — 200 עדיין רך (אסי 21/10)
 
   function sharpen(img) {
     ['src', 'data-src', 'data-lazy-src'].forEach(function (attr) {
