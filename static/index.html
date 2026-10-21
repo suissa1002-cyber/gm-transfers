@@ -966,6 +966,7 @@
   .gd-table .gd-c-name{text-align:start;min-width:260px;max-width:380px;white-space:normal;font-weight:600}
   .gd-table .gd-c-notes{text-align:start;max-width:240px;color:var(--muted)}
   .gd-subs{display:block;font-weight:400;font-size:11.5px;color:var(--muted)}
+  .gd-idel{color:#dc2626;display:inline-flex;padding:6px;border-radius:8px}.gd-idel:hover{background:rgba(220,38,38,.1)}
   .gdu-res{max-height:300px;overflow:auto;margin-top:8px;display:flex;flex-direction:column;gap:6px}
   .gdu-row{display:flex;align-items:center;gap:10px;padding:7px 9px;border:1px solid var(--line);border-radius:10px;cursor:pointer;text-align:right}
   .gdu-row:hover{background:var(--card2)}.gdu-row.sel{cursor:default;border-color:#0073ea;background:rgba(0,115,234,.06)}
@@ -3598,13 +3599,14 @@ function gdBulkBar(){
     <select class="gd-sel" onchange="if(this.value)gdBulk('grp',this.value);this.value=''"><option value="">העבר לקבוצה…</option>${D.groups.map(g=>`<option value="${g.id}">${escW(g.title)}</option>`).join('')}</select>
     <select class="gd-sel" onchange="if(this.value)gdBulk('status',this.value);this.value=''"><option value="">שנה סטטוס…</option>${D.statuses.map(s=>`<option>${escW(s.label)}</option>`).join('')}</select>
     <button class="btn-ghost gd-arch" onclick="gdBulk('grp','${arch}')">${icoI('archive',14)}העבר לארכיון</button>
+    <button class="btn-ghost gd-arch" style="color:#dc2626" onclick="gdBulk('delete','')">${icoI('trash',14)}מחיקה</button>
     <a href="#" onclick="GD.sel.clear();gdRender();return false">נקה בחירה</a>
   </div>`;
 }
 async function gdBulk(action,value){
   const ids=[...GD.sel]; const D=GD.data;
-  const lbl=action==='grp'?'להעביר ל"'+((D.groups.find(g=>g.id===value)||{}).title||'')+'"':'לשנות סטטוס ל"'+value+'"';
-  if(!confirm(`${lbl} — ${ids.length} מוצרים?\nהשינוי נכתב גם ב-Monday.`)) return;
+  const lbl=action==='delete'?'למחוק':action==='grp'?'להעביר ל"'+((D.groups.find(g=>g.id===value)||{}).title||'')+'"':'לשנות סטטוס ל"'+value+'"';
+  if(!confirm(action==='delete'?`למחוק ${ids.length} מוצרים מהלוח?\nהם ייעלמו מהלוח והסוכנים לא יעבדו עליהם.`:`${lbl} — ${ids.length} מוצרים?${D.mode==='primary'?'':'\nהשינוי נכתב גם ב-Monday.'}`)) return;
   showLoading(`מעדכן ${ids.length} מוצרים (גם ב-Monday)…`);
   try{ const r=await api('/api/greenday/bulk',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids,action,value})},300000);
     hideLoading(); GD.sel.clear(); await gdLoad();
@@ -3653,6 +3655,11 @@ async function gdItem(mid,keepTab){
   try{ const r=await api('/api/greenday/products/'+mid,{},30000); GD.item=r.product; GD.itemUrl=r.monday_url; gdItemPaint(); }
   catch(e){ p.innerHTML=`<div class="tc-empty">${escW(e.detail||'הטעינה נכשלה')}</div>`; }
 }
+async function gdDelete(mid){
+  if(!confirm('למחוק את המוצר מהלוח?\nהוא ייעלם מהלוח והסוכנים לא יעבדו עליו. אם נוצר מחשבונית ספק — אפשר לשדר אותו שוב.')) return;
+  try{ await api('/api/greenday/products/'+mid,{method:'DELETE'},30000); gdItemClose(); toast('המוצר נמחק',true); gdLoad(); }
+  catch(e){ toast(e.detail||'המחיקה נכשלה',false); }
+}
 function gdItemClose(){ const p=document.getElementById('gdItem'); if(p) p.classList.remove('on'); GD.item=null; }
 function gdField(label,html,wide){ return `<div class="gd-f ${wide?'wide':''}"><label>${label}</label>${html}</div>`; }
 function gdItemPaint(){
@@ -3662,6 +3669,7 @@ function gdItemPaint(){
   p.innerHTML=`<div class="tc-thead">
       <div class="tc-trow1"><a href="#" class="tc-back" onclick="gdItemClose();return false" title="סגירה">${ico('back',18)}</a>
         <input class="gd-iname" value="${escW(it.name)}" onchange="gdSet('${mid}','name',this.value)">
+        <a href="#" class="gd-idel" onclick="gdDelete('${mid}');return false" title="מחיקת המוצר מהלוח">${ico('trash',16)}</a>
         <button class="dr-x" onclick="gdItemClose()">✕</button></div>
       <div class="tc-tmeta2">${gdPill(it)}
         <select class="gd-sel" onchange="gdSet('${mid}','grp',this.value)">${D.groups.map(g=>`<option value="${g.id}" ${g.id===it.grp?'selected':''}>${escW(g.title)}</option>`).join('')}</select>

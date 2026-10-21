@@ -3088,6 +3088,35 @@ class GdBulk(BaseModel):
     value: str
 
 
+def _gd_delete(ids) -> int:
+    """מחיקת מוצרים מהלוח (22/10, אסי). מחיקה רכה — לא מוצג ולא נאסף ע"י הסוכנים. רק במצב "מקור"
+    (במצב מראה הסנכרון מ-Monday היה מחזיר אותם). פריט ששודר מחשבונית ספק — מסומן שוב כלא-שודר,
+    כדי שאפשר יהיה לשדר אותו מחדש."""
+    import greenday as gd
+    if not gd.is_primary():
+        raise HTTPException(400, "מחיקה זמינה רק כש-GreenDay הוא המקור")
+    ids = {str(x) for x in ids}
+    db.gd_mark_deleted_ids(ids)
+    for si in db.si_list():
+        res = si.get("result") or {}
+        sent = res.get("sent") or {}
+        keep = {k: v for k, v in sent.items() if str((v or {}).get("monday_id")) not in ids}
+        if keep != sent:
+            res["sent"] = keep
+            db.si_set(si["id"], result=res)
+    logger.info("greenday delete: %s", sorted(ids))
+    return len(ids)
+
+
+@app.delete("/api/greenday/products/{mid}")
+def gd_product_delete(mid: str):
+    _gd_owner()
+    if not db.gd_product_get(mid):
+        raise HTTPException(404, "המוצר לא נמצא")
+    _gd_delete([mid])
+    return {"ok": True}
+
+
 @app.post("/api/greenday/bulk")
 def gd_bulk(body: GdBulk):
     """פעולה על כמה מוצרים (העברת קבוצה / ארכיון / סטטוס) — כל אחד נכתב ל-Monday."""
@@ -3100,6 +3129,8 @@ def gd_bulk(body: GdBulk):
         raise HTTPException(400, "קבוצה לא מוכרת")
     if body.action == "status" and body.value not in gd.STATUS_LABELS:
         raise HTTPException(400, "סטטוס לא מוכר")
+    if body.action == "delete":
+        return {"ok": True, "done": _gd_delete(ids), "failed": []}
     if body.action not in ("grp", "status"):
         raise HTTPException(400, "פעולה לא מוכרת")
     done, failed = [], []

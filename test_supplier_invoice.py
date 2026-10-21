@@ -171,6 +171,13 @@ check("חלקית באתר → 'מוצרים קיימים' עם WC של המוצ
 main._inv_enrich = lambda gs: [g.update(site="all") for g in gs] and gs
 db.si_set(db.si_for_topic(t3)["id"], result={**db.si_for_topic(t3)["result"], "sent": {}})
 check("הכל קיים באתר → לא משודר", c.post(f"/api/chat/topics/{t3}/invoice/products/send", headers=A, json={"index": 0}).status_code == 409)
+# מחיקה מהלוח → נעלם, והחשבונית מאפשרת שידור מחדש
+first = db.si_for_topic(t3)["result"]["sent"]
+check("⛔ עובד לא מוחק מהלוח", c.delete(f"/api/greenday/products/{mid}", headers=Y).status_code == 403)
+check("מחיקת מוצר מהלוח", c.delete(f"/api/greenday/products/{mid}", headers=A).status_code == 200
+      and all(p["monday_id"] != mid for p in c.get("/api/greenday/board", headers=A).json()["products"]))
+r = c.post("/api/greenday/bulk", headers=A, json={"ids": [mid2], "action": "delete", "value": ""}).json()
+check("מחיקה קבוצתית", r.get("done") == 1 and db.gd_product_get(mid2) is None)
 import sys as _s; _s.path.insert(0, "../shared")
 import greenday_dispatch as _gdd
 check("הסוכנים לא נוגעים בסטטוס ההמתנה", _gdd.plan([{"name": "Xiaomi Redmi 10", "status": greenday.STATUS_HOLD, "grp": "topics", "image_link": "", "list_id": "", "created": "2026-01-01T00:00:00Z", "updates": []}]) == {"yuval": [], "gali": [], "qa": []})
