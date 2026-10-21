@@ -2280,12 +2280,36 @@ def chat_invoice_products(tid: int, refresh: int = 0):
     for g in res["groups"]:
         for v in g["variants"]:
             v["exists"] = existing.get(v.get("sku") or "")
-    return {"groups": res["groups"], "sent": res.get("sent") or {}}
+    return {"groups": res["groups"], "sent": res.get("sent") or {}, "warranty_options": _warranty_options()}
+
+
+_WARRANTY_BASE = ["שנה אחריות גרין מובייל", "שנתיים אחריות יבואן רשמי המילטון", "שנה אחריות יבואן רשמי",
+                  "שנתיים אחריות יבואן רשמי", "שנה אחריות יבואן מקביל", "12 חודשי אחריות יבואן"]
+
+
+def _warranty_options() -> list:
+    """נוסחי אחריות שכבר בשימוש: קבועים + מה שאודי כתב בהוראות (שורות "אחריות ..."), לפי שכיחות."""
+    from collections import Counter
+    cnt = Counter()
+    try:
+        for r in db.gd_instruction_examples(("Udi Pizhaza", "אודי"), must="אחריות", limit=600):
+            for m in re.findall(r"(?m)^[^\n]*אחריות[^\n]{3,60}$", r.get("body") or ""):
+                t = re.sub(r"^\s*(אחריות\s*[-:–]\s*)", "", m.strip()).strip(" -:–")
+                if 6 <= len(t) <= 60 and "יש להזין" not in t:
+                    cnt[t] += 1
+    except Exception:  # noqa: BLE001
+        pass
+    seen = list(_WARRANTY_BASE)
+    for t, _ in cnt.most_common(20):
+        if t not in seen:
+            seen.append(t)
+    return seen[:20]
 
 
 class InvSendIn(BaseModel):
     index: int
     name: str = ""
+    warranty: str = ""          # חובה — הקופה לא יודעת (Redmi 10 מהמילטון = שנה גרין מובייל)
 
 
 def _pavel_notes_run(mid, group, ex, tid, existing_wc, by_name):
@@ -2340,8 +2364,12 @@ def chat_invoice_product_send(tid: int, body: InvSendIn):
     sent = res.setdefault("sent", {})
     if str(body.index) in sent:
         raise HTTPException(409, "המוצר הזה כבר שודר ל-GreenDay")
+    warranty = (body.warranty or "").strip()[:120]
+    if not warranty:
+        raise HTTPException(400, "חסרה אחריות למוצר")
     g = dict(groups[body.index])
     _inv_enrich([g])
+    g["warranty"] = warranty
     if g["site"] == "all":
         raise HTTPException(409, "כל הווריאציות כבר קיימות באתר — אין מה להעלות")
     import greenday as gd
@@ -2366,7 +2394,8 @@ def chat_invoice_product_send(tid: int, body: InvSendIn):
     upd = (f"נוצר מחשבונית ספק ({ex.get('supplier') or ''} · {ex.get('doc_type') or 'מסמך'} {ex.get('doc_number') or ''}) ע״י {u['name']}.\n"
            + (f"⚠ המוצר כבר קיים באתר (WC {g['wc_parent']}) — להוסיף לו רק את הווריאציות האלה:\n" if partial else
               f"{'מוצר עם ' + str(len(vs)) + ' וריאציות' if len(vs) > 1 else 'מוצר בודד'} — לחבר כל וריאציה למק״ט הקופה שלה:\n")
-           + "\n".join(lines) + "\n\nפאבל כותב עכשיו את הוראות ההעלאה (קטגוריות, תכונות, אחריות, מחיר).")
+           + "\n".join(lines) + f"\n\nאחריות (נקבע בשידור): {warranty}\n"
+           "פאבל כותב עכשיו את הוראות ההעלאה (קטגוריות, תכונות, מחיר).")
     try:
         mid = gd.create_item(name, gd.GROUPS[1][0] if partial else "topics", vals)
         gd.create_update(mid, u["name"], upd)

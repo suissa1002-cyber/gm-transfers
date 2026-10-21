@@ -127,7 +127,7 @@ SI.group_products = lambda lines: [{"name": "Xiaomi Redmi 10", "brand": "Xiaomi"
     {"ref": "SB", "color": "כחול", "ram": "6GB", "storage": "128GB", "sku": "520903", "pos_name": "Redmi 10 6+128 Blue", "qty": 1, "desc": "y"}]}]
 check("⛔ עובד לא משדר", c.post(f"/api/chat/topics/{t3}/invoice/products", headers=Y).status_code in (403, 404))
 g = c.post(f"/api/chat/topics/{t3}/invoice/products", headers=A).json()
-check("קיבוץ: מוצר אחד עם 2 וריאציות", len(g["groups"]) == 1 and len(g["groups"][0]["variants"]) == 2, g)
+check("קיבוץ: מוצר אחד עם 2 וריאציות + רשימת נוסחי אחריות", len(g["groups"]) == 1 and len(g["groups"][0]["variants"]) == 2 and "שנה אחריות גרין מובייל" in g["warranty_options"], g)
 pushes.clear()
 import wa_push
 wpush = []
@@ -137,7 +137,8 @@ PN.examples_for = lambda name, brand, rows, k=6: []
 PN.ref_product = lambda *a, **kw: None
 PN.write_note = lambda group, sup, ex, ref: {"note": "יש להזין את המוצר תחת הקטגוריות הקיימות הבאות : מכשירים", "confidence": "medium", "doubts": "גודל מסך"}
 main._inv_enrich = lambda gs: [g.update(site="new", wc_parent=None) or [v.update(price=699.0 if v["sku"] == "520900" else 799.0, wc=None) for v in g["variants"]] for g in gs] and gs
-r = c.post(f"/api/chat/topics/{t3}/invoice/products/send", headers=A, json={"index": 0, "name": "Xiaomi Redmi 10"})
+check("⛔ בלי אחריות — לא משודר", c.post(f"/api/chat/topics/{t3}/invoice/products/send", headers=A, json={"index": 0}).status_code == 400)
+r = c.post(f"/api/chat/topics/{t3}/invoice/products/send", headers=A, json={"index": 0, "name": "Xiaomi Redmi 10", "warranty": "שנה אחריות גרין מובייל"})
 mid = r.json().get("monday_id")
 time.sleep(0.8)
 gp = db.gd_product_get(mid) if mid else None
@@ -146,15 +147,15 @@ check("נוצר ב'מוצרים חדשים' עם מק״טים, צבעים, נפ�
       and gp["storages"] == ["128GB"] and gp["list_type"] == "ליסט וריאציות" and gp["price"] == 699.0, gp)
 check("פאבל כתב הוראות העלאה והעביר ל'ממתין' (בלי אודי)", gp and gp["status"] == "ממתין"
       and any(x["author"] == "פאבל (QA)" and "קטגוריות" in x["body"] for x in gp["updates"]) and not wpush, (gp or {}).get("status"))
-check("עדכון עם הווריאציות, מק״טים ומחירים", gp and any("520903" in (x["body"] or "") and "₪799" in x["body"] for x in gp["updates"]))
-check("⛔ שידור כפול נחסם", c.post(f"/api/chat/topics/{t3}/invoice/products/send", headers=A, json={"index": 0}).status_code == 409)
+check("עדכון עם הווריאציות, מק״טים, מחירים והאחריות שנבחרה", gp and any("520903" in (x["body"] or "") and "₪799" in x["body"] and "שנה אחריות גרין מובייל" in x["body"] for x in gp["updates"]))
+check("⛔ שידור כפול נחסם", c.post(f"/api/chat/topics/{t3}/invoice/products/send", headers=A, json={"index": 0, "warranty": "שנה אחריות גרין מובייל"}).status_code == 409)
 g2 = c.post(f"/api/chat/topics/{t3}/invoice/products", headers=A).json()
 check("בפתיחה הבאה: מסומן כשודר + 'כבר ב-GreenDay' לכל וריאציה", g2["sent"].get("0", {}).get("monday_id") == mid
       and all(v["exists"] and v["exists"]["monday_id"] == mid for v in g2["groups"][0]["variants"]))
 # ביטחון נמוך → נשאר בהמתנה, אודי מתויג ומקבל התראה
 PN.write_note = lambda group, sup, ex, ref: {"note": "?", "confidence": "low", "doubts": "אין מוצר דומה"}
 db.si_set(db.si_for_topic(t3)["id"], result={**db.si_for_topic(t3)["result"], "sent": {}})
-r = c.post(f"/api/chat/topics/{t3}/invoice/products/send", headers=A, json={"index": 0})
+r = c.post(f"/api/chat/topics/{t3}/invoice/products/send", headers=A, json={"index": 0, "warranty": "שנה אחריות גרין מובייל"})
 mid2 = r.json().get("monday_id"); time.sleep(0.8)
 udi = [x["id"] for x in db.users_list() if x["name"] == "udi"]
 check("ביטחון נמוך → נשאר 'טיוטה – ממתין להערות' + אודי מתויג ומקבל התראה",
@@ -164,13 +165,13 @@ check("ביטחון נמוך → נשאר 'טיוטה – ממתין להערו�
 main._inv_enrich = lambda gs: [g.update(site="partial", wc_parent=51841) or [v.update(price=1.0, wc=({"id": 9, "parent": 51841} if v["sku"] == "520900" else None)) for v in g["variants"]] for g in gs] and gs
 PN.write_note = lambda group, sup, ex, ref: {"note": "להוסיף וריאציה", "confidence": "high", "doubts": ""}
 db.si_set(db.si_for_topic(t3)["id"], result={**db.si_for_topic(t3)["result"], "sent": {}})
-r = c.post(f"/api/chat/topics/{t3}/invoice/products/send", headers=A, json={"index": 0})
+r = c.post(f"/api/chat/topics/{t3}/invoice/products/send", headers=A, json={"index": 0, "warranty": "שנה אחריות גרין מובייל"})
 gp3 = db.gd_product_get(r.json()["monday_id"]); time.sleep(0.5)
 check("חלקית באתר → 'מוצרים קיימים' עם WC של המוצר ורק הווריאציה החסרה", gp3["grp"] == "group_mm3y9b6z" and gp3["wc_id"] == "51841"
       and gp3["pos_sku"] == "520903" and "הוספת וריאציות" in gp3["name"], gp3)
 main._inv_enrich = lambda gs: [g.update(site="all") for g in gs] and gs
 db.si_set(db.si_for_topic(t3)["id"], result={**db.si_for_topic(t3)["result"], "sent": {}})
-check("הכל קיים באתר → לא משודר", c.post(f"/api/chat/topics/{t3}/invoice/products/send", headers=A, json={"index": 0}).status_code == 409)
+check("הכל קיים באתר → לא משודר", c.post(f"/api/chat/topics/{t3}/invoice/products/send", headers=A, json={"index": 0, "warranty": "שנה אחריות גרין מובייל"}).status_code == 409)
 # מחיקה מהלוח → נעלם, והחשבונית מאפשרת שידור מחדש
 first = db.si_for_topic(t3)["result"]["sent"]
 check("⛔ עובד לא מוחק מהלוח", c.delete(f"/api/greenday/products/{mid}", headers=Y).status_code == 403)

@@ -823,6 +823,7 @@
   .tc-prodh{display:flex;align-items:center;gap:10px}.tc-prodh input{flex:1;font-weight:700}
   .tc-prodf{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
   .tc-prodfoot{display:flex;justify-content:space-between;align-items:center}
+  .tc-war{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600}.tc-war input{width:260px}
   .tc-site{font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:99px}
   .tc-site.new{background:rgba(0,115,234,.12);color:#0060c4}.tc-site.part{background:rgba(232,131,58,.15);color:#b45309}.tc-site.all{background:rgba(0,168,132,.14);color:#00805f}
   .si-table .si-row{cursor:pointer}
@@ -2821,15 +2822,18 @@ function tcProdPaint(){
             <td>${v.wc?`<a href="https://greenmobile.co.il/wp-admin/post.php?post=${escW(v.wc.parent)}&action=edit" target="_blank" style="color:#00a884">✓ קיים</a>`:'<span class="muted">חסר</span>'}</td></tr>`).join('')}</tbody></table>
         <div class="tc-prodf">${s?`<span style="color:#00a884;font-weight:700">${icoI('check',14)}שודר</span> <a href="#" onclick="document.getElementById('tcProds').remove();gdOpenItem('${escW(s.monday_id)}');return false">פתיחה בלוח המוצרים</a>`
           :g.site==='all'?`<span class="muted">כל הווריאציות כבר באתר — אין מה להעלות</span>`
-          :`<button class="btn-primary" onclick="tcProdSend(${i},this)">${icoI('megaphone',14)}${g.site==='partial'?'שידור — הוספת וריאציות':'שידור ל-GreenDay'}</button>${ex.length?`<span class="tc-invextra">שימו לב: ${ex.length} וריאציות כבר קיימות בלוח</span>`:''}`}</div>
+          :`<label class="tc-war">אחריות <input id="tcPW${i}" list="tcWarList" placeholder="בחרו או הקלידו — חובה" value="${escW(g.warranty||'')}"></label>
+            <button class="btn-primary" onclick="tcProdSend(${i},this)">${icoI('megaphone',14)}${g.site==='partial'?'שידור — הוספת וריאציות':'שידור ל-GreenDay'}</button>${ex.length?`<span class="tc-invextra">שימו לב: ${ex.length} וריאציות כבר קיימות בלוח</span>`:''}`}</div>
       </div>`; }).join('')||'<div class="tc-empty">אין מוצרים</div>'}
+    <datalist id="tcWarList">${(TC.prods.warranty_options||[]).map(w=>`<option value="${escW(w)}">`).join('')}</datalist>
     <div class="tc-prodfoot"><a href="#" onclick="tcInvProducts(1);return false">${icoI('refresh',13)}קבץ מחדש</a>
       <button class="btn-ghost" onclick="document.getElementById('tcProds').remove()">סגירה</button></div></div>`;
 }
 async function tcProdSend(i,btn){
-  const nm=(document.getElementById('tcPN'+i)||{}).value||'';
+  const nm=(document.getElementById('tcPN'+i)||{}).value||'', war=((document.getElementById('tcPW'+i)||{}).value||'').trim();
+  if(!war){ toast('בחרו אחריות למוצר — הקופה לא יודעת אותה',false); const w=document.getElementById('tcPW'+i); if(w) w.focus(); return; }
   btn.disabled=true; btn.textContent='משדר…';
-  try{ const r=await api('/api/chat/topics/'+TC.topic+'/invoice/products/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({index:i,name:nm})},60000);
+  try{ const r=await api('/api/chat/topics/'+TC.topic+'/invoice/products/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({index:i,name:nm,warranty:war})},60000);
     TC.prods.sent=r.sent; tcProdPaint(); toast('נוצר ב-GreenDay — פאבל כותב הוראות העלאה',true); TC.sig=''; tcLoad(false); }
   catch(e){ btn.disabled=false; btn.textContent='שידור ל-GreenDay'; toast(e.detail||'השידור נכשל',false); }
 }
