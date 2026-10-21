@@ -823,6 +823,12 @@
   .tc-prodh{display:flex;align-items:center;gap:10px}.tc-prodh input{flex:1;font-weight:700}
   .tc-prodf{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
   .tc-prodfoot{display:flex;justify-content:space-between;align-items:center}
+  .gdp-fam{border:1px solid var(--line);border-radius:12px;padding:8px;margin-bottom:8px;display:flex;flex-direction:column;gap:4px}
+  .gdp-fh{display:flex;align-items:center;gap:10px;margin-bottom:2px}.gdp-fh a{margin-inline-start:auto;font-size:12.5px}
+  .gdp-row{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:9px;cursor:pointer;font-size:13px}
+  .gdp-row.on{background:rgba(0,115,234,.07)}.gdp-row input{width:auto}
+  .gdp-n{flex:1;direction:ltr;text-align:right}.gdp-n em{font-style:normal;color:#0073ea;font-weight:700}
+  .gdp-m{color:var(--muted);font-size:12px;white-space:nowrap}
   .tc-war{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600}.tc-war input{width:260px}
   .tc-site{font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:99px}
   .tc-site.new{background:rgba(0,115,234,.12);color:#0060c4}.tc-site.part{background:rgba(232,131,58,.15);color:#b45309}.tc-site.all{background:rgba(0,168,132,.14);color:#00805f}
@@ -2798,6 +2804,7 @@ async function tcTopicDelete(){
 }
 // ── שידור למוצרים חדשים: קיבוץ לפי דגם (וריאציות צבע/RAM/נפח לפי הקופה), כפתור לכל מוצר ──
 async function tcInvProducts(refresh){
+  TC.prodCtx={kind:'invoice'};
   let o=document.getElementById('tcProds');
   if(!o){ o=document.createElement('div'); o.className='overlay'; o.id='tcProds'; document.body.appendChild(o); }
   o.innerHTML=`<div class="modal us-modal tc-prodm"><h3>${icoI('megaphone',18)}שידור למוצרים חדשים ב-GreenDay</h3><div class="tc-empty">${refresh?'מקבץ מחדש…':'מקבץ את שורות החשבונית למוצרים ווריאציות…'}</div></div>`;
@@ -2826,15 +2833,18 @@ function tcProdPaint(){
             <button class="btn-primary" onclick="tcProdSend(${i},this)">${icoI('megaphone',14)}${g.site==='partial'?'שידור — הוספת וריאציות':'שידור ל-GreenDay'}</button>${ex.length?`<span class="tc-invextra">שימו לב: ${ex.length} וריאציות כבר קיימות בלוח</span>`:''}`}</div>
       </div>`; }).join('')||'<div class="tc-empty">אין מוצרים</div>'}
     <datalist id="tcWarList">${(TC.prods.warranty_options||[]).map(w=>`<option value="${escW(w)}">`).join('')}</datalist>
-    <div class="tc-prodfoot"><a href="#" onclick="tcInvProducts(1);return false">${icoI('refresh',13)}קבץ מחדש</a>
+    <div class="tc-prodfoot"><a href="#" onclick="${TC.prodCtx&&TC.prodCtx.kind==='pos'?'gdPosGroup()':'tcInvProducts(1)'};return false">${icoI('refresh',13)}קבץ מחדש</a>
       <button class="btn-ghost" onclick="document.getElementById('tcProds').remove()">סגירה</button></div></div>`;
 }
 async function tcProdSend(i,btn){
   const nm=(document.getElementById('tcPN'+i)||{}).value||'', war=((document.getElementById('tcPW'+i)||{}).value||'').trim();
   if(!war){ toast('בחרו אחריות למוצר — הקופה לא יודעת אותה',false); const w=document.getElementById('tcPW'+i); if(w) w.focus(); return; }
   btn.disabled=true; btn.textContent='משדר…';
-  try{ const r=await api('/api/chat/topics/'+TC.topic+'/invoice/products/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({index:i,name:nm,warranty:war})},60000);
-    TC.prods.sent=r.sent; tcProdPaint(); toast('נוצר ב-GreenDay — פאבל כותב הוראות העלאה',true); TC.sig=''; tcLoad(false); }
+  const pos=TC.prodCtx&&TC.prodCtx.kind==='pos';
+  try{ const r=await api(pos?'/api/greenday/pos/send':'/api/chat/topics/'+TC.topic+'/invoice/products/send',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(pos?{token:TC.prodCtx.token,index:i,name:nm,warranty:war}:{index:i,name:nm,warranty:war})},60000);
+    TC.prods.sent=r.sent; tcProdPaint(); toast('נוצר ב-GreenDay — פאבל כותב הוראות העלאה',true);
+    if(pos){ if(S.view==='greenday') gdLoad(); } else { TC.sig=''; tcLoad(false); } }
   catch(e){ btn.disabled=false; btn.textContent='שידור ל-GreenDay'; toast(e.detail||'השידור נכשל',false); }
 }
 async function tcInvRecheck(reread){
@@ -3575,6 +3585,7 @@ function gdRender(){
       <label class="tc-search gd-search">${ico('search',14)}<input id="gdSearch" placeholder="חיפוש: שם, מק״ט, ליסט ID, הערות" value="${escW(GD.q)}" oninput="GD.q=this.value;gdRender()"></label>
       <select class="gd-sel" onchange="GD.st=this.value;gdRender()"><option value="">כל הסטטוסים</option>${D.statuses.map(s=>`<option ${GD.st===s.label?'selected':''}>${escW(s.label)}</option>`).join('')}</select>
       <button class="btn-primary gd-new" onclick="gdNewModal()">+ מוצר חדש</button>
+      <button class="btn-ghost gd-new" onclick="gdPosModal()" title="העלאת מוצר לפי מק״ט קופה — בלי חשבונית">${ico('tag',14)} מוצר מהקופה (מק״ט)</button>
       <button class="btn-ghost gd-new" onclick="gdUpdModal()" title="בקשה לגלי לשנות מוצר שכבר באתר: נפח, צבע, חיבור מק״ט, מחיר…">${ico('pencil',14)} עדכון למוצר קיים</button>
       <button class="btn-ghost gd-run" onclick="ssOpen()" title="דוח זמינות שבועי מהספק → סטטוס מלאי באתר">${icoI('pkg',14)}סנכרון מלאי ספקים</button>
       ${D.mode==='primary'?`<button class="btn-ghost gd-run" onclick="gdRunAgents()" title="מפעיל את גלי/יובל/QA עכשיו — גם בשישי/שבת/אחרי השעות (3 שעות)">${icoI('zap',14)}הרץ סוכנים</button>`:''}
@@ -3751,6 +3762,54 @@ async function gdCreate(){
       body:JSON.stringify({name, grp:v('gdnGrp'), values, update:v('gdnUpd')})},90000);
     closeModal(); toast('המוצר נוצר',true); await gdLoad(); gdItem(r.monday_id); }
   catch(e){ document.getElementById('gdnErr').textContent=e.detail||'היצירה נכשלה'; }
+}
+
+// ── מוצר מהקופה לפי מק״ט — בלי חשבונית (22/10/2026, אסי): מק״טים → כל הווריאציות של אותו דגם → אישור → שידור ──
+function gdPosModal(){
+  GD.pos={cands:[], sel:new Set()};
+  document.getElementById('modalRoot').innerHTML=`<div class="overlay"><div class="modal us-modal" style="max-width:640px">
+    <h3>${icoI('tag',18)}מוצר מהקופה לפי מק״ט</h3>
+    <div class="muted" style="margin-bottom:8px">מזינים מק״ט אחד או יותר (מספיק אחד לכל דגם) — המערכת מוצאת בקופה את כל הווריאציות של אותו דגם. מסמנים מה להעלות, ומשם זה כמו שידור מחשבונית: וריאציות, מחיר מהקופה, בדיקה מול האתר, אחריות, ופאבל כותב הוראות.</div>
+    <div style="display:flex;gap:8px"><input id="gdPosIn" placeholder="למשל: 520944, 520924" style="flex:1" onkeydown="if(event.key==='Enter')gdPosLookup()">
+      <button class="btn-primary" onclick="gdPosLookup()">${ico('search',14)} חיפוש בקופה</button></div>
+    <div id="gdPosRes" style="margin-top:10px"></div>
+    <div class="err" id="gdPosErr"></div>
+    <button class="btn-ghost" style="width:100%;margin-top:8px" onclick="closeModal()">ביטול</button>
+  </div></div>`;
+  document.getElementById('gdPosIn').focus();
+}
+async function gdPosLookup(){
+  const skus=(document.getElementById('gdPosIn').value||'').split(/[^0-9]+/).filter(Boolean), box=document.getElementById('gdPosRes');
+  if(!skus.length){ document.getElementById('gdPosErr').textContent='הזינו מק״ט'; return; }
+  box.innerHTML='<div class="muted">מחפש בקופה…</div>'; document.getElementById('gdPosErr').textContent='';
+  try{ const r=await api('/api/greenday/pos/lookup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({skus})},120000);
+    GD.pos.cands=r.candidates||[]; GD.pos.sel=new Set(GD.pos.cands.filter(c=>c.entered).map(c=>c.sku));
+    const miss=(r.entered||[]).filter(e=>!e.found).map(e=>e.sku);
+    if(miss.length) document.getElementById('gdPosErr').textContent='לא נמצאו בקופה: '+miss.join(', ');
+    gdPosPaint(); }
+  catch(e){ box.innerHTML=''; document.getElementById('gdPosErr').textContent=e.detail||'החיפוש נכשל'; }
+}
+function gdPosPaint(){
+  const box=document.getElementById('gdPosRes'); if(!box) return; const C=GD.pos.cands, n=v=>Number(v||0).toLocaleString('he-IL');
+  if(!C.length){ box.innerHTML=''; return; }
+  const fams={}; C.forEach(c=>{ (fams[c.family]=fams[c.family]||[]).push(c); });
+  box.innerHTML=Object.entries(fams).map(([f,L])=>`<div class="gdp-fam">
+      <div class="gdp-fh"><b>${escW(f)}</b><span class="muted">${L.length} וריאציות בקופה</span>
+        <a href="#" onclick="${L.map(c=>`GD.pos.sel.add('${c.sku}')`).join(';')};gdPosPaint();return false">סמן הכל</a></div>
+      ${L.map(c=>`<label class="gdp-row ${GD.pos.sel.has(c.sku)?'on':''}"><input type="checkbox" ${GD.pos.sel.has(c.sku)?'checked':''} onchange="this.checked?GD.pos.sel.add('${c.sku}'):GD.pos.sel.delete('${c.sku}');gdPosPaint()">
+        <span class="gdp-n">${escW(c.name)}${c.entered?' <em>· הוזן</em>':''}</span><span class="iv-sku">מק״ט ${escW(c.sku)}</span>
+        <span class="gdp-m">${c.price?'₪'+n(c.price):''} · ${n(c.stock)} במלאי</span></label>`).join('')}
+    </div>`).join('')+`<button class="btn-primary" style="width:100%;margin-top:10px" onclick="gdPosGroup()" ${GD.pos.sel.size?'':'disabled'}>${icoI('megaphone',14)}המשך — ${GD.pos.sel.size} וריאציות נבחרו</button>`;
+}
+async function gdPosGroup(){
+  const skus=[...GD.pos.sel]; if(!skus.length) return;
+  closeModal(); TC.prodCtx={kind:'pos'};
+  let o=document.getElementById('tcProds');
+  if(!o){ o=document.createElement('div'); o.className='overlay'; o.id='tcProds'; document.body.appendChild(o); }
+  o.innerHTML=`<div class="modal us-modal tc-prodm"><h3>${icoI('megaphone',18)}שידור למוצרים חדשים ב-GreenDay</h3><div class="tc-empty">מקבץ לווריאציות ובודק מול האתר…</div></div>`;
+  try{ const r=await api('/api/greenday/pos/group',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({skus})},120000);
+    TC.prodCtx={kind:'pos', token:r.token}; TC.prods=r; tcProdPaint(); }
+  catch(e){ o.innerHTML=`<div class="modal us-modal"><div class="err">${escW(e.detail||'הקיבוץ נכשל')}</div><button class="btn-ghost" style="width:100%" onclick="document.getElementById('tcProds').remove()">סגירה</button></div>`; }
 }
 
 // ── עדכון למוצר קיים (19/10/2026, אסי): בוחרים מוצר מהאתר + מה לשנות → "מוצרים קיימים — עדכונים", ממתין → גלי ──

@@ -2339,16 +2339,184 @@ def _pavel_notes_run(mid, group, ex, tid, existing_wc, by_name):
         doubts = f"כתיבת ההוראות נכשלה: {e}"
     others = sorted(_owner_ids())
     if ok:
-        db.chat_add(0, "פאבל (QA)", f"✓ כתבתי הוראות העלאה ל-{group['name']} והעברתי ל\"ממתין\" — גלי ויובל מתחילים."
-                    + (f" לאימות: {doubts}" if doubts else ""), [], topic_id=tid)
+        if tid:
+            db.chat_add(0, "פאבל (QA)", f"✓ כתבתי הוראות העלאה ל-{group['name']} והעברתי ל\"ממתין\" — גלי ויובל מתחילים."
+                        + (f" לאימות: {doubts}" if doubts else ""), [], topic_id=tid)
     else:
         udi = [x["id"] for x in db.users_list() if x["id"] in others and x["name"] != by_name]
         names = ", ".join("@" + x["name"] for x in db.users_list() if x["id"] in udi)
-        db.chat_add(0, "פאבל (QA)", f"⏸ {group['name']} נשאר ב'טיוטה – ממתין להערות' — לא היה לי מספיק בסיס לכתוב הוראות בביטחון. "
-                    f"{names} נא להשלים ולהעביר ל\"ממתין\". {doubts}", udi, topic_id=tid)
+        if tid:
+            db.chat_add(0, "פאבל (QA)", f"⏸ {group['name']} נשאר ב'טיוטה – ממתין להערות' — לא היה לי מספיק בסיס לכתוב הוראות בביטחון. "
+                        f"{names} נא להשלים ולהעביר ל\"ממתין\". {doubts}", udi, topic_id=tid)
         import wa_push
         wa_push.send_to_all(title="מוצר חדש ממתין להערות שלך", body=f"{group['name']} — {doubts}"[:140],
                             url=f"/?gd={mid}", kind="greenday", tag=f"gdnew{mid}", user_ids=udi)
+
+
+def _broadcast_group(u, g, name, warranty, source_text, notes_text, supplier, tid=0):
+    """מוצר אחד (עם הווריאציות שעוד לא באתר) → פריט ב-GreenDay + פאבל כותב הוראות (ברקע).
+    משותף לשידור מחשבונית ולשידור ידני לפי מק״טים. מחזיר (mid, partial, variants, name)."""
+    _inv_enrich([g])
+    g["warranty"] = warranty
+    if g["site"] == "all":
+        raise HTTPException(409, "כל הווריאציות כבר קיימות באתר — אין מה להעלות")
+    import greenday as gd
+    vs = [v for v in g["variants"] if not v.get("wc")]
+    g["variants"] = vs
+    partial = g["site"] == "partial"
+    colors = list(dict.fromkeys(v["color"] for v in vs if v.get("color")))
+    stor = [x for x in dict.fromkeys(v["storage"] for v in vs if v.get("storage")) if x in gd.STORAGES]
+    skus = [v["sku"] for v in vs if v.get("sku")]
+    name = ((name or g["name"]).strip()[:200]) + (" — הוספת וריאציות" if partial else "")
+    vals = {"status": gd.STATUS_HOLD, "colors": ", ".join(colors), "storages": stor, "pos_sku": ", ".join(skus),
+            "list_type": "ליסט וריאציות" if len(vs) > 1 or partial else "ליסט רגיל.עד 1 וריאציה", "notes": notes_text}
+    if partial:
+        vals["wc_id"] = str(g["wc_parent"])
+    lines = []
+    for v in vs:
+        spec = " · ".join(x for x in [v.get("ram") and v["ram"] + " RAM", v.get("storage"), v.get("color")] if x)
+        lines.append(f"• {spec or v.get('desc')} — " + (f"מק״ט קופה {v['sku']} ({v['pos_name']})" if v.get("sku") else "⚠ לא נמצא בקופה")
+                     + (f" · ₪{v['price']:g}" if v.get("price") else "") + f" · {float(v.get('qty') or 0):g} יח׳")
+    upd = (f"נוצר {source_text} ע״י {u['name']}.\n"
+           + (f"⚠ המוצר כבר קיים באתר (WC {g['wc_parent']}) — להוסיף לו רק את הווריאציות האלה:\n" if partial else
+              f"{'מוצר עם ' + str(len(vs)) + ' וריאציות' if len(vs) > 1 else 'מוצר בודד'} — לחבר כל וריאציה למק״ט הקופה שלה:\n")
+           + "\n".join(lines) + f"\n\nאחריות (נקבע בשידור): {warranty}\n"
+           "פאבל כותב עכשיו את הוראות ההעלאה (קטגוריות, תכונות, מחיר).")
+    try:
+        mid = gd.create_item(name, gd.GROUPS[1][0] if partial else "topics", vals)
+        gd.create_update(mid, u["name"], upd)
+        try:
+            gd.refresh_item(mid)
+        except Exception:  # noqa: BLE001
+            pass
+    except RuntimeError as e:
+        raise HTTPException(502, f"יצירה ב-GreenDay נכשלה: {e}")
+    import threading
+    threading.Thread(target=_pavel_notes_run, args=(mid, g, {"supplier": supplier or ""}, tid,
+                                                    g["wc_parent"] if partial else None, u["name"]), daemon=True).start()
+    return mid, partial, vs, name
+
+
+# ── מוצר מהקופה לפי מק״ט — בלי חשבונית (22/10, אסי) ──
+def _pos_get(cl, sku):
+    """get_product עם ניסיון חוזר אחד (הקופה מחזירה שגיאה חולפת תחת עומס/מכסה)."""
+    import time as _t
+    for i in range(2):
+        try:
+            return cl.get_product(sku) or {}
+        except Exception as e:  # noqa: BLE001
+            logger.warning("pos lookup %s failed (%s): %s", sku, i, e)
+            _t.sleep(2)
+    return {}
+
+
+def _pos_family(name: str) -> str:
+    """'Xiaomi Redmi 10 4RAM + 128GB - Gray' → 'Xiaomi Redmi 10' (בלי צבע / נפח / RAM)."""
+    base = (name or "").split(" - ")[0]
+    base = re.sub(r"(?i)\b\d+\s*(gb|tb|ram)\b|\b\d+\s*\+\s*\d+\s*(gb|tb)?\b|\+", " ", base)
+    return re.sub(r"\s+", " ", base).strip()
+
+
+class PosLookupIn(BaseModel):
+    skus: list
+
+
+@app.post("/api/greenday/pos/lookup")
+def gd_pos_lookup(body: PosLookupIn):
+    """מק״טים שהוזנו → המוצרים בקופה + כל הווריאציות של אותו דגם (צבעים/נפחים/RAM) להצעה."""
+    _gd_owner()
+    skus = [re.sub(r"\D", "", str(x)) for x in body.skus or []]
+    skus = [x for x in dict.fromkeys(skus) if x][:30]
+    if not skus:
+        raise HTTPException(400, "הזינו מק״ט אחד לפחות")
+    cl = poller.client()
+    entered, fams, cand = [], {}, {}
+    for sku in skus:
+        p = _pos_get(cl, sku)
+        entered.append({"sku": sku, "found": bool(p.get("name")), "name": p.get("name") or ""})
+        if p.get("name"):
+            # חיפוש בקופה לפי תחילת השם עד הנפח/RAM/צבע ("Xiaomi Redmi Note 17 Pro Max 512GB - Whi" → "...Pro Max")
+            q = re.split(r"(?i)\s\d+\s*(?:gb|tb|ram)\b|\s\d+\s*\+|\s-\s", p["name"])[0].strip()
+            fams[_pos_family(p["name"])] = q
+            cand[sku] = p
+    for fam, q in fams.items():
+        try:
+            res = cl.get_products(search=q) or []
+        except Exception:  # noqa: BLE001
+            res = []
+        fl = fam.lower()
+        for p in res:
+            if p.get("isActive") is False:
+                continue
+            if _pos_family(p.get("name")).lower() == fl:   # אותו דגם בדיוק (Pro ≠ Pro Max, 2022 ≠ בסיסי)
+                cand.setdefault(str(p.get("id")), p)
+    out = [{"sku": str(p.get("id")), "name": p.get("name") or "", "price": p.get("price"), "stock": p.get("currentStock"),
+            "supplier": (p.get("supplier") or {}).get("name") or "", "entered": str(p.get("id")) in skus,
+            "family": _pos_family(p.get("name") or "")} for p in cand.values()]
+    out.sort(key=lambda x: (x["family"], x["name"]))
+    return {"entered": entered, "candidates": out}
+
+
+@app.post("/api/greenday/pos/group")
+def gd_pos_group(body: PosLookupIn):
+    """המק״טים שאושרו → קיבוץ למוצרים+וריאציות, מחיר מהקופה, מה כבר באתר. נשמר זמנית לשידור."""
+    _gd_owner()
+    skus = [re.sub(r"\D", "", str(x)) for x in body.skus or []]
+    skus = [x for x in dict.fromkeys(skus) if x][:40]
+    if not skus:
+        raise HTTPException(400, "לא נבחרו מק״טים")
+    cl = poller.client()
+    lines = []
+    for sku in skus:
+        p = _pos_get(cl, sku)
+        if not p.get("name"):
+            continue
+        st = float(p.get("currentStock") or 0)
+        lines.append({"description": p["name"], "qty": st, "matched": [{"id": sku, "name": p["name"], "qty": st}]})
+    if not lines:
+        raise HTTPException(404, "המק״טים לא נמצאו בקופה")
+    import secrets, supplier_invoice as SI
+    groups = _inv_enrich(SI.group_products(lines))
+    existing = {}
+    for p in db.gd_products_list():
+        for sku in re.findall(r"\d{5,}", p.get("pos_sku") or ""):
+            existing.setdefault(sku, {"monday_id": p["monday_id"], "name": p["name"], "status": p.get("status")})
+    for g in groups:
+        for v in g["variants"]:
+            v["exists"] = existing.get(v.get("sku") or "")
+    tok = secrets.token_hex(12)
+    db.setting_set("posbc:" + tok, json_mod.dumps({"groups": groups, "sent": {}}, ensure_ascii=False), "greenday")
+    return {"token": tok, "groups": groups, "sent": {}, "warranty_options": _warranty_options()}
+
+
+class PosSendIn(BaseModel):
+    token: str
+    index: int
+    name: str = ""
+    warranty: str = ""
+
+
+@app.post("/api/greenday/pos/send")
+def gd_pos_send(body: PosSendIn):
+    u = _gd_owner()
+    if not re.fullmatch(r"[0-9a-f]{24}", body.token or ""):
+        raise HTTPException(400, "פתחו מחדש")
+    raw = db.setting_get("posbc:" + body.token)
+    st = json_mod.loads(raw) if raw else None
+    if not st or not (0 <= body.index < len(st["groups"])):
+        raise HTTPException(400, "המוצר לא נמצא — פתחו מחדש")
+    if str(body.index) in st["sent"]:
+        raise HTTPException(409, "המוצר הזה כבר שודר ל-GreenDay")
+    warranty = (body.warranty or "").strip()[:120]
+    if not warranty:
+        raise HTTPException(400, "חסרה אחריות למוצר")
+    g = dict(st["groups"][body.index])
+    sup = next((v.get("supplier") for v in g["variants"] if v.get("supplier")), "")
+    mid, partial, vs, name = _broadcast_group(u, g, body.name, warranty, "ידנית לפי מק״טי קופה",
+                                               "נוצר לפי מק״טי קופה (בלי חשבונית)", sup, 0)
+    st["sent"][str(body.index)] = {"monday_id": mid, "name": name}
+    db.setting_set("posbc:" + body.token, json_mod.dumps(st, ensure_ascii=False), "greenday")
+    return {"ok": True, "monday_id": mid, "sent": st["sent"]}
 
 
 @app.post("/api/chat/topics/{tid}/invoice/products/send")
@@ -2368,50 +2536,14 @@ def chat_invoice_product_send(tid: int, body: InvSendIn):
     if not warranty:
         raise HTTPException(400, "חסרה אחריות למוצר")
     g = dict(groups[body.index])
-    _inv_enrich([g])
-    g["warranty"] = warranty
-    if g["site"] == "all":
-        raise HTTPException(409, "כל הווריאציות כבר קיימות באתר — אין מה להעלות")
-    import greenday as gd
     ex = si.get("extracted") or {}
-    vs = [v for v in g["variants"] if not v.get("wc")]
-    g["variants"] = vs
-    partial = g["site"] == "partial"
-    colors = list(dict.fromkeys(v["color"] for v in vs if v.get("color")))
-    stor = [x for x in dict.fromkeys(v["storage"] for v in vs if v.get("storage")) if x in gd.STORAGES]
-    skus = [v["sku"] for v in vs if v.get("sku")]
-    name = (body.name or g["name"]).strip()[:200] + (" — הוספת וריאציות" if partial else "")
-    vals = {"status": gd.STATUS_HOLD, "colors": ", ".join(colors), "storages": stor, "pos_sku": ", ".join(skus),
-            "list_type": "ליסט וריאציות" if len(vs) > 1 or partial else "ליסט רגיל.עד 1 וריאציה",
-            "notes": f"מחשבונית ספק: {ex.get('supplier') or ''} {ex.get('doc_number') or ''}".strip()}
-    if partial:
-        vals["wc_id"] = str(g["wc_parent"])
-    lines = []
-    for v in vs:
-        spec = " · ".join(x for x in [v.get("ram") and v["ram"] + " RAM", v.get("storage"), v.get("color")] if x)
-        lines.append(f"• {spec or v.get('desc')} — " + (f"מק״ט קופה {v['sku']} ({v['pos_name']})" if v.get("sku") else "⚠ לא נמצא בקופה")
-                     + (f" · ₪{v['price']:g}" if v.get("price") else "") + f" · {float(v.get('qty') or 0):g} יח׳")
-    upd = (f"נוצר מחשבונית ספק ({ex.get('supplier') or ''} · {ex.get('doc_type') or 'מסמך'} {ex.get('doc_number') or ''}) ע״י {u['name']}.\n"
-           + (f"⚠ המוצר כבר קיים באתר (WC {g['wc_parent']}) — להוסיף לו רק את הווריאציות האלה:\n" if partial else
-              f"{'מוצר עם ' + str(len(vs)) + ' וריאציות' if len(vs) > 1 else 'מוצר בודד'} — לחבר כל וריאציה למק״ט הקופה שלה:\n")
-           + "\n".join(lines) + f"\n\nאחריות (נקבע בשידור): {warranty}\n"
-           "פאבל כותב עכשיו את הוראות ההעלאה (קטגוריות, תכונות, מחיר).")
-    try:
-        mid = gd.create_item(name, gd.GROUPS[1][0] if partial else "topics", vals)
-        gd.create_update(mid, u["name"], upd)
-        try:
-            gd.refresh_item(mid)
-        except Exception:  # noqa: BLE001
-            pass
-    except RuntimeError as e:
-        raise HTTPException(502, f"יצירה ב-GreenDay נכשלה: {e}")
+    mid, partial, vs, name = _broadcast_group(u, g, body.name, warranty,
+                                               f"מחשבונית ספק ({ex.get('supplier') or ''} · {ex.get('doc_type') or 'מסמך'} {ex.get('doc_number') or ''})",
+                                               f"מחשבונית ספק: {ex.get('supplier') or ''} {ex.get('doc_number') or ''}".strip(), ex.get("supplier"), tid)
     sent[str(body.index)] = {"monday_id": mid, "name": name}
     db.si_set(si["id"], result=res)
     db.chat_add(u["id"], u["name"], f"שודר ל-GreenDay · {'מוצרים קיימים (הוספת וריאציות)' if partial else 'מוצרים חדשים'}: {name} "
                 f"({len(vs)} וריאציות). פאבל כותב הוראות העלאה.", [], topic_id=tid)
-    import threading
-    threading.Thread(target=_pavel_notes_run, args=(mid, g, ex, tid, g["wc_parent"] if partial else None, u["name"]),
-                     daemon=True).start()
     return {"ok": True, "monday_id": mid, "sent": sent}
 
 

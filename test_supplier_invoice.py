@@ -179,6 +179,38 @@ check("מחיקת מוצר מהלוח", c.delete(f"/api/greenday/products/{mid}"
       and all(p["monday_id"] != mid for p in c.get("/api/greenday/board", headers=A).json()["products"]))
 r = c.post("/api/greenday/bulk", headers=A, json={"ids": [mid2], "action": "delete", "value": ""}).json()
 check("מחיקה קבוצתית", r.get("done") == 1 and db.gd_product_get(mid2) is None)
+# ── מוצר מהקופה לפי מק״ט (בלי חשבונית) ──
+class _FakePOS:
+    P = {"520944": "Xiaomi Redmi 10 4RAM + 128GB - Gray", "520945": "Xiaomi Redmi 10 4RAM + 128GB - White",
+         "520943": "Xiaomi Redmi 10 6RAM + 128GB - Gray", "520950": "Xiaomi Redmi 10 2022 4RAM + 128GB - Gray",
+         "520951": "Xiaomi Redmi 10C 64GB - Blue"}
+    def get_product(self, sku):
+        sku = str(sku)
+        return {"id": sku, "name": self.P[sku], "price": 399.0, "currentStock": 3, "isActive": True,
+                "supplier": {"name": "המילטון"}} if sku in self.P else {}
+    def get_products(self, search=None, **kw):
+        return [self.get_product(k) for k, v in self.P.items() if (search or "").lower() in v.lower()]
+main.poller.client = lambda: _FakePOS()
+check("⛔ עובד לא משתמש במוצר מהקופה", c.post("/api/greenday/pos/lookup", headers=Y, json={"skus": ["520944"]}).status_code == 403)
+L = c.post("/api/greenday/pos/lookup", headers=A, json={"skus": ["520944", "999"]}).json()
+skus = sorted(x["sku"] for x in L["candidates"])
+check("מק״ט אחד → כל הווריאציות של אותו דגם (בלי 2022 / 10C)", skus == ["520943", "520944", "520945"]
+      and [x["sku"] for x in L["candidates"] if x["entered"]] == ["520944"]
+      and any(e["sku"] == "999" and not e["found"] for e in L["entered"]), L)
+SI.group_products = lambda lines: [{"name": "Xiaomi Redmi 10", "brand": "Xiaomi", "variants": [
+    {"ref": "S" + l["matched"][0]["id"], "color": "", "ram": "", "storage": "128GB", "sku": l["matched"][0]["id"],
+     "pos_name": l["description"], "qty": l["qty"], "desc": l["description"]} for l in lines]}]
+main._inv_enrich = lambda gs: [g.update(site="new", wc_parent=None) or [v.update(price=399.0, wc=None) for v in g["variants"]] for g in gs] and gs
+PN.write_note = lambda group, sup, ex, ref: {"note": "יש להזין את המוצר תחת הקטגוריות", "confidence": "high", "doubts": ""}
+G = c.post("/api/greenday/pos/group", headers=A, json={"skus": ["520944", "520945"]}).json()
+check("קיבוץ לפי מק״טים שנבחרו + טוקן לשידור", G["token"] and len(G["groups"][0]["variants"]) == 2 and G["warranty_options"], G)
+check("⛔ שידור בלי אחריות", c.post("/api/greenday/pos/send", headers=A, json={"token": G["token"], "index": 0}).status_code == 400)
+r = c.post("/api/greenday/pos/send", headers=A, json={"token": G["token"], "index": 0, "warranty": "שנה אחריות גרין מובייל"}).json()
+time.sleep(0.8)
+gp4 = db.gd_product_get(r["monday_id"])
+check("נוצר בלוח עם המק״טים ופאבל העביר ל'ממתין'", gp4 and gp4["pos_sku"] == "520944, 520945" and gp4["status"] == "ממתין"
+      and any("שנה אחריות גרין מובייל" in (x["body"] or "") for x in gp4["updates"]), gp4)
+check("⛔ שידור כפול", c.post("/api/greenday/pos/send", headers=A, json={"token": G["token"], "index": 0, "warranty": "x"}).status_code == 409)
 import sys as _s; _s.path.insert(0, "../shared")
 import greenday_dispatch as _gdd
 check("הסוכנים לא נוגעים בסטטוס ההמתנה", _gdd.plan([{"name": "Xiaomi Redmi 10", "status": greenday.STATUS_HOLD, "grp": "topics", "image_link": "", "list_id": "", "created": "2026-01-01T00:00:00Z", "updates": []}]) == {"yuval": [], "gali": [], "qa": []})
