@@ -2784,7 +2784,8 @@ def snap_page(tok: str):
     if not d:
         return HTMLResponse(_SNAP_HTML.replace("{{BODY}}", '<h1>הקישור פג</h1><p>פתחו קוד חדש מהמחשב ב-GreenOS.</p>'), status_code=410)
     import html as _html
-    return HTMLResponse(_SNAP_HTML.replace("{{BODY}}", _SNAP_FORM.replace("{{TOK}}", tok).replace("{{BY}}", _html.escape(d.get("by") or ""))))
+    form = _SNAP_FORM_CHECK if d.get("kind") == "check" else _SNAP_FORM
+    return HTMLResponse(_SNAP_HTML.replace("{{BODY}}", form.replace("{{TOK}}", tok).replace("{{BY}}", _html.escape(d.get("by") or ""))))
 
 
 @app.post("/snap/{tok}/upload")
@@ -2823,6 +2824,22 @@ border:0;margin-bottom:10px;cursor:pointer}.p{background:#00a884;color:#fff}.g{b
 input{display:none}.ok{font-size:64px;color:#00a884}#st{font-size:15px;min-height:22px;margin-top:6px}
 img{max-width:100%;border-radius:12px;margin:8px 0 14px;max-height:45vh}.brand{font-weight:800;color:#00a884;font-size:15px}</style></head>
 <body><div class="c"><div class="brand">GreenOS</div>{{BODY}}</div></body></html>"""
+
+_SNAP_FORM_CHECK = """<h1>צילום צ'ק</h1><p>הניחו את הצ'ק על משטח כהה ומישורי, צלמו מלמעלה — כל הצ'ק בתמונה, חד ובלי צל. הוא יופיע אצל {{BY}} במחשב והפרטים ימולאו אוטומטית.</p>
+<img id="pv" style="display:none">
+<label class="b p" id="cam">📷 צלם צ'ק<input type="file" accept="image/*" capture="environment" onchange="go(this.files[0])"></label>
+<label class="b g">בחירה מהגלריה<input type="file" accept="image/*" onchange="go(this.files[0])"></label>
+<div id="st"></div>
+<script>
+async function go(f){ if(!f) return; const st=document.getElementById('st');
+  const pv=document.getElementById('pv'); pv.src=URL.createObjectURL(f); pv.style.display='block';
+  st.textContent='שולח…'; st.style.color='#5b6170';
+  const fd=new FormData(); fd.append('file',f,f.name||'check.jpg');
+  try{ const r=await fetch('/snap/{{TOK}}/upload',{method:'POST',body:fd}); const j=await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(j.detail||'השליחה נכשלה');
+    document.querySelector('.c').innerHTML='<div class="brand">GreenOS</div><div class="ok">✓</div><h1>נשלח למחשב</h1><p>הצ&#39;ק מופיע עכשיו בטופס במחשב והפרטים מפוענחים. אפשר לסגור את הדף.</p>';
+  }catch(e){ st.textContent=e.message+' — נסו שוב'; st.style.color='#dc2626'; } }
+</script>"""
 
 _SNAP_FORM = """<h1>צילום חשבונית</h1><p>צלמו את החשבונית או תעודת המשלוח — ישר, באור טוב, כל הדף בתמונה. היא תופיע אצל {{BY}} במחשב. כמה עמודים? צלמו אחד אחרי השני.</p>
 <img id="pv" style="display:none">
@@ -8225,6 +8242,129 @@ def checks_img(asset_id: int, rot: int = 0, x_admin_key: Optional[str] = Header(
         _CK_IMG_CACHE.clear()
     _CK_IMG_CACHE[ck] = (data, _t.time())
     return Response(data, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"})
+
+
+# ── סריקת צ'ק (22/10/2026, אסי): צילום → Claude מפענח מספר/לפקודת/סכום/תאריך/בנק → ממלא את הטופס ──
+def _checks_auth(x_admin_key, x_checks_key):
+    checks_pw = os.getenv("CHECKS_PASSWORD", "").strip()
+    if not (_admin_key_ok(x_admin_key) or (bool(checks_pw) and (x_checks_key or "") == checks_pw)
+            or _current_user() is not None):
+        raise HTTPException(401, "checks auth required")
+    u = _current_user()
+    return u["name"] if u else "צ'קים"
+
+
+_CHECK_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "readable": {"type": "boolean"},
+        "check_number": {"type": "string"},
+        "payee": {"type": "string"},
+        "supplier_match": {"type": "string"},
+        "amount": {"type": "number"},
+        "amount_words": {"type": "string"},
+        "amounts_agree": {"type": "boolean"},
+        "date": {"type": "string"},
+        "bank": {"type": "string"},
+        "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
+        "notes": {"type": "string"},
+    },
+    "required": ["readable", "check_number", "payee", "supplier_match", "amount", "amount_words", "amounts_agree",
+                 "date", "bank", "confidence", "notes"],
+    "additionalProperties": False,
+}
+
+_CHECK_PROMPT = """זה צילום של צ'ק ישראלי שחברת Green Mobile (ארט מובייל) כתבה לספק. חלץ:
+- check_number: מספר הצ'ק (מודפס בפינה העליונה ו/או בשורת המספרים התחתונה; רק מספר הצ'ק, לא חשבון/סניף).
+- payee: למי — כפי שכתוב בשורת "לפקודת" (בכתב יד).
+- supplier_match: הספק מהרשימה למטה שמתאים ל-payee (שם זהה או קרוב/קיצור/איות אחר). אם אין התאמה סבירה — "".
+- amount: הסכום בספרות (מספר, בלי ₪ ופסיקים). amount_words: הסכום במילים כפי שכתוב (אם יש).
+  amounts_agree: האם הסכום במילים תואם לספרות (true אם אין מילים).
+- date: התאריך שעל הצ'ק (תאריך הפירעון) בפורמט YYYY-MM-DD. תאריכים בישראל נכתבים יום/חודש/שנה.
+- bank: שם הבנק המודפס (בנק הפועלים / לאומי / מזרחי טפחות / הבינלאומי / אחר).
+- confidence: low אם כתב היד לא ברור באחד השדות החשובים (סכום / תאריך / לפקודת).
+- notes: הערה קצרה בעברית על מה שלא ודאי. readable=false אם זה לא צ'ק או שאי אפשר לקרוא.
+אל תנחש — שדה שלא נקרא השאר ריק (מספר 0).
+
+ספקים קיימים:
+{suppliers}"""
+
+_CHECK_BANKS = {"פועלים": "בנק פועלים", "לאומי": "בנק לאומי", "מזרחי": "בנק מזרחי", "בינלאומי": "הבנק הבינלאומי"}
+
+
+def _check_scan(data: bytes, mime: str, suppliers) -> dict:
+    import base64, supplier_invoice as SI
+    data, mime = SI._sniff(data, mime)
+    if mime == "application/pdf":
+        raise HTTPException(400, "צריך תמונה של הצ'ק")
+    block = {"type": "image", "source": {"type": "base64", "media_type": mime, "data": base64.standard_b64encode(data).decode()}}
+    sup = "\n".join(f"- {x}" for x in (suppliers or [])[:300]) or "(אין)"
+    r = SI._ask([block, {"type": "text", "text": _CHECK_PROMPT.replace("{suppliers}", sup)}], _CHECK_SCHEMA)
+    r["bank_option"] = next((v for k, v in _CHECK_BANKS.items() if k in (r.get("bank") or "")), "")
+    if r.get("supplier_match") and r["supplier_match"] not in (suppliers or []):
+        r["supplier_match"] = ""
+    return r
+
+
+@app.post("/api/checks/scan")
+async def checks_scan(request: Request, x_admin_key: Optional[str] = Header(None), x_checks_key: Optional[str] = Header(None)):
+    """multipart: file (+ suppliers = JSON list) — או JSON {attach_key, suppliers} לתמונה שהגיעה מהטלפון (QR)."""
+    _checks_auth(x_admin_key, x_checks_key)
+    from starlette.concurrency import run_in_threadpool
+    if (request.headers.get("content-type") or "").startswith("application/json"):
+        j = await request.json()
+        key = str(j.get("attach_key") or "")
+        if not re.fullmatch(r"chat:[0-9a-f]{32}", key):
+            raise HTTPException(400, "קובץ לא תקין")
+        got = db.wa_media_blob_get(key)
+        if not got:
+            raise HTTPException(404, "הקובץ לא נמצא")
+        mime, data, sups = got[0], got[1], j.get("suppliers") or []
+    else:
+        form = await request.form()
+        up = form.get("file")
+        if up is None or isinstance(up, str):
+            raise HTTPException(400, "לא נבחרה תמונה")
+        data, mime = await up.read(), up.content_type or ""
+        try:
+            sups = json_mod.loads(form.get("suppliers") or "[]")
+        except Exception:  # noqa: BLE001
+            sups = []
+    if not data or len(data) > _CHAT_MAX_FILE:
+        raise HTTPException(400, "קובץ ריק או גדול מדי")
+    try:
+        return {"ok": True, "check": await run_in_threadpool(_check_scan, data, mime, [str(x) for x in sups])}
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001
+        logger.warning("check scan failed: %s", e)
+        raise HTTPException(502, f"הפענוח נכשל: {e}")
+
+
+@app.post("/api/checks/handoff")
+def checks_handoff_create(request: Request, x_admin_key: Optional[str] = Header(None), x_checks_key: Optional[str] = Header(None)):
+    """QR לצילום הצ'ק בטלפון (מהמחשב). אותו מנגנון כמו חשבונית ספק — קוד חד-פעמי, 15 דק'."""
+    by = _checks_auth(x_admin_key, x_checks_key)
+    import secrets, time as _t, io, segno
+    tok = secrets.token_hex(16)
+    db.setting_set("snap:" + tok, json_mod.dumps({"ts": _t.time(), "uid": "checks", "by": by, "kind": "check", "files": []}), by)
+    base = (os.getenv("APP_BASE_URL") or str(request.base_url)).rstrip("/")
+    url = f"{base}/snap/{tok}"
+    buf = io.BytesIO()
+    segno.make(url, error="m").save(buf, kind="svg", scale=6, border=2, dark="#111")
+    return {"token": tok, "url": url, "qr_svg": buf.getvalue().decode()}
+
+
+@app.get("/api/checks/handoff/{tok}")
+def checks_handoff_status(tok: str, x_admin_key: Optional[str] = Header(None), x_checks_key: Optional[str] = Header(None)):
+    _checks_auth(x_admin_key, x_checks_key)
+    d = _snap_get(tok)
+    if not d or d.get("kind") != "check":
+        return {"state": "expired"}
+    import wa
+    files = [{**f, "url": f"/api/chat/file/{f['attach_key'].split(':', 1)[1]}?t={wa.media_token(f['attach_key'])}"}
+             for f in d.get("files") or []]
+    return {"state": "done" if files else "waiting", "files": files}
 
 
 @app.post("/api/checks/upload")

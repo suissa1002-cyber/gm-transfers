@@ -1281,6 +1281,20 @@
             padding: 24px;
         }
 
+        .scan-box{border:2px dashed #3b82f6;border-radius:14px;padding:12px;margin-bottom:12px;background:rgba(59,130,246,.06)}
+        .scan-title{font-weight:700;margin-bottom:8px}
+        .scan-btns{display:flex;flex-wrap:wrap;gap:8px}
+        .scan-btn{display:inline-flex;align-items:center;gap:6px;padding:10px 14px;border-radius:10px;border:1px solid #cbd5e1;background:#fff;cursor:pointer;font-size:15px;font-family:inherit;color:#111}
+        .scan-btn.primary{background:#2563eb;color:#fff;border-color:#2563eb;font-weight:700}
+        .scan-btn input{display:none}
+        .scan-mobile{display:none}
+        @media (hover:none) and (pointer:coarse){ .scan-mobile{display:inline-flex} .scan-desktop{display:none} }
+        .scan-status{margin-top:8px;font-size:14px;line-height:1.5}
+        .scan-status.ok{color:#047857}.scan-status.err{color:#b91c1c}.scan-status.busy{color:#1d4ed8}
+        .scan-warn{color:#b45309;margin-top:4px;font-size:13px}
+        .scan-qr{margin-top:10px;gap:12px;align-items:center;font-size:14px}
+        .scan-qrimg svg{width:170px;height:170px;background:#fff;border-radius:8px}
+        .scan-filled{background:#fef9c3!important;border-color:#eab308!important}
         .add-check-form {
             display: flex;
             flex-direction: column;
@@ -1748,6 +1762,16 @@
             </div>
             <div class="add-check-modal-body">
                 <div class="add-check-form">
+                    <div class="scan-box" id="scanBox">
+                        <div class="scan-title">📸 סריקת צ'ק — הפרטים ימולאו אוטומטית</div>
+                        <div class="scan-btns">
+                            <label class="scan-btn primary scan-mobile">📷 צלם צ'ק<input type="file" accept="image/*" capture="environment" onchange="scanFile(this.files[0])"></label>
+                            <button type="button" class="scan-btn primary scan-desktop" onclick="scanQrOpen()">📱 צלם בטלפון (QR)</button>
+                            <label class="scan-btn">🖼️ בחירת תמונה<input type="file" accept="image/*" onchange="scanFile(this.files[0])"></label>
+                        </div>
+                        <div class="scan-status" id="scanStatus"></div>
+                        <div class="scan-qr" id="scanQr" style="display:none"></div>
+                    </div>
                     <div class="form-row">
                         <label>תאריך הכנסה</label>
                         <input type="date" id="addCheckEntryDate" readonly>
@@ -2589,6 +2613,9 @@ function gmAuthH(h){ h=h||{}; const k=localStorage.getItem('tr_admin_key')||'';
             document.getElementById('fileUploadPlaceholder').style.display = 'flex';
             document.getElementById('supplierHint').className = 'supplier-hint';
             document.getElementById('supplierHint').textContent = '';
+            document.querySelectorAll('.scan-filled').forEach(el=>el.classList.remove('scan-filled'));
+            scanSetStatus(''); scanQrStop();
+            try{ document.getElementById('addCheckImage').value=''; }catch(e){}
             
             // Populate suppliers list from existing checks
             populateSuppliersList();
@@ -2652,7 +2679,68 @@ function gmAuthH(h){ h=h||{}; const k=localStorage.getItem('tr_admin_key')||'';
         function closeAddCheckModal(event) {
             if (!event || event.target.id === 'addCheckModal') {
                 document.getElementById('addCheckModal').classList.remove('active');
+                scanQrStop();
             }
+        }
+
+        // ── סריקת צ'ק (22/10/2026): צילום → פענוח בשרת (Claude) → מילוי השדות לבדיקה ──
+        function scanSetStatus(html, kind){ const s=document.getElementById('scanStatus'); s.className='scan-status '+(kind||''); s.innerHTML=html||''; }
+        function scanSetImage(file){
+            // מצרפים את התמונה לשדה "צילום צ'ק" — היא תעלה לצ'ק כמו בהעלאה ידנית
+            try{ const dt=new DataTransfer(); dt.items.add(file); const inp=document.getElementById('addCheckImage'); inp.files=dt.files;
+                 handleFileSelect({target:inp}); }catch(e){}
+        }
+        async function scanFile(file){
+            if(!file) return;
+            scanSetImage(file);
+            scanSetStatus('⏳ מפענח את הצ\'ק…','busy');
+            const fd=new FormData(); fd.append('file',file,file.name||'check.jpg'); fd.append('suppliers',JSON.stringify(existingSuppliers||[]));
+            try{ const r=await fetch('/api/checks/scan',{method:'POST',headers:{...gmAuthH(),'X-Checks-Key':localStorage.getItem('tr_checks_key')||''},body:fd});
+                 const j=await r.json().catch(()=>({})); if(!r.ok) throw new Error(j.detail||('HTTP '+r.status)); scanFill(j.check); }
+            catch(e){ scanSetStatus('❌ הפענוח נכשל: '+e.message+' — אפשר למלא ידנית','err'); }
+        }
+        async function scanByKey(f){
+            scanSetStatus('⏳ התמונה הגיעה מהטלפון — מפענח…','busy');
+            try{ const b=await (await fetch(f.url)).blob(); scanSetImage(new File([b],'check-phone.jpg',{type:b.type||'image/jpeg'})); }catch(e){}
+            try{ const r=await fetch('/api/checks/scan',{method:'POST',headers:{...gmAuthH(),'X-Checks-Key':localStorage.getItem('tr_checks_key')||'','Content-Type':'application/json'},
+                   body:JSON.stringify({attach_key:f.attach_key,suppliers:existingSuppliers||[]})});
+                 const j=await r.json().catch(()=>({})); if(!r.ok) throw new Error(j.detail||('HTTP '+r.status)); scanFill(j.check); }
+            catch(e){ scanSetStatus('❌ הפענוח נכשל: '+e.message+' — אפשר למלא ידנית','err'); }
+        }
+        function scanFill(c){
+            if(!c||!c.readable){ scanSetStatus('⚠️ לא הצלחתי לקרוא את הצ\'ק — צלמו שוב מלמעלה, באור טוב'+(c&&c.notes?' ('+c.notes+')':''),'err'); return; }
+            const set=(id,v)=>{ const el=document.getElementById(id); if(!el||v===''||v==null) return false; el.value=v; el.classList.add('scan-filled'); return true; };
+            const filled=[];
+            if(c.check_number&&set('addCheckNumber',String(c.check_number).replace(/\D/g,''))) filled.push('מספר');
+            if(set('addCheckSupplier',c.supplier_match||c.payee)){ filled.push('ספק'); checkSupplierExists(); }
+            if(c.amount&&set('addCheckAmount',c.amount)) filled.push('סכום');
+            if(/^\d{4}-\d{2}-\d{2}$/.test(c.date||'')&&set('addCheckDueDate',c.date)) filled.push('תאריך פרעון');
+            if(c.bank_option&&set('addCheckBank',c.bank_option)) filled.push('בנק');
+            const warn=[];
+            if(c.payee&&!c.supplier_match) warn.push('"'+c.payee+'" לא נמצא ברשימת הספקים — לבדוק את השם');
+            if(c.amounts_agree===false) warn.push('הסכום במילים ('+c.amount_words+') לא תואם לספרות — לבדוק!');
+            if(c.notes) warn.push(c.notes);
+            const low=c.confidence==='low';
+            scanSetStatus((low?'⚠️ ':'✅ ')+'מולא: '+(filled.join(' · ')||'—')+' — <b>בדקו את השדות המסומנים בצהוב לפני השמירה</b>'
+                +(warn.length?'<div class="scan-warn">'+warn.map(w=>'• '+w).join('<br>')+'</div>':''), low?'err':'ok');
+        }
+        let _scanQr=null;
+        async function scanQrOpen(){
+            const box=document.getElementById('scanQr');
+            try{ const r=await fetch('/api/checks/handoff',{method:'POST',headers:{...gmAuthH(),'X-Checks-Key':localStorage.getItem('tr_checks_key')||''}});
+                 const j=await r.json(); if(!r.ok) throw new Error(j.detail||('HTTP '+r.status));
+                 scanQrStop(); _scanQr={tok:j.token,t:setInterval(scanQrPoll,2000)};
+                 box.style.display='flex'; box.innerHTML='<div class="scan-qrimg">'+j.qr_svg+'</div><div>סרקו במצלמת הטלפון → נפתחת המצלמה → מצלמים את הצ\'ק.<br><span class="muted">הקוד תקף ל-15 דקות · לא צריך להתחבר בטלפון</span><br><a href="#" onclick="scanQrStop();return false">ביטול</a></div>';
+                 scanSetStatus('⏳ ממתין לצילום מהטלפון…','busy'); }
+            catch(e){ scanSetStatus('❌ לא הצלחתי ליצור קוד: '+e.message,'err'); }
+        }
+        function scanQrStop(){ if(_scanQr){ clearInterval(_scanQr.t); _scanQr=null; } const b=document.getElementById('scanQr'); if(b){ b.style.display='none'; b.innerHTML=''; } }
+        async function scanQrPoll(){
+            if(!_scanQr) return;
+            try{ const r=await fetch('/api/checks/handoff/'+_scanQr.tok,{headers:{...gmAuthH(),'X-Checks-Key':localStorage.getItem('tr_checks_key')||''}}); const j=await r.json();
+                 if(j.state==='expired'){ scanQrStop(); scanSetStatus('הקוד פג — לחצו שוב "צלם בטלפון"','err'); return; }
+                 if(j.state==='done'&&j.files&&j.files.length){ const f=j.files[j.files.length-1]; scanQrStop(); scanByKey(f); } }
+            catch(e){}
         }
 
         function handleFileSelect(event) {
