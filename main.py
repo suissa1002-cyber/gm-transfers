@@ -911,6 +911,8 @@ def register_recurring_jobs():
                       max_instances=1, coalesce=True)
     scheduler.add_job(_greenday_reminders_job, "interval", minutes=15, id="greenday_reminders",
                       max_instances=1, coalesce=True)
+    scheduler.add_job(_invoice_recheck_job, "interval", hours=1, id="invoice_recheck",
+                      max_instances=1, coalesce=True)
     scheduler.add_job(_greenday_full_job, "interval", hours=6, id="greenday_full",
                       next_run_time=datetime.now() if not db.setting_get("greenday_full_synced_at") else None,
                       max_instances=1, coalesce=True)
@@ -1886,7 +1888,7 @@ def _chat_out(m: dict) -> dict:
     return d
 
 
-_TOPIC_KINDS = {"question": "שאלה", "request": "בקשה", "task": "משימה", "update": "עדכון"}
+_TOPIC_KINDS = {"question": "שאלה", "request": "בקשה", "task": "משימה", "update": "עדכון", "invoice": "חשבונית ספק"}
 # סטטוסים בסגנון Monday (14/10): כל מה שאינו done = פתוח לעניין רשימות/מונים
 _TOPIC_STATUS = {"open": "פתוח", "working": "בעבודה", "waiting": "ממתין לתשובה", "done": "טופל"}
 
@@ -1972,11 +1974,15 @@ def chat_topics(status: str = "open"):
 
 
 class TopicIn(BaseModel):
-    title: str
+    title: str = ""
     kind: str = "question"
     assignees: list = []
     text: str = ""
     wa_phone: str = ""
+    attach_key: str = ""        # חשבונית ספק — המסמך עצמו (חובה בסוג הזה)
+    attach_name: str = ""
+    attach_mime: str = ""
+    attach_size: int = 0
 
 
 @app.post("/api/chat/topics")
@@ -1984,9 +1990,20 @@ def chat_topic_create(body: TopicIn):
     """נושא חדש (שאלה/בקשה/משימה/עדכון) — עם הודעה ראשונה; האחראים מתויגים ומקבלים push."""
     u = _chat_user()
     title = (body.title or "").strip()
+    kind = body.kind if body.kind in _TOPIC_KINDS else "question"
+    key = (body.attach_key or "").strip()
+    if kind == "invoice":
+        if not re.fullmatch(r"chat:[0-9a-f]{32}", key):
+            raise HTTPException(400, "צריך לצרף את החשבונית (תמונה או PDF)")
+        if not ((body.attach_mime or "").startswith("image/") or body.attach_mime == "application/pdf"):
+            raise HTTPException(400, "החשבונית צריכה להיות תמונה או PDF")
+        if not title:
+            from zoneinfo import ZoneInfo as _ZIi
+            title = "חשבונית ספק · " + datetime.now(_ZIi("Asia/Jerusalem")).strftime("%d/%m %H:%M")
+    elif key:
+        raise HTTPException(400, "צירוף קובץ בפתיחת נושא — רק בחשבונית ספק")
     if not title:
         raise HTTPException(400, "חסרה כותרת")
-    kind = body.kind if body.kind in _TOPIC_KINDS else "question"
     active = {x["id"] for x in db.users_list() if x["active"]}
     raw = [str(x) for x in (body.assignees or [])]
     assignees = sorted(active - {u["id"]}) if "all" in raw else \
@@ -1997,15 +2014,115 @@ def chat_topic_create(body: TopicIn):
     who = ", ".join(x["name"] for x in db.users_list() if x["id"] in assignees)
     db.chat_add(u["id"], u["name"], f"פתח/ה {_TOPIC_KINDS[kind]}" + (f" ל{who}" if who else "") + f": {title}",
                 topic_id=t["id"], system=1)
-    if first:
+    if first or key:
         db.chat_add(u["id"], u["name"], first[:4000], [a for a in assignees if a != u["id"]],
+                    key, (body.attach_name or "")[:200], (body.attach_mime or "")[:100], body.attach_size or 0,
                     topic_id=t["id"], wa_phone=phone)
+    if kind == "invoice":
+        sid = db.si_add(t["id"], key, body.attach_mime, u["id"], u["name"])
+        import threading
+        threading.Thread(target=_invoice_run, args=(sid,), daemon=True).start()
     if assignees:
         _chat_push([a for a in assignees if a != u["id"]], f"{u['name']}: {_TOPIC_KINDS[kind]} חדשה בשבילך",
                    title, t["id"])
     else:   # בלי אחראי = לבעלים (אסי ואודי)
         _chat_push(sorted(_owner_ids() - {u["id"]}), f"{u['name']}: {_TOPIC_KINDS[kind]} חדשה", title, t["id"])
     return {"ok": True, "topic": db.topic_get(t["id"])}
+
+
+# ── חשבונית ספק ↔ כניסה למלאי ב-NewOrder (21/10/2026, אסי) — התוצאה לבעלים בלבד ──
+_SI_FINAL = {"ok", "mismatch", "unreadable", "not_found", "error"}
+_SI_WAIT_DAYS = 3
+
+
+def _invoice_run(sid, reextract=False):
+    """קורא את המסמך (פעם אחת), מחפש את הכניסה למלאי ומשווה. בלי כניסה עדיין → waiting_stock,
+    וה-job השעתי ינסה שוב עד 3 ימים. כל תוצאה שאינה "תואם" → push לבעלים (פעם אחת לכל סטטוס)."""
+    import supplier_invoice as SI
+    si = db.si_get(sid)
+    if not si:
+        return
+    t = db.topic_get(si["topic_id"]) or {}
+    try:
+        created = datetime.fromisoformat(si["created_at"]).replace(tzinfo=None)
+    except Exception:  # noqa: BLE001
+        created = datetime.now()
+    status, extra = "error", {}
+    try:
+        ex = None if reextract else si.get("extracted")
+        if not ex:
+            db.si_set(sid, status="reading")
+            got = db.wa_media_blob_get(si["attach_key"])
+            if not got:
+                raise RuntimeError("הקובץ לא נמצא")
+            ex = SI.extract(got[1], got[0] or si.get("mime") or "")
+            db.si_set(sid, extracted=ex)
+        if not ex.get("readable") or not ex.get("items"):
+            status = "unreadable"
+        else:
+            ops, how = SI.find_ops(ex, created, poller.client())
+            db.si_set(sid, attempts=int(si.get("attempts") or 0) + 1)
+            if not ops:
+                status = "not_found" if datetime.now() - created > timedelta(days=_SI_WAIT_DAYS) else "waiting_stock"
+            else:
+                stock = SI.stock_lines(ops)
+                cmp = SI.compare(ex["items"], stock, SI.map_lines(ex["items"], stock))
+                extra["result"] = {**cmp, "ops": SI.op_summary(ops), "how": how}
+                status = "ok" if cmp["overall"] == "ok" else "mismatch"
+        db.si_set(sid, status=status, error="", checked_at=db.now_iso(), **extra)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("invoice check %s failed: %s", sid, e)
+        db.si_set(sid, status="error", error=str(e)[:300], checked_at=db.now_iso())
+        ex = (db.si_get(sid) or {}).get("extracted") or {}
+    if status not in ("ok", "waiting_stock") and (db.si_get(sid) or {}).get("notified") != status:
+        ex = (db.si_get(sid) or {}).get("extracted") or {}
+        what = " ".join(x for x in [(ex.get("supplier") or "").strip(), (ex.get("doc_number") or "").strip()] if x)
+        msg = {"mismatch": "לא תואמת לכניסה למלאי", "unreadable": "לא קריאה — צריך צילום חדש",
+               "not_found": f"לא נמצאה כניסה למלאי גם אחרי {_SI_WAIT_DAYS} ימים", "error": "הבדיקה נכשלה"}[status]
+        _chat_push(sorted(_owner_ids()), f"חשבונית ספק {msg}", what or t.get("title") or "", si["topic_id"])
+        db.si_set(sid, notified=status)
+
+
+def _invoice_recheck_job():
+    """כל שעה: חשבוניות שעוד מחכות לכניסה בקופה (עד 3 ימים), או בדיקה שנקטעה (אתחול שרת)."""
+    try:
+        for si in db.si_waiting():
+            try:
+                age = datetime.now() - datetime.fromisoformat(si["created_at"]).replace(tzinfo=None)
+            except Exception:  # noqa: BLE001
+                continue
+            if si["status"] != "waiting_stock" and age < timedelta(minutes=15):
+                continue   # עוד רץ עכשיו
+            _invoice_run(si["id"])
+    except Exception as e:  # noqa: BLE001
+        logger.warning("invoice recheck job failed: %s", e)
+
+
+@app.get("/api/chat/topics/{tid}/invoice")
+def chat_topic_invoice(tid: int):
+    u = _chat_user()
+    if u["role"] != "owner":
+        raise HTTPException(403, "בדיקת החשבונית גלויה לבעלים בלבד")
+    _chat_topic_for(u, tid)
+    si = db.si_for_topic(tid)
+    if not si:
+        raise HTTPException(404, "אין חשבונית בנושא הזה")
+    return {"invoice": {k: si.get(k) for k in ("id", "status", "extracted", "result", "error", "attempts",
+                                                 "created_at", "checked_at", "uploaded_name")}}
+
+
+@app.post("/api/chat/topics/{tid}/invoice/recheck")
+def chat_topic_invoice_recheck(tid: int, reread: int = 0):
+    u = _chat_user()
+    if u["role"] != "owner":
+        raise HTTPException(403, "בעלים בלבד")
+    si = db.si_for_topic(tid)
+    if not si:
+        raise HTTPException(404, "אין חשבונית בנושא הזה")
+    db.si_set(si["id"], status="reading" if reread else "pending", notified="")
+    import threading
+    threading.Thread(target=_invoice_run, args=(si["id"],), kwargs={"reextract": bool(reread)}, daemon=True).start()
+    return {"ok": True}
 
 
 class TopicPatch(BaseModel):
@@ -2114,8 +2231,9 @@ def chat_send(body: ChatIn):
 
 
 @app.post("/api/chat/upload")
-async def chat_upload(request: Request):
-    """קובץ/תמונה לצ'אט (גם הדבקה מהלוח). תמונה גדולה מוקטנת ל-2400px. מחזיר מפתח לשליחה."""
+async def chat_upload(request: Request, hq: int = 0):
+    """קובץ/תמונה לצ'אט (גם הדבקה מהלוח). תמונה גדולה מוקטנת ל-2400px. מחזיר מפתח לשליחה.
+    hq=1 (חשבונית ספק): נשמרת חדה — הקטנה רק מעל 4MB, עד 3600px ואיכות 92, כדי שיהיה אפשר לקרוא אותה."""
     _chat_user()
     form = await request.form()
     up = form.get("file")
@@ -2128,14 +2246,14 @@ async def chat_upload(request: Request):
         raise HTTPException(400, "קובץ גדול מדי (עד 15MB)")
     mime = (up.content_type or "application/octet-stream")[:100]
     name = (up.filename or "file")[:200]
-    if mime in ("image/jpeg", "image/png", "image/webp") and len(data) > 1_500_000:
+    if mime in ("image/jpeg", "image/png", "image/webp") and len(data) > (4_000_000 if hq else 1_500_000):
         try:
             import io
             from PIL import Image, ImageOps
             im = ImageOps.exif_transpose(Image.open(io.BytesIO(data)))
-            im.thumbnail((2400, 2400))
+            im.thumbnail((3600, 3600) if hq else (2400, 2400))
             buf = io.BytesIO()
-            im.convert("RGB").save(buf, "JPEG", quality=85)
+            im.convert("RGB").save(buf, "JPEG", quality=92 if hq else 85)
             data, mime = buf.getvalue(), "image/jpeg"
         except Exception as e:  # noqa: BLE001
             logger.warning("chat image resize failed: %s", e)

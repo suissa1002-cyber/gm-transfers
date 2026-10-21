@@ -761,6 +761,32 @@
   .tc-form{padding:14px;display:flex;flex-direction:column;gap:10px;overflow-y:auto}
   .tc-form input:not([type]),.tc-form textarea{border:1px solid var(--line);border-radius:10px;padding:9px 11px;font:inherit;font-size:14px;background:var(--card2);color:var(--txt)}
   .tc-kinds{display:flex;flex-wrap:wrap;gap:6px}
+  .tc-invdrop{border:1.5px dashed var(--line);border-radius:12px;padding:12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:center}
+  .tc-invbtn{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border:1px solid var(--line);border-radius:10px;cursor:pointer;font-size:13.5px;color:var(--txt);text-decoration:none;background:var(--card)}
+  .tc-invbtn:hover{border-color:#00a884}
+  .tc-invhint{width:100%;text-align:center;font-size:12px}
+  .tc-invprev{display:flex;align-items:center;gap:10px;padding:8px;border:1px solid var(--line);border-radius:12px}
+  .tc-invprev img{width:72px;height:72px;object-fit:cover;border-radius:8px;cursor:zoom-in}
+  .tc-invdoc{width:72px;height:72px;display:flex;align-items:center;justify-content:center;background:var(--card2);border-radius:8px}
+  .tc-invname{flex:1;font-size:13px;word-break:break-all}
+  .tc-invprev a{font-size:12.5px;display:inline-flex;align-items:center;gap:3px}
+  .tc-invcard{border:1px solid var(--line);border-right:4px solid var(--c);border-radius:12px;padding:10px 12px;margin:0 0 12px;background:var(--card);display:flex;flex-direction:column;gap:8px}
+  .tc-invhead{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+  .tc-invlock{margin-inline-start:auto;font-size:11.5px;display:inline-flex;align-items:center;gap:3px}
+  .tc-invops{font-size:12.5px;line-height:1.6}
+  .tc-invtbl{width:100%;border-collapse:collapse;font-size:13px}
+  .tc-invtbl th{text-align:right;font-weight:600;color:var(--muted);font-size:12px;padding:4px 6px;border-bottom:1px solid var(--line)}
+  .tc-invtbl td{padding:6px;border-bottom:1px solid var(--line);vertical-align:top}
+  .tc-invm{font-size:11.5px}
+  .tc-invextra{font-size:12.5px;color:#b45309}
+  .tc-invfoot{display:flex;flex-wrap:wrap;gap:14px;align-items:center;font-size:12.5px}
+  .tc-invfoot a{display:inline-flex;align-items:center;gap:4px}
+  .tc-cam{position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.92);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:16px}
+  .tc-camwrap{position:relative;width:min(96vw,1100px);height:min(74vh,800px)}
+  .tc-camwrap video{width:100%;height:100%;object-fit:contain;background:#000;border-radius:10px}
+  .tc-camframe{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);height:92%;aspect-ratio:1/1.414;max-width:92%;border:2px solid #fff;border-radius:6px;box-shadow:0 0 0 9999px rgba(0,0,0,.45)}
+  .tc-camhint{color:#e5e7eb;font-size:14px}
+  .tc-cambar{display:flex;gap:10px}
   .tc-kinds label{cursor:pointer} .tc-kinds input{display:none}
   .tc-kinds span{display:inline-block;padding:5px 11px;border:1px solid var(--line);border-radius:99px;font-size:13px}
   .tc-kinds input:checked+span{background:var(--blue);color:#fff;border-color:var(--blue)}
@@ -2203,10 +2229,11 @@ async function userLogoutAll(uid){
 const TC={open:false, view:'home', topic:0, topicObj:null, tab:'updates', msgs:[], reads:{}, users:[], me:null,
           lastId:0, timer:null, atts:{}, wa:'', topics:[], kinds:{}, q:'', collapsed:{done:true}, editing:0,
           unread:{count:0,mentions:0,by_topic:{}}, seenMention:0, busy:false, sig:''};
-const TC_KIND_ICO={question:'help',request:'inbox',task:'checkSquare',update:'megaphone'};
-const TC_KIND_COL={question:'#a25ddc',request:'#fdab3d',task:'#579bfc',update:'#7e8597'};
+const TC_KIND_ICO={question:'help',request:'inbox',task:'checkSquare',update:'megaphone',invoice:'receipt'};
+const TC_KIND_COL={question:'#a25ddc',request:'#fdab3d',task:'#579bfc',update:'#7e8597',invoice:'#00a884'};
+const TC_KINDS_DEF={question:'שאלה',request:'בקשה',task:'משימה',update:'עדכון',invoice:'חשבונית ספק'};
 function tcKindIc(k,sz){ return TC_KIND_ICO[k]?icoI(TC_KIND_ICO[k],sz||14):''; }
-function tcKindChip(k){ const l=(TC.kinds||{})[k]||({question:'שאלה',request:'בקשה',task:'משימה',update:'עדכון'})[k]||'';
+function tcKindChip(k){ const l=(TC.kinds||{})[k]||TC_KINDS_DEF[k]||'';
   return `<span class="tc-kind" style="--c:${TC_KIND_COL[k]||'#7e8597'}">${tcKindIc(k,12)}${escW(l)}</span>`; }
 // סטטוסים בסגנון Monday: לחיצה על התגית פותחת תפריט בחירה
 const TC_STATUS=[['open','פתוח','#c4c4c4'],['working','בעבודה','#fdab3d'],['waiting','ממתין לתשובה','#a25ddc'],['done','טופל','#00c875']];
@@ -2330,13 +2357,17 @@ function tcNewTopic(){
       .catch(e=>{ const x=p.querySelector('.tc-empty'); if(x) x.textContent=e.detail||'הטעינה נכשלה'; });
     return;
   }
-  const kinds=Object.keys(TC.kinds).length?TC.kinds:{question:'שאלה',request:'בקשה',task:'משימה',update:'עדכון'};
+  const kinds=Object.keys(TC.kinds).length?TC.kinds:TC_KINDS_DEF;
+  // חשבונית ספק: הדבקה (Cmd+V) בכל מקום בטופס מצרפת את המסמך
+  p.onpaste=e=>{ if(tcKindSel()!=='invoice') return; const f=[...((e.clipboardData||{}).files||[])][0];
+    if(f){ e.preventDefault(); tcInvUpload(f.name&&f.name!=='image.png'?f:new File([f],'חשבונית.png',{type:f.type})); } };
   p.innerHTML=`<div class="tc-head"><a href="#" class="tc-back" onclick="tcHome();return false" title="חזרה">${ico('back',18)}</a><b>נושא חדש</b>
       <button class="dr-x" onclick="tcToggle(false)">✕</button></div>
     <div class="tc-form">
       <div class="tc-lbl">סוג</div>
-      <div class="tc-kinds">${Object.entries(kinds).map(([k,l],i)=>`<label><input type="radio" name="tcKind" value="${k}" ${i===0?'checked':''}><span style="--c:${TC_KIND_COL[k]}">${tcKindIc(k,13)}${escW(l)}</span></label>`).join('')}</div>
-      <div class="tc-lbl">כותרת</div>
+      <div class="tc-kinds">${Object.entries(kinds).map(([k,l],i)=>`<label><input type="radio" name="tcKind" value="${k}" ${i===0?'checked':''} onchange="tcKindChanged()"><span style="--c:${TC_KIND_COL[k]}">${tcKindIc(k,13)}${escW(l)}</span></label>`).join('')}</div>
+      <div id="tcInv" style="display:none"><div class="tc-lbl">החשבונית / תעודת המשלוח</div><div id="tcInvZone"></div></div>
+      <div class="tc-lbl">כותרת <span id="tcTitleOpt" style="font-weight:400;display:none">(אופציונלי)</span></div>
       <input id="tcTitle" placeholder="למשל: להזמין מדבקות למדפסת" maxlength="200" value="${TC.wa?'שיחה עם '+escW(tcPhoneFmt(TC.wa)):''}">
       <div class="tc-lbl">למי זה מיועד? <span style="font-weight:400">(בלי בחירה — לבעלים בלבד. רק מי שנבחר/תויג יראה את הנושא)</span></div>
       <div class="tc-assg">${TC.users.filter(u=>u.id!==TC.me).map(u=>`<label><input type="checkbox" value="${u.id}"><span>${tcAv(u.id,u.name,20,true)}${escW(u.name)}</span></label>`).join('')||'<span class="muted">אין עדיין משתמשים נוספים</span>'}</div>
@@ -2349,18 +2380,132 @@ function tcNewTopic(){
   document.getElementById('tcTitle').focus();
 }
 async function tcCreateTopic(){
-  const title=document.getElementById('tcTitle').value.trim();
-  if(!title){ document.getElementById('tcErr').textContent='חסרה כותרת'; return; }
-  const body={title, kind:(document.querySelector('input[name=tcKind]:checked')||{}).value||'question',
+  const title=document.getElementById('tcTitle').value.trim(), kind=tcKindSel(), inv=TC.atts.inv, err=document.getElementById('tcErr');
+  if(kind==='invoice'){
+    if(!inv){ err.textContent='צרף את החשבונית — קובץ, הדבקה או צילום'; return; }
+    if(inv.uploading){ err.textContent='החשבונית עדיין עולה…'; return; }
+  } else if(!title){ err.textContent='חסרה כותרת'; return; }
+  const body={title, kind,
     assignees:[...document.querySelectorAll('.tc-assg input:checked')].map(x=>Number(x.value)),
     text:document.getElementById('tcFirst').value, wa_phone:TC.wa||''};
+  if(kind==='invoice') Object.assign(body,{attach_key:inv.attach_key,attach_name:inv.attach_name,attach_mime:inv.attach_mime,attach_size:inv.attach_size});
   try{ const r=await api('/api/chat/topics',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    TC.wa=''; tcOpenTopic(r.topic.id); tcLoadWaLinks(true); }
+    TC.wa=''; delete TC.atts.inv; tcOpenTopic(r.topic.id); tcLoadWaLinks(true); }
   catch(e){ document.getElementById('tcErr').textContent=e.detail||'הפתיחה נכשלה'; }
 }
+// ── 🧾 חשבונית ספק (21/10/2026): העלאה מקובץ / הדבקה / מצלמה + דוח אימות מול הקופה (בעלים בלבד) ──
+function tcKindSel(){ return (document.querySelector('input[name=tcKind]:checked')||{}).value||'question'; }
+function tcKindChanged(){
+  const inv=tcKindSel()==='invoice';
+  const z=document.getElementById('tcInv'); if(z) z.style.display=inv?'':'none';
+  const o=document.getElementById('tcTitleOpt'); if(o) o.style.display=inv?'':'none';
+  const ti=document.getElementById('tcTitle'); if(ti) ti.placeholder=inv?'למשל: המילטון — Redmi Note 17':'למשל: להזמין מדבקות למדפסת';
+  const f=document.getElementById('tcFirst'); if(f) f.placeholder=inv?'הערה / שאלה על החשבונית (אופציונלי) — למשל: חסר מכשיר אחד בקרטון':'תיאור, מה צריך, עד מתי… (אופציונלי)';
+  if(inv) tcInvPaint();
+}
+function tcInvPaint(){
+  const z=document.getElementById('tcInvZone'); if(!z) return; const a=TC.atts.inv;
+  if(a){ const img=String(a.attach_mime||'').startsWith('image/')&&a.url;
+    z.innerHTML=`<div class="tc-invprev">${a.uploading?`<span class="muted">${icoI('clock',14)}מעלה ${escW(a.attach_name)}…</span>`
+      :`${img?`<img src="${a.url}" onclick="waLightbox('${a.url}')">`:`<span class="tc-invdoc">${ico('file',26)}</span>`}<span class="tc-invname">${escW(a.attach_name)}</span>
+        <a href="#" onclick="delete TC.atts.inv;tcInvPaint();return false">${ico('trash',14)} הסרה</a>`}</div>`;
+    return; }
+  z.innerHTML=`<div class="tc-invdrop" ondragover="event.preventDefault()" ondrop="event.preventDefault();const f=event.dataTransfer.files[0];if(f)tcInvUpload(f)">
+    <label class="tc-invbtn">${icoI('file',18)}בחירת קובץ<input type="file" accept="image/*,application/pdf" style="display:none" onchange="if(this.files[0])tcInvUpload(this.files[0])"></label>
+    <a href="#" class="tc-invbtn" onclick="tcInvPasteBtn();return false">${icoI('copy',18)}הדבקה</a>
+    ${IS_MOBILE?`<label class="tc-invbtn">${icoI('camera',18)}צילום<input type="file" accept="image/*" capture="environment" style="display:none" onchange="if(this.files[0])tcInvUpload(this.files[0])"></label>`
+      :`<a href="#" class="tc-invbtn" onclick="tcCamOpen();return false">${icoI('camera',18)}צילום במצלמה</a>`}
+    <div class="muted tc-invhint">תמונה או PDF · אפשר גם לגרור לכאן או להדביק (Cmd+V)</div></div>`;
+}
+async function tcInvPasteBtn(){
+  try{ const items=await navigator.clipboard.read();
+    for(const it of items){ const tp=it.types.find(x=>x.startsWith('image/')||x==='application/pdf');
+      if(tp){ const b=await it.getType(tp); tcInvUpload(new File([b],tp==='application/pdf'?'חשבונית.pdf':'חשבונית.png',{type:tp})); return; } }
+    toast('אין תמונה בלוח — העתק את החשבונית ונסה שוב',false);
+  }catch(e){ toast('הדפדפן לא מאפשר קריאה מהלוח — לחץ Cmd+V בתוך הטופס',false); }
+}
+async function tcInvUpload(file){
+  if(!(String(file.type).startsWith('image/')||file.type==='application/pdf')){ toast('צריך תמונה או PDF',false); return; }
+  if(file.size>15*1024*1024){ toast('קובץ גדול מדי (עד 15MB)',false); return; }
+  const url=String(file.type).startsWith('image/')?URL.createObjectURL(file):'';
+  TC.atts.inv={uploading:true, attach_name:file.name||'חשבונית'}; tcInvPaint();
+  const fd=new FormData(); fd.append('file',file,file.name||'invoice');
+  try{ const r=await fetchT('/api/chat/upload?hq=1',{method:'POST',headers:authH({}),body:fd},120000);
+    const j=await r.json().catch(()=>({})); if(!r.ok) throw new Error(j.detail||'ההעלאה נכשלה');
+    TC.atts.inv=Object.assign(j,{url}); tcInvPaint();
+  }catch(e){ delete TC.atts.inv; tcInvPaint(); toast(e.message||'ההעלאה נכשלה',false); }
+}
+// מצלמת המחשב: הרזולוציה הגבוהה ביותר, מסגרת יישור, חיתוך למסגרת + חידוד ניגודיות
+let _tcCam=null;
+async function tcCamOpen(){
+  if(!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia)){ toast('אין גישה למצלמה בדפדפן הזה',false); return; }
+  try{ _tcCam=await navigator.mediaDevices.getUserMedia({video:{width:{ideal:3840},height:{ideal:2160},facingMode:'environment'},audio:false}); }
+  catch(e){ toast('לא התקבלה הרשאה למצלמה',false); return; }
+  const o=document.createElement('div'); o.id='tcCam'; o.className='tc-cam';
+  o.innerHTML=`<div class="tc-camwrap"><video autoplay playsinline muted></video><div class="tc-camframe"></div></div>
+    <div class="tc-camhint">יישר את החשבונית בתוך המסגרת, באור טוב ובלי השתקפויות</div>
+    <div class="tc-cambar"><button class="btn-primary" onclick="tcCamShot()">${icoI('camera',16)}צלם</button><button class="btn-ghost" onclick="tcCamClose()">ביטול</button></div>`;
+  document.body.appendChild(o); o.querySelector('video').srcObject=_tcCam;
+}
+function tcCamClose(){ if(_tcCam) _tcCam.getTracks().forEach(t=>t.stop()); _tcCam=null; const o=document.getElementById('tcCam'); if(o) o.remove(); }
+function tcCamShot(){
+  const o=document.getElementById('tcCam'); if(!o) return;
+  const v=o.querySelector('video'), fr=o.querySelector('.tc-camframe');
+  const vw=v.videoWidth, vh=v.videoHeight; if(!vw){ toast('המצלמה עוד נטענת…',false); return; }
+  // מיפוי המסגרת על המסך לפיקסלים של הווידאו (object-fit: contain)
+  const vr=v.getBoundingClientRect(), fb=fr.getBoundingClientRect();
+  const sc=Math.min(vr.width/vw, vr.height/vh), ox=vr.left+(vr.width-vw*sc)/2, oy=vr.top+(vr.height-vh*sc)/2;
+  let sx=Math.max(0,(fb.left-ox)/sc), sy=Math.max(0,(fb.top-oy)/sc), sw=Math.min(vw-sx,fb.width/sc), sh=Math.min(vh-sy,fb.height/sc);
+  const c=document.createElement('canvas'); c.width=Math.round(sw); c.height=Math.round(sh);
+  const x=c.getContext('2d'); try{ x.filter='contrast(1.2) brightness(1.06) saturate(0.9)'; }catch(e){}
+  x.drawImage(v,sx,sy,sw,sh,0,0,c.width,c.height);
+  c.toBlob(b=>{ tcCamClose(); if(b) tcInvUpload(new File([b],'חשבונית-צילום.jpg',{type:'image/jpeg'})); },'image/jpeg',0.93);
+}
+// דוח האימות (בעלים בלבד) — מוצג מעל העדכונים בנושא חשבונית
+const TC_INV_ST={pending:['ממתין לבדיקה','#94a3b8'],reading:['קורא את החשבונית…','#579bfc'],waiting_stock:['ממתין לכניסה בקופה','#94a3b8'],
+  ok:['תואם למלאי','#00a884'],mismatch:['לא תואם למלאי','#e8833a'],unreadable:['לא קריא — צריך צילום חדש','#dc2626'],
+  not_found:['לא נמצאה כניסה בקופה','#dc2626'],error:['הבדיקה נכשלה','#dc2626']};
+const TC_LINE_ST={ok:['✓','נכנס','#00a884'],partial:['◐','חלקי','#e8833a'],missing:['✗','לא נכנס','#dc2626'],unsure:['?','לבדיקה','#a25ddc']};
+async function tcInvLoad(){
+  const t=TC.topicObj; if(!t||t.kind!=='invoice'||!S.user||S.user.role!=='owner') return;
+  TC.invAt=Date.now();
+  try{ const r=await api('/api/chat/topics/'+t.id+'/invoice',{},15000); if(TC.topic!==t.id) return;
+    const ch=JSON.stringify(r.invoice)!==JSON.stringify(TC.inv); TC.inv=r.invoice; if(ch){ const b=document.getElementById('tcInvBox'); if(b) b.innerHTML=tcInvCardHTML(); } }
+  catch(e){}
+}
+function tcInvCardHTML(){
+  const I=TC.inv; if(!I) return '<div class="tc-invcard"><span class="muted">טוען את בדיקת החשבונית…</span></div>';
+  const [sl,sc]=TC_INV_ST[I.status]||[I.status,'#94a3b8'], ex=I.extracted||{}, R=I.result||{};
+  const n=v=>Number(v||0).toLocaleString('he-IL',{maximumFractionDigits:2});
+  const ops=(R.ops||[]).map(o=>`כניסה #${escW(o.id)} · ${o.date?new Date(o.date).toLocaleString('he-IL',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):''} · ${escW(o.employee||'')} · ${n(o.qty)} יח׳${o.doc?' · מסמך '+escW(o.doc):''}`).join('<br>');
+  return `<div class="tc-invcard" style="--c:${sc}">
+    <div class="tc-invhead"><span class="tc-status" style="background:${sc}">${sl}</span>
+      <b>${escW(ex.supplier||'')}</b>${ex.doc_number?` <span class="muted">${escW(ex.doc_type||'מסמך')} ${escW(ex.doc_number)}</span>`:''}${ex.doc_date?` <span class="muted">· ${escW(ex.doc_date.split('-').reverse().join('/'))}</span>`:''}
+      <span class="tc-invlock muted">${icoI('lock',12)}גלוי לבעלים בלבד</span></div>
+    ${ops?`<div class="tc-invops muted">${ops}${R.how==='supplier'?'<br><span style="color:#e8833a">אותרה לפי ספק ותאריך — מספר המסמך בקופה חסר או שונה</span>':''}</div>`:''}
+    ${I.status==='waiting_stock'?`<div class="muted" style="font-size:12.5px">עוד לא נמצאה בקופה כניסה למלאי למסמך הזה. בודק שוב כל שעה, עד 3 ימים מההעלאה.</div>`:''}
+    ${I.status==='error'?`<div class="muted" style="font-size:12.5px">${escW(I.error||'')}</div>`:''}
+    ${(R.lines||[]).length?`<table class="tc-invtbl"><thead><tr><th>שורה בחשבונית</th><th>בחשבונית</th><th>נכנס לקופה</th><th></th></tr></thead><tbody>
+      ${R.lines.map(l=>{ const [ic,lb,c]=TC_LINE_ST[l.status]||['','',''];
+        return `<tr><td>${escW(l.description)}${(l.matched||[]).length?`<div class="muted tc-invm">${l.matched.map(m=>escW(m.name)).join(' · ')}</div>`:''}</td>
+          <td class="ltr">${n(l.qty)}</td><td class="ltr">${n(l.got)}</td><td><span style="color:${c};font-weight:700" title="${lb}">${ic} ${lb}</span></td></tr>`; }).join('')}
+      </tbody></table>`:(ex.items&&ex.items.length&&I.status!=='ok'?`<div class="muted" style="font-size:12.5px">נקראו ${ex.items.length} שורות: ${ex.items.map(i=>escW(i.description)+' ×'+n(i.qty)).join(' · ')}</div>`:'')}
+    ${(R.extras||[]).length?`<div class="tc-invextra"><b>נכנס לקופה ולא מופיע בחשבונית:</b> ${R.extras.map(x=>escW(x.name)+' ×'+n(x.qty)).join(' · ')}</div>`:''}
+    ${ex.notes?`<div class="muted" style="font-size:12.5px">הערת הקריאה: ${escW(ex.notes)}</div>`:''}
+    <div class="tc-invfoot">${R.lines?`<span class="muted">סה״כ בחשבונית ${n(R.inv_qty)} · בכניסה ${n(R.stock_qty)}</span>`:''}
+      <a href="#" onclick="tcInvRecheck(0);return false">${icoI('refresh',13)}בדוק שוב מול הקופה</a>
+      <a href="#" onclick="tcInvRecheck(1);return false">${icoI('eye',13)}קרא את החשבונית מחדש</a></div>
+  </div>`;
+}
+async function tcInvRecheck(reread){
+  try{ await api('/api/chat/topics/'+TC.topic+'/invoice/recheck?reread='+(reread?1:0),{method:'POST'},15000);
+    toast(reread?'קורא את החשבונית מחדש…':'בודק מול הקופה…',true); setTimeout(tcInvLoad,1500); setTimeout(tcInvLoad,15000); setTimeout(tcInvLoad,40000); }
+  catch(e){ toast(e.detail||'הפעולה נכשלה',false); }
+}
+
 // ── נושא פתוח: כותרת + לשוניות + כרטיסי עדכון ──
 function tcOpenTopic(id){
-  TC.view='thread'; TC.topic=Number(id)||0; TC.msgs=[]; TC.reads={}; TC.lastId=0; TC.atts={}; TC.editing=0; TC.sig=''; TC.tab='updates';
+  TC.view='thread'; TC.topic=Number(id)||0; TC.msgs=[]; TC.reads={}; TC.lastId=0; TC.atts={}; TC.editing=0; TC.sig=''; TC.tab='updates'; TC.inv=null; TC.invAt=0;
   TC.topicObj=TC.topics.find(t=>t.id===TC.topic)||null;
   const p=document.getElementById('tcPanel'); if(!p) return;
   p.innerHTML=`<div class="tc-thead" id="tcTHead"></div><div class="tc-tabs" id="tcTabs"></div>
@@ -2400,6 +2545,7 @@ async function tcLoad(first){
     if(TC.view!=='thread'||TC.topic!==topic) return;
     TC.users=r.users||TC.users; TC.me=r.me; tcBadge(r.unread);
     if(r.topic){ const ch=JSON.stringify(r.topic)!==JSON.stringify(TC.topicObj); TC.topicObj=r.topic; if(ch) tcPaintTHead(); }
+    if(r.topic&&r.topic.kind==='invoice'&&(!TC.inv||(!['ok','mismatch','unreadable','not_found','error'].includes(TC.inv.status)&&Date.now()-TC.invAt>8000))) tcInvLoad();
     const sig=JSON.stringify([r.messages,r.reads,(r.users||[]).map(u=>Math.floor((u.active_ts||0)/60))]);   // נמסר מתעדכן בלי רענון
     if(sig!==TC.sig){
       TC.sig=sig; TC.msgs=r.messages||[]; TC.reads=r.reads||{};
@@ -2566,7 +2712,8 @@ function tcPaint(scrollTop){
     const byRoot={}; TC.msgs.filter(m=>!m.system&&m.reply_to).forEach(r=>{ (byRoot[r.reply_to]=byRoot[r.reply_to]||[]).push(r); });
     const lastAct=m=>Math.max(m.ts,...(byRoot[m.id]||[]).map(r=>r.ts));
     roots.sort((a,b)=>lastAct(b)-lastAct(a)||b.id-a.id);   // עדכון עם תגובה חדשה עולה למעלה
-    html=`<div class="tc-newpost">${tcComposerHTML('post',TC.topic?'כתוב עדכון…':'כתוב עדכון לכל הצוות…')}</div>
+    const invBox=TC.topicObj&&TC.topicObj.kind==='invoice'&&S.user&&S.user.role==='owner'?`<div id="tcInvBox">${tcInvCardHTML()}</div>`:'';
+    html=`${invBox}<div class="tc-newpost">${tcComposerHTML('post',TC.topic?'כתוב עדכון…':'כתוב עדכון לכל הצוות…')}</div>
       ${roots.map(m=>tcPostHTML(m,byRoot[m.id]||[])).join('')||'<div class="tc-empty">עוד אין עדכונים. כתבו את הראשון למעלה — @ כדי לתייג.</div>'}`;
   }
   box.innerHTML=html;

@@ -342,6 +342,26 @@ _SCHEMA = [
     )
     """.format(pk=_PK),
     "CREATE INDEX IF NOT EXISTS idx_gd_rem_due ON gd_reminder(done_at, due_date)",
+    # חשבונית ספק (21/10/2026): מסמך שהועלה לנושא ב-GreenDay ↔ כניסה למלאי ב-NewOrder
+    """
+    CREATE TABLE IF NOT EXISTS supplier_invoice (
+        id           {pk},
+        topic_id     INTEGER,
+        attach_key   TEXT,
+        mime         TEXT,
+        uploaded_by  INTEGER,
+        uploaded_name TEXT,
+        status       TEXT DEFAULT 'pending',
+        extracted    TEXT,
+        result       TEXT,
+        error        TEXT,
+        attempts     INTEGER DEFAULT 0,
+        created_at   TEXT,
+        checked_at   TEXT,
+        notified     TEXT
+    )
+    """.format(pk=_PK),
+    "CREATE INDEX IF NOT EXISTS idx_si_topic ON supplier_invoice(topic_id)",
     # נושא/טיקט (מיני-Slack): שאלה / בקשה / משימה, עם אחראים וסטטוס. topic_id=0 = ערוץ "כללי".
     """
     CREATE TABLE IF NOT EXISTS team_topic (
@@ -6302,6 +6322,61 @@ def gd_reminders_due(today: str) -> list:
 def gd_reminder_notified(rid):
     with _conn() as c:
         c.cursor().execute(_q("UPDATE gd_reminder SET notified_at = ? WHERE id = ?"), (now_iso(), int(rid)))
+
+
+_SI_COLS = {"status", "extracted", "result", "error", "attempts", "checked_at", "notified"}
+
+
+def si_add(topic_id, attach_key, mime, user_id, user_name) -> int:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""INSERT INTO supplier_invoice (topic_id, attach_key, mime, uploaded_by, uploaded_name, created_at)
+                          VALUES (?, ?, ?, ?, ?, ?)"""), (int(topic_id), attach_key, mime or "", int(user_id), user_name or "", now_iso()))
+        cur.execute(_q("SELECT MAX(id) AS id FROM supplier_invoice WHERE topic_id = ?"), (int(topic_id),))
+        return int(cur.fetchone()["id"])
+
+
+def _si_row(r):
+    d = dict(r)
+    for k in ("extracted", "result"):
+        try:
+            d[k] = json.loads(d.get(k) or "null")
+        except Exception:  # noqa: BLE001
+            d[k] = None
+    return d
+
+
+def si_get(sid):
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM supplier_invoice WHERE id = ?"), (int(sid),))
+        r = cur.fetchone()
+        return _si_row(r) if r else None
+
+
+def si_for_topic(topic_id):
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM supplier_invoice WHERE topic_id = ? ORDER BY id DESC LIMIT 1"), (int(topic_id),))
+        r = cur.fetchone()
+        return _si_row(r) if r else None
+
+
+def si_set(sid, **kw):
+    kw = {k: (json.dumps(v, ensure_ascii=False) if k in ("extracted", "result") and v is not None else v)
+          for k, v in kw.items() if k in _SI_COLS}
+    if not kw:
+        return
+    with _conn() as c:
+        c.cursor().execute(_q("UPDATE supplier_invoice SET " + ", ".join(f"{k} = ?" for k in kw) + " WHERE id = ?"),
+                           (*kw.values(), int(sid)))
+
+
+def si_waiting() -> list:
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM supplier_invoice WHERE status IN ('waiting_stock', 'pending', 'reading')"))
+        return [_si_row(r) for r in cur.fetchall()]
 
 
 def gd_update_edit(uid, body):

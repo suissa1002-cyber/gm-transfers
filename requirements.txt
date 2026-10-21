@@ -11,3 +11,5 @@ PyMuPDF==1.24.10
 Pillow==11.0.0
 # סנכרון מלאי ספקים — קריאת דוחות xlsx של יבואנים (GreenDay)
 openpyxl==3.1.2
+# חשבונית ספק → Claude קורא את המסמך ומשווה לכניסה למלאי ב-NewOrder (GreenDay)
+anthropic>=0.105.2
