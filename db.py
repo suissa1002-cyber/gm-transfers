@@ -1152,6 +1152,7 @@ def _migrate():
         ("wa_push_subs",   "user_id", "INTEGER"), # מכשיר של משתמש מחובר — לפוש תיוג בצ'אט צוות
         ("team_chat",      "likes", "TEXT"),       # [user_id,...] — "אהבתי" על עדכון (14/10/2026)
         ("team_chat",      "edited_at", "TEXT"),   # נערך
+        ("team_topic",     "gd_mid", "TEXT"),      # נושא שנפתח על מוצר בלוח GreenDay (22/10/2026)
         ("shift_roster",   "week_start", "TEXT"), # תאריך ראשון של השבוע (YYYY-MM-DD) — סידור מתוארך
         ("pbx_calls",      "route", "TEXT"),       # היעד בשיחה (סיטי/מעבדה/הזמנות...) מ-1com
         ("pbx_calls",      "order_number", "TEXT"),
@@ -5828,12 +5829,13 @@ def _topic_row(r) -> dict:
     return d
 
 
-def topic_add(title, kind, user_id, user_name, assignees=None, wa_phone="") -> dict:
+def topic_add(title, kind, user_id, user_name, assignees=None, wa_phone="", gd_mid="") -> dict:
     import time as _t
     args = ((title or "")[:200], kind or "question", int(user_id), user_name or "",
-            json.dumps([int(x) for x in (assignees or [])]), wa_phone or "", now_iso(), int(_t.time()))
+            json.dumps([int(x) for x in (assignees or [])]), wa_phone or "", now_iso(), int(_t.time()),
+            (gd_mid or "")[:40])
     sql = """INSERT INTO team_topic (title, kind, created_by, created_name, assignees, wa_phone,
-                                     created_at, last_ts) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"""
+                                     created_at, last_ts, gd_mid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"""
     with _conn() as c:
         cur = c.cursor()
         if _USE_PG:
@@ -5843,6 +5845,14 @@ def topic_add(title, kind, user_id, user_name, assignees=None, wa_phone="") -> d
             cur.execute(_q(sql), args)
             tid = int(cur.lastrowid)
     return topic_get(tid)
+
+
+def topics_for_gd(mid) -> list:
+    """נושאי צוות שנפתחו על מוצר בלוח GreenDay — לתצוגה בכרטיס המוצר."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM team_topic WHERE gd_mid = ? ORDER BY last_ts DESC LIMIT 30"), (str(mid),))
+        return [_topic_row(r) for r in cur.fetchall()]
 
 
 def topic_get(tid):

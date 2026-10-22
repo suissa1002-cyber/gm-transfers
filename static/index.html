@@ -902,6 +902,9 @@
   .tc-stmenu a:hover{filter:brightness(.92)}
   .tc-kind{display:inline-flex;align-items:center;padding:2px 9px;border-radius:99px;border:1px solid var(--c);color:var(--c);font-size:12px;font-weight:600}
   .tc-walink{color:#0073ea;text-decoration:none}
+  .gd-topic{display:flex;flex-direction:column;gap:2px;padding:8px 10px;margin:4px 0;border:1px solid var(--line);border-radius:8px;text-decoration:none;color:var(--txt);background:var(--card)}
+  .gd-topic:hover{background:var(--card2)}
+  .gd-topic .muted{font-size:12px}
   .tc-tabs{display:flex;gap:20px;padding:0 14px;border-bottom:1px solid var(--line);background:var(--card)}
   .tc-tabs a{display:inline-flex;align-items:center;padding:11px 0 9px;color:var(--muted);text-decoration:none;font-size:13.5px;border-bottom:2px solid transparent;margin-bottom:-1px}
   .tc-tabs a.on{color:var(--txt);border-color:#0073ea;font-weight:600}
@@ -2408,7 +2411,7 @@ function tcPaintHome(){
   p.innerHTML=`<div class="tc-head"><b class="tc-h">${icoI('users',17)}GreenDay</b><span class="muted" style="font-size:12px">${escW(S.user.name)}</span>
       <button class="dr-x" onclick="tcToggle(false)">✕</button></div>
     ${tcPeople()}
-    <div class="tc-bar"><button class="btn-primary" onclick="TC.wa='';tcNewTopic()">+ נושא חדש</button>
+    <div class="tc-bar"><button class="btn-primary" onclick="TC.wa='';TC.gd=null;tcNewTopic()">+ נושא חדש</button>
       ${S.user&&S.user.role==='owner'?`<button class="btn-ghost gd-boardbtn" onclick="gdOpen()" title="לוח המוצרים (במקום Monday)">${icoI('list',14)}מוצרים</button>`:''}
       <label class="tc-search">${ico('search',14)}<input id="tcSearch" placeholder="חיפוש בנושאים" value="${escW(TC.q)}" oninput="TC.q=this.value;tcPaintHome()"></label></div>
     <div class="tc-list" id="tcList">
@@ -2444,12 +2447,13 @@ function tcNewTopic(){
       <div class="tc-kinds">${Object.entries(kinds).map(([k,l],i)=>`<label><input type="radio" name="tcKind" value="${k}" ${i===0?'checked':''} onchange="tcKindChanged()"><span style="--c:${TC_KIND_COL[k]}">${tcKindIc(k,13)}${escW(l)}</span></label>`).join('')}</div>
       <div id="tcInv" style="display:none"><div class="tc-lbl">החשבונית / תעודת המשלוח</div><div id="tcInvZone"></div></div>
       <div class="tc-lbl">כותרת <span id="tcTitleOpt" style="font-weight:400;display:none">(אופציונלי)</span></div>
-      <input id="tcTitle" placeholder="למשל: להזמין מדבקות למדפסת" maxlength="200" value="${TC.wa?'שיחה עם '+escW(tcPhoneFmt(TC.wa)):''}">
+      <input id="tcTitle" placeholder="למשל: להזמין מדבקות למדפסת" maxlength="200" value="${TC.wa?'שיחה עם '+escW(tcPhoneFmt(TC.wa)):TC.gd?escW(TC.gd.name):''}">
       <div class="tc-lbl">למי זה מיועד? <span style="font-weight:400">(בלי בחירה — לבעלים בלבד. רק מי שנבחר/תויג יראה את הנושא)</span></div>
       <div class="tc-assg">${TC.users.filter(u=>u.id!==TC.me).map(u=>`<label><input type="checkbox" value="${u.id}"><span>${tcAv(u.id,u.name,20,true)}${escW(u.name)}</span></label>`).join('')||'<span class="muted">אין עדיין משתמשים נוספים</span>'}</div>
       <div class="tc-lbl">פרטים</div>
       <textarea id="tcFirst" rows="5" placeholder="תיאור, מה צריך, עד מתי… (אופציונלי)"></textarea>
       ${TC.wa?`<div class="tc-pre">${icoI('chat',13)}מקושר לשיחת וואטסאפ עם ${escW(tcPhoneFmt(TC.wa))} <a href="#" onclick="TC.wa='';tcNewTopic();return false">✕</a></div>`:''}
+      ${TC.gd?`<div class="tc-pre">📦 מקושר למוצר בלוח: ${escW(TC.gd.name)} <a href="#" onclick="TC.gd=null;tcNewTopic();return false">✕</a></div>`:''}
       <div class="err" id="tcErr" style="color:var(--red);font-size:13px;min-height:16px"></div>
       <button class="btn-primary" style="width:100%" onclick="tcCreateTopic()">פתיחת נושא</button>
     </div>`;
@@ -2464,11 +2468,11 @@ async function tcCreateTopic(){
   } else if(!title){ err.textContent='חסרה כותרת'; return; }
   const body={title, kind,
     assignees:[...document.querySelectorAll('.tc-assg input:checked')].map(x=>Number(x.value)),
-    text:document.getElementById('tcFirst').value, wa_phone:TC.wa||''};
+    text:document.getElementById('tcFirst').value, wa_phone:TC.wa||'', gd_mid:(TC.gd&&TC.gd.mid)||''};
   if(kind==='invoice'){ if(P.length===1) Object.assign(body,{attach_key:P[0].attach_key,attach_name:P[0].attach_name,attach_mime:P[0].attach_mime,attach_size:P[0].attach_size});
     else body.attach_keys=P.map(a=>a.attach_key); }
   try{ const r=await api('/api/chat/topics',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    TC.wa=''; delete TC.atts.invPages; tcOpenTopic(r.topic.id); tcLoadWaLinks(true); }
+    TC.wa=''; TC.gd=null; delete TC.atts.invPages; tcOpenTopic(r.topic.id); tcLoadWaLinks(true); }
   catch(e){ document.getElementById('tcErr').textContent=e.detail||'הפתיחה נכשלה'; }
 }
 // ── 🧾 מודול חשבוניות ספק (21/10/2026, אסי): כל הסריקות מ-GreenDay — רשימה, סינון, פתיחת המסמך, שורות ואימות ──
@@ -2872,6 +2876,7 @@ function tcPaintTHead(){
       <span class="tc-mi">נפתח ע״י ${tcAv(t.created_by,t.created_name,20)}${escW(t.created_name)}</span>
       ${t.assignees.length?`<span class="tc-mi">מיועד ל ${tcAvStack(t.assignees,20)}${escW(t.assignees.map(tcName).join(', '))}</span>`:'<span class="tc-mi muted">מיועד לבעלים</span>'}
       ${t.wa_phone?`<a href="#" class="tc-mi tc-walink" onclick="tcOpenWa('${escW(t.wa_phone)}');return false">${icoI('chat',13)}${escW(tcPhoneFmt(t.wa_phone))}</a>`:''}
+      ${t.gd_mid&&isOwner()?`<a href="#" class="tc-mi tc-walink" onclick="tcToggle(false);gdOpenItem('${escW(t.gd_mid)}');return false">📦 פתח את המוצר בלוח</a>`:''}
       ${t.kind==='invoice'&&(isOwner()||t.created_by===TC.me)?`<a href="#" class="tc-mi tc-walink" onclick="tcInvAddPages();return false">${icoI('file',13)}הוספת עמודים</a>`:''}
       ${isOwner()||t.created_by===TC.me?`<a href="#" class="tc-mi tc-del" onclick="tcTopicDelete();return false" title="מחיקת הנושא">${icoI('trash',13)}מחיקה</a>`:''}
     </div>`:`<div class="tc-tmeta2"><span class="tc-mi muted">עדכונים לכל הצוות · ${TC.users.filter(u=>u.online).length} מחוברים עכשיו</span></div>`}`;
@@ -3703,6 +3708,7 @@ function gdItemPaint(){
         ${gdField('הערות',`<textarea rows="3" onchange="gdSet('${mid}','notes',this.value)">${escW(it.notes||'')}</textarea>`,1)}
       </div>
       ${gdRemSection(it)}
+      ${gdTopicsSection(it)}
       ${(it.subs||[]).length?`<div class="gd-sec">תתי-פריטים (${it.subs.length})</div><div class="gd-tablewrap"><table class="gd-table"><thead><tr><th>שם</th><th>צבעים</th><th>מחיר</th><th>אחריות</th><th>סטטוס</th><th>הערות</th></tr></thead><tbody>
         ${it.subs.map(s=>`<tr class="nohover"><td>${escW(s.name)}</td><td>${escW(s.colors)}</td><td>${escW(s.price)}</td><td>${escW(s.warranty)}</td><td>${escW(s.status)}</td><td>${escW(s.notes)}</td></tr>`).join('')}</tbody></table></div>`:''}
       <div class="gd-sec">עדכונים (${(it.updates||[]).length}) <span class="muted" style="font-weight:400">— הוראות לסוכנים: קטגוריות, תכונות, אחריות</span></div>
@@ -3720,6 +3726,17 @@ function gdItemPaint(){
       </div>`; }).join('')||'<div class="tc-empty">אין עדכונים</div>'}
     </div>`;
 }
+// ── שאלה לצוות על המוצר (22/10, אסי): נושא בצ'אט עם תיוג — מופיע לאודי/יעקב ברשימת הנושאים שלהם ──
+function gdTopicsSection(it){
+  const st={open:'פתוח',working:'בעבודה',waiting:'ממתין לתשובה',done:'טופל'}, ts=it.topics||[];
+  return `<div class="gd-sec">שאלות לצוות על המוצר${ts.length?` (${ts.length})`:''}
+      <button class="btn-ghost" style="margin-inline-start:8px;font-size:12px;padding:3px 10px" onclick="gdAsk('${escW(it.monday_id)}')">💬 שאלה חדשה + תיוג</button></div>
+    ${ts.map(t=>{ const who=(t.assignees||[]).map(a=>(TC.users.find(u=>u.id===a)||{}).name).filter(Boolean).join(', ');
+      return `<a href="#" class="gd-topic" onclick="gdOpenTopic(${t.id});return false"><b>${escW(t.title)}</b>
+        <span class="muted">${who?'ל'+escW(who)+' · ':''}${escW(st[t.status]||t.status)} · ${tcRel(t.last_ts)}</span></a>`; }).join('')}`;
+}
+function gdAsk(mid){ const it=GD.item||{}; TC.gd={mid, name:it.name||''}; TC.wa=''; gdItemClose(); TC.view='new'; tcToggle(true); }
+function gdOpenTopic(id){ gdItemClose(); TC.view='thread'; TC.topic=Number(id); tcToggle(true); }
 async function gdSaveUpd(mid,uid){
   const t=(document.getElementById('gdUpdEdit')||{}).value||''; if(!t.trim()) return;
   try{ await api('/api/greenday/products/'+mid+'/update/'+uid,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:t})},60000);

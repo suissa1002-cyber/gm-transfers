@@ -146,6 +146,17 @@ c.post(f"/api/chat/topics/{bt}", headers=A, json={"status": "done"})
 after = c.get("/api/chat/unread", headers=U).json()
 check("אחרי 'טופל' — לא נספר בבאדג' (אבל עדיין מסומן ברשימה)", after["count"] < before["count"] and after["by_topic"].get(str(bt), 0) >= 1, (before, after))
 
+# ── שאלה על מוצר מלוח GreenDay: נושא מקושר + תיוג; מופיע לנתייג ובכרטיס המוצר (22/10) ──
+db.gd_product_upsert({"monday_id": "gdtest00001", "name": "Dragon SMART TECH RIDER", "grp": "topics"})
+r = c.post("/api/chat/topics", headers=A, json={"title": "Dragon SMART TECH RIDER", "assignees": [ids["dana"]],
+                                                "text": "יש לנו גם בשחור?", "gd_mid": "gdtest00001"}).json()
+gt = r["topic"]["id"]
+check("נושא על מוצר נשמר עם הקישור למוצר", r["topic"].get("gd_mid") == "gdtest00001")
+check("הנתייגת רואה את הנושא ברשימה שלה", any(t["id"] == gt and t.get("gd_mid") == "gdtest00001" for t in c.get("/api/chat/topics", headers=D).json()["topics"]))
+pr = c.get("/api/greenday/products/gdtest00001", headers=A).json()["product"]
+check("כרטיס המוצר מציג את השאלה", [t["id"] for t in pr["topics"]] == [gt] and pr["topics"][0]["assignees"] == [ids["dana"]], pr.get("topics"))
+check("⛔ מוצר שלא קיים בלוח", c.post("/api/chat/topics", headers=A, json={"title": "x", "gd_mid": "nope"}).status_code == 400)
+
 os.unlink(_tmp)
 assert not fails, fails
 print("\n✅ כל בדיקות הצ'אט עברו")

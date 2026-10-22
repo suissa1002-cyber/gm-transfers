@@ -1984,6 +1984,7 @@ class TopicIn(BaseModel):
     attach_mime: str = ""
     attach_size: int = 0
     attach_keys: list = []      # חשבונית של כמה עמודים — מאוחדים ל-PDF אחד
+    gd_mid: str = ""            # שאלה על מוצר מלוח GreenDay (מתייגים את אודי/יעקב מתוך כרטיס המוצר)
 
 
 @app.post("/api/chat/topics")
@@ -2020,7 +2021,10 @@ def chat_topic_create(body: TopicIn):
     assignees = sorted(active - {u["id"]}) if "all" in raw else \
         sorted({int(x) for x in raw if x.isdigit() and int(x) in active})
     phone = re.sub(r"\D", "", body.wa_phone or "")[:15]
-    t = db.topic_add(title, kind, u["id"], u["name"], assignees, phone)
+    gd_mid = (body.gd_mid or "").strip()
+    if gd_mid and not db.gd_product_get(gd_mid):
+        raise HTTPException(400, "המוצר לא נמצא בלוח")
+    t = db.topic_add(title, kind, u["id"], u["name"], assignees, phone, gd_mid=gd_mid)
     first = (body.text or "").strip()
     who = ", ".join(x["name"] for x in db.users_list() if x["id"] in assignees)
     db.chat_add(u["id"], u["name"], f"פתח/ה {_TOPIC_KINDS[kind]}" + (f" ל{who}" if who else "") + f": {title}",
@@ -3091,6 +3095,8 @@ def gd_product(mid: str):
         for r in u.get("replies") or []:
             r["author"], r["body"], _x = gd.split_author(r.get("body") or "", r.get("author") or "")
     p["reminders"] = db.gd_reminders_for(mid)
+    p["topics"] = [{k: x.get(k) for k in ("id", "title", "kind", "status", "assignees", "created_name", "last_ts")}
+                   for x in db.topics_for_gd(mid)]
     return {"product": p, "monday_url": "" if str(mid).startswith("gd") else gd.item_url(mid),
             "mode": "primary" if gd.is_primary() else "mirror"}
 
