@@ -81,7 +81,9 @@ def ref_product(name, brand, wc_get, group=None):
     ניקוד: יש תכונות נפח/RAM כשלמוצר יש (מכשיר) · אותו מותג · מילים משותפות בשם."""
     words = [w for w in re.findall(r"[A-Za-z0-9+]+", name or "") if w.lower() != (brand or "").lower()]
     is_device = bool(group and any(v.get("storage") or v.get("ram") for v in group.get("variants") or []))
-    qs = [" ".join(words[:2]), words[0] if words else "", brand or ""]
+    # 22/10/2026: גם *סוג המוצר* — בשמות באנגלית הוא בסוף ("Mijia Compact Portable Electric Air Compressor"):
+    # בלי זה נבחרה מצלמת אבטחה כ"מוצר דומה" ולא משאבת Air Compressor 1S הקיימת → הוראות בביטחון נמוך.
+    qs = [" ".join(words[:2]), " ".join(words[-2:]) if len(words) > 2 else "", words[0] if words else "", brand or ""]
     if is_device:
         qs += [f"{brand} סמארטפון".strip(), "סמארטפון"]
     cand = {}
