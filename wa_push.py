@@ -198,11 +198,13 @@ def _wc_orders_latest():
         return []
 
 
-def poll_and_push_orders():
-    """ג'וב מתוזמן: מזהה הזמנות אתר חדשות ושולח push '🎉 הזמנה חדשה'."""
+def poll_and_push_orders(orders=None):
+    """ג'וב מתוזמן: מזהה הזמנות אתר חדשות ושולח push '🎉 הזמנה חדשה'.
+    orders — רשימה שכבר נמשכה (main._orders_latest_raw, cache משותף); None → משיכה עצמאית."""
     if not db.wa_push_subs():
         return  # אין מכשירים רשומים — לא שורפים קריאות
-    orders = _wc_orders_latest()
+    if orders is None:
+        orders = _wc_orders_latest()
     if not orders:
         return
     ids = [str(o.get("id")) for o in orders]

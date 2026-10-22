@@ -774,7 +774,9 @@ def _wa_push_job():
 def _orders_push_job():
     try:
         import wa_push
-        wa_push.poll_and_push_orders()
+        if not wa_push.db.wa_push_subs():
+            return   # אין מכשירים רשומים — לא שורפים קריאות
+        wa_push.poll_and_push_orders(_orders_latest_raw())   # מקור משותף עם התראת המסך (22/10/2026)
     except Exception as e:  # noqa: BLE001
         logger.warning("orders_push failed: %s", e)
 
@@ -10776,16 +10778,40 @@ def _wc_attr_terms():
         ra = _rq.get(f"{base}/wp-json/wc/v3/products/attributes",
                      params={"per_page": 100}, auth=(k, s), timeout=25)
         for a in (ra.json() if ra.ok else []):
-            rt = _rq.get(f"{base}/wp-json/wc/v3/products/attributes/{a['id']}/terms",
-                         params={"per_page": 100}, auth=(k, s), timeout=20)
-            for t in (rt.json() if rt.ok else []):
+            for t in _wc_terms_of(a["id"]):
                 if (t.get("count") or 0) > 0:
                     out.append({"attr": a.get("slug"), "id": t.get("id"),
                                 "name": t.get("name") or "", "slug": t.get("slug") or ""})
-        _ATTR_TERMS_CACHE.update(at=_t.time(), data=out)
     except Exception as e:  # noqa: BLE001
         logger.warning("attr terms fetch failed: %s", e)
+    # ⛔ 22/10/2026: קודם נשמר רק בהצלחה מלאה — כשל אחד מתוך ~60 קריאות → הכול שוב בהודעה הבאה
+    # של לקוח (~234 קריאות/שעה). עכשיו נשמר תמיד: מלא → שעה, חלקי/ריק → 10 דק'.
+    _ATTR_TERMS_CACHE.update(at=_t.time() - (0 if out else 3000), data=out)
     return out
+
+
+_TERMS_BY_ATTR: dict = {}
+
+
+def _wc_terms_of(aid) -> list:
+    """terms של תכונה אחת (WC), cache משותף שעה; כשל → רשימה ריקה ל-10 דק'. משמש את אלה (סינון+וריאציות)."""
+    import time as _t
+    import requests as _rq
+    hit = _TERMS_BY_ATTR.get(aid)
+    if hit and _t.time() < hit[0]:
+        return hit[1]
+    base, k, s = _wc_creds()
+    try:
+        rt = _rq.get(f"{base}/wp-json/wc/v3/products/attributes/{aid}/terms",
+                     params={"per_page": 100}, auth=(k, s), timeout=20)
+        terms = rt.json() if rt.ok else None
+    except Exception:  # noqa: BLE001
+        terms = None
+    if not isinstance(terms, list):
+        _TERMS_BY_ATTR[aid] = (_t.time() + 600, [])
+        return []
+    _TERMS_BY_ATTR[aid] = (_t.time() + 3600, terms)
+    return terms
 
 
 @app.get("/api/uri-bridge/filter")
@@ -14211,24 +14237,46 @@ def admin_orders_latest(x_admin_key: Optional[str] = Header(None)):
 _ORDERS_LATEST_CACHE: dict = {}
 
 
-def _admin_orders_latest_fetch():
+_ORDERS_RAW_CACHE: dict = {}
+
+
+def _orders_latest_raw():
+    """10 הזמנות processing אחרונות (raw מ-WC) — **מקור יחיד משותף** להתראת המסך
+    (/api/admin/orders/latest) ול-push לאייפון (wa_push). cache 50 ש'.
+    ⛔ 22/10/2026: שני הסוקרים שאלו את WC אותה שאלה בנפרד (~115 קריאות/שעה כבדות).
+    כשל לא נשמר כתוצאה — אבל גם לא נוסה שוב לפני 50 ש'."""
+    import time as _t
     import requests as _rq
+    hit = _ORDERS_RAW_CACHE.get("v")
+    if hit and _t.time() - hit[0] < 50:
+        return hit[1]
     creds = _wc_creds()
-    if not creds:
-        return {"orders": []}
-    base, k, s = creds
-    try:
-        r = _rq.get(f"{base}/wp-json/wc/v3/orders",
-                    params={"per_page": 8, "orderby": "date", "order": "desc",
-                            # רק processing = שולם בפועל; ממתין-לתשלום לא מתריע (הוראת אסי 13/06)
-                            "status": "processing"},
-                    auth=(k, s), timeout=30)
-        if not r.ok:
-            return {"orders": []}
-    except Exception:  # noqa: BLE001
+    orders = None
+    if creds:
+        base, k, s = creds
+        try:
+            r = _rq.get(f"{base}/wp-json/wc/v3/orders",
+                        params={"per_page": 10, "orderby": "date", "order": "desc",
+                                # רק processing = שולם בפועל; ממתין-לתשלום לא מתריע (הוראת אסי 13/06)
+                                "status": "processing"},
+                        auth=(k, s), timeout=30)
+            orders = r.json() if r.ok else None
+        except Exception:  # noqa: BLE001
+            orders = None
+    if not isinstance(orders, list):
+        prev = (hit or (0, None))[1]
+        _ORDERS_RAW_CACHE["v"] = (_t.time(), prev)   # מגישים את האחרון הטוב (או None) עד הניסיון הבא
+        return prev
+    _ORDERS_RAW_CACHE["v"] = (_t.time(), orders)
+    return orders
+
+
+def _admin_orders_latest_fetch():
+    raw = _orders_latest_raw()
+    if raw is None:
         return {"orders": []}
     out = []
-    for o in r.json():
+    for o in raw[:8]:
         items = o.get("line_items") or []
         nm = (items[0].get("name") or "") if items else ""
         out.append({"id": o.get("id"), "number": o.get("number"),
@@ -16104,14 +16152,9 @@ def bot_get_variations(product_id) -> list:
         if not (nm and aid) or nm in term_disp:
             continue
         term_disp[nm] = {}
-        try:
-            rt = _rq.get(base + f"/wp-json/wc/v3/products/attributes/{aid}/terms",
-                         params={"per_page": 100}, auth=(k, s), timeout=12)
-            for t in (rt.json() if rt.ok else []):
-                term_disp[nm][t.get("slug")] = t.get("name")
-                term_disp[nm][t.get("name")] = t.get("name")
-        except Exception:  # noqa: BLE001
-            pass
+        for t in _wc_terms_of(aid):   # cache משותף (22/10/2026)
+            term_disp[nm][t.get("slug")] = t.get("name")
+            term_disp[nm][t.get("name")] = t.get("name")
 
     def _disp(nm, opt):
         return term_disp.get(nm, {}).get(opt, opt)
