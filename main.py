@@ -6137,7 +6137,11 @@ def _variant_color(sku) -> str:
                 break
     except Exception as e:  # noqa: BLE001
         logger.warning("variant color lookup failed for %s: %s", sku, e)
-        return ""   # לא שומרים כשל ב-cache — ננסה שוב בפעם הבאה
+        # ⛔ 22/10/2026: בלי cache לכשל, כל רענון לוח (כל כמה שניות × כל מסך × כל סניף) ניסה שוב —
+        # האתר האט → הבדיקות נכשלו → נוסו שוב → האתר קרס (~200 בקשות/שעה לכל מק"ט).
+        # כשל נשמר ל-10 דק' (TTL קצר מה-24ש של הצלחה).
+        _sku_color_cache[sku] = (_t.time() - _SKU_COLOR_TTL + 600, "")
+        return ""
     _sku_color_cache[sku] = (_t.time(), color)
     return color
 
@@ -14189,6 +14193,23 @@ def admin_orders_latest(x_admin_key: Optional[str] = Header(None)):
     """הזמנות אחרונות (קלות משקל) — להתראת 'הזמנה חדשה' ולספירת באדג'.
     רק סטטוסי כניסה אמיתיים (processing/pending/on-hold) — לא טיוטות checkout-draft."""
     _require_admin(x_admin_key)
+    # ⛔ 22/10/2026: כל מסך פתוח (מחשב/אייפון/סניפים) סקר את זה ישירות מול WC — ~685 קריאות/שעה
+    # לשאילתת הזמנות כבדה, חלק מהעומס שהפיל את ה-PHP. cache משותף 60 ש' לכל הלקוחות.
+    import time as _t
+    hit = _ORDERS_LATEST_CACHE.get("v")
+    if hit and _t.time() - hit[0] < 60:
+        res = hit[1]
+    else:
+        res = _admin_orders_latest_fetch()
+        _ORDERS_LATEST_CACHE["v"] = (_t.time(), res)
+    # ⚠️ no-store — אסור לקאש ב-edge (אחרת זיהוי "הזמנה חדשה" מקבל תגובה ישנה); ה-cache הוא אצלנו, 60 ש'
+    return JSONResponse(res, headers={"Cache-Control": "no-store, max-age=0"})
+
+
+_ORDERS_LATEST_CACHE: dict = {}
+
+
+def _admin_orders_latest_fetch():
     import requests as _rq
     creds = _wc_creds()
     if not creds:
@@ -14213,8 +14234,7 @@ def admin_orders_latest(x_admin_key: Optional[str] = Header(None)):
                     "items_n": sum(int(li.get("quantity") or 1) for li in items),
                     "total": o.get("total"), "status": o.get("status"),
                     "date": o.get("date_created")})
-    # ⚠️ no-store — אסור לקאש (אחרת זיהוי "הזמנה חדשה" מקבל תגובה ישנה מה-edge)
-    return JSONResponse({"orders": out}, headers={"Cache-Control": "no-store, max-age=0"})
+    return {"orders": out}
 
 
 
