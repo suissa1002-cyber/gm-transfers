@@ -1096,7 +1096,9 @@ def register_recurring_jobs():
     # ⚠️ חימום מסך ההזמנות: וורדפרס עונה ב-3-6 שניות, ולכן המסך מוגש ממטמון
     # שמשרה זו מרעננת. בלי החימום הלחיצה הראשונה אחרי שקט הייתה משלמת את
     # מלוא ההמתנה (אסי, 10/08/2026).
-    scheduler.add_job(_orders_prefetch_job, "interval", seconds=20,
+    # ⛔ 22/10/2026: היה כל 20 ש' מסביב לשעון (~180 שאילתות הזמנות כבדות בשעה, גם בלילה) —
+    # חלק מהעומס הקבוע שהפיל את ה-PHP באתר. 3 דק' מספיקות לחימום.
+    scheduler.add_job(_orders_prefetch_job, "interval", seconds=180,
                       id="orders_prefetch", max_instances=1, coalesce=True,
                       misfire_grace_time=30)
     scheduler.add_job(_cargo_delivery_sync_job, "interval", minutes=30,
