@@ -275,6 +275,7 @@ def refresh_home():
                      params={"context": "edit"}, auth=wp, timeout=90)
     r.raise_for_status()
     content = r.json()["content"]["raw"]
+    before = content
 
     blocks = {"best": _cards(best, "best"), "sale": _cards(sale, "sale"), "new": _cards(new, "new")}
     replaced = {}
@@ -284,6 +285,8 @@ def refresh_home():
     if not all(replaced.values()):
         return {"ok": False, "error": "markers missing", "replaced": replaced, "counts": counts}
 
+    if content == before:   # 22/10/2026: אין שינוי → לא שומרים (שמירת עמוד ענק קרסה על מגבלת זיכרון 512MB)
+        return {"ok": True, "counts": counts, "bytes": len(content), "unchanged": True}
     pr = requests.post(f"{_base()}/wp-json/wp/v2/pages/{WP_PAGE_ID}",
                        json={"content": content}, auth=wp, timeout=90)
     pr.raise_for_status()

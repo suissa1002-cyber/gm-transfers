@@ -222,10 +222,16 @@ def refresh_special():
                              headers={"User-Agent": "gm-special-refresh"}, timeout=90)
             r.raise_for_status()
             content = r.json()["content"]["raw"]
+            before = content
             content, ok = _splice_page(content, prods)
             if not ok:
                 out[slug] = {"ok": False, "error": "GMLIST markers missing"}
                 out["ok"] = False
+                continue
+            if content == before:
+                # ⛔ 22/10/2026: שמירת העמוד (כמה MB + revision מלא) קרסה על מגבלת הזיכרון 512MB של ה-PHP
+                # באתר (LiveDNS: POST wp/v2/pages/48701 → 500). אין שינוי → לא שומרים בכלל.
+                out[slug] = {"ok": True, "count": len(prods), "unchanged": True}
                 continue
             pr = requests.post(f"{_base()}/wp-json/wp/v2/pages/{page_id}",
                                json={"content": content}, auth=wp,
