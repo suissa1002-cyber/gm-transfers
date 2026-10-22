@@ -215,6 +215,33 @@ import sys as _s; _s.path.insert(0, "../shared")
 import greenday_dispatch as _gdd
 check("הסוכנים לא נוגעים בסטטוס ההמתנה", _gdd.plan([{"name": "Xiaomi Redmi 10", "status": greenday.STATUS_HOLD, "grp": "topics", "image_link": "", "list_id": "", "created": "2026-01-01T00:00:00Z", "updates": []}]) == {"yuval": [], "gali": [], "qa": []})
 
+# ── 🌐 מלאי באתר אחרי כניסה מאומתת (22/10) ──
+db.si_set(db.si_for_topic(t3)["id"], result={**db.si_for_topic(t3)["result"],
+    "lines": [{"description": "a", "qty": 10, "got": 10, "status": "ok", "matched": [{"id": "518895", "name": "Quest 3", "qty": 10}]},
+              {"description": "b", "qty": 2, "got": 2, "status": "ok", "matched": [{"id": "500001", "name": "Case", "qty": 2}]},
+              {"description": "c", "qty": 3, "got": 3, "status": "ok", "matched": [{"id": "500002", "name": "Phone", "qty": 3}]}],
+    "extras": [{"id": "500003", "name": "New thing", "qty": 1}]})
+WC = {"518895": {"id": 11, "parent_id": 0, "name": "Meta Quest 3", "status": "publish", "stock_status": "instock", "manage_stock": True, "stock_quantity": 1},
+      "500001": {"id": 22, "parent_id": 7, "name": "Case - Black", "status": "publish", "stock_status": "outofstock", "manage_stock": False, "stock_quantity": None},
+      "500002": {"id": 33, "parent_id": 0, "name": "Phone", "status": "publish", "stock_status": "instock", "manage_stock": False, "stock_quantity": None}}
+main._wc_get = lambda path, params=None: [WC[params["sku"]]] if params and params.get("sku") in WC else []
+puts = []
+main._wc_put = lambda path, body: puts.append((path, body)) or {}
+class _StockPOS:
+    def get_product_stock(self, sku): return {1: 4.0, 2: 8.0, 5: 3.0}   # 5='אתר' משוריין — לא נספר
+main.poller.client = lambda: _StockPOS()
+check("⛔ עובד לא בודק מלאי באתר", c.post(f"/api/chat/topics/{t3}/invoice/site-stock", headers=Y).status_code == 403)
+rows = {r["sku"]: r for r in c.post(f"/api/chat/topics/{t3}/invoice/site-stock", headers=A).json()["rows"]}
+check("כמות באתר (1) קטנה ממה שנכנס (10) → מציע לעדכן לפי הקופה בלי 'אתר' (12)", rows["518895"]["need"] and rows["518895"]["suggest"] == 12 and rows["518895"]["pos_stock"] == 12, rows["518895"])
+check("אזל באתר (לא מנוהל) → מציע 'במלאי'", rows["500001"]["need"] and rows["500001"]["suggest"] is None)
+check("במלאי באתר בלי ניהול כמות → אין מה לעדכן", not rows["500002"]["need"])
+check("לא קיים באתר → מסומן", rows["500003"]["wc"] is None and not rows["500003"]["need"])
+r = c.post(f"/api/chat/topics/{t3}/invoice/site-stock/apply", headers=A, json={"items": [{"sku": "518895", "qty": 12}, {"sku": "500001"}, {"sku": "999"}]}).json()
+check("עדכון: כמות למנוהל, 'במלאי' לווריאציה, מק״ט שלא באתר נכשל לבד",
+      puts == [("/products/11", {"stock_quantity": 12, "stock_status": "instock"}), ("/products/7/variations/22", {"stock_status": "instock"})]
+      and len(r["done"]) == 2 and r["errors"] and not r["ok"], (puts, r))
+check("נרשם ביומן הנושא", any("עדכן/ה מלאי באתר" in m["text"] for m in c.get(f"/api/chat/messages?topic={t3}", headers=A).json()["messages"]))
+
 os.unlink(_tmp)
 print("\n" + ("✅ כל בדיקות חשבונית הספק עברו" if not fails else f"❌ נכשלו {len(fails)}: {fails}"))
 sys.exit(1 if fails else 0)

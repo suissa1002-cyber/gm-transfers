@@ -902,6 +902,13 @@
   .tc-stmenu a:hover{filter:brightness(.92)}
   .tc-kind{display:inline-flex;align-items:center;padding:2px 9px;border-radius:99px;border:1px solid var(--c);color:var(--c);font-size:12px;font-weight:600}
   .tc-walink{color:#0073ea;text-decoration:none}
+  .iv-site{margin-top:10px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--card);font-size:13px}
+  .iv-site-h{font-weight:700;display:flex;gap:6px;align-items:center;margin-bottom:6px}
+  .ss-row{display:flex;gap:8px;align-items:flex-start;padding:7px 0;border-top:1px solid var(--line)}
+  .ss-row:first-of-type{border-top:0}
+  .ss-main{flex:1;min-width:0}.ss-sp{width:13px;flex:none}
+  .ss-q{white-space:nowrap;font-size:12px}.ss-q input{width:64px;margin:0 4px}
+  .ss-b{color:#c2410c;font-weight:600}.ss-g{color:#15803d;font-weight:600}
   .gd-topic{display:flex;flex-direction:column;gap:2px;padding:8px 10px;margin:4px 0;border:1px solid var(--line);border-radius:8px;text-decoration:none;color:var(--txt);background:var(--card)}
   .gd-topic:hover{background:var(--card2)}
   .gd-topic .muted{font-size:12px}
@@ -2758,9 +2765,48 @@ function tcInvCardHTML(){
     ${I.status==='error'?`<div class="iv-warn">${escW(I.error||'')}</div>`:''}
     <div class="iv-actions">
       ${L.length?`<button class="btn-primary iv-btn" onclick="tcInvProducts()">${icoI('megaphone',14)}שידור למוצרים חדשים</button>`:''}
+      ${(R.lines||[]).some(l=>(l.matched||[]).length)?`<button class="btn-ghost iv-btn" onclick="tcSiteStock()">${icoI('globe',14)}בדיקת מלאי באתר</button>`:''}
       <button class="btn-ghost iv-btn" onclick="tcInvRecheck(0)">${icoI('refresh',14)}בדוק שוב מול הקופה</button>
       <button class="btn-ghost iv-btn" onclick="tcInvRecheck(1)">${icoI('eye',14)}קרא מחדש</button></div>
+    ${tcSiteStockHTML()}
   </div>`;
+}
+// ── 🌐 מלאי באתר אחרי כניסה מאומתת (22/10, אסי): קיים באתר? במלאי? לעדכן? — עדכון רק בלחיצה ואישור ──
+function tcSiteStockHTML(){
+  const S2=TC.site; if(!S2||S2.topic!==TC.topic) return '';
+  if(S2.loading) return '<div class="iv-site"><span class="iv-spin"></span> בודק באתר ובקופה…</div>';
+  if(S2.err) return `<div class="iv-site iv-warn">${escW(S2.err)}</div>`;
+  const st=r=>!r.wc?'<span class="ss-b">לא קיים באתר</span>':r.wc.stock_status!=='instock'?'<span class="ss-b">אזל באתר</span>'
+    :r.wc.managed?`<span class="${r.need?'ss-b':'ss-g'}">במלאי באתר: ${r.wc.qty??0} יח׳</span>`:'<span class="ss-g">במלאי באתר</span>';
+  const need=S2.rows.filter(r=>r.need);
+  return `<div class="iv-site"><div class="iv-site-h">${icoI('globe',14)}מלאי באתר</div>
+    ${S2.rows.map((r,i)=>`<div class="ss-row">
+      ${r.need?`<input type="checkbox" ${r.pick!==false?'checked':''} onchange="TC.site.rows[${i}].pick=this.checked;tcSiteRepaint()">`:'<span class="ss-sp"></span>'}
+      <div class="ss-main"><b>${escW(r.wc&&r.wc.name||r.name)}</b>
+        <div class="muted">מק״ט ${escW(r.sku)} · נכנס ${r.received} · בקופה עכשיו ${r.pos_stock??'?'}${r.wc&&r.wc.status!=='publish'?' · <b>המוצר באתר בטיוטה</b>':''}</div>
+        <div>${st(r)}${r.wc&&r.wc.url?` · <a href="${escW(r.wc.url)}" target="_blank" rel="noreferrer">לעמוד באתר</a>`:''}</div></div>
+      ${r.need&&r.wc&&r.wc.managed?`<label class="ss-q">לעדכן ל-<input type="number" min="0" max="9999" value="${r.qty??r.suggest}" oninput="TC.site.rows[${i}].qty=this.value"> יח׳</label>`
+        :r.need?'<span class="ss-q">→ "במלאי"</span>':''}
+    </div>`).join('')||'<div class="muted">אין מק״טים מהכניסה</div>'}
+    ${need.length?`<button class="btn-primary iv-btn" onclick="tcSiteApply()">${icoI('refresh',14)}עדכן מלאי באתר (${need.filter(r=>r.pick!==false).length})</button>`
+      :S2.rows.length?'<div class="ss-g" style="margin-top:6px">✓ הכל מעודכן באתר — אין מה לעשות</div>':''}
+    ${S2.rows.some(r=>!r.wc)?'<div class="muted" style="margin-top:4px">מוצר שלא קיים באתר — אפשר לשדר אותו לגרין דיי ("שידור למוצרים חדשים")</div>':''}</div>`;
+}
+function tcSiteRepaint(){ const b=document.getElementById('tcInvBox'); if(b) b.innerHTML=tcInvCardHTML(); }
+async function tcSiteStock(){
+  TC.site={topic:TC.topic, loading:true, rows:[]}; tcSiteRepaint();
+  try{ const r=await api('/api/chat/topics/'+TC.topic+'/invoice/site-stock',{method:'POST'},90000); TC.site={topic:TC.topic, rows:r.rows||[]}; }
+  catch(e){ TC.site={topic:TC.topic, rows:[], err:e.detail||'הבדיקה נכשלה'}; }
+  tcSiteRepaint();
+}
+async function tcSiteApply(){
+  const items=TC.site.rows.filter(r=>r.need&&r.pick!==false).map(r=>({sku:r.sku, qty:r.wc&&r.wc.managed?Number(r.qty??r.suggest):null}));
+  if(!items.length) return;
+  const txt=TC.site.rows.filter(r=>r.need&&r.pick!==false).map(r=>`• ${r.wc.name||r.name}: ${r.wc.managed?Number(r.qty??r.suggest)+' יח׳':'במלאי'}`).join('\n');
+  if(!confirm('לעדכן מלאי באתר?\n\n'+txt)) return;
+  try{ const r=await api('/api/chat/topics/'+TC.topic+'/invoice/site-stock/apply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items})},90000);
+    toast(r.ok?`עודכן באתר (${r.done.length})`:'חלק לא עודכן: '+r.errors.join(' · '),r.ok); TC.sig=''; tcSiteStock(); }
+  catch(e){ toast(e.detail||'העדכון נכשל',false); }
 }
 // משפט אחד בשפה פשוטה — מה התוצאה ומה לעשות
 function tcInvSummary(I){
@@ -2859,7 +2905,7 @@ async function tcInvRecheck(reread){
 
 // ── נושא פתוח: כותרת + לשוניות + כרטיסי עדכון ──
 function tcOpenTopic(id){
-  TC.view='thread'; TC.topic=Number(id)||0; TC.msgs=[]; TC.reads={}; TC.lastId=0; TC.atts={}; TC.editing=0; TC.sig=''; TC.tab='updates'; TC.inv=null; TC.invAt=0;
+  TC.view='thread'; TC.topic=Number(id)||0; TC.msgs=[]; TC.reads={}; TC.lastId=0; TC.atts={}; TC.editing=0; TC.sig=''; TC.tab='updates'; TC.inv=null; TC.invAt=0; TC.site=null;
   TC.topicObj=TC.topics.find(t=>t.id===TC.topic)||null;
   const p=document.getElementById('tcPanel'); if(!p) return;
   p.innerHTML=`<div class="tc-thead" id="tcTHead"></div><div class="tc-tabs" id="tcTabs"></div>

@@ -2239,6 +2239,107 @@ def _wc_get(path, params=None):
         return None
 
 
+def _wc_put(path, body):
+    creds = _wc_creds()
+    if not creds:
+        raise HTTPException(400, "אין חיבור לאתר (WC)")
+    base, k, sec = creds
+    import requests as _rq
+    r = _rq.put(f"{base}/wp-json/wc/v3{path}", json=body, auth=(k, sec), timeout=30)
+    if not r.ok:
+        raise HTTPException(502, f"האתר דחה את העדכון ({r.status_code})")
+    return r.json()
+
+
+_WC_STOCK_FIELDS = "id,parent_id,name,status,type,stock_status,manage_stock,stock_quantity,permalink"
+
+
+def _wc_by_sku(sku):
+    arr = _wc_get("/products", {"sku": sku, "status": "any", "_fields": _WC_STOCK_FIELDS}) or []
+    arr = [x for x in arr if x.get("status") != "trash"]
+    return arr[0] if arr else None
+
+
+def _site_stock_row(sku, name, received):
+    """מצב מק״ט אחד: מה נכנס, כמה בקופה עכשיו (בלי 'אתר' = משוריין להזמנות), ומה רשום באתר."""
+    try:
+        st = poller.client().get_product_stock(sku) or {}
+        pos = int(sum(q for b, q in st.items() if int(b) != 5 and (q or 0) > 0))
+    except Exception:  # noqa: BLE001
+        pos = None
+    x = _wc_by_sku(sku)
+    row = {"sku": sku, "name": name, "received": received, "pos_stock": pos, "wc": None, "need": False, "suggest": None}
+    if not x:
+        return row
+    managed = bool(x.get("manage_stock"))
+    qty = x.get("stock_quantity")
+    row["wc"] = {"id": x.get("id"), "parent": x.get("parent_id") or 0, "name": x.get("name") or "",
+                 "status": x.get("status"), "stock_status": x.get("stock_status"), "managed": managed,
+                 "qty": qty if managed else None, "url": x.get("permalink") or ""}
+    # (אסי, 22/10) לעדכן כשבאתר "אזל", או כשהכמות המנוהלת באתר קטנה ממה שנכנס עכשיו
+    if x.get("stock_status") != "instock" or (managed and (qty or 0) < received):
+        row["need"] = True
+        row["suggest"] = max(pos or 0, received) if managed else None
+    return row
+
+
+@app.post("/api/chat/topics/{tid}/invoice/site-stock")
+def chat_invoice_site_stock(tid: int):
+    """אחרי שהכניסה למלאי אומתה: לכל מק״ט שנכנס — קיים באתר? במלאי באתר? צריך לעדכן?"""
+    u, si = _inv_owner_si(tid)
+    res = si["result"]
+    got = {}
+    for ln in res.get("lines") or []:
+        for mt in ln.get("matched") or []:
+            g = got.setdefault(str(mt["id"]), {"name": mt.get("name") or "", "qty": 0.0})
+            g["qty"] += float(mt.get("qty") or 0)
+    for ex in res.get("extras") or []:
+        g = got.setdefault(str(ex["id"]), {"name": ex.get("name") or "", "qty": 0.0})
+        g["qty"] += float(ex.get("qty") or 0)
+    rows = [_site_stock_row(sku, g["name"], int(g["qty"])) for sku, g in got.items()]
+    return {"rows": rows}
+
+
+class SiteStockIn(BaseModel):
+    items: list   # [{sku, qty}] — qty רלוונטי רק למוצר עם ניהול מלאי באתר
+
+
+@app.post("/api/chat/topics/{tid}/invoice/site-stock/apply")
+def chat_invoice_site_stock_apply(tid: int, body: SiteStockIn):
+    """עדכון מלאי באתר אחרי אישור מפורש של הבעלים, מק״ט-מק״ט; נרשם ביומן הנושא."""
+    u, si = _inv_owner_si(tid)
+    done, errs = [], []
+    for it in (body.items or [])[:50]:
+        sku = str((it or {}).get("sku") or "").strip()
+        x = _wc_by_sku(sku) if sku else None
+        if not x:
+            errs.append(f"{sku}: לא נמצא באתר")
+            continue
+        path = f"/products/{x['parent_id']}/variations/{x['id']}" if x.get("parent_id") else f"/products/{x['id']}"
+        if x.get("manage_stock"):
+            try:
+                q = int(float((it or {}).get("qty")))
+            except (TypeError, ValueError):
+                errs.append(f"{sku}: כמות לא תקינה")
+                continue
+            if q < 0 or q > 9999:
+                errs.append(f"{sku}: כמות לא תקינה")
+                continue
+            upd = {"stock_quantity": q, "stock_status": "instock" if q > 0 else "outofstock"}
+            label = f"{x.get('name') or sku} → {q} יח׳"
+        else:
+            upd = {"stock_status": "instock"}
+            label = f"{x.get('name') or sku} → במלאי"
+        try:
+            _wc_put(path, upd)
+            done.append(label)
+        except HTTPException as e:
+            errs.append(f"{sku}: {e.detail}")
+    if done:
+        db.chat_add(u["id"], u["name"], "עדכן/ה מלאי באתר: " + " · ".join(done), topic_id=tid, system=1)
+    return {"ok": not errs, "done": done, "errors": errs}
+
+
 def _inv_enrich(groups):
     """לכל וריאציה: מחיר מכירה מהקופה (פעם אחת) + האם המק״ט כבר מחובר באתר (בכל פתיחה — טרי).
     group.site: new (אין באתר) / partial (חלק מהווריאציות כבר במוצר קיים → הוספת וריאציות) / all (הכל קיים)."""
