@@ -371,6 +371,9 @@ def test_seed_and_endpoints():
     pv = c.get(f"/api/greenday/stock/reports/{rid}/preview", headers=A).json()
     assert not pv["blocked"]
     main._ss_notify = lambda t: None
+    # ניקוי מטמון האתר אחרי הסנכרון (wp_purge) פונה לרשת האמיתית — בבדיקה הוא תקע את הריצה
+    # ב-'running' מעבר לחלון ההמתנה (נכשל מאז 21/10 כשהאתר היה איטי). לא קשור ללוגיקת הסנכרון.
+    ss.run_apply.__defaults__ = (lambda u: True, None, "")
     ap = c.post(f"/api/greenday/stock/reports/{rid}/apply", headers=A)
     assert ap.status_code == 200, ap.text
     import time

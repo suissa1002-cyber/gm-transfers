@@ -6115,6 +6115,32 @@ _sku_color_cache: dict = {}
 _SKU_COLOR_TTL = 24 * 3600
 
 
+# ── מטמון עמיד (22/10/2026) ──────────────────────────────────────────
+# המטמונים בזיכרון מתאפסים בכל פריסה ל-Render → גל בקשות ל-WooCommerce אחרי כל עדכון קוד
+# (חלק מהעומס שהפיל את ה-PHP). שכבה שנייה ב-DB (sales_ingest_state, מפתח "pc:<ns>:<key>"):
+# זיכרון קודם, DB רק בהחטאה. כשל DB → מתנהג כמו קודם (רק זיכרון).
+def _pcache_get(ns: str, key):
+    try:
+        raw = db.sales_state_get(f"pc:{ns}:{key}")
+        if not raw:
+            return None
+        d = json_mod.loads(raw)
+        import time as _t
+        if _t.time() < float(d.get("exp") or 0):
+            return d.get("v")
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
+def _pcache_set(ns: str, key, value, ttl_sec: float):
+    try:
+        import time as _t
+        db.sales_state_set(f"pc:{ns}:{key}", json_mod.dumps({"exp": _t.time() + ttl_sec, "v": value}, ensure_ascii=False))
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def _variant_color(sku) -> str:
     """צבע הווריאציה ('בחירת צבע') מ-WooCommerce לפי SKU. '' אם אין/לא וריאציה. cache 24ש."""
     sku = str(sku or "").strip()
@@ -6124,6 +6150,10 @@ def _variant_color(sku) -> str:
     hit = _sku_color_cache.get(sku)
     if hit and (_t.time() - hit[0]) < _SKU_COLOR_TTL:
         return hit[1]
+    pv = _pcache_get("color", sku)          # שורד פריסה
+    if pv is not None:
+        _sku_color_cache[sku] = (_t.time(), pv)
+        return pv
     creds = _wc_creds()
     if not creds:
         return ""
@@ -6147,6 +6177,7 @@ def _variant_color(sku) -> str:
         _sku_color_cache[sku] = (_t.time() - _SKU_COLOR_TTL + 600, "")
         return ""
     _sku_color_cache[sku] = (_t.time(), color)
+    _pcache_set("color", sku, color, _SKU_COLOR_TTL)
     return color
 
 
@@ -10800,6 +10831,10 @@ def _wc_terms_of(aid) -> list:
     hit = _TERMS_BY_ATTR.get(aid)
     if hit and _t.time() < hit[0]:
         return hit[1]
+    pv = _pcache_get("terms", aid)          # שורד פריסה
+    if isinstance(pv, list):
+        _TERMS_BY_ATTR[aid] = (_t.time() + 600, pv)
+        return pv
     base, k, s = _wc_creds()
     try:
         rt = _rq.get(f"{base}/wp-json/wc/v3/products/attributes/{aid}/terms",
@@ -10811,6 +10846,7 @@ def _wc_terms_of(aid) -> list:
         _TERMS_BY_ATTR[aid] = (_t.time() + 600, [])
         return []
     _TERMS_BY_ATTR[aid] = (_t.time() + 3600, terms)
+    _pcache_set("terms", aid, [{k_: t.get(k_) for k_ in ("id", "name", "slug", "count")} for t in terms], 3600)
     return terms
 
 
