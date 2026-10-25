@@ -350,6 +350,8 @@ function renderEditor(){
     f('keywords','מילות זיהוי (מופרדות בפסיק)',false,
       'ההודעה מהבאנר חייבת להכיל אחת מהן <b>וגם</b> ביטוי הרשמה ("להירשם" / "רשימה מוקדמת") — כך ששאלה תמימה על הדגם לא נרשמת בטעות.') +
     f('intro','הודעת פתיחה',true) + f('outro','הודעת סיום',true) +
+    f('inquiry_reply','תשובה כשההשקה כבר במלאי',true,
+      'מלא/י רק כשהמכשיר הגיע למלאי. אז פנייה של "מתעניין / מחיר / זמין?" מקבלת את הטקסט הזה ועוברת מיד לנציג, במקום ליפול לחיפוש בקטלוג. ריק = הקמפיין נשאר רישום בלבד.') +
     `<div class="field"><label>שאלות</label>${steps}</div>
      <div class="field"><label><input type="checkbox" id="f_active"${CUR.active?' checked':''}>
        קמפיין פעיל</label></div>
@@ -369,6 +371,7 @@ async function saveCamp(){
   const body = {slug: CUR.slug, title: document.getElementById('f_title').value.trim(),
     keywords: document.getElementById('f_keywords').value.trim(),
     intro: document.getElementById('f_intro').value, outro: document.getElementById('f_outro').value,
+    inquiry_reply: document.getElementById('f_inquiry_reply').value,
     active: document.getElementById('f_active').checked, steps};
   try{ await api('/api/admin/preorder/campaign', {method:'POST', body:JSON.stringify(body)});
     toast('נשמר'); const j = await api('/api/admin/preorder/campaigns');

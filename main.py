@@ -8274,7 +8274,9 @@ async def preorder_campaign_save(request: Request, x_admin_key: Optional[str] = 
     cid = db.preorder_campaign_save(
         slug, title=b.get("title") or slug, active=b.get("active", True),
         keywords=b.get("keywords") or "", intro=b.get("intro") or "",
-        steps=b.get("steps") or [], outro=b.get("outro") or "", note=b.get("note") or "")
+        steps=b.get("steps") or [], outro=b.get("outro") or "", note=b.get("note") or "",
+        # ריק = הקמפיין במצב רישום בלבד; מלא = ההשקה במלאי ופניות עוברות לאדם
+        inquiry_reply=b.get("inquiry_reply") or "")
     return {"ok": True, "id": cid}
 
 
