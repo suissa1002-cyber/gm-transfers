@@ -1179,6 +1179,9 @@ def _migrate():
         ("pos_removals", "attempts", "INTEGER"),
         ("pos_removals", "next_try_at", "TEXT"),
         ("pos_removals", "last_try_at", "TEXT"),
+        # השקה שכבר הגיעה למלאי: פנייה של "מתעניין/מחיר/זמין" אינה הרשמה —
+        # היא ליד חם שצריך אדם. ריק = אין מצב מלאי, הקמפיין נשאר רישום בלבד.
+        ("preorder_campaigns", "inquiry_reply", "TEXT"),
     ]
     for table, col, typ in cols:
         try:
@@ -5975,7 +5978,8 @@ def preorder_campaign_get(slug: str):
 
 def preorder_campaign_save(slug: str, **kw) -> int:
     """יוצר או מעדכן קמפיין לפי slug (idempotent — בטוח לקרוא מ-seed)."""
-    cols = ("title", "active", "keywords", "intro", "steps", "outro", "note")
+    cols = ("title", "active", "keywords", "intro", "steps", "outro", "note",
+            "inquiry_reply")
     if isinstance(kw.get("steps"), (list, dict)):
         kw["steps"] = json.dumps(kw["steps"], ensure_ascii=False)
     if "active" in kw:

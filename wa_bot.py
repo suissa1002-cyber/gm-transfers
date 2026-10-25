@@ -269,6 +269,11 @@ def handle(phone: str, text: str, mtype: str = "text", reply_id: str = "", wamid
     # לחיפוש מוצר ("מצאתי 3 תוצאות ל-iPhone Duo") במקום לרשום.
     if rid.startswith("pre:"):
         return _preorder_answer(phone, sess, rid, text)
+    # השקה שכבר במלאי — פנייה לפרטים/מחיר מקבלת אדם, לא חיפוש קטלוג
+    if low and state != "preorder":
+        _inq = _preorder_inquiry_match(low)
+        if _inq and not _preorder_match(low):
+            return _preorder_inquiry(phone, _inq)
     if state == "preorder" and text and not rid:
         return _preorder_answer(phone, sess, "", text)
     _pre_camp = _preorder_match(low) if low else None
@@ -1137,6 +1142,36 @@ def _preorder_match(text: str):
             if kw.lower() in low:
                 return camp
     return None
+
+
+def _preorder_inquiry_match(text: str):
+    """השקה שכבר הגיעה למלאי: "מתעניין ב-X" / "מחיר" / "זמין?" — זו **לא** הרשמה.
+
+    ⚠️ אסי, 25/10/2026: iPhone Duo הגיע למלאי לפני שנוצר עמוד מוצר, והבאנר
+    מוביל לשיחת וואטסאפ. בלי הענף הזה ההודעה נופלת לחיפוש מוצר ומקבלת
+    "לא מצאתי תוצאות 🙁" — התשובה הגרועה ביותר לליד חם של דגל.
+    פעיל רק כשלקמפיין יש inquiry_reply (כלומר הוא סומן כ"במלאי")."""
+    low = (text or "").lower()
+    if not low:
+        return None
+    want = any(w in low for w in ("מתעניין", "מתענינת", "מתעניינת", "פרטים", "מחיר",
+                                  "כמה עולה", "זמין", "במלאי", "להזמין", "לקנות",
+                                  "מעוניין", "מעוניינת"))
+    if not want:
+        return None
+    for camp in _preorder_campaigns():
+        if not (camp.get("inquiry_reply") or "").strip():
+            continue
+        for kw in camp.get("keywords_list") or []:
+            if kw.lower() in low:
+                return camp
+    return None
+
+
+def _preorder_inquiry(phone, camp):
+    """עונה מיד עם מה שידוע, ומעביר לאדם — אין עמוד מוצר ואין מחיר בבוט."""
+    wa.send_text(phone, camp["inquiry_reply"])
+    return _to_agent(phone, f"ליד {camp.get('title') or camp.get('slug')} — הגיע מהבאנר")
 
 
 def _preorder_steps(camp):

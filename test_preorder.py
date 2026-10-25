@@ -151,5 +151,28 @@ ck("השורה ירדה מהספירה",
 ck("מחיקת id לא קיים מחזירה 404",
    c.request("DELETE", "/api/admin/preorder/signup/999999", headers=h).status_code == 404)
 
+# ── השקה שהגיעה למלאי: פנייה לפרטים ≠ הרשמה, וחייבת להגיע לאדם ──
+INQ = "היי, מתעניין במכשיר iPhone Duo. אשמח לפרטים ומחיר"
+ck("בלי inquiry_reply — אין ענף מלאי", wa_bot._preorder_inquiry_match(INQ) is None)
+
+db.preorder_campaign_save("iphone-duo", inquiry_reply="המכשיר במלאי! נציג יחזור אליך.")
+wa_bot._PRE_CACHE["at"] = 0
+ck("עם inquiry_reply — הפנייה מזוהה", wa_bot._preorder_inquiry_match(INQ) is not None)
+ck("הרשמה עדיין מזוהה כהרשמה",
+   wa_bot._preorder_match("אשמח להירשם לרשימה המוקדמת ל-iPhone Duo") is not None)
+ck("פנייה אינה נספרת כהרשמה", wa_bot._preorder_match(INQ) is None)
+
+P5 = "972500000005"
+SENT.clear(); wa_bot.handle(P5, INQ)
+ck("נשלחה תשובת המלאי",
+   any(k == "text" and "במלאי" in t for k, t in [(m[0], m[1]) for m in SENT if m[0] == "text"]),
+   str(SENT))
+ck("הועבר לנציג אנושי", any(m[0] == "agent" for m in SENT), str(SENT))
+ck("⛔ לא נרשם לרשימה בטעות", db.preorder_signup_get("iphone-duo", P5) is None)
+
+SENT.clear(); wa_bot.handle("972500000006", "אשמח להירשם לרשימה המוקדמת ל-iPhone Duo")
+ck("ההרשמה ממשיכה לעבוד גם במצב מלאי",
+   db.preorder_signup_get("iphone-duo", "972500000006") is not None, str(SENT))
+
 print("\n" + ("✅ כל הבדיקות עברו" if not fails else f"❌ נכשלו: {fails}"))
 sys.exit(1 if fails else 0)
