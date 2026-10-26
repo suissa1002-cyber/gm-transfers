@@ -357,10 +357,10 @@ def get_thread(phone: str, limit: int = 60):
 
 
 # ── קריאה מהחנות העצמאית שלנו (שלב 3 — ניתוק קונקטופ) ──
-def get_thread_native(phone: str, limit: int = 80):
+def get_thread_native(phone: str, limit: int = 80, since: int = 0):
     """שיחה מ-wa_msg (החנות שלנו) — בלי לקרוא מקונקטופ. אותו פורמט כמו get_thread."""
     import db
-    rows = db.wa_msg_thread(phone, limit=limit)
+    rows = db.wa_msg_thread(phone, limit=limit, since=since)
     slim = []
     for m in rows:
         media = []

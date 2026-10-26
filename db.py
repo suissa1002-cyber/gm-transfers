@@ -3487,18 +3487,41 @@ def wa_archive_all_except(keep_phones: list) -> dict:
     return {"archived": arch, "kept": len(keep)}
 
 
-def wa_msg_thread(phone: str, limit: int = 80) -> list:
-    """הודעות שיחה (ישן→חדש) מהחנות שלנו — לקריאת inbox עצמאית (שלב 3)."""
+def wa_msg_thread(phone: str, limit: int = 80, since: int = 0) -> list:
+    """הודעות שיחה (ישן→חדש) מהחנות שלנו — לקריאת inbox עצמאית (שלב 3).
+    since>0 → כל ההודעות מאותו רגע ואילך (קפיצה לתוצאת חיפוש ישנה), עד 1500."""
+    cols = """wamid, phone, direction, type, text, media_id, media_mime,
+              media_name, media_url, reply_to, ts, status, err, sent_by, sent_kind"""
     with _conn() as c:
         cur = c.cursor()
-        cur.execute(_q("""SELECT wamid, phone, direction, type, text, media_id, media_mime,
-                                 media_name, media_url, reply_to, ts, status, err,
-                                 sent_by, sent_kind
-                          FROM wa_msg WHERE phone = ? ORDER BY ts DESC LIMIT ?"""),
-                    (str(phone), int(limit)))
+        if since:
+            cur.execute(_q(f"SELECT {cols} FROM wa_msg WHERE phone = ? AND ts >= ? ORDER BY ts DESC LIMIT 1500"),
+                        (str(phone), int(since)))
+        else:
+            cur.execute(_q(f"SELECT {cols} FROM wa_msg WHERE phone = ? ORDER BY ts DESC LIMIT ?"),
+                        (str(phone), int(limit)))
         rows = [dict(r) for r in cur.fetchall()]
         rows.reverse()
         return rows
+
+
+def wa_msg_search(q: str, phone: str = "", limit: int = 60) -> list:
+    """חיפוש טקסט חופשי בתוכן ההודעות (כמו בוואטסאפ) — בכל השיחות או בשיחה אחת. חדש→ישן."""
+    q = (q or "").strip().lower()
+    if len(q) < 2:
+        return []
+    like = "%" + q.replace("%", "").replace("_", "") + "%"
+    sql = "SELECT wamid, phone, direction, text, ts FROM wa_msg WHERE LOWER(text) LIKE ?"
+    args = [like]
+    if phone:
+        sql += " AND phone = ?"
+        args.append(str(phone))
+    sql += " ORDER BY ts DESC LIMIT ?"
+    args.append(int(limit))
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q(sql), tuple(args))
+        return [dict(r) for r in cur.fetchall()]
 
 
 def wa_msg_count() -> int:

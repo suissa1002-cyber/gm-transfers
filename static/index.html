@@ -909,6 +909,11 @@
   .ss-main{flex:1;min-width:0}.ss-sp{width:13px;flex:none}
   .ss-q{white-space:nowrap;font-size:12px}.ss-q input{width:64px;margin:0 4px}
   .ss-b{color:#c2410c;font-weight:600}.ss-g{color:#15803d;font-weight:600}
+  @media(min-width:1000px) and (max-width:1599px){ body.wa-mode.tc-open .wa-layout{grid-template-columns:1fr} body.wa-mode.tc-open .wa-list{display:none} }
+  .wa-find{display:flex;align-items:center;gap:6px;padding:6px 10px;border-bottom:1px solid var(--line);background:var(--card)}
+  .wa-find input{flex:1;min-width:0;padding:6px 10px;border:1px solid var(--line);border-radius:8px;font-size:14px;background:var(--card2);color:var(--txt)}
+  .wa-b.wa-hit{outline:3px solid #f59e0b;outline-offset:2px}
+  .wa-mhit .lm mark{background:#fde68a;color:inherit;border-radius:3px;padding:0 1px}
   .gd-topic{display:flex;flex-direction:column;gap:2px;padding:8px 10px;margin:4px 0;border:1px solid var(--line);border-radius:8px;text-decoration:none;color:var(--txt);background:var(--card)}
   .gd-topic:hover{background:var(--card2)}
   .gd-topic .muted{font-size:12px}
@@ -1500,6 +1505,10 @@
     /* כשהטופס פתוח — כל אזור השיחה (כולל פאנל מלאי) זז ימינה ורשימת השיחות מתקפלת,
        כך שהטופס בשטח משלו והשיחה נשארת שמישה להעתקה ולהקלדה במקביל */
     body.wa-sbs .wa-body{margin-left:545px}
+    /* GreenDay פתוח מעל וואטסאפ (26/10, אסי) — אותו עיקרון: השיחה זזה הצידה ונשארת שמישה */
+    body.wa-mode.tc-open .wa-layout{margin-left:560px}
+    body.wa-mode.tc-open .wa-msgs{max-width:none;margin-inline:0}
+    body.wa-mode.tc-open .wa-send{max-width:none;margin-inline:0}
     body.wa-sbs .wa-layout{grid-template-columns:1fr}
     body.wa-sbs .wa-list{display:none}
     body.wa-sbs .wa-msgs{max-width:none;margin-inline:0;padding:14px 16px}
@@ -2336,6 +2345,7 @@ function tcStatusMenu(el){
 function tcPersonal(){ return !!S.user; }
 function tcToggle(open){
   TC.open=(open===undefined)?!TC.open:!!open;
+  document.body.classList.toggle('tc-open', TC.open);
   let p=document.getElementById('tcPanel');
   if(!TC.open){ if(p) p.classList.remove('on'); clearInterval(TC.timer); TC.timer=null; return; }
   if(!p){ p=document.createElement('aside'); p.id='tcPanel'; p.className='tc-panel'; document.body.appendChild(p);
@@ -7050,14 +7060,27 @@ function waListHTML(rows){
   } else if(q.length>=2 && (!srv||srv.q!==q)){
     html+='<div class="muted" style="padding:7px 12px;font-size:11.5px">🌐 מחפש בכל אנשי הקשר…</div>';
   }
+  const mh=S.waMsgHits;
+  if(q.length>=2 && mh && mh.q===q && mh.rows.length){
+    const nm=ph=>((S.waConvs||[]).find(c=>c.phone===ph)||((srv||{}).rows||[]).find(c=>c.phone===ph)||{}).name||('+'+ph);
+    const re=new RegExp('('+q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')','ig');
+    html+=`<div class="muted" style="padding:7px 12px;font-size:11.5px;border-top:1px solid var(--line)">💬 הודעות (${mh.rows.length})</div>`
+      +mh.rows.map(r=>`<div class="wa-conv wa-mhit" onclick="waOpenAt('${escW(r.phone)}','${escW(String(r.id||''))}',${r.ts||0})">
+        <div style="min-width:0;flex:1"><div class="nm">${escW(nm(r.phone))}</div>
+        <div class="lm" style="white-space:normal">${r.direction==='out'?'<b>אנחנו:</b> ':''}${escW(r.snippet).replace(re,'<mark>$1</mark>')}</div></div>
+        <div class="meta muted" style="font-size:11px">${r.ts?new Date(r.ts*1000).toLocaleDateString('he-IL',{day:'2-digit',month:'2-digit',year:'2-digit'}):''}</div></div>`).join('');
+  }
   return html||'<div class="empty">אין שיחות</div>';
 }
 let _waSrvTimer=null;
 function waServerSearch(){
   const q=(S.waSearch||'').trim();
   clearTimeout(_waSrvTimer);
-  if(q.length<2){ S.waSrvResults=null; return; }
+  if(q.length<2){ S.waSrvResults=null; S.waMsgHits=null; return; }
   _waSrvTimer=setTimeout(async()=>{
+    api('/api/admin/wa/msg-search?q='+encodeURIComponent(q),{},20000).then(r=>{
+      if((S.waSearch||'').trim()!==q) return; S.waMsgHits={q, rows:r.results||[]};
+      const pane=document.getElementById('waListPane'); if(pane) pane.innerHTML=waListHTML(waFiltered()); }).catch(()=>{});
     try{ const r=await api('/api/admin/wa/search?q='+encodeURIComponent(q));
          if((S.waSearch||'').trim()===q){
            S.waSrvResults={q, rows:r.conversations||[]};
@@ -7144,6 +7167,7 @@ function waThreadHTML(){
       ${winChip}
       <span style="margin-inline-start:auto;display:flex;gap:6px;flex-wrap:wrap">
         <button class="btn-ghost wa-ico ${conv.star?'wa-star-on':''}" onclick="waToggleStar()" title="${conv.star?'הסר מעקב':'סמן למעקב'}">${ico('star',17,conv.star)}</button>
+        <button class="btn-ghost wa-ico ${S.waFind?'wa-human-on':''}" onclick="waFindToggle()" title="חיפוש מלל בשיחה (כמו בוואטסאפ)">${ico('search',17)}<span style="font-size:10px;font-weight:700;margin-inline-start:1px">אבג</span></button>
 ${can('stock')?`<button class="btn-ghost wa-ico ${S.waPanel&&S.waPanelMode==='stock'?'wa-human-on':''}" onclick="waToggleStock()" title="מלאי חי — חיפוש מוצר בלי לעזוב את השיחה">${ico('search')}</button>`:''}
         <button class="btn-ghost wa-ico" onclick="tcAskAbout(S.waPhone)" title="${tcWaLinksFor(S.waPhone).filter(t=>t.status!=='done').length?'יש שיחת צוות פתוחה על הלקוח — המספר = כמה נושאים פתוחים. לחיצה פותחת נושא חדש':'פתח נושא צוות על השיחה הזו (צ\'אט פנימי)'}" style="position:relative">${ico('users')}${tcWaLinksFor(S.waPhone).filter(t=>t.status!=='done').length?`<span class="wa-badge" style="background:#2563eb">${tcWaLinksFor(S.waPhone).filter(t=>t.status!=='done').length}</span>`:''}</button>
         <button class="btn-ghost wa-ico" onclick="waTogglePanel()" title="פרטי פונה (הזמנות/תגיות/הערות)">${ico('info')}</button>
@@ -7155,7 +7179,8 @@ ${can('stock')?`<button class="btn-ghost wa-ico ${S.waPanel&&S.waPanelMode==='st
     <div class="wa-body">
       <div class="wa-main">
         ${tcWaStrip(S.waPhone)}
-        <div class="wa-msgs" id="waMsgs">
+        ${S.waFind?waFindBarHTML():''}
+        <div class="wa-msgs" id="waMsgs" onscroll="waOnScroll(this)">
           ${msgs.map(waBubble).join('')||'<div class="empty">אין הודעות בשיחה</div>'}
         </div>
         ${S.waReplyTo?`<div class="wa-replybar">
@@ -8842,7 +8867,7 @@ function waLightbox(url){
 function waBubble(m){
   const media=(m.media||[]).map(x=>{
     if(x.type==='image'||x.type==='sticker')
-      return `<img class="wa-img" src="${escW(x.url)}" loading="lazy" onload="waScrollBottom()" onclick="waLightbox('${escW(x.url)}')" title="הגדל">`;
+      return `<img class="wa-img" src="${escW(x.url)}" loading="lazy" onload="waImgLoaded()" onclick="waLightbox('${escW(x.url)}')" title="הגדל">`;
     if(x.type==='video') return `<video class="wa-img" src="${escW(x.url)}" controls preload="metadata"></video>`;
     if(x.type==='audio') return `<audio src="${escW(x.url)}" controls style="max-width:100%"></audio>`;
     return `<a href="${escW(x.url)}" target="_blank" class="wa-doc">📎 ${escW(x.caption||'קובץ מצורף')}</a>`;
@@ -9317,7 +9342,11 @@ async function waPushTest(){
        toast(`נשלחה התראת בדיקה ל-${r.sent} מכשירים`,true); }
   catch(e){ toast('שליחת בדיקה נכשלה',false); }
 }
-function waScrollBottom(){ const el=document.getElementById('waMsgs'); if(el) el.scrollTop=el.scrollHeight; }
+// ⚠️ (אסי, 26/10) גלילה להיסטוריה "קפצה" לחדש: כל רענון/טעינת תמונה גלל לתחתית. עכשיו נצמדים
+// לתחתית רק כשהמשתמש כבר למטה (S.waStick); קורא היסטוריה — נשאר במקום.
+function waScrollBottom(force){ const el=document.getElementById('waMsgs'); if(el&&(force||S.waStick!==false)) el.scrollTop=el.scrollHeight; }
+function waImgLoaded(){ if(S.waStick!==false) waScrollBottom(); }
+function waOnScroll(el){ S.waStick=(el.scrollHeight-el.scrollTop-el.clientHeight)<120; }
 function renderWaThread(){
   const p=document.getElementById('waThreadPane'); if(!p) return;
   // שמירת מיקום גלילה: אם המשתמש גלל למעלה לקרוא היסטוריה — לא קופצים לתחתית
@@ -9328,17 +9357,70 @@ function renderWaThread(){
     nearBottom=(oldMsgs.scrollHeight - oldMsgs.scrollTop - oldMsgs.clientHeight) < 120; }
   // שימור הקלדה ופוקוס בשדות (waText / waUriInput) — הרינדור מהפולינג מחק אותם
   const keep={};
-  ['waText','waUriInput','waStockQ'].forEach(id=>{ const el=document.getElementById(id);
+  ['waText','waUriInput','waStockQ','waFindQ'].forEach(id=>{ const el=document.getElementById(id);
     if(el) keep[id]={v:el.value, f:document.activeElement===el, s:el.selectionStart}; });
   p.innerHTML=waThreadHTML();
   const newMsgs=document.getElementById('waMsgs');
-  if(newMsgs) newMsgs.scrollTop = nearBottom ? newMsgs.scrollHeight : prevTop;
+  if(newMsgs){ if(S.waStick===false) nearBottom=false; newMsgs.scrollTop = nearBottom ? newMsgs.scrollHeight : prevTop; if(newMsgs._sigInit!==1){ newMsgs._sigInit=1; } }
+  if(S.waFindHit) waFindMark();
   if(S.waPanel&&S.waPanelMode==='stock') waStockPaint();   // התוצאות נצבעות מחדש אחרי רינדור
   for(const [id,k] of Object.entries(keep)){
     const el=document.getElementById(id); if(!el) continue;
     if(k.v) el.value=k.v;
     if(k.f){ el.focus(); try{ el.selectionStart=el.selectionEnd=k.s; }catch(e){} }
   }
+}
+// ── 🔎 חיפוש מלל (26/10, אסי): בתוך שיחה — תוצאות מכל ההיסטוריה (לא רק 60 האחרונות), ניווט ↑↓ והדגשה ──
+function waFindToggle(){ S.waFind=S.waFind?null:{phone:S.waPhone, q:'', res:[], i:0}; S.waFindHit=null; renderWaThread();
+  if(S.waFind) setTimeout(()=>{ const el=document.getElementById('waFindQ'); if(el) el.focus(); },30); }
+function waFindBarHTML(){
+  const F=S.waFind, n=F.res.length;
+  return `<div class="wa-find"><input id="waFindQ" placeholder="חיפוש בשיחה…" value="${escW(F.q)}" oninput="waFindInput(this.value)"
+      onkeydown="if(event.key==='Enter'){event.preventDefault();waFindGo(event.shiftKey?-1:1)}else if(event.key==='Escape'){waFindToggle()}">
+    <span class="muted" id="waFindCnt">${F.busy?'מחפש…':F.q.length>=2?(n?`${F.i+1}/${n}`:'אין תוצאות'):''}</span>
+    <button class="btn-ghost wa-ico" onclick="waFindGo(1)" title="תוצאה ישנה יותר" ${n?'':'disabled'}>↑</button>
+    <button class="btn-ghost wa-ico" onclick="waFindGo(-1)" title="תוצאה חדשה יותר" ${n?'':'disabled'}>↓</button>
+    <button class="btn-ghost wa-ico" onclick="waFindToggle()" title="סגירה">✕</button></div>`;
+}
+let _waFindT=null;
+function waFindInput(v){
+  const F=S.waFind; if(!F) return; F.q=v; clearTimeout(_waFindT);
+  if(v.trim().length<2){ F.res=[]; F.i=0; waFindCount(); return; }
+  _waFindT=setTimeout(async()=>{
+    F.busy=true; waFindCount();
+    try{ const r=await api('/api/admin/wa/msg-search?phone='+encodeURIComponent(F.phone)+'&q='+encodeURIComponent(v.trim()),{},20000);
+      if(S.waFind!==F||F.q!==v) return; F.res=r.results||[]; }catch(e){ F.res=[]; }
+    // נפתח מתוצאה ברשימה → נשארים על ההודעה שנבחרה; חיפוש רגיל → קופצים להתאמה האחרונה
+    const k=S.waFindHit?F.res.findIndex(x=>x.id===S.waFindHit.id):-1;
+    F.i=k>=0?k:0; F.busy=false; waFindCount(); if(F.res.length&&k<0) waFindJump(F.res[0]);
+  },400);
+}
+function waFindCount(){ const F=S.waFind, el=document.getElementById('waFindCnt'); if(!F||!el) return;
+  el.textContent=F.busy?'מחפש…':F.q.trim().length>=2?(F.res.length?`${F.i+1}/${F.res.length}`:'אין תוצאות'):'';
+  document.querySelectorAll('.wa-find .wa-ico').forEach((b,k)=>{ if(k<2) b.disabled=!F.res.length; }); }
+function waFindGo(d){ const F=S.waFind; if(!F||!F.res.length) return; F.i=(F.i+d+F.res.length)%F.res.length; waFindCount(); waFindJump(F.res[F.i]); }
+async function waFindJump(hit){
+  S.waStick=false; S.waFindHit={id:hit.id, q:(S.waFind||{}).q||''};
+  const have=((S.waThread||{}).messages||[]).some(m=>m.id===hit.id);
+  if(!have){   // ההודעה ישנה מ-60 האחרונות → טוענים את השיחה מאותו רגע ואילך
+    S.waSince=Math.max(0,(hit.ts||0)-3600);
+    try{ const t=await api('/api/admin/wa/thread/'+encodeURIComponent(S.waPhone)+'?since='+S.waSince,{},30000);
+      if(t&&t.phone===S.waPhone){ S.waThread=t; renderWaThread(); } }catch(e){ toast('טעינת ההיסטוריה נכשלה',false); return; }
+  }
+  waFindMark(true);
+}
+function waFindMark(scroll){
+  const H=S.waFindHit, box=document.getElementById('waMsgs'); if(!H||!box) return;
+  box.querySelectorAll('.wa-b.wa-hit').forEach(e=>e.classList.remove('wa-hit'));
+  const el=box.querySelector(`.wa-b[data-mid="${CSS.escape(String(H.id))}"]`); if(!el) return;
+  el.classList.add('wa-hit');
+  if(scroll) box.scrollTop=Math.max(0, el.offsetTop-box.clientHeight/2+el.offsetHeight/2);
+}
+// מתוצאת חיפוש ברשימה → פתיחת השיחה וקפיצה להודעה
+async function waOpenAt(phone,id,ts){
+  await openWaConv(phone);
+  S.waFind={phone, q:(S.waSearch||'').trim(), res:[{id,ts,phone}], i:0}; renderWaThread();
+  waFindJump({id,ts}); waFindInput(S.waFind.q);
 }
 function waNewConv(){
   document.getElementById('modalRoot').innerHTML=`<div class="overlay" onclick="closeModal()"><div class="modal" style="max-width:420px;text-align:right;line-height:1.5" onclick="event.stopPropagation()">
@@ -9376,6 +9458,7 @@ async function openWaConv(phone){
   }
   if(S.ellaPending===undefined) waEllaPendingLoad(true);   // 🎓 באדג' על ✨ כשמשהו מחכה
   S.waPhone=phone; S.waThread=null; S.waContact=null; S.waReplyTo=null; S._waCoup=null;
+  S.waStick=true; S.waSince=0; if(S.waFind&&S.waFind.phone!==phone) S.waFind=null; S.waFindHit=null;
   waCoupLoad(phone);
   // פרטי-שיחה פתוחים כברירת מחדל (העדפה נשמרת ב-tr_wa_info); לא דורסים פאנל אלה/מלאי פתוח
   if(S.waInfoPref===undefined){ try{ S.waInfoPref=localStorage.getItem('tr_wa_info')!=='0'; }catch(e){ S.waInfoPref=true; } }
@@ -9398,7 +9481,7 @@ async function openWaConv(phone){
 async function loadWaThread(silent){
   if(!S.waPhone) return;
   const phone=S.waPhone;
-  try{ const t=await api('/api/admin/wa/thread/'+encodeURIComponent(phone));
+  try{ const t=await api('/api/admin/wa/thread/'+encodeURIComponent(phone)+(S.waSince?'?since='+S.waSince:''));
        if(S.waPhone===phone){ S.waThread=t;
          // רענון שקט → עדכון-הודעות-בלבד (עם _sig שמדלג כשאין שינוי) — כך אלמנט וידאו/
          // תמונה לא נבנה מחדש בכל poll ומפסיק לטעון (באג: סרטון יוצא הבהב ספינר כל 15ש).
@@ -9542,11 +9625,16 @@ function waRefreshMsgsOnly(){
   const msgs=(t.messages||[]).filter(m=>m.text||(m.media&&m.media.length));
   const sig=msgs.length+'|'+((msgs[msgs.length-1]||{}).id||'')+'|'+msgs.map(m=>m.status||'').join('');
   if(box._sig===sig) return;   // אין שינוי — לא מרנדרים (בלי הבהוב/קפיצת גלילה)
-  const nearBottom=box.scrollHeight-box.scrollTop-box.clientHeight<80;
-  const prevH=box.scrollHeight, prevTop=box.scrollTop;
+  const nearBottom=S.waStick!==false&&box.scrollHeight-box.scrollTop-box.clientHeight<120;
+  const prevTop=box.scrollTop;
+  // עוגן: הבועה העליונה הנראית + המרחק שלה מראש החלון — אחרי הרינדור מחזירים אותה בדיוק לשם
+  let anchor=null, off=0;
+  if(!nearBottom){ for(const el of box.querySelectorAll('.wa-b[data-mid]')){ if(el.offsetTop+el.offsetHeight>box.scrollTop){ anchor=el.dataset.mid; off=el.offsetTop-box.scrollTop; break; } } }
   box.innerHTML=msgs.map(waBubble).join('')||'<div class="empty">אין הודעות בשיחה</div>';
   box._sig=sig;
-  if(nearBottom) box.scrollTop=box.scrollHeight; else box.scrollTop=prevTop+(box.scrollHeight-prevH);
+  if(nearBottom) box.scrollTop=box.scrollHeight;
+  else { const el=anchor&&box.querySelector(`.wa-b[data-mid="${CSS.escape(anchor)}"]`); box.scrollTop=el?el.offsetTop-off:prevTop; }
+  if(S.waFindHit) waFindMark();
 }
 async function loadWaSilent(){
   tcLoadWaLinks(false);

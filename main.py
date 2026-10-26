@@ -9521,12 +9521,29 @@ def wa_conversations(archived: int = 0, x_admin_key: Optional[str] = Header(None
 
 
 @app.get("/api/admin/wa/thread/{phone}")
-def wa_thread(phone: str, limit: int = 60, x_admin_key: Optional[str] = Header(None)):
+def wa_thread(phone: str, limit: int = 60, since: int = 0, x_admin_key: Optional[str] = Header(None)):
     _require_admin(x_admin_key)
     import wa
     if _wa_read_native():
-        return wa.get_thread_native(phone, limit=min(limit, 200))
+        return wa.get_thread_native(phone, limit=min(limit, 200), since=max(0, int(since or 0)))
     return _wa_guard(wa.get_thread, phone, limit=min(limit, 200))
+
+
+@app.get("/api/admin/wa/msg-search")
+def wa_msg_search(q: str = "", phone: str = "", x_admin_key: Optional[str] = Header(None)):
+    """חיפוש מלל בתוך ההודעות (26/10, אסי: "לקוחה טענה שהבטיחו לה מחיר — היה צריך לגלול") —
+    בכל השיחות (phone ריק) או בשיחה אחת. מחזיר קטע סביב ההתאמה לתצוגה."""
+    _require_admin(x_admin_key)
+    rows = db.wa_msg_search(q, re.sub(r"\D", "", phone or ""), limit=80 if phone else 40)
+    ql = (q or "").strip().lower()
+    out = []
+    for r in rows:
+        txt = (r.get("text") or "").replace("\n", " ")
+        i = txt.lower().find(ql)
+        a0 = max(0, i - 40)
+        out.append({"phone": r["phone"], "id": r.get("wamid"), "ts": r.get("ts") or 0, "direction": r.get("direction"),
+                    "snippet": ("…" if a0 else "") + txt[a0:a0 + 140] + ("…" if len(txt) > a0 + 140 else "")})
+    return {"results": out}
 
 
 @app.get("/api/admin/wa/search-evidence")
