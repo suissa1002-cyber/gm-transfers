@@ -18,6 +18,13 @@ r = c.get(f"/api/admin/wa/msg-search?q=1,899&phone={P}", headers=H).json()["resu
 assert [x["id"] for x in r] == ["w5"] and r[0]["direction"] == "out", r
 assert c.get("/api/admin/wa/msg-search?q=א", headers=H).json()["results"] == []
 assert c.get("/api/admin/wa/msg-search?q=1,899").status_code == 401
+# נרמול (אסי 26/10: חיפש "5800 ש"ח"): פסיק במספר, גרשיים, מילת מטבע, סדר מילים
+db.wa_msg_upsert("z1", Q, "out", "text", text="המחיר המיוחד: 5,800 ש״ח כולל משלוח", ts=9100)
+r = c.get('/api/admin/wa/msg-search?q=5800 ש"ח', headers=H).json()["results"]
+assert [x["id"] for x in r] == ["z1"] and "5,800" in r[0]["snippet"], r
+assert [x["id"] for x in c.get("/api/admin/wa/msg-search?q=משלוח 5800", headers=H).json()["results"]] == ["z1"]
+db.wa_contact_upsert(P, "דנה") if hasattr(db, "wa_contact_upsert") else None
+assert db.wa_search('5800 ש"ח') == [] or all("5800" not in (x.get("phone") or "") for x in db.wa_search('5800 ש"ח'))
 t = c.get(f"/api/admin/wa/thread/{P}", headers=H).json()
 assert len(t["messages"]) == 60 and "w5" not in [m["id"] for m in t["messages"]]
 t = c.get(f"/api/admin/wa/thread/{P}?since={1000 + 5 * 60 - 60}", headers=H).json()

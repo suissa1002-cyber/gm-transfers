@@ -913,6 +913,7 @@
   .wa-find{display:flex;align-items:center;gap:6px;padding:6px 10px;border-bottom:1px solid var(--line);background:var(--card)}
   .wa-find input{flex:1;min-width:0;padding:6px 10px;border:1px solid var(--line);border-radius:8px;font-size:14px;background:var(--card2);color:var(--txt)}
   .wa-b.wa-hit{outline:3px solid #f59e0b;outline-offset:2px}
+  .wa-sec{padding:7px 12px;font-size:11.5px;border-top:1px solid var(--line);background:var(--card2)}
   .wa-mhit .lm mark{background:#fde68a;color:inherit;border-radius:3px;padding:0 1px}
   .gd-topic{display:flex;flex-direction:column;gap:2px;padding:8px 10px;margin:4px 0;border:1px solid var(--line);border-radius:8px;text-decoration:none;color:var(--txt);background:var(--card)}
   .gd-topic:hover{background:var(--card2)}
@@ -7048,29 +7049,35 @@ function waConvRow(c){
 function waListHTML(rows){
   let html=rows.map(waConvRow).join('');
   const q=(S.waSearch||'').trim();
-  const srv=S.waSrvResults;
+  const srv=S.waSrvResults, mh=S.waMsgHits;
+  // 💬 הודעות קודם (זה מה שמחפשים כשמקלידים מלל) — ואחריהן אנשי קשר נוספים
+  if(q.length>=2 && mh && mh.q===q && mh.rows.length){
+    const nm=ph=>((S.waConvs||[]).find(c=>c.phone===ph)||((srv||{}).rows||[]).find(c=>c.phone===ph)||{}).name||('+'+ph);
+    html+=`<div class="muted wa-sec">💬 נמצא בהודעות (${mh.rows.length}${mh.rows.length>=40?'+':''})</div>`
+      +mh.rows.map(r=>`<div class="wa-conv wa-mhit" onclick="waOpenAt('${escW(r.phone)}','${escW(String(r.id||''))}',${r.ts||0})">
+        <div style="min-width:0;flex:1"><div class="nm">${escW(nm(r.phone))}</div>
+        <div class="lm" style="white-space:normal">${r.direction==='out'?'<b>אנחנו:</b> ':''}${waHl(r.snippet,q)}</div></div>
+        <div class="meta muted" style="font-size:11px">${r.ts?new Date(r.ts*1000).toLocaleDateString('he-IL',{day:'2-digit',month:'2-digit',year:'2-digit'}):''}</div></div>`).join('');
+  } else if(q.length>=2 && mh && mh.q===q){
+    html+='<div class="muted wa-sec">💬 לא נמצא בתוכן ההודעות</div>';
+  } else if(q.length>=2){
+    html+='<div class="muted wa-sec">💬 מחפש בתוכן ההודעות…</div>';
+  }
   if(q.length>=2 && srv && srv.q===q){
     const localPhones=new Set(rows.map(c=>c.phone));
     const extra=(srv.rows||[]).filter(c=>!localPhones.has(c.phone));
     if(extra.length)
-      html+=`<div class="muted" style="padding:7px 12px;font-size:11.5px;border-top:1px solid var(--line)">🌐 מכל אנשי הקשר (${extra.length})</div>`
-           +extra.map(waConvRow).join('');
-    else if(!rows.length)
-      html+='<div class="muted" style="padding:7px 12px;font-size:11.5px">לא נמצא גם בחיפוש כלל אנשי הקשר</div>';
-  } else if(q.length>=2 && (!srv||srv.q!==q)){
-    html+='<div class="muted" style="padding:7px 12px;font-size:11.5px">🌐 מחפש בכל אנשי הקשר…</div>';
-  }
-  const mh=S.waMsgHits;
-  if(q.length>=2 && mh && mh.q===q && mh.rows.length){
-    const nm=ph=>((S.waConvs||[]).find(c=>c.phone===ph)||((srv||{}).rows||[]).find(c=>c.phone===ph)||{}).name||('+'+ph);
-    const re=new RegExp('('+q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')','ig');
-    html+=`<div class="muted" style="padding:7px 12px;font-size:11.5px;border-top:1px solid var(--line)">💬 הודעות (${mh.rows.length})</div>`
-      +mh.rows.map(r=>`<div class="wa-conv wa-mhit" onclick="waOpenAt('${escW(r.phone)}','${escW(String(r.id||''))}',${r.ts||0})">
-        <div style="min-width:0;flex:1"><div class="nm">${escW(nm(r.phone))}</div>
-        <div class="lm" style="white-space:normal">${r.direction==='out'?'<b>אנחנו:</b> ':''}${escW(r.snippet).replace(re,'<mark>$1</mark>')}</div></div>
-        <div class="meta muted" style="font-size:11px">${r.ts?new Date(r.ts*1000).toLocaleDateString('he-IL',{day:'2-digit',month:'2-digit',year:'2-digit'}):''}</div></div>`).join('');
+      html+=`<div class="muted wa-sec">🌐 אנשי קשר נוספים (${extra.length})</div>`+extra.map(waConvRow).join('');
   }
   return html||'<div class="empty">אין שיחות</div>';
+}
+// הדגשת מילות החיפוש (אותו נרמול כמו בשרת: 5,800=5800, בלי מילות מטבע)
+function waHl(txt,q){
+  const cur=new Set(['ש"ח','שח','₪','שקל','שקלים']);
+  const toks=String(q||'').replace(/״/g,'"').replace(/,/g,'').split(/\s+/).filter(w=>w&&!cur.has(w));
+  let h=escW(txt||''); if(!toks.length) return h;
+  const esc=w=>escW(w).split('').map(ch=>ch.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join(',?');   // 5800 מוצא גם 5,800
+  return h.replace(new RegExp('('+toks.map(esc).join('|')+')','ig'),'<mark>$1</mark>');
 }
 let _waSrvTimer=null;
 function waServerSearch(){

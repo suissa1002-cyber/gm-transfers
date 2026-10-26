@@ -3505,14 +3505,24 @@ def wa_msg_thread(phone: str, limit: int = 80, since: int = 0) -> list:
         return rows
 
 
+_CURRENCY_TOKENS = {'ש"ח', "שח", "₪", "שקל", "שקלים", "nis", "ils"}
+
+
+def wa_search_tokens(q: str) -> list:
+    """מילות החיפוש אחרי נרמול: בלי פסיקים במספרים (5,800=5800), גרשיים אחידים, בלי מילות מטבע."""
+    q = (q or "").lower().replace(",", "").replace("״", '"').replace("%", "").replace("_", "")
+    return [w for w in q.split() if w and w not in _CURRENCY_TOKENS]
+
+
 def wa_msg_search(q: str, phone: str = "", limit: int = 60) -> list:
-    """חיפוש טקסט חופשי בתוכן ההודעות (כמו בוואטסאפ) — בכל השיחות או בשיחה אחת. חדש→ישן."""
-    q = (q or "").strip().lower()
-    if len(q) < 2:
+    """חיפוש טקסט חופשי בתוכן ההודעות (כמו בוואטסאפ) — בכל השיחות או בשיחה אחת. חדש→ישן.
+    כל המילים חייבות להופיע (לא כביטוי מדויק), אחרי אותו נרמול משני הצדדים."""
+    toks = wa_search_tokens(q)
+    if not toks or len("".join(toks)) < 2:
         return []
-    like = "%" + q.replace("%", "").replace("_", "") + "%"
-    sql = "SELECT wamid, phone, direction, text, ts FROM wa_msg WHERE LOWER(text) LIKE ?"
-    args = [like]
+    norm = "REPLACE(REPLACE(LOWER(text), ',', ''), '״', '\"')"
+    sql = "SELECT wamid, phone, direction, text, ts FROM wa_msg WHERE " + " AND ".join(f"{norm} LIKE ?" for _ in toks)
+    args = ["%" + w + "%" for w in toks]
     if phone:
         sql += " AND phone = ?"
         args.append(str(phone))
@@ -4200,7 +4210,8 @@ def wa_search(q: str, limit: int = 50) -> list:
            "FROM wa_contact c WHERE ")
     with _conn() as c:
         cur = c.cursor()
-        if digits and len(digits) >= 4:
+        # חיפוש לפי טלפון רק כשהשאילתה *היא* מספר טלפון ("5800 ש\"ח" ≠ טלפון — 26/10, אסי)
+        if digits and len(digits) >= 4 and re.fullmatch(r"[\d\s+\-()]+", q):
             cur.execute(_q(sel + "(c.phone LIKE ? OR c.name LIKE ?) "
                            "ORDER BY c.last_msg_ts DESC LIMIT ?"),
                         ("%" + digits + "%", like, int(limit)))

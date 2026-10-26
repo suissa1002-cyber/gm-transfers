@@ -9535,11 +9535,12 @@ def wa_msg_search(q: str = "", phone: str = "", x_admin_key: Optional[str] = Hea
     בכל השיחות (phone ריק) או בשיחה אחת. מחזיר קטע סביב ההתאמה לתצוגה."""
     _require_admin(x_admin_key)
     rows = db.wa_msg_search(q, re.sub(r"\D", "", phone or ""), limit=80 if phone else 40)
-    ql = (q or "").strip().lower()
+    toks = db.wa_search_tokens(q)
     out = []
     for r in rows:
         txt = (r.get("text") or "").replace("\n", " ")
-        i = txt.lower().find(ql)
+        low = txt.lower().replace("״", '"').replace(",", "")
+        i = min([j for j in (low.find(w) for w in toks) if j >= 0] or [0])
         a0 = max(0, i - 40)
         out.append({"phone": r["phone"], "id": r.get("wamid"), "ts": r.get("ts") or 0, "direction": r.get("direction"),
                     "snippet": ("…" if a0 else "") + txt[a0:a0 + 140] + ("…" if len(txt) > a0 + 140 else "")})
