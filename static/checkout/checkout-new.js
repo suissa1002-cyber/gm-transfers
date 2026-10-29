@@ -247,7 +247,6 @@ jQuery(function ($) {
   /* ---------- pickup: inline branch selector (mockup) — replaces the legacy popup ---------- */
   var PICKUP_VAL = 'local_pickup:2';
   var GM_BRANCHES = [
-    { id: 'gan-hair', name: 'סניף גן העיר', disp: 'גן העיר — אשדוד',   address: 'הגדוד העברי 5, אשדוד' },
     { id: 'star',     name: 'סניף סטאר',    disp: 'סטאר סנטר — אשדוד', address: "ז'בוטינסקי 45, אשדוד" },
     { id: 'city',     name: 'סניף סיטי',    disp: 'סיטי — אשדוד',      address: 'הציונות 13, אשדוד' },
     { id: 'ad-halom', name: 'סניף עד הלום', disp: 'עד הלום — אשדוד',   address: 'צומת עד הלום, אשדוד' }

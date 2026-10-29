@@ -34,8 +34,10 @@ r = run({})
 assert not r["in_stock"] and r["branches"] == [] and r["unknown_product"] is False, r
 r = run({5: 2.0})   # רק ב"אתר" = משוריין להזמנות → לא זמין
 assert not r["in_stock"] and r["branches"] == [] and r["verdict"] == "unavailable", r
-r = run({5: 3.0, 1: 1.0})
-assert r["last_unit"] and r["branches"] == ["גן העיר"], r
+r = run({5: 3.0, 1: 4.0, 4: 1.0})   # גן העיר נסגר (29/10) — לא נספר ולא מוצג
+assert r["last_unit"] and r["branches"] == ["עד הלום"], r
+r = run({1: 2.0})
+assert not r["in_stock"] and r["verdict"] == "unavailable", r
 # verdict: קופה × אתר (אודי 21/10)
 main.poller.client = lambda: _NO({2: 3.0})
 v = lambda q: c.get("/api/uri-bridge/stock/519547" + q, headers=H).json()["verdict"]
