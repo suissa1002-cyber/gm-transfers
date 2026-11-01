@@ -888,6 +888,7 @@
   .tc-trow:hover{background:var(--card2)}
   .tc-tmain{flex:1;min-width:0}
   .tc-tt{display:flex;align-items:center;gap:2px;font-size:14px;justify-content:flex-start} .tc-trow.unr .tc-tt{font-weight:700}
+  .tc-trow.unr{background:color-mix(in srgb,#dc2626 7%,transparent);box-shadow:inset -3px 0 0 #dc2626}
   .tc-tmeta{display:flex;flex-direction:column;align-items:flex-end;gap:3px;font-size:11.5px;min-width:70px}
   .tc-cnt{display:inline-flex;align-items:center;gap:3px;color:var(--muted)} .tc-cnt.unr{color:#fff;background:#0073ea;border-radius:99px;padding:1px 8px}
   .tc-thead{padding:10px 14px 10px;border-bottom:1px solid var(--line)}
@@ -2417,9 +2418,15 @@ function tcPaintHome(){
   const keepQ=document.getElementById('tcSearch'); const qf=keepQ&&document.activeElement===keepQ;
   const q=(TC.q||'').trim();
   const T=TC.topics.filter(t=>!q||(t.title+' '+(t.last||'')).includes(q));
-  const mine=T.filter(t=>t.status!=='done'&&t.assignees.includes(TC.me));
-  const open=T.filter(t=>t.status!=='done'&&!t.assignees.includes(TC.me));
-  const done=T.filter(t=>t.status==='done');
+  // 🔔 הודעה חדשה לא נקברת בתוך "טופלו" (אסי, 01/11): כל נושא עם לא-נקרא עולה לראש,
+  // ונושאי הלקוח של שיחת הוואטסאפ הפתוחה — בקבוצה משלהם. נושא מופיע בקבוצה אחת בלבד.
+  const cph=tcCustPhone(), cids=new Set(cph?tcWaLinksFor(cph).map(x=>x.id):[]);
+  const unr=T.filter(t=>t.unread);
+  const cust=T.filter(t=>!t.unread&&cids.has(t.id));
+  const rest=T.filter(t=>!t.unread&&!cids.has(t.id));
+  const mine=rest.filter(t=>t.status!=='done'&&t.assignees.includes(TC.me));
+  const open=rest.filter(t=>t.status!=='done'&&!t.assignees.includes(TC.me));
+  const done=rest.filter(t=>t.status==='done');
   const gen=(TC.unread.by_topic||{})['0']||0;
   const grp=(key,title,col,rows)=>!rows.length&&key!=='open'?'':`<div class="tc-grp" style="--g:${col}">
       <div class="tc-ghead" onclick="TC.collapsed['${key}']=!TC.collapsed['${key}'];tcPaintHome()">
@@ -2436,6 +2443,8 @@ function tcPaintHome(){
       <div class="tc-trow tc-gen ${gen?'unr':''}" onclick="tcOpenTopic(0)">
         <div class="tc-tcell tc-tmain"><div class="tc-tt"><span class="tc-hash">#</span><span>כללי</span></div><div class="tc-tl">עדכונים לכל הצוות</div></div>
         <div class="tc-tcell tc-tmeta">${gen?`<span class="tc-cnt unr">${ico('chat',13)}${gen}</span>`:''}</div></div>
+      ${grp('unr','🔔 הודעות חדשות','#dc2626',unr)}
+      ${cph?grp('cust','על הלקוח '+escW(tcPhoneFmt(cph)),'#2563eb',cust):''}
       ${grp('mine','דורש תשובה ממני','#e2445c',mine)}
       ${grp('open','פתוחים','#579bfc',open)}
       ${grp('done','טופלו','#00c875',done)}
@@ -3205,11 +3214,33 @@ function tcOpenWa(phone){
   openWaTab(); waConvWhenReady(phone);
 }
 // מתוך שיחת וואטסאפ: כפתור הצוות → נושא חדש מקושר לשיחה (אופציונלי — רוב הנושאים פנימיים לגמרי)
-function tcAskAbout(phone){ TC.wa=String(phone||''); TC.view='new'; tcToggle(true); }
+function tcAskAbout(phone){
+  TC.wa=String(phone||''); TC.custPh=TC.wa;
+  const L=tcWaLinksFor(phone);
+  const pick=L.filter(t=>t.unread).length===1?L.find(t=>t.unread):(L.length===1?L[0]:null);
+  if(pick){ TC.view='thread'; TC.topic=Number(pick.id); }
+  else{ TC.view=L.length?'home':'new'; if(L.length) TC.collapsed['cust']=false; }
+  tcToggle(true);
+}
+// הטלפון של שיחת הוואטסאפ שמולה הפאנל פתוח (לקבוצת "על הלקוח")
+function tcCustPhone(){
+  if(S.view==='admin'&&S.adminTab==='wa'&&S.waPhone) return String(S.waPhone);
+  return TC.custPh||'';
+}
 // ── קישור שיחת וואטסאפ ↔ נושאי צוות: סימון בשיחה וברשימה ──
 let _tcWaLinksAt=0;
 function tcWaKey(ph){ const d=String(ph||'').replace(/\D/g,''); return d.length>=9?d.slice(-9):''; }
 function tcWaLinksFor(ph){ return ((S.tcWaLinks||{})[tcWaKey(ph)])||[]; }
+function tcWaBtnBadge(ph){
+  const L=tcWaLinksFor(ph), u=L.reduce((a,t)=>a+(t.unread||0),0), o=L.filter(t=>t.status!=='done').length;
+  return u?`<span class="wa-badge" style="background:#dc2626">${u}</span>`:(o?`<span class="wa-badge" style="background:#2563eb">${o}</span>`:'');
+}
+function tcWaBtnTitle(ph){
+  const L=tcWaLinksFor(ph), u=L.reduce((a,t)=>a+(t.unread||0),0);
+  if(u) return `${u} הודעות צוות חדשות על הלקוח — לחיצה פותחת אותן`;
+  if(L.length) return L.length===1?'פתיחת נושא הצוות על הלקוח':`${L.length} נושאי צוות על הלקוח — לחיצה מציגה אותם`;
+  return 'פתח נושא צוות על השיחה הזו (צ\'אט פנימי)';
+}
 async function tcLoadWaLinks(force){
   if(!S.user||(!force&&Date.now()-_tcWaLinksAt<20000)) return;
   _tcWaLinksAt=Date.now();
@@ -7176,7 +7207,7 @@ function waThreadHTML(){
         <button class="btn-ghost wa-ico ${conv.star?'wa-star-on':''}" onclick="waToggleStar()" title="${conv.star?'הסר מעקב':'סמן למעקב'}">${ico('star',17,conv.star)}</button>
         <button class="btn-ghost wa-ico ${S.waFind?'wa-human-on':''}" onclick="waFindToggle()" title="חיפוש מלל בשיחה (כמו בוואטסאפ)">${ico('search',17)}<span style="font-size:10px;font-weight:700;margin-inline-start:1px">אבג</span></button>
 ${can('stock')?`<button class="btn-ghost wa-ico ${S.waPanel&&S.waPanelMode==='stock'?'wa-human-on':''}" onclick="waToggleStock()" title="מלאי חי — חיפוש מוצר בלי לעזוב את השיחה">${ico('search')}</button>`:''}
-        <button class="btn-ghost wa-ico" onclick="tcAskAbout(S.waPhone)" title="${tcWaLinksFor(S.waPhone).filter(t=>t.status!=='done').length?'יש שיחת צוות פתוחה על הלקוח — המספר = כמה נושאים פתוחים. לחיצה פותחת נושא חדש':'פתח נושא צוות על השיחה הזו (צ\'אט פנימי)'}" style="position:relative">${ico('users')}${tcWaLinksFor(S.waPhone).filter(t=>t.status!=='done').length?`<span class="wa-badge" style="background:#2563eb">${tcWaLinksFor(S.waPhone).filter(t=>t.status!=='done').length}</span>`:''}</button>
+        <button class="btn-ghost wa-ico" onclick="tcAskAbout(S.waPhone)" title="${tcWaBtnTitle(S.waPhone)}" style="position:relative">${ico('users')}${tcWaBtnBadge(S.waPhone)}</button>
         <button class="btn-ghost wa-ico" onclick="waTogglePanel()" title="פרטי פונה (הזמנות/תגיות/הערות)">${ico('info')}</button>
         <button class="btn-ghost wa-ico ${S.waBotHandoff?'wa-human-on':''}" onclick="waBotHandoff(${S.waBotHandoff?0:1})"
                 title="${S.waBotHandoff?'מצב אנושי — הבוט מושתק בשיחה. לחץ להחזיר את הבוט':'הבוט פעיל בשיחה. לחץ להשתלט ידנית (להשתיק את הבוט)'}">${ico(S.waBotHandoff?'user':'bot',17)}</button>
