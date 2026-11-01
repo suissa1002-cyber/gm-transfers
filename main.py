@@ -10927,6 +10927,26 @@ def bridge_filter(q: str = "", max_price: int = 0, min_price: int = 0,
                          "url": p.get("permalink")} for p in res[:25]]}
 
 
+# 🚫 נימוק פנימי שדלף לתשובה ללקוח (01/11/2026, Rashed): "ה-verdict הוא
+# `site_only_handoff` — האתר מציג במלאי אך הקופה לא מחוברת. לפי הנחיות: …" נשלח
+# כפסקה ראשונה לפני התשובה. מסננים כל פסקה שמכילה מונח פנימי; התשובה האנושית נשארת.
+_INTERNAL_LEAK_RE = re.compile(
+    r"verdict|site_only_handoff|available_handoff|\bunavailable\b|\bin_stock\b|\blast_unit\b"
+    r"|\bsku\b|X-Bridge-Key|uri-bridge|\bcurl\b|\bendpoint\b|\bAPI\b|לפי (ה)?הנחיות"
+    r"|`[A-Za-z_][A-Za-z0-9_]*`", re.I)
+
+
+def _scrub_internal(ans: str):
+    """מחזיר (תשובה נקייה, פסקאות שהוסרו). פיצול לפי שורה ריקה — קישורים לא נפגעים."""
+    keep, dropped = [], []
+    for para in re.split(r"\n\s*\n", ans or ""):
+        if not para.strip():
+            continue
+        txt = re.sub(r"https?://\S+", "", para)      # מונח בתוך URL (slug) אינו דליפה
+        (dropped if _INTERNAL_LEAK_RE.search(txt) else keep).append(para.strip())
+    return "\n\n".join(keep).strip(), dropped
+
+
 @app.post("/api/uri-bridge/answer")
 def bridge_answer(body: UriAnswer, x_bridge_key: Optional[str] = Header(None)):
     _require_bridge(x_bridge_key)
@@ -11005,6 +11025,17 @@ def bridge_answer(body: UriAnswer, x_bridge_key: Optional[str] = Header(None)):
                 ans = _re.sub(r"https?://greenmobile\.co\.il/\S+", _shorten, ans)
             except Exception:  # noqa: BLE001
                 pass
+            ans, _leaked = _scrub_internal(ans)
+            if _leaked:
+                logger.warning("uri bot-answer: dropped %d internal paragraph(s) (job %s): %r",
+                               len(_leaked), body.id, _leaked[0][:200])
+                if not ans:                    # כל התשובה הייתה פנימית → לא שולחים, לנציג
+                    _handoff = True
+                    try:
+                        db.wa_note_add(job["phone"], "(אלה — תשובה פנימית נחסמה) "
+                                       + " ".join(_leaked)[:380], "אלה ✨")
+                    except Exception:  # noqa: BLE001
+                        pass
             if ans:
                 import wa
                 wa.send_text(job["phone"], ans)
