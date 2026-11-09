@@ -434,13 +434,41 @@ def _needs_shadow(row: dict) -> bool:
         and not (row.get("shadows") or 0)
 
 
+_CAP_LABEL_RE = re.compile(r"(\d+)\s*(TB|GB|T)\b", re.I)
+
+
+def _cap_breakdown(sku_stock: list) -> list:
+    """[(נפח, יח׳)] מתוך תוויות המלאי — רק שורות עם מלאי חיובי. נפח = המספר
+    הגדול בתווית (RAM תמיד קטן מהאחסון)."""
+    agg = {}
+    for x in sku_stock:
+        q = x.get("stock") or 0
+        if q <= 0:
+            continue
+        best = None
+        for num, unit in _CAP_LABEL_RE.findall(x.get("label") or ""):
+            gb = int(num) * (1024 if unit.upper().startswith("T") else 1)
+            if best is None or gb > best:
+                best = gb
+        k = best or 10**9
+        agg[k] = agg.get(k, 0) + q
+    lab = lambda gb: "?" if gb == 10**9 else (f"{gb // 1024}TB" if gb >= 1024 else f"{gb}GB")  # noqa: E731
+    return [(lab(k), agg[k]) for k in sorted(agg)]
+
+
 def _reason(row: dict, cat=None) -> tuple:
     """(קוד, טקסט) — למה השורה אינה מחוברת (או מחוברת חלקית) לדגם בזאפ."""
     caps = row.get("caps") or []
     if row.get("zap_hidden"):
         n = row.get("shadows") or 0
-        return (("hidden_shadows", f"מוסתר בכוונה · {n} מוצרי צל משודרים במקומו")
-                if n else ("hidden", "מוסתר מזאפ — לא משודר כלל"))
+        if not n:
+            return ("hidden", "מוסתר מזאפ — לא משודר כלל")
+        # ⚠️ המלאי שנשאר על האב = נפחים ש**אין** להם צל (הצל לקח את שלו).
+        # בלי פירוט זה נראה כאילו המלאי "התפצל" — 11 הפכו ל-7+4 — אבל ה-4 הם
+        # בכלל 512GB, והשורה מוצגת תחת דגם ה-256 של זאפ (אסי, 09/11/2026).
+        left = _cap_breakdown(row.get("sku_stock") or [])
+        tail = (" · נותרו בלי צל: " + ", ".join(f"{c}×{q}" for c, q in left)) if left else ""
+        return ("hidden_shadows", f"מוסתר בכוונה · {n} מוצרי צל משודרים במקומו{tail}")
     if not row.get("in_feed"):
         # ⚠️ "בדוק מלאי/מחיר/קטגוריה" היא עצה חסרת ערך. הסיבה השכיחה היא
         # שהמוצר מסומן **לא במלאי באתר** — וזו בעיה חמורה בהרבה מזאפ: הוא
