@@ -732,6 +732,11 @@ def shadow_state(sku: str, pid=None) -> dict:
             "state": "synced" if abs(sp - site) < 0.5 else "drift"}
 
 
+_ZAP_INHERIT_META = ("_woocommerce_zap_warranty", "_woocommerce_zap_product_description",
+                     "_woocommerce_zap_manufacturer", "_woocommerce_zap_delivery",
+                     "_woocommerce_zap_shipment")
+
+
 def create_shadow(sku: str = "", pid=None, name: str = "", cap: str = "") -> dict:
     """יוצר מוצר צל לזאפ לווריאציה. חמשת השלבים כפי שתועדו אצלנו:
     external+hidden, URL עם האטריביוט, קטגוריות+מותג מההורה, תמונה, והסתרת
@@ -766,7 +771,11 @@ def create_shadow(sku: str = "", pid=None, name: str = "", cap: str = "") -> dic
         "categories": par.get("categories") or [],
         "brands": par.get("brands") or [],
         "images": (par.get("images") or [])[:1],
-        "meta_data": [{"key": "gm_parent_product_id", "value": str(tgt["parent"])}],
+        # ⚠️ שדות הפיד של ההורה (אחריות/תיאור/יצרן/אספקה) עוברים לצל — אחרת
+        # כל צל חדש יוצא לזאפ בלי האחריות שהוגדרה להורה (אסי, 09/11/2026)
+        "meta_data": [{"key": "gm_parent_product_id", "value": str(tgt["parent"])}] + [
+            {"key": m["key"], "value": m["value"]} for m in (par.get("meta_data") or [])
+            if m.get("key") in _ZAP_INHERIT_META and m.get("value")],
     }
     r = requests.post(f"{base}/wp-json/wc/v3/products", auth=auth, timeout=60, json=payload)
     if not r.ok:
