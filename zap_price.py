@@ -732,7 +732,7 @@ def shadow_state(sku: str, pid=None) -> dict:
             "state": "synced" if abs(sp - site) < 0.5 else "drift"}
 
 
-_ZAP_INHERIT_META = ("_woocommerce_zap_warranty", "_woocommerce_zap_product_description",
+_ZAP_INHERIT_META = ("_woocommerce_zap_warranty", "_gm_zap_warrantyby", "_woocommerce_zap_product_description",
                      "_woocommerce_zap_manufacturer", "_woocommerce_zap_delivery",
                      "_woocommerce_zap_shipment")
 
