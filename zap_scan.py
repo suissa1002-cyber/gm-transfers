@@ -161,7 +161,9 @@ def _pos_stock() -> dict:
         import poller
         rows = poller.client().get_all_products()
         m = {str(p["id"]): (p.get("currentStock") or 0) for p in rows if p.get("isActive")}
-        _POS_CACHE.update({"map": m, "at": _t.time()})
+        _POS_CACHE.update({"map": m, "at": _t.time(),
+                           "rows": [(str(p["id"]), p.get("name") or "", p.get("currentStock") or 0)
+                                    for p in rows if p.get("isActive")]})
         return m
     except Exception as e:  # noqa: BLE001
         logger.warning("zap: POS stock failed: %s", e)
@@ -263,6 +265,71 @@ def _catalog(cat: int = 1934) -> list:
             break
         out += rows
         page += 1
+    return out
+
+
+# ─────────────── מלאי לפי שם כשאין מק"ט מחובר באתר ───────────────
+# ⚠️ 09/11/2026 (אסי): "אני צריך שיראה כמויות אמינות גם אם לא מחובר למקט".
+# ל-Pixel 11 היו 32 יחידות בקופה והכלי הראה 1/0/0/0 — לרוב הוריאציות באתר אין
+# מק"ט קופה, והמלאי נסכם רק לפי מק"ט. כאן משלימים לפי **שם הפריט בקופה** מול
+# כותרת דגם ההשוואה בזאפ (שם נקי: מותג+דגם+נפח), בהתאמה **שוויונית** של מילות
+# הדגם — "Pro" ≠ "Pro XL" ≠ "Pro Fold" — ובנפח שהשורה באמת מוכרת.
+_NAME_STOP = {"smartphone", "phone", "ram", "dual", "sim", "ds", "nfc", "esim",
+              # צבעים — לפעמים בלי " - " לפניהם בשם הקופה
+              "black", "white", "blue", "green", "pink", "rose", "red", "fog", "frost",
+              "grey", "gray", "silver", "gold", "purple", "violet", "yellow", "orange",
+              "obsidian", "titanium", "natural", "midnight", "graphite", "cream", "mint",
+              "lavender", "navy", "beige", "brown", "coral", "teal", "olive", "porcelain"}
+
+
+def _pos_norm_cap(s: str) -> str:
+    """קופה כותבת "1T" — מנרמלים ל-1TB כדי ש-_capacity יקרא אותו."""
+    return re.sub(r"(\d+)\s*T\b", r"\1TB", s or "", flags=re.I)
+
+
+def _model_words(s: str) -> set:
+    """מילות הדגם בלבד: בלי עברית, נפח/RAM, מפרט, צבע (אחרי " - ") ומק"טי יצרן."""
+    s = _pos_norm_cap(BIDI_RE.sub("", s or ""))
+    s = re.split(r"\s[-–]\s", s)[0]                     # "… 256GB - Black" → בלי הצבע
+    s = RAM_RE.sub(" ", s)
+    s = CAP_RE.sub(" ", s)
+    s = SPEC_RE.sub(" ", s)
+    s = HEB_RE.sub(" ", s)
+    words = []
+    for w in s.split():
+        if "/" in w or re.fullmatch(r"[A-Za-z]{1,3}-[A-Za-z0-9]{3,}.*", w):
+            continue                                     # SM-S942B/DS = מק"ט יצרן
+        words += re.findall(r"[a-z0-9+]+", w.lower())
+    return {w for w in words if w not in _NAME_STOP}
+
+
+def name_stock(row: dict, pos_rows: list, linked: set) -> list:
+    """פריטי קופה שמתאימים לשורה לפי שם, ושלא מחוברים במק"ט לאף מוצר באתר.
+    מחזיר [(id, name, stock)]. בלי כותרת דגם בזאפ — לא מנחשים (שמות האתר
+    שיווקיים מדי: "וזום 5x", "מסך 6.3״")."""
+    title = row.get("zap_title") or ""
+    if not title:
+        return []
+    brand = {w for w in re.findall(r"[a-z0-9]+", (brand_of(title) or "").lower())}
+    want = _model_words(title) - brand
+    if not want or not any(re.search(r"\d", w) for w in want):
+        return []                    # בלי מספר דגם ההתאמה רופפת מדי — לא מנחשים
+    # caps מגיעים מהוריאציות בסלאג של זאפ ("00512gb", "01024gb") → "512", "1024"
+    caps = {str(int(m.group(1))) for c in (row.get("caps") or [])
+            for m in [re.match(r"0*(\d+)gb", str(c))] if m}
+    if not caps:
+        c0 = _capacity(title)
+        caps = {c0} if c0 else set()
+    out = []
+    for pid, name, st in pos_rows:
+        if pid in linked or not name:
+            continue
+        if _model_words(name) - brand != want:
+            continue
+        cap = _capacity(_pos_norm_cap(name))
+        if caps and cap not in caps:
+            continue
+        out.append((pid, name, st))
     return out
 
 
@@ -1286,6 +1353,12 @@ def run(cat=None, limit: int | None = None, sleep: float = 1.1) -> dict:
     if limit:
         targets = targets[:limit]
     total = len(targets)
+    # מלאי לפי שם (ראה name_stock): פריטי קופה שכבר מחוברים במק"ט לאתר לא
+    # נספרים שוב, ופריט קופה נספר פעם אחת בלבד לכל דגם בזאפ.
+    pos_rows = _POS_CACHE.get("rows") or []
+    linked = {str(x.get("sku")) for t in targets for x in (t.get("sku_stock") or []) if x.get("sku")}
+    linked |= {str(t.get("sku")) for t in targets if t.get("sku")}
+    counted: dict = {}
     by_model: dict = {}
     orphans = []
     for i, t in enumerate(targets, 1):
@@ -1295,6 +1368,19 @@ def run(cat=None, limit: int | None = None, sleep: float = 1.1) -> dict:
             logger.warning("zap analyse failed for %s: %s", t.get("sku"), e)
             continue
         mid = r.get("modelid")
+        try:
+            seen = counted.setdefault(mid or f"id:{r.get('id')}", set())
+            extra = [x for x in name_stock(r, pos_rows, linked) if x[0] not in seen]
+            if extra:
+                seen.update(x[0] for x in extra)
+                r["stock"] = (r.get("stock") or 0) + sum(max(0, st) for _, _, st in extra)
+                r["sku_stock"] = list(r.get("sku_stock") or []) + [
+                    {"sku": pid, "stock": st, "by_name": 1,
+                     "label": f"{nm} · לפי שם בקופה (לא מחובר באתר)"}
+                    for pid, nm, st in extra]
+                r["stock_by_name"] = sum(max(0, st) for _, _, st in extra)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("zap name-stock failed for %s: %s", r.get("id"), e)
         # ⚠️ מוצר אב לא נכנס לקיבוץ-לפי-דגם. הוא והצל שנוצר ממנו נפתרים לאותו
         # modelid, ולכן המיזוג בלע אותו והוא נעלם מהמסך גם אחרי שהוחזר לרשימת
         # היעדים — 115 יעדים נכנסו אבל רק 104 שורות יצאו (אסי, 05/08/2026).

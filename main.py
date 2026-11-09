@@ -532,6 +532,47 @@ def _zap_hours_ok() -> bool:
 _ZAP_STALE_H = 4
 
 
+_ZAP_ALERT_H = 6       # לא יותר מהתראה אחת לתחום בכל 6 שעות
+_ZAP_STALE_ALERT_H = 6  # בשעות הפעילות: תמונה ישנה מ-6 שעות = תקלה (יש 4 סבבים ביום)
+
+
+def _zap_alert(cat, reason: str):
+    """🔔 התראת טלגרם כשסריקת זאפ נכשלת/תקועה.
+    ⚠️ 09/11/2026: הכלי הציג תמונה מ-12/08 במשך שלושה חודשים בלי שאיש ידע —
+    כל הגארדים "משאירים את התמונה הקודמת" בשקט, וזה בדיוק מה שהסתיר את התקלה
+    (Pixel 11 לא הופיע בכלל). עכשיו כל כשל מדווח מיד, עם מצערת."""
+    try:
+        import zap_scan
+        key = f"zap_alert_at:{int(cat or zap_scan.DEFAULT_CAT)}"
+        last = db.sales_state_get(key)
+        if last:
+            try:
+                if (datetime.now() - datetime.fromisoformat(last)).total_seconds() < _ZAP_ALERT_H * 3600:
+                    return
+            except Exception:  # noqa: BLE001
+                pass
+        label = zap_scan.cat_cfg(cat).get("label") or str(cat)
+        snap = zap_scan.latest(cat) or {}
+        _tg_admin(f"⚠️ <b>סריקת זאפ ({label}) לא מתעדכנת</b>\n{reason}\n"
+                  f"התמונה במסך מתאריך: {snap.get('date') or 'אין'}")
+        db.sales_state_set(key, datetime.now().isoformat(timespec="seconds"))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("zap alert failed: %s", e)
+
+
+def _zap_recovered(cat):
+    """אחרי התראה — הודעת "חזר לעבוד" אחת, ואיפוס המצערת."""
+    try:
+        import zap_scan
+        key = f"zap_alert_at:{int(cat or zap_scan.DEFAULT_CAT)}"
+        if db.sales_state_get(key):
+            db.sales_state_set(key, "")
+            label = zap_scan.cat_cfg(cat).get("label") or str(cat)
+            _tg_admin(f"✅ סריקת זאפ ({label}) חזרה לעבוד — התמונה עודכנה")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("zap recovered notice failed: %s", e)
+
+
 def _zap_stale_guard_job():
     """🛡️ השורש המבני: עד 08/2026 הסריקה הייתה תלויה **רק** בקרון. כשהיא חדלה
     לרוץ (29/07 → 05/08, שני התחומים) איש לא ידע, והמסך הציג נתון בן שבוע כאילו
@@ -554,6 +595,7 @@ def _zap_stale_guard_job():
                 except Exception:  # noqa: BLE001
                     pass
             last = db.sales_state_get(f"zap_scan_done:{c}")
+            age = None
             if last:
                 try:
                     age = (datetime.now() - datetime.fromisoformat(last)).total_seconds() / 3600
@@ -561,6 +603,9 @@ def _zap_stale_guard_job():
                         continue
                 except Exception:  # noqa: BLE001
                     pass
+            if age is None or age >= _ZAP_STALE_ALERT_H:
+                _zap_alert(c, "אין סריקה מוצלחת " + (f"כבר {age:.0f} שעות" if age is not None
+                                                      else "רשומה בכלל") + " — מרים סריקה עכשיו")
             logger.warning("zap stale-guard: תחום %s ללא סריקה טרייה — מרים סריקה", c)
             _zap_start_scan(c, "stale-guard")
             out.append(c)
@@ -617,6 +662,7 @@ def _zap_watchdog_job(cat=None):
     if tries >= 3:
         db.sales_state_set(pkey, "")
         logger.warning("zap watchdog: 3 ניסיונות היום — מפסיק")
+        _zap_alert(cat, "הסריקה נקטעה 3 פעמים היום (deploy/מיחזור מופע?) — הפסקתי לנסות עד מחר")
         return {"ok": False, "gave_up": True}
     db.sales_state_set(key, str(tries + 1))
     db.sales_state_set(pkey, "")
@@ -635,15 +681,20 @@ def _zap_scan_job(cat=None):
         import zap_scan
         snap = zap_scan.run(cat)
         # חותמת הצלחה פר-תחום — עליה נשען _zap_stale_guard_job. נכתבת רק כשבאמת
-        # יצאה תמונה (run מחזיר ok=False בלי לדרוס כשהפיד ריק), אחרת השומר היה
-        # "נרגע" מכשל ומפסיק לנסות.
-        if snap.get("rows"):
+        # נשמרה תמונה. ⚠️ run מחזיר ok=False **עם** rows כשמספר השורות קרס (התמונה
+        # לא נשמרה) — עד 09/11 זה נחשב הצלחה וה"שומר" נרגע על תמונה ישנה.
+        if snap.get("rows") and snap.get("ok") is not False:
             db.sales_state_set(f"zap_scan_done:{int(cat or zap_scan.DEFAULT_CAT)}",
                                datetime.now().isoformat(timespec="seconds"))
-        logger.info("zap_scan ok: %s", snap.get("summary"))
+            _zap_recovered(cat)
+            logger.info("zap_scan ok: %s", snap.get("summary"))
+        else:
+            _zap_alert(cat, "הסריקה נכשלה: " + str(snap.get("error") or "לא נשמרה תמונה"))
+            logger.warning("zap_scan not saved: %s", snap.get("error"))
         return snap.get("summary")
     except Exception as e:  # noqa: BLE001
         logger.warning("zap_scan failed: %s", e)
+        _zap_alert(cat, f"הסריקה קרסה: {str(e)[:300]}")
         return {"ok": False, "error": str(e)}
 
 
