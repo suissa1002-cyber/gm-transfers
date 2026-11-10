@@ -11732,6 +11732,7 @@ def _pp_tx_fields(d: dict) -> dict:
         "approval": g("approval_num", "approval_number"),
         "voucher": g("voucher_num", "voucher_number"),
         "four_digits": g("four_digits"),
+        "id_number": g("identification_number"),   # ת.ז בעל הכרטיס (חובה בכל עסקה)
         "brand": g("brand_name"),
         "payments": g("number_of_payments", "payments"),
         "amount": g("amount"),
@@ -11762,6 +11763,7 @@ def _pp_mark_paid(order_id: int, f: dict) -> bool:
         meta = [{"key": f"greenos_payplus_{mk}", "value": str(f.get(fk) or "")}
                 for mk, fk in (("tx", "tx"), ("approval", "approval"),
                                ("voucher", "voucher"), ("4digits", "four_digits"),
+                               ("idnum", "id_number"),
                                ("brand", "brand"), ("payments", "payments"),
                                ("amount", "amount"), ("date", "date"))]
         r = _rq.put(f"{base}/wp-json/wc/v3/orders/{order_id}",
@@ -14759,6 +14761,7 @@ def admin_order_detail(oid: int, x_admin_key: Optional[str] = Header(None)):
     pay = {
         "approval": meta.get("payplus_approval_num") or meta.get("greenos_payplus_approval") or "",
         "four_digits": meta.get("payplus_four_digits") or meta.get("greenos_payplus_4digits") or "",
+        "id_number": meta.get("payplus_identification_number") or meta.get("greenos_payplus_idnum") or "",
         "payments": meta.get("payplus_number_of_payments") or meta.get("greenos_payplus_payments") or "",
         "brand": meta.get("payplus_brand_name") or meta.get("greenos_payplus_brand") or "",
         "method": meta.get("payplus_method") or "",
@@ -15534,11 +15537,20 @@ def _order_xpay_paid(oid: int, pru: str, f: dict) -> None:
         return
     base, k, s = creds
     amt = float((db.pay_link_get(pru) or {}).get("amount") or 0)
+    try:   # ת.ז בעל הכרטיס — לא נשמרת ב-pay_links, נשמרת על רשומת הקישור בהזמנה
+        lst = _swap_state(oid, "order_xpay")
+        for x in lst:
+            if x.get("pru") == pru:
+                x["id_number"] = f.get("id_number") or ""
+        _swap_state_set(oid, "order_xpay", lst)
+    except Exception:  # noqa: BLE001
+        pass
     try:
         _rq.post(f"{base}/wp-json/wc/v3/orders/{oid}/notes",
                  json={"note": (f"GreenOS · PayPlus: תשלום נוסף ₪{amt:,.0f} אושר ✓ "
                                 f"עסקה {f.get('tx') or '?'} · אישור {f.get('approval') or '?'} · "
-                                f"{f.get('brand') or ''} ****{f.get('four_digits') or ''}")},
+                                f"{f.get('brand') or ''} ****{f.get('four_digits') or ''}"
+                                + (f" · ת.ז {f.get('id_number')}" if f.get('id_number') else ""))},
                  auth=(k, s), timeout=20)
     except Exception:  # noqa: BLE001
         pass
