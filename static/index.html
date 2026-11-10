@@ -12515,9 +12515,12 @@ async function wswPick(sku,serial){
   const box=document.getElementById('wswPick'); if(!box) return;
   document.getElementById('wswRes').innerHTML='';
   box.innerHTML='<div class="muted" style="font-size:12.5px">טוען מלאי וסידוריים…</div>';
-  let p=null; try{ p=await api(`/api/admin/orders/${W.oid}/swap/sku?sku=`+encodeURIComponent(sku),null,60000); }catch(e){}
+  let p=null; try{ p=await api(`/api/admin/orders/${W.oid}/swap/sku?sku=`+encodeURIComponent(sku)+'&line_id='+encodeURIComponent(W.line.line_id),null,60000); }catch(e){}
   if(!p){ box.innerHTML='<div style="color:#dc2626;font-size:13px">טעינת המוצר נכשלה</div>'; return; }
   W.pick=p; W.serial=serial||'';
+  // מק״ט לא מחובר לאתר → מציעים וריאציה של המוצר שבשורה (ההתאמה הטובה ביותר מסומנת)
+  const opts=p.wc_options||[];
+  W.wcId=(!p.wc&&opts.length&&opts[0].score>0&&!(opts[1]&&opts[1].score===opts[0].score))?opts[0].id:0;
   wswPaint();
 }
 function wswPaint(){
@@ -12538,7 +12541,10 @@ function wswPaint(){
       opts.push(`<div style="color:#dc2626;font-size:12.5px;padding:6px 4px">⚠️ הסידורי ${escW(W.serial)} לא זמין במלאי (נמכר?) — בחר אחר</div>`);
     serHTML=`<div style="margin-top:10px"><b style="font-size:13px">סידורי</b><div style="max-height:210px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:2px 8px;margin-top:5px">${opts.join('')}</div></div>`;
   }
-  const price=p.wc?Number(p.wc.price||0):0;
+  const opts=p.wc_options||[];
+  const optSel=opts.find(o=>o.id===W.wcId);
+  const price=p.wc?Number(p.wc.price||0):(optSel?Number(optSel.price||0):Math.round(Number(W.line.total||0)/Number(W.line.qty||1)));
+  const canGo=!!(p.wc||optSel);
   const unpaid=WSW_UNPAID.includes(d.status);
   box.innerHTML=`<div style="border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--card2)">
     <div style="display:flex;gap:10px;align-items:center">
@@ -12546,7 +12552,14 @@ function wswPaint(){
       <div style="flex:1;min-width:0"><b>${escW((p.wc&&p.wc.name)||p.name||p.sku)}</b>
         <div class="muted" style="font-size:12px"><span style="direction:ltr;font-family:monospace">${escW(p.sku)}</span>${p.wc?` · באתר ${wswMoney(p.wc.price)}`:''}</div></div>
     </div>
-    ${p.wc?'':'<div style="color:#dc2626;font-size:12.5px;margin-top:8px">⚠️ המק״ט לא מחובר למוצר באתר — אי אפשר להכניס אותו להזמנה. צריך קודם לחבר מק״ט.</div>'}
+    ${p.wc?'':(opts.length?`<div style="margin-top:10px">
+        <b style="font-size:13px">איך יופיע בהזמנה באתר</b>
+        <div class="muted" style="font-size:12px;margin:2px 0 6px">המק״ט לא מחובר לאתר — לא צריך לחבר. בוחרים את הווריאציה שתוצג ללקוח, ומק״ט ${escW(p.sku)} ישמש לשידור לסניף.</div>
+        <select onchange="S._wsw.wcId=Number(this.value)||0;wswPaint()" style="width:100%;padding:9px 11px;border-radius:10px;border:1px solid ${optSel?'var(--line)':'#b45309'};background:var(--bg);color:var(--txt);font-size:13.5px">
+          <option value="">— בחר וריאציה —</option>
+          ${opts.map(o=>`<option value="${o.id}" ${o.id===W.wcId?'selected':''}>${escW(o.label||('#'+o.id))} · ${wswMoney(o.price)}${o.score>0?' ✓ מתאים':''}${o.status&&o.status!=='publish'?' (לא פעיל)':''}</option>`).join('')}
+        </select></div>`
+      :'<div style="color:#dc2626;font-size:12.5px;margin-top:8px">⚠️ המק״ט לא מחובר למוצר באתר, ולמוצר שבשורה אין וריאציות לבחירה.</div>')}
     <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:9px">${stockChips}</div>
     ${serHTML}
     <div style="display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap">
@@ -12558,7 +12571,7 @@ function wswPaint(){
       <input type="checkbox" id="wswRb" ${unpaid?'':'checked'} ${unpaid?'disabled':''}>
       ${unpaid?'<span class="muted">ההזמנה עוד לא שולמה — השידור לסניף יקרה אוטומטית אחרי התשלום</span>':'שדר בקשת העברה לפריט החדש (ובטל את השיריון של הפריט הקודם)'}
     </label>
-    <button class="btn-primary" style="width:100%;margin-top:12px;padding:11px" ${p.wc?'':'disabled'} onclick="wswConfirm()">🔀 החלף בהזמנה</button>
+    <button class="btn-primary" style="width:100%;margin-top:12px;padding:11px" ${canGo?'':'disabled'} onclick="wswConfirm()">🔀 החלף בהזמנה</button>
   </div>`;
   wswDiff();
 }
@@ -12574,13 +12587,14 @@ async function wswConfirm(){
   const unit=Number((document.getElementById('wswPrice')||{}).value);
   if(!(unit>=0)){ toast('מחיר לא תקין',false); return; }
   const rb=!!((document.getElementById('wswRb')||{}).checked);
-  const nm=(W.pick.wc&&W.pick.wc.name)||W.pick.name||W.pick.sku;
+  const _o=(W.pick.wc_options||[]).find(o=>o.id===W.wcId);
+  const nm=(W.pick.wc&&W.pick.wc.name)||(_o?`${W.line.name.split(' - ')[0]} (${_o.label})`:'')||W.pick.name||W.pick.sku;
   if(!confirm(`להחליף בהזמנה:\n${W.line.name}\n← ${nm}${W.serial?`\nסידורי ${W.serial}`:''}\nמחיר ${wswMoney(unit*Number(W.line.qty||1))}?`)) return;
   showLoading('מחליף מוצר בהזמנה…');
   let r=null;
   try{
     r=await api(`/api/admin/orders/${W.oid}/swap-item`,{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({line_id:W.line.line_id,sku:W.pick.sku,serial:W.serial||'',price:unit,rebroadcast:rb})},120000);
+      body:JSON.stringify({line_id:W.line.line_id,sku:W.pick.sku,serial:W.serial||'',price:unit,rebroadcast:rb,wc_id:W.pick.wc?0:(W.wcId||0)})},120000);
   }catch(e){ hideLoading(); toast((e&&e.detail)||'ההחלפה נכשלה',false); return; }
   hideLoading(); wswClose();
   const bn={1:'גן העיר',2:'סטאר',3:'סיטי',4:'עד הלום',5:'אתר'};

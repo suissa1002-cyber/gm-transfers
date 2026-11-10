@@ -14576,8 +14576,8 @@ def _orders_payload(page, status, search, after, before, express):
                 if (li.get("image") or {}).get("src")))[:4],
             "bcast": bcast_map.get(str(o.get("number"))),
             "oos": (str(o.get("number")) in oos_set) and any(
-                (_cat.get(str(li.get("sku") or ""), {}).get("is_stock", True))
-                for li in items if str(li.get("sku") or "") in _cat),
+                (_cat.get(_li_sku(li), {}).get("is_stock", True))
+                for li in items if _li_sku(li) in _cat),
             "nosku": str(o.get("number")) in unmatched_set,   # פריט פיזי ללא מק"ט — טיפול ידני
             "partial": str(o.get("number")) in partial_set,   # חלק שודר וחלק חסר — שודר חלקי
             "return_open": str(o.get("number")) in return_set,   # נפתחה החזרה (איסוף מהלקוח)
@@ -14868,7 +14868,7 @@ def admin_order_detail(oid: int, x_admin_key: Optional[str] = Header(None)):
         "billing": o.get("billing") or {}, "shipping": o.get("shipping") or {},
         "customer_note": o.get("customer_note") or "",
         "items": [{"name": li.get("name"), "qty": li.get("quantity"),
-                   "total": li.get("total"), "sku": li.get("sku") or "",
+                   "total": li.get("total"), "sku": _li_sku(li),
                    "img": (li.get("image") or {}).get("src") or "",
                    "line_id": li.get("id"),
                    "attrs": _li_attrs(li)}
@@ -15150,6 +15150,47 @@ _SWAP_LOCKED = {"completed", "cancelled", "refunded", "trash", "checkout-draft"}
 _UNPAID_ST = {"pending", "on-hold", "failed"}
 
 
+def _li_sku(li: dict) -> str:
+    """מק"ט הקופה של שורה (כולל `_gm_pos_sku` של החלפה למוצר לא-מחובר)."""
+    import auto_transfer
+    return auto_transfer.li_pos_sku(li)
+
+
+_EN_HE_COLOR = {"black": "שחור", "white": "לבן", "gold": "זהב", "blue": "כחול", "green": "ירוק",
+                "silver": "כסף", "brown": "חום", "purple": "סגול", "pink": "ורוד", "red": "אדום",
+                "gray": "אפור", "grey": "אפור", "orange": "כתום", "yellow": "צהוב", "titanium": "טיטניום"}
+
+
+def _wc_line_options(product_id: int, pos_name: str) -> list:
+    """וריאציות של המוצר שבשורת ההזמנה — לבחירת המוצר באתר כשהמק"ט החדש לא מחובר.
+    ממוינות לפי התאמה לשם בקופה (צבע באנגלית→עברית, נפח), עם הצעה מובילה."""
+    import requests as _rq
+    base, k, s = _wc_creds()
+    p = _rq.get(f"{base}/wp-json/wc/v3/products/{int(product_id)}",
+                params={"_fields": "id,type,name,price,sku,status"}, auth=(k, s), timeout=25)
+    pj = p.json() if p.ok else {}
+    if not pj.get("id"):
+        return []
+    if pj.get("type") != "variable":
+        return [{"id": pj["id"], "parent_id": 0, "label": pj.get("name") or "", "price": pj.get("price"),
+                 "sku": pj.get("sku") or "", "score": 0}]
+    r = _rq.get(f"{base}/wp-json/wc/v3/products/{pj['id']}/variations",
+                params={"_fields": "id,sku,price,attributes,status", "per_page": 100}, auth=(k, s), timeout=25)
+    nm = (pos_name or "").lower()
+    want = {he for en, he in _EN_HE_COLOR.items() if re.search(rf"\b{en}\b", nm)}
+    want |= {w.upper() for w in re.findall(r"\d+\s*(?:tb|gb)", nm.replace(" ", ""))}
+    want |= {he for he in set(_EN_HE_COLOR.values()) if he in (pos_name or "")}
+    out = []
+    for v in (r.json() if r.ok else []):
+        opts = [str(a.get("option") or "") for a in (v.get("attributes") or [])]
+        score = sum(1 for o in opts if o in want or o.upper().replace(" ", "") in want)
+        out.append({"id": v["id"], "parent_id": pj["id"], "label": " · ".join(o for o in opts if o),
+                     "price": v.get("price"), "sku": v.get("sku") or "", "score": score,
+                     "status": v.get("status")})
+    out.sort(key=lambda x: -x["score"])
+    return out
+
+
 def _wc_by_sku(sku: str) -> Optional[dict]:
     """מוצר/וריאציה באתר לפי SKU מדויק (products?sku= מחזיר גם וריאציות)."""
     import requests as _rq
@@ -15236,7 +15277,7 @@ def admin_order_swap_search(oid: int, q: str, x_admin_key: Optional[str] = Heade
 
 
 @app.get("/api/admin/orders/{oid}/swap/sku")
-def admin_order_swap_sku(oid: int, sku: str, x_admin_key: Optional[str] = Header(None)):
+def admin_order_swap_sku(oid: int, sku: str, line_id: int = 0, x_admin_key: Optional[str] = Header(None)):
     """פרטי מוצר חלופי: מחיר+תמונה מהאתר, מלאי לפי סניף והסידוריים הזמינים בכל סניף."""
     _require_admin(x_admin_key)
     sku = (sku or "").strip()
@@ -15274,6 +15315,21 @@ def admin_order_swap_sku(oid: int, sku: str, x_admin_key: Optional[str] = Header
         except Exception as e:  # noqa: BLE001
             logger.warning("swap sku: serials %s failed: %s", sku, e)
     out["branches"] = {b: cfg.branch_name(b) for b in (1, 2, 3, 4, 5)}
+    out["wc_options"] = []
+    if not out["wc"] and line_id:
+        # המק"ט לא מחובר לאתר: מציעים את הווריאציות של המוצר שכבר בשורה (למשל צבע אחר
+        # של אותו דגם) — המוצר באתר לתצוגה בהזמנה, מק"ט הקופה לשידור לסניף בלבד.
+        try:
+            import requests as _rq
+            base, k, s = _wc_creds()
+            r = _rq.get(f"{base}/wp-json/wc/v3/orders/{oid}", params={"_fields": "line_items"},
+                        auth=(k, s), timeout=25)
+            li = next((x for x in ((r.json() if r.ok else {}).get("line_items") or [])
+                       if int(x.get("id") or 0) == int(line_id)), None)
+            if li and li.get("product_id"):
+                out["wc_options"] = _wc_line_options(int(li["product_id"]), out["name"])
+        except Exception as e:  # noqa: BLE001
+            logger.warning("swap sku: wc options %s failed: %s", sku, e)
     return out
 
 
@@ -15283,6 +15339,7 @@ class OrderSwapIn(BaseModel):
     serial: str = ""
     price: Optional[float] = None      # מחיר ליחידה; None = מחיר האתר
     rebroadcast: bool = True
+    wc_id: int = 0                     # מוצר/וריאציה באתר לשורה, כשהמק"ט לא מחובר לאתר
 
 
 def _swap_rebroadcast(o: dict, old_sku: str, old_name: str, new_sku: str, new_name: str,
@@ -15328,7 +15385,7 @@ def _swap_rebroadcast(o: dict, old_sku: str, old_name: str, new_sku: str, new_na
                                           only_skus={new_sku})
     out["created"] = created
     li_qty = sum(int(li.get("quantity") or 1) for li in (o.get("line_items") or [])
-                 if str(li.get("sku") or "") == new_sku)
+                 if _li_sku(li) == new_sku)
     got = sum(int(c.get("qty") or 0) for c in created if not c.get("balance"))
     cat_it = catalog.get(new_sku) or {}
     tracked = new_sku in catalog and cat_it.get("is_stock") is not False
@@ -15349,6 +15406,8 @@ def _swap_rebroadcast(o: dict, old_sku: str, old_name: str, new_sku: str, new_na
             auto_transfer._alert_created(o, created)
         except Exception as e:  # noqa: BLE001
             logger.warning("swap rebroadcast alert %s: %s", onum, e)
+    if not any(not _li_sku(x) for x in (o.get("line_items") or [])):
+        auto_transfer._unmark_unmatched(onum)   # אין יותר שורה בלי מק"ט קופה
     db.sales_state_set(f"auto_tr_seen:{o.get('id')}", "swap")
     return out
 
@@ -15373,14 +15432,21 @@ def admin_order_swap_item(oid: int, body: OrderSwapIn, x_admin_key: Optional[str
         raise HTTPException(404, "שורת המוצר לא נמצאה בהזמנה (אולי כבר הוחלפה — רענן)")
     new_sku = (body.sku or "").strip()
     serial = (body.serial or "").strip()
-    old_sku = str(li.get("sku") or "").strip()
+    old_sku = _li_sku(li)
     if not new_sku:
         raise HTTPException(400, "חסר מק״ט למוצר החדש")
     if new_sku == old_sku and not serial:
         raise HTTPException(400, "זה אותו מוצר — בחר מוצר אחר או סידורי ספציפי")
     wp = _wc_by_sku(new_sku)
+    if not wp and body.wc_id:
+        wr = _rq.get(f"{base}/wp-json/wc/v3/products/{int(body.wc_id)}",
+                     params={"_fields": "id,parent_id,type,name,price,sku,status"}, auth=(k, s), timeout=25)
+        wp = wr.json() if wr.ok and (wr.json() or {}).get("id") else None
+        if wp and wp.get("type") == "variable":
+            raise HTTPException(400, "בחר וריאציה ספציפית (צבע/נפח), לא את מוצר האב")
     if not wp:
-        raise HTTPException(404, f"המק״ט {new_sku} לא מחובר למוצר באתר — אי אפשר להוסיף אותו להזמנה")
+        raise HTTPException(404, f"המק״ט {new_sku} לא מחובר למוצר באתר — בחר איזה מוצר באתר יופיע בהזמנה")
+    pos_override = str(wp.get("sku") or "").strip() != new_sku   # מוצר באתר בלי המק"ט הזה
     pin_branch = None
     if serial:
         try:
@@ -15404,7 +15470,8 @@ def admin_order_swap_item(oid: int, body: OrderSwapIn, x_admin_key: Optional[str
     new_li = {"product_id": int(wp.get("parent_id") if is_var else wp.get("id")),
               "quantity": qty, "subtotal": f"{new_total:.2f}", "total": f"{new_total:.2f}",
               "meta_data": keep_meta + [{"key": "_gm_swapped_from", "value": old_sku}]
-              + ([{"key": "_gm_serial", "value": serial}] if serial else [])}
+              + ([{"key": "_gm_serial", "value": serial}] if serial else [])
+              + ([{"key": "_gm_pos_sku", "value": new_sku}] if pos_override else [])}
     if is_var:
         new_li["variation_id"] = int(wp.get("id"))
     # quantity=0 על השורה הקיימת = הסרה (WC REST); ⚠️ בלי 'status' — לא נוגעים בסטטוס
@@ -15416,8 +15483,9 @@ def admin_order_swap_item(oid: int, body: OrderSwapIn, x_admin_key: Optional[str
     nj = pr.json()
     if any(int(x.get("id") or 0) == int(li["id"]) for x in (nj.get("line_items") or [])):
         logger.warning("swap-item %s: old line %s still present after PUT", oid, li["id"])
+    _before = {int(x.get("id") or 0) for x in (o.get("line_items") or [])}
     nl = next((x for x in reversed(nj.get("line_items") or [])
-               if str(x.get("sku") or "") == new_sku and int(x.get("id") or 0) != int(li["id"])), {})
+               if int(x.get("id") or 0) not in _before), {})
     new_name = nl.get("name") or wp.get("name") or new_sku
     diff = round(new_total - old_total, 2)
     rec = {"at": db.now_iso(), "by": actor, "old_sku": old_sku, "old_name": li.get("name") or "",
@@ -15484,7 +15552,7 @@ def admin_order_remove_item(oid: int, body: OrderRemoveIn, x_admin_key: Optional
         logger.warning("remove-item failed %s: %s %s", oid, pr.status_code, pr.text[:300])
         raise HTTPException(502, f"עדכון ההזמנה באתר נכשל ({pr.status_code})")
     nj = pr.json()
-    old_sku = str(li.get("sku") or "").strip()
+    old_sku = _li_sku(li)
     old_name = li.get("name") or ""
     old_total = round(float(li.get("total") or 0), 2)
     qty = max(1, int(li.get("quantity") or 1))
@@ -15541,6 +15609,8 @@ def admin_order_remove_item(oid: int, body: OrderRemoveIn, x_admin_key: Optional
                 auto_transfer._unmark_oos(onum)   # החוסר היה של הפריט שהוסר
         except Exception as e:  # noqa: BLE001
             logger.warning("remove oos flags %s: %s", onum, e)
+    if not any(not _li_sku(x) for x in (nj.get("line_items") or [])):
+        auto_transfer._unmark_unmatched(onum)
     logger.info("order %s: removed line %s (%s) by %s", onum, li["id"], old_sku, actor)
     return {"ok": True, "removed": rec, "order_total": nj.get("total"), "cleared": cleared,
             "warnings": warnings, "ctx": _order_swap_ctx(nj)}

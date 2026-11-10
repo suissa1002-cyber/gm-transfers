@@ -230,6 +230,16 @@ def _has_open_balance(sku) -> bool:
     return False
 
 
+def li_pos_sku(li: dict) -> str:
+    """מק"ט הקופה של שורת הזמנה. החלפת מוצר ב-GreenOS יכולה להכניס להזמנה וריאציה
+    באתר שאין לה מק"ט מחובר — אז מק"ט הקופה שנבחר נשמר על השורה כ-`_gm_pos_sku`
+    וגובר על ה-SKU של המוצר באתר (אסי, 10/11: "לא רוצה להיות חייב לחבר את המק"ט")."""
+    for m in (li.get("meta_data") or []):
+        if m.get("key") == "_gm_pos_sku" and str(m.get("value") or "").strip():
+            return str(m.get("value")).strip()
+    return str(li.get("sku") or "").strip()
+
+
 def _handle_order(o: dict, catalog: dict, pins: dict = None, only_skus=None) -> list:
     """בודק שורות הזמנה ומשדר בקשות העברה לפי הצורך. מחזיר את מה ששודר.
 
@@ -252,7 +262,7 @@ def _handle_order(o: dict, catalog: dict, pins: dict = None, only_skus=None) -> 
     # שורות ההזמנה + תוספי Product Add-Ons (ראש מטען וכו') כשורות וירטואליות — כך
     # שגם התוסף משודר לליקוט, לא רק המוצר הראשי (פער שהתגלה בהזמנה 46875).
     for li in (list(o.get("line_items", [])) + _order_addon_items(o)):
-        sku = str(li.get("sku") or "").strip()
+        sku = li_pos_sku(li)
         qty = max(1, int(li.get("quantity") or 1))
         if only_skus is not None and sku not in only_skus:
             continue

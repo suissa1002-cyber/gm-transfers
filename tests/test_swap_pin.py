@@ -89,5 +89,14 @@ db.plan_clear()
 AT._handle_order(order, CATALOG, pins={NEW: "NOPE"}, only_skus={NEW})
 check("unknown pin: falls back to default (Star)", [l[0] for l in lines()] == [2])
 
+# 4) שורה שהוחלפה לווריאציה לא-מחוברת: SKU ריק באתר, מק"ט הקופה ב-_gm_pos_sku
+db.plan_clear()
+o4 = {"number": "T4", "id": 4, "line_items": [{"sku": "", "quantity": 1, "name": "z",
+      "meta_data": [{"key": "_gm_pos_sku", "value": NEW}]}]}
+AT._handle_order(o4, CATALOG, pins={NEW: "S-CITY-1"}, only_skus={NEW})
+check("_gm_pos_sku: line without site SKU is broadcast by its POS sku",
+      [(l[0], l[1], l[2]) for l in lines()] == [(3, NEW, "S-CITY-1")])
+check("li_pos_sku falls back to the site SKU", AT.li_pos_sku({"sku": " 123 "}) == "123")
+
 print("PASS" if not fails else f"FAIL ({fails})")
 sys.exit(1 if fails else 0)
