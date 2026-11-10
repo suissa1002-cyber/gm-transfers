@@ -73,6 +73,8 @@
   .li-swap:hover{border-color:var(--brand);background:color-mix(in srgb,var(--brand) 18%,transparent)}
   .li-swap:active{transform:scale(.96)}
   .li-swap svg{flex:none}
+  .li-swap.li-rm{background:color-mix(in srgb,var(--red) 9%,transparent);color:var(--red)}
+  .li-swap.li-rm:hover{border-color:var(--red);background:color-mix(in srgb,var(--red) 16%,transparent)}
   .dr-head .brand{font-size:21px}
   header .right{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--muted);flex-wrap:wrap}
   header .right b{color:var(--txt)}
@@ -11597,7 +11599,7 @@ function paintWcOrder(){
       ${it.img?`<img src="${escW(it.img)}" loading="lazy" style="width:46px;height:46px;object-fit:contain;border-radius:9px;background:#fff;border:1px solid var(--line);flex:none">`:''}
       <span style="flex:1;min-width:0">${escW(it.name)}${it.sku?` <span class="muted" style="font-size:11px;direction:ltr;font-family:monospace">${escW(it.sku)}</span>`:''} ×${it.qty}
         ${(it.attrs||[]).length?`<div class="muted" style="font-size:12px;margin-top:3px">${it.attrs.map(x=>`${escW(x.k)}: <b>${escW(x.v)}</b>`).join(' · ')}</div>`:''}</span>
-      <span style="display:flex;flex-direction:column;align-items:flex-end;gap:5px"><b style="white-space:nowrap">${fmt(it.total)}</b>${(it.line_id&&!WSW_LOCKED.includes(d.status))?`<button class="li-swap" title="החלפת המוצר בשורה הזו במוצר/צבע/סידורי אחר" onclick="wcoSwapOpen(${it.line_id})">${ico('swap',13)}<span>החלף</span></button>`:''}</span></div>`).join('')}
+      <span style="display:flex;flex-direction:column;align-items:flex-end;gap:5px"><b style="white-space:nowrap">${fmt(it.total)}</b>${(it.line_id&&!WSW_LOCKED.includes(d.status))?`<span style="display:flex;gap:6px"><button class="li-swap" title="החלפת המוצר בשורה הזו במוצר/צבע/סידורי אחר" onclick="wcoSwapOpen(${it.line_id})">${ico('swap',13)}<span>החלף</span></button>${(d.items||[]).length>1?`<button class="li-swap li-rm" title="הסרת המוצר מההזמנה" onclick="wcoRemoveItem(${it.line_id})">${ico('trash',13)}<span>הסר</span></button>`:''}</span>`:''}</span></div>`).join('')}
     <div style="display:flex;justify-content:space-between;padding:14px 6px 6px;font-size:15px">
       <span>${Number(d.shipping_total)>0?`משלוח ${fmt(d.shipping_total)} · `:''}<b>סה״כ</b></span><b style="font-size:16px">${fmt(d.total)}</b>
     </div>
@@ -12592,6 +12594,23 @@ async function wswConfirm(){
   const due=(S._wcoD&&S._wcoD.swap&&S._wcoD.swap.extra_due)||0;
   if(r.swap&&r.swap.diff>0&&due>0&&confirm(`יש תוספת של ${wswMoney(due)} לגבייה. ליצור קישור תשלום עכשיו?`)) wcoXPayOpen();
 }
+async function wcoRemoveItem(lineId){
+  const d=S._wcoD||{}; const it=(d.items||[]).find(x=>String(x.line_id)===String(lineId));
+  if(!it){ toast('השורה לא נמצאה — רענן את ההזמנה',false); return; }
+  const paid=!WSW_UNPAID.includes(d.status)&&Number(it.total)>0;
+  if(!confirm(`להסיר מההזמנה את:\n${it.name} ×${it.qty} (${wswMoney(it.total)})?`
+    +(paid?`\n\nההזמנה כבר שולמה — יירשם שמגיע ללקוח החזר של ${wswMoney(it.total)} (ידני).`:'')
+    +'\nבקשת העברה ממתינה לפריט הזה תבוטל.')) return;
+  showLoading('מסיר מוצר מההזמנה…');
+  let r=null;
+  try{ r=await api(`/api/admin/orders/${d.id}/remove-item`,{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({line_id:Number(lineId)})},90000); }
+  catch(e){ hideLoading(); toast((e&&e.detail)||'ההסרה נכשלה',false); return; }
+  hideLoading();
+  toast('המוצר הוסר ✓'+(r.cleared?` · בוטלה בקשת העברה`:''),true);
+  if((r.warnings||[]).length) alert(r.warnings.map(w=>'⚠️ '+w).join('\n'));
+  loadWcOrders(); openWcOrder(d.id);
+}
 // ── 💳 קישורי תשלום נוספים (אחד או כמה — פיצול לכמה כרטיסים) ──
 function wcoXPayOpen(){
   const d=S._wcoD||{}; const sw=d.swap||{};
@@ -12660,7 +12679,9 @@ function wcoXPayHTML(d){
     ?`<span class="ord-st" style="color:#15803d;border-color:#15803d55;background:#15803d14">שולם${x.approval?' · אישור '+escW(x.approval):''}${x.four_digits?' · ****'+escW(x.four_digits):''}${x.id_number?' · ת.ז '+escW(x.id_number):''}</span>`
     :x.status==='void'?'<span class="ord-st" style="color:#6b7280;border-color:#6b728055;background:#6b72800f">בוטל</span>'
     :'<span class="ord-st" style="color:#b45309;border-color:#b4530955;background:#b453090f">ממתין לתשלום</span>';
-  const sRows=swaps.map(s=>`<div style="font-size:12.5px;padding:5px 0;border-top:1px dashed var(--line)">🔀 ${escW(s.old_name)} ← <b>${escW(s.new_name)}</b>${s.serial?` · <span style="direction:ltr;font-family:monospace">${escW(s.serial)}</span>`:''}
+  const sRows=swaps.map(s=>s.kind==='remove'
+    ?`<div style="font-size:12.5px;padding:5px 0;border-top:1px dashed var(--line)">➖ הוסר: <b>${escW(s.old_name)}</b> ×${s.qty||1}<span class="muted"> · ${wswMoney(s.old_total)} · ${escW(s.by||'')}</span></div>`
+    :`<div style="font-size:12.5px;padding:5px 0;border-top:1px dashed var(--line)">🔀 ${escW(s.old_name)} ← <b>${escW(s.new_name)}</b>${s.serial?` · <span style="direction:ltr;font-family:monospace">${escW(s.serial)}</span>`:''}
     <span class="muted"> · ${wswMoney(s.old_total)}→${wswMoney(s.new_total)} · ${escW(s.by||'')}</span></div>`).join('');
   const xRows=xs.map(x=>`<div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;padding:7px 0;border-top:1px dashed var(--line);font-size:13px">
     <b>${wswMoney(x.amount)}</b>${Number(x.payments)>1?`<span class="muted">${x.payments} תשלומים</span>`:''} ${stTag(x)}

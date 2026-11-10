@@ -15451,6 +15451,101 @@ def admin_order_swap_item(oid: int, body: OrderSwapIn, x_admin_key: Optional[str
             "ctx": _order_swap_ctx(nj)}
 
 
+class OrderRemoveIn(BaseModel):
+    line_id: int
+
+
+@app.post("/api/admin/orders/{oid}/remove-item")
+def admin_order_remove_item(oid: int, body: OrderRemoveIn, x_admin_key: Optional[str] = Header(None),
+                            x_device_token: Optional[str] = Header(None)):
+    """מסיר שורת מוצר מההזמנה (למשל מטען שהלקוח ויתר עליו), בלי לגעת בסטטוס.
+    מבטל בקשות העברה ממתינות של הפריט, מנקה את דגל החוסר אם הוא היה שלו, ורושם
+    החזר שמגיע ללקוח (ידני). שורה אחרונה לא מוסרים — מבטלים את ההזמנה."""
+    _require_admin(x_admin_key)
+    import requests as _rq
+    import auto_transfer
+    actor = _actor_name(x_admin_key, x_device_token) or "GreenOS"
+    base, k, s = _wc_creds()
+    r = _rq.get(f"{base}/wp-json/wc/v3/orders/{oid}", auth=(k, s), timeout=45)
+    if not r.ok:
+        raise HTTPException(404, "הזמנה לא נמצאה")
+    o = r.json()
+    if o.get("status") in _SWAP_LOCKED:
+        raise HTTPException(400, f"אי אפשר להסיר מוצר מהזמנה בסטטוס '{o.get('status')}'")
+    lines = o.get("line_items") or []
+    li = next((x for x in lines if int(x.get("id") or 0) == body.line_id), None)
+    if not li:
+        raise HTTPException(404, "שורת המוצר לא נמצאה בהזמנה (אולי כבר הוסרה — רענן)")
+    if len(lines) <= 1:
+        raise HTTPException(400, "זה המוצר היחיד בהזמנה — במקום להסיר, בטל את ההזמנה")
+    pr = _rq.put(f"{base}/wp-json/wc/v3/orders/{oid}",
+                 json={"line_items": [{"id": int(li["id"]), "quantity": 0}]}, auth=(k, s), timeout=45)
+    if not pr.ok:
+        logger.warning("remove-item failed %s: %s %s", oid, pr.status_code, pr.text[:300])
+        raise HTTPException(502, f"עדכון ההזמנה באתר נכשל ({pr.status_code})")
+    nj = pr.json()
+    old_sku = str(li.get("sku") or "").strip()
+    old_name = li.get("name") or ""
+    old_total = round(float(li.get("total") or 0), 2)
+    qty = max(1, int(li.get("quantity") or 1))
+    rec = {"kind": "remove", "at": db.now_iso(), "by": actor, "old_sku": old_sku, "old_name": old_name,
+           "new_sku": "", "new_name": "", "serial": "", "qty": qty,
+           "old_total": old_total, "new_total": 0.0, "diff": -old_total, "old_line": int(li["id"]), "new_line": 0}
+    swaps = _swap_state(oid, "order_swaps")
+    swaps.append(rec)
+    _swap_state_set(oid, "order_swaps", swaps)
+    unpaid = o.get("status") in _UNPAID_ST
+    note = (f"➖ הוסר מוצר מההזמנה באישור הלקוח: {old_name} ({old_sku}) ×{qty} · ₪{old_total:,.0f}"
+            + ("" if unpaid or old_total <= 0 else f" · מגיע ללקוח החזר ₪{old_total:,.0f} (ידני)")
+            + f" · ע״י {actor} (GreenOS)")
+    try:
+        _rq.post(f"{base}/wp-json/wc/v3/orders/{oid}/notes",
+                 json={"note": note, "customer_note": False}, auth=(k, s), timeout=20)
+    except Exception:  # noqa: BLE001
+        pass
+    warnings = []
+    cleared = 0
+    onum = str(o.get("number"))
+    if old_sku:
+        for ln in db.plan_list():
+            cb = ln.get("created_by") or ""
+            if (re.search(rf"הזמנת אתר #{onum}(?!\d)", cb) and not cb.startswith("השלמה")
+                    and str(ln.get("product_id")) == old_sku):
+                try:
+                    db.plan_delete(ln.get("id"))
+                    cleared += 1
+                except Exception:  # noqa: BLE001
+                    pass
+        try:
+            stale = [a["id"] for a in db.shift_alerts_pending()
+                     if re.search(rf"#{onum}(?!\d)", a.get("text") or "")
+                     and (old_sku in (a.get("text") or "") or (old_name and old_name[:25] in (a.get("text") or "")))]
+            if stale:
+                db.shift_alerts_clear(stale)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("remove: purge shift alerts %s failed: %s", onum, e)
+        try:
+            done = [f for f in db.plan_fulfilled_for_order(onum) if str(f.get("product_id")) == old_sku]
+            if done:
+                f = done[-1]
+                warnings.append(f"הפריט כבר הועבר בפועל ({cfg.branch_name(f.get('from_branch'))}→"
+                                f"{cfg.branch_name(f.get('to_branch'))}) — להחזיר אותו למלאי ידנית")
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            import json as _j
+            raw = db.sales_state_get("order_oos_list")
+            ent = next((x for x in (_j.loads(raw) if raw else []) if str(x.get("number")) == onum), None)
+            cat_name = ((db.catalog_load() or {}).get(old_sku) or {}).get("name")
+            if ent and (ent.get("item") or "") in (old_name, cat_name):
+                auto_transfer._unmark_oos(onum)   # החוסר היה של הפריט שהוסר
+        except Exception as e:  # noqa: BLE001
+            logger.warning("remove oos flags %s: %s", onum, e)
+    logger.info("order %s: removed line %s (%s) by %s", onum, li["id"], old_sku, actor)
+    return {"ok": True, "removed": rec, "order_total": nj.get("total"), "cleared": cleared,
+            "warnings": warnings, "ctx": _order_swap_ctx(nj)}
+
+
 class XPayPart(BaseModel):
     amount: float
     payments: int = 1
