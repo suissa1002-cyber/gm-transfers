@@ -11517,6 +11517,8 @@ function paintWcOrder(){
   _actBtns.push(oAct(ico('radio',14)+' '+(d.bcast?'שדר מחדש':'הרץ שיריון/שידור'),'#15803d',`wcoAutoTransfer(${d.id},${d.bcast?1:0})`,'מריץ את לוגיקת השיריון/השידור להזמנה (אחרי הצמדת/תיקון מק״ט)'));
   _actBtns.push(oAct('🔀 שנה אופן משלוח','#ca8a04',`wcoShipMethod(${d.id})`,'שינוי איסוף↔משלוח בלי ריקוד הסטטוסים (לא מעיר את השידור)'));
   _actBtns.push(oAct(ico('truck',14)+' '+(d.importer_delivery?'בטל הפצת יבואן':'הפצת יבואן→לקוח'),'#7c3aed',`wcoImporterDelivery(${d.id},${d.importer_delivery?0:1})`,'סימון הזמנה שמופצת ישירות מהיבואן לבית הלקוח (dropship — למשל כיסאות ללא מלאי)'));
+  if(!WSW_LOCKED.includes(d.status)) _actBtns.push(oAct('💳 קישור תשלום','#b45309',`wcoXPayOpen()`,'קישור תשלום אחד או יותר להזמנה — תוספת אחרי החלפה, או פיצול לכמה כרטיסים'));
+  if((b.email||'').trim()) _actBtns.push(oAct('📧 שלח אישור הזמנה','#2563eb',`wcoResendConfirm(${d.id})`,'שולח שוב ללקוח את מייל אישור ההזמנה עם הפריטים המעודכנים'));
   if(phoneIntl.length>10) _actBtns.push(oAct('📄 שלח חשבונית','#0d9488',`wcoSendInvoice('${d.number}','${phoneIntl}')`,'שולח ללקוח בוואטסאפ את החשבונית של ההזמנה'));
   _actBtns.push(oAct('↩️ '+(d.return_open?'סגור החזרה':'פתח החזרה'),'#7c3aed',`wcoOpenReturn(${d.id},${d.return_open?1:0})`,d.return_open?'סגירת ההחזרה':'פותח החזרה: מתעד בהזמנה + מעתיק פרטי לקוח + פותח דשבורד Cargo לאיסוף'));
   /* ביטול שקט — לכפילויות/ניסיונות תשלום שלא הושלמו. הביטול הרגיל שולח
@@ -11588,7 +11590,7 @@ function paintWcOrder(){
       ${it.img?`<img src="${escW(it.img)}" loading="lazy" style="width:46px;height:46px;object-fit:contain;border-radius:9px;background:#fff;border:1px solid var(--line);flex:none">`:''}
       <span style="flex:1;min-width:0">${escW(it.name)}${it.sku?` <span class="muted" style="font-size:11px;direction:ltr;font-family:monospace">${escW(it.sku)}</span>`:''} ×${it.qty}
         ${(it.attrs||[]).length?`<div class="muted" style="font-size:12px;margin-top:3px">${it.attrs.map(x=>`${escW(x.k)}: <b>${escW(x.v)}</b>`).join(' · ')}</div>`:''}</span>
-      <b style="white-space:nowrap">${fmt(it.total)}</b></div>`).join('')}
+      <span style="display:flex;flex-direction:column;align-items:flex-end;gap:5px"><b style="white-space:nowrap">${fmt(it.total)}</b>${(it.line_id&&!WSW_LOCKED.includes(d.status))?`<button class="btn-ghost" style="padding:3px 9px;font-size:11.5px;white-space:nowrap" title="החלפת המוצר בשורה הזו במוצר/צבע/סידורי אחר" onclick="wcoSwapOpen(${it.line_id})">🔀 החלף</button>`:''}</span></div>`).join('')}
     <div style="display:flex;justify-content:space-between;padding:14px 6px 6px;font-size:15px">
       <span>${Number(d.shipping_total)>0?`משלוח ${fmt(d.shipping_total)} · `:''}<b>סה״כ</b></span><b style="font-size:16px">${fmt(d.total)}</b>
     </div>
@@ -11600,6 +11602,7 @@ function paintWcOrder(){
       ${d.pay.clearing?`<span>סולק: <b>${escW(d.pay.clearing)}</b></span>`:''}
       ${d.pay.status_desc?`<span class="muted">${escW(d.pay.status_desc)}</span>`:''}
     </div>`:''}
+    ${wcoXPayHTML(d)}
     ${gm.greenos_payplus_link&&d.status==='pending'?`<div style="display:flex;gap:6px;margin:4px 0">
       <input readonly value="${escW(gm.greenos_payplus_link)}" onclick="this.select()" style="flex:1;min-width:0;direction:ltr;font-size:11px;padding:6px 9px;border-radius:8px;border:1px solid var(--line);background:var(--card2);color:var(--txt)">
       <button class="btn-ghost" onclick="navigator.clipboard.writeText('${escW(gm.greenos_payplus_link)}');toast('קישור התשלום הועתק',true)">${ico('clip',14)}</button></div>`:''}
@@ -12447,6 +12450,259 @@ async function wcoShipMethodPick(oid,mode){
     }
     loadWcOrders(); openWcOrder(oid);
   }catch(e){ hideLoading(); toast('שינוי אופן המשלוח נכשל',false); }
+}
+// ── 🔀 החלפת מוצר בתוך הזמנה + 💳 קישורי תשלום נוספים (אסי, 10/11/2026) ──
+// החלפה לפי מק״ט/שם (עם בחירת סידורי) או ישירות לפי סידורי; שידור מחדש של הפריט
+// החדש בלבד. תוספת מחיר נגבית בקישור אחד או יותר (פיצול לכמה כרטיסים).
+const WSW_LOCKED=['completed','cancelled','refunded','trash','checkout-draft'];
+const WSW_UNPAID=['pending','on-hold','failed'];
+function wswOv(html){
+  const old=document.getElementById('wswOv'); if(old) old.remove();
+  const ov=document.createElement('div'); ov.id='wswOv';
+  ov.style.cssText='position:fixed;inset:0;z-index:100050;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center';
+  ov.onclick=(e)=>{ if(e.target===ov) ov.remove(); };
+  ov.innerHTML=`<div id="wswBox" style="background:var(--card,#fff);color:var(--txt,#1a2230);border-radius:16px;padding:20px;width:min(560px,94vw);max-height:88vh;overflow:auto;text-align:right;box-shadow:0 20px 60px rgba(0,0,0,.4)">${html}</div>`;
+  (document.getElementById('modalRoot')||document.body).appendChild(ov);
+  return ov;
+}
+function wswClose(){ const o=document.getElementById('wswOv'); if(o) o.remove(); }
+const wswMoney=v=>'₪'+Number(v||0).toLocaleString('he-IL',{maximumFractionDigits:2});
+function wcoSwapOpen(lineId){
+  const d=S._wcoD||{}; const it=(d.items||[]).find(x=>String(x.line_id)===String(lineId));
+  if(!it){ toast('השורה לא נמצאה — רענן את ההזמנה',false); return; }
+  S._wsw={oid:d.id,line:it,pick:null,serial:'',q:''};
+  wswOv(`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <b style="font-size:16px">🔀 החלפת מוצר בהזמנה #${escW(String(d.number))}</b>
+      <button class="dr-x" onclick="wswClose()">✕</button></div>
+    <div class="muted" style="font-size:12.5px;margin-bottom:12px">במקום: <b style="color:var(--txt)">${escW(it.name)}</b>
+      ${it.sku?`<span style="direction:ltr;font-family:monospace">${escW(it.sku)}</span>`:''} ×${it.qty} · ${wswMoney(it.total)}</div>
+    <input id="wswQ" autocomplete="off" placeholder="מק״ט / שם מוצר / מספר סידורי…" oninput="wswSearchDeb(this.value)"
+      style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:14px">
+    <div id="wswRes" style="margin-top:8px"></div>
+    <div id="wswPick" style="margin-top:10px"></div>`);
+  setTimeout(()=>{ const q=document.getElementById('wswQ'); if(q) q.focus(); },50);
+}
+let _wswT=null;
+function wswSearchDeb(v){ clearTimeout(_wswT); _wswT=setTimeout(()=>wswSearch(v),350); }
+async function wswSearch(q){
+  const W=S._wsw; if(!W) return; q=(q||'').trim(); W.q=q;
+  const box=document.getElementById('wswRes'); if(!box) return;
+  if(q.length<2){ box.innerHTML=''; return; }
+  box.innerHTML='<div class="muted" style="font-size:12.5px">מחפש…</div>';
+  let r=null; try{ r=await api(`/api/admin/orders/${W.oid}/swap/search?q=`+encodeURIComponent(q),null,30000); }catch(e){}
+  if(!r||W.q!==q) return;
+  const row=(inner,onclick)=>`<button class="btn-ghost" style="width:100%;text-align:right;padding:8px 11px;margin-top:5px;display:flex;justify-content:space-between;gap:8px;align-items:center" onclick="${onclick}">${inner}</button>`;
+  const ser=(r.serials||[]).map(m=>row(`<span>📟 <b style="direction:ltr;font-family:monospace">${escW(m.serial)}</b> · ${escW(m.product_name||'')}</span><span class="muted" style="font-size:11px;direction:ltr;font-family:monospace">${escW(String(m.product_id))}</span>`,
+    `wswPick('${escW(String(m.product_id))}','${escW(String(m.serial))}')`)).join('');
+  const prods=(r.products||[]).map(p=>row(`<span>${escW(p.name)}</span><span class="muted" style="font-size:11px;white-space:nowrap"><span style="direction:ltr;font-family:monospace">${escW(p.sku)}</span>${p.stock!=null?` · מלאי ${p.stock}`:''}</span>`,
+    `wswPick('${escW(p.sku)}','')`)).join('');
+  box.innerHTML=(ser?`<div class="muted" style="font-size:12px;margin-top:4px">לפי סידורי</div>${ser}`:'')
+    +(prods?`<div class="muted" style="font-size:12px;margin-top:8px">מוצרים</div>${prods}`:'')
+    +(!ser&&!prods?'<div class="muted" style="font-size:12.5px">לא נמצא — נסה מק״ט מלא או חלק מהשם</div>':'');
+}
+async function wswPick(sku,serial){
+  const W=S._wsw; if(!W) return;
+  const box=document.getElementById('wswPick'); if(!box) return;
+  document.getElementById('wswRes').innerHTML='';
+  box.innerHTML='<div class="muted" style="font-size:12.5px">טוען מלאי וסידוריים…</div>';
+  let p=null; try{ p=await api(`/api/admin/orders/${W.oid}/swap/sku?sku=`+encodeURIComponent(sku),null,60000); }catch(e){}
+  if(!p){ box.innerHTML='<div style="color:#dc2626;font-size:13px">טעינת המוצר נכשלה</div>'; return; }
+  W.pick=p; W.serial=serial||'';
+  wswPaint();
+}
+function wswPaint(){
+  const W=S._wsw, p=W&&W.pick; const box=document.getElementById('wswPick'); if(!p||!box) return;
+  const d=S._wcoD||{}; const bn=p.branches||{};
+  const stockChips=Object.keys(p.stock||{}).filter(b=>Number(p.stock[b])>0).map(b=>
+    `<span class="ord-st" style="color:#15803d;border-color:#15803d55;background:#15803d0f">${escW(bn[b]||('סניף '+b))}: ${p.stock[b]}</span>`).join(' ')
+    ||'<span class="ord-st" style="color:#dc2626;border-color:#dc262655;background:#dc26260f">אין מלאי בסניפים</span>';
+  let serHTML='';
+  if(p.is_serial){
+    const opts=[`<label style="display:flex;gap:8px;align-items:center;padding:6px 4px;cursor:pointer"><input type="radio" name="wswSer" value="" ${!W.serial?'checked':''} onchange="S._wsw.serial=''"> <span>כל יחידה זמינה (בחירה אוטומטית)</span></label>`]
+      .concat((p.serials||[]).map(u=>`<label style="display:flex;gap:8px;align-items:center;padding:6px 4px;cursor:pointer;border-top:1px solid var(--line)">
+        <input type="radio" name="wswSer" value="${escW(u.serial)}" ${W.serial===u.serial?'checked':''} onchange="S._wsw.serial=this.value">
+        <b style="direction:ltr;font-family:monospace;font-size:12.5px">${escW(u.serial)}</b>
+        <span class="muted" style="font-size:12px">${escW(u.branch_name||'')}${u.since?' · מ-'+escW(u.since):''}</span>
+        ${u.dyn?`<span class="ord-st" style="color:#b45309;border-color:#b4530955;background:#b453090f;font-size:11px">${u.dyn==='transit'?'בהעברה':'משוריין'}${u.dyn_to?' → '+escW(u.dyn_to):''}</span>`:''}</label>`));
+    if(W.serial && !(p.serials||[]).some(u=>u.serial===W.serial))
+      opts.push(`<div style="color:#dc2626;font-size:12.5px;padding:6px 4px">⚠️ הסידורי ${escW(W.serial)} לא זמין במלאי (נמכר?) — בחר אחר</div>`);
+    serHTML=`<div style="margin-top:10px"><b style="font-size:13px">סידורי</b><div style="max-height:210px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:2px 8px;margin-top:5px">${opts.join('')}</div></div>`;
+  }
+  const price=p.wc?Number(p.wc.price||0):0;
+  const unpaid=WSW_UNPAID.includes(d.status);
+  box.innerHTML=`<div style="border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--card2)">
+    <div style="display:flex;gap:10px;align-items:center">
+      ${p.wc&&p.wc.img?`<img src="${escW(p.wc.img)}" style="width:52px;height:52px;object-fit:contain;background:#fff;border-radius:9px;border:1px solid var(--line)">`:''}
+      <div style="flex:1;min-width:0"><b>${escW((p.wc&&p.wc.name)||p.name||p.sku)}</b>
+        <div class="muted" style="font-size:12px"><span style="direction:ltr;font-family:monospace">${escW(p.sku)}</span>${p.wc?` · באתר ${wswMoney(p.wc.price)}`:''}</div></div>
+    </div>
+    ${p.wc?'':'<div style="color:#dc2626;font-size:12.5px;margin-top:8px">⚠️ המק״ט לא מחובר למוצר באתר — אי אפשר להכניס אותו להזמנה. צריך קודם לחבר מק״ט.</div>'}
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:9px">${stockChips}</div>
+    ${serHTML}
+    <div style="display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap">
+      <label style="font-size:13px">מחיר ליחידה ₪ <input id="wswPrice" type="number" min="0" step="1" value="${price}" oninput="wswDiff()"
+        style="width:110px;padding:7px 9px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:14px;margin-inline-start:6px"></label>
+      <span id="wswDiff" style="font-size:13px;font-weight:700"></span>
+    </div>
+    <label style="display:flex;gap:8px;align-items:center;margin-top:10px;font-size:13px;cursor:pointer">
+      <input type="checkbox" id="wswRb" ${unpaid?'':'checked'} ${unpaid?'disabled':''}>
+      ${unpaid?'<span class="muted">ההזמנה עוד לא שולמה — השידור לסניף יקרה אוטומטית אחרי התשלום</span>':'שדר בקשת העברה לפריט החדש (ובטל את השיריון של הפריט הקודם)'}
+    </label>
+    <button class="btn-primary" style="width:100%;margin-top:12px;padding:11px" ${p.wc?'':'disabled'} onclick="wswConfirm()">🔀 החלף בהזמנה</button>
+  </div>`;
+  wswDiff();
+}
+function wswDiff(){
+  const W=S._wsw; const el=document.getElementById('wswDiff'); if(!W||!el) return;
+  const unit=Number((document.getElementById('wswPrice')||{}).value||0);
+  const diff=Math.round((unit*Number(W.line.qty||1)-Number(W.line.total||0))*100)/100;
+  el.style.color=diff>0?'#b45309':(diff<0?'#2563eb':'var(--muted)');
+  el.textContent=diff>0?`תוספת לגבייה: ${wswMoney(diff)}`:(diff<0?`מגיע ללקוח החזר: ${wswMoney(-diff)} (ידני)`:'ללא הפרש מחיר');
+}
+async function wswConfirm(){
+  const W=S._wsw; if(!W||!W.pick) return;
+  const unit=Number((document.getElementById('wswPrice')||{}).value);
+  if(!(unit>=0)){ toast('מחיר לא תקין',false); return; }
+  const rb=!!((document.getElementById('wswRb')||{}).checked);
+  const nm=(W.pick.wc&&W.pick.wc.name)||W.pick.name||W.pick.sku;
+  if(!confirm(`להחליף בהזמנה:\n${W.line.name}\n← ${nm}${W.serial?`\nסידורי ${W.serial}`:''}\nמחיר ${wswMoney(unit*Number(W.line.qty||1))}?`)) return;
+  showLoading('מחליף מוצר בהזמנה…');
+  let r=null;
+  try{
+    r=await api(`/api/admin/orders/${W.oid}/swap-item`,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({line_id:W.line.line_id,sku:W.pick.sku,serial:W.serial||'',price:unit,rebroadcast:rb})},120000);
+  }catch(e){ hideLoading(); toast((e&&e.detail)||'ההחלפה נכשלה',false); return; }
+  hideLoading(); wswClose();
+  const bn={1:'גן העיר',2:'סטאר',3:'סיטי',4:'עד הלום',5:'אתר'};
+  const rbx=r.rebroadcast||{}; const msgs=[];
+  if((rbx.created||[]).length) msgs.push('שודר: '+rbx.created.filter(c=>!c.balance).map(c=>c.name+' מ'+(bn[c.src]||c.src)).join(' · '));
+  (rbx.warnings||[]).forEach(w=>msgs.push('⚠️ '+w));
+  if(r.addons_kept) msgs.push(`נשמרו ${r.addons_kept} תוספים מהשורה הקודמת — לוודא שהמחיר כולל אותם`);
+  toast('המוצר הוחלף ✓',true);
+  if(msgs.length) alert(msgs.join('\n'));
+  loadWcOrders(); await openWcOrder(W.oid);
+  const due=(S._wcoD&&S._wcoD.swap&&S._wcoD.swap.extra_due)||0;
+  if(r.swap&&r.swap.diff>0&&due>0&&confirm(`יש תוספת של ${wswMoney(due)} לגבייה. ליצור קישור תשלום עכשיו?`)) wcoXPayOpen();
+}
+// ── 💳 קישורי תשלום נוספים (אחד או כמה — פיצול לכמה כרטיסים) ──
+function wcoXPayOpen(){
+  const d=S._wcoD||{}; const sw=d.swap||{};
+  const unpaid=WSW_UNPAID.includes(d.status);
+  const due=Number(sw.extra_due||0);
+  S._wxp={oid:d.id,target:due,parts:[{amount:due||'',payments:1}]};
+  wswOv(`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <b style="font-size:16px">💳 קישור תשלום — הזמנה #${escW(String(d.number))}</b>
+      <button class="dr-x" onclick="wswClose()">✕</button></div>
+    <div class="muted" style="font-size:12.5px;margin-bottom:10px">${unpaid
+      ?'ההזמנה עוד לא שולמה. כשהקישורים ששולמו מכסים את כל הסכום — ההזמנה תסומן כשולמה. ⚠️ אם כבר נשלח ללקוח קישור התשלום המקורי — לא לשלוח את שניהם.'
+      :'תוספת לגבייה (למשל אחרי החלפת מוצר). התשלום נרשם בהזמנה ולא משנה את הסטטוס שלה.'}
+      ${due>0?`<br>פתוח לגבייה: <b style="color:var(--txt)">${wswMoney(due)}</b>`:''}</div>
+    <div id="wxpParts"></div>
+    <button class="btn-ghost" style="margin-top:8px;padding:6px 12px;font-size:13px" onclick="wxpAdd()">+ כרטיס נוסף (פיצול)</button>
+    <div id="wxpSum" style="margin-top:10px;font-size:13px"></div>
+    <button class="btn-primary" style="width:100%;margin-top:12px;padding:11px" onclick="wxpCreate()">צור קישורים</button>`);
+  wxpPaint();
+}
+function wxpPaint(){
+  const X=S._wxp; const box=document.getElementById('wxpParts'); if(!X||!box) return;
+  const payOpts=v=>Array.from({length:12},(_,i)=>`<option value="${i+1}" ${Number(v)===i+1?'selected':''}>${i+1===1?'תשלום אחד':(i+1)+' תשלומים'}</option>`).join('');
+  box.innerHTML=X.parts.map((p,i)=>`<div style="display:flex;gap:8px;align-items:center;margin-top:7px">
+    <span class="muted" style="font-size:12.5px;width:58px">כרטיס ${i+1}</span>
+    <input type="number" min="1" step="1" value="${p.amount}" placeholder="סכום ₪" oninput="S._wxp.parts[${i}].amount=this.value;wxpSum()"
+      style="width:120px;padding:8px 10px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:14px">
+    <select onchange="S._wxp.parts[${i}].payments=this.value" style="padding:8px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:13px">${payOpts(p.payments)}</select>
+    ${X.parts.length>1?`<button class="btn-ghost" style="padding:5px 9px" title="הסר" onclick="S._wxp.parts.splice(${i},1);wxpPaint()">✕</button>`:''}
+  </div>`).join('');
+  wxpSum();
+}
+function wxpAdd(){
+  const X=S._wxp; if(!X) return;
+  const sum=X.parts.reduce((a,p)=>a+Number(p.amount||0),0);
+  // פיצול: הכרטיס הראשון נשאר עם מה שהוזן, החדש מקבל את היתרה מול היעד (אם יש)
+  const rest=X.target>0?Math.max(0,Math.round((X.target-sum)*100)/100):'';
+  if(X.target>0&&X.parts.length===1&&Number(X.parts[0].amount)===X.target){
+    const half=Math.round(X.target/2); X.parts[0].amount=half; X.parts.push({amount:Math.round((X.target-half)*100)/100,payments:1});
+  } else X.parts.push({amount:rest||'',payments:1});
+  wxpPaint();
+}
+function wxpSum(){
+  const X=S._wxp; const el=document.getElementById('wxpSum'); if(!X||!el) return;
+  const sum=Math.round(X.parts.reduce((a,p)=>a+Number(p.amount||0),0)*100)/100;
+  const gap=X.target>0?Math.round((X.target-sum)*100)/100:0;
+  el.innerHTML=`סה״כ בקישורים: <b>${wswMoney(sum)}</b>`+(X.target>0&&gap!==0
+    ?` <span style="color:${gap>0?'#b45309':'#dc2626'}">· ${gap>0?'חסר':'עודף'} ${wswMoney(Math.abs(gap))} מול הפתוח לגבייה</span>`:'');
+}
+async function wxpCreate(){
+  const X=S._wxp; if(!X) return;
+  const parts=X.parts.map(p=>({amount:Number(p.amount||0),payments:Number(p.payments||1)})).filter(p=>p.amount>0);
+  if(!parts.length){ toast('הזן סכום',false); return; }
+  showLoading('יוצר קישורי תשלום…');
+  let r=null;
+  try{ r=await api(`/api/admin/orders/${X.oid}/extra-pay`,{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({parts})},90000); }
+  catch(e){ hideLoading(); toast((e&&e.detail)||'יצירת הקישורים נכשלה',false); return; }
+  hideLoading(); wswClose();
+  toast(`נוצרו ${r.links.length} קישורים ✓ — שלח ללקוח מתוך ההזמנה`,true);
+  openWcOrder(X.oid);
+}
+function wcoXPayHTML(d){
+  const sw=d.swap||{}; const xs=sw.extra_pay||[]; const swaps=sw.swaps||[];
+  if(!xs.length&&!swaps.length) return '';
+  const stTag=x=>x.status==='paid'
+    ?`<span class="ord-st" style="color:#15803d;border-color:#15803d55;background:#15803d14">שולם${x.approval?' · אישור '+escW(x.approval):''}${x.four_digits?' · ****'+escW(x.four_digits):''}</span>`
+    :x.status==='void'?'<span class="ord-st" style="color:#6b7280;border-color:#6b728055;background:#6b72800f">בוטל</span>'
+    :'<span class="ord-st" style="color:#b45309;border-color:#b4530955;background:#b453090f">ממתין לתשלום</span>';
+  const sRows=swaps.map(s=>`<div style="font-size:12.5px;padding:5px 0;border-top:1px dashed var(--line)">🔀 ${escW(s.old_name)} ← <b>${escW(s.new_name)}</b>${s.serial?` · <span style="direction:ltr;font-family:monospace">${escW(s.serial)}</span>`:''}
+    <span class="muted"> · ${wswMoney(s.old_total)}→${wswMoney(s.new_total)} · ${escW(s.by||'')}</span></div>`).join('');
+  const xRows=xs.map(x=>`<div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;padding:7px 0;border-top:1px dashed var(--line);font-size:13px">
+    <b>${wswMoney(x.amount)}</b>${Number(x.payments)>1?`<span class="muted">${x.payments} תשלומים</span>`:''} ${stTag(x)}
+    ${x.status==='pending'?`<span style="margin-inline-start:auto;display:flex;gap:5px">
+      <button class="btn-ghost" style="padding:4px 9px;font-size:12px" onclick="navigator.clipboard.writeText('${escW(x.link)}');toast('הקישור הועתק',true)">${ico('clip',13)} העתק</button>
+      <button class="btn-ghost" style="padding:4px 9px;font-size:12px;color:#15803d;border-color:#15803d" onclick="wxpSend(${d.id},'${escW(x.pru)}',this)">${ico('chat',13)} שלח בוואטסאפ</button>
+      <button class="btn-ghost" style="padding:4px 9px;font-size:12px" title="בדוק מול PayPlus" onclick="wxpCheck(${d.id},'${escW(x.pru)}')">↻</button>
+      <button class="btn-ghost" style="padding:4px 9px;font-size:12px;color:#6b7280" title="בטל קישור" onclick="wxpVoid(${d.id},'${escW(x.pru)}')">✕</button></span>`:''}
+  </div>`).join('');
+  const sumLine=[];
+  if(sw.extra_due>0) sumLine.push(`<span style="color:#b45309;font-weight:700">פתוח לגבייה: ${wswMoney(sw.extra_due)}</span>`);
+  if(sw.extra_paid>0) sumLine.push(`<span style="color:#15803d">נגבה בקישורים נוספים: ${wswMoney(sw.extra_paid)}</span>`);
+  if(sw.refund_owed>0) sumLine.push(`<span style="color:#2563eb;font-weight:700">מגיע ללקוח החזר: ${wswMoney(sw.refund_owed)} (ידני)</span>`);
+  return `<div style="background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:11px 14px;margin:8px 0">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><b style="font-size:13.5px">החלפות ותשלומים נוספים</b>
+      <span style="display:flex;gap:10px;flex-wrap:wrap;font-size:12.5px">${sumLine.join('')}</span></div>
+    ${sRows}${xRows}</div>`;
+}
+async function wxpSend(oid,pru,btn){
+  if(!confirm('לשלוח ללקוח את קישור התשלום בוואטסאפ?')) return;
+  if(btn){ btn.disabled=true; btn.textContent='שולח…'; }
+  try{
+    const r=await api(`/api/admin/orders/${oid}/extra-pay/${encodeURIComponent(pru)}/send`,{method:'POST'},60000);
+    toast(r.via==='pay-template'?'נשלח ✓ עם כפתור תשלום':'נשלח ✓ בוואטסאפ',true);
+    if(btn) btn.textContent='נשלח ✓';
+  }catch(e){ if(btn){ btn.disabled=false; btn.textContent='נסה שוב'; } toast((e&&e.detail)||'השליחה נכשלה',false); }
+}
+async function wxpCheck(oid,pru){
+  showLoading('בודק מול PayPlus…');
+  let r=null; try{ r=await api('/api/admin/pay/status/'+encodeURIComponent(pru),null,60000); }catch(e){}
+  hideLoading();
+  if(!r){ toast('הבדיקה נכשלה',false); return; }
+  if(r.paid&&r.via==='report'){ toast('נמצאה בדוח PayPlus עסקה בסכום הזה — לאמת ידנית שזו של הלקוח',true); return; }
+  if(r.paid){ toast('שולם ✓',true); openWcOrder(oid); return; }
+  toast('עדיין לא שולם',false);
+}
+async function wxpVoid(oid,pru){
+  if(!confirm('לבטל את הקישור? הוא לא ייספר יותר בגבייה (אם הלקוח כבר פתח אותו — הקישור עדיין יעבוד עד שיפוג).')) return;
+  try{ await api(`/api/admin/orders/${oid}/extra-pay/${encodeURIComponent(pru)}/void`,{method:'POST'},30000);
+    toast('הקישור בוטל',true); openWcOrder(oid); }
+  catch(e){ toast((e&&e.detail)||'הביטול נכשל',false); }
+}
+async function wcoResendConfirm(oid){
+  const d=S._wcoD||{}; const em=(d.billing||{}).email||'';
+  if(!em){ toast('אין מייל בהזמנה',false); return; }
+  if(!confirm(`לשלוח שוב ללקוח את אישור ההזמנה (עם הפריטים המעודכנים) למייל ${em}?`)) return;
+  showLoading('שולח אישור הזמנה…');
+  try{ await api(`/api/admin/orders/${oid}/resend-confirm`,{method:'POST'},60000);
+    hideLoading(); toast('אישור ההזמנה נשלח ✓',true); openWcOrder(oid); }
+  catch(e){ hideLoading(); toast((e&&e.detail)||'השליחה נכשלה',false); }
 }
 async function wcoCargoLabel(oid){
   showLoading('מביא תווית…');

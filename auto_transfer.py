@@ -230,8 +230,13 @@ def _has_open_balance(sku) -> bool:
     return False
 
 
-def _handle_order(o: dict, catalog: dict) -> list:
+def _handle_order(o: dict, catalog: dict, pins: dict = None, only_skus=None) -> list:
     """בודק שורות הזמנה ומשדר בקשות העברה לפי הצורך. מחזיר את מה ששודר.
+
+    pins: {sku: serial} — יחידה סריאלית ספציפית שנבחרה ידנית (החלפת מוצר בהזמנה):
+    הסניף שלה הופך למקור הראשון והיא נשלחת ראשונה. only_skus: לשדר רק את המק"טים
+    האלה (שאר שורות ההזמנה כבר טופלו) — ובמצב הזה לא נוגעים בדגלי OOS/ללא-מק"ט
+    של ההזמנה כולה; הקורא מחליט עליהם.
 
     ⚠️ מלאי האתר (סניף 5) תמיד שמור להזמנות קודמות שבקליטה — לא נחשב זמין להזמנה חדשה.
     לכן כל הזמנה מקבלת יחידה ייעודית שמשודרת מסניף אמיתי → אתר. בהזמנת איסוף עצמי
@@ -249,6 +254,8 @@ def _handle_order(o: dict, catalog: dict) -> list:
     for li in (list(o.get("line_items", [])) + _order_addon_items(o)):
         sku = str(li.get("sku") or "").strip()
         qty = max(1, int(li.get("quantity") or 1))
+        if only_skus is not None and sku not in only_skus:
+            continue
         if not sku:
             # פריט פיזי ללא מק"ט — בעיית נתונים (המוצר הועלה בלי SKU). לא לדלג
             # בשקט: לסמן את ההזמנה לטיפול ידני (אחרת לא משודרת ולא מסומנת OOS).
@@ -288,6 +295,16 @@ def _handle_order(o: dict, catalog: dict) -> list:
                     serials_by_branch[b].sort(key=lambda u: str(u.get("insertDate") or ""))
             except Exception as e:  # noqa: BLE001
                 logger.warning("serial pick failed for %s: %s", sku, e)
+        # יחידה שנבחרה ידנית (החלפת מוצר): הסניף שלה ראשון, והיא ראשונה בתור בסניף.
+        line_pref = src_pref
+        pin = str((pins or {}).get(sku) or "").strip()
+        if pin and is_serial:
+            for b, us in serials_by_branch.items():
+                i = next((j for j, u in enumerate(us) if str(u.get("serial")) == pin), None)
+                if i is not None and int(b) in PREF_SOURCE:
+                    us.insert(0, us.pop(i))
+                    line_pref = [int(b)] + [x for x in src_pref if x != int(b)]
+                    break
         # ⚠️ פיצול בין סניפים: ממלאים את הכמות מכמה סניפים לפי המלאי בכל אחד (סדר
         # src_pref). מלאי האתר (5) לא נחשב — לא ב-src_pref. כך הזמנת 2 יח׳ ש-1 בגן
         # העיר ו-1 בסיטי תשדר יחידה מכל סניף — ולא 2 מסניף שיש בו רק 1.
@@ -296,8 +313,8 @@ def _handle_order(o: dict, catalog: dict) -> list:
         used = []
         # מעדיפים סניף יחיד (לפי עדיפות) שמכסה את **כל** הכמות — פחות העברות וריקון
         # מיותר; רק אם אין כזה מפצלים בין סניפים.
-        solo = next((b for b in src_pref if int(stock.get(b) or 0) >= qty), None)
-        order_src = [solo] if solo else src_pref
+        solo = next((b for b in line_pref if int(stock.get(b) or 0) >= qty), None)
+        order_src = [solo] if solo else line_pref
         for b in order_src:
             if remaining <= 0:
                 break
@@ -361,6 +378,10 @@ def _handle_order(o: dict, catalog: dict) -> list:
                                 o.get("number"), sku, src, tgt)
         except Exception as e:  # noqa: BLE001
             logger.warning("auto-balance failed for %s: %s", sku, e)
+    if only_skus is not None:          # שידור חלקי יזום — דגלי ההזמנה בידי הקורא
+        if created:
+            db.sales_state_set(f"auto_tr_bcast:{o.get('number')}", "1")
+        return created
     # אם כבר אין פריט ללא מק"ט (חובר מק"ט) — מנקים את ההזמנה מרשימת הטיפול הידני
     if not had_unmatched:
         _unmark_unmatched(o.get("number"))

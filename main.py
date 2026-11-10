@@ -14344,6 +14344,9 @@ async def payplus_ipn(request: Request):
     if not order_id:
         logger.warning("payplus ipn: no order mapping for pru %s (more_info=%s)", pru, f.get("more_info"))
         return {"ok": False, "order": None}
+    if str(order_id).startswith("orderx:"):   # קישור נוסף להזמנה — לא משנה סטטוס
+        _order_xpay_paid(int(str(order_id).split(":", 1)[1]), pru, f)
+        return {"ok": True, "order": None, "extra": True}
     if not str(order_id).isdigit():   # קישור כללי (standalone) — אין הזמנת WC לעדכן
         db.pay_link_mark_paid(pru, f.get("tx"), f.get("approval"), f.get("four_digits"), f.get("brand"))
         logger.info("payplus ipn: standalone payment confirmed (pru %s, tx %s)", pru, f.get("tx"))
@@ -14864,8 +14867,10 @@ def admin_order_detail(oid: int, x_admin_key: Optional[str] = Header(None)):
         "items": [{"name": li.get("name"), "qty": li.get("quantity"),
                    "total": li.get("total"), "sku": li.get("sku") or "",
                    "img": (li.get("image") or {}).get("src") or "",
+                   "line_id": li.get("id"),
                    "attrs": _li_attrs(li)}
                   for li in (o.get("line_items") or [])],
+        "swap": _order_swap_ctx(o),
         "shipping_lines": [sl.get("method_title") for sl in (o.get("shipping_lines") or [])],
         "greenos": {kk: vv for kk, vv in meta.items() if str(kk).startswith("greenos")},
         "cargo": meta.get("cslfw_shipping") or None,
@@ -15129,6 +15134,479 @@ def admin_order_pay_link(oid: int, payments: int = 1,
     return {"ok": True, "order_id": o["id"], "number": o.get("number"),
             "total": o.get("total"), "pay_link": pp["link"], "pru": pp["pru"]}
 
+
+
+# ══════════════════════════════════════════════════════════════════════
+# 🔀 החלפת מוצר בתוך הזמנה + קישורי תשלום נוספים (פיצול לכמה כרטיסים)
+# אסי 10/11/2026: "באישור לקוח משנים לו צבע/מוצר שאין במלאי לדומה" — החלפה לפי
+# מק"ט (עם בחירת סידורי) או לפי סידורי, שידור מחדש של הפריט החדש בלבד, ותוספת
+# מחיר שנגבית בקישור אחד או יותר. החזר על הפרש שלילי = ידני (רק מוצג).
+# זה תמיד לפני הוצאת חשבונית, לכן אין טיפול בחשבונית.
+# ══════════════════════════════════════════════════════════════════════
+_SWAP_LOCKED = {"completed", "cancelled", "refunded", "trash", "checkout-draft"}
+_UNPAID_ST = {"pending", "on-hold", "failed"}
+
+
+def _wc_by_sku(sku: str) -> Optional[dict]:
+    """מוצר/וריאציה באתר לפי SKU מדויק (products?sku= מחזיר גם וריאציות)."""
+    import requests as _rq
+    base, k, s = _wc_creds()
+    r = _rq.get(f"{base}/wp-json/wc/v3/products",
+                params={"sku": sku, "_fields": "id,parent_id,type,name,price,sku,status,image,images"},
+                auth=(k, s), timeout=25)
+    arr = r.json() if r.ok else []
+    return next((p for p in (arr if isinstance(arr, list) else [])
+                 if str(p.get("sku") or "").strip() == sku), None)
+
+
+def _swap_state(oid, key) -> list:
+    import json as _j
+    try:
+        raw = db.sales_state_get(f"{key}:{oid}")
+        return _j.loads(raw) if raw else []
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _swap_state_set(oid, key, lst):
+    import json as _j
+    db.sales_state_set(f"{key}:{oid}", _j.dumps(lst[-40:], ensure_ascii=False))
+
+
+def _order_xpay(oid) -> list:
+    """קישורי התשלום הנוספים של ההזמנה + הסטטוס העדכני מטבלת pay_links."""
+    out = []
+    for x in _swap_state(oid, "order_xpay"):
+        rec = db.pay_link_get(x.get("pru") or "") or {}
+        out.append({**x, "status": rec.get("status") or "pending",
+                    "approval": rec.get("approval") or "", "four_digits": rec.get("four_digits") or "",
+                    "brand": rec.get("brand") or "", "paid_at": rec.get("paid_at") or ""})
+    return out
+
+
+def _order_swap_ctx(o: dict) -> dict:
+    """היסטוריית החלפות + קישורים נוספים + כמה עוד לגבות (ברירת מחדל לטופס)."""
+    oid = o.get("id")
+    swaps = _swap_state(oid, "order_swaps")
+    xpay = [x for x in _order_xpay(oid) if x.get("status") != "void"]
+    net = round(sum(float(s.get("diff") or 0) for s in swaps), 2)
+    asked = round(sum(float(x.get("amount") or 0) for x in xpay), 2)
+    paid = round(sum(float(x.get("amount") or 0) for x in xpay if x.get("status") == "paid"), 2)
+    if o.get("status") in _UNPAID_ST:      # ההזמנה עוד לא שולמה — כל הסכום פתוח לגבייה
+        due = float(o.get("total") or 0) - asked
+    else:
+        due = net - asked
+    return {"swaps": swaps, "extra_pay": xpay, "swap_net": net,
+            "extra_due": round(max(0.0, due), 2), "extra_paid": paid,
+            "refund_owed": round(max(0.0, -net), 2)}
+
+
+@app.get("/api/admin/orders/{oid}/swap/search")
+def admin_order_swap_search(oid: int, q: str, x_admin_key: Optional[str] = Header(None)):
+    """חיפוש מוצר חלופי: לפי סידורי (אינדקס סריאל→מוצר) ו/או לפי מק"ט/שם בקטלוג הקופה."""
+    _require_admin(x_admin_key)
+    qq = (q or "").strip()
+    if len(qq) < 2:
+        return {"serials": [], "products": []}
+    serials = []
+    if len(qq) >= 5 and not re.search(r"\s", qq):
+        try:
+            serials = db.serial_search(qq, limit=8)
+        except Exception:  # noqa: BLE001
+            serials = []
+    cat = db.catalog_load() or {}
+    words = [w.lower() for w in qq.split() if w]
+    prods = []
+    if qq in cat:                           # מק"ט מדויק קודם
+        prods.append({"sku": qq, "name": cat[qq].get("name") or "", "kind": cat[qq].get("kind")})
+    for sku, it in cat.items():
+        if len(prods) >= 15:
+            break
+        if sku == qq:
+            continue
+        hay = f"{sku} {it.get('name') or ''} {it.get('barcode') or ''}".lower()
+        if all(w in hay for w in words):
+            prods.append({"sku": sku, "name": it.get("name") or "", "kind": it.get("kind"),
+                          "stock": it.get("stock") or 0})
+    prods.sort(key=lambda p: (p["sku"] != qq, -(p.get("stock") or 0)))
+    return {"serials": serials, "products": prods}
+
+
+@app.get("/api/admin/orders/{oid}/swap/sku")
+def admin_order_swap_sku(oid: int, sku: str, x_admin_key: Optional[str] = Header(None)):
+    """פרטי מוצר חלופי: מחיר+תמונה מהאתר, מלאי לפי סניף והסידוריים הזמינים בכל סניף."""
+    _require_admin(x_admin_key)
+    sku = (sku or "").strip()
+    if not sku:
+        raise HTTPException(400, "חסר מק״ט")
+    cat = (db.catalog_load() or {}).get(sku) or {}
+    out = {"sku": sku, "name": cat.get("name") or "", "is_serial": cat.get("kind") == "serial",
+           "wc": None, "stock": {}, "serials": [], "branches": {}}
+    try:
+        wp = _wc_by_sku(sku)
+        if wp:
+            img = wp.get("image") or ((wp.get("images") or [None])[0]) or {}
+            out["wc"] = {"id": wp.get("id"), "parent_id": wp.get("parent_id") or 0,
+                         "name": wp.get("name"), "price": wp.get("price"),
+                         "status": wp.get("status"), "img": (img or {}).get("src") or ""}
+            out["name"] = out["name"] or wp.get("name") or ""
+    except Exception as e:  # noqa: BLE001
+        logger.warning("swap sku: wc lookup %s failed: %s", sku, e)
+    try:
+        out["stock"] = {int(b): int(q or 0) for b, q in (poller.client().get_product_stock(sku) or {}).items()}
+    except Exception as e:  # noqa: BLE001
+        logger.warning("swap sku: stock %s failed: %s", sku, e)
+    if out["is_serial"]:
+        try:
+            units = [u for u in (poller.client().get_product_serials(sku) or [])
+                     if int(u.get("status") or 0) == 1 and u.get("serial")]
+            dyn = db.serial_dynamic_status([str(u["serial"]) for u in units])
+            for u in sorted(units, key=lambda u: (int(u.get("branchId") or 0), str(u.get("insertDate") or ""))):
+                d = dyn.get(str(u["serial"])) or {}
+                out["serials"].append({"serial": str(u["serial"]), "branch": int(u.get("branchId") or 0),
+                                       "branch_name": cfg.branch_name(u.get("branchId")),
+                                       "since": str(u.get("insertDate") or "")[:10],
+                                       "dyn": d.get("kind") or "",
+                                       "dyn_to": cfg.branch_name(d.get("to_branch")) if d else ""})
+        except Exception as e:  # noqa: BLE001
+            logger.warning("swap sku: serials %s failed: %s", sku, e)
+    out["branches"] = {b: cfg.branch_name(b) for b in (1, 2, 3, 4, 5)}
+    return out
+
+
+class OrderSwapIn(BaseModel):
+    line_id: int
+    sku: str
+    serial: str = ""
+    price: Optional[float] = None      # מחיר ליחידה; None = מחיר האתר
+    rebroadcast: bool = True
+
+
+def _swap_rebroadcast(o: dict, old_sku: str, old_name: str, new_sku: str, new_name: str,
+                      serial: str, pin_branch: Optional[int]) -> dict:
+    """משדר מחדש **רק** את הפריט שהוחלף: מוחק בקשות ממתינות של הפריט הישן, מנקה
+    התראות משמרת שנדחו עליו, ומשדר את החדש (עם הסידורי שנבחר, אם נבחר)."""
+    import auto_transfer
+    onum = str(o.get("number"))
+    out = {"cleared": 0, "created": [], "warnings": []}
+    catalog = db.catalog_load()
+    if not catalog:
+        out["warnings"].append("קטלוג הקופה לא טעון — לא שודר. נסה 'שדר מחדש' בעוד דקה")
+        return out
+    for ln in db.plan_list():
+        cb = ln.get("created_by") or ""
+        if (re.search(rf"הזמנת אתר #{onum}(?!\d)", cb) and not cb.startswith("השלמה")
+                and str(ln.get("product_id")) == old_sku):
+            try:
+                db.plan_delete(ln.get("id"))
+                out["cleared"] += 1
+            except Exception:  # noqa: BLE001
+                pass
+    try:
+        stale = [a["id"] for a in db.shift_alerts_pending()
+                 if re.search(rf"#{onum}(?!\d)", a.get("text") or "")
+                 and (old_sku in (a.get("text") or "") or (old_name and old_name[:25] in (a.get("text") or "")))]
+        if stale:
+            db.shift_alerts_clear(stale)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("swap: purge shift alerts %s failed: %s", onum, e)
+    try:
+        done = [f for f in db.plan_fulfilled_for_order(onum) if str(f.get("product_id")) == old_sku]
+        if done and old_sku != new_sku:
+            f = done[-1]
+            out["warnings"].append(f"הפריט הקודם כבר הועבר בפועל ({cfg.branch_name(f.get('from_branch'))}→"
+                                   f"{cfg.branch_name(f.get('to_branch'))}) — צריך לטפל בו ידנית")
+    except Exception:  # noqa: BLE001
+        pass
+    if pin_branch == auto_transfer.SITE_BRANCH:
+        out["warnings"].append("היחידה שנבחרה כבר נמצאת באתר — לא נשלחה בקשת העברה")
+        return out
+    created = auto_transfer._handle_order(o, catalog, pins={new_sku: serial} if serial else None,
+                                          only_skus={new_sku})
+    out["created"] = created
+    li_qty = sum(int(li.get("quantity") or 1) for li in (o.get("line_items") or [])
+                 if str(li.get("sku") or "") == new_sku)
+    got = sum(int(c.get("qty") or 0) for c in created if not c.get("balance"))
+    cat_it = catalog.get(new_sku) or {}
+    tracked = new_sku in catalog and cat_it.get("is_stock") is not False
+    try:
+        import json as _j
+        raw = db.sales_state_get("order_oos_list")
+        ent = next((x for x in (_j.loads(raw) if raw else []) if str(x.get("number")) == onum), None)
+        if tracked and got < li_qty:
+            auto_transfer._mark_oos(onum, new_name, partial=bool(got))
+            out["warnings"].append("אין מספיק מלאי לפריט החדש בסניפים — ההזמנה סומנה כחסרה")
+        elif ent and (ent.get("item") or "") in (old_name, cat_it.get("name"),
+                                                  (catalog.get(old_sku) or {}).get("name")):
+            auto_transfer._unmark_oos(onum)   # החוסר היה של הפריט שהוחלף
+    except Exception as e:  # noqa: BLE001
+        logger.warning("swap oos flags %s: %s", onum, e)
+    if created:
+        try:
+            auto_transfer._alert_created(o, created)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("swap rebroadcast alert %s: %s", onum, e)
+    db.sales_state_set(f"auto_tr_seen:{o.get('id')}", "swap")
+    return out
+
+
+@app.post("/api/admin/orders/{oid}/swap-item")
+def admin_order_swap_item(oid: int, body: OrderSwapIn, x_admin_key: Optional[str] = Header(None),
+                          x_device_token: Optional[str] = Header(None)):
+    """מחליף שורת מוצר בהזמנה במוצר אחר (או בסידורי אחר של אותו מוצר), בלי לגעת בסטטוס.
+    משמר את תוספי Product Add-Ons של השורה, כותב הערה פנימית, ומשדר מחדש את הפריט החדש."""
+    _require_admin(x_admin_key)
+    import requests as _rq
+    actor = _actor_name(x_admin_key, x_device_token) or "GreenOS"
+    base, k, s = _wc_creds()
+    r = _rq.get(f"{base}/wp-json/wc/v3/orders/{oid}", auth=(k, s), timeout=45)
+    if not r.ok:
+        raise HTTPException(404, "הזמנה לא נמצאה")
+    o = r.json()
+    if o.get("status") in _SWAP_LOCKED:
+        raise HTTPException(400, f"אי אפשר להחליף מוצר בהזמנה בסטטוס '{o.get('status')}'")
+    li = next((x for x in (o.get("line_items") or []) if int(x.get("id") or 0) == body.line_id), None)
+    if not li:
+        raise HTTPException(404, "שורת המוצר לא נמצאה בהזמנה (אולי כבר הוחלפה — רענן)")
+    new_sku = (body.sku or "").strip()
+    serial = (body.serial or "").strip()
+    old_sku = str(li.get("sku") or "").strip()
+    if not new_sku:
+        raise HTTPException(400, "חסר מק״ט למוצר החדש")
+    if new_sku == old_sku and not serial:
+        raise HTTPException(400, "זה אותו מוצר — בחר מוצר אחר או סידורי ספציפי")
+    wp = _wc_by_sku(new_sku)
+    if not wp:
+        raise HTTPException(404, f"המק״ט {new_sku} לא מחובר למוצר באתר — אי אפשר להוסיף אותו להזמנה")
+    pin_branch = None
+    if serial:
+        try:
+            units = poller.client().get_product_serials(new_sku) or []
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(502, f"בדיקת הסידורי בקופה נכשלה: {str(e)[:80]}")
+        u = next((u for u in units if str(u.get("serial")) == serial and int(u.get("status") or 0) == 1), None)
+        if not u:
+            raise HTTPException(400, f"הסידורי {serial} לא זמין במלאי של מק״ט {new_sku} (נמכר / לא קיים)")
+        pin_branch = int(u.get("branchId") or 0) or None
+    qty = max(1, int(li.get("quantity") or 1))
+    unit = float(body.price) if body.price is not None else float(wp.get("price") or 0)
+    if unit < 0:
+        raise HTTPException(400, "מחיר לא תקין")
+    old_total = round(float(li.get("total") or 0), 2)
+    new_total = round(unit * qty, 2)
+    is_var = wp.get("type") == "variation"
+    keep_meta = [{"key": m.get("key"), "value": m.get("value")}
+                 for m in (li.get("meta_data") or [])
+                 if re.search(r"#\d{2,}", str(m.get("key") or "")) and not str(m.get("key")).startswith("_")]
+    new_li = {"product_id": int(wp.get("parent_id") if is_var else wp.get("id")),
+              "quantity": qty, "subtotal": f"{new_total:.2f}", "total": f"{new_total:.2f}",
+              "meta_data": keep_meta + [{"key": "_gm_swapped_from", "value": old_sku}]
+              + ([{"key": "_gm_serial", "value": serial}] if serial else [])}
+    if is_var:
+        new_li["variation_id"] = int(wp.get("id"))
+    # quantity=0 על השורה הקיימת = הסרה (WC REST); ⚠️ בלי 'status' — לא נוגעים בסטטוס
+    payload = {"line_items": [{"id": int(li["id"]), "quantity": 0}, new_li]}
+    pr = _rq.put(f"{base}/wp-json/wc/v3/orders/{oid}", json=payload, auth=(k, s), timeout=45)
+    if not pr.ok:
+        logger.warning("swap-item failed %s: %s %s", oid, pr.status_code, pr.text[:300])
+        raise HTTPException(502, f"עדכון ההזמנה באתר נכשל ({pr.status_code})")
+    nj = pr.json()
+    if any(int(x.get("id") or 0) == int(li["id"]) for x in (nj.get("line_items") or [])):
+        logger.warning("swap-item %s: old line %s still present after PUT", oid, li["id"])
+    nl = next((x for x in reversed(nj.get("line_items") or [])
+               if str(x.get("sku") or "") == new_sku and int(x.get("id") or 0) != int(li["id"])), {})
+    new_name = nl.get("name") or wp.get("name") or new_sku
+    diff = round(new_total - old_total, 2)
+    rec = {"at": db.now_iso(), "by": actor, "old_sku": old_sku, "old_name": li.get("name") or "",
+           "new_sku": new_sku, "new_name": new_name, "serial": serial, "qty": qty,
+           "old_total": old_total, "new_total": new_total, "diff": diff,
+           "old_line": int(li["id"]), "new_line": int(nl.get("id") or 0)}
+    swaps = _swap_state(oid, "order_swaps")
+    swaps.append(rec)
+    _swap_state_set(oid, "order_swaps", swaps)
+    dtxt = (f"תוספת לגבייה ₪{diff:,.0f}" if diff > 0 else
+            f"מגיע ללקוח החזר ₪{-diff:,.0f} (ידני)" if diff < 0 else "ללא הפרש מחיר")
+    note = (f"🔀 הוחלף מוצר באישור הלקוח: {li.get('name')} ({old_sku}) ← במקומו: {new_name} ({new_sku})"
+            + (f" · סידורי {serial}" if serial else "")
+            + f" · ₪{old_total:,.0f}→₪{new_total:,.0f} · {dtxt} · ע״י {actor} (GreenOS)")
+    try:
+        _rq.post(f"{base}/wp-json/wc/v3/orders/{oid}/notes",
+                 json={"note": note, "customer_note": False}, auth=(k, s), timeout=20)
+    except Exception:  # noqa: BLE001
+        pass
+    rb = None
+    if body.rebroadcast and nj.get("status") not in _UNPAID_ST:
+        try:
+            rb = _swap_rebroadcast(nj, old_sku, li.get("name") or "", new_sku, new_name, serial, pin_branch)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("swap rebroadcast %s failed: %s", oid, e)
+            rb = {"created": [], "warnings": [f"השידור מחדש נכשל: {str(e)[:80]} — נסה 'שדר מחדש'"]}
+    logger.info("order %s: swapped %s -> %s (serial=%s, diff=%s) by %s", nj.get("number"),
+                old_sku, new_sku, serial or "-", diff, actor)
+    return {"ok": True, "swap": rec, "order_total": nj.get("total"),
+            "addons_kept": len(keep_meta), "rebroadcast": rb,
+            "ctx": _order_swap_ctx(nj)}
+
+
+class XPayPart(BaseModel):
+    amount: float
+    payments: int = 1
+
+
+class XPayIn(BaseModel):
+    parts: list[XPayPart]
+    desc: str = ""
+
+
+@app.post("/api/admin/orders/{oid}/extra-pay")
+def admin_order_extra_pay(oid: int, body: XPayIn, x_admin_key: Optional[str] = Header(None),
+                          x_device_token: Optional[str] = Header(None)):
+    """קישור תשלום אחד או יותר להזמנה (תוספת אחרי החלפה / פיצול לכמה כרטיסים).
+    ⚠️ ממופה ל-'orderx:' ולא למספר ההזמנה — תשלום כזה **לא** משנה את סטטוס ההזמנה
+    (אלא אם ההזמנה טרם שולמה וסך הקישורים ששולמו מכסה את כולה)."""
+    _require_admin(x_admin_key)
+    import requests as _rq
+    parts = [p for p in (body.parts or []) if float(p.amount or 0) > 0]
+    if not parts:
+        raise HTTPException(400, "אין סכום לגבייה")
+    if len(parts) > 6:
+        raise HTTPException(400, "עד 6 קישורים בבת אחת")
+    actor = _actor_name(x_admin_key, x_device_token) or "GreenOS"
+    base, k, s = _wc_creds()
+    r = _rq.get(f"{base}/wp-json/wc/v3/orders/{oid}",
+                params={"_fields": "id,number,status,total,billing"}, auth=(k, s), timeout=30)
+    if not r.ok:
+        raise HTTPException(404, "הזמנה לא נמצאה")
+    o = r.json()
+    if o.get("status") in _SWAP_LOCKED:
+        raise HTTPException(400, f"ההזמנה בסטטוס '{o.get('status')}'")
+    b = o.get("billing") or {}
+    cust = {"name": f"{b.get('first_name','')} {b.get('last_name','')}".strip(),
+            "email": b.get("email") or "", "phone": b.get("phone") or ""}
+    desc = (body.desc or "").strip() or ("תשלום להזמנה" if o.get("status") in _UNPAID_ST else "תוספת להזמנה")
+    lst = _swap_state(oid, "order_xpay")
+    made = []
+    n = len(parts)
+    for i, p in enumerate(parts, 1):
+        amt = round(float(p.amount), 2)
+        tag = f"{desc} #{o.get('number')}" + (f" ({i}/{n})" if n > 1 else "")
+        pp = _payplus_link(amt, f"{o.get('number')}-x{len(lst) + 1}", cust, payments=p.payments)
+        db.sales_state_set(f"payplus_pru:{pp['pru']}", f"orderx:{oid}")
+        db.pay_link_add(pp["pru"], tag, amt, cust["name"], cust["phone"])
+        x = {"pru": pp["pru"], "link": pp["link"], "amount": amt, "payments": max(1, int(p.payments or 1)),
+             "desc": tag, "at": db.now_iso(), "by": actor}
+        lst.append(x)
+        made.append(x)
+    _swap_state_set(oid, "order_xpay", lst)
+    try:
+        _rq.post(f"{base}/wp-json/wc/v3/orders/{oid}/notes",
+                 json={"note": "💳 נוצרו קישורי תשלום נוספים: " + " · ".join(
+                     f"₪{x['amount']:,.0f}" + (f" ב-{x['payments']} תשלומים" if x['payments'] > 1 else "")
+                     for x in made) + f" · ע״י {actor} (GreenOS)", "customer_note": False},
+                 auth=(k, s), timeout=20)
+    except Exception:  # noqa: BLE001
+        pass
+    return {"ok": True, "links": made, "number": o.get("number")}
+
+
+@app.post("/api/admin/orders/{oid}/extra-pay/{pru}/void")
+def admin_order_extra_pay_void(oid: int, pru: str, x_admin_key: Optional[str] = Header(None)):
+    """מסמן קישור נוסף שלא שולם כמבוטל (לא נספר יותר בגבייה). הקישור ב-PayPlus פג לבד."""
+    _require_admin(x_admin_key)
+    lst = _swap_state(oid, "order_xpay")
+    if not any(x.get("pru") == pru for x in lst):
+        raise HTTPException(404, "הקישור לא שייך להזמנה")
+    if (db.pay_link_get(pru) or {}).get("status") == "paid":
+        raise HTTPException(400, "הקישור כבר שולם — אי אפשר לבטל")
+    db.pay_link_void(pru)
+    return {"ok": True}
+
+
+def _order_xpay_paid(oid: int, pru: str, f: dict) -> None:
+    """תשלום על קישור נוסף אושר: רושם בטבלה, כותב הערה בהזמנה (פעם אחת), ואם ההזמנה
+    עוד לא שולמה וסך הקישורים ששולמו מכסה אותה — מסמן אותה כשולמה."""
+    import requests as _rq
+    first = db.pay_link_mark_paid(pru, f.get("tx"), f.get("approval"), f.get("four_digits"), f.get("brand"))
+    if not first:
+        return                          # כבר טופל (IPN כפול / polling מקביל)
+    creds = _wc_creds()
+    if not creds:
+        return
+    base, k, s = creds
+    amt = float((db.pay_link_get(pru) or {}).get("amount") or 0)
+    try:
+        _rq.post(f"{base}/wp-json/wc/v3/orders/{oid}/notes",
+                 json={"note": (f"GreenOS · PayPlus: תשלום נוסף ₪{amt:,.0f} אושר ✓ "
+                                f"עסקה {f.get('tx') or '?'} · אישור {f.get('approval') or '?'} · "
+                                f"{f.get('brand') or ''} ****{f.get('four_digits') or ''}")},
+                 auth=(k, s), timeout=20)
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        r = _rq.get(f"{base}/wp-json/wc/v3/orders/{oid}",
+                    params={"_fields": "id,status,total"}, auth=(k, s), timeout=30)
+        o = r.json() if r.ok else {}
+        if o.get("status") in _UNPAID_ST:
+            paid = sum(float(x.get("amount") or 0) for x in _order_xpay(oid) if x.get("status") == "paid")
+            if paid + 0.5 >= float(o.get("total") or 0):
+                _pp_mark_paid(int(oid), f)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("xpay settle check %s failed: %s", oid, e)
+
+
+@app.post("/api/admin/orders/{oid}/extra-pay/{pru}/send")
+def admin_order_extra_pay_send(oid: int, pru: str, x_admin_key: Optional[str] = Header(None)):
+    """שולח ללקוח בוואטסאפ קישור נוסף (תבנית תשלום עם כפתור; נסיגה לטקסט/תבנית)."""
+    _require_admin(x_admin_key)
+    import requests as _rq
+    x = next((x for x in _swap_state(oid, "order_xpay") if x.get("pru") == pru), None)
+    if not x:
+        raise HTTPException(404, "הקישור לא שייך להזמנה")
+    base, k, s = _wc_creds()
+    r = _rq.get(f"{base}/wp-json/wc/v3/orders/{oid}",
+                params={"_fields": "id,number,billing"}, auth=(k, s), timeout=30)
+    if not r.ok:
+        raise HTTPException(404, "הזמנה לא נמצאה")
+    o = r.json()
+    b = o.get("billing") or {}
+    amt = f"{float(x.get('amount') or 0):,.0f}"
+    text = (f"היי {b.get('first_name') or ''}, מצורף קישור לתשלום ₪{amt} עבור הזמנה "
+            f"#{o.get('number')}:\n{x.get('link')}").strip()
+    return wa_send_guaranteed(WaSendSure(phone=b.get("phone") or "", text=text,
+                                         name=b.get("first_name") or "",
+                                         order_number=str(o.get("number")), total=amt, pru=pru),
+                              x_admin_key)
+
+
+@app.post("/api/admin/orders/{oid}/resend-confirm")
+def admin_order_resend_confirm(oid: int, x_admin_key: Optional[str] = Header(None),
+                               x_device_token: Optional[str] = Header(None)):
+    """שולח שוב ללקוח את מייל אישור ההזמנה של WooCommerce — עם הפריטים המעודכנים."""
+    _require_admin(x_admin_key)
+    import requests as _rq
+    base, k, s = _wc_creds()
+    r = _rq.get(f"{base}/wp-json/wc/v3/orders/{oid}",
+                params={"_fields": "id,number,status,billing"}, auth=(k, s), timeout=30)
+    if not r.ok:
+        raise HTTPException(404, "הזמנה לא נמצאה")
+    o = r.json()
+    email = ((o.get("billing") or {}).get("email") or "").strip()
+    if not email:
+        raise HTTPException(400, "אין כתובת מייל בהזמנה")
+    tpl = "customer_invoice" if o.get("status") in _UNPAID_ST else "customer_processing_order"
+    sr = _rq.post(f"{base}/wp-json/wc/v3/orders/{oid}/actions/send_email",
+                  json={"template_id": tpl}, auth=(k, s), timeout=45)
+    if not sr.ok:
+        logger.warning("resend-confirm %s failed: %s %s", oid, sr.status_code, sr.text[:300])
+        raise HTTPException(502, f"שליחת המייל נכשלה ({sr.status_code})")
+    actor = _actor_name(x_admin_key, x_device_token) or "GreenOS"
+    try:
+        _rq.post(f"{base}/wp-json/wc/v3/orders/{oid}/notes",
+                 json={"note": f"📧 אישור ההזמנה המעודכן נשלח שוב ללקוח ({email}) · ע״י {actor} (GreenOS)",
+                       "customer_note": False}, auth=(k, s), timeout=20)
+    except Exception:  # noqa: BLE001
+        pass
+    return {"ok": True, "email": email, "template": tpl}
 
 
 @app.post("/api/admin/orders/backfill-delivered")
@@ -18314,7 +18792,11 @@ def pay_standalone_status(pru: str, x_admin_key: Optional[str] = Header(None)):
         logger.info("pay/status %s: אומת מדוח PayPlus (IPN שתק)", pru)
         return {"paid": True, "via": "report", **v}
     f = _pp_tx_fields(v)
-    db.pay_link_mark_paid(pru, f.get("tx"), f.get("approval"), f.get("four_digits"), f.get("brand"))
+    _xo = db.sales_state_get(f"payplus_pru:{pru}") or ""
+    if _xo.startswith("orderx:"):          # קישור נוסף להזמנה — גם הערה בהזמנה
+        _order_xpay_paid(int(_xo.split(":", 1)[1]), pru, f)
+    else:
+        db.pay_link_mark_paid(pru, f.get("tx"), f.get("approval"), f.get("four_digits"), f.get("brand"))
     return {"paid": True, "tx": f.get("tx"), "approval": f.get("approval"),
             "four_digits": f.get("four_digits"), "brand": f.get("brand")}
 

@@ -3076,6 +3076,14 @@ def pay_link_mark_paid(pru, tx="", approval="", four_digits="", brand=""):
 
 
 
+def pay_link_void(pru) -> bool:
+    """קישור שלא שולם ובוטל ידנית (לא נספר יותר בגבייה)."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("UPDATE pay_links SET status='void' WHERE pru = ? AND status != 'paid'"), (pru or "",))
+        return bool(cur.rowcount)
+
+
 def pay_link_get(pru) -> dict:
     """רשומת קישור תשלום לפי pru. נדרש כדי שאימות תשלום יוכל ליפול לדוח
     העסקאות של PayPlus לפי הסכום, כשה-IPN שותק (30/07/2026)."""
