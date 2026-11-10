@@ -15178,7 +15178,7 @@ def _wc_line_options(product_id: int, pos_name: str) -> list:
                 params={"_fields": "id,sku,price,attributes,status", "per_page": 100}, auth=(k, s), timeout=25)
     nm = (pos_name or "").lower()
     want = {he for en, he in _EN_HE_COLOR.items() if re.search(rf"\b{en}\b", nm)}
-    want |= {w.upper() for w in re.findall(r"\d+\s*(?:tb|gb)", nm.replace(" ", ""))}
+    want |= {(n + u).upper() for n, u in re.findall(r"(?<![a-z0-9])(\d+)\s*(tb|gb)\b", nm)}
     want |= {he for he in set(_EN_HE_COLOR.values()) if he in (pos_name or "")}
     out = []
     for v in (r.json() if r.ok else []):
