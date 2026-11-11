@@ -15150,6 +15150,13 @@ _SWAP_LOCKED = {"completed", "cancelled", "refunded", "trash", "checkout-draft"}
 _UNPAID_ST = {"pending", "on-hold", "failed"}
 
 
+def _order_unpaid(o: dict) -> bool:
+    """לא שולמה: ממתינה/בהמתנה/נכשלה — או בוטלה אוטומטית בלי תשלום (מסגרת הזמן של
+    WC הסתיימה). בהזמנה כזו מותר קישור תשלום, ותשלום מלא מחזיר אותה ל'בטיפול'."""
+    st = o.get("status")
+    return st in _UNPAID_ST or (st == "cancelled" and not o.get("date_paid"))
+
+
 def _li_sku(li: dict) -> str:
     """מק"ט הקופה של שורה (כולל `_gm_pos_sku` של החלפה למוצר לא-מחובר)."""
     import auto_transfer
@@ -15236,7 +15243,7 @@ def _order_swap_ctx(o: dict) -> dict:
     net = round(sum(float(s.get("diff") or 0) for s in swaps), 2)
     asked = round(sum(float(x.get("amount") or 0) for x in xpay), 2)
     paid = round(sum(float(x.get("amount") or 0) for x in xpay if x.get("status") == "paid"), 2)
-    if o.get("status") in _UNPAID_ST:      # ההזמנה עוד לא שולמה — כל הסכום פתוח לגבייה
+    if _order_unpaid(o):                   # ההזמנה עוד לא שולמה — כל הסכום פתוח לגבייה
         due = float(o.get("total") or 0) - asked
     else:
         due = net - asked
@@ -15642,16 +15649,16 @@ def admin_order_extra_pay(oid: int, body: XPayIn, x_admin_key: Optional[str] = H
     actor = _actor_name(x_admin_key, x_device_token) or "GreenOS"
     base, k, s = _wc_creds()
     r = _rq.get(f"{base}/wp-json/wc/v3/orders/{oid}",
-                params={"_fields": "id,number,status,total,billing"}, auth=(k, s), timeout=30)
+                params={"_fields": "id,number,status,total,billing,date_paid"}, auth=(k, s), timeout=30)
     if not r.ok:
         raise HTTPException(404, "הזמנה לא נמצאה")
     o = r.json()
-    if o.get("status") in _SWAP_LOCKED:
+    if o.get("status") in _SWAP_LOCKED and not _order_unpaid(o):
         raise HTTPException(400, f"ההזמנה בסטטוס '{o.get('status')}'")
     b = o.get("billing") or {}
     cust = {"name": f"{b.get('first_name','')} {b.get('last_name','')}".strip(),
             "email": b.get("email") or "", "phone": b.get("phone") or ""}
-    desc = (body.desc or "").strip() or ("תשלום להזמנה" if o.get("status") in _UNPAID_ST else "תוספת להזמנה")
+    desc = (body.desc or "").strip() or ("תשלום להזמנה" if _order_unpaid(o) else "תוספת להזמנה")
     lst = _swap_state(oid, "order_xpay")
     made = []
     n = len(parts)
@@ -15721,9 +15728,9 @@ def _order_xpay_paid(oid: int, pru: str, f: dict) -> None:
         pass
     try:
         r = _rq.get(f"{base}/wp-json/wc/v3/orders/{oid}",
-                    params={"_fields": "id,status,total"}, auth=(k, s), timeout=30)
+                    params={"_fields": "id,status,total,date_paid"}, auth=(k, s), timeout=30)
         o = r.json() if r.ok else {}
-        if o.get("status") in _UNPAID_ST:
+        if o and _order_unpaid(o):
             paid = sum(float(x.get("amount") or 0) for x in _order_xpay(oid) if x.get("status") == "paid")
             if paid + 0.5 >= float(o.get("total") or 0):
                 _pp_mark_paid(int(oid), f)

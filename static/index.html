@@ -11526,7 +11526,7 @@ function paintWcOrder(){
   _actBtns.push(oAct(ico('radio',14)+' '+(d.bcast?'שדר מחדש':'הרץ שיריון/שידור'),'#15803d',`wcoAutoTransfer(${d.id},${d.bcast?1:0})`,'מריץ את לוגיקת השיריון/השידור להזמנה (אחרי הצמדת/תיקון מק״ט)'));
   _actBtns.push(oAct('🔀 שנה אופן משלוח','#ca8a04',`wcoShipMethod(${d.id})`,'שינוי איסוף↔משלוח בלי ריקוד הסטטוסים (לא מעיר את השידור)'));
   _actBtns.push(oAct(ico('truck',14)+' '+(d.importer_delivery?'בטל הפצת יבואן':'הפצת יבואן→לקוח'),'#7c3aed',`wcoImporterDelivery(${d.id},${d.importer_delivery?0:1})`,'סימון הזמנה שמופצת ישירות מהיבואן לבית הלקוח (dropship — למשל כיסאות ללא מלאי)'));
-  if(!WSW_LOCKED.includes(d.status)) _actBtns.push(oAct('💳 קישור תשלום','#b45309',`wcoXPayOpen()`,'קישור תשלום אחד או יותר להזמנה — תוספת אחרי החלפה, או פיצול לכמה כרטיסים'));
+  if(!WSW_LOCKED.includes(d.status)||wswUnpaid(d)) _actBtns.push(oAct('💳 קישור תשלום','#b45309',`wcoXPayOpen()`,'קישור תשלום אחד או יותר להזמנה — תוספת אחרי החלפה, או פיצול לכמה כרטיסים'));
   if((b.email||'').trim()) _actBtns.push(oAct('📧 שלח אישור הזמנה','#2563eb',`wcoResendConfirm(${d.id})`,'שולח שוב ללקוח את מייל אישור ההזמנה עם הפריטים המעודכנים'));
   if(phoneIntl.length>10) _actBtns.push(oAct('📄 שלח חשבונית','#0d9488',`wcoSendInvoice('${d.number}','${phoneIntl}')`,'שולח ללקוח בוואטסאפ את החשבונית של ההזמנה'));
   _actBtns.push(oAct('↩️ '+(d.return_open?'סגור החזרה':'פתח החזרה'),'#7c3aed',`wcoOpenReturn(${d.id},${d.return_open?1:0})`,d.return_open?'סגירת ההחזרה':'פותח החזרה: מתעד בהזמנה + מעתיק פרטי לקוח + פותח דשבורד Cargo לאיסוף'));
@@ -12466,6 +12466,8 @@ async function wcoShipMethodPick(oid,mode){
 // החדש בלבד. תוספת מחיר נגבית בקישור אחד או יותר (פיצול לכמה כרטיסים).
 const WSW_LOCKED=['completed','cancelled','refunded','trash','checkout-draft'];
 const WSW_UNPAID=['pending','on-hold','failed'];
+// בוטלה אוטומטית בלי תשלום (מסגרת הזמן של WC) — עדיין אפשר לגבות, ותשלום מלא מחזיר ל'בטיפול'
+const wswUnpaid=d=>WSW_UNPAID.includes(d.status)||(d.status==='cancelled'&&!d.date_paid);
 function wswOv(html){
   const old=document.getElementById('wswOv'); if(old) old.remove();
   const ov=document.createElement('div'); ov.id='wswOv';
@@ -12628,13 +12630,13 @@ async function wcoRemoveItem(lineId){
 // ── 💳 קישורי תשלום נוספים (אחד או כמה — פיצול לכמה כרטיסים) ──
 function wcoXPayOpen(){
   const d=S._wcoD||{}; const sw=d.swap||{};
-  const unpaid=WSW_UNPAID.includes(d.status);
+  const unpaid=wswUnpaid(d);
   const due=Number(sw.extra_due||0);
   S._wxp={oid:d.id,target:due,parts:[{amount:due||'',payments:1}]};
   wswOv(`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
       <b style="font-size:16px">💳 קישור תשלום — הזמנה #${escW(String(d.number))}</b>
       <button class="dr-x" onclick="wswClose()">✕</button></div>
-    <div class="muted" style="font-size:12.5px;margin-bottom:10px">${unpaid
+    <div class="muted" style="font-size:12.5px;margin-bottom:10px">${d.status==='cancelled'&&unpaid?'⚠️ ההזמנה בוטלה אוטומטית כי לא שולמה בזמן. כשהקישורים ששולמו יכסו את הסכום — היא תחזור ל"בטיפול" ותשודר. ':''}${unpaid
       ?'ההזמנה עוד לא שולמה. כשהקישורים ששולמו מכסים את כל הסכום — ההזמנה תסומן כשולמה. ⚠️ אם כבר נשלח ללקוח קישור התשלום המקורי — לא לשלוח את שניהם.'
       :'תוספת לגבייה (למשל אחרי החלפת מוצר). התשלום נרשם בהזמנה ולא משנה את הסטטוס שלה.'}
       ${due>0?`<br>פתוח לגבייה: <b style="color:var(--txt)">${wswMoney(due)}</b>`:''}</div>
