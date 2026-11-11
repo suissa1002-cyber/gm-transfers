@@ -198,6 +198,17 @@ def _wc_orders_latest():
         return []
 
 
+def _created_recently(o, hours: float = 24) -> bool:
+    """נוצרה בחלון האחרון (לפי GMT). תאריך חסר/לא קריא → לא מתריעים."""
+    from datetime import datetime, timezone
+    ts = o.get("date_created_gmt") or ""
+    try:
+        t = datetime.fromisoformat(ts.replace("Z", "")).replace(tzinfo=timezone.utc)
+    except Exception:  # noqa: BLE001
+        return False
+    return (datetime.now(timezone.utc) - t).total_seconds() < hours * 3600
+
+
 def poll_and_push_orders(orders=None):
     """ג'וב מתוזמן: מזהה הזמנות אתר חדשות ושולח push '🎉 הזמנה חדשה'.
     orders — רשימה שכבר נמשכה (main._orders_latest_raw, cache משותף); None → משיכה עצמאית."""
@@ -209,15 +220,18 @@ def poll_and_push_orders(orders=None):
         return
     ids = [str(o.get("id")) for o in orders]
     raw = db.sales_state_get(_ORDERS_STATE_KEY)
-    seen = set(json.loads(raw)) if raw else None
-    if seen is None:
+    seen_list = json.loads(raw) if raw else None
+    if seen_list is None:
         # ריצה ראשונה — בסיס בלבד, בלי התראות רטרואקטיביות
         db.sales_state_set(_ORDERS_STATE_KEY, json.dumps(ids))
         return
-    fresh = [o for o in orders if str(o.get("id")) not in seen]
-    # מצב מעודכן: איחוד מזהים, מוגבל ל-200 האחרונים
+    seen = set(seen_list)
+    # ⚠️ 11/11/2026: רק הזמנה שנוצרה ב-24ש' האחרונות. הזמנה ישנה שעדיין 'בטיפול' (#53853 מ-1/11)
+    # נכנסה ויצאה מ-10 האחרונות כשהזמנות אחרות הושלמו, ובכל חזרה נשלחה שוב כ"הזמנה חדשה".
+    fresh = [o for o in orders if str(o.get("id")) not in seen and _created_recently(o)]
+    # מצב מעודכן: החדשים בראש, **סדר נשמר** (קודם: list(set) → קיצוץ ל-200 זרק מזהים אקראיים)
     db.sales_state_set(_ORDERS_STATE_KEY,
-                       json.dumps(list(dict.fromkeys(ids + list(seen)))[:200]))
+                       json.dumps(list(dict.fromkeys(ids + list(seen_list)))[:300]))
     if not fresh:
         return
     for o in reversed(fresh):                       # ישן → חדש
