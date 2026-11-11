@@ -803,7 +803,7 @@
       '<line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="3" x2="8" y2="7"/>' +
       '<line x1="16" y1="3" x2="16" y2="7"/></svg>';
     $i.removeClass('oos').addClass('gm-pre')
-      .html(ico + 'מכירה מוקדמת · ' + (GM_PRE.date ? 'צפי אספקה החל מ-' + GM_PRE.date : 'צפי אספקה בהמשך'));
+      .html(ico + 'מכירה מוקדמת · ' + (GM_PRE.date ? 'צפי זמינות במלאי ' + GM_PRE.date : 'צפי אספקה בהמשך'));
   }
   window.gmApplyPreorder = applyPreorder;   /* נקרא גם מ-gmRenderBadges (IIFE אחר) */
   function extractShort() {
@@ -879,6 +879,9 @@
         });
       var dm = (notes.join(' ') + ' ' + market).match(/אספקה[^\d]{0,14}(\d{1,2}[.\/]\d{1,2}[.\/]\d{2,4})/);
       if (dm) GM_PRE.date = dm[1];
+      /* סמן נסתר <span class="gm-eta" data-eta="17/11/26"> בתיאור הקצר — תאריך בלי שורה גלויה כפולה */
+      var em2 = /data-eta="([^"]+)"/.exec($raw.html() || '');
+      if (em2) GM_PRE.date = em2[1];
       /* ── ⛔ אין יותר קופסת מידע (.pinfo) — אסי, 01/08: "רק פסקת מידע על
          המוצר, שורה גג 2, עם קרא עוד — לא בתוך קופסה. בכל המוצרים באתר".
          (הקופסה חזרה במוצרים עם כמה פסקאות מידע — הראשונה קודמה והשאר נפלו
