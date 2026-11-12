@@ -5648,11 +5648,15 @@ def session_user(token: str):
     return u, sess
 
 
-def session_touch(token: str):
+def session_touch(token: str, days: int = 30):
+    """פעילות = הארכה. ⚠️ 12/11/2026: התוקף היה קבוע 30 יום מהכניסה — אסי נזרק החוצה בדיוק חודש
+    אחרי הכניסה למרות שימוש יומי. עכשיו כל שימוש (לכל היותר פעם ב-5 דק') מזיז את התפוגה 30 יום קדימה."""
+    from datetime import datetime as _dt, timedelta as _td
+    exp = (_dt.now() + _td(days=days)).isoformat(timespec="seconds")
     with _conn() as c:
         cur = c.cursor()
-        cur.execute(_q("UPDATE user_sessions SET last_seen = ? WHERE token_hash = ?"),
-                    (now_iso(), _tok_hash(token)))
+        cur.execute(_q("UPDATE user_sessions SET last_seen = ?, expires_at = ? WHERE token_hash = ?"),
+                    (now_iso(), exp, _tok_hash(token)))
 
 
 def session_delete(token: str):
