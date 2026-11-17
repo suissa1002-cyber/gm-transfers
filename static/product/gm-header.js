@@ -46,6 +46,20 @@ document.addEventListener('click',e=>{ if(!e.target.closest('.gsrch')) document.
   window.gmRunSearch = gmRunSearch;
 })();
 
+/* ⚠️ Green Care לפי פריט בסל: ה-API ממפה למוצר-האב, ובסל הפריט הוא וריאציה
+   (S25 FE 512GB=51289 → 34808). חיפוש לפי הוריאציה החזיר כלום → הכרטיסייה לא צוירה
+   ושורת השירות מוסתרת → "נוסף" אבל לא רואים בסל (17/11). שאילתה פר-פריט, ממופה
+   למזהה שביקשנו; conf.pid = האב (לשליחת הבחירה). */
+window.gmGcFetch=window.gmGcFetch||function(ids){
+  return Promise.all((ids||[]).map(function(id){
+    return fetch('/wp-json/gm-services/v1/greencare?ids='+id,{credentials:'same-origin'})
+      .then(function(r){return r.json();}).then(function(x){
+        var it=(x&&x.items)||{}, k=Object.keys(it)[0];
+        if(!k) return null; var c=it[k]; c.pid=k; return [String(id),c]; })
+      .catch(function(){return null;});
+  })).then(function(l){ var m={}; l.forEach(function(e){ if(e) m[e[0]]=e[1]; }); return m; });
+};
+
 /* ── Header boost (אסי 31/07): הדר דביק בכל האתר + פונט ניווט מודגש + לוגו.
    למה ב-JS: (1) header.site{position:sticky} קיים ב-CSS של כל עמוד, אבל
    html/body{overflow-x:hidden} (מהתבניות) מבטל sticky בשקט בכל הצאצאים —
@@ -287,9 +301,7 @@ if (!window.toggleNav) { window.toggleNav = function () {
     fetch('/wp-json/gm-addons/v1/for-cart?ids='+ids,{credentials:'same-origin'})
       .then(function(r){return r.json();}).then(function(d){ rail((d&&d.items)||[]); })
       .catch(function(){ rail([]); });
-    fetch('/wp-json/gm-services/v1/greencare?ids='+ids,{credentials:'same-origin'})
-      .then(function(r){return r.json();}).then(function(d){ gcRender((d&&d.items)||{}, list); })
-      .catch(function(){});
+    window.gmGcFetch(ids.split(',')).then(function(m){ gcRender(m, list); }).catch(function(){});
   }
   function rail(items){
     var side=document.getElementById('cartSideList'), drawer=document.getElementById('cartDrawer');
@@ -318,10 +330,10 @@ if (!window.toggleNav) { window.toggleNav = function () {
       var isAdded=added.some(function(t){return nm && t.indexOf(nm)>-1;});
       var rows='';
       if(conf.tiers&&conf.tiers.gc&&conf.prices.gc>0){
-        rows+=btn(pid,'gc',conf.prices.gc,'Green Care','אחריות שנה שנייה מלאה',isAdded);
+        rows+=btn(conf.pid||pid,'gc',conf.prices.gc,'Green Care','אחריות שנה שנייה מלאה',isAdded);
       }
       if(conf.tiers&&conf.tiers.gcp&&conf.prices.gcp>0){
-        rows+=btn(pid,'gcp',conf.prices.gcp,'Green Care <b>+</b>','24 חודשים, כולל שברים ונזקי נוזלים',isAdded);
+        rows+=btn(conf.pid||pid,'gcp',conf.prices.gcp,'Green Care <b>+</b>','24 חודשים, כולל שברים ונזקי נוזלים',isAdded);
       }
       if(!rows) return;
       var wrap=document.createElement('div'); wrap.className='gcopts'; wrap.innerHTML=rows;
@@ -958,9 +970,7 @@ if (!window.toggleNav) { window.toggleNav = function () {
       fetch('/wp-json/gm-addons/v1/for-cart?ids='+ids.join(','),{credentials:'same-origin'})
         .then(function(r){return r.json();}).then(function(x){ cAdd=((x&&x.items)||[]); rail(cAdd, inCart); })
         .catch(function(){ rail([],inCart); });
-      fetch('/wp-json/gm-services/v1/greencare?ids='+ids.join(','),{credentials:'same-origin'})
-        .then(function(r){return r.json();}).then(function(x){ cGc=(x&&x.items)||{}; gcRender(cGc, all); })
-        .catch(function(){});
+      window.gmGcFetch(ids).then(function(m){ cGc=m||{}; gcRender(cGc, all); }).catch(function(){});
     });
   }
   function later(ms){ clearTimeout(tmr); tmr=setTimeout(sync, ms||400); }
