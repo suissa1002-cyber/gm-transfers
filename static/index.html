@@ -13637,7 +13637,8 @@ function pbxMainHTML(id){
 }
 function pbxOpenCall(phone){
   pbxClosePopup();   // סוגר את השיחה שבמוקד
-  const ce=document.getElementById('pbxCallPop'); if(ce) ce.remove();
+  // פופאפ SIP נשאר כל עוד יש שיחה פעילה (אחרת: הפופאפ נעלם והצלצול ממשיך בלי כפתור ענה/נתק)
+  const ce=document.getElementById('pbxCallPop'); if(ce && !_pbxSession) ce.remove();
   try{ S.view='admin'; S.adminTab='wa'; S.waPhone=phone; render(); if(window.loadWaThread) loadWaThread(true); }catch(err){}
 }
 
@@ -14777,6 +14778,13 @@ async function startPbxSip(){
   if(_pbxUA || !S.adminKey || !can('calls')) return;
   let cfg; try{ cfg=await api('/api/admin/pbx/webrtc-config'); }catch(e){ return; }
   if(!cfg || !cfg.enabled || !cfg.wss) return;
+  // לשונית שנטענה ברקע לא גונבת את הקו מלשונית אחרת שכבר מחזיקה אותו
+  if(document.visibilityState==='hidden' && _pbxBC){
+    const taken=await new Promise(res=>{ const h=(ev)=>{ if((ev.data||{}).t==='have'){ _pbxBC.removeEventListener('message',h); res(true); } };
+      _pbxBC.addEventListener('message',h); try{ _pbxBC.postMessage({t:'who',id:_pbxTabId}); }catch(e){}
+      setTimeout(()=>{ _pbxBC.removeEventListener('message',h); res(false); },600); });
+    if(taken || _pbxUA) return;
+  }
   _pbxIce=(cfg.ice&&cfg.ice.length)?cfg.ice:[];   // TURN של 1com — חובה לאודיו דו-כיווני
   _pbxServer=cfg.server||'webrtc.1com.co.il';
   if(typeof JsSIP==='undefined'){
@@ -14796,8 +14804,24 @@ async function startPbxSip(){
     _pbxUA.on('registrationFailed',(e)=>{ _pbxSipReg=false; console.warn('[pbx-sip] reg failed',e&&e.cause); });
     _pbxUA.on('newRTCSession',(e)=>{ if(e.session.direction==='incoming') pbxHandleIncoming(e.session); });
     _pbxUA.start();
+    try{ if(_pbxBC) _pbxBC.postMessage({t:'claim',id:_pbxTabId}); }catch(e){}
   }catch(err){ console.warn('[pbx-sip] init error',err); _pbxUA=null; }
 }
+// ── לשונית אחת בלבד מחזיקה את השלוחה: הלשונית האחרונה שנפתחה/הוצגה "תופסת", הישנות משחררות ──
+const _pbxTabId=Math.random().toString(36).slice(2);
+let _pbxBC=null, _pbxYield=false;
+try{ if('BroadcastChannel' in window){ _pbxBC=new BroadcastChannel('gm-pbx-sip');
+  _pbxBC.onmessage=(ev)=>{ const m=ev.data||{};
+    if(m.t==='who' && m.id!==_pbxTabId && _pbxUA){ try{ _pbxBC.postMessage({t:'have',id:_pbxTabId}); }catch(e){} return; }
+    if(m.t==='claim' && m.id!==_pbxTabId && _pbxUA){ if(_pbxSession) _pbxYield=true; else pbxSipShutdown(); } }; } }catch(e){}
+function pbxSipShutdown(){
+  _pbxYield=false; pbxRingStop();
+  try{ if(_pbxUA) _pbxUA.stop(); }catch(e){}
+  _pbxUA=null; _pbxSipReg=false;
+  const b=document.getElementById('pbxDialBtn'); if(b) b.style.display='none';
+  console.log('[pbx-sip] released (another tab took the line)');
+}
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible' && !_pbxUA){ try{ startPbxSip(); }catch(e){} } });
 // ── רינגטון מסונתז (Web Audio) — צ'יים מודרני בלולאה, בלי קובץ חיצוני ──
 let _pbxRingCtx=null, _pbxRingTimer=null;
 function pbxRingStart(){
@@ -14810,7 +14834,14 @@ function pbxRingStart(){
       g.gain.setValueAtTime(0,at); g.gain.linearRampToValueAtTime(.16,at+.02);
       g.gain.setValueAtTime(.16,at+dur-.06); g.gain.linearRampToValueAtTime(0,at+dur);
       o.connect(g); g.connect(ctx.destination); o.start(at); o.stop(at+dur); };
-    const pattern=()=>{ if(!_pbxRingCtx) return; const t=ctx.currentTime;
+    const ringStarted=Date.now();
+    const pattern=()=>{ if(!_pbxRingCtx) return;
+      // 🛟 שומר-בטיחות: השיחה נגמרה / נענתה / >60ש' → מפסיקים לצלצל (לא נשארים בלולאה נצחית)
+      const sess=_pbxSession;
+      if(!sess || (sess.isEnded&&sess.isEnded())){ pbxRingStop(); if(document.getElementById('pbxCallPop')&&!_pbxAnswered) pbxEndCall(); return; }
+      if(_pbxAnswered || (sess.isEstablished&&sess.isEstablished())){ pbxRingStop(); return; }
+      if(Date.now()-ringStarted>60000){ try{ sess.terminate({status_code:480}); }catch(e){} pbxEndCall(); return; }
+      const t=ctx.currentTime;
       blip(880,t,.18); blip(1320,t+.22,.24);          // צ'יים עולה (A5→E6)
       blip(880,t+.62,.18); blip(1320,t+.84,.24); };
     pattern(); _pbxRingTimer=setInterval(pattern,2600);
@@ -14825,15 +14856,17 @@ function pbxAudioEl(){ let a=document.getElementById('pbxRemoteAudio'); if(!a){ 
 async function pbxHandleIncoming(session){
   if(_pbxSession){ try{ session.terminate({status_code:486}); }catch(e){} return; }   // כבר בשיחה → תפוס
   _pbxSession=session; _pbxAnswered=false;
-  const num=pbxSipNumber(session);
-  let info={name:'',order_number:'',items:'',orders:0};
-  try{ info=await api('/api/admin/pbx/lookup?phone='+encodeURIComponent(num)); }catch(e){}
-  pbxShowCallPopup(num, info, 'ringing');
-  pbxRingStart();   // 🔔 צלצול במחשב
-  session.on('failed',()=>pbxEndCall());
-  session.on('ended',()=>pbxEndCall());
+  // ⚠️ מאזינים *לפני* ה-await: אם המתקשר ניתק בזמן ה-lookup, ה-'failed' היה הולך לאיבוד → צלצול נצחי
+  session.on('failed',()=>{ if(_pbxSession===session) pbxEndCall(); });
+  session.on('ended',()=>{ if(_pbxSession===session) pbxEndCall(); });
   session.on('accepted',()=>pbxOnAccepted(session));
   session.on('confirmed',()=>pbxOnAccepted(session));
+  const num=pbxSipNumber(session);
+  let info={name:'',order_number:'',items:'',orders:0};
+  try{ info=await Promise.race([api('/api/admin/pbx/lookup?phone='+encodeURIComponent(num)), new Promise((_,rj)=>setTimeout(rj,2500))]); }catch(e){}
+  if(_pbxSession!==session || (session.isEnded&&session.isEnded())){ if(_pbxSession===session) pbxEndCall(); return; }   // השיחה כבר נגמרה
+  pbxShowCallPopup(num, info, 'ringing');
+  pbxRingStart();   // 🔔 צלצול במחשב
   try{ if(navigator.vibrate) navigator.vibrate([300,150,300]); }catch(e){}
 }
 function pbxAnswer(){
@@ -14861,6 +14894,7 @@ function pbxToggleMute(){ if(!_pbxSession) return false;
 function pbxMuteBtn(btn){ const m=pbxToggleMute(); btn.textContent=m?'🔊 בטל השתקה':'🔇 השתק'; btn.style.background=m?'#1db954':'#64748b'; }
 function pbxEndCall(){
   pbxRingStop();
+  if(_pbxYield) setTimeout(pbxSipShutdown, 0);
   const wasAnswered=_pbxAnswered, secs=_pbxCallStart?Math.floor((Date.now()-_pbxCallStart)/1000):0;
   _pbxSession=null; _pbxAnswered=false; pbxStopTimer();
   const a=document.getElementById('pbxRemoteAudio'); if(a){ try{a.srcObject=null;}catch(e){} }
