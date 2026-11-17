@@ -12425,7 +12425,8 @@ async function wcoCargoCreate(oid,pickup){
 // 🔀 שינוי אופן משלוח (איסוף↔משלוח) — בורר; משנה רק את שורת המשלוח, בלי לגעת בסטטוס
 function wcoShipMethod(oid){
   const modes=[
-    {k:'delivery',l:'📦 משלוח רגיל (חינם)'},
+    {k:'delivery29',l:'📦 משלוח רגיל — ₪29 (הזמנה מתחת ל-499)'},
+    {k:'delivery',l:'📦 משלוח רגיל — חינם (הזמנה מ-499)'},
     {k:'express', l:'⚡ אקספרס באותו יום (₪89)'},
     {k:'heavy',   l:'🏋️ משלוח כבד'},
     {k:'pickup',  l:'🏬 איסוף עצמי (סניף)'},
