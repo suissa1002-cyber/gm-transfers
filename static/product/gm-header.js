@@ -54,10 +54,12 @@ document.addEventListener('click',e=>{ if(!e.target.closest('.gsrch')) document.
    במפריד הראשון " – "/", " וכו', עד 34 תווים). התאמה לפי slice(0,14) נכשלה בכותרות
    כמו "סמארטפון מהיר, חזק…" (הפסיק נחתך בשרת) → הכרטיסייה לא סומנה "נוסף" (17/11). */
 window.gmGcShort=window.gmGcShort||function(n){
-  var t=document.createElement('textarea'); t.innerHTML=String(n||''); n=t.value;
+  /* חיתוך על הכותרת הגולמית (get_the_title מחזיר &#8211; כישות — בדיוק כמו בשרת), ורק אז פענוח */
+  n=String(n||'');
   var seps=[' – ',' — ',' - ','، ',', '];
   for(var i=0;i<seps.length;i++){ var p=n.indexOf(seps[i]); if(p>-1){ n=n.slice(0,p); break; } }
-  n=n.trim(); if(n.length>34) n=n.slice(0,34);
+  var t=document.createElement('textarea'); t.innerHTML=n; n=t.value.trim();
+  if(n.length>34) n=n.slice(0,34);
   return n.toLowerCase();
 };
 window.gmGcFetch=window.gmGcFetch||function(ids){
