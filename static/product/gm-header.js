@@ -815,7 +815,7 @@ if (!window.toggleNav) { window.toggleNav = function () {
   /* מה שהמשתמש בחר עכשיו גובר על תשובת השרת עד שהיא מדביקה אותו —
      אחרת סנכרון שרץ באמצע מוחק את הסימון שנצבע בלחיצה (אסי, 09/08). */
   var gcPend={};
-  function gcWant(pid,want){ gcPend[pid]={w:!!want,t:now()}; }
+  function gcWant(pid,want,plan){ gcPend[pid]={w:!!want,t:now(),plan:plan||''}; }
   function now(){ return (window.performance&&performance.now)?performance.now():+new Date(); }
   function gcResolve(pid,isAdded){
     var p=gcPend[pid]; if(!p) return isAdded;
@@ -908,7 +908,9 @@ if (!window.toggleNav) { window.toggleNav = function () {
     var addedTxt=items.filter(function(it){return /green ?care/i.test(dec(it.name||''));})
       .map(function(it){ var extra=(it.item_data||[]).map(function(m){return m.value;}).join(' ');
         return (dec(it.name||'')+' '+extra).toLowerCase(); });
+    var gcUsed={};
     document.querySelectorAll('#cartDrawer .citem').forEach(function(ci){
+      if(ci.getAttribute('data-gcline')) return;   /* שורת השירות עצמה (מוסתרת) */
       var nx=ci.nextElementSibling;
       var exist=(nx&&nx.classList.contains('gcopts'))?nx:null;   /* לא מוחקים לפני שיודעים */
       var key=ci.getAttribute('data-key'), pid=ci.getAttribute('data-pid');
@@ -916,23 +918,32 @@ if (!window.toggleNav) { window.toggleNav = function () {
       var conf=map[pid];
       if(!conf){ if(exist){ drop(exist); } return; }
       var nm=window.gmGcShort(conf.name);
-      var isAdded=!!nm && addedTxt.some(function(t){return t.indexOf(nm)>-1;});
-      isAdded=gcResolve(String(conf.pid||pid), isAdded);
+      /* סימון פר-מסלול ופר-מכשיר: כל שורת שירות "נצרכת" ע"י מכשיר אחד בלבד (אחרת שני
+         מכשירים מאותו דגם + שני המסלולים סומנו "נוסף" על שורה אחת, 17/11) */
+      var hit=-1;
+      if(nm) for(var hi=0;hi<addedTxt.length;hi++){ if(!gcUsed[hi] && addedTxt[hi].indexOf(nm)>-1){ hit=hi; break; } }
+      if(hit>-1) gcUsed[hit]=1;
+      var hitTxt=hit>-1?addedTxt[hit]:'';
+      var planAdded={gcp:hitTxt.indexOf('24 ח')>-1, gc:!!hitTxt && hitTxt.indexOf('24 ח')<0};
+      var isAdded=gcResolve(String(conf.pid||pid), hit>-1);
+      if(isAdded && hit<0){ var pp=(gcPend[String(conf.pid||pid)]||{}).plan; planAdded={gc:pp==='gc', gcp:pp!=='gc'}; }
+      if(!isAdded) planAdded={gc:false,gcp:false};
       var rows='';
       if(conf.tiers&&+conf.tiers.gc&&+conf.prices.gc>0)
-        rows+=gcBtn(conf.pid||pid,'gc',conf.prices.gc,'Green Care','אחריות שנה שנייה מלאה',isAdded);
+        rows+=gcBtn(conf.pid||pid,'gc',conf.prices.gc,'Green Care','אחריות שנה שנייה מלאה',planAdded.gc);
       /* במובייל הכרטיסיה נשברה ל-3 שורות — משפט משנה קצר יותר (אסי, 09/08) */
       var narrow=window.matchMedia('(max-width:820px)').matches;
       if(conf.tiers&&+conf.tiers.gcp&&+conf.prices.gcp>0)
         rows+=gcBtn(conf.pid||pid,'gcp',conf.prices.gcp,'Green Care <b>+</b>',
-          narrow?'24 ח׳ · שברים ונזקי נוזלים':'24 חודשים, כולל שברים ונזקי נוזלים',isAdded);
+          narrow?'24 ח׳ · שברים ונזקי נוזלים':'24 חודשים, כולל שברים ונזקי נוזלים',planAdded.gcp);
       if(!rows){ if(exist){ drop(exist); } return; }
       /* ⛔ בלי ציור-מחדש מיותר: פעימות הסנכרון גרמו להבהוב של הכרטיסייה
          (אסי, 09/08). אם המסלולים והמחירים זהים — רק מעדכנים סימון. */
       var sig=pid+'|'+(conf.prices.gc||0)+'|'+(conf.prices.gcp||0);
       if(exist && exist.getAttribute('data-sig')===sig){
         exist.querySelectorAll('.gcopt').forEach(function(b){
-          if(b.classList.contains('added')!==isAdded) gcPaint(b,isAdded);
+          var want=!!planAdded[b.getAttribute('data-gc')];
+          if(b.classList.contains('added')!==want) gcPaint(b,want);
         });
         return;
       }
@@ -1042,7 +1053,7 @@ if (!window.toggleNav) { window.toggleNav = function () {
       return; }
     if(gc){ e.preventDefault(); e.stopPropagation();
       var pr=+gc.getAttribute('data-price')||0;
-      gcPaint(gc, true); bumpSub(pr); gcWant(gc.getAttribute('data-pid'),true);      /* מיידי */
+      gcPaint(gc, true); bumpSub(pr); gcWant(gc.getAttribute('data-pid'),true,gc.getAttribute('data-gc'));      /* מיידי */
       var fd=new FormData(); fd.append('action','gm_svc_greencare');
       fd.append('plan',gc.getAttribute('data-gc'));
       fd.append('product_id',gc.getAttribute('data-pid'));
