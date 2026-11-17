@@ -50,6 +50,16 @@ document.addEventListener('click',e=>{ if(!e.target.closest('.gsrch')) document.
    (S25 FE 512GB=51289 → 34808). חיפוש לפי הוריאציה החזיר כלום → הכרטיסייה לא צוירה
    ושורת השירות מוסתרת → "נוסף" אבל לא רואים בסל (17/11). שאילתה פר-פריט, ממופה
    למזהה שביקשנו; conf.pid = האב (לשליחת הבחירה). */
+/* שם-המכשיר כפי שהשרת שומר בשורת השירות (short_phone ב-gm-services.php: חיתוך
+   במפריד הראשון " – "/", " וכו', עד 34 תווים). התאמה לפי slice(0,14) נכשלה בכותרות
+   כמו "סמארטפון מהיר, חזק…" (הפסיק נחתך בשרת) → הכרטיסייה לא סומנה "נוסף" (17/11). */
+window.gmGcShort=window.gmGcShort||function(n){
+  var t=document.createElement('textarea'); t.innerHTML=String(n||''); n=t.value;
+  var seps=[' – ',' — ',' - ','، ',', '];
+  for(var i=0;i<seps.length;i++){ var p=n.indexOf(seps[i]); if(p>-1){ n=n.slice(0,p); break; } }
+  n=n.trim(); if(n.length>34) n=n.slice(0,34);
+  return n.toLowerCase();
+};
 window.gmGcFetch=window.gmGcFetch||function(ids){
   return Promise.all((ids||[]).map(function(id){
     return fetch('/wp-json/gm-services/v1/greencare?ids='+id,{credentials:'same-origin'})
@@ -326,7 +336,7 @@ if (!window.toggleNav) { window.toggleNav = function () {
       while(old && (old.classList.contains('gcopts')||old.classList.contains('gcmore'))){ var nx=old.nextElementSibling; old.remove(); old=nx; }
       var pid=ci.getAttribute('data-pid'), conf=map[pid];
       if(!conf) return;
-      var nm=(conf.name||'').toLowerCase().slice(0,14);
+      var nm=window.gmGcShort(conf.name);
       var isAdded=added.some(function(t){return nm && t.indexOf(nm)>-1;});
       var rows='';
       if(conf.tiers&&conf.tiers.gc&&conf.prices.gc>0){
@@ -903,7 +913,7 @@ if (!window.toggleNav) { window.toggleNav = function () {
       if(!pid){ var m=items.filter(function(it){return it.key===key;})[0]; pid=m?String(m.id):''; }
       var conf=map[pid];
       if(!conf){ if(exist){ drop(exist); } return; }
-      var nm=(conf.name||'').toLowerCase().slice(0,14);
+      var nm=window.gmGcShort(conf.name);
       var isAdded=!!nm && addedTxt.some(function(t){return t.indexOf(nm)>-1;});
       isAdded=gcResolve(String(conf.pid||pid), isAdded);
       var rows='';
