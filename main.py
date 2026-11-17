@@ -7337,6 +7337,57 @@ def admin_gc_policy_invoice(body: GCPolicyInvoiceIn,
                         headers={"Cache-Control": "no-store"})
 
 
+class GCPolicySerialIn(BaseModel):
+    policy_id: int
+    serial: str = ""
+    force: bool = False
+
+
+def _imei_luhn_ok(d: str) -> bool:
+    tot = 0
+    for i, ch in enumerate(reversed(d)):
+        n = int(ch)
+        if i % 2 == 1:
+            n *= 2
+            if n > 9:
+                n -= 9
+        tot += n
+    return tot % 10 == 0
+
+
+@app.post("/api/admin/greencare/policy/serial")
+def admin_gc_policy_serial(body: GCPolicySerialIn,
+                           x_admin_key: Optional[str] = Header(None)):
+    """שמירת IMEI/סידורי על פוליסה (פוליסת אתר נוצרת בלי סידורי — מוזן אחרי ליקוט).
+    מאפשר זיהוי הפוליסה בסריקה בסניף (gc_policy_by_serial). בלם כפילות: סידורי שכבר
+    רשום על פוליסה פעילה אחרת → 409 (אלא אם force)."""
+    actor = _actor_name(x_admin_key, None)
+    _require_admin(x_admin_key)
+    pol = db.gc_policy_get(body.policy_id)
+    if not pol:
+        raise HTTPException(404, "פוליסה לא נמצאה")
+    raw = (body.serial or "").strip()
+    ser = re.sub(r"[\s\-/]", "", raw).upper()
+    warn = ""
+    if ser:
+        if not re.fullmatch(r"[0-9A-Z]{6,20}", ser):
+            raise HTTPException(400, "IMEI/סידורי לא תקין — ספרות/אותיות בלבד, 6–20 תווים")
+        if ser.isdigit() and len(ser) == 15 and not _imei_luhn_ok(ser):
+            warn = "ספרת הביקורת של ה-IMEI לא תקינה — כדאי לבדוק שאין טעות הקלדה"
+        if not body.force:
+            dup = [x for x in db.gc_policy_by_serial(ser)
+                   if int(x.get("id") or 0) != int(pol["id"]) and (x.get("status") or "") != "cancelled"]
+            if dup:
+                d = dup[0]
+                where = f"הזמנה {d.get('order_id')}" if d.get("order_id") else "סניף"
+                raise HTTPException(409, f"ה-IMEI כבר רשום על פוליסה פעילה אחרת (#{d.get('id')} · {where})")
+    db.gc_policy_set_serial(body.policy_id, ser)
+    logger.info("greencare: serial '%s' set on policy %s by %s", ser, body.policy_id, actor or "?")
+    return JSONResponse({"ok": True, "serial": ser, "warning": warn,
+                         **_policy_view(db.gc_policy_get(body.policy_id))},
+                        headers={"Cache-Control": "no-store"})
+
+
 class GCPolicyDeleteIn(BaseModel):
     policy_id: int
 

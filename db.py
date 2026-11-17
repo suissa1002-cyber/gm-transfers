@@ -4035,6 +4035,14 @@ def gc_policy_set_invoice(policy_id, invoice_ref) -> dict:
     return gc_policy_get(policy_id)
 
 
+def gc_policy_set_serial(policy_id, serial) -> dict:
+    """IMEI/סידורי של המכשיר המכוסה — בעיקר לפוליסות אתר (נוצרות בלי סידורי)."""
+    with _conn() as c:
+        c.cursor().execute(_q("UPDATE greencare_policies SET serial = ? WHERE id = ?"),
+                           (str(serial or "").strip(), int(policy_id)))
+    return gc_policy_get(policy_id)
+
+
 def gc_policies_list(limit: int = 500) -> list:
     """כל הפוליסות (אתר + סניפים), החדשה ראשונה — לאזור ניהול הפוליסות."""
     with _conn() as c:

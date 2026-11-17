@@ -11733,6 +11733,13 @@ function osGreenCareBox(gc,d){
       ${osChip(stTxt[sn]||sn,stCol[sn]||'#6b7280')}</div>
     <div class="muted" style="font-size:12.5px;margin-top:6px">${escW(p.device_label||'')}${p.price_paid?` · שולם ${fmt(p.price_paid)}`:''}</div>
     <div class="muted" style="font-size:12.5px">תוקף: ${dstr(p.start_date)} — ${dstr(p.end_date)}</div>
+    <div style="display:flex;gap:8px;align-items:flex-end;margin-top:10px;flex-wrap:wrap">
+      <div style="flex:1;min-width:190px"><label style="font-size:11.5px;font-weight:700;color:${p.serial?'var(--muted,#888)':'#ca8a04'}">📱 IMEI / סידורי של המכשיר${p.serial?'':' — חסר'}</label>
+        <input id="gcSer_${p.id}" value="${escW(p.serial||'')}" inputmode="numeric" autocomplete="off" placeholder="סרוק או הקלד IMEI"
+          style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid ${p.serial?'var(--line)':'#ca8a04'};border-radius:8px;background:var(--bg);color:var(--txt);margin-top:3px;direction:ltr;text-align:left;font-family:monospace"
+          onkeydown="if(event.key==='Enter')gcSaveSerial(${p.id},'gcSer_${p.id}')"></div>
+      <button class="btn-ghost" style="padding:8px 14px;font-size:12.5px" onclick="gcSaveSerial(${p.id},'gcSer_${p.id}')">שמור IMEI</button>
+    </div>
     ${counters}${dedLines}${claimRows}
     <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
       <button class="btn-primary" style="padding:8px 15px;font-size:13px" onclick="osClaimDialog(${p.id})">➕ רשום מימוש</button>
@@ -12980,6 +12987,7 @@ function gcPolCard(p){
         <span style="font-weight:700;font-size:13px;color:#149c40">${p.plan==='gcp'?'Green Care Plus':'Green Care'}</span>
         ${gcwStatusChip(p.status_now,p.start_date)}
         <span class="muted" style="font-size:12px">${src}</span>
+        ${(!p.serial&&p.status!=='cancelled')?'<span style="font-size:11px;font-weight:700;color:#ca8a04;border:1px solid #ca8a0466;border-radius:999px;padding:1px 8px">חסר IMEI</span>':''}
         <span style="margin-inline-start:auto;font-weight:800">₪${Number(p.price_paid||0).toLocaleString()}</span>
         ${act}
         ${chev}
@@ -13041,6 +13049,12 @@ function gcPolDetailHTML(p){
       ${F('נוצרה בתאריך', dtt(pol.created_at))}
     </div>
     <div style="display:flex;gap:8px;align-items:flex-end;margin-top:14px;max-width:380px">
+      <div style="flex:1"><label style="font-size:11px;font-weight:700;color:${pol.serial?'var(--muted,#888)':'#ca8a04'}">📱 IMEI / סידורי של המכשיר${pol.serial?'':' — חסר'}</label>
+        <input id="gcPolSer" value="${escW(pol.serial||'')}" inputmode="numeric" autocomplete="off" placeholder="סרוק או הקלד IMEI" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid ${pol.serial?'var(--line)':'#ca8a04'};border-radius:8px;background:var(--bg);color:var(--txt);margin-top:3px;direction:ltr;text-align:left;font-family:monospace"
+          onkeydown="if(event.key==='Enter')gcSaveSerial(${pol.id},'gcPolSer')"></div>
+      <button class="btn-ghost" style="padding:8px 14px" onclick="gcSaveSerial(${pol.id},'gcPolSer')">שמור</button>
+    </div>
+    <div style="display:flex;gap:8px;align-items:flex-end;margin-top:10px;max-width:380px">
       <div style="flex:1"><label class="muted" style="font-size:11px">מס׳ חשבונית (קופה / אתר)</label>
         <input id="gcPolInv" value="${escW(pol.invoice_ref||'')}" autocomplete="off" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--txt);margin-top:3px"
           onkeydown="if(event.key==='Enter')gcPolSaveInvoice(${pol.id})"></div>
@@ -13057,6 +13071,25 @@ function gcPolDetailHTML(p){
         :`<button class="btn-ghost" style="padding:7px 14px;color:var(--red)" onclick="gcPolStatus(${pol.id},'cancelled')">בטל פוליסה</button>`}
     </div>
   </div>`;
+}
+async function gcSaveSerial(id, inputId, force){
+  const el=document.getElementById(inputId); const v=el?el.value.trim():'';
+  try{
+    const r=await api('/api/admin/greencare/policy/serial',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({policy_id:id,serial:v,force:!!force})});
+    try{ toast(v?'ה-IMEI נשמר ✓':'ה-IMEI נמחק',true); }catch(x){}
+    if(r&&r.warning){ alert('⚠️ '+r.warning); }
+    const ser=(r&&r.serial)||'';
+    if(el){ el.value=ser; el.style.borderColor=ser?'var(--line)':'#ca8a04';
+      const lb=el.parentElement&&el.parentElement.querySelector('label');
+      if(lb){ lb.style.color=ser?'var(--muted,#888)':'#ca8a04'; lb.textContent='📱 IMEI / סידורי של המכשיר'+(ser?'':' — חסר'); } }
+    const it=(S.gcPolicies||[]).find(q=>q.id===id); if(it) it.serial=ser;
+    if(S.gcPolDetail&&S.gcPolDetail.policy&&S.gcPolDetail.policy.id===id) S.gcPolDetail.policy.serial=ser;
+    if(inputId==='gcPolSer'){ const b=document.getElementById('gcPolBody'); if(b) b.innerHTML=gcPolBodyHTML(); }
+  }catch(e){
+    const msg=(e&&e.detail)||'שמירת ה-IMEI נכשלה';
+    if(/כבר רשום/.test(msg) && confirm(msg+'\n\nלשמור בכל זאת?')) return gcSaveSerial(id, inputId, true);
+    try{ toast(msg,false); }catch(x){}
+  }
 }
 async function gcPolSaveInvoice(id){
   const el=document.getElementById('gcPolInv'); const v=el?el.value:'';
