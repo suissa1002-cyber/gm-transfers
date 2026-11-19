@@ -7319,23 +7319,26 @@ function waOrdGcSet(plan){
   waOrderRender();
 }
 function waOrdAddonsHTML(fmt){
-  const o=S.waOrd; if(!o) return '';
+  const o=S.waOrd; if(!o||(!o.base&&!o.tradein)) return '';
   let h='';
+  const tiBtn=o.tradein?'':`<button class="btn-ghost" style="padding:6px 11px;font-size:12.5px;margin:0 0 5px 6px;color:#e2551f;border-color:#e2551f66" onclick="waOrdTiOpen()">🔄 טרייד-אין</button>`;
+  let gcRow='';
   if(o.base){
     const g=o.gcInfo||{};
     const pill=(act,col)=>`padding:6px 11px;font-size:12.5px;margin:0 0 5px 6px;${act?`border-color:${col};color:${col};font-weight:700;background:${col}14`:''}`;
-    if(g.loading) h+='<div class="muted" style="font-size:12px;margin-top:8px">🛡️ בודק זמינות Green Care…</div>';
+    if(g.loading) gcRow='<span class="muted" style="font-size:12px;margin-inline-end:8px">🛡️ בודק Green Care…</span>';
     else if(g.available && (g.tiers.gc||g.tiers.gcp)){
-      h+=`<div style="margin-top:9px"><b style="font-size:12.5px">🛡️ Green Care:</b></div><div style="margin-top:4px">
+      gcRow=`<b style="font-size:12.5px;margin-inline-end:6px">🛡️ Green Care:</b>
         <button class="btn-ghost" style="${pill(!o.gc,'#64748b')}" onclick="waOrdGcSet('')">ללא</button>
         ${g.tiers.gc?`<button class="btn-ghost" style="${pill(o.gc&&o.gc.plan==='gc','#16a34a')}" onclick="waOrdGcSet('gc')" title="הרחבת אחריות שנה שנייה">Green Care · ${fmt(g.prices.gc)}</button>`:''}
-        ${g.tiers.gcp?`<button class="btn-ghost" style="${pill(o.gc&&o.gc.plan==='gcp','#16a34a')}" onclick="waOrdGcSet('gcp')" title="הגנה מלאה 24 ח׳ · שברים · מסך · נזק מוחלט">Green Care+ · ${fmt(g.prices.gcp)}</button>`:''}
-      </div>
-      ${o.gc?`<div style="display:flex;align-items:center;gap:6px;font-size:12px" class="muted">${o.gc.plan==='gcp'?'הגנה מלאה 24 ח׳ · שברים · מסך · נזק מוחלט':'הרחבת אחריות שנה שנייה'} · מחיר:
+        ${g.tiers.gcp?`<button class="btn-ghost" style="${pill(o.gc&&o.gc.plan==='gcp','#16a34a')}" onclick="waOrdGcSet('gcp')" title="הגנה מלאה 24 ח׳ · שברים · מסך · נזק מוחלט">Green Care+ · ${fmt(g.prices.gcp)}</button>`:''}`;
+      h+=o.gc?`<div style="display:flex;align-items:center;gap:6px;font-size:12px" class="muted">${o.gc.plan==='gcp'?'הגנה מלאה 24 ח׳ · שברים · מסך · נזק מוחלט':'הרחבת אחריות שנה שנייה'} · מחיר:
         ₪<input value="${o.gc.price}" inputmode="decimal" style="width:64px;padding:3px 6px;border-radius:7px;border:1px solid var(--line);background:var(--bg);color:var(--txt);text-align:center"
-          onchange="waOrderSaveInputs();S.waOrd.gc.price=Math.max(0,Number(this.value)||0);waOrderRender()">${o.qty>1?` × ${o.qty}`:''}</div>`:''}`;
-    } else if(g.failed) h+=`<div class="muted" style="font-size:11.5px;margin-top:8px">🛡️ Green Care — לא נטען <a href="javascript:void(0)" onclick="waOrdGcLoad()" style="text-decoration:underline">נסה שוב</a></div>`;
+          onchange="waOrderSaveInputs();S.waOrd.gc.price=Math.max(0,Number(this.value)||0);waOrderRender()">${o.qty>1?` × ${o.qty}`:''}</div>`:'';
+    } else if(g.failed) gcRow=`<span class="muted" style="font-size:11.5px;margin-inline-end:8px">🛡️ Green Care לא נטען <a href="javascript:void(0)" onclick="waOrdGcLoad()" style="text-decoration:underline">נסה שוב</a></span>`;
+    else if(g.available===false) gcRow=`<span class="muted" style="font-size:11.5px;margin-inline-end:8px">🛡️ אין Green Care למוצר זה</span>`;
   }
+  h=`<div style="display:flex;align-items:center;flex-wrap:wrap;margin-top:9px">${gcRow}<span style="flex:1"></span>${tiBtn}</div>`+h;
   const t=o.tradein;
   h+= t
     ?`<div style="display:flex;align-items:center;gap:8px;margin-top:9px;background:#fff4ec;border:1px solid #e2551f55;border-radius:10px;padding:7px 10px;color:#a83a10">
@@ -7343,7 +7346,7 @@ function waOrdAddonsHTML(fmt){
           <div style="font-size:11px;opacity:.85">ללא הנחה בהזמנה — יזוכה לאחר בדיקת המכשיר (כמו באתר)</div></span>
         <button class="btn-ghost" style="padding:4px 8px;font-size:11.5px" onclick="waOrdTiOpen()">ערוך</button>
         <button class="btn-ghost" style="padding:4px 8px" onclick="waOrderSaveInputs();S.waOrd.tradein=null;waOrderRender()">✕</button></div>`
-    :`<button class="btn-ghost" style="width:100%;margin-top:9px;border-style:dashed;color:#e2551f;border-color:#e2551f88" onclick="waOrdTiOpen()">🔄 הוסף טרייד-אין</button>`;
+    :'';
   return h;
 }
 // ── 🔄 טרייד-אין בהזמנה — אותו מחשבון (קטלוג + מצב + הערכה); נשמר כמו באתר (_gm_tradein_intent) ──
@@ -7427,7 +7430,7 @@ function waOrderRender(){
       <input type="number" min="1" value="${o.qty}" style="width:54px;padding:6px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--txt)"
              onchange="waOrderSaveInputs();S.waOrd.qty=Math.max(1,Number(this.value)||1);waOrderRender()">
       ${o.blank?`<button class="btn-ghost" style="padding:4px 8px" title="הסר מוצר ראשי" onclick="waOrderSaveInputs();Object.assign(S.waOrd,{base:null,sel:null,gc:null,gcInfo:null,qty:1});waOrderRender()">✕</button>`:''}
-    </div>`:`<div class="muted" style="font-size:12.5px">בחר מוצר ראשי מהקופה (מוצר אתר — עם וריאציות, Green Care וטרייד-אין), או הוסף פריט חופשי</div>`}
+    </div>`:`<div class="muted" style="font-size:12.5px">חפש מוצר — הוא יהפוך למוצר הראשי (וריאציות + Green Care + טרייד-אין), או הוסף פריט כללי</div>`}
     ${varsHtml}
     ${waOrdAddonsHTML(fmt)}
     ${waOrdExtrasHTML(fmt)}
@@ -7479,7 +7482,7 @@ function waOrdExtrasHTML(fmt){
   const rows=(o.extras||[]).map((x,i)=>`
     <div style="display:flex;align-items:flex-start;gap:6px;margin-top:6px;background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:6px 8px">
       ${x.free
-        ?`<input value="${escW(x.name)}" placeholder="תיאור הפריט (חופשי)" style="flex:1;min-width:0;padding:6px 8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:12.5px"
+        ?`<input value="${escW(x.name)}" placeholder="תיאור הפריט (כללי)" style="flex:1;min-width:0;padding:6px 8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:12.5px"
                  onchange="waOrdExtraSet(${i},'name',this.value)">`
         :`<span style="flex:1;min-width:0"><b style="font-size:12.5px">${escW(x.name)}</b>${x.found?'':' <span class="mtag warn">לא באתר</span>'}
         ${x.fixedLabel?`<span class="muted" style="font-size:11px"> · ${escW(x.fixedLabel)}</span>`:''}
@@ -7503,10 +7506,14 @@ function waOrdExtrasHTML(fmt){
                style="width:100%;padding:8px 10px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:13px"
                oninput="S.waOrdAddQ=this.value;waOrdAddPaint()">
         <div id="woAddRes" style="max-height:170px;overflow-y:auto;margin-top:5px"></div>
+        <div style="display:flex;gap:7px;margin-top:7px">
+          <button class="btn-ghost" style="flex:1;border-style:dashed" onclick="S.waOrdAddOpen=false;waOrdExtraFree()">✏️ פריט כללי (תיאור + מחיר)</button>
+          <button class="btn-ghost" style="padding:6px 12px" onclick="waOrderSaveInputs();S.waOrdAddOpen=false;waOrderRender()">סגור חיפוש</button>
+        </div>
       </div>`
     :`<div style="display:flex;gap:7px;margin-top:7px">
         <button class="btn-ghost" style="flex:1;border-style:dashed" onclick="waOrdAddToggle()">＋ ${(o.blank&&!o.base)?'מוצר מהקופה':'פריט מהקופה'}</button>
-        <button class="btn-ghost" style="flex:1;border-style:dashed" onclick="waOrdExtraFree()">✏️ פריט חופשי</button>
+        <button class="btn-ghost" style="flex:1;border-style:dashed" onclick="waOrdExtraFree()">✏️ פריט כללי</button>
       </div>`}
   </div>`;
 }
@@ -8061,7 +8068,7 @@ async function waOrderSubmit(payment){
       quantity:o.qty, price:Number(o.gc.price)||0, product_id:0, name:'Green Care', sku:''});
   }
   const noName=extras.find(x=>!x.gc_plan && !x.product_id && !(x.name||'').trim());
-  if(noName){ toast('חסר תיאור לפריט החופשי — הזן תיאור בשורה',false); return; }
+  if(noName){ toast('חסר תיאור לפריט הכללי — הזן תיאור בשורה',false); return; }
   const noPrice=extras.find(x=>!x.gc_plan && !x.product_id && !(x.price>0));
   if(noPrice){ toast('חסר מחיר לפריט "'+(noPrice.name||noPrice.sku)+'" — הזן מחיר בשורה',false); return; }
   showLoading('יוצר הזמנה…');
