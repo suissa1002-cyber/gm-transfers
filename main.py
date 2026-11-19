@@ -20091,6 +20091,7 @@ class WaOrderCreate(BaseModel):
     note: str = ""
     payment: str = "none"           # none | link
     installments: int = 1           # תשלומים (לקישור/חיוב)
+    source: str = "whatsapp"        # whatsapp | greenos_manual (הזמנה חדשה ריקה מעמוד ההזמנות)
 
 
 @app.post("/api/admin/wa/order/create")
@@ -20148,7 +20149,8 @@ def wa_order_create(body: WaOrderCreate, x_admin_key: Optional[str] = Header(Non
                       "country": "IL"}),
         "line_items": line_items,
         "customer_note": body.note or "",
-        "meta_data": [{"key": "greenos_source", "value": "whatsapp"},
+        "meta_data": [{"key": "greenos_source",
+                       "value": body.source if body.source in ("whatsapp", "greenos_manual") else "whatsapp"},
                       {"key": "greenos_wa_phone", "value": body.phone}],
     }
     if body.shipping_total or body.shipping_title:

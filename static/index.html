@@ -7292,14 +7292,24 @@ async function waOrderOpen(pid){
   };
   waOrderRender();
 }
+// ── 🆕 הזמנה חדשה ריקה (מעמוד ההזמנות) — אותו טופס בדיוק, בלי מוצר פותח; פריטים נוספים דרך "פריט מהקופה"/"פריט חופשי" ──
+function waOrderNewBlank(){
+  S.waOrd={
+    base:null, sel:null, qty:1, extras:[], ship:'pickup', shipSame:true, blank:true,
+    cust:{first_name:'', last_name:'', company:'', phone:'', email:'', address_1:'', city:''},
+    shipTo:{first_name:'',last_name:'',address_1:'',city:''}
+  };
+  waOrdAddToggle();   // פותח מיד את חיפוש הקטלוג
+}
+function waOrdMainTotal(){ const o=S.waOrd; return (o&&o.sel)?(Number(o.sel.price)||0)*(o.qty||1):0; }
 function waOrdExtrasTotal(){
   return (S.waOrd&&S.waOrd.extras||[]).reduce((a,x)=>a+(Number(x.price)||0)*(Number(x.qty)||1),0);
 }
 function waOrdShipOpts(){
-  const total=(S.waOrd.sel.price||0)*S.waOrd.qty+waOrdExtrasTotal();
+  const total=waOrdMainTotal()+waOrdExtrasTotal();
   return [
     {k:'pickup',  t:'איסוף עצמי',            cost:0},
-    {k:'regular', t:'משלוח רגיל (1-6 ימי עסקים)', cost: total>=500?0:29},
+    {k:'regular', t:'משלוח רגיל (1-6 ימי עסקים)', cost: total>=499?0:29},
     {k:'express', t:'משלוח אקספרס (היום)',    cost:89},
   ];
 }
@@ -7309,11 +7319,11 @@ function waOrderRender(){
   const d=o.base;
   const ships=waOrdShipOpts();
   const shipCost=(ships.find(x=>x.k===o.ship)||{}).cost||0;
-  const total=(o.sel.price||0)*o.qty+waOrdExtrasTotal()+shipCost;
+  const total=waOrdMainTotal()+waOrdExtrasTotal()+shipCost;
   const fmt=v=>'₪'+Number(v||0).toLocaleString('he-IL');
   // כפתורי וריאציות-אחיות (אם יש)
   let varsHtml='';
-  if(d.variants&&d.variants.options&&d.variants.options.length>1){
+  if(d&&d.variants&&d.variants.options&&d.variants.options.length>1){
     varsHtml='<div style="margin:8px 0 4px"><b style="font-size:12.5px">בחר וריאציה:</b></div>'+
       d.variants.options.map(c=>{
         const lbl=Object.values(c.attrs||{}).join(' · ')||'בסיס';
@@ -7328,7 +7338,7 @@ function waOrderRender(){
   document.body.classList.toggle('wa-sbs', document.body.classList.contains('wa-mode'));
   div.innerHTML=`<div class="wa-ord" onclick="event.stopPropagation()">
     <div class="wo-minbar" onclick="waOrderMinToggle(false)">
-      <span style="display:inline-flex;align-items:center;gap:8px">${ico('cart',15)} הזמנה בהכנה${d.name?` · ${escW(String(d.name).slice(0,28))}`:''}</span>
+      <span style="display:inline-flex;align-items:center;gap:8px">${ico('cart',15)} הזמנה בהכנה${(d&&d.name)?` · ${escW(String(d.name).slice(0,28))}`:''}</span>
       <span style="color:var(--muted)">הקש להמשך ▲</span>
     </div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -7338,7 +7348,7 @@ function waOrderRender(){
         <button class="btn-ghost" onclick="waOrderClose()">✕</button>
       </span>
     </div>
-    <div style="display:flex;gap:10px;align-items:center;background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:9px">
+    ${d?`<div style="display:flex;gap:10px;align-items:center;background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:9px">
       ${d.image?`<img src="${escW(d.image)}" style="width:54px;height:54px;object-fit:contain;border-radius:8px;background:#fff">`:''}
       <div style="min-width:0;flex:1"><b style="font-size:13px">${escW(d.name)}</b>
         <div class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px;flex-wrap:wrap">${escW(o.sel.label||'')} ·
@@ -7347,7 +7357,7 @@ function waOrderRender(){
             onchange="waOrderSaveInputs();S.waOrd.sel.price=Math.max(0,Number(this.value)||0);waOrderRender()"></span></div></div>
       <input type="number" min="1" value="${o.qty}" style="width:54px;padding:6px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--txt)"
              onchange="S.waOrd.qty=Math.max(1,Number(this.value)||1);waOrderRender()">
-    </div>
+    </div>`:`<div class="muted" style="font-size:12.5px">הוסף פריטים מהקופה או פריט חופשי${(o.extras||[]).length?'':' — לפחות פריט אחד'}</div>`}
     ${varsHtml}
     ${waOrdExtrasHTML(fmt)}
     <div class="wa-ord-grid">
@@ -7953,13 +7963,13 @@ async function waOrderSubmit(payment){
   waOrderSaveInputs();
   const o=S.waOrd; if(!o) return;
   if(!(o.cust.first_name||'').trim()){ toast('חסר שם פרטי',false); return; }
-  if(!(Number(o.sel.price)>0)){ toast('מחיר הפריט הראשי לא תקין — בדוק את שדה המחיר',false); return; }
+  if(o.base && !(Number(o.sel.price)>0)){ toast('מחיר הפריט הראשי לא תקין — בדוק את שדה המחיר',false); return; }
+  if(!o.base && !(o.extras||[]).length){ toast('אין פריטים בהזמנה — הוסף פריט מהקופה או פריט חופשי',false); return; }
   const wantCharge=(payment==='charge'); if(wantCharge) payment='link';
   const ships=waOrdShipOpts(); const sh=ships.find(x=>x.k===o.ship)||ships[0];
   const d=o.base;
-  const isVar=d.type==='variation'||o.sel.id!==d.parent_id;
   // המחיר שבטופס נשלח תמיד כדריסה — מאפשר מחיר שסוכם עם הלקוח (למשל 4,900 במקום 4,950)
-  const item= d.type==='variation'
+  const item= !d ? null : d.type==='variation'
     ? {product_id:d.parent_id, variation_id:o.sel.id, quantity:o.qty, price:Number(o.sel.price)||0}
     : {product_id:o.sel.id, quantity:o.qty, price:Number(o.sel.price)||0};
   // פריטים נוספים: מחוברים לאתר → לפי מזהה; פריטי קופה בלבד → שורה מותאמת עם מחיר
@@ -7972,7 +7982,7 @@ async function waOrderSubmit(payment){
   showLoading('יוצר הזמנה…');
   try{
     const r=await api('/api/admin/wa/order/create',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({phone:S.waPhone||'', customer:o.cust, items:[item,...extras],
+      body:JSON.stringify({phone:S.waPhone||'', customer:o.cust, items:(item?[item,...extras]:extras), source:o.blank?'greenos_manual':'whatsapp',
         ship_same:o.shipSame!==false, ship_to:o.shipTo,
         shipping_title: o.ship==='pickup'?'איסוף עצמי':sh.t, shipping_total: sh.cost,
         note:o.note||'', payment, installments:o.installments||1})},90000);
@@ -11212,7 +11222,8 @@ function renderWcOrders(){
       <button class="btn-ghost" style="padding:3px 10px;font-size:12px" onclick="S.wco.after='';S.wco.before='';S.wco.page=1;loadWcOrders();renderWcOrders()">✕ נקה טווח</button>
     </div>`:''}
     <div id="wcoCal" style="display:none;position:relative"></div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">${chips}</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;align-items:center">${chips}
+      <button class="btn-primary" style="margin-inline-start:auto;padding:7px 14px;font-size:13px;display:inline-flex;align-items:center;gap:6px" onclick="waOrderNewBlank()" title="הזמנה חדשה ריקה — פריטים מהקופה / חופשיים, לקוח, משלוח ותשלום">${ico('cart',14)} הזמנה חדשה</button></div>
     <div id="wcoList">${W.rows===null?'<div class="empty">טוען הזמנות…</div>':wcoListHTML()}</div>`;
   if(W.rows===null) loadWcOrders();
 }
