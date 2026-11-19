@@ -7291,6 +7291,7 @@ async function waOrderOpen(pid){
     shipTo:{first_name:'',last_name:'',address_1:'',city:''}
   };
   waOrderRender();
+  waOrdGcLoad();
 }
 // ── 🆕 הזמנה חדשה ריקה (מעמוד ההזמנות) — אותו טופס בדיוק, בלי מוצר פותח; פריטים נוספים דרך "פריט מהקופה"/"פריט חופשי" ──
 function waOrderNewBlank(){
@@ -7301,7 +7302,75 @@ function waOrderNewBlank(){
   };
   waOrdAddToggle();   // פותח מיד את חיפוש הקטלוג
 }
-function waOrdMainTotal(){ const o=S.waOrd; return (o&&o.sel)?(Number(o.sel.price)||0)*(o.qty||1):0; }
+function waOrdMainTotal(){ const o=S.waOrd; if(!o||!o.sel) return 0;
+  return ((Number(o.sel.price)||0)+(o.gc?(Number(o.gc.price)||0):0))*(o.qty||1); }
+// ── 🛡️ Green Care למוצר הראשי — אותם מחירים שהאתר מציג ללקוח; נרשם כשורה כמו בקופת האתר ──
+async function waOrdGcLoad(){
+  const o=S.waOrd; if(!o||!o.base) return;
+  const id=o.base.parent_id||o.base.id; o.gcInfo={loading:true, id};
+  let r=null; try{ r=await api('/api/admin/wa/order/greencare?id='+encodeURIComponent(id),null,30000); }catch(e){}
+  if(S.waOrd!==o||!o.base||(o.base.parent_id||o.base.id)!==id) return;
+  o.gcInfo=(r&&r.ok)?Object.assign({id},r):{id, available:false, failed:true};
+  if(document.getElementById('waOrderModal')){ waOrderSaveInputs(); waOrderRender(); }
+}
+function waOrdGcSet(plan){
+  waOrderSaveInputs(); const o=S.waOrd; const g=o.gcInfo||{};
+  o.gc=plan?{plan, price:Number((g.prices||{})[plan])||0}:null;
+  waOrderRender();
+}
+function waOrdAddonsHTML(fmt){
+  const o=S.waOrd; if(!o) return '';
+  let h='';
+  if(o.base){
+    const g=o.gcInfo||{};
+    const pill=(act,col)=>`padding:6px 11px;font-size:12.5px;margin:0 0 5px 6px;${act?`border-color:${col};color:${col};font-weight:700;background:${col}14`:''}`;
+    if(g.loading) h+='<div class="muted" style="font-size:12px;margin-top:8px">🛡️ בודק זמינות Green Care…</div>';
+    else if(g.available && (g.tiers.gc||g.tiers.gcp)){
+      h+=`<div style="margin-top:9px"><b style="font-size:12.5px">🛡️ Green Care:</b></div><div style="margin-top:4px">
+        <button class="btn-ghost" style="${pill(!o.gc,'#64748b')}" onclick="waOrdGcSet('')">ללא</button>
+        ${g.tiers.gc?`<button class="btn-ghost" style="${pill(o.gc&&o.gc.plan==='gc','#16a34a')}" onclick="waOrdGcSet('gc')" title="הרחבת אחריות שנה שנייה">Green Care · ${fmt(g.prices.gc)}</button>`:''}
+        ${g.tiers.gcp?`<button class="btn-ghost" style="${pill(o.gc&&o.gc.plan==='gcp','#16a34a')}" onclick="waOrdGcSet('gcp')" title="הגנה מלאה 24 ח׳ · שברים · מסך · נזק מוחלט">Green Care+ · ${fmt(g.prices.gcp)}</button>`:''}
+      </div>
+      ${o.gc?`<div style="display:flex;align-items:center;gap:6px;font-size:12px" class="muted">${o.gc.plan==='gcp'?'הגנה מלאה 24 ח׳ · שברים · מסך · נזק מוחלט':'הרחבת אחריות שנה שנייה'} · מחיר:
+        ₪<input value="${o.gc.price}" inputmode="decimal" style="width:64px;padding:3px 6px;border-radius:7px;border:1px solid var(--line);background:var(--bg);color:var(--txt);text-align:center"
+          onchange="waOrderSaveInputs();S.waOrd.gc.price=Math.max(0,Number(this.value)||0);waOrderRender()">${o.qty>1?` × ${o.qty}`:''}</div>`:''}`;
+    } else if(g.failed) h+=`<div class="muted" style="font-size:11.5px;margin-top:8px">🛡️ Green Care — לא נטען <a href="javascript:void(0)" onclick="waOrdGcLoad()" style="text-decoration:underline">נסה שוב</a></div>`;
+  }
+  const t=o.tradein;
+  h+= t
+    ?`<div style="display:flex;align-items:center;gap:8px;margin-top:9px;background:#fff4ec;border:1px solid #e2551f55;border-radius:10px;padding:7px 10px;color:#a83a10">
+        <span style="flex:1;min-width:0;font-size:12.5px"><b>🔄 טרייד-אין:</b> ${escW(t.device)} · זיכוי משוער ${fmt(t.credit)}
+          <div style="font-size:11px;opacity:.85">ללא הנחה בהזמנה — יזוכה לאחר בדיקת המכשיר (כמו באתר)</div></span>
+        <button class="btn-ghost" style="padding:4px 8px;font-size:11.5px" onclick="waOrdTiOpen()">ערוך</button>
+        <button class="btn-ghost" style="padding:4px 8px" onclick="waOrderSaveInputs();S.waOrd.tradein=null;waOrderRender()">✕</button></div>`
+    :`<button class="btn-ghost" style="width:100%;margin-top:9px;border-style:dashed;color:#e2551f;border-color:#e2551f88" onclick="waOrdTiOpen()">🔄 הוסף טרייד-אין</button>`;
+  return h;
+}
+// ── 🔄 טרייד-אין בהזמנה — אותו מחשבון (קטלוג + מצב + הערכה); נשמר כמו באתר (_gm_tradein_intent) ──
+function waOrdTiOpen(){
+  waOrderSaveInputs();
+  const p=(S.waOrd&&S.waOrd.tradein)||{};
+  S._osTi={cat:null, brand:p.brand||'', model:p.model||'', storage:p.storage||'', cond:Object.assign({},p.cond||{}), manual:!!p.manual,
+           mBrand:p.brand||'', mModel:p.model||'', mStorage:p.storage||'', orderMode:true,
+           estVal:p.credit?String(p.credit):'', _estAuto:p.credit||undefined, notes:p.notes||''};
+  osTiPaint();
+  api('/api/admin/tradein/catalog',null,30000).then(r=>{ if(r&&r.catalog){ S._osTi.cat=r.catalog;
+      if(S._osTi.brand&&!r.catalog[S._osTi.brand]) { S._osTi.manual=true; } osTiPaint(); } })
+    .catch(()=>{ S._osTi.manual=true; osTiPaint(); });
+}
+function waOrdTiSave(){
+  const t=S._osTi||{}; const manual=t.manual||!t.cat;
+  const brand=(manual?t.mBrand:t.brand)||'', model=(manual?t.mModel:t.model)||'', storage=(manual?t.mStorage:t.storage)||'';
+  if(!model.trim()){ toast('חסר דגם',false); return; }
+  const credit=parseFloat(t.estVal)||0;
+  if(!(credit>0)){ toast('חסר זיכוי משוער',false); return; }
+  const cond=osTiCondSummary();
+  S.waOrd.tradein={brand:brand.trim(), model:model.trim(), storage:storage.trim(), manual,
+    device:[brand,model,storage].map(x=>String(x||'').trim()).filter(Boolean).join(' '),
+    credit, cond:Object.assign({},t.cond||{}),
+    notes:[(t.notes||'').trim(), cond?('מצב מוצהר: '+cond):''].filter(Boolean).join(' | ')};
+  closeModal(); waOrderRender();
+}
 function waOrdExtrasTotal(){
   return (S.waOrd&&S.waOrd.extras||[]).reduce((a,x)=>a+(Number(x.price)||0)*(Number(x.qty)||1),0);
 }
@@ -7356,9 +7425,11 @@ function waOrderRender(){
             style="width:74px;padding:4px 6px;border-radius:7px;border:1px solid var(--line);background:var(--bg);color:var(--txt);text-align:center;font-weight:700"
             onchange="waOrderSaveInputs();S.waOrd.sel.price=Math.max(0,Number(this.value)||0);waOrderRender()"></span></div></div>
       <input type="number" min="1" value="${o.qty}" style="width:54px;padding:6px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--txt)"
-             onchange="S.waOrd.qty=Math.max(1,Number(this.value)||1);waOrderRender()">
-    </div>`:`<div class="muted" style="font-size:12.5px">הוסף פריטים מהקופה או פריט חופשי${(o.extras||[]).length?'':' — לפחות פריט אחד'}</div>`}
+             onchange="waOrderSaveInputs();S.waOrd.qty=Math.max(1,Number(this.value)||1);waOrderRender()">
+      ${o.blank?`<button class="btn-ghost" style="padding:4px 8px" title="הסר מוצר ראשי" onclick="waOrderSaveInputs();Object.assign(S.waOrd,{base:null,sel:null,gc:null,gcInfo:null,qty:1});waOrderRender()">✕</button>`:''}
+    </div>`:`<div class="muted" style="font-size:12.5px">בחר מוצר ראשי מהקופה (מוצר אתר — עם וריאציות, Green Care וטרייד-אין), או הוסף פריט חופשי</div>`}
     ${varsHtml}
+    ${waOrdAddonsHTML(fmt)}
     ${waOrdExtrasHTML(fmt)}
     <div class="wa-ord-grid">
       <input id="woFn" placeholder="שם פרטי" value="${escW(o.cust.first_name)}">
@@ -7434,7 +7505,7 @@ function waOrdExtrasHTML(fmt){
         <div id="woAddRes" style="max-height:170px;overflow-y:auto;margin-top:5px"></div>
       </div>`
     :`<div style="display:flex;gap:7px;margin-top:7px">
-        <button class="btn-ghost" style="flex:1;border-style:dashed" onclick="waOrdAddToggle()">＋ פריט מהקופה</button>
+        <button class="btn-ghost" style="flex:1;border-style:dashed" onclick="waOrdAddToggle()">＋ ${(o.blank&&!o.base)?'מוצר מהקופה':'פריט מהקופה'}</button>
         <button class="btn-ghost" style="flex:1;border-style:dashed" onclick="waOrdExtraFree()">✏️ פריט חופשי</button>
       </div>`}
   </div>`;
@@ -7503,6 +7574,16 @@ async function waOrdExtraPick(pid){
     const mine={}; (d.attributes||[]).forEach(a=>{ mine[a.name]=a.option; });
     (d.variants.switch_attrs||[]).forEach(sa=>{ sel[sa.name]=mine[sa.name]||sa.options[0]; });
     fixedLabel=(d.variants.fixed||[]).map(a=>a.option).filter(Boolean).join(' · ');
+  }
+  if(found && S.waOrd.blank && !S.waOrd.base){
+    // הזמנה ריקה: מוצר האתר הראשון הופך למוצר הראשי — בדיוק כמו "הזמנה" מכרטיס מוצר
+    S.waOrd.base=d;
+    S.waOrd.sel={id:d.id, price:Number(d.price)||0, label:(d.attributes||[]).map(a=>a.option).join(' · '), permalink:d.permalink};
+    S.waOrd.qty=1; S.waOrd.gc=null; S.waOrd.gcInfo=null;
+    S.waOrdAddOpen=false; S.waOrdAddQ='';
+    waOrderRender(); waOrdGcLoad();
+    if(!(Number(d.price)>0)) toast('לא נמצא מחיר — הזן מחיר במוצר הראשי',false);
+    return;
   }
   const x={
     sku:String(pid), name:(found?d.name:cat.name)||String(pid), price:price, qty:1, found:found,
@@ -7975,14 +8056,20 @@ async function waOrderSubmit(payment){
   // פריטים נוספים: מחוברים לאתר → לפי מזהה; פריטי קופה בלבד → שורה מותאמת עם מחיר
   const extras=(o.extras||[]).map(x=>({product_id:x.wc_id||0, variation_id:x.variation_id||0,
     quantity:Number(x.qty)||1, price:Number(x.price)||0, name:x.name||'', sku:x.sku||''}));
-  const noName=extras.find(x=>!x.product_id && !(x.name||'').trim());
+  if(d && o.gc && Number(o.gc.price)>0){
+    extras.unshift({gc_plan:o.gc.plan, gc_phone_id:d.parent_id||d.id, gc_phone_name:d.name||'',
+      quantity:o.qty, price:Number(o.gc.price)||0, product_id:0, name:'Green Care', sku:''});
+  }
+  const noName=extras.find(x=>!x.gc_plan && !x.product_id && !(x.name||'').trim());
   if(noName){ toast('חסר תיאור לפריט החופשי — הזן תיאור בשורה',false); return; }
-  const noPrice=extras.find(x=>!x.product_id && !(x.price>0));
+  const noPrice=extras.find(x=>!x.gc_plan && !x.product_id && !(x.price>0));
   if(noPrice){ toast('חסר מחיר לפריט "'+(noPrice.name||noPrice.sku)+'" — הזן מחיר בשורה',false); return; }
   showLoading('יוצר הזמנה…');
   try{
     const r=await api('/api/admin/wa/order/create',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({phone:S.waPhone||'', customer:o.cust, items:(item?[item,...extras]:extras), source:o.blank?'greenos_manual':'whatsapp',
+        tradein:o.tradein?{device:o.tradein.device, credit:o.tradein.credit, product_id:d?(d.parent_id||d.id):0,
+          brand:o.tradein.brand, model:o.tradein.model, storage:o.tradein.storage, cond:o.tradein.cond||{}, notes:o.tradein.notes||''}:null,
         ship_same:o.shipSame!==false, ship_to:o.shipTo,
         shipping_title: o.ship==='pickup'?'איסוף עצמי':sh.t, shipping_total: sh.cost,
         note:o.note||'', payment, installments:o.installments||1})},90000);
@@ -12272,8 +12359,20 @@ function gcwEnsure(){ if(!document.getElementById('gcWidgetHost')) return; gcwRe
 function osTiPaint(){
   const b=osTiBuild(); const t=b.t;
   if(t.widgetMode) return tiWidgetRender(b);
-  const closeFn=t.branchMode?'closeModal()':'paintWcOrder()';
-  const footerHTML=t.branchMode
+  const closeFn=(t.branchMode||t.orderMode)?'closeModal()':'paintWcOrder()';
+  const footerHTML=t.orderMode
+    ?`<div style="display:flex;gap:8px;align-items:flex-end;margin-top:10px">
+      <div style="flex:1"><label class="muted" style="font-size:12px">זיכוי משוער (₪)${b.est&&b.condDone?' — ניתן לעריכה':''}</label>
+        <input id="ostiEst" type="number" value="${escW(t.estVal||'')}" oninput="S._osTi.estVal=this.value" style="${b.inp}"></div>
+    </div>
+    <label class="muted" style="font-size:12px;display:block;margin-top:10px">הערות</label>
+    <textarea id="ostiNotes" rows="2" oninput="S._osTi.notes=this.value" style="${b.inp};resize:vertical;font-family:inherit">${escW(t.notes||'')}</textarea>
+    <div class="muted" style="font-size:11px;margin-top:6px">כמו באתר: ההזמנה בתשלום מלא, הזיכוי ניתן לאחר בדיקת המכשיר.</div>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button class="btn-primary" style="flex:1;padding:10px" onclick="waOrdTiSave()">צרף להזמנה</button>
+      <button class="btn-ghost" style="padding:10px 16px" onclick="closeModal()">ביטול</button>
+    </div>`
+    :t.branchMode
     ?`<div style="display:flex;gap:8px;margin-top:14px">
         <button class="btn-ghost" style="flex:1;padding:10px" onclick="closeModal()">סגור</button>
       </div>`
@@ -12287,9 +12386,9 @@ function osTiPaint(){
       <button class="btn-primary" style="flex:1;padding:10px" onclick="osCreateTradein()">צור רשומה</button>
       <button class="btn-ghost" style="padding:10px 16px" onclick="paintWcOrder()">ביטול</button>
     </div>`;
-  document.getElementById('modalRoot').innerHTML=`<div class="overlay" onclick="closeModal()"><div class="modal" style="max-width:460px;max-height:88vh;overflow-y:auto;text-align:right;position:relative" onclick="event.stopPropagation()">
+  document.getElementById('modalRoot').innerHTML=`<div class="overlay" onclick="closeModal()"${t.orderMode?' style="z-index:300"':''}><div class="modal" style="max-width:460px;max-height:88vh;overflow-y:auto;text-align:right;position:relative" onclick="event.stopPropagation()">
     <button class="dr-x" style="position:absolute;top:10px;inset-inline-start:10px" onclick="${closeFn}">✕</button>
-    <div style="font-weight:800;margin-bottom:12px">${t.branchMode?'🔄 מחשבון טרייד-אין <span class="muted" style="font-weight:600;font-size:12px">· תמחור פנימי</span>':'🔄 צירוף טרייד-אין'}</div>
+    <div style="font-weight:800;margin-bottom:12px">${t.orderMode?'🔄 טרייד-אין להזמנה':t.branchMode?'🔄 מחשבון טרייד-אין <span class="muted" style="font-weight:600;font-size:12px">· תמחור פנימי</span>':'🔄 צירוף טרייד-אין'}</div>
     ${b.deviceHTML}
     ${b.condHTML}
     ${b.battHTML}

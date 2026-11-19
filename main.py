@@ -20054,6 +20054,66 @@ def _wc_pos_anchor(base: str, k: str, s: str) -> int:
     return int(pid)
 
 
+def _wc_gc_anchor(base: str, k: str, s: str) -> int:
+    """מוצר העוגן של Green Care באתר (sku GM-GREENCARE — נוצר ע"י greenmobile-core).
+    הזמנה מ-GreenOS רושמת את Green Care בדיוק כמו קופת האתר: שורה על העוגן +
+    meta של התוכנית והטלפון (`_gm_gc_plan` / `_gm_gc_phone_id`)."""
+    import requests as _rq
+    v = db.sales_state_get("wc_gc_anchor")
+    if v and str(v).isdigit():
+        return int(v)
+    r = _rq.get(f"{base}/wp-json/wc/v3/products", params={"sku": "GM-GREENCARE"},
+                auth=(k, s), timeout=30)
+    if r.ok and r.json():
+        pid = int(r.json()[0]["id"])
+        db.sales_state_set("wc_gc_anchor", str(pid))
+        return pid
+    raise HTTPException(502, "מוצר Green Care (GM-GREENCARE) לא נמצא באתר")
+
+
+_GC_ORDER_LABEL = {"gc": "Green Care — הרחבת אחריות", "gcp": "Green Care Plus — הגנה מלאה"}
+_GC_ORDER_DESC = {"gc": "הרחבת אחריות שנה שנייה", "gcp": "הגנה מלאה 24 ח׳ · שברים · מסך · נזק מוחלט"}
+
+
+def _gc_short_phone(name: str) -> str:
+    """כמו short_phone באתר: הדגם בלבד (מה שאחרי מקף/פסיק), עד 34 תווים."""
+    import html as _html
+    n = _html.unescape(str(name or ""))
+    for sep in (" – ", " — ", " - ", "، ", ", "):
+        if sep in n:
+            head, tail = n.split(sep, 1)
+            # כותרות החנות: "תיאור שיווקי – Brand Model" → הדגם בצד של המותג הלועזי
+            n = tail if re.search(r"[A-Za-z]", tail) and not re.search(r"[A-Za-z]", head) else head
+            break
+    n = n.strip()
+    return n[:34] + ("…" if len(n) > 34 else "")
+
+
+@app.get("/api/admin/wa/order/greencare")
+def wa_order_greencare(id: int, x_admin_key: Optional[str] = Header(None)):
+    """מחירי Green Care למוצר — מאותו מקור שהאתר מציג ללקוח (gm-services REST)."""
+    _require_admin(x_admin_key)
+    import requests as _rq
+    creds = _wc_creds()
+    if not creds:
+        raise HTTPException(502, "חיבור WooCommerce לא מוגדר")
+    base = creds[0]
+    try:
+        r = _rq.get(f"{base}/wp-json/gm-services/v1/greencare", params={"ids": int(id)}, timeout=20)
+        items = (r.json() or {}).get("items") or {}
+    except Exception as e:  # noqa: BLE001
+        logger.warning("order gc lookup %s failed: %s", id, e)
+        return {"ok": False}
+    if not items:
+        return {"ok": True, "available": False}
+    pid, c = next(iter(items.items()))
+    tiers = c.get("tiers") or {}
+    prices = c.get("prices") or {}
+    return {"ok": True, "available": True, "phone_id": int(pid),
+            "tiers": {t: bool(tiers.get(t)) for t in ("gc", "gcp")},
+            "prices": {t: float(prices.get(t) or 0) for t in ("gc", "gcp")}}
+
+
 class WaOrderItem(BaseModel):
     product_id: int = 0             # parent (או המוצר עצמו אם simple); 0 = פריט קופה שאינו באתר
     variation_id: int = 0
@@ -20061,6 +20121,20 @@ class WaOrderItem(BaseModel):
     price: float = -1               # מחיר ליחידה — חובה לפריט שאינו באתר; דריסה לפריט רגיל
     name: str = ""                  # שם לשורה מותאמת (פריט קופה בלבד)
     sku: str = ""                   # מק"ט קופה — נשמר על השורה
+    gc_plan: str = ""               # gc | gcp → שורת Green Care (כמו קופת האתר)
+    gc_phone_id: int = 0            # מוצר הטלפון המוגן (הורה)
+    gc_phone_name: str = ""
+
+
+class WaOrderTradein(BaseModel):
+    device: str = ""
+    credit: float = 0
+    product_id: int = 0
+    brand: str = ""
+    model: str = ""
+    storage: str = ""
+    cond: dict = {}
+    notes: str = ""
 
 
 class WaOrderCustomer(BaseModel):
@@ -20092,6 +20166,7 @@ class WaOrderCreate(BaseModel):
     payment: str = "none"           # none | link
     installments: int = 1           # תשלומים (לקישור/חיוב)
     source: str = "whatsapp"        # whatsapp | greenos_manual (הזמנה חדשה ריקה מעמוד ההזמנות)
+    tradein: Optional[WaOrderTradein] = None   # כוונת טרייד-אין — נשמרת כמו באתר (תשלום מלא, זיכוי אחרי בדיקה)
 
 
 @app.post("/api/admin/wa/order/create")
@@ -20108,6 +20183,19 @@ def wa_order_create(body: WaOrderCreate, x_admin_key: Optional[str] = Header(Non
     line_items = []
     for it in body.items:
         qty = max(1, int(it.quantity))
+        if it.gc_plan in ("gc", "gcp"):
+            if not (it.price and float(it.price) > 0):
+                raise HTTPException(400, "חסר מחיר ל-Green Care")
+            tot = round(float(it.price) * qty, 2)
+            meta = [{"key": "כיסוי", "value": _GC_ORDER_DESC[it.gc_plan]}]
+            if it.gc_phone_name:
+                meta.append({"key": "למכשיר", "value": _gc_short_phone(it.gc_phone_name)})
+            meta += [{"key": "_gm_gc_plan", "value": it.gc_plan},
+                     {"key": "_gm_gc_phone_id", "value": str(int(it.gc_phone_id or 0))}]
+            line_items.append({"product_id": _wc_gc_anchor(base, k, s), "quantity": qty,
+                               "name": _GC_ORDER_LABEL[it.gc_plan],
+                               "subtotal": str(tot), "total": str(tot), "meta_data": meta})
+            continue
         if it.product_id:
             li = {"product_id": int(it.product_id), "quantity": qty}
             if it.variation_id:
@@ -20153,6 +20241,21 @@ def wa_order_create(body: WaOrderCreate, x_admin_key: Optional[str] = Header(Non
                        "value": body.source if body.source in ("whatsapp", "greenos_manual") else "whatsapp"},
                       {"key": "greenos_wa_phone", "value": body.phone}],
     }
+    ti = body.tradein
+    if ti and (ti.device or ti.model).strip():
+        _allowed = {"power": ("yes", "no"), "screen": ("ok", "scratch", "crack"),
+                    "body": ("ok", "scratch", "dent", "backglass"), "func": ("none", "fault")}
+        cond = {q: str(v) for q, v in (ti.cond or {}).items()
+                if q in _allowed and str(v) in _allowed[q]}
+        device = (ti.device or " ".join(x for x in (ti.brand, ti.model, ti.storage) if x)).strip()
+        intent = {"device": device, "credit": int(round(ti.credit or 0)),
+                  "product_id": int(ti.product_id or 0), "brand": ti.brand, "model": ti.model,
+                  "storage": ti.storage, "cond": cond,
+                  "quoted_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "via": "greenos"}
+        if (ti.notes or "").strip():
+            intent["notes"] = ti.notes.strip()[:300]
+        payload["meta_data"].append({"key": "_gm_tradein_intent",
+                                     "value": json_mod.dumps(intent, ensure_ascii=False)})
     if body.shipping_total or body.shipping_title:
         payload["shipping_lines"] = [{"method_id": "flat_rate",
                                       "method_title": body.shipping_title or "משלוח",
@@ -20162,6 +20265,12 @@ def wa_order_create(body: WaOrderCreate, x_admin_key: Optional[str] = Header(Non
         logger.warning("wc order create failed %s: %s", r.status_code, r.text[:300])
         raise HTTPException(502, f"יצירת הזמנה נכשלה ({r.status_code})")
     o = r.json()
+    if ti and (ti.device or ti.model).strip():
+        try:  # הערת הזמנה כמו באתר — גלויה בכרטיס ההזמנה
+            _rq.post(f"{base}/wp-json/wc/v3/orders/{o['id']}/notes", auth=(k, s), timeout=20,
+                     json={"note": f"🔄 טרייד-אין: {device} · זיכוי משוער ₪{int(round(ti.credit or 0))} · יזוכה לאחר בדיקת המכשיר"})
+        except Exception:  # noqa: BLE001
+            pass
     out = {"order_id": o.get("id"), "number": o.get("number"),
            "total": o.get("total"), "currency": o.get("currency_symbol") or "₪",
            "admin_url": f"{base}/wp-admin/post.php?post={o.get('id')}&action=edit",
