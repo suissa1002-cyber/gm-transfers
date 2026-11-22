@@ -7828,6 +7828,38 @@ def _client_ip(request) -> str:
     return (fwd.split(",")[0].strip() if fwd else (request.client.host if request.client else ""))
 
 
+_ADMIN_FAILS: dict = {}   # ip → [count, first_ts] — הגנת ניחוש סיסמת ניהול (22/11/26)
+_ADMIN_FAIL_MAX, _ADMIN_FAIL_WIN = 12, 3600
+
+
+@app.middleware("http")
+async def _admin_bruteforce_gate(request, call_next):
+    """מפתח ניהול שגוי שוב ושוב מאותו IP → חסימת ה-IP לשעה (כל הבקשות)."""
+    import time as _tm
+    ip = _client_ip(request)
+    rec = _ADMIN_FAILS.get(ip)
+    now = _tm.time()
+    if rec and now - rec[1] > _ADMIN_FAIL_WIN:
+        _ADMIN_FAILS.pop(ip, None)
+        rec = None
+    if rec and rec[0] >= _ADMIN_FAIL_MAX:
+        return JSONResponse({"detail": "too many attempts"}, status_code=429)
+    akey = request.headers.get("x-admin-key", "")
+    if akey and cfg.ADMIN_PASSWORD and akey != cfg.ADMIN_PASSWORD:
+        r = _ADMIN_FAILS.setdefault(ip, [0, now])
+        r[0] += 1
+        if r[0] == _ADMIN_FAIL_MAX:
+            try:
+                _tg_admin(f"🚫 <b>IP נחסם לשעה</b> — {_ADMIN_FAIL_MAX} ניסיונות מפתח ניהול שגוי\nIP <code>{ip}</code>")
+            except Exception:  # noqa: BLE001
+                pass
+    resp = await call_next(request)
+    if request.url.path == "/api/admin/login" and resp.status_code == 401:
+        r = _ADMIN_FAILS.setdefault(ip, [0, now])
+        r[0] += 1
+    return resp
+
+
 @app.middleware("http")
 async def _device_gate(request, call_next):
     p = request.url.path
@@ -7863,6 +7895,9 @@ class DeviceRegIn(BaseModel):
     branch_id: Optional[str] = ""
 
 
+_DEV_REG_RATE: dict = {}
+
+
 @app.post("/api/device/register")
 def device_register(body: DeviceRegIn, request: Request):
     tok = (body.token or "").strip()
@@ -7873,6 +7908,11 @@ def device_register(body: DeviceRegIn, request: Request):
         return {"status": existing["status"]}
     ua = request.headers.get("user-agent", "")
     ip = _client_ip(request)
+    import time as _tmr
+    _rr = _DEV_REG_RATE.setdefault(ip, [])
+    _rr[:] = [t for t in _rr if _tmr.time() - t < 3600] + [_tmr.time()]
+    if len(_rr) > 3:   # ספאם בקשות גישה מאותו IP — לא מציפים את הטלגרם (22/11/26)
+        raise HTTPException(429, "יותר מדי בקשות — נסה מאוחר יותר")
     base = (cfg.APP_BASE_URL or "https://gm-transfers.onrender.com").rstrip("/")
     if False and body.had_branch:
         # ⛔ בוטל 22/11/26 (פריצה): had_branch נשלט ע"י הלקוח — כל אחד אישר לעצמו מכשיר.
