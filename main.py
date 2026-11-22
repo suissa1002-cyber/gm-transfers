@@ -7874,8 +7874,9 @@ def device_register(body: DeviceRegIn, request: Request):
     ua = request.headers.get("user-agent", "")
     ip = _client_ip(request)
     base = (cfg.APP_BASE_URL or "https://gm-transfers.onrender.com").rstrip("/")
-    if body.had_branch:
-        # grandfathering: דפדפן שכבר עבד עם סניף שמור — אישור אוטומטי + יידוע
+    if False and body.had_branch:
+        # ⛔ בוטל 22/11/26 (פריצה): had_branch נשלט ע"י הלקוח — כל אחד אישר לעצמו מכשיר.
+        # כל מכשיר חדש עובר אישור ידני בטלגרם, בלי חריגים.
         db.device_register(tok, body.name or "מכשיר קיים", ua, ip,
                            body.branch_id, "approved", auto=True)
         bn = cfg.branch_name(body.branch_id) if body.branch_id else "?"
