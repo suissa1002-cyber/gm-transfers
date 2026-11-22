@@ -3843,6 +3843,16 @@ def stellr_req_get(rid) -> dict:
         return dict(r) if r else {}
 
 
+def stellr_req_recent(branch, since_ts: int, status: str = "issued") -> list:
+    """בקשות קופה-ידנית שהונפקו בסניף מאז since_ts — לשחזור קוד (סיטי)."""
+    with _conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("""SELECT * FROM stellr_requests WHERE branch = ? AND status = ?
+                          AND created_at >= ? ORDER BY id DESC LIMIT 40"""),
+                    (str(branch), status, int(since_ts)))
+        return [dict(r) for r in cur.fetchall()]
+
+
 def stellr_req_set(rid, status, error="") -> int:
     import time as _t
     with _conn() as c:

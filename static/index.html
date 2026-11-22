@@ -11084,7 +11084,71 @@ function stellrPosManualPaint(dn){
       ${btn('💬 הנפק ושלח בוואטסאפ','#16a34a',"stellrPosRequest('wa')",!sel.length)}
       ${btn('🖨 הנפק והדפס','#2563eb',"stellrPosRequest('print')",!sel.length)}
     </div>
-    <div id="spMsg" style="margin-top:10px;font-size:13px"></div>`;
+    <div id="spMsg" style="margin-top:10px;font-size:13px"></div>
+    <div style="margin-top:12px;text-align:center"><a onclick="stellrRecOpen()" style="font-size:12.5px;color:var(--muted);text-decoration:underline;cursor:pointer">שחזור קוד שכבר הונפק (אבד/לא הודפס)</a></div>`;
+}
+// ── 🔁 שחזור בקופה ידנית: אותו קוד, באישור אסי בטלגרם — לעולם לא מנפיק חדש ──
+async function stellrRecOpen(){
+  const box=document.getElementById('spManBody'); if(!box) return;
+  box.innerHTML='<div class="muted" style="padding:14px;text-align:center">⏳ טוען קודים מ-24 השעות האחרונות…</div>';
+  let rows=[];
+  try{
+    const resp=await fetchT('/api/board/stellr/recent?branch_id='+encodeURIComponent(String(S.branchId||'')),{headers:authH({})},20000);
+    const j=await resp.json().catch(()=>({}));
+    if(!resp.ok){ box.innerHTML='<div style="color:#dc2626;padding:10px">❌ '+escW(j.detail||'טעינה נכשלה')+'</div>'; return; }
+    rows=j.rows||[];
+  }catch(e){ box.innerHTML='<div style="color:#dc2626;padding:10px">❌ בעיית תקשורת</div>'; return; }
+  const B={sony:'Sony',xbox:'Xbox'};
+  const row=r=>{
+    const t=new Date((r.created_at||0)*1000).toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'});
+    const items=(r.items||[]).map(i=>(B[i.brand]||i.brand)+' ₪'+Math.round(i.value)).join(' + ');
+    return `<div style="border:1.5px solid var(--line);border-radius:11px;padding:10px 12px;margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;gap:8px;font-size:14px"><b>${escW(items)}</b><span class="muted">${t}</span></div>
+      <div class="muted" style="font-size:12px;margin:3px 0 8px">בקשה #${r.id}${r.phone4?' · טלפון …'+escW(r.phone4):' · הודפס'}${r.employee?' · '+escW(r.employee):''}</div>
+      <div style="display:flex;gap:7px">
+        <button onclick="stellrRecGo(${r.id},'print')" style="flex:1;padding:9px;border-radius:9px;border:1.5px solid #2563eb;background:#2563eb14;color:#2563eb;font-weight:700;cursor:pointer;font-family:inherit">🖨 הדפסה</button>
+        <button onclick="stellrRecGo(${r.id},'wa')" style="flex:1;padding:9px;border-radius:9px;border:1.5px solid #16a34a;background:#16a34a14;color:#16a34a;font-weight:700;cursor:pointer;font-family:inherit">💬 וואטסאפ</button>
+      </div></div>`;
+  };
+  box.innerHTML=`<div class="muted" style="font-size:12.5px;line-height:1.5;margin-bottom:10px">בחרו את הקוד ששולם ואבד. השחזור נשלח לאישור אסי ומחזיר <b>את אותו קוד</b> — לא מנפיק חדש.</div>
+    <label class="muted" style="font-size:12px">טלפון הלקוח (רק לשליחה בוואטסאפ)</label>
+    <input id="spRecPhone" style="width:100%;box-sizing:border-box;padding:11px;border:1.5px solid var(--line);border-radius:11px;background:var(--bg);color:var(--txt);font-size:16px;font-family:inherit;margin:4px 0 12px" inputmode="tel" placeholder="050-0000000">
+    <div style="max-height:46vh;overflow:auto">${rows.length?rows.map(row).join(''):'<div class="muted" style="text-align:center;padding:14px">לא הונפקו קודים בסניף ב-24 השעות האחרונות</div>'}</div>
+    <div id="spMsg" style="margin-top:10px;font-size:13px"></div>
+    <div style="margin-top:10px;text-align:center"><a onclick="stellrPosManualPaint()" style="font-size:12.5px;color:var(--muted);text-decoration:underline;cursor:pointer">← חזרה להנפקה</a></div>`;
+}
+async function stellrRecGo(rid,mode){
+  const msg=document.getElementById('spMsg');
+  const say=(t,col)=>{ if(msg){ msg.style.color=col||'var(--txt)'; msg.innerHTML=t; } };
+  const phone=(document.getElementById('spRecPhone')||{}).value||'';
+  if(mode==='wa'&&phone.replace(/\D/g,'').length<9){ say('⚠️ הזינו טלפון תקין לשליחה','#dc2626'); return; }
+  say('⏳ שולח בקשת שחזור לאישור אסי…','var(--muted)');
+  let r;
+  try{
+    const resp=await fetchT('/api/board/stellr/recover',{method:'POST',headers:authH({'Content-Type':'application/json'}),
+      body:JSON.stringify({rid,mode,phone,employee:S.employee||'',branch_id:String(S.branchId||'')})},30000);
+    const j=await resp.json().catch(()=>({}));
+    if(!resp.ok){ say('❌ '+escW(j.detail||'הבקשה נכשלה'),'#dc2626'); return; }
+    r=j;
+  }catch(e){ say('❌ בעיית תקשורת — נסו שוב','#dc2626'); return; }
+  say('📨 בקשת השחזור נשלחה לאסי — ממתין לאישור…','#d97706');
+  stellrRecPoll(r.id,mode,0);
+}
+async function stellrRecPoll(id,mode,tries){
+  const msg=document.getElementById('spMsg'); if(!msg) return;
+  const say=(t,col)=>{ msg.style.color=col||'var(--txt)'; msg.innerHTML=t; };
+  if(tries>225){ say('⌛ לא התקבל אישור תוך 15 דק׳ — פנו לאסי','#dc2626'); return; }
+  let r;
+  try{ const resp=await fetchT('/api/board/stellr/recover/'+encodeURIComponent(id),{headers:authH({})},20000); r=await resp.json().catch(()=>({})); }
+  catch(e){ setTimeout(()=>stellrRecPoll(id,mode,tries+1),4000); return; }
+  if(r.status==='denied'){ say('❌ אסי דחה את השחזור — בדקו איתו טלפונית','#dc2626'); return; }
+  if(r.status==='expired'){ say('⌛ פג תוקף — נסו שוב','#dc2626'); return; }
+  if(r.status==='approved'){
+    if(mode==='wa'){ say(r.sent?'✅ אושר — הקוד נשלח שוב ללקוח בוואטסאפ':'⚠️ אושר אך השליחה נכשלה — נסו הדפסה',r.sent?'#16a34a':'#d97706'); }
+    else { say('✅ אושר — נפתח חלון הדפסה','#16a34a'); stellrPosPrint(r); }
+    return;
+  }
+  setTimeout(()=>stellrRecPoll(id,mode,tries+1),4000);
 }
 function stellrPosManualAdd(brand,v){
   S.spSel=S.spSel||[];

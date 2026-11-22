@@ -14223,6 +14223,171 @@ def board_stellr_request_status(rid: int, x_admin_key: Optional[str] = Header(No
     return out
 
 
+# ── 🎫 שחזור קוד בקופה ידנית (סיטי) — מחזיר את אותו קוד, אף פעם לא מנפיק חדש.
+# דורש אישור אסי בטלגרם (22/11/26, אחרי הפריצה: שחזור בלי אישור = משיכת קודים).
+def _stlr_rec_get(rec_id: str) -> dict:
+    import json as _json
+    raw = db.sales_state_get(f"stlrrec:{rec_id}")
+    return _json.loads(raw) if raw else {}
+
+
+def _stlr_rec_set(rec_id: str, data: dict):
+    import json as _json
+    db.sales_state_set(f"stlrrec:{rec_id}", _json.dumps(data, ensure_ascii=False))
+
+
+def _stlr_req_codes(req: dict) -> list:
+    okey = f"req-{req['branch']}-{req['id']}"
+    return [c for c in db.stellr_codes_for_order(okey) if c.get("status") in ("issued", "sent")]
+
+
+@app.get("/api/board/stellr/recent")
+def board_stellr_recent(x_admin_key: Optional[str] = Header(None),
+                        x_device_token: Optional[str] = Header(None), branch_id: str = ""):
+    """רשימת בקשות שהונפקו בסניף ב-24 שעות — בלי הקודים עצמם (סכום/שעה/4 ספרות טלפון)."""
+    import json as _json
+    import time as _t
+    dev = _caller_device(x_admin_key, x_device_token)
+    branch = _device_branch(dev) if dev else str(branch_id or "")
+    if not branch:
+        raise HTTPException(400, "המכשיר לא משויך לסניף")
+    out = []
+    for r in db.stellr_req_recent(branch, int(_t.time()) - 86400):
+        try:
+            items = _json.loads(r.get("items") or "[]")
+        except Exception:  # noqa: BLE001
+            items = []
+        ph = re.sub(r"\D", "", str(r.get("phone") or ""))
+        out.append({"id": r["id"], "created_at": r.get("created_at"),
+                    "items": [{"brand": i.get("brand"), "value": i.get("value")} for i in items],
+                    "total": sum(float(i.get("value") or 0) for i in items),
+                    "phone4": ph[-4:] if ph else "", "employee": r.get("requested_by") or ""})
+    return {"rows": out}
+
+
+@app.post("/api/board/stellr/recover")
+def board_stellr_recover(payload: dict, x_admin_key: Optional[str] = Header(None),
+                         x_device_token: Optional[str] = Header(None)):
+    """בקשת שחזור: {rid, mode: print|wa, phone}. יוצר בקשה ממתינה לאישור אסי בטלגרם."""
+    import json as _json
+    import secrets as _sec
+    import time as _t
+    dev = _caller_device(x_admin_key, x_device_token)
+    branch = _device_branch(dev) if dev else str(payload.get("branch_id") or "")
+    req = db.stellr_req_get(int(payload.get("rid") or 0))
+    if not req or str(req.get("branch")) != str(branch):
+        raise HTTPException(404, "הבקשה לא נמצאה בסניף הזה")
+    if req.get("status") != "issued" or not _stlr_req_codes(req):
+        raise HTTPException(400, "לבקשה הזו לא הונפק קוד — אין מה לשחזר")
+    if int(_t.time()) - int(req.get("created_at") or 0) > 86400:
+        raise HTTPException(400, "שחזור אפשרי עד 24 שעות — לשחזור ישן פנו לאסי")
+    mode = "wa" if payload.get("mode") == "wa" else "print"
+    phone = re.sub(r"\D", "", str(payload.get("phone") or ""))
+    if mode == "wa" and len(phone) < 9:
+        raise HTTPException(400, "מספר טלפון לא תקין לשליחה")
+    rec_id = _sec.token_hex(6)
+    _stlr_rec_set(rec_id, {"rid": req["id"], "branch": str(branch), "mode": mode, "phone": phone,
+                           "status": "pending", "at": int(_t.time()),
+                           "employee": str(payload.get("employee") or "")[:40]})
+    try:
+        items = _json.loads(req.get("items") or "[]")
+    except Exception:  # noqa: BLE001
+        items = []
+    bname = {"sony": "Sony PlayStation", "xbox": "Xbox"}
+    lines = " + ".join(f"{bname.get(i.get('brand'), i.get('brand'))} ₪{int(float(i.get('value') or 0))}"
+                       for i in items)
+    from datetime import datetime as _dtm
+    when = _dtm.fromtimestamp(int(req.get("created_at") or 0)).strftime("%H:%M %d/%m")
+    orig_ph = re.sub(r"\D", "", str(req.get("phone") or ""))
+    _tg_admin(f"🔁 <b>בקשת שחזור קוד — קופה ידנית</b>\n"
+              f"סניף <b>{cfg.branch_name(int(branch))}</b>"
+              f"{' · ' + str(payload.get('employee'))[:40] if payload.get('employee') else ''}\n"
+              f"בקשה #{req['id']} מ-{when}: {lines}\n"
+              f"{'טלפון מקורי …' + orig_ph[-4:] if orig_ph else 'במקור: הדפסה'}\n"
+              f"מסירה עכשיו: {'וואטסאפ ל-' + phone if mode == 'wa' else '🖨 הדפסה בעמדה'}\n"
+              f"<i>אותו קוד שכבר הונפק — לא מנפיק חדש</i>",
+              buttons=[{"text": "✅ אשר שחזור", "callback_data": f"strec:ok:{rec_id}"},
+                       {"text": "❌ דחה", "callback_data": f"strec:no:{rec_id}"}])
+    return {"ok": True, "id": rec_id, "status": "pending"}
+
+
+@app.get("/api/board/stellr/recover/{rec_id}")
+def board_stellr_recover_status(rec_id: str, x_admin_key: Optional[str] = Header(None),
+                                x_device_token: Optional[str] = Header(None)):
+    dev = _caller_device(x_admin_key, x_device_token)
+    rec = _stlr_rec_get(rec_id)
+    if not rec:
+        raise HTTPException(404, "בקשה לא נמצאה")
+    if dev and _device_branch(dev) != str(rec.get("branch")):
+        raise HTTPException(403, "הבקשה שייכת לסניף אחר")
+    out = {"id": rec_id, "status": rec.get("status"), "mode": rec.get("mode"),
+           "sent": bool(rec.get("sent")), "is_uat": stellr.is_uat()}
+    if rec.get("status") == "approved" and rec.get("mode") == "print":
+        req = db.stellr_req_get(int(rec["rid"]))
+        codes = _stlr_req_codes(req) if req else []
+        out["codes"] = [dict(zip(("pan", "pin"), _stellr_display(c["pan"], c.get("pin"))),
+                             name=c["wc_name"], value=c["value"]) for c in codes]
+        out["bill"] = f"בקשה {rec['rid']} (שחזור)"
+    return out
+
+
+def _tg_recover_callback(cb: dict, data: str):
+    import requests as _rq
+    import time as _t
+    try:
+        _rq.post(f"https://api.telegram.org/bot{TG_BOT}/answerCallbackQuery",
+                 json={"callback_query_id": cb.get("id")}, timeout=10)
+    except Exception:  # noqa: BLE001
+        pass
+    msg = cb.get("message") or {}
+    chat = (msg.get("chat") or {}).get("id")
+    if str(chat or "") != str(TG_ADMIN_CHAT):
+        return {"ok": True}
+
+    def _edit(suffix):
+        try:
+            _rq.post(f"https://api.telegram.org/bot{TG_BOT}/editMessageText",
+                     json={"chat_id": chat, "message_id": msg.get("message_id"),
+                           "text": (msg.get("text") or "") + "\n\n" + suffix}, timeout=15)
+        except Exception:  # noqa: BLE001
+            pass
+    try:
+        _, act, rec_id = data.split(":", 2)
+    except ValueError:
+        return {"ok": True}
+    rec = _stlr_rec_get(rec_id)
+    if not rec or rec.get("status") != "pending":
+        _edit("ℹ️ הבקשה כבר טופלה או לא נמצאה")
+        return {"ok": True}
+    if int(_t.time()) - int(rec.get("at") or 0) > 1800:
+        rec["status"] = "expired"; _stlr_rec_set(rec_id, rec)
+        _edit("⌛ פג תוקף (מעל 30 דק׳) — העובד יגיש שוב")
+        return {"ok": True}
+    if act != "ok":
+        rec["status"] = "denied"; _stlr_rec_set(rec_id, rec)
+        _edit("❌ נדחה")
+        return {"ok": True}
+    rec["status"] = "approved"
+    if rec.get("mode") == "wa":
+        import wa
+        req = db.stellr_req_get(int(rec["rid"]))
+        n = 0
+        for c in (_stlr_req_codes(req) if req else []):
+            _code, _pin = _stellr_display(c["pan"], c.get("pin"))
+            try:
+                wa.send_code(rec["phone"], c["wc_name"], _code + (f" · PIN: {_pin}" if _pin else ""))
+                n += 1
+            except Exception as e:  # noqa: BLE001
+                logger.warning("stellr recover wa send failed: %s", e)
+        rec["sent"] = n > 0
+        _stlr_rec_set(rec_id, rec)
+        _edit(f"✅ אושר — {n} קודים נשלחו שוב בוואטסאפ" if n else "⚠️ אושר אך השליחה נכשלה")
+    else:
+        _stlr_rec_set(rec_id, rec)
+        _edit("✅ אושר — הקוד מודפס בעמדה")
+    return {"ok": True}
+
+
 def _tg_webhook_secret() -> str:
     import hashlib
     return hashlib.sha256(("gmtg:" + TG_BOT).encode()).hexdigest()[:32]
@@ -14324,6 +14489,8 @@ async def tg_admin_webhook(request: Request, background: BackgroundTasks):
     data = str(cb.get("data") or "")
     if data.startswith("dev:"):
         return _tg_device_callback(cb, data)
+    if data.startswith("strec:"):
+        return _tg_recover_callback(cb, data)
     if not data.startswith("stlr:"):
         background.add_task(_tg_forward_to_invoice, raw)
         return {"ok": True}
