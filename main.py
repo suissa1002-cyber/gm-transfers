@@ -7935,8 +7935,8 @@ def device_register(body: DeviceRegIn, request: Request):
     if len(name) < 2:
         raise HTTPException(400, "נדרש שם מבקש")
     db.device_register(tok, name[:60], ua, ip, body.branch_id, "pending")
-    ok_url = f"{base}/device-action?token={tok}&action=approve&sig={_sig(tok,'approve')}"
-    no_url = f"{base}/device-action?token={tok}&action=deny&sig={_sig(tok,'deny')}"
+    _short = hashlib.sha256(tok.encode()).hexdigest()[:16]
+    db.sales_state_set(f"devreq:{_short}", tok)
     try:
         _known = {d.get("ip") for d in db.device_list()
                   if d.get("status") == "approved" and d.get("ip")}
@@ -7949,8 +7949,10 @@ def device_register(body: DeviceRegIn, request: Request):
               f"👤 מבקש: <b>{name}</b>\n"
               f"💻 {_ua_human(ua)}\n🌐 IP: <code>{ip}</code>\n"
               f"לאשר כניסה?",
-              buttons=[{"text": "✅ אשר", "url": ok_url},
-                       {"text": "❌ דחה", "url": no_url}])
+              buttons=([{"text": "✅ אשר", "callback_data": f"dev:ok:{_short}"},
+                        {"text": "❌ דחה", "callback_data": f"dev:no:{_short}"}] if ip in _known else
+                       [{"text": "❌ דחה", "callback_data": f"dev:no:{_short}"},
+                        {"text": "⚠️ אשר (IP לא מוכר)", "callback_data": f"dev:ask:{_short}"}]))
     return {"status": "pending"}
 
 
@@ -8032,8 +8034,13 @@ def device_action(token: str, action: str, sig: str):
     d = db.device_get(token)
     if not d:
         raise HTTPException(404, "device not found")
-    db.device_set_status(token, "approved" if action == "approve" else "denied")
-    msg = "✅ המכשיר אושר — אפשר לסגור את החלון" if action == "approve" else "❌ הבקשה נדחתה"
+    if d.get("status") != "pending":
+        # ⛔ 22/11/26: קישור ישן לא משנה החלטה שכבר התקבלה (לחיצת "אשר" בטעות אחרי דחייה)
+        action = "approve" if d.get("status") == "approved" else "deny"
+        msg = "ℹ️ הבקשה כבר טופלה — " + ("מאושר" if action == "approve" else "נדחתה") + ". לא בוצע שינוי."
+    else:
+        db.device_set_status(token, "approved" if action == "approve" else "denied")
+        msg = "✅ המכשיר אושר — אפשר לסגור את החלון" if action == "approve" else "❌ הבקשה נדחתה"
     from fastapi.responses import HTMLResponse
     return HTMLResponse(f"""<!doctype html><html dir="rtl"><head><meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1"></head>
@@ -14251,6 +14258,56 @@ def _tg_forward_to_invoice(raw: bytes):
         logger.warning("tg forward to invoice-manager failed: %s", e)
 
 
+def _tg_device_callback(cb: dict, data: str):
+    """אישור/דחיית מכשיר מכפתורי טלגרם — אחרי לחיצה הכפתורים נעלמים (22/11/26).
+    IP לא מוכר: 'אשר' הוא שלב ביניים שמבקש אישור שני מפורש."""
+    import requests as _rq
+    try:
+        _rq.post(f"https://api.telegram.org/bot{TG_BOT}/answerCallbackQuery",
+                 json={"callback_query_id": cb.get("id")}, timeout=10)
+    except Exception:  # noqa: BLE001
+        pass
+    msg = cb.get("message") or {}
+    chat = (msg.get("chat") or {}).get("id")
+    if str(chat or "") != str(TG_ADMIN_CHAT):
+        return {"ok": True}
+    base_text = (msg.get("text") or "").split("\n\n⚠️ לאשר באמת?")[0]
+
+    def _edit(suffix, buttons=None):
+        body = {"chat_id": chat, "message_id": msg.get("message_id"),
+                "text": base_text + "\n\n" + suffix}
+        if buttons:
+            body["reply_markup"] = {"inline_keyboard": [buttons]}
+        try:
+            _rq.post(f"https://api.telegram.org/bot{TG_BOT}/editMessageText", json=body, timeout=15)
+        except Exception:  # noqa: BLE001
+            pass
+    try:
+        _, act, short = data.split(":", 2)
+    except ValueError:
+        return {"ok": True}
+    tok = db.sales_state_get(f"devreq:{short}") or ""
+    d = db.device_get(tok) if tok else None
+    if not d:
+        _edit("⚠️ הבקשה לא נמצאה")
+        return {"ok": True}
+    if d.get("status") != "pending":
+        _edit("ℹ️ כבר טופל: " + ("✅ מאושר" if d.get("status") == "approved" else "❌ נדחה"))
+        return {"ok": True}
+    if act == "ask":
+        _edit("⚠️ לאשר באמת? ה-IP לא שייך לאף סניף מוכר.",
+              [{"text": "❌ דחה", "callback_data": f"dev:no:{short}"},
+               {"text": "כן, אני בטוח — אשר", "callback_data": f"dev:ok:{short}"}])
+        return {"ok": True}
+    if act == "ok":
+        db.device_set_status(tok, "approved")
+        _edit("✅ אושר")
+    else:
+        db.device_set_status(tok, "denied")
+        _edit("❌ נדחה")
+    return {"ok": True}
+
+
 @app.post("/api/tg/webhook")
 async def tg_admin_webhook(request: Request, background: BackgroundTasks):
     """webhook של הבוט המשותף — ראוטר: כפתורי stlr: (הנפקות קופה) מטופלים כאן,
@@ -14265,6 +14322,8 @@ async def tg_admin_webhook(request: Request, background: BackgroundTasks):
         return {"ok": True}
     cb = upd.get("callback_query") or {}
     data = str(cb.get("data") or "")
+    if data.startswith("dev:"):
+        return _tg_device_callback(cb, data)
     if not data.startswith("stlr:"):
         background.add_task(_tg_forward_to_invoice, raw)
         return {"ok": True}
