@@ -7830,6 +7830,11 @@ def _client_ip(request) -> str:
 
 _ADMIN_FAILS: dict = {}   # ip → [count, first_ts] — הגנת ניחוש סיסמת ניהול (22/11/26)
 _ADMIN_FAIL_MAX, _ADMIN_FAIL_WIN = 12, 3600
+# תוקף 22/11/26 — חסימה מלאה (כל הבקשות)
+_BANNED_IPS = {"67.159.48.148", "67.159.48.149", "208.87.242.97", "134.195.101.120",
+               "134.195.101.180", "108.181.24.43", "207.32.218.91", "18.181.82.9",
+               "103.62.49.162", "114.37.228.166"}
+_BANNED_PREFIXES = ("67.159.48.",)
 
 
 @app.middleware("http")
@@ -7844,6 +7849,8 @@ async def _admin_bruteforce_gate(request, call_next):
         rec = None
     if rec and rec[0] >= _ADMIN_FAIL_MAX:
         return JSONResponse({"detail": "too many attempts"}, status_code=429)
+    if ip in _BANNED_IPS or any(ip.startswith(p) for p in _BANNED_PREFIXES):
+        return JSONResponse({"detail": "forbidden"}, status_code=403)
     akey = request.headers.get("x-admin-key", "")
     if akey and cfg.ADMIN_PASSWORD and akey != cfg.ADMIN_PASSWORD:
         r = _ADMIN_FAILS.setdefault(ip, [0, now])
@@ -7930,7 +7937,15 @@ def device_register(body: DeviceRegIn, request: Request):
     db.device_register(tok, name[:60], ua, ip, body.branch_id, "pending")
     ok_url = f"{base}/device-action?token={tok}&action=approve&sig={_sig(tok,'approve')}"
     no_url = f"{base}/device-action?token={tok}&action=deny&sig={_sig(tok,'deny')}"
+    try:
+        _known = {d.get("ip") for d in db.device_list()
+                  if d.get("status") == "approved" and d.get("ip")}
+    except Exception:  # noqa: BLE001
+        _known = set()
+    _ipflag = ("✅ IP של מכשיר מאושר קיים" if ip in _known else
+               "⚠️ <b>IP לא מוכר — כנראה לא סניף. לא לאשר בלי לוודא!</b>")
     _tg_admin(f"🔐 <b>מכשיר חדש מבקש גישה למערכת</b>\n"
+              f"{_ipflag}\n"
               f"👤 מבקש: <b>{name}</b>\n"
               f"💻 {_ua_human(ua)}\n🌐 IP: <code>{ip}</code>\n"
               f"לאשר כניסה?",
