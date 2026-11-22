@@ -8099,7 +8099,8 @@ from fastapi import Response as _Resp  # noqa: E402
 
 def _embed_cookie_val() -> str:
     secret = os.getenv("SENTINEL_KEY", "") or cfg.ADMIN_PASSWORD or "gm"
-    return _hmac.new(secret.encode(), b"embed", hashlib.sha256).hexdigest()[:24]
+    # v2 (22/11/26): רוטציה אחרי פריצה — עוגיות שהונפקו לתוקף נפסלות
+    return _hmac.new(secret.encode(), b"embed-v2-221126", hashlib.sha256).hexdigest()[:24]
 
 
 @app.post("/api/embed/session")
@@ -18958,7 +18959,8 @@ def _stock_watch_add(body: StockWatchAddIn):
 
 
 @app.post("/api/admin/stock-watch/{watch_id}/close")
-def stock_watch_close(watch_id: int):
+def stock_watch_close(watch_id: int, x_admin_key: Optional[str] = Header(None)):
+    _require_admin(x_admin_key)   # ⛔ 22/11/26: היה פתוח לגמרי — תוקף מחק רישומי המתנה
     """סגירת רישום ברשימת ההמתנה (הלקוח כבר עודכן ידנית / לא רלוונטי) — כדי שלא תצא לו
     הודעת "חזר למלאי" כפולה כשהמלאי ייקלט בקופה. (19/10/2026: אורן, POCO F9 Ultra)"""
     import requests as _rq
