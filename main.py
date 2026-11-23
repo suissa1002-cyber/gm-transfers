@@ -15681,6 +15681,7 @@ class OrderSwapIn(BaseModel):
     price: Optional[float] = None      # מחיר ליחידה; None = מחיר האתר
     rebroadcast: bool = True
     wc_id: int = 0                     # מוצר/וריאציה באתר לשורה, כשהמק"ט לא מחובר לאתר
+    display_name: str = ""             # שם השורה בהזמנה כשהמוצר באתר לא תואם למק"ט (PS5 Digital→Blu-ray)
 
 
 def _swap_rebroadcast(o: dict, old_sku: str, old_name: str, new_sku: str, new_name: str,
@@ -15815,6 +15816,11 @@ def admin_order_swap_item(oid: int, body: OrderSwapIn, x_admin_key: Optional[str
               + ([{"key": "_gm_pos_sku", "value": new_sku}] if pos_override else [])}
     if is_var:
         new_li["variation_id"] = int(wp.get("id"))
+    disp = re.sub(r"\s+", " ", (body.display_name or "")).strip()[:190]
+    if disp and pos_override:
+        # WC REST מחייב מוצר לשורה, אבל השם נשמר כמו שנשלח — הלקוח רואה את המוצר האמיתי
+        new_li["name"] = disp
+        new_li["meta_data"].append({"key": "_gm_display_override", "value": "1"})
     # quantity=0 על השורה הקיימת = הסרה (WC REST); ⚠️ בלי 'status' — לא נוגעים בסטטוס
     payload = {"line_items": [{"id": int(li["id"]), "quantity": 0}, new_li]}
     pr = _rq.put(f"{base}/wp-json/wc/v3/orders/{oid}", json=payload, auth=(k, s), timeout=45)

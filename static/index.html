@@ -12712,6 +12712,9 @@ async function wswPick(sku,serial){
   // מק״ט לא מחובר לאתר → מציעים וריאציה של המוצר שבשורה (ההתאמה הטובה ביותר מסומנת)
   const opts=p.wc_options||[];
   W.wcId=(!p.wc&&opts.length&&opts[0].score>0&&!(opts[1]&&opts[1].score===opts[0].score))?opts[0].id:0;
+  // 23/11/26: מוצר באתר בלי וריאציה תואמת (PS5 Digital → Blu-ray) — שם שיוצג ללקוח
+  W.dispName=null;
+  if(!p.wc&&opts.length===1&&!opts[0].parent_id) W.wcId=opts[0].id;
   wswPaint();
 }
 function wswPaint(){
@@ -12749,7 +12752,12 @@ function wswPaint(){
         <select onchange="S._wsw.wcId=Number(this.value)||0;wswPaint()" style="width:100%;padding:9px 11px;border-radius:10px;border:1px solid ${optSel?'var(--line)':'#b45309'};background:var(--bg);color:var(--txt);font-size:13.5px">
           <option value="">— בחר וריאציה —</option>
           ${opts.map(o=>`<option value="${o.id}" ${o.id===W.wcId?'selected':''}>${escW(o.label||('#'+o.id))} · ${wswMoney(o.price)}${o.score>0?' ✓ מתאים':''}${o.status&&o.status!=='publish'?' (לא פעיל)':''}</option>`).join('')}
-        </select></div>`
+        </select>
+        ${optSel?`<div style="margin-top:8px"><b style="font-size:13px">שם המוצר בהזמנה</b>
+          <div class="muted" style="font-size:12px;margin:2px 0 5px">${optSel.score>0?'ריק = השם של הוריאציה באתר.':'⚠️ הוריאציה לא תואמת למק״ט — הלקוח יראה את השם שכאן, לא את שם המוצר באתר.'}</div>
+          <input id="wswName" type="text" value="${escW(wswDispName())}" placeholder="השם מהאתר" oninput="S._wsw.dispName=this.value"
+            style="width:100%;padding:8px 10px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:13.5px"></div>`:''}
+        </div>`
       :'<div style="color:#dc2626;font-size:12.5px;margin-top:8px">⚠️ המק״ט לא מחובר למוצר באתר, ולמוצר שבשורה אין וריאציות לבחירה.</div>')}
     <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:9px">${stockChips}</div>
     ${serHTML}
@@ -12766,6 +12774,12 @@ function wswPaint(){
   </div>`;
   wswDiff();
 }
+function wswDispName(){
+  const W=S._wsw, p=W&&W.pick; if(!p) return '';
+  if(W.dispName!=null) return W.dispName;
+  const o=(p.wc_options||[]).find(x=>x.id===W.wcId);
+  return (o&&o.score>0)?'':(p.name||'');
+}
 function wswDiff(){
   const W=S._wsw; const el=document.getElementById('wswDiff'); if(!W||!el) return;
   const unit=Number((document.getElementById('wswPrice')||{}).value||0);
@@ -12779,13 +12793,14 @@ async function wswConfirm(){
   if(!(unit>=0)){ toast('מחיר לא תקין',false); return; }
   const rb=!!((document.getElementById('wswRb')||{}).checked);
   const _o=(W.pick.wc_options||[]).find(o=>o.id===W.wcId);
-  const nm=(W.pick.wc&&W.pick.wc.name)||(_o?`${W.line.name.split(' - ')[0]} (${_o.label})`:'')||W.pick.name||W.pick.sku;
+  const _dn=W.pick.wc?'':wswDispName().trim();
+  const nm=(W.pick.wc&&W.pick.wc.name)||_dn||(_o?`${W.line.name.split(' - ')[0]} (${_o.label})`:'')||W.pick.name||W.pick.sku;
   if(!confirm(`להחליף בהזמנה:\n${W.line.name}\n← ${nm}${W.serial?`\nסידורי ${W.serial}`:''}\nמחיר ${wswMoney(unit*Number(W.line.qty||1))}?`)) return;
   showLoading('מחליף מוצר בהזמנה…');
   let r=null;
   try{
     r=await api(`/api/admin/orders/${W.oid}/swap-item`,{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({line_id:W.line.line_id,sku:W.pick.sku,serial:W.serial||'',price:unit,rebroadcast:rb,wc_id:W.pick.wc?0:(W.wcId||0)})},120000);
+      body:JSON.stringify({line_id:W.line.line_id,sku:W.pick.sku,serial:W.serial||'',price:unit,rebroadcast:rb,wc_id:W.pick.wc?0:(W.wcId||0),display_name:_dn})},120000);
   }catch(e){ hideLoading(); toast((e&&e.detail)||'ההחלפה נכשלה',false); return; }
   hideLoading(); wswClose();
   const bn={1:'גן העיר',2:'סטאר',3:'סיטי',4:'עד הלום',5:'אתר'};
