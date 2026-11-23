@@ -15866,6 +15866,70 @@ def admin_order_swap_item(oid: int, body: OrderSwapIn, x_admin_key: Optional[str
             "ctx": _order_swap_ctx(nj)}
 
 
+class OrderRepriceIn(BaseModel):
+    line_id: int
+    price: float                       # מחיר ליחידה החדש
+
+
+@app.post("/api/admin/orders/{oid}/reprice-item")
+def admin_order_reprice_item(oid: int, body: OrderRepriceIn, x_admin_key: Optional[str] = Header(None),
+                             x_device_token: Optional[str] = Header(None)):
+    """עדכון מחיר של שורה בהזמנה (אסי 23/11/26: אחרי החלפה ששכחו לעדכן בה מחיר).
+    לא נוגע בסטטוס. ההפרש נרשם בהיסטוריית ההחלפות → 'פתוח לגבייה' / 'מגיע החזר' מתעדכנים."""
+    _require_admin(x_admin_key)
+    import requests as _rq
+    actor = _actor_name(x_admin_key, x_device_token) or "GreenOS"
+    base, k, s = _wc_creds()
+    r = _rq.get(f"{base}/wp-json/wc/v3/orders/{oid}", auth=(k, s), timeout=45)
+    if not r.ok:
+        raise HTTPException(404, "הזמנה לא נמצאה")
+    o = r.json()
+    if o.get("status") in _SWAP_LOCKED:
+        raise HTTPException(400, f"אי אפשר לשנות מחיר בהזמנה בסטטוס '{o.get('status')}'")
+    li = next((x for x in (o.get("line_items") or []) if int(x.get("id") or 0) == body.line_id), None)
+    if not li:
+        raise HTTPException(404, "שורת המוצר לא נמצאה בהזמנה — רענן")
+    unit = float(body.price)
+    if not (0 <= unit <= 200000):
+        raise HTTPException(400, "מחיר לא תקין")
+    qty = max(1, int(li.get("quantity") or 1))
+    old_total = round(float(li.get("total") or 0), 2)
+    new_total = round(unit * qty, 2)
+    if abs(new_total - old_total) < 0.005:
+        raise HTTPException(400, "זה כבר המחיר של השורה")
+    pr = _rq.put(f"{base}/wp-json/wc/v3/orders/{oid}",
+                 json={"line_items": [{"id": int(li["id"]), "subtotal": f"{new_total:.2f}",
+                                       "total": f"{new_total:.2f}"}]},
+                 auth=(k, s), timeout=45)
+    if not pr.ok:
+        logger.warning("reprice-item failed %s: %s %s", oid, pr.status_code, pr.text[:300])
+        raise HTTPException(502, f"עדכון ההזמנה באתר נכשל ({pr.status_code})")
+    nj = pr.json()
+    nl = next((x for x in (nj.get("line_items") or []) if int(x.get("id") or 0) == int(li["id"])), {})
+    got = round(float(nl.get("total") or 0), 2)
+    if abs(got - new_total) > 0.01:
+        logger.warning("reprice-item %s: line total %s != %s after PUT", oid, got, new_total)
+    sku = _li_sku(li)
+    diff = round(new_total - old_total, 2)
+    rec = {"kind": "reprice", "at": db.now_iso(), "by": actor, "old_sku": sku, "old_name": li.get("name") or "",
+           "new_sku": sku, "new_name": li.get("name") or "", "serial": "", "qty": qty,
+           "old_total": old_total, "new_total": new_total, "diff": diff,
+           "old_line": int(li["id"]), "new_line": int(li["id"])}
+    swaps = _swap_state(oid, "order_swaps")
+    swaps.append(rec)
+    _swap_state_set(oid, "order_swaps", swaps)
+    dtxt = (f"תוספת לגבייה ₪{diff:,.0f}" if diff > 0 else f"מגיע ללקוח החזר ₪{-diff:,.0f} (ידני)")
+    note = (f"✏️ עודכן מחיר: {li.get('name')} ({sku}) ×{qty} · ₪{old_total:,.0f}→₪{new_total:,.0f} · {dtxt}"
+            f" · ע״י {actor} (GreenOS)")
+    try:
+        _rq.post(f"{base}/wp-json/wc/v3/orders/{oid}/notes",
+                 json={"note": note, "customer_note": False}, auth=(k, s), timeout=20)
+    except Exception:  # noqa: BLE001
+        pass
+    logger.info("order %s: repriced line %s %s->%s by %s", nj.get("number"), li["id"], old_total, new_total, actor)
+    return {"ok": True, "swap": rec, "order_total": nj.get("total"), "ctx": _order_swap_ctx(nj)}
+
+
 class OrderRemoveIn(BaseModel):
     line_id: int
 
