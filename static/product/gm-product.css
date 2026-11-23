@@ -558,6 +558,8 @@ body.gm-product-new *{text-indent:0!important;}
   .gm-atc .single_add_to_cart_button .gm-atc-lab{white-space:normal;line-height:1.2;}
 }
 .gm-atc .single_add_to_cart_button.disabled{opacity:.5;}
+/* החלפת צירוף ברקע (gm-product.js applyCombo, 23/11/26) — הכפתור לא מהבהב לאפור */
+.gm-atc form.gm-vswitching .single_add_to_cart_button.disabled{opacity:1!important;background:var(--accent)!important;color:#fff!important;}
 /* חיווי עבודה על הכפתור עד שהתוספות נוחתות (הדרור כבר פתוח) */
 .gm-atc .single_add_to_cart_button.gm-busy{opacity:.75;pointer-events:none;}
 /* ═══════════ מוצרים שיכולים להתאים לך — תוספות להזמנה (30/07/2026) ═══════════

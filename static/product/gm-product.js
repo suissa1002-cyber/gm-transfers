@@ -1535,6 +1535,7 @@
     var $wrap = f.find('.single_variation_wrap');
     var h = $wrap.length ? $wrap[0].offsetHeight : 0;
     if (h) $wrap.css({ height: h + 'px', overflow: 'hidden' });
+    f.addClass('gm-vswitching');   /* הכפתור לא מאפיר לרגע בזמן ש-WC מחליף (CSS) */
     window.GM_VSWITCH = true;
     try {
       f.find('select[name^="attribute_"]').val('').trigger('change');
@@ -1548,6 +1549,7 @@
     clearTimeout(applyCombo._t);
     applyCombo._t = setTimeout(function () {
       f.find('.single_variation_wrap').css({ height: '', overflow: '' });
+      f.removeClass('gm-vswitching');
     }, 450);
   }
   function bestFor(attr, val) {
