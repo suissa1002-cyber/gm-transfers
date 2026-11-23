@@ -168,6 +168,7 @@
     }
   });
   $(document).on('reset_data', 'form.variations_form', function () {
+    if (window.GM_VSWITCH) return;   /* החלפת צירוף ברקע — לא לטעון את תמונת ברירת-המחדל באמצע */
     if (BASE_THUMBS) $thumbsBox.html(BASE_THUMBS);
     var $first = $('.gth').first();
     if ($first.length) $first.trigger('click');
@@ -486,6 +487,7 @@
     gmSetSku(variation && variation.sku ? variation.sku : gmParentSku());  /* מק"ט הווריאציה */
   });
   $(document).on('reset_data', 'form.variations_form', function () {
+    if (window.GM_VSWITCH) return;   /* החלפת צירוף ברקע — found_variation יצייר את המחיר הסופי */
     labelAll();
     if (origPrice) $('.pricebox').html(origPrice);
     /* reset_data נורה גם באתחול הסוואצ'ים, לפני found_variation — לא לאפס
@@ -1523,14 +1525,30 @@
     var names = Object.keys(attrs).sort(function (a, b) {
       return a === anchor ? -1 : (b === anchor ? 1 : 0);
     });
-    f.find('select[name^="attribute_"]').val('').trigger('change');
-    var i = 0;
-    (function step() {
-      if (i >= names.length) return;
-      var n = names[i++], v = attrs[n];
-      if (v) f.find('select[name="' + n + '"]').val(v).trigger('change');
-      setTimeout(step, 80);
-    })();
+    /* ⚠️ הכל באותו מחזור (סינכרוני) — אסי 23/11/2026: בגרסה הקודמת היו
+       80ms בין שלב לשלב, והדפדפן צייר את מצב-הביניים המאופס (מחיר-טווח בשתי
+       שורות, כפתור אפור, תמונת ברירת-מחדל) → כל הטופס קפץ ~57px וחזר בכל
+       לחיצה. ברצף סינכרוני אין צביעה באמצע; הסדר (עוגן ראשון) נשמר, ולכן
+       בניית-מחדש של רשימות האפשרויות של WC עדיין עובדת. GM_VSWITCH מסמן
+       למאזיני reset_data לא לצייר את מצב-הביניים, והגובה של אזור הוריאציה
+       ננעל עד שאנימציות ה-show/hide של WC מסתיימות. */
+    var $wrap = f.find('.single_variation_wrap');
+    var h = $wrap.length ? $wrap[0].offsetHeight : 0;
+    if (h) $wrap.css({ height: h + 'px', overflow: 'hidden' });
+    window.GM_VSWITCH = true;
+    try {
+      f.find('select[name^="attribute_"]').val('').trigger('change');
+      names.forEach(function (n) {
+        var v = attrs[n];
+        if (v) f.find('select[name="' + n + '"]').val(v).trigger('change');
+      });
+    } finally {
+      window.GM_VSWITCH = false;
+    }
+    clearTimeout(applyCombo._t);
+    applyCombo._t = setTimeout(function () {
+      f.find('.single_variation_wrap').css({ height: '', overflow: '' });
+    }, 450);
   }
   function bestFor(attr, val) {
     var vars = variations();
