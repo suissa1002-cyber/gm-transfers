@@ -15586,6 +15586,25 @@ def _order_swap_ctx(o: dict) -> dict:
             "refund_owed": round(max(0.0, -net), 2)}
 
 
+def _pos_item_live(sku: str) -> dict:
+    """מוצר קופה שעוד לא נכנס לעותק הקטלוג (נפתח היום — הקטלוג מתרענן במחזור).
+    אסי 23/11/26: מק"ט 521030 חדש לא נמצא בחיפוש ההחלפה. מחזיר רשומה בפורמט catalog_load או {}."""
+    sku = (sku or "").strip()
+    if not re.fullmatch(r"\d{3,9}", sku):
+        return {}
+    try:
+        p = poller.client().get_product(sku) or {}
+    except Exception as e:  # noqa: BLE001
+        logger.info("pos live lookup %s: %s", sku, e)
+        return {}
+    if not p or str(p.get("id") or "") != sku:
+        return {}
+    bc = (p.get("barcode") or "").strip()
+    return {"name": p.get("name") or "", "stock": p.get("currentStock") or 0,
+            "kind": "serial" if p.get("isSerial") else ("barcode" if bc else "other"),
+            "barcode": bc, "active": bool(p.get("isActive"))}
+
+
 @app.get("/api/admin/orders/{oid}/swap/search")
 def admin_order_swap_search(oid: int, q: str, x_admin_key: Optional[str] = Header(None)):
     """חיפוש מוצר חלופי: לפי סידורי (אינדקס סריאל→מוצר) ו/או לפי מק"ט/שם בקטלוג הקופה."""
@@ -15602,8 +15621,14 @@ def admin_order_swap_search(oid: int, q: str, x_admin_key: Optional[str] = Heade
     cat = db.catalog_load() or {}
     words = [w.lower() for w in qq.split() if w]
     prods = []
+    if qq not in cat:                       # מוצר חדש שעוד לא בעותק הקטלוג → ישירות מהקופה
+        live = _pos_item_live(qq)
+        if live:
+            cat = dict(cat)
+            cat[qq] = live
     if qq in cat:                           # מק"ט מדויק קודם
-        prods.append({"sku": qq, "name": cat[qq].get("name") or "", "kind": cat[qq].get("kind")})
+        prods.append({"sku": qq, "name": cat[qq].get("name") or "", "kind": cat[qq].get("kind"),
+                      "stock": cat[qq].get("stock") or 0})
     for sku, it in cat.items():
         if len(prods) >= 15:
             break
@@ -15624,7 +15649,7 @@ def admin_order_swap_sku(oid: int, sku: str, line_id: int = 0, x_admin_key: Opti
     sku = (sku or "").strip()
     if not sku:
         raise HTTPException(400, "חסר מק״ט")
-    cat = (db.catalog_load() or {}).get(sku) or {}
+    cat = (db.catalog_load() or {}).get(sku) or _pos_item_live(sku)
     out = {"sku": sku, "name": cat.get("name") or "", "is_serial": cat.get("kind") == "serial",
            "wc": None, "stock": {}, "serials": [], "branches": {}}
     try:
