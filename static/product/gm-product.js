@@ -1560,7 +1560,10 @@
     var val = it.getAttribute('data-value');
     if (!attr || !val || !variations()) return;
     var combo = bestFor(attr, val);
-    if (!combo) return;
+    /* ⚠️ אין שום וריאציה זמינה עם הערך הזה (למשל 2TB ב-iPhone 18 Pro בלי מחיר,
+       23/11/2026): תוסף הסוואצ'ים היה מאפס את *כל* הבחירות ומשאיר את הטופס
+       אפור. לחיצה כזו לא יכולה להוביל לרכישה — בולעים אותה. */
+    if (!combo) { e.preventDefault(); e.stopPropagation(); return; }
     e.preventDefault(); e.stopPropagation();
     applyCombo(combo, attr);
   }, true);
