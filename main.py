@@ -7824,20 +7824,17 @@ def _ua_human(ua: str) -> str:
 
 
 def _client_ip(request) -> str:
-    fwd = request.headers.get("x-forwarded-for", "")
-    return (fwd.split(",")[0].strip() if fwd else (request.client.host if request.client else ""))
+    """כתובת הלקוח האמיתית.
 
-
-@app.get("/api/admin/ip-diag")
-def ip_diag(request: Request, x_admin_key: Optional[str] = Header(None)):
-    """🔧 זמני (24/11/26): אילו כותרות IP מגיעות מהפרוקסי של Render — לתיקון זיוף X-Forwarded-For."""
-    _require_owner(x_admin_key)
-    h = request.headers
-    keys = ("x-forwarded-for", "cf-connecting-ip", "true-client-ip", "x-real-ip",
-            "x-envoy-external-address", "forwarded", "cf-ray", "x-request-start")
-    return {"headers": {k: h.get(k) for k in keys if h.get(k) is not None},
-            "peer": request.client.host if request.client else None,
-            "client_ip_now": _client_ip(request)}
+    🔒 24/11/26: עד היום נלקח הערך **הראשון** ב-X-Forwarded-For — שהלקוח עצמו שולט בו
+    (נבדק: XFF=67.159.48.148 קיבל 403 של רשימת החסומים). כל החסימות/מגבלות לפי IP היו
+    עקיפות, ואפשר היה להציג בקשת מכשיר "מ-IP של סניף". השירות יושב מאחורי Cloudflare:
+    `CF-Connecting-IP` נקבע ע"י Cloudflare, וניסיון לשלוח אותו מבחוץ נחסם (403) — אמין.
+    בלי הכותרת (קריאה פנימית ברשת של Render) → כתובת החיבור עצמו. ⛔ לא לחזור ל-XFF."""
+    ip = (request.headers.get("cf-connecting-ip") or "").strip()
+    if ip:
+        return ip
+    return request.client.host if request.client else ""
 
 
 _ADMIN_FAILS: dict = {}   # ip → [count, first_ts] — הגנת ניחוש סיסמת ניהול (22/11/26)
@@ -7848,20 +7845,135 @@ _BANNED_IPS = {"67.159.48.148", "67.159.48.149", "208.87.242.97", "134.195.101.1
                "103.62.49.162", "114.37.228.166"}
 _BANNED_PREFIXES = ("67.159.48.",)
 
+# ── 🔒 חסימה אוטומטית על גל דחיות (24/11/26) ──
+# כל 401/403/422 (ו-404 תחת /api/) נספר לפי IP. 40 דחיות ב-10 דקות → חסימה מלאה.
+# חסימה חוזרת מחמירה: שעה → 6 שעות → 24 שעות → 7 ימים. נשמר ב-DB (app_settings
+# `ip_bans`) — לא מתאפס בפריסה. IP "טוב" (מכשיר מאושר / כניסה מאומתת שהצליחה)
+# לא נחסם אוטומטית — רק מתריעים — כדי שסוכן עם מפתח ישן לא ינעל סניף שלם.
+_REJ_MAX, _REJ_WIN = 40, 600
+_BAN_STEPS = (3600, 6 * 3600, 24 * 3600, 7 * 24 * 3600)
+_REJ: dict = {}          # ip → [ts,...] בחלון
+_REJ_PATHS: dict = {}    # ip → {path: n} (לדיווח)
+_IP_BANS: dict = {}      # ip → {"until", "strikes", "at", "reason"}
+_GOOD_IPS: dict = {}     # ip → ts אחרון של בקשה מאומתת שהצליחה
+_SEC_STATE = {"loaded": False, "wave_ts": [], "wave_alert": 0.0, "good_alert": {}}
+_WAVE_MAX, _WAVE_WIN = 150, 600
 
-@app.middleware("http")
+
+def _sec_load():
+    if _SEC_STATE["loaded"]:
+        return
+    _SEC_STATE["loaded"] = True
+    try:
+        raw = db.setting_get("ip_bans") or "{}"
+        _IP_BANS.update({k: v for k, v in json_mod.loads(raw).items() if isinstance(v, dict)})
+    except Exception as e:  # noqa: BLE001
+        logger.warning("ip_bans load failed: %s", e)
+    try:
+        import time as _tm
+        now = _tm.time()
+        for d in db.device_list():
+            if d.get("status") == "approved" and d.get("ip"):
+                _GOOD_IPS.setdefault(d["ip"], now)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("good-ip seed failed: %s", e)
+
+
+def _sec_save():
+    try:
+        import time as _tm
+        now = _tm.time()
+        keep = {k: v for k, v in _IP_BANS.items()
+                if v.get("until", 0) > now or now - v.get("at", 0) < 30 * 86400}
+        db.setting_set("ip_bans", json_mod.dumps(keep), "security")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("ip_bans save failed: %s", e)
+
+
+def _ip_banned(ip: str, now: float) -> bool:
+    if ip in _BANNED_IPS or any(ip.startswith(p) for p in _BANNED_PREFIXES):
+        return True
+    b = _IP_BANS.get(ip)
+    return bool(b and b.get("until", 0) > now)
+
+
+def _is_rejection(status: int, path: str) -> bool:
+    return status in (401, 403, 422) or (status == 404 and path.startswith("/api/"))
+
+
+def _mark_good(request, status: int, ip: str, now: float):
+    """בקשה שהוכיחה זהות והצליחה → IP מוכר (לא ייחסם אוטומטית)."""
+    if status >= 400:
+        return
+    h = request.headers
+    p = request.url.path
+    if (cfg.ADMIN_PASSWORD and h.get("x-admin-key") == cfg.ADMIN_PASSWORD) \
+            or (h.get("x-user-token") and p.startswith("/api/admin/")) \
+            or (h.get("x-device-token") and any(p.startswith(g) for g in _GATED)):
+        _GOOD_IPS[ip] = now
+
+
+def _sec_count(request, status: int, ip: str, now: float):
+    """סופר דחייה; מחזיר (הודעת טלגרם, כפתורים) לשליחה, או (None, None)."""
+    p = re.sub(r"/\d+", "/N", request.url.path)
+    lst = _REJ.setdefault(ip, [])
+    lst[:] = [t for t in lst if now - t < _REJ_WIN] + [now]
+    pc = _REJ_PATHS.setdefault(ip, {})
+    pc[p] = pc.get(p, 0) + 1
+    if len(_REJ_PATHS) > 5000:
+        _REJ_PATHS.clear()
+    msg, btns = None, None
+    if len(lst) >= _REJ_MAX:
+        top = ", ".join(f"{k} ×{v}" for k, v in sorted(pc.items(), key=lambda kv: -kv[1])[:4])
+        if ip in _GOOD_IPS:
+            # IP מוכר (סניף/סוכן) — לא חוסמים, מתריעים פעם בשעה
+            if now - _SEC_STATE["good_alert"].get(ip, 0) > 3600:
+                _SEC_STATE["good_alert"][ip] = now
+                msg = (f"⚠️ <b>הרבה דחיות מ-IP מוכר</b> (סניף/סוכן — לא נחסם)\n"
+                       f"IP <code>{ip}</code> · {len(lst)} ב-10 דק'\n{top}")
+        else:
+            prev = _IP_BANS.get(ip) or {}
+            strikes = int(prev.get("strikes", 0)) + 1
+            ttl = _BAN_STEPS[min(strikes, len(_BAN_STEPS)) - 1]
+            _IP_BANS[ip] = {"until": now + ttl, "strikes": strikes, "at": now, "reason": top[:300]}
+            _SEC_STATE["dirty"] = True
+            hrs = ttl // 3600
+            msg = (f"🚫 <b>IP נחסם אוטומטית ל-{hrs if hrs < 24 else hrs // 24} "
+                   f"{'שעות' if hrs < 24 else 'ימים'}</b> (חסימה #{strikes})\n"
+                   f"IP <code>{ip}</code> · {len(lst)} דחיות ב-10 דק'\n{top}")
+            base = (cfg.APP_BASE_URL or "https://gm-transfers.onrender.com").rstrip("/")
+            btns = [{"text": "🔓 שחרר (אם זה עובד שלנו)",
+                     "url": f"{base}/ip-action?ip={ip}&sig={_sig(ip, 'ip:unban')}"}]
+        lst.clear()
+        pc.clear()
+    # גל מבוזר (כמה כתובות יחד) — התראה אחת לשעה
+    w = _SEC_STATE["wave_ts"]
+    w[:] = [t for t in w if now - t < _WAVE_WIN] + [now]
+    if msg is None and len(w) >= _WAVE_MAX and now - _SEC_STATE["wave_alert"] > 3600:
+        _SEC_STATE["wave_alert"] = now
+        ips = sorted(((k, len([t for t in v if now - t < _WAVE_WIN])) for k, v in _REJ.items()),
+                     key=lambda kv: -kv[1])[:5]
+        msg = (f"🌊 <b>גל דחיות</b> — {len(w)} ב-10 דק' ממספר כתובות\n"
+               + "\n".join(f"<code>{k}</code> ×{n}" for k, n in ips if n))
+    return msg, btns
+
+
 async def _admin_bruteforce_gate(request, call_next):
-    """מפתח ניהול שגוי שוב ושוב מאותו IP → חסימת ה-IP לשעה (כל הבקשות)."""
+    """חסימות IP: רשימה קבועה + חסימה אוטומטית על גל דחיות + ניחוש מפתח ניהול."""
     import time as _tm
+    from starlette.concurrency import run_in_threadpool as _rtp
+    if not _SEC_STATE["loaded"]:
+        await _rtp(_sec_load)
     ip = _client_ip(request)
-    rec = _ADMIN_FAILS.get(ip)
     now = _tm.time()
+    internal = not request.headers.get("cf-connecting-ip")   # קריאה פנימית ברשת Render
+    rec = _ADMIN_FAILS.get(ip)
     if rec and now - rec[1] > _ADMIN_FAIL_WIN:
         _ADMIN_FAILS.pop(ip, None)
         rec = None
     if rec and rec[0] >= _ADMIN_FAIL_MAX:
         return JSONResponse({"detail": "too many attempts"}, status_code=429)
-    if ip in _BANNED_IPS or any(ip.startswith(p) for p in _BANNED_PREFIXES):
+    if not internal and _ip_banned(ip, now):
         return JSONResponse({"detail": "forbidden"}, status_code=403)
     akey = request.headers.get("x-admin-key", "")
     if akey and cfg.ADMIN_PASSWORD and akey != cfg.ADMIN_PASSWORD:
@@ -7876,7 +7988,68 @@ async def _admin_bruteforce_gate(request, call_next):
     if request.url.path == "/api/admin/login" and resp.status_code == 401:
         r = _ADMIN_FAILS.setdefault(ip, [0, now])
         r[0] += 1
+    if not internal:
+        try:
+            _mark_good(request, resp.status_code, ip, now)
+            if _is_rejection(resp.status_code, request.url.path):
+                msg, btns = _sec_count(request, resp.status_code, ip, now)
+                if _SEC_STATE.pop("dirty", False):
+                    await _rtp(_sec_save)
+                if msg:
+                    await _rtp(_tg_admin, msg, btns)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("sec counter failed: %s", e)
     return resp
+
+
+@app.get("/api/admin/ip-bans")
+def ip_bans_list(x_admin_key: Optional[str] = Header(None)):
+    """חסימות IP פעילות + כתובות עם הכי הרבה דחיות כרגע."""
+    _require_owner(x_admin_key)
+    import time as _tm
+    now = _tm.time()
+    active = [{"ip": k, "until": datetime.fromtimestamp(v["until"]).isoformat(timespec="minutes"),
+               "strikes": v.get("strikes"), "reason": v.get("reason")}
+              for k, v in _IP_BANS.items() if v.get("until", 0) > now]
+    hot = sorted(((k, len([t for t in v if now - t < _REJ_WIN])) for k, v in _REJ.items()),
+                 key=lambda kv: -kv[1])[:10]
+    return {"active": active, "static": sorted(_BANNED_IPS), "static_prefixes": list(_BANNED_PREFIXES),
+            "hot": [{"ip": k, "rejections_10m": n} for k, n in hot if n],
+            "good_ips": len(_GOOD_IPS)}
+
+
+class IpUnbanIn(BaseModel):
+    ip: str
+
+
+def _ip_unban(ip: str):
+    b = _IP_BANS.get(ip)
+    if not b:
+        raise HTTPException(404, "ה-IP לא חסום אוטומטית (רשימה קבועה משתנה רק בקוד)")
+    b["until"] = 0
+    _REJ.pop(ip, None)
+    _sec_save()
+    return {"ok": True, "ip": ip}
+
+
+@app.post("/api/admin/ip-bans/unban")
+def ip_bans_unban(body: IpUnbanIn, x_admin_key: Optional[str] = Header(None)):
+    _require_owner(x_admin_key)
+    return _ip_unban((body.ip or "").strip())
+
+
+@app.get("/ip-action")
+def ip_action(ip: str, sig: str):
+    """כפתור השחרור מהטלגרם — חתום HMAC (כמו /branch-action)."""
+    if not _hmac.compare_digest(sig or "", _sig(ip, "ip:unban")):
+        raise HTTPException(403, "bad signature")
+    _ip_unban(ip)
+    try:
+        _tg_admin(f"🔓 IP <code>{ip}</code> שוחרר מחסימה (מכפתור הטלגרם)")
+    except Exception:  # noqa: BLE001
+        pass
+    return HTMLResponse("<meta name=viewport content='width=device-width'><div dir=rtl "
+                        "style='font:20px sans-serif;text-align:center;margin-top:60px'>🔓 ה-IP שוחרר</div>")
 
 
 @app.middleware("http")
@@ -7906,6 +8079,10 @@ async def _device_gate(request, call_next):
                 pass
     return await call_next(request)
 
+
+# 🔒 נרשם אחרי _device_gate → השכבה החיצונית ביותר: חוסמים לפני כל דבר אחר, וסופרים גם
+# את ה-401 ש-_device_gate מחזיר למכשיר לא מאושר.
+app.middleware("http")(_admin_bruteforce_gate)
 
 class DeviceRegIn(BaseModel):
     token: str
