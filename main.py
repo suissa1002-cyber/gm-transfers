@@ -7828,6 +7828,18 @@ def _client_ip(request) -> str:
     return (fwd.split(",")[0].strip() if fwd else (request.client.host if request.client else ""))
 
 
+@app.get("/api/admin/ip-diag")
+def ip_diag(request: Request, x_admin_key: Optional[str] = Header(None)):
+    """🔧 זמני (24/11/26): אילו כותרות IP מגיעות מהפרוקסי של Render — לתיקון זיוף X-Forwarded-For."""
+    _require_owner(x_admin_key)
+    h = request.headers
+    keys = ("x-forwarded-for", "cf-connecting-ip", "true-client-ip", "x-real-ip",
+            "x-envoy-external-address", "forwarded", "cf-ray", "x-request-start")
+    return {"headers": {k: h.get(k) for k in keys if h.get(k) is not None},
+            "peer": request.client.host if request.client else None,
+            "client_ip_now": _client_ip(request)}
+
+
 _ADMIN_FAILS: dict = {}   # ip → [count, first_ts] — הגנת ניחוש סיסמת ניהול (22/11/26)
 _ADMIN_FAIL_MAX, _ADMIN_FAIL_WIN = 12, 3600
 # תוקף 22/11/26 — חסימה מלאה (כל הבקשות)
