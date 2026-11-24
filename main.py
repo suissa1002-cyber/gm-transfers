@@ -959,6 +959,8 @@ def register_recurring_jobs():
     scheduler.add_job(_poll_watchdog_job, "interval", minutes=5,
                       id="poll_watchdog", max_instances=1)
     scheduler.add_job(_alerts_job, "interval", minutes=15, id="alerts", max_instances=1)
+    # 🔴 רשת ביטחון: "שולם" בלי עסקת PayPlus (הונאה 54856, 24/11/26) → בהמתנה + טלגרם
+    scheduler.add_job(_nopay_guard_job, "interval", minutes=2, id="nopay_guard", max_instances=1, coalesce=True)
     # 🟩 GreenDay · לוח מוצרים ← Monday: קבוצות פעילות כל 5 דק', הלוח המלא כל 6 שעות (מכסת API!)
     scheduler.add_job(_greenday_sync_job, "interval", minutes=5, id="greenday_sync",
                       max_instances=1, coalesce=True)
@@ -14936,6 +14938,68 @@ def _orders_latest_raw():
         return prev
     _ORDERS_RAW_CACHE["v"] = (_t.time(), orders)
     return orders
+
+
+_PP_TX_KEYS = {"payplus_transaction_uid", "payplus_response", "payplus_number",
+               "payplus_approval_num", "greenos_payplus_tx", "greenos_payplus_approval"}
+
+
+def _nopay_suspect(o: dict, now=None) -> bool:
+    """הזמנת אתר "בטיפול" בתשלום PayPlus — בלי שום עקבה של עסקה, 3+ דקות אחרי "שולם".
+
+    🔴 24/11/26 (הזמנה 54856): checkout חוזר על הזמנה שבוטלה בהשהיית מלאי סומן "שולם"
+    ע"י WooCommerce בלי לפנות ל-PayPlus (באג needs_payment לפי סטטוס). סניפט WP 54870
+    סוגר את הנתיב; זו רשת הביטחון למקרה שנתיב אחר יתגלה. 3 דקות = זמן ל-callback של
+    PayPlus לכתוב את פרטי העסקה בהזמנה לגיטימית. created_via=checkout בלבד — הזמנות
+    GreenOS (rest-api) משולמות בקישור/בקופה ונבדקות אחרת."""
+    try:
+        if o.get("status") != "processing" or o.get("created_via") != "checkout":
+            return False
+        if not str(o.get("payment_method") or "").startswith("payplus"):
+            return False
+        if float(o.get("total") or 0) <= 0 or str(o.get("transaction_id") or "").strip():
+            return False
+        if _PP_TX_KEYS & {m.get("key") for m in (o.get("meta_data") or [])}:
+            return False
+        paid = o.get("date_paid") or o.get("date_created")
+        now = now or datetime.now()
+        return bool(paid) and (now - datetime.fromisoformat(str(paid)[:19])).total_seconds() >= 180
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _nopay_guard_job():
+    import requests as _rq
+    raw = _orders_latest_raw() or []
+    for o in raw:
+        if not _nopay_suspect(o):
+            continue
+        oid = o.get("id")
+        key = f"nopay_guard:{oid}"
+        if db.sales_state_get(key):
+            continue
+        db.sales_state_set(key, datetime.now().isoformat(timespec="seconds"))
+        held = False
+        creds = _wc_creds()
+        if creds:
+            base, k, s = creds
+            try:
+                _rq.post(f"{base}/wp-json/wc/v3/orders/{oid}/notes", auth=(k, s), timeout=30, json={
+                    "note": "🔴 GreenOS: ההזמנה סומנה 'שולם' אבל אין שום עסקה ב-PayPlus (מספר עסקה/אישור). "
+                            "הועברה לבהמתנה — ⛔ לא למסור/לשלוח עד שמוודאים תשלום ב-PayPlus."})
+                r = _rq.put(f"{base}/wp-json/wc/v3/orders/{oid}", auth=(k, s), timeout=45,
+                            json={"status": "on-hold"})
+                held = r.ok
+            except Exception as e:  # noqa: BLE001
+                logger.warning("nopay guard hold failed %s: %s", oid, e)
+        b = o.get("billing") or {}
+        items = ", ".join((li.get("name") or "")[:40] for li in (o.get("line_items") or [])[:3])
+        _tg_admin(f"🔴 <b>הזמנה 'שולמה' בלי עסקת PayPlus</b> — #{oid}\n"
+                  f"₪{o.get('total')} · {items}\n"
+                  f"{b.get('first_name', '')} {b.get('last_name', '')} · {b.get('email', '')} · {b.get('phone', '')}\n"
+                  f"IP <code>{o.get('customer_ip_address') or '?'}</code>\n"
+                  + ("✅ הועברה ל<b>בהמתנה</b> אוטומטית" if held else "⚠️ <b>לא הצלחתי להעביר לבהמתנה — לעצור ידנית!</b>")
+                  + "\n⛔ לא למסור עד שמוודאים תשלום ב-PayPlus")
 
 
 def _admin_orders_latest_fetch():
