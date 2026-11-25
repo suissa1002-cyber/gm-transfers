@@ -19166,6 +19166,20 @@ def admin_order_cargo(oid: int, body: CargoCreateIn, x_admin_key: Optional[str] 
                      "ct": ct, "body": (r.text or "")[:1500]}, ensure_ascii=False))
             except Exception:  # noqa: BLE001
                 pass
+            # ⚠️ 25/11/2026 (הזמנה 54871): הגשר מחזיר 502 + JSON כש-Cargo עצמם דוחים
+            # ("Shipping provider is temporarily unavailable") — ו-Cloudflare **מחליף** גוף
+            # של 502 בדף שגיאה משלו. לכן גוף לא-JSON לא בהכרח אומר קריסה. בודקים בגשר אם
+            # נשמר משלוח להזמנה: אין → בטוח לנסות שוב, ואומרים את זה במפורש.
+            try:
+                rs = _rq.get(f"{base}/wp-json/gm-cargo/v1/shipment/{oid}", auth=auth,
+                             headers={"User-Agent": _PP_UA}, timeout=30)
+                sj = rs.json() if rs.ok else None
+            except Exception:  # noqa: BLE001
+                sj = None
+            if isinstance(sj, dict) and "shipments" in sj and not sj.get("shipments"):
+                raise HTTPException(502, "Cargo לא זמינים כרגע — המשלוח **לא** נוצר (בדקתי: אין משלוח "
+                                         "רשום להזמנה). זו תקלה אצל Cargo, לא אצלנו — אפשר לנסות שוב "
+                                         "בעוד כמה דקות.")
             raise HTTPException(502, f"יצירת המשלוח נכשלה באמצע (HTTP {r.status_code}). "
                                      "⚠️ ייתכן שהמשלוח בכל זאת נוצר אצל Cargo — בדוק בפורטל Cargo "
                                      "לפני ניסיון חוזר, כדי לא להזמין שליח כפול."
