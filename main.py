@@ -19177,7 +19177,7 @@ def admin_order_cargo(oid: int, body: CargoCreateIn, x_admin_key: Optional[str] 
             except Exception:  # noqa: BLE001
                 sj = None
             if isinstance(sj, dict) and "shipments" in sj and not sj.get("shipments"):
-                raise HTTPException(502, "Cargo לא זמינים כרגע — המשלוח **לא** נוצר (בדקתי: אין משלוח "
+                raise HTTPException(502, "Cargo לא זמינים כרגע — המשלוח לא נוצר (בדקתי: אין משלוח "
                                          "רשום להזמנה). זו תקלה אצל Cargo, לא אצלנו — אפשר לנסות שוב "
                                          "בעוד כמה דקות.")
             raise HTTPException(502, f"יצירת המשלוח נכשלה באמצע (HTTP {r.status_code}). "
