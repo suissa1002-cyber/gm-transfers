@@ -3795,6 +3795,11 @@ def ss_preview(rid: int, fresh: int = 0):
     rep = db.ss_report_get(rid)
     if not rep:
         raise HTTPException(404, "הדוח לא נמצא")
+    if fresh:   # "רענון מול האתר" — גם מחפש התאמות חדשות (ליסט שעלה מאז ההעלאה, כולל ברקוד שסומן 'לא נמכר')
+        try:
+            ss.suggest_mappings(rep["supplier_id"], rep["rows"], _ss_wc(), report_id=rid)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("supplier stock re-suggest failed: %s", e)
     try:
         plan = ss.plan_for_report(rep["supplier_id"], rid, _ss_wc(), fresh=bool(fresh))
     except ValueError as e:
