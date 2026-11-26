@@ -128,6 +128,15 @@
   .iact:hover{border-color:var(--accent);color:var(--accent)}
   .iact.warn-b:hover{border-color:var(--danger);color:var(--danger)}
   .iact:disabled{opacity:.45;cursor:default}
+  /* v0.8.0 — הגדרות תוספת במכשיר: כלול + מחיר מיוחד (אסי, 26/11) */
+  .pset{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:6px}
+  .pset .inc{border:1.5px solid var(--line);background:#fff;border-radius:999px;padding:5px 11px;
+    font:inherit;font-size:.78rem;font-weight:700;cursor:pointer;color:var(--ink2)}
+  .pset .inc.on{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
+  .pset input{width:96px;padding:5px 8px;border:1.5px solid var(--line);border-radius:9px;font:inherit;font-size:.8rem}
+  .pset .dsave{padding:5px 10px;font-size:.78rem}
+  .item.wrap{flex-wrap:wrap}
+  .was{text-decoration:line-through;color:var(--ink2);font-weight:600;margin-left:5px}
   .kind{display:inline-block;background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent);
     border-radius:99px;padding:1px 8px;font-size:.7rem;font-weight:800;margin-inline-start:6px}
 </style>
@@ -710,12 +719,24 @@ async function showProd() {
       $('mPrev').innerHTML = '<div class="warn">אין תוספות למוצר הזה — הסקשן לא יוצג בעמוד בכלל.</div>';
       return;
     }
-    $('mPrev').innerHTML = g.map(grp => `
+    const money = v => '₪' + Math.round(+v).toLocaleString('he-IL');
+    const dealVal = it => { const d = String(it.dev_deal || ''); return d.startsWith('final:') ? Math.round(+d.slice(6)) : ''; };
+    $('mPrev').innerHTML = `<div class="hint" style="margin-bottom:8px">
+        <b>כלול עם המכשיר</b> = מגיע עם המכשיר ב-₪0, מסומן מראש בעמוד ונכנס להזמנה כשורה. בחירת תוספת אחרת באותו צ׳יפ <b>מחליפה</b> אותו.
+        <b>מחיר מיוחד</b> = חל <b>רק</b> במכשיר הזה, ורק כשהמכשיר בסל.</div>` + g.map(grp => `
       <div class="grp"><b>${grp.label}</b>
         <div class="list" style="margin-top:8px">${grp.items.map(it => `
-          <div class="item">
+          <div class="item wrap">
             <img src="${it.img || ''}" alt="">
-            <div style="flex:1;min-width:0"><div class="n">${it.name}</div><div class="p">₪${it.price.toLocaleString('he-IL')}</div></div>
+            <div style="flex:1;min-width:0"><div class="n">${it.name}</div><div class="p">${
+              it.incl ? `כלול${it.was ? ` <span class="was">${money(it.was)}</span>` : ''}`
+              : it.was ? `${money(it.price)} <span class="was">${money(it.was)}</span>` : money(it.price)}</div>
+              <div class="pset">
+                <button class="inc${it.incl ? ' on' : ''}" data-incl="${it.id}" data-on="${it.incl ? 1 : 0}">${it.incl ? '✓ ' : ''}כלול עם המכשיר</button>
+                ${it.incl ? '' : `<input type="number" min="0" step="1" placeholder="מחיר מיוחד ₪" value="${dealVal(it)}" data-dval="${it.id}">
+                <button class="btn btn-ghost btn-sm dsave" data-dsave="${it.id}">שמור מחיר</button>`}
+              </div>
+            </div>
             <button class="btn btn-ghost btn-sm ico" data-pedit="${it.id}" title="עריכת התוספת">
               <svg viewBox="0 0 24 24"><path d="M4 20h4l10-10-4-4L4 16v4z"/><path d="M14 6l4 4"/></svg>
             </button>
@@ -727,6 +748,27 @@ async function showProd() {
 /* הסרה = ביטול השיוך למוצר הזה בלבד. ⚠️ אם התוספת משויכת דרך **קטגוריה** היא
  * תמשיך להופיע — מודיעים במקום להשתיק. */
 $('mPrev').addEventListener('click', async e => {
+  /* v0.8.0 — כלול עם המכשיר / מחיר מיוחד למכשיר הזה */
+  const inc = e.target.closest('[data-incl]');
+  if (inc) {
+    inc.disabled = true;
+    try {
+      await api('prodset', { id: +inc.dataset.incl, product: MPROD.id, incl: inc.dataset.on === '1' ? 0 : 1 });
+      say(inc.dataset.on === '1' ? 'בוטל "כלול" ✓' : 'מסומן ככלול עם המכשיר ✓', 'ok'); await showProd();
+    } catch (err) { say(err.message, 'err'); inc.disabled = false; }
+    return;
+  }
+  const ds = e.target.closest('[data-dsave]');
+  if (ds) {
+    const inp = $('mPrev').querySelector(`[data-dval="${ds.dataset.dsave}"]`);
+    const v = Math.round(+(inp && inp.value || 0));
+    ds.disabled = true;
+    try {
+      await api('prodset', { id: +ds.dataset.dsave, product: MPROD.id, deal: v > 0 ? 'final:' + v : '' });
+      say(v > 0 ? `מחיר מיוחד ₪${v} נשמר — רק למכשיר הזה ✓` : 'המחיר המיוחד הוסר ✓', 'ok'); await showProd();
+    } catch (err) { say(err.message, 'err'); ds.disabled = false; }
+    return;
+  }
   const ed = e.target.closest('[data-pedit]');
   if (ed) {
     const a = await addonById(+ed.dataset.pedit);

@@ -1265,6 +1265,37 @@
   });
   /* כרטיסיה: לחיצה בכל מקום מסמנת, לחיצה נוספת מסירה. ריבוי צ׳יפים נשמר כי
      הסימון יושב על ה-DOM ועל GM_AD_SEL, ולא נמחק במעבר בין קבוצות. */
+  /* ⚠️ תוספת שמשויכת לכמה צ׳יפים מרונדרת כ**כמה כרטיסיות** עם אותו data-id.
+   * עדכון הכרטיסיה שנלחצה בלבד יצר באג: סימון ב"חבילות" ואז לחיצה על אותה
+   * תוספת ב"כיסויים" ביטלה את הבחירה, והמונה חזר לאחור. לכן כל המופעים. */
+  function gmAdMark(id, on) {
+    if (on) { GM_AD_SEL[id] = true; } else { delete GM_AD_SEL[id]; }
+    $('.gm-ad-card[data-id="' + id + '"]')
+      .toggleClass('added', on).attr('aria-pressed', on ? 'true' : 'false')
+      .find('.gm-ad-add').text(on ? '✓' : '+');
+  }
+  /* v0.8.0 — "כלול עם המכשיר" (אסי, 26/11/2026): בצ׳יפ שיש בו כרטיסיה כלולה
+   * (data-incl) הכרטיסיות הן **בחירה אחת** — חלופה מחליפה את הכלולה, וביטול
+   * החלופה מחזיר אותה. אסי: "החלפה במקום הברירת מחדל". השרת אוכף את אותו כלל. */
+  function gmAdPeers(id) {
+    var peers = {};
+    $('.gm-ad-grid').each(function () {
+      var $g = $(this);
+      if (!$g.find('.gm-ad-card[data-incl="1"]').length) return;
+      if (!$g.find('.gm-ad-card[data-id="' + id + '"]').length) return;
+      $g.find('.gm-ad-card').each(function () {
+        var x = +$(this).data('id'); if (x && x !== id) peers[x] = true;
+      });
+    });
+    return Object.keys(peers).map(Number);
+  }
+  /* ברירת המחדל: כל כלולה מסומנת, אלא אם נבחרה חלופה באותה קבוצה */
+  function gmAdDefaults() {
+    $('.gm-ad-card[data-incl="1"]').each(function () {
+      var id = +$(this).data('id'); if (!id) return;
+      if (!gmAdPeers(id).some(function (p) { return GM_AD_SEL[p]; })) gmAdMark(id, true);
+    });
+  }
   function gmAdToggle($c) {
     var id = +$c.data('id'); if (!id) return;
     /* כרטיסיה עם בורר: בלי בחירה אין מה להוסיף — מפנים לבורר במקום לסמן */
@@ -1272,14 +1303,12 @@
       $c.find('.gm-ad-picks').addClass('gm-ad-need');
       return;
     }
-    if (GM_AD_SEL[id]) { delete GM_AD_SEL[id]; } else { GM_AD_SEL[id] = true; }
-    var on = !!GM_AD_SEL[id];
-    /* ⚠️ תוספת שמשויכת לכמה צ׳יפים מרונדרת כ**כמה כרטיסיות** עם אותו data-id.
-     * עדכון הכרטיסיה שנלחצה בלבד יצר באג: סימון ב"חבילות" ואז לחיצה על אותה
-     * תוספת ב"כיסויים" ביטלה את הבחירה, והמונה חזר לאחור. לכן כל המופעים. */
-    $('.gm-ad-card[data-id="' + id + '"]')
-      .toggleClass('added', on).attr('aria-pressed', on ? 'true' : 'false')
-      .find('.gm-ad-add').text(on ? '✓' : '+');
+    /* הכלולה המסומנת נשארת — מחליפים אותה רק בבחירת חלופה */
+    if (GM_AD_SEL[id] && $c.attr('data-incl') === '1') return;
+    var on = !GM_AD_SEL[id];
+    gmAdMark(id, on);
+    if (on) { gmAdPeers(id).forEach(function (p) { gmAdMark(p, false); }); }
+    else { gmAdDefaults(); }
     gmAdLabel();
   }
   $(document).on('click', '.gm-ad-card', function () { gmAdToggle($(this)); });
@@ -1307,9 +1336,10 @@
       if (!$(this).find('.gm-ad-flag').length) {
         $(this).append('<span class="gm-ad-flag" aria-hidden="true">' +
           '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 12.5 10 18.5 20 6.5"/></svg>' +
-          'התווסף לסל</span>');
+          ($(this).attr('data-incl') === '1' ? 'כלול עם המכשיר' : 'התווסף לסל') + '</span>');
       }
     });
+    gmAdDefaults();
     gmAdLabel();
   });
 
@@ -1383,6 +1413,7 @@
     GM_AD_SEL = {};
     $('.gm-ad-card').removeClass('added').attr('aria-pressed', 'false')
       .find('.gm-ad-add').text('+');
+    gmAdDefaults();                  /* הכלולה חוזרת להיות מסומנת להוספה הבאה */
     gmAdLabel();
   }
   function gmAdSeq(ids) {
