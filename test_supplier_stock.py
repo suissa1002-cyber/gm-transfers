@@ -390,6 +390,27 @@ def test_seed_and_endpoints():
     assert not sup2["stale"] and sup2["last_run"]["status"] == "done"
 
 
+
+def test_ignored_barcode_revived_when_listing_appears():
+    """26/11 — King XL: סומן 'לא נמכר אצלנו' לפני שעלה ליסט → לא נוטר ונמכר באתר כשאזל אצל הספק.
+    ברקוד מבוטל שיש לו עכשיו SKU זהה באתר חוזר למעקב כהצעה (חוסמת עד אישור)."""
+    wc = FakeWC()
+    sid = _new_supplier("ישפאר-revive")
+    bc = BY_MODEL["GPDRC-R70-B"]["barcode"]
+    rid = db.ss_report_add(sid, "w.xlsx", "asi", ROWS)
+    db.ss_map_upsert(sid, bc, model="GPDRC-R70-B", ignored=1, confirmed=0, first_seen_report=rid)
+    st = ss.suggest_mappings(sid, ROWS, wc, report_id=rid)
+    m = db.ss_map_all(sid)[bc]
+    assert st.get("revived", 0) >= 1
+    assert (m["ignored"], m["wc_product_id"], m["wc_variation_id"], m["confirmed"]) == (0, 800, 801, 0)
+    plan = ss.build_plan(CFG, ROWS, db.ss_map_all(sid), ss.fetch_products(wc, [800]))
+    row = next(r for r in plan["rows"] if r["barcode"] == bc)
+    assert row["group"] == "blocked" and row["msg"].startswith("היה מסומן")
+    # אישור → נכנס למעקב; סימון 'לא נמכר' מחדש אחרי שיש התאמה — נשמר (לא חוזר שוב)
+    ss.map_action(sid, bc, "ignore", "asi")
+    ss.suggest_mappings(sid, ROWS, wc, report_id=rid)
+    assert db.ss_map_all(sid)[bc]["ignored"] == 1
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main([__file__, "-q"]))

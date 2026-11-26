@@ -389,6 +389,21 @@ def suggest_mappings(sid, rows, wc, report_id=None) -> dict:
                 f["first_seen_report"] = report_id
             db.ss_map_upsert(sid, r["barcode"], **f)
     maps = db.ss_map_all(sid)
+    # ⚠️ 26/11 (King XL 53262 נמכר באתר כשהספק "אין מלאי"): ברקוד שסומן 'לא נמכר אצלנו' לפני שעלה ליסט
+    # נשאר מבוטל לנצח ולא נוטר. עכשיו: אם יש באתר יחידה אחת עם SKU == הברקוד — מבטלים את הסימון
+    # ומציעים התאמה (לא מאושרת ⇒ חוסמת את הסנכרון עד אישור). סימון 'לא נמכר' **אחרי** שיש התאמה נשמר.
+    ign = [r for r in rows if maps[r["barcode"]].get("ignored") and not maps[r["barcode"]].get("wc_product_id")]
+    if ign and wc is not None:
+        by_bc = sku_lookup(wc, [r["barcode"] for r in ign])
+        for r in ign:
+            hits = by_bc.get(r["barcode"]) or []
+            if len(hits) == 1:
+                h = hits[0]
+                db.ss_map_upsert(sid, r["barcode"], wc_product_id=h["pid"], wc_variation_id=h["vid"], label=h["label"],
+                                 source="sku", confirmed=0, ignored=0,
+                                 note="היה מסומן 'לא נמכר אצלנו' — עכשיו קיים באתר עם אותו ברקוד")
+                stats["revived"] = stats.get("revived", 0) + 1
+        maps = db.ss_map_all(sid)
     open_rows = [r for r in rows if not maps[r["barcode"]].get("ignored") and not maps[r["barcode"]].get("wc_product_id")]
     if not open_rows or wc is None:
         return stats
@@ -430,7 +445,7 @@ def map_action(sid, barcode, action, by, pid=None, vid=None, label="") -> dict:
     if action == "confirm":
         if not m.get("wc_product_id"):
             raise ValueError("אין התאמה לאשר — בחרו מוצר קודם")
-        db.ss_map_upsert(sid, barcode, confirmed=1, ignored=0, confirmed_by=by, confirmed_at=now)
+        db.ss_map_upsert(sid, barcode, confirmed=1, ignored=0, confirmed_by=by, confirmed_at=now, note="")
     elif action == "ignore":
         db.ss_map_upsert(sid, barcode, ignored=1, confirmed=0, confirmed_by=by, confirmed_at=now)
     elif action == "unignore":
@@ -499,7 +514,7 @@ def build_plan(config: dict, rows: list, maps: dict, products: dict, has_prev: b
                          else "הוריאציה לא נמצאה במוצר")
         elif not m.get("confirmed"):
             pr["group"] = "blocked"
-            pr["msg"] = {"sku": "הצעה: SKU זהה לברקוד — ממתין לאישור", "model": "הצעה: SKU = קוד הדגם — ממתין לאישור",
+            pr["msg"] = m.get("note") if (m.get("note") or "").startswith("היה מסומן") else {"sku": "הצעה: SKU זהה לברקוד — ממתין לאישור", "model": "הצעה: SKU = קוד הדגם — ממתין לאישור",
                          "seed": "התאמה ידנית מוגדרת מראש — ממתין לאישור"}.get(m.get("source"), "ממתין לאישור")
         elif cfg.get("require_tag", True) and tag_id and tag_id not in (prod.get("tags") or []):
             pr["group"], pr["msg"] = "untagged", "למוצר אין תג 'בית לקוח' — מדולג (ניתן לשנות בהגדרות הספק)"
