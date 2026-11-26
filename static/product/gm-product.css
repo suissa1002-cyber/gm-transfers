@@ -922,3 +922,7 @@ body.gm-product-new [class*="yith-wapo"]{display:none!important;}
 .instk.gm-eta{color:#b45309;}
 .trust .titem.gm-eta-cube b{color:#b45309;}
 .woocommerce-variation-availability .available-on-backorder{display:none;}
+
+/* v0.8.0 — כרטיסיה "כלול עם המכשיר": הדגל התחתון כבר אומר "כלול עם המכשיר";
+ * הגלולה "מגיע עם המכשיר" כפולה ומתנגשת ב-✓ (אסי, 26/11) */
+.gm-ad-card[data-incl="1"] .gm-ad-save{display:none}
