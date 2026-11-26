@@ -155,7 +155,7 @@
   .pi-deal .dsave{padding:7px 14px;font-size:.82rem;border-radius:10px}
   .cpy{margin-top:18px;padding:14px;border:1.5px dashed var(--line);border-radius:14px;background:var(--bg)}
   .cpy-h{font-weight:800;font-size:.95rem;margin-bottom:4px}
-  .cpy #cq{margin-top:10px}
+  .cpy #cpq{margin-top:10px}
   .cres{max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:11px;margin-top:8px;background:var(--card,#fff)}
   .cres .ctop{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line);
     font-size:.82rem;color:var(--ink2);position:sticky;top:0;background:inherit}
@@ -346,7 +346,7 @@
       <div id="mCopy" class="cpy" hidden>
         <div class="cpy-h">העתקת ההגדרות למכשירים נוספים</div>
         <div class="hint" id="cpySum"></div>
-        <input id="cq" placeholder="חיפוש מכשירים — למשל Honor, Magic, Galaxy S26…" autocomplete="off">
+        <input id="cpq" placeholder="חיפוש מכשירים — למשל Honor, Magic, Galaxy S26…" autocomplete="off">
         <div class="cres" id="cres" hidden></div>
         <div class="cpicked" id="cpicked"></div>
         <button class="btn" id="cgo" disabled>החלה על המכשירים שנבחרו</button>
@@ -863,8 +863,8 @@ function cpyRender() {
   $('cgo').textContent = CPICK.size ? `החלה על ${CPICK.size} מכשירים` : 'החלה על המכשירים שנבחרו';
 }
 let CRES = [];
-$('cq').addEventListener('input', dbounce(async () => {
-  const q = $('cq').value.trim();
+$('cpq').addEventListener('input', dbounce(async () => {
+  const q = $('cpq').value.trim();
   if (q.length < 2) { $('cres').hidden = true; return; }
   try {
     CRES = ((await api('targets?q=' + encodeURIComponent(q))).products || []);
@@ -913,7 +913,7 @@ $('cgo').addEventListener('click', async () => {
     done++;
     btn.textContent = `מעדכן… ${done}/${devs.length}`;
   }
-  CPICK.clear(); $('cq').value = ''; $('cres').hidden = true;
+  CPICK.clear(); $('cpq').value = ''; $('cres').hidden = true;
   say(fail ? `הוחל על ${done} מכשירים, ${fail} פעולות נכשלו` : `ההגדרות הועתקו ל-${done} מכשירים ✓`, fail ? 'err' : 'ok');
   cpyRender();
 });
