@@ -153,6 +153,25 @@
     font-size:.9rem;font-weight:700;direction:ltr;text-align:left}
   .money i{position:absolute;right:9px;top:50%;transform:translateY(-50%);font-style:normal;color:var(--ink2);pointer-events:none}
   .pi-deal .dsave{padding:7px 14px;font-size:.82rem;border-radius:10px}
+  .cpy{margin-top:18px;padding:14px;border:1.5px dashed var(--line);border-radius:14px;background:var(--bg)}
+  .cpy-h{font-weight:800;font-size:.95rem;margin-bottom:4px}
+  .cpy #cq{margin-top:10px}
+  .cres{max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:11px;margin-top:8px;background:var(--card,#fff)}
+  .cres .ctop{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line);
+    font-size:.82rem;color:var(--ink2);position:sticky;top:0;background:inherit}
+  .cres .ctop button{background:none;border:0;color:var(--accent);font:inherit;font-weight:800;cursor:pointer}
+  .cres label{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--line);
+    font-size:.88rem;font-weight:600;margin:0;cursor:pointer}
+  .cres label:last-child{border-bottom:none}
+  .cres label:hover{background:var(--accent-soft)}
+  .cres input{width:auto;margin:0;flex:0 0 auto}
+  .cres label.cur{opacity:.45;cursor:default}
+  .cpicked{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
+  .cpicked span{display:inline-flex;align-items:center;gap:6px;background:var(--accent-soft);color:var(--ink);
+    border-radius:99px;padding:5px 6px 5px 11px;font-size:.8rem;font-weight:700;max-width:100%}
+  .cpicked span b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700}
+  .cpicked span button{border:0;background:rgba(0,0,0,.08);border-radius:50%;width:20px;height:20px;cursor:pointer;
+    font-size:.75rem;line-height:1;flex:0 0 auto}
   @media (max-width:720px){
     .pitem{grid-template-columns:48px minmax(0,1fr) auto}
     .pitem .iacts{grid-row:1;grid-column:3}
@@ -322,6 +341,15 @@
         <label for="aq">הוספת תוספת קיימת למוצר הזה</label>
         <input id="aq" placeholder="חיפוש תוספת לפי שם…" autocomplete="off">
         <div class="res" id="ares" hidden></div>
+      </div>
+      <!-- העתקת ההגדרות למכשירים נוספים (אסי 26/11: "אין דרך מהירה יותר… במקום לחפש מוצר מוצר") -->
+      <div id="mCopy" class="cpy" hidden>
+        <div class="cpy-h">העתקת ההגדרות למכשירים נוספים</div>
+        <div class="hint" id="cpySum"></div>
+        <input id="cq" placeholder="חיפוש מכשירים — למשל Honor, Magic, Galaxy S26…" autocomplete="off">
+        <div class="cres" id="cres" hidden></div>
+        <div class="cpicked" id="cpicked"></div>
+        <button class="btn" id="cgo" disabled>החלה על המכשירים שנבחרו</button>
       </div>
     </div>
 
@@ -698,7 +726,8 @@ $('resetBtn').addEventListener('click', () => { reset(); clearMsg(); });
  * **לפי מוצר** — כך עובדים בפועל ("מה מופיע בעמוד הזה?"); הזווית השנייה היא
  * קטלוג התוספות עם חיפוש, סינון צ׳יפ, וסינון "ללא שיוך" (הכשל השקט: תוספת
  * בלי שיוך אינה מוצגת לאף לקוח ואין לכך שום סימן). */
-let MODE = 'prod', MPROD = null;
+let MODE = 'prod', MPROD = null, MITEMS = [];
+const CPICK = new Map();   // מכשירי יעד להעתקה: id → שם
 
 document.querySelector('.tabs').addEventListener('click', e => {
   const b = e.target.closest('.tb'); if (!b) return;
@@ -736,6 +765,8 @@ async function showProd() {
   $('mPrev').innerHTML = '<div class="hint">טוען…</div>';
   try {
     const g = await api('preview?product=' + MPROD.id);
+    MITEMS = g.flatMap(grp => grp.items);
+    cpyRender();
     if (!g.length) {
       $('mPrev').innerHTML = '<div class="warn">אין תוספות למוצר הזה — הסקשן לא יוצג בעמוד בכלל.</div>';
       return;
@@ -813,6 +844,78 @@ $('mPrev').addEventListener('click', async e => {
 $('mPrev').addEventListener('keydown', e => {
   const i = e.target.closest('[data-dval]');
   if (i && e.key === 'Enter') { e.preventDefault(); const b = $('mPrev').querySelector(`[data-dsave="${i.dataset.dval}"]`); if (b) b.click(); }
+});
+/* ---- העתקת ההגדרות של המכשיר הנוכחי למכשירים אחרים ----
+ * מה מועתק, לכל תוספת שמוצגת עכשיו במכשיר המקור:
+ *   כלולה  → prodset incl=1   · מחיר מיוחד → prodset deal=<אותו ערך> (משייך אוטומטית)
+ *   רגילה  → attach (שיוך ישיר)
+ * ⚠️ לא מוחק תוספות שכבר קיימות ביעד — רק מוסיף/מעדכן. */
+function cpyRender() {
+  const box = $('mCopy');
+  box.hidden = !MPROD || !MITEMS.length;
+  if (box.hidden) return;
+  const fmt = it => it.incl ? `${it.name} — <b>כלול</b>`
+    : it.dev_deal ? `${it.name} — <b>מחיר מיוחד ${String(it.dev_deal).replace('final:', '₪')}</b>` : it.name;
+  $('cpySum').innerHTML = 'יועתק לכל מכשיר שתבחרו: ' + MITEMS.map(fmt).join(' · ');
+  $('cpicked').innerHTML = [...CPICK].map(([id, n]) =>
+    `<span><b title="${n.replace(/"/g, '&quot;')}">${n}</b><button data-unpick="${id}" aria-label="הסרה">✕</button></span>`).join('');
+  $('cgo').disabled = !CPICK.size;
+  $('cgo').textContent = CPICK.size ? `החלה על ${CPICK.size} מכשירים` : 'החלה על המכשירים שנבחרו';
+}
+let CRES = [];
+$('cq').addEventListener('input', dbounce(async () => {
+  const q = $('cq').value.trim();
+  if (q.length < 2) { $('cres').hidden = true; return; }
+  try {
+    CRES = ((await api('targets?q=' + encodeURIComponent(q))).products || []);
+    const rows = CRES.map(p => {
+      const cur = MPROD && p.id === MPROD.id;
+      return `<label class="${cur ? 'cur' : ''}"><input type="checkbox" data-cp="${p.id}" ${CPICK.has(p.id) || cur ? 'checked' : ''} ${cur ? 'disabled' : ''}>${p.name}${cur ? ' (המכשיר הנוכחי)' : ''}</label>`;
+    }).join('');
+    $('cres').innerHTML = CRES.length
+      ? `<div class="ctop"><span>${CRES.length} תוצאות${CRES.length >= 30 ? ' (מוגבל ל-30 — דייקו את החיפוש)' : ''}</span><button data-cpall>סימון הכל</button></div>` + rows
+      : '<div class="ctop">אין תוצאות</div>';
+    $('cres').hidden = false;
+  } catch (e) { say(e.message, 'err'); }
+}, 300));
+$('cres').addEventListener('change', e => {
+  const c = e.target.closest('[data-cp]'); if (!c) return;
+  const p = CRES.find(x => x.id === +c.dataset.cp);
+  c.checked ? CPICK.set(p.id, p.name) : CPICK.delete(p.id);
+  cpyRender();
+});
+$('cres').addEventListener('click', e => {
+  if (!e.target.closest('[data-cpall]')) return;
+  CRES.forEach(p => { if (!MPROD || p.id !== MPROD.id) CPICK.set(p.id, p.name); });
+  $('cres').querySelectorAll('[data-cp]').forEach(c => { c.checked = true; });
+  cpyRender();
+});
+$('cpicked').addEventListener('click', e => {
+  const b = e.target.closest('[data-unpick]'); if (!b) return;
+  CPICK.delete(+b.dataset.unpick);
+  const c = $('cres').querySelector(`[data-cp="${b.dataset.unpick}"]`); if (c) c.checked = false;
+  cpyRender();
+});
+$('cgo').addEventListener('click', async () => {
+  const devs = [...CPICK.keys()];
+  if (!devs.length || !MITEMS.length) return;
+  if (!confirm(`להחיל ${MITEMS.length} תוספות על ${devs.length} מכשירים?`)) return;
+  const btn = $('cgo'); btn.disabled = true;
+  let done = 0, fail = 0;
+  for (const dev of devs) {
+    for (const it of MITEMS) {
+      try {
+        if (it.incl) await api('prodset', { id: it.id, product: dev, incl: 1 });
+        else if (it.dev_deal) await api('prodset', { id: it.id, product: dev, deal: String(it.dev_deal) });
+        else await api('attach', { id: it.id, product: dev, op: 'add' });
+      } catch (err) { fail++; }
+    }
+    done++;
+    btn.textContent = `מעדכן… ${done}/${devs.length}`;
+  }
+  CPICK.clear(); $('cq').value = ''; $('cres').hidden = true;
+  say(fail ? `הוחל על ${done} מכשירים, ${fail} פעולות נכשלו` : `ההגדרות הועתקו ל-${done} מכשירים ✓`, fail ? 'err' : 'ok');
+  cpyRender();
 });
 /* הוספת תוספת קיימת למוצר — הפעולה היומיומית */
 $('aq').addEventListener('input', dbounce(async () => {
