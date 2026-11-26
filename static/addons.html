@@ -128,15 +128,36 @@
   .iact:hover{border-color:var(--accent);color:var(--accent)}
   .iact.warn-b:hover{border-color:var(--danger);color:var(--danger)}
   .iact:disabled{opacity:.45;cursor:default}
-  /* v0.8.0 — הגדרות תוספת במכשיר: כלול + מחיר מיוחד (אסי, 26/11) */
-  .pset{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:6px}
-  .pset .inc{border:1.5px solid var(--line);background:#fff;border-radius:999px;padding:5px 11px;
-    font:inherit;font-size:.78rem;font-weight:700;cursor:pointer;color:var(--ink2)}
-  .pset .inc.on{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
-  .pset input{width:96px;padding:5px 8px;border:1.5px solid var(--line);border-radius:9px;font:inherit;font-size:.8rem}
-  .pset .dsave{padding:5px 10px;font-size:.78rem}
-  .item.wrap{flex-wrap:wrap}
-  .was{text-decoration:line-through;color:var(--ink2);font-weight:600;margin-left:5px}
+  /* v0.8.0 — הגדרות תוספת במכשיר: כלול + מחיר מיוחד (אסי, 26/11).
+   * שורה מלאה לכל תוספת — ברשת 2 עמודות הפקדים נדחסו לעמודה צרה ("נראה רע מאוד"). */
+  #mPrev .list{grid-template-columns:1fr}
+  .pitem{display:grid;grid-template-columns:56px minmax(0,1fr) auto auto;gap:14px;align-items:center;
+    background:var(--bg);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+  .pitem.is-incl{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+  .pitem img{width:56px;height:56px;object-fit:contain;border-radius:10px;background:#fff}
+  .pi-name{font-weight:700;font-size:.92rem;line-height:1.35;overflow-wrap:anywhere}
+  .pi-price{margin-top:3px;font-weight:800;font-size:.95rem;color:var(--ink)}
+  .pi-price .now{color:var(--accent)}
+  .was{text-decoration:line-through;color:var(--ink2);font-weight:600;font-size:.85em;margin-right:6px}
+  .pi-ctl{display:flex;align-items:center;gap:18px;flex-wrap:wrap;justify-content:flex-end}
+  .sw{display:inline-flex;align-items:center;gap:8px;background:none;border:0;font:inherit;font-size:.85rem;
+    font-weight:700;color:var(--ink2);cursor:pointer;padding:4px 0;white-space:nowrap}
+  .sw .tr{width:38px;height:22px;border-radius:99px;background:var(--line);position:relative;transition:background .15s;flex:0 0 auto}
+  .sw .tr::after{content:'';position:absolute;top:3px;right:3px;width:16px;height:16px;border-radius:50%;
+    background:#fff;transition:right .15s;box-shadow:0 1px 2px rgba(0,0,0,.25)}
+  .sw.on{color:var(--accent)} .sw.on .tr{background:var(--accent)} .sw.on .tr::after{right:19px}
+  .sw:disabled{opacity:.5;cursor:default}
+  .pi-deal{display:flex;align-items:center;gap:8px;font-size:.82rem;color:var(--ink2);font-weight:700;white-space:nowrap}
+  .money{position:relative;display:inline-block}
+  .money input{width:96px;padding:7px 26px 7px 8px;border:1.5px solid var(--line);border-radius:10px;font:inherit;
+    font-size:.9rem;font-weight:700;direction:ltr;text-align:left}
+  .money i{position:absolute;right:9px;top:50%;transform:translateY(-50%);font-style:normal;color:var(--ink2);pointer-events:none}
+  .pi-deal .dsave{padding:7px 14px;font-size:.82rem;border-radius:10px}
+  @media (max-width:720px){
+    .pitem{grid-template-columns:48px minmax(0,1fr) auto}
+    .pitem .iacts{grid-row:1;grid-column:3}
+    .pi-ctl{grid-column:1/-1;justify-content:flex-start;gap:14px}
+  }
   .kind{display:inline-block;background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent);
     border-radius:99px;padding:1px 8px;font-size:.7rem;font-weight:800;margin-inline-start:6px}
 </style>
@@ -726,21 +747,25 @@ async function showProd() {
         <b>מחיר מיוחד</b> = חל <b>רק</b> במכשיר הזה, ורק כשהמכשיר בסל.</div>` + g.map(grp => `
       <div class="grp"><b>${grp.label}</b>
         <div class="list" style="margin-top:8px">${grp.items.map(it => `
-          <div class="item wrap">
+          <div class="pitem${it.incl ? ' is-incl' : ''}">
             <img src="${it.img || ''}" alt="">
-            <div style="flex:1;min-width:0"><div class="n">${it.name}</div><div class="p">${
-              it.incl ? `כלול${it.was ? ` <span class="was">${money(it.was)}</span>` : ''}`
-              : it.was ? `${money(it.price)} <span class="was">${money(it.was)}</span>` : money(it.price)}</div>
-              <div class="pset">
-                <button class="inc${it.incl ? ' on' : ''}" data-incl="${it.id}" data-on="${it.incl ? 1 : 0}">${it.incl ? '✓ ' : ''}כלול עם המכשיר</button>
-                ${it.incl ? '' : `<input type="number" min="0" step="1" placeholder="מחיר מיוחד ₪" value="${dealVal(it)}" data-dval="${it.id}">
-                <button class="btn btn-ghost btn-sm dsave" data-dsave="${it.id}">שמור מחיר</button>`}
-              </div>
+            <div style="min-width:0">
+              <div class="pi-name">${it.name}</div>
+              <div class="pi-price">${
+                it.incl ? `<span class="now">כלול</span>${it.was ? `<span class="was">${money(it.was)}</span>` : ''}`
+                : it.was ? `<span class="now">${money(it.price)}</span><span class="was">${money(it.was)}</span>` : money(it.price)}</div>
             </div>
-            <button class="btn btn-ghost btn-sm ico" data-pedit="${it.id}" title="עריכת התוספת">
-              <svg viewBox="0 0 24 24"><path d="M4 20h4l10-10-4-4L4 16v4z"/><path d="M14 6l4 4"/></svg>
-            </button>
-            <button class="btn btn-ghost btn-sm" data-detach="${it.id}">הסרה</button>
+            <div class="pi-ctl">
+              <button class="sw${it.incl ? ' on' : ''}" data-incl="${it.id}" data-on="${it.incl ? 1 : 0}"
+                role="switch" aria-checked="${it.incl ? 'true' : 'false'}"><span class="tr"></span>כלול עם המכשיר</button>
+              ${it.incl ? '' : `<div class="pi-deal">מחיר מיוחד
+                <span class="money"><input type="number" min="0" step="1" inputmode="numeric" value="${dealVal(it)}" data-dval="${it.id}" aria-label="מחיר מיוחד למכשיר הזה"><i>₪</i></span>
+                <button class="btn btn-sm dsave" data-dsave="${it.id}">שמירה</button></div>`}
+            </div>
+            <div class="iacts">
+              <button class="iact" data-pedit="${it.id}" title="עריכת התוספת" aria-label="עריכה">${IC_EDIT}</button>
+              <button class="iact warn-b" data-detach="${it.id}" title="הסרה מהמכשיר הזה" aria-label="הסרה">${IC_UNLINK}</button>
+            </div>
           </div>`).join('')}</div>
       </div>`).join('');
   } catch (e) { $('mPrev').innerHTML = `<div class="msg err">${e.message}</div>`; }
@@ -784,6 +809,10 @@ $('mPrev').addEventListener('click', async e => {
     if (JSON.stringify(still).includes('"id":' + b.dataset.detach))
       say('הוסר השיוך הישיר, אבל התוספת עדיין מופיעה דרך שיוך לקטגוריה.', 'err');
   } catch (err) { say(err.message, 'err'); }
+});
+$('mPrev').addEventListener('keydown', e => {
+  const i = e.target.closest('[data-dval]');
+  if (i && e.key === 'Enter') { e.preventDefault(); const b = $('mPrev').querySelector(`[data-dsave="${i.dataset.dval}"]`); if (b) b.click(); }
 });
 /* הוספת תוספת קיימת למוצר — הפעולה היומיומית */
 $('aq').addEventListener('input', dbounce(async () => {
